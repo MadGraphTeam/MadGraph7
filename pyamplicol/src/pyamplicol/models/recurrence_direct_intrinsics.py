@@ -276,8 +276,7 @@ def certify_recurrence_contribution_intrinsic(
             coefficient = normalized[0].coefficient(_sym.E(witness.anchor_monomial))
             scale = (coefficient * _sym.E(witness.inverse_anchor_coefficient)).expand()
             if any(
-                candidate.to_canonical_string()
-                != (scale * reference).expand().to_canonical_string()
+                not bool(candidate == (scale * reference).expand())
                 for candidate, reference in zip(normalized, references, strict=True)
             ):
                 continue
@@ -324,8 +323,7 @@ def certify_recurrence_finalization_intrinsic(
         coefficient = normalized[0].coefficient(_sym.E(witness.anchor_monomial))
         scale = (coefficient * _sym.E(witness.inverse_anchor_coefficient)).expand()
         if any(
-            candidate.to_canonical_string()
-            != (scale * reference).expand().to_canonical_string()
+            not bool(candidate == (scale * reference).expand())
             for candidate, reference in zip(normalized, references, strict=True)
         ):
             continue
@@ -410,7 +408,9 @@ def _normalized_expressions(
         replacements.append(_sym.Replacement(source, target))
 
     normalized = tuple(
-        _sym.E(value).replace_multiple(replacements).expand()
+        _exact_binary64_coefficients(_sym.E(value))
+        .replace_multiple(replacements)
+        .expand()
         for value in exact_expressions
     )
     allowed = set(parameter_symbols)
@@ -429,6 +429,47 @@ def _normalized_expressions(
     ):
         raise ValueError("normalized intrinsic retains an undeclared symbol")
     return normalized, parameter_symbols
+
+
+def _exact_binary64_coefficients(expression: object) -> object:
+    """Compare coefficients exactly, including floating representations of units.
+
+    Only the temporary certification expression is changed. A binary64 number
+    is replaced by the rational with exactly the same value, not a nearby
+    rational approximation. This also prevents a floating unit from rounding
+    away a small rational difference during the algebraic comparison.
+    """
+    from symbolica import AtomType
+
+    _sym._ensure_symbolica()
+    pending = [expression]
+    replacements: dict[object, object] = {}
+    while pending:
+        atom = pending.pop()
+        kind = atom.get_type()
+        if kind == AtomType.Var:
+            continue
+        if kind != AtomType.Num:
+            pending.extend(atom)
+            continue
+        try:
+            value = complex(atom)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not math.isfinite(value.real) or not math.isfinite(value.imag):
+            continue
+        # Rational atoms and higher-precision floats must not be rounded to
+        # binary64. Symbolica's literal equality includes the numeric kind.
+        if not bool(atom == _sym.Expression.num(value)):
+            continue
+        real_n, real_d = value.real.as_integer_ratio()
+        imag_n, imag_d = value.imag.as_integer_ratio()
+        replacements[atom] = _sym.E(f"({real_n}/{real_d})+1𝑖*({imag_n}/{imag_d})")
+    if not replacements:
+        return expression
+    return expression.replace_multiple(
+        [_sym.Replacement(source, target) for source, target in replacements.items()]
+    )
 
 
 def _normalization_candidates(
@@ -518,10 +559,7 @@ def _extract_scalar_scale(
             if symbol.to_canonical_string() == canonical
         )
         coefficient = scale.coefficient(parameter)
-        if (
-            scale.to_canonical_string()
-            != (coefficient * parameter).expand().to_canonical_string()
-        ):
+        if not bool(scale == (coefficient * parameter).expand()):
             return None
         parameter_index = parameter_symbols[canonical]
     else:

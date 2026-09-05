@@ -4,16 +4,84 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal, localcontext
 from fractions import Fraction
 
 import pytest
 
 from pyamplicol.models.recurrence_direct_intrinsics import (
+    _FINALIZATION_WITNESSES,
     RECURRENCE_INTRINSIC_SCALE_KIND,
+    _exact_binary64_coefficients,
+    _normalized_expressions,
     certify_recurrence_contribution_intrinsic,
     certify_recurrence_finalization_intrinsic,
 )
 from pyamplicol.models.recurrence_template import ExactComplexRationalV1
+
+
+@pytest.mark.parametrize("literal", ("-1.0", "1.0", "-2.0", "2.0", "1.0i", "-1.0i"))
+def test_certification_normalizes_floating_units_exactly(literal: str) -> None:
+    from symbolica import E
+
+    expression = E(f"({literal})*sqrt(1/2)*x")
+    normalized = _exact_binary64_coefficients(expression)
+    integer_literal = literal.replace(".0", "")
+    assert bool(normalized == E(f"({integer_literal})*sqrt(1/2)*x"))
+    # The retained expression used by exact evaluation is never rewritten.
+    assert bool(expression == E(f"({literal})*sqrt(1/2)*x"))
+
+
+def test_certification_preserves_the_exact_binary64_value() -> None:
+    from symbolica import E
+
+    numerator, denominator = (0.1).as_integer_ratio()
+    normalized = _exact_binary64_coefficients(E("0.1*x"))
+    assert bool(normalized == E(f"({numerator}/{denominator})*x"))
+    assert not bool(normalized == E("x/10"))
+    assert bool(_exact_binary64_coefficients(E("x/3")) == E("x/3"))
+
+
+@pytest.mark.parametrize("coefficient", ("-1.0", "-1.000000000000001", "(-1+1/10^60)"))
+def test_radical_intrinsic_matching_does_not_round_away_coefficient_changes(
+    coefficient: str,
+) -> None:
+    expressions = (
+        "sqrt(1/2)*(-1.0i*l0*r3-1i*l1*r1+l1*r2+1i*l0*r0)",
+        f"sqrt(1/2)*(({coefficient})*l0*r2-1i*l0*r1+1i*l1*r0+1i*l1*r3)",
+    )
+    result = certify_recurrence_contribution_intrinsic(
+        exact_expressions=tuple(_substitute(item) for item in expressions),
+        input_contracts=_contracts(2, 4),
+        parent_component_counts=(2, 4),
+        destination_component_count=2,
+        binding_coupling=None,
+    )
+    if coefficient != "-1.0":
+        assert result is None
+    else:
+        assert result is not None
+        assert result.runtime_template.endswith("weyl-vector-to-weyl-a.v1")
+        assert result.constant_scale == pytest.approx(2**-0.5)
+
+
+@pytest.mark.parametrize("precision", (32, 100))
+def test_intrinsic_certification_retains_high_precision_radical(precision: int) -> None:
+    from symbolica import E, Evaluator
+
+    source = E("-1.0*sqrt(1/2)")
+    exact_evaluator = source.evaluator([], jit_compile=False)
+    serialized = exact_evaluator.save()
+    _exact_binary64_coefficients(source)
+    assert exact_evaluator.save() == serialized
+    value, imaginary = Evaluator.load(serialized).evaluate_complex_with_prec(
+        (), precision
+    )[0]
+    with localcontext() as context:
+        context.prec = precision
+        expected = -(Decimal(1) / Decimal(2)).sqrt()
+        assert abs(value - expected) < Decimal(10) ** (2 - precision)
+    assert imaginary == 0
 
 
 def _contracts(
@@ -554,9 +622,15 @@ def test_rejects_near_match_with_extra_tensor_term() -> None:
         ),
     ),
 )
+@pytest.mark.parametrize("floating_units", (False, True))
 def test_certifies_finalization_intrinsics(
-    expressions: tuple[str, ...], components: int, expected_template: str
+    expressions: tuple[str, ...],
+    components: int,
+    expected_template: str,
+    floating_units: bool,
 ) -> None:
+    if floating_units:
+        expressions = tuple(item.replace("-1", "-1.0") for item in expressions)
     result = certify_recurrence_finalization_intrinsic(
         exact_expressions=tuple(
             _substitute_finalization(item, components) for item in expressions
@@ -566,3 +640,22 @@ def test_certifies_finalization_intrinsics(
     )
 
     assert result == expected_template
+    if "weyl-propagator" in expected_template:
+        from symbolica import E
+
+        # Unlike contribution intrinsics, these native finalizers have no
+        # extra scale input: the whole expression must equal the primitive.
+        normalized, _ = _normalized_expressions(
+            tuple(_substitute_finalization(item, components) for item in expressions),
+            _finalization_contracts(components),
+            binding_coupling=None,
+        )
+        witness = next(
+            item
+            for item in _FINALIZATION_WITNESSES
+            if item.runtime_template == expected_template
+        )
+        assert all(
+            bool(actual == E(reference).expand())
+            for actual, reference in zip(normalized, witness.expressions, strict=True)
+        )
