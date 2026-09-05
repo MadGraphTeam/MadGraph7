@@ -32,6 +32,10 @@ inline void check_error(gpuError_t error) {
 
 inline void check_error() { check_error(gpuGetLastError()); }
 
+inline void ignore_error(gpuError_t) {}
+inline void ignore_error(gpublasStatus_t) {}
+inline void ignore_error(gpurandStatus_t) {}
+
 class GpuDevice : public Device {
 public:
 #ifdef __CUDACC__
@@ -42,6 +46,8 @@ public:
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const override;
     void free(void* ptr) const override;
+    void free_on_stream(void* ptr, void* stream) const override;
+    void order_streams(void* from, void* to) const override;
     void memcpy(void* to, void* from, std::size_t size) const override;
 
     void tensor_copy(const Tensor& source, Tensor& target) const override;
@@ -124,10 +130,13 @@ private:
     std::vector<PoolItem> _pools;
     std::unordered_map<void*, AllocItem> _allocs;
     const GpuDevice& _device;
+    gpuStream_t _stream;
 };
 
 class AsyncGpuDevice {
 public:
+    static constexpr bool stream_ordered_alloc = true;
+
     AsyncGpuDevice(
         const GpuDevice& device,
         gpuStream_t stream,

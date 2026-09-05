@@ -236,6 +236,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "__dlpack__",
             &tensor_to_dlpack,
+            py::kw_only(),
             py::arg("stream") = std::nullopt,
             py::arg("max_version") = std::nullopt,
             py::arg("dl_device") = std::nullopt,
@@ -281,13 +282,16 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("default_context", &default_context);
     m.def("default_cuda_context", &default_cuda_context, py::arg("index") = 0);
     m.def("default_hip_context", &default_hip_context, py::arg("index") = 0);
+    m.def("get_stream", &caller_stream);
+    m.def("set_stream", &set_caller_stream, py::arg("stream"));
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
         .def(py::init<Function, ContextPtr>(), py::arg("function"), py::arg("context"))
         .def("call", &FunctionRuntime::call)
         .def("call_with_grad", &FunctionRuntime::call_with_grad)
-        .def("call_backward", &FunctionRuntime::call_backward);
+        .def("call_backward", &FunctionRuntime::call_backward)
+        .def("release_inputs", &FunctionRuntime::release_inputs);
 
     auto& fb =
         py::classh<FunctionBuilder>(m, "FunctionBuilder")
@@ -1000,10 +1004,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "add_data",
             [](DiscreteOptimizer& opt, std::vector<py::object> values_and_counts) {
                 TensorVec input_tensors;
+                std::vector<PyTypeObject*> ordered_producers;
                 for (std::size_t i = 1; auto& input : values_and_counts) {
-                    input_tensors.push_back(
-                        dlpack_to_tensor(input, i % 2 == 0 ? batch_int : batch_float, i)
-                    );
+                    input_tensors.push_back(dlpack_to_tensor(
+                        input,
+                        i % 2 == 0 ? batch_int : batch_float,
+                        i,
+                        nullptr,
+                        nullptr,
+                        &ordered_producers
+                    ));
                     ++i;
                 }
                 opt.add_data(input_tensors);
@@ -1056,11 +1066,17 @@ PYBIND11_MODULE(_madspace_py, m) {
                 TensorVec tensors;
                 tensors.reserve(inputs.size());
                 bool dlpack_version_cache = false;
+                std::vector<PyTypeObject*> ordered_producers;
                 for (std::size_t i = 0;
                      auto [input, type] : zip(inputs, opt.input_types())) {
-                    tensors.push_back(
-                        dlpack_to_tensor(input, type, i, device, &dlpack_version_cache)
-                    );
+                    tensors.push_back(dlpack_to_tensor(
+                        input,
+                        type,
+                        i,
+                        device,
+                        &dlpack_version_cache,
+                        &ordered_producers
+                    ));
                     ++i;
                 }
                 return opt.step(tensors);

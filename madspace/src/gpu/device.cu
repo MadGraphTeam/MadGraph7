@@ -1,10 +1,26 @@
 #include "../kernels/kernels.hpp"
 #include "device.hpp"
+#include "madspace/driver/context.hpp"
 #include "tensor.cuh"
 
 using namespace madspace;
 using namespace madspace::gpu;
 using namespace madspace::kernels;
+
+namespace {
+template <typename... T>
+void wait_for(const T&... tensors) {
+    auto caller = caller_stream();
+    if (caller && *caller != 0) {
+        check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*caller)));
+    }
+    for (const Tensor* tensor : {&tensors...}) {
+        if (auto stream = tensor->stream()) {
+            check_error(gpuStreamSynchronize(reinterpret_cast<gpuStream_t>(*stream)));
+        }
+    }
+}
+} // namespace
 
 std::pair<void*, Tensor> GpuDevice::allocate(std::size_t size, AllocHint hint) const {
     activate();
@@ -21,6 +37,25 @@ void GpuDevice::free(void* ptr) const {
     check_error(gpuFree(ptr));
 }
 
+void GpuDevice::free_on_stream(void* ptr, void* stream) const {
+    activate();
+    check_error(gpuFreeAsync(ptr, static_cast<gpuStream_t>(stream)));
+}
+
+void GpuDevice::order_streams(void* from, void* to) const {
+    activate();
+    static thread_local std::vector<gpuEvent_t> events;
+    if (events.size() <= static_cast<std::size_t>(_index)) {
+        events.resize(_index + 1);
+    }
+    gpuEvent_t& event = events.at(_index);
+    if (!event) {
+        check_error(gpuEventCreate(&event));
+    }
+    check_error(gpuEventRecord(event, static_cast<gpuStream_t>(from)));
+    check_error(gpuStreamWaitEvent(static_cast<gpuStream_t>(to), event));
+}
+
 void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
     activate();
     check_error(gpuMemcpy(to, from, size, gpuMemcpyDefault));
@@ -28,24 +63,28 @@ void GpuDevice::memcpy(void* to, void* from, std::size_t size) const {
 
 void GpuDevice::tensor_copy(const Tensor& source, Tensor& target) const {
     activate();
+    wait_for(source, target);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_copy(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_zero(Tensor& tensor) const {
     activate();
+    wait_for(tensor);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_zero(tensor);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_add(const Tensor& source, Tensor& target) const {
     activate();
+    wait_for(source, target);
     AsyncGpuDevice(*this, gpuStreamPerThread, 0).tensor_add(source, target);
     check_error(gpuStreamSynchronize(gpuStreamPerThread));
 }
 
 void GpuDevice::tensor_cpu(const Tensor& source, Tensor& target) const {
     activate();
+    wait_for(source);
     check_error(
         gpuMemcpy(target.data(), source.data(), source.byte_size(), gpuMemcpyDefault)
     );
@@ -64,6 +103,7 @@ void GpuDevice::adam_step(
     double weight_decay
 ) const {
     activate();
+    wait_for(gradient, parameter, exp_avg, exp_avg_sq);
     AsyncGpuDevice device(*this, gpuStreamPerThread, 0);
     tensor_foreach_dynamic<kernel_adam_step<GpuTypes>, 1, 3>(
         {&gradient},
@@ -86,7 +126,7 @@ MemPool::MemPool(
         cached_sizes_and_tensors,
     gpuStream_t stream
 ) :
-    _device(device) {
+    _device(device), _stream(stream) {
     std::size_t pool_count = 0;
     for (auto& [pool_index, size, parent_tensor, zero_init] :
          cached_sizes_and_tensors) {
@@ -123,7 +163,10 @@ MemPool::~MemPool() {
             for (auto& [size, item] : stream_free_pointers) {
                 auto& [ptr, parent] = item;
                 if (!parent) {
-                    check_error(gpuFree(ptr));
+                    try {
+                        _device.free_on_stream(ptr, _stream);
+                    } catch (...) {
+                    }
                 }
             }
         }

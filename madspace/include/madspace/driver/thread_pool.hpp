@@ -72,15 +72,17 @@ public:
         std::optional<std::function<void(T&)>> destructor = std::nullopt
     ) :
         _pool(&pool),
+        _constructor(std::move(constructor)),
         _destructor(destructor),
-        _listener_id(pool.add_listener([this, constructor](std::size_t thread_count) {
+        _listener_id(pool.add_listener([this](std::size_t thread_count) {
             while (_resources.size() < thread_count) {
-                _resources.push_back(constructor());
+                _resources.emplace_back();
             }
         })) {
         for (std::size_t i = 0; i == 0 || i < pool.thread_count(); ++i) {
-            _resources.push_back(constructor());
+            _resources.emplace_back();
         }
+        get();
     }
     ~ThreadResource() {
         reset();
@@ -88,6 +90,7 @@ public:
     ThreadResource(ThreadResource&& other) noexcept :
         _pool(std::move(other._pool)),
         _resources(std::move(other._resources)),
+        _constructor(std::move(other._constructor)),
         _listener_id(std::move(other._listener_id)),
         _destructor(std::move(other._destructor)) {
         other._pool = nullptr;
@@ -97,6 +100,7 @@ public:
         reset();
         _pool = std::move(other._pool);
         _resources = std::move(other._resources);
+        _constructor = std::move(other._constructor);
         _listener_id = std::move(other._listener_id);
         _destructor = std::move(other._destructor);
         other._pool = nullptr;
@@ -104,13 +108,21 @@ public:
     }
     ThreadResource(const ThreadResource&) = delete;
     ThreadResource& operator=(const ThreadResource&) = delete;
-    T& get() { return _resources.at(ThreadPool::thread_index()); }
-    const T& get() const { return _resources.at(ThreadPool::thread_index()); }
+    T& get() const {
+        auto& [flag, item] = _resources.at(ThreadPool::thread_index());
+        std::call_once(flag, [&] {
+            std::unique_lock<std::mutex> lock(construction_mutex());
+            item.emplace(_constructor());
+        });
+        return *item;
+    }
     void reset() {
         if (_pool) {
             if (_destructor) {
-                for (auto& item : _resources) {
-                    _destructor.value()(item);
+                for (auto& [flag, item] : _resources) {
+                    if (item) {
+                        _destructor.value()(*item);
+                    }
                 }
             }
             _pool->remove_listener(_listener_id);
@@ -118,8 +130,14 @@ public:
     }
 
 private:
+    static std::mutex& construction_mutex() {
+        static std::mutex mutex;
+        return mutex;
+    }
+
     ThreadPool* _pool = nullptr;
-    std::vector<T> _resources;
+    mutable std::deque<std::pair<std::once_flag, std::optional<T>>> _resources;
+    std::function<T()> _constructor;
     std::size_t _listener_id;
     std::optional<std::function<void(T&)>> _destructor;
 };

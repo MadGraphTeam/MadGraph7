@@ -1504,11 +1504,27 @@ private:
     std::vector<bool> _sync_matrix;
 };
 
+struct StreamGuard {
+    gpuStream_t main_stream;
+    const std::vector<gpuStream_t>& streams;
+    bool dismissed = false;
+
+    ~StreamGuard() {
+        if (!dismissed) {
+            ignore_error(gpuStreamSynchronize(main_stream));
+            for (auto stream : streams) {
+                ignore_error(gpuStreamSynchronize(stream));
+            }
+        }
+    }
+};
+
 } // namespace
 
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     _context(context),
     _input_count(function_arg.inputs().size()),
+    _last_stream(context->thread_pool(), []() { return std::optional<gpuStream_t>{}; }),
     _gpublas_handle(
         context->thread_pool(),
         []() {
@@ -1516,7 +1532,7 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             check_error(gpublasCreate(&handle));
             return handle;
         },
-        [](gpublasHandle_t handle) { check_error(gpublasDestroy(handle)); }
+        [](gpublasHandle_t handle) { ignore_error(gpublasDestroy(handle)); }
     ),
     _gpurand_generator(
         context->thread_pool(),
@@ -1527,10 +1543,23 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             check_error(gpurandSetPseudoRandomGeneratorSeed(handle, rand_dev()));
             return handle;
         },
-        [](gpurandGenerator_t handle) { check_error(gpurandDestroyGenerator(handle)); }
+        [](gpurandGenerator_t handle) { ignore_error(gpurandDestroyGenerator(handle)); }
     ),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
-    _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
+    _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }),
+    _held_inputs(
+        context->thread_pool(),
+        []() { return HeldInputs{}; },
+        [](HeldInputs& held) {
+            for (auto& [event, tensors] : held.items) {
+                ignore_error(gpuEventSynchronize(event));
+                ignore_error(gpuEventDestroy(event));
+            }
+            for (auto event : held.free_events) {
+                ignore_error(gpuEventDestroy(event));
+            }
+        }
+    ) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
         throw std::runtime_error("Context has incompatible device");
     }
@@ -1774,9 +1803,22 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         );
     }
 
+    std::vector<bool> grad_accumulated(function.locals().size());
+    SizeVec output_counts(function.locals().size());
+    for (auto& instr : function.instructions()) {
+        for (auto& in : instr.inputs) {
+            grad_accumulated.at(in.local_index) = true;
+        }
+    }
+    for (auto& out : function.outputs()) {
+        ++output_counts.at(out.local_index);
+    }
     for (auto& out : function.outputs()) {
         _output_indices.push_back(out.local_index);
-        update_sync(out.local_index, 0, _wait_events);
+        _copy_output_grads.push_back(
+            grad_accumulated.at(out.local_index) ||
+            output_counts.at(out.local_index) > 1
+        );
     }
 
     _streams = ThreadResource<std::vector<gpuStream_t>>(
@@ -1784,17 +1826,25 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         [stream_count]() {
             std::vector<gpuStream_t> streams(stream_count);
             for (auto& item : streams) {
+                // blocking, a caller on the legacy default stream relies on it
                 check_error(gpuStreamCreate(&item));
             }
             return streams;
         },
         [](auto& streams) {
             for (auto item : streams) {
-                check_error(gpuStreamDestroy(item));
+                ignore_error(gpuStreamDestroy(item));
             }
         }
     );
     std::size_t max_event_count = std::max(event_count, backward_event_count);
+    _stream_switch_event = max_event_count++;
+    if (stream_count > 1) {
+        _fork_event = max_event_count++;
+        for (std::size_t stream = 1; stream < stream_count; ++stream) {
+            _join_events.push_back(max_event_count++);
+        }
+    }
     _events = ThreadResource<std::vector<gpuEvent_t>>(
         context->thread_pool(),
         [max_event_count]() {
@@ -1806,24 +1856,119 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
         },
         [](auto& events) {
             for (auto item : events) {
-                check_error(gpuEventDestroy(item));
+                ignore_error(gpuEventDestroy(item));
             }
         }
     );
 }
 
+void GpuRuntime::fork_streams(
+    gpuStream_t main_stream,
+    const std::vector<gpuStream_t>& streams,
+    const std::vector<gpuEvent_t>& events
+) const {
+    if (!_fork_event) {
+        return;
+    }
+    check_error(gpuEventRecord(events.at(*_fork_event), main_stream));
+    for (std::size_t stream = 1; stream < streams.size(); ++stream) {
+        check_error(gpuStreamWaitEvent(streams.at(stream), events.at(*_fork_event)));
+    }
+}
+
+void GpuRuntime::join_streams(
+    gpuStream_t main_stream,
+    const std::vector<gpuStream_t>& streams,
+    const std::vector<gpuEvent_t>& events
+) const {
+    for (std::size_t stream = 1; stream < streams.size(); ++stream) {
+        gpuEvent_t event = events.at(_join_events.at(stream - 1));
+        check_error(gpuEventRecord(event, streams.at(stream)));
+        check_error(gpuStreamWaitEvent(main_stream, event));
+    }
+}
+
+void GpuRuntime::release_inputs() {
+    auto& held = _held_inputs.get();
+    gpuError_t error = gpuSuccess;
+    held.items.erase(
+        std::remove_if(
+            held.items.begin(),
+            held.items.end(),
+            [&](auto& item) {
+                auto status = gpuEventQuery(item.first);
+                if (status != gpuSuccess) {
+                    if (status != gpuErrorNotReady) {
+                        error = status;
+                    }
+                    return false;
+                }
+                held.free_events.push_back(item.first);
+                return true;
+            }
+        ),
+        held.items.end()
+    );
+    check_error(error);
+}
+
+void GpuRuntime::hold_inputs(
+    const TensorVec& inputs, gpuStream_t stream, bool legacy_caller
+) {
+    release_inputs();
+    auto handle = reinterpret_cast<std::uintptr_t>(stream);
+    TensorVec kept;
+    for (auto& input : inputs) {
+        auto input_stream = input.stream();
+        if (input && input_stream != handle && !(legacy_caller && input_stream == 0)) {
+            kept.push_back(input);
+        }
+    }
+    if (kept.empty()) {
+        return;
+    }
+    auto& held = _held_inputs.get();
+    gpuEvent_t event;
+    if (held.free_events.empty()) {
+        check_error(gpuEventCreate(&event));
+    } else {
+        event = held.free_events.back();
+        held.free_events.pop_back();
+    }
+    check_error(gpuEventRecord(event, stream));
+    held.items.emplace_back(event, std::move(kept));
+}
+
+// the cublas and curand handles are shared, so a new stream waits for the last one
+void GpuRuntime::switch_stream(
+    gpuStream_t main_stream, const std::vector<gpuEvent_t>& events
+) {
+    auto& last_stream = _last_stream.get();
+    if (last_stream && *last_stream != main_stream) {
+        check_error(gpuStreamWaitEvent(main_stream, events.at(_stream_switch_event)));
+    }
+    last_stream = main_stream;
+}
+
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
-    gpuStream_t main_stream = streams.at(0);
-    MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    auto caller = caller_stream();
+    gpuStream_t main_stream =
+        caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
+    auto stream_handle = reinterpret_cast<std::uintptr_t>(main_stream);
+    TensorVec outputs;
+    switch_stream(main_stream, events);
+    MemPool mem_pool(gpu_device, load_pool_size_cache(false, !caller), main_stream);
+    StreamGuard stream_guard{main_stream, streams};
+    fork_streams(main_stream, streams, events);
 
     for (auto& instr : _instructions) {
-        gpuStream_t stream = streams.at(instr.stream);
+        gpuStream_t stream = instr.stream == 0 ? main_stream : streams.at(instr.stream);
         AsyncGpuDevice device(gpu_device, stream, instr.stream, &mem_pool);
         for (auto event : instr.wait_events) {
             check_error(gpuStreamWaitEvent(stream, events.at(event)));
@@ -1838,16 +1983,25 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
             check_error(gpuEventRecord(events.at(instr.record_event), stream));
         }
     }
-    for (auto event : _wait_events) {
-        check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
-    }
+    join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
-    TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
+        outputs.back().set_stream(caller);
     }
-    check_error(gpuStreamSynchronize(main_stream));
+    for (auto& local : locals) {
+        local.reset_on_stream(stream_handle);
+    }
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        hold_inputs(inputs, main_stream, *caller == 0);
+    } else {
+        check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
+        release_inputs();
+    }
+    stream_guard.dismissed = true;
     return outputs;
 }
 
@@ -1855,9 +2009,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     const TensorVec& inputs, const std::vector<bool>& input_requires_grad
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     auto locals = _locals_init;
     auto requires_grad = _requires_grad_init;
     std::vector<bool> store_local(locals.size());
@@ -1866,11 +2020,17 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
     std::copy(
         input_requires_grad.begin(), input_requires_grad.end(), requires_grad.begin()
     );
-    gpuStream_t main_stream = streams.at(0);
-    MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
+    auto caller = caller_stream();
+    gpuStream_t main_stream =
+        caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
+    TensorVec outputs;
+    switch_stream(main_stream, events);
+    MemPool mem_pool(gpu_device, load_pool_size_cache(false, !caller), main_stream);
+    StreamGuard stream_guard{main_stream, streams};
+    fork_streams(main_stream, streams, events);
 
     for (auto [instr, instr_eval_grad] : zip(_instructions, eval_grad)) {
-        gpuStream_t stream = streams.at(instr.stream);
+        gpuStream_t stream = instr.stream == 0 ? main_stream : streams.at(instr.stream);
         AsyncGpuDevice device(gpu_device, stream, instr.stream, &mem_pool);
         if (instr.differentiable) {
             for (auto input_index : instr.input_indices) {
@@ -1907,16 +2067,24 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
             check_error(gpuEventRecord(events.at(instr.record_event), stream));
         }
     }
-    for (auto event : _wait_events) {
-        check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
-    }
+    join_streams(main_stream, streams, events);
     update_pool_size_cache(mem_pool.total_sizes(), false);
     //update_cached_tensors(mem_pool.reset(main_stream), false);
-    TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
     }
-    check_error(gpuStreamSynchronize(main_stream));
+    for (std::size_t i = _input_count; i < locals.size(); ++i) {
+        locals[i].set_stream(caller);
+    }
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        hold_inputs(inputs, main_stream, *caller == 0);
+    } else {
+        check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
+        release_inputs();
+    }
+    stream_guard.dismissed = true;
     return {outputs, locals, eval_grad};
 }
 
@@ -1927,18 +2095,32 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     bool return_contiguous_grads
 ) {
     auto& gpu_device = *static_cast<const GpuDevice*>(_context->device());
+    gpu_device.activate();
     auto& streams = _streams.get();
     auto& events = _events.get();
-    gpu_device.activate();
     TensorVec local_grads(stored_locals.size());
     TensorVec locals(stored_locals);
-    for (auto [index, grad] : zip(_output_indices, output_grads)) {
-        local_grads[index] = grad;
-    }
-    gpuStream_t main_stream = streams.at(0);
-    MemPool mem_pool(gpu_device, load_pool_size_cache(true), main_stream);
-
+    auto caller = caller_stream();
+    gpuStream_t main_stream =
+        caller && *caller != 0 ? reinterpret_cast<gpuStream_t>(*caller) : streams.at(0);
+    switch_stream(main_stream, events);
+    MemPool mem_pool(gpu_device, load_pool_size_cache(true, !caller), main_stream);
+    StreamGuard stream_guard{main_stream, streams};
     AsyncGpuDevice init_device(gpu_device, main_stream, 0, &mem_pool);
+    for (auto [index, grad, copy] :
+         zip(_output_indices, output_grads, _copy_output_grads)) {
+        auto& local_grad = local_grads[index];
+        if (!grad) {
+            continue;
+        }
+        if (local_grad) {
+            local_grad.add(grad, init_device);
+        } else if (copy) {
+            local_grad = grad.copy(init_device, AllocHint::local_grad);
+        } else {
+            local_grad = grad;
+        }
+    }
     Tensor all_global_grads(
         DataType::dt_float,
         {_grad_global_total_size},
@@ -1948,6 +2130,9 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     // all_global_grads.zero(init_device);
     TensorVec global_grads = all_global_grads.split_and_reshape(_grad_global_shapes);
     for (auto [index, grad] : zip(_grad_global_indices, global_grads)) {
+        if (local_grads[index]) {
+            grad.add(local_grads[index], init_device);
+        }
         local_grads[index] = grad;
     }
 
@@ -1987,7 +2172,21 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
     }*/
     update_pool_size_cache(mem_pool.total_sizes(), true);
     //update_cached_tensors(mem_pool.reset(main_stream), true);
-    check_error(gpuStreamSynchronize(main_stream));
+    for (auto& grad : local_grads) {
+        grad.set_stream(caller);
+    }
+    all_global_grads.set_stream(caller);
+    if (caller) {
+        check_error(gpuEventRecord(events.at(_stream_switch_event), main_stream));
+        TensorVec held(output_grads);
+        held.insert(held.end(), stored_locals.begin(), stored_locals.end());
+        hold_inputs(held, main_stream, *caller == 0);
+    } else {
+        check_error(gpuStreamSynchronize(main_stream));
+        _last_stream.get().reset();
+        release_inputs();
+    }
+    stream_guard.dismissed = true;
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},
         return_contiguous_grads ? TensorVec{all_global_grads} : global_grads
@@ -1995,14 +2194,14 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
 }
 
 std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-GpuRuntime::load_pool_size_cache(bool backward) {
+GpuRuntime::load_pool_size_cache(bool backward, bool synchronizes) {
     auto cache = backward ? _pool_size_cache_backward.load() : _pool_size_cache.load();
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>> ret;
     if (cache) {
         //auto& thread_prev_caches =
             //backward ? _prev_caches_backward.get() : _prev_caches.get();
         for (auto [pool_index, size] : *cache) {
-            Tensor new_cache = _context->cached_tensor(size);
+            Tensor new_cache = synchronizes ? _context->cached_tensor(size) : Tensor();
             /*if (pool_index < thread_prev_caches.size()) {
                 Tensor& prev_cache = thread_prev_caches.at(pool_index);
                 if (prev_cache && prev_cache.is_only_reference()) {

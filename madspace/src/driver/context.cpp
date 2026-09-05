@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 #include <unordered_map>
 
 #include "madspace/driver/io.hpp"
@@ -12,6 +13,7 @@ using json = nlohmann::json;
 
 namespace {
 UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+thread_local std::optional<std::uintptr_t> current_caller_stream;
 } // namespace
 
 MatrixElementApi::MatrixElementApi(
@@ -94,13 +96,16 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _instances = ThreadResource<InstanceType>(thread_pool, [&, device] {
+    _instances = ThreadResource<InstanceType>(thread_pool, [this, device, param_card] {
         device->activate();
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));
         return InstanceType(instance, [this, device](void* proc) {
-            device->activate();
-            _free(proc);
+            try {
+                device->activate();
+                _free(proc);
+            } catch (...) {
+            }
         });
     });
 }
@@ -349,7 +354,7 @@ ContextPtr madspace::default_hip_context(std::size_t index) {
 }
 
 ContextPtr madspace::default_device_context(DevicePtr device) {
-    static std::unordered_map<DevicePtr, ContextPtr> default_contexts;
+    static auto& default_contexts = *new std::unordered_map<DevicePtr, ContextPtr>;
     if (auto search = default_contexts.find(device); search != default_contexts.end()) {
         return search->second;
     } else {
@@ -357,4 +362,17 @@ ContextPtr madspace::default_device_context(DevicePtr device) {
         default_contexts[device] = context;
         return context;
     }
+}
+
+std::optional<std::uintptr_t> madspace::caller_stream() {
+    return current_caller_stream;
+}
+
+void madspace::set_caller_stream(std::optional<std::uintptr_t> stream) {
+    if (stream && *stream == 2) {
+        throw std::invalid_argument("the per-thread default stream is not supported");
+    }
+    // cuda spells the legacy stream 1 and the per-thread one 2, we spell ours 0
+    current_caller_stream =
+        stream && *stream == 1 ? std::optional<std::uintptr_t>(0) : stream;
 }

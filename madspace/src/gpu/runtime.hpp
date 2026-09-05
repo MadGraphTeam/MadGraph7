@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <map>
+#include <optional>
 
 namespace madspace {
 namespace gpu {
@@ -42,13 +43,20 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads
     ) override;
+    void release_inputs() override;
     Context& context() { return *_context; }
     gpublasHandle_t gpublas_handle() { return _gpublas_handle.get(); }
     gpurandGenerator_t gpurand_generator() { return _gpurand_generator.get(); }
 
 private:
+    struct HeldInputs {
+        std::vector<std::pair<gpuEvent_t, TensorVec>> items;
+        std::vector<gpuEvent_t> free_events;
+    };
+
+    // a cached block can only be handed out again if the call that used it synchronized
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>>
-    load_pool_size_cache(bool backward);
+    load_pool_size_cache(bool backward, bool synchronizes);
     void update_pool_size_cache(
         const std::vector<std::pair<std::size_t, std::size_t>>& total_sizes,
         bool backward
@@ -56,8 +64,21 @@ private:
     void update_cached_tensors(
         const std::vector<std::pair<std::size_t, Tensor>>& tensors, bool backward
     );
+    void fork_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
+    void join_streams(
+        gpuStream_t main_stream,
+        const std::vector<gpuStream_t>& streams,
+        const std::vector<gpuEvent_t>& events
+    ) const;
+    void switch_stream(gpuStream_t main_stream, const std::vector<gpuEvent_t>& events);
+    void hold_inputs(const TensorVec& inputs, gpuStream_t stream, bool legacy_caller);
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
+    std::vector<bool> _copy_output_grads;
     std::size_t _input_count;
     TensorVec _locals_init;
     std::vector<bool> _requires_grad_init;
@@ -67,7 +88,10 @@ private:
     ContextPtr _context;
     ThreadResource<std::vector<gpuStream_t>> _streams;
     ThreadResource<std::vector<gpuEvent_t>> _events;
-    std::vector<std::size_t> _wait_events;
+    ThreadResource<std::optional<gpuStream_t>> _last_stream;
+    std::size_t _stream_switch_event;
+    std::optional<std::size_t> _fork_event;
+    std::vector<std::size_t> _join_events;
     std::vector<std::size_t> _backward_wait_events;
     ThreadResource<gpublasHandle_t> _gpublas_handle;
     ThreadResource<gpurandGenerator_t> _gpurand_generator;
@@ -77,6 +101,8 @@ private:
         _pool_size_cache_backward;
     ThreadResource<TensorVec> _prev_caches;
     ThreadResource<TensorVec> _prev_caches_backward;
+    // last, so it is destroyed first: it waits for the work using the members above
+    ThreadResource<HeldInputs> _held_inputs;
 };
 
 extern "C" Runtime*

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <vector>
 
 namespace madspace {
@@ -199,10 +200,14 @@ inline bool needs_zero_init(AllocHint hint) {
 
 class Device {
 public:
+    static constexpr bool stream_ordered_alloc = false;
+
     virtual ~Device() = default;
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const = 0;
     virtual void free(void* ptr) const = 0;
+    virtual void free_on_stream(void* ptr, void* stream) const { free(ptr); }
+    virtual void order_streams(void* from, void* to) const {}
     virtual void memcpy(void* to, void* from, std::size_t size) const = 0;
     virtual void tensor_copy(const Tensor& source, Tensor& target) const = 0;
     virtual void tensor_zero(Tensor& tensor) const = 0;
@@ -386,7 +391,12 @@ public:
         );
     }
 
-    ~Tensor() { reset(); }
+    ~Tensor() {
+        try {
+            reset();
+        } catch (...) {
+        }
+    }
 
     Tensor& operator=(const Tensor& other) {
         reset();
@@ -398,7 +408,10 @@ public:
     }
 
     Tensor& operator=(Tensor&& other) noexcept {
-        reset();
+        try {
+            reset();
+        } catch (...) {
+        }
         impl = other.impl;
         other.impl = nullptr;
         return *this;
@@ -474,6 +487,18 @@ public:
         check_impl();
         return impl->device;
     }
+    std::optional<std::uintptr_t> stream() const {
+        return impl == nullptr ? std::nullopt : storage()->stream;
+    }
+    void set_stream(std::optional<std::uintptr_t> stream) {
+        if (impl == nullptr) {
+            return;
+        }
+        TensorImpl* owner = storage();
+        if (owner->stream_ordered) {
+            owner->stream = stream;
+        }
+    }
     std::size_t index_value() const {
         check_impl();
         if (impl->batch_sizes.size() > 0) {
@@ -499,21 +524,26 @@ public:
 
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
-    void reset() {
-        if (impl == nullptr) {
-            return;
-        }
-        impl->reset(*impl->device);
-        impl = nullptr;
-    }
+    void reset() { reset_on_stream(stream().value_or(0)); }
 
     template <typename D>
     void reset(const D& device) {
         if (impl == nullptr) {
             return;
         }
-        impl->reset(device);
+        // released before the free, which can throw
+        TensorImpl* owner = impl;
         impl = nullptr;
+        owner->reset(device);
+    }
+
+    void reset_on_stream(std::uintptr_t stream) {
+        if (impl == nullptr) {
+            return;
+        }
+        TensorImpl* owner = impl;
+        impl = nullptr;
+        owner->reset_on_stream(stream);
     }
 
     Tensor select(std::size_t axis, std::size_t index) const;
@@ -634,6 +664,8 @@ private:
         Sizes stride;
         std::size_t contiguous_dims;
         SizeVec batch_sizes;
+        bool stream_ordered = false;
+        std::optional<std::uintptr_t> stream;
 
         template <typename D>
         void reset(const D& device) {
@@ -651,8 +683,35 @@ private:
             delete this;
         }
 
+        void reset_on_stream(std::uintptr_t stream) {
+            if (ref_count.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+                return;
+            }
+            if (owns_data && data != nullptr) {
+                if (stream_ordered) {
+                    device->free_on_stream(data, reinterpret_cast<void*>(stream));
+                } else {
+                    device->free(data);
+                }
+                --Tensor::tensor_count;
+            } else if (data_owner != nullptr) {
+                data_owner->reset_on_stream(stream);
+            } else if (external_reset) {
+                (*external_reset)();
+            }
+            delete this;
+        }
+
         void incref() { ref_count.fetch_add(1, std::memory_order_relaxed); }
     };
+
+    TensorImpl* storage() const {
+        TensorImpl* item = impl;
+        while (item->data_owner != nullptr) {
+            item = item->data_owner;
+        }
+        return item;
+    }
 
     Tensor(TensorImpl* _impl) : impl(_impl) {
         if (impl->data_owner != nullptr) {
@@ -677,6 +736,10 @@ private:
             impl->data_owner = parent.impl;
         } else if (data != nullptr) {
             ++tensor_count;
+            if constexpr (D::stream_ordered_alloc) {
+                impl->stream_ordered = true;
+                impl->stream = reinterpret_cast<std::uintptr_t>(device.stream());
+            }
         }
     }
 

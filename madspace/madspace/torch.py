@@ -29,11 +29,14 @@ class FunctionModule(nn.Module):
             ),
         )
 
+    def release_inputs(self) -> None:
+        self.runtime.release_inputs()
+
     def forward(self, *args: torch.Tensor) -> list[torch.Tensor]:
         if torch.is_grad_enabled():
             return AutogradWrapper.apply(self, self.dummy, *args)
         else:
-            outputs = self.runtime.call(args)
+            outputs = self.runtime.call([arg.detach() for arg in args])
             if len(outputs) == 1:
                 return torch.from_dlpack(outputs[0])
             else:
@@ -53,9 +56,8 @@ class AutogradWrapper(torch.autograd.Function):
         )
         ctx.module = module
         ctx.eval_grad = eval_grad
-        ctx.save_for_backward(
-            *(None if grad is None else torch.from_dlpack(grad) for grad in local_grads)
-        )
+        ctx.stream = me.get_stream()
+        ctx.stored_locals = local_grads
         if len(outputs) == 1:
             return torch.from_dlpack(outputs[0])
         else:
@@ -64,9 +66,10 @@ class AutogradWrapper(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx: FunctionCtx, *output_grads: torch.Tensor):
-        input_grads, global_grads = ctx.module.runtime.call_backward(
-            output_grads, ctx.saved_tensors, ctx.eval_grad
-        )
+        with me.stream(ctx.stream):
+            input_grads, global_grads = ctx.module.runtime.call_backward(
+                output_grads, ctx.stored_locals, ctx.eval_grad
+            )
         for name, grad in global_grads:
             if grad is None:
                 continue

@@ -1,3 +1,4 @@
+import contextlib
 import ctypes
 import logging
 import os
@@ -17,6 +18,20 @@ ctypes.CDLL(
 from ._madspace_py import *
 
 
+@contextlib.contextmanager
+def stream(handle):
+    """
+    Run the calls on the given cuda stream instead of madspace's own, without
+    synchronizing. Keep it alive until everything madspace handed out has been dropped.
+    """
+    previous = get_stream()
+    set_stream(handle)
+    try:
+        yield
+    finally:
+        set_stream(previous)
+
+
 def _init():
     """
     Monkey-patch classes for a more pythonic experience.
@@ -27,7 +42,7 @@ def _init():
         if len(args) == 0:
             tensorlib = "numpy"
         else:
-            tensorlib = type(args[0]).__module__
+            tensorlib = type(args[0]).__module__.partition(".")[0]
         outputs = runtime.call(args)
         # Convert outputs, lazy-loading torch or numpy
         if tensorlib == "torch":
@@ -122,11 +137,19 @@ def _init():
             case Logger.level_error:
                 py_logger.error(message)
 
+    def release_inputs(self):
+        for name in ("runtime", "forward_runtime", "inverse_runtime"):
+            if hasattr(self, name):
+                getattr(self, name).release_inputs()
+
     FunctionRuntime.__call__ = runtime_call
     Function.__call__ = function_call
     FunctionGenerator.__call__ = function_generator_call
     Mapping.map_forward = map_forward
     Mapping.map_inverse = map_inverse
+    Function.release_inputs = release_inputs
+    FunctionGenerator.release_inputs = release_inputs
+    Mapping.release_inputs = release_inputs
     Tensor.numpy = tensor_numpy
     Tensor.torch = tensor_torch
     # Logger.set_log_handler(log_handler)

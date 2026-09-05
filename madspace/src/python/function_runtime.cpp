@@ -1,10 +1,13 @@
 #include "function_runtime.hpp"
 
+#include <algorithm>
+#include <array>
 #include <format>
 #include <ranges>
 #include <stdexcept>
 
 #include "dlpack.h"
+#include "madspace/driver/context.hpp"
 
 using namespace madspace_py;
 using namespace pybind11::literals;
@@ -16,12 +19,51 @@ struct ManagerContext {
     std::vector<int64_t> stride;
     std::vector<int64_t> batch_sizes;
     Tensor tensor;
+    std::uintptr_t stream = 0;
 };
 
-void deleter(struct DLManagedTensor* self) {
-    delete static_cast<ManagerContext*>(self->manager_ctx);
+void deleter(struct DLManagedTensor* self) noexcept {
+    ManagerContext* context = static_cast<ManagerContext*>(self->manager_ctx);
+    try {
+        std::uintptr_t free_stream = context->tensor.stream().value_or(0);
+        if (free_stream != context->stream) {
+            context->tensor.device()->order_streams(
+                reinterpret_cast<void*>(context->stream),
+                reinterpret_cast<void*>(free_stream)
+            );
+        }
+    } catch (...) {
+    }
+    delete context;
     delete self;
 };
+
+std::uintptr_t consumer_stream(std::optional<std::int64_t> stream, int device_type) {
+    if (!stream) {
+        return 0;
+    }
+    if (*stream == 2 || (device_type == kDLROCM && *stream == 1)) {
+        throw py::buffer_error(
+            std::format("dlpack stream {} is not supported", *stream)
+        );
+    }
+    return *stream <= 1 ? 0 : static_cast<std::uintptr_t>(*stream);
+}
+
+bool orders_whole_stream(PyTypeObject* type) {
+    static std::array<py::handle, 2> torch_types;
+    if (!torch_types[0]) {
+        auto modules = py::module_::import("sys").attr("modules");
+        if (!modules.contains("torch")) {
+            return false;
+        }
+        py::object torch = modules["torch"];
+        torch_types[0] = py::object(torch.attr("Tensor")).release();
+        torch_types[1] = py::object(torch.attr("nn").attr("Parameter")).release();
+    }
+    PyObject* obj = reinterpret_cast<PyObject*>(type);
+    return obj == torch_types[0].ptr() || obj == torch_types[1].ptr();
+}
 
 Runtime* get_runtime(FunctionRuntime& func_runtime, DevicePtr expected_device) {
     Runtime* runtime;
@@ -69,11 +111,18 @@ std::tuple<std::vector<Tensor>, Runtime*> check_and_convert_args(
     }
     std::vector<Tensor> inputs;
     DevicePtr expected_device = nullptr;
+    std::vector<PyTypeObject*> ordered_producers;
     for (int i = 0; i < n_args; ++i) {
         auto& arg = args.at(i);
         auto& input_type = func_runtime._function.inputs().at(i).type;
-        auto tensor =
-            dlpack_to_tensor(arg, input_type, i, expected_device, dlpack_version_cache);
+        auto tensor = dlpack_to_tensor(
+            arg,
+            input_type,
+            i,
+            expected_device,
+            dlpack_version_cache,
+            &ordered_producers
+        );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
             expected_device = tensor.device();
@@ -100,14 +149,20 @@ std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
 
 py::object madspace_py::tensor_to_dlpack(
     Tensor tensor,
-    std::optional<int> stream,
+    std::optional<std::int64_t> stream,
     std::optional<std::tuple<int, int>> max_version,
-    std::optional<int> dl_device,
+    std::optional<std::tuple<int, int>> dl_device,
     std::optional<bool> copy
 ) {
-    // TODO: do something with the arguments
     if (!tensor) {
         return py::none();
+    }
+
+    if (copy && *copy) {
+        throw py::buffer_error("dlpack export cannot copy the tensor");
+    }
+    if (dl_device && *dl_device != dlpack_device(tensor)) {
+        throw py::buffer_error("dlpack export cannot change the device");
     }
 
     DLManagedTensor* dl_tensor;
@@ -141,13 +196,22 @@ py::object madspace_py::tensor_to_dlpack(
         default:
             break;
         }
+        auto [device_type, device_id] = dlpack_device(tensor);
+        std::uintptr_t consumer = consumer_stream(stream, device_type);
+        if (stream && *stream == -1) {
+            consumer = tensor.stream().value_or(consumer);
+        } else if (auto producer = tensor.stream(); producer && *producer != consumer) {
+            tensor.device()->order_streams(
+                reinterpret_cast<void*>(*producer), reinterpret_cast<void*>(consumer)
+            );
+        }
         ManagerContext* context = new ManagerContext{
             {tensor.shape().begin(), tensor.shape().end()},
             {tensor.stride().begin(), tensor.stride().end()},
             {},
-            tensor
+            tensor,
+            consumer
         };
-        auto [device_type, device_id] = dlpack_device(tensor);
         dl_tensor = new DLManagedTensor{
             {context->tensor.data(),
              DLDevice{static_cast<DLDeviceType>(device_type), device_id},
@@ -184,7 +248,8 @@ Tensor madspace_py::dlpack_to_tensor(
     std::optional<Type> expected_type,
     std::size_t arg_index,
     DevicePtr expected_device,
-    bool* dlpack_version_cache
+    bool* dlpack_version_cache,
+    std::vector<PyTypeObject*>* ordered_producers
 ) {
     if (tensor.is_none()) {
         return {};
@@ -193,17 +258,48 @@ Tensor madspace_py::dlpack_to_tensor(
     py::object dlpack_func = tensor.attr("__dlpack__");
     py::object capsule_obj;
 
+    py::dict stream_arg;
+    PyTypeObject* producer = Py_TYPE(tensor.ptr());
+    if (!(expected_type && expected_type->dtype == DataType::batch_sizes) &&
+        !(expected_device && expected_device->device_type() == DeviceType::cpu) &&
+        !(ordered_producers &&
+          std::find(ordered_producers->begin(), ordered_producers->end(), producer) !=
+              ordered_producers->end())) {
+        std::uintptr_t stream = madspace::caller_stream().value_or(0);
+        std::tuple<int, int> dl_device;
+        try {
+            dl_device = tensor.attr("__dlpack_device__")().cast<std::tuple<int, int>>();
+        } catch (const py::cast_error&) {
+            throw std::invalid_argument(
+                std::format(
+                    "Argument {}: __dlpack_device__ must return a pair of ints",
+                    arg_index + 1
+                )
+            );
+        }
+        auto [device_type, device_id] = dl_device;
+        if (device_id == 0 && (device_type == kDLCUDA || device_type == kDLROCM)) {
+            stream_arg["stream"] = device_type == kDLCUDA && stream == 0
+                ? 1
+                : static_cast<std::int64_t>(stream);
+            if (ordered_producers && orders_whole_stream(producer)) {
+                ordered_producers->push_back(producer);
+            }
+        }
+    }
+
     // catching exceptions is extremely expensive so we cache whether to use the new or
     // old version of the dlpack protocol
     if (dlpack_version_cache == nullptr || !*dlpack_version_cache) {
         try {
             capsule_obj = dlpack_func(
                 "max_version"_a =
-                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION)
+                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION),
+                **stream_arg
             );
         } catch (py::error_already_set& e) {
             if (e.matches(PyExc_TypeError)) {
-                capsule_obj = dlpack_func();
+                capsule_obj = dlpack_func(**stream_arg);
                 if (dlpack_version_cache != nullptr) {
                     *dlpack_version_cache = true;
                 }
@@ -213,11 +309,15 @@ Tensor madspace_py::dlpack_to_tensor(
         }
     } else {
         try {
-            capsule_obj = dlpack_func();
+            capsule_obj = dlpack_func(**stream_arg);
         } catch (py::error_already_set& e) {
+            if (!e.matches(PyExc_TypeError)) {
+                throw;
+            }
             capsule_obj = dlpack_func(
                 "max_version"_a =
-                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION)
+                    std::make_tuple(DLPACK_MAJOR_VERSION, DLPACK_MINOR_VERSION),
+                **stream_arg
             );
             *dlpack_version_cache = false;
         }
@@ -444,6 +544,12 @@ Tensor madspace_py::dlpack_to_tensor(
     return ret_tensor;
 }
 
+void FunctionRuntime::release_inputs() {
+    for (auto& entry : _runtimes) {
+        entry.second->release_inputs();
+    }
+}
+
 std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
@@ -477,31 +583,34 @@ FunctionRuntime::call_backward(
     const std::vector<py::object>& stored_locals,
     const std::vector<bool>& eval_grad
 ) {
-    std::vector<Tensor> arg_out;
     DevicePtr expected_device = nullptr;
+    std::vector<PyTypeObject*> ordered_producers;
     std::size_t arg_index = 0;
-    for (auto& grad : output_grads) {
-        auto tensor = dlpack_to_tensor(
-            grad, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
-        );
+    auto convert = [&](const py::object& arg) {
+        Tensor tensor = py::isinstance<Tensor>(arg)
+            ? arg.cast<Tensor>()
+            : dlpack_to_tensor(
+                  arg,
+                  std::nullopt,
+                  arg_index,
+                  expected_device,
+                  &_dlpack_version_cache,
+                  &ordered_producers
+              );
         if (expected_device == nullptr && tensor &&
             tensor.dtype() != DataType::batch_sizes) {
             expected_device = tensor.device();
         }
-        arg_out.push_back(tensor);
         ++arg_index;
+        return tensor;
+    };
+    std::vector<Tensor> arg_out;
+    for (auto& grad : output_grads) {
+        arg_out.push_back(convert(grad));
     }
     std::vector<Tensor> arg_locals;
     for (auto& local : stored_locals) {
-        auto tensor = dlpack_to_tensor(
-            local, std::nullopt, arg_index, expected_device, &_dlpack_version_cache
-        );
-        if (expected_device == nullptr && tensor &&
-            tensor.dtype() != DataType::batch_sizes) {
-            expected_device = tensor.device();
-        }
-        arg_locals.push_back(tensor);
-        ++arg_index;
+        arg_locals.push_back(convert(local));
     }
     // TODO: checks here
     Runtime* runtime = get_runtime(*this, expected_device);

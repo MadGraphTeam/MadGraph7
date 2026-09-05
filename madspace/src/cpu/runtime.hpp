@@ -76,6 +76,7 @@ private:
 
     std::vector<Instruction> _instructions;
     SizeVec _output_indices;
+    std::vector<bool> _copy_output_grads;
     std::size_t _input_count;
     TensorVec _locals_init;
     std::vector<bool> _requires_grad_init;
