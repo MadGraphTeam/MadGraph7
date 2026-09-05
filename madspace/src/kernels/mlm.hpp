@@ -8,6 +8,9 @@ namespace kernels {
 
 constexpr int N_EXT_MAX = 12;
 constexpr double ONE_PLUS_TINY = 1.000001;
+// Stand-in for a clustering measure that came out inf or NaN; still far
+// above any physical scale, and small enough that SCALE_MAX * 10 is finite.
+constexpr double SCALE_MAX = 1e307;
 
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
@@ -64,12 +67,17 @@ KERNELSPEC FVal<T> dj_clus(
     auto eta2 = 0.5 * log((p2a + p2[3]) / (p2a - p2[3]));
     auto m_max_sq = max(mass1 * mass1, mass2 * mass2);
     auto dphi_cos = (p1[1] * p2[1] + p1[2] * p2[2]) / sqrt(pt1_sq * pt2_sq);
-    return max(
-        m_max_sq +
-            min(pt1_sq, pt2_sq) * 2.0 * (cosh(eta1 - eta2) - dphi_cos) /
-                (jet_radius * jet_radius),
-        0.0
-    );
+    auto result = m_max_sq +
+        min(pt1_sq, pt2_sq) * 2.0 * (cosh(eta1 - eta2) - dphi_cos) /
+            (jet_radius * jet_radius);
+    // An exactly collinear pair makes eta1 or eta2 infinite and their
+    // difference NaN. The Fortran zeroes both negative and NaN results here
+    // ("prevent numerical inaccuracies"); max() alone would let the NaN
+    // through.
+    if (!(result > 0.0)) {
+        return 0.0;
+    }
+    return result;
 }
 
 // Clustering scale for the pair (momentum1=pi, momentum2=pj).
@@ -204,7 +212,7 @@ KERNELSPEC void mlm_clustering(
     int n_part = momenta.size();
     FourMom<T> momenta_tmp[N_EXT_MAX];
     FVal<T> masses_tmp[N_EXT_MAX];
-    int alive = 0xFFFFFF;
+    int alive = (1 << n_part) - 1;
     int cluster_history[N_EXT_MAX - 3];
     FVal<T> cluster_scales[N_EXT_MAX - 3];
 
@@ -217,7 +225,7 @@ KERNELSPEC void mlm_clustering(
 
     int win_next_state = -1, win_data = 0;
     bool win_resonant = false;
-    FVal<T> win_scale = 1e308;
+    FVal<T> win_scale = SCALE_MAX * 10.;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
         int next_state = state_machine[state + 1];
@@ -242,8 +250,9 @@ KERNELSPEC void mlm_clustering(
             FVal<T> prop_m2 = lsquare<T>(momentum_sum);
             FVal<T> mass = bw_masses[mass_index - 1];
             FVal<T> width = bw_widths[mass_index - 1];
-            FVal<T> m_min = mass - width;
-            FVal<T> m_max = mass + width;
+            FVal<T> half_window = FVal<T>(bw_cutoff) * width;
+            FVal<T> m_min = max(mass - half_window, 0.0);
+            FVal<T> m_max = mass + half_window;
             resonant = (prop_m2 >= m_min * m_min) && (prop_m2 <= m_max * m_max);
         }
 
@@ -262,10 +271,19 @@ KERNELSPEC void mlm_clustering(
             jet_radius
         );
 
+        // An exactly collinear pair - which the boost and rotation applied after
+        // an initial-state clustering can produce - makes the measure inf or
+        // NaN. Map those onto a large finite value: they then lose to any
+        // well-defined clustering, but a clustering is still always chosen, so
+        // the walk cannot fall off the end of the state machine.
+        if (!(scale < SCALE_MAX)) {
+            scale = SCALE_MAX;
+        }
+
         // The MG5 fortran code extracted the resonance structure from the integration
         // channel. This is not always possible in MG7, so prefer resonant configs
         // over non-resonant ones
-        if ((!win_resonant && resonant) ||
+        if (win_next_state == -1 || (!win_resonant && resonant) ||
             (win_resonant == resonant && scale < win_scale)) {
             win_next_state = next_state;
             win_scale = scale;
@@ -276,13 +294,20 @@ KERNELSPEC void mlm_clustering(
             int p1_win = win_data & 0xFF;
             int p2_win = (win_data >> 8) & 0xFF;
             update_momenta<T>(
-                n_part, momenta_tmp, masses_tmp, alive, p1_win, p2_win, win_resonant
+                n_part, momenta_tmp, masses_tmp, alive, p2_win, p1_win, win_resonant
             );
             state = win_next_state;
             cluster_history[cluster_count] = win_data;
             cluster_scales[cluster_count] = win_scale;
             ++cluster_count;
-            win_scale = 1e308;
+            // Reset the whole selection, not just the scale: leaving
+            // win_resonant set would stop any non-resonant candidate from ever
+            // winning the next step, and leaving win_next_state set would send
+            // the walk to a stale state if that happened.
+            win_next_state = -1;
+            win_data = 0;
+            win_resonant = false;
+            win_scale = SCALE_MAX * 10.;
         } else {
             state += 2;
         }
@@ -317,10 +342,10 @@ KERNELSPEC void mlm_clustering(
         bool is_jet1 = (data >> 28) & 1;
         bool is_jet2 = (data >> 29) & 1;
         if (is_qcd) {
-            if (is_jet1 && is_last_cluster & (1 << particle1)) {
+            if (is_jet1 && (is_last_cluster & (1 << particle1))) {
                 outgoing_scales[particle1 - 2] = scale;
             }
-            if (is_jet2 && is_last_cluster & (1 << particle2)) {
+            if (is_jet2 && (is_last_cluster & (1 << particle2))) {
                 outgoing_scales[particle2 - 2] = scale;
             }
             ren_scale_val *= scale;

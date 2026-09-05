@@ -983,14 +983,24 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector2<std::size_t>,
                 double,
                 double,
-                bool>(),
+                bool,
+                std::vector<int>,
+                int>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
             py::arg("bw_cutoff") = 15.,
             py::arg("jet_radius") = 0.4,
-            py::arg("hadronic") = true
-        );
+            py::arg("hadronic") = true,
+            py::arg("external_pdg_ids") = std::vector<int>{},
+            py::arg("max_jet_flavor") = 4
+        )
+        .def_property_readonly(
+            "cluster_state_machine", &MLMClustering::cluster_state_machine
+        )
+        .def_property_readonly("external_masses", &MLMClustering::external_masses)
+        .def_property_readonly("bw_masses", &MLMClustering::bw_masses)
+        .def_property_readonly("bw_widths", &MLMClustering::bw_widths);
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(

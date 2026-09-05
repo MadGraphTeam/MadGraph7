@@ -37,6 +37,8 @@ fact_scale2 = %(beam.fact_scale2)s
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
 # jet radius used by the MLM clustering measure (only for dynamical_scale_choice = "mlm")
 jet_radius = %(beam.jet_radius)s
+# heaviest quark flavour treated as a jet by the MLM back-clustering
+max_jet_flavor = %(beam.max_jet_flavor)s
 
 [generation]
 events = %(generation.events)s

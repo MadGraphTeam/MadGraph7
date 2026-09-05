@@ -1361,6 +1361,8 @@ class MadgraphSubprocess:
                     bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
                     jet_radius=self.process.run_card["beam"]["jet_radius"],
                     hadronic=not self.process.leptonic,
+                    external_pdg_ids=all_pids,
+                    max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
                 )
             )
         else:

@@ -6521,6 +6521,9 @@ class RunCardMG7(RunCard):
         # Jet radius entering the kt clustering measure of the MLM back-clustering
         # (only used when dynamical_scale_choice = "mlm").
         self.add_toml_param('beam', 'jet_radius', 0.4)
+        # Heaviest quark flavour treated as a jet by the MLM back-clustering
+        # (the counterpart of maxjetflavor in the legacy run_card).
+        self.add_toml_param('beam', 'max_jet_flavor', 4)
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)
