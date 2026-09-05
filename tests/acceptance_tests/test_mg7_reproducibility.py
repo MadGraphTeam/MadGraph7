@@ -275,8 +275,12 @@ class MG7ReproducibilityTest(unittest.TestCase):
             **base_settings,
             **{
                 'madnis.buffer_capacity': 3000,
-                'madnis.buffered_steps': 3,
-                'madnis.minimum_buffer_size': 500,
+                'madnis.buffered_steps_fraction': 0.75,
+                # kept well below the capacity, as the buffered fraction ramps
+                # up from zero at minimum_buffer_size
+                'madnis.minimum_buffer_size': 200,
+                # the default (1000) exceeds train_batches, leaving the buffer empty
+                'madnis.buffer_skip_batches': 5,
             }
         )
         hash_buffered_multi = self._generate_and_hash(

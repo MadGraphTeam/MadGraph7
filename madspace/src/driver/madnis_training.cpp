@@ -59,9 +59,15 @@ MadnisTraining::MadnisTraining(
 void MadnisTraining::train_step(std::size_t batch_index) {
     auto& gen_thread_pool = _generator_context->thread_pool();
     _abort_check_function();
+    _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
-    bool try_buffered =
-        _config.buffer_capacity > 0 && batch_index % (_config.buffered_steps + 1) != 0;
+    // delta-sigma modulation: accumulate the target fraction and spend one
+    // quantum per buffered step, which spreads them out evenly
+    _buffered_step_accumulator += buffered_step_target();
+    bool try_buffered = _buffered_step_accumulator >= _buffered_step_scale;
+    if (try_buffered) {
+        _buffered_step_accumulator -= _buffered_step_scale;
+    }
     TensorVec training_batch;
     bool used_buffered = false;
     while (true) {
@@ -157,6 +163,29 @@ double MadnisTraining::buffered_fraction() const {
         buffered_count += buffered;
     }
     return static_cast<double>(buffered_count) / _buffered_history.size();
+}
+
+// Target fraction of buffered steps in units of _buffered_step_scale, ramped up
+// linearly between minimum_buffer_size and buffer_capacity of the least filled buffer
+std::size_t MadnisTraining::buffered_step_target() const {
+    if (_config.buffer_capacity == 0 || _config.buffered_steps_fraction <= 0.) {
+        return 0;
+    }
+    std::size_t buffer_size = _config.buffer_capacity;
+    for (auto& channel : _channels) {
+        buffer_size = std::min(buffer_size, channel.buffer.size);
+    }
+    if (buffer_size <= _config.minimum_buffer_size) {
+        return 0;
+    }
+    std::size_t range = _config.buffer_capacity > _config.minimum_buffer_size
+        ? _config.buffer_capacity - _config.minimum_buffer_size
+        : 1;
+    std::size_t filled = std::min(buffer_size - _config.minimum_buffer_size, range);
+    std::size_t max_target = static_cast<std::size_t>(
+        _buffered_step_scale * std::min(_config.buffered_steps_fraction, 1.)
+    );
+    return max_target * filled / range;
 }
 
 std::size_t MadnisTraining::buffer_event_count() const {
@@ -473,8 +502,12 @@ void MadnisTraining::start_single_job(
     std::size_t global_channel_index = _channel_index_offset + channel_index;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = channel_seq;
+    // captured by value: reading _batch_index inside the job would make the
+    // buffer content depend on thread scheduling
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
     _generator_context->thread_pool().submit(
-        [this, channel_index, global_channel_index, batch_size, job_id, &job]() {
+        [this, channel_index, global_channel_index, batch_size, job_id, store_buffer,
+         &job]() {
             auto& channel = _channels.at(channel_index);
             if (_seed) {
                 channel.generator_runtime->set_seed(DerivedSeed(
@@ -488,7 +521,7 @@ void MadnisTraining::start_single_job(
             job.samples.tensors = permute_tensors(samples);
             job.samples.size = samples.at(0).size(0);
             job.samples.channel_index = channel_index;
-            if (channel.unweighter_runtime) {
+            if (channel.unweighter_runtime && store_buffer) {
                 if (_seed) {
                     channel.unweighter_runtime->set_seed(DerivedSeed(
                         _seed,
@@ -514,33 +547,37 @@ void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes)
     std::size_t dispatch_seq = _multi_job_next_dispatch_seq++;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = dispatch_seq;
-    _generator_context->thread_pool().submit([this, batch_sizes, job_id, &job]() {
-        if (_seed) {
-            _multi_channel_generator->set_seed(DerivedSeed(
-                _seed,
-                DerivedSeed::madnis_generate,
-                job.dispatch_seq,
-                _channel_index_offset
-            ));
-        }
-        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
-        job.samples.tensors = permute_tensors(samples);
-        job.samples.channel_sizes = samples.back().batch_sizes();
-        if (_multi_channel_unweighter) {
+    // see start_single_job
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
+    _generator_context->thread_pool().submit(
+        [this, batch_sizes, job_id, store_buffer, &job]() {
             if (_seed) {
-                _multi_channel_unweighter->set_seed(DerivedSeed(
+                _multi_channel_generator->set_seed(DerivedSeed(
                     _seed,
-                    DerivedSeed::madnis_unweight,
+                    DerivedSeed::madnis_generate,
                     job.dispatch_seq,
                     _channel_index_offset
                 ));
             }
-            auto unw_samples = _multi_channel_unweighter->run(samples);
-            job.unweighted_samples.tensors = permute_tensors(unw_samples);
-            job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+            auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
+            job.samples.tensors = permute_tensors(samples);
+            job.samples.channel_sizes = samples.back().batch_sizes();
+            if (_multi_channel_unweighter && store_buffer) {
+                if (_seed) {
+                    _multi_channel_unweighter->set_seed(DerivedSeed(
+                        _seed,
+                        DerivedSeed::madnis_unweight,
+                        job.dispatch_seq,
+                        _channel_index_offset
+                    ));
+                }
+                auto unw_samples = _multi_channel_unweighter->run(samples);
+                job.unweighted_samples.tensors = permute_tensors(unw_samples);
+                job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+            }
+            return job_id;
         }
-        return job_id;
-    });
+    );
 }
 
 bool MadnisTraining::check_online_training_batch(
