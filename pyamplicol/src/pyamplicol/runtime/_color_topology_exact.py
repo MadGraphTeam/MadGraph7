@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from pyamplicol.api.errors import ArtifactError, EvaluationError
+from pyamplicol.runtime._color_weight_exact import exact_color_weight
 
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
@@ -381,7 +382,8 @@ def _parse_expanded_entry(
     return _ExactColorContractionEntry(
         left,
         right,
-        _complex_pair(raw.get("weight"), "color contraction weight"),
+        exact_color_weight(raw)
+        or _complex_pair(raw.get("weight"), "color contraction weight"),
         _decimal(raw.get("symmetry_factor", 1), "color contraction symmetry"),
     )
 
@@ -416,7 +418,8 @@ def _parse_repeated_contraction(
             _ExactColorContractionEntry(
                 left,
                 right,
-                _complex_pair(raw_entry.get("weight"), "repeated color weight"),
+                exact_color_weight(raw_entry)
+                or _complex_pair(raw_entry.get("weight"), "repeated color weight"),
                 _decimal(
                     raw_entry.get("symmetry_factor", 1),
                     "repeated color symmetry",

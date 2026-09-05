@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import math
 import os
 from collections.abc import Iterator
 from dataclasses import replace
@@ -1832,6 +1833,57 @@ def test_ufo_sm_lc_recurrence_artifact_loads_and_matches_compiled(
         compiled,
         points,
     )
+
+
+def test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings(
+    tmp_path: Path,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """An aS update must refresh every -G alias as well as the complex i*G²."""
+
+    output = tmp_path / "recurrence-ufo-coupling-update"
+    Generator(_generation_config("recurrence", color_accuracy="full")).generate(
+        _PURE_GLUON_PROCESS,
+        output,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
+    runtime = Runtime.load(output)
+    points = _validation_points(_PURE_GLUON_PROCESS)
+    original = runtime.evaluate(points)
+    alpha_s = next(
+        parameter.default_real
+        for parameter in runtime.physics.model_parameters
+        if parameter.name == "aS"
+    )
+    execution_path = next((output / "processes").glob("*/execution.json"))
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    negative_g_slots = [
+        parameter["parameter_index"]
+        for parameter in execution["runtime_metadata"]["runtime_parameters"]
+        if parameter["kind"] == "derived_parameter_component"
+        and parameter["runtime_name"] is None
+        and parameter["default"] == pytest.approx(-math.sqrt(4 * math.pi * alpha_s))
+    ]
+    # The SM contains distinct derived coupling names for the same real -G.
+    assert len(negative_g_slots) >= 2
+    changed_alpha_s = 0.125
+    expected = tuple(value * (changed_alpha_s / alpha_s) ** 2 for value in original)
+    loaded_override = Runtime.load(output, model_parameters={"aS": changed_alpha_s})
+    runtime.set_model_parameter("aS", changed_alpha_s)
+    for changed_runtime in (runtime, loaded_override):
+        state = json.loads(
+            changed_runtime._backend._runtime._exact_runtime_state_json()
+        )
+        for index in negative_g_slots:
+            assert state["model_parameter_values"][index] == pytest.approx(
+                -math.sqrt(4 * math.pi * changed_alpha_s), rel=2e-14
+            )
+        assert changed_runtime.evaluate(points) == pytest.approx(expected, rel=3e-13)
+        assert tuple(
+            float(value) for value in changed_runtime.evaluate(points, precision=50)
+        ) == pytest.approx(tuple(value.real for value in expected), rel=3e-13)
+    runtime.set_model_parameter("aS", alpha_s)
+    assert runtime.evaluate(points) == pytest.approx(original, rel=3e-13)
 
 
 @pytest.mark.parametrize("process_expression", _CONTRACTED_COLOR_PROCESSES)

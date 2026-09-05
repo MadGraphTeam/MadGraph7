@@ -3416,12 +3416,10 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
         **_select(record, "supported", "reason", "group_count"),
         "includes_color_factor": bool(record.get("includes_color_factor", False)),
         "entries": [
-            _select(
+            _color_contraction_entry(
                 _mapping(item),
                 "left_group_id",
                 "right_group_id",
-                "weight",
-                "symmetry_factor",
             )
             for item in _sequence(record["entries"])
         ],
@@ -3435,12 +3433,10 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
                 int(value) for value in _sequence(repeated["component_group_ids"])
             ],
             "entries": [
-                _select(
+                _color_contraction_entry(
                     _mapping(item),
                     "left_group_index",
                     "right_group_index",
-                    "weight",
-                    "symmetry_factor",
                 )
                 for item in _sequence(repeated["entries"])
             ],
@@ -3459,6 +3455,15 @@ def _color_contraction(record: Mapping[str, object]) -> dict[str, object]:
             ]
             compact["factorized_block"] = compact_factorized
         result["repeated_block"] = compact
+    return result
+
+
+def _color_contraction_entry(
+    record: Mapping[str, object], left: str, right: str
+) -> dict[str, object]:
+    result = _select(record, left, right, "weight", "symmetry_factor")
+    if "exact_weight" in record:
+        result["exact_weight"] = record["exact_weight"]
     return result
 
 

@@ -591,7 +591,7 @@ struct GenericDerivedParameterOutputManifest {
     runtime_name: String,
     output_index: usize,
     real_parameter_index: usize,
-    imag_parameter_index: usize,
+    imag_parameter_index: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -1725,6 +1725,9 @@ struct GenericColorContractionEntryManifest {
     left_group_id: i64,
     right_group_id: i64,
     weight: Vec<f64>,
+    // Retained for Python arbitrary precision; native contraction keeps its f64 weight.
+    #[serde(default, rename = "exact_weight")]
+    _exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }
@@ -1757,6 +1760,8 @@ struct GenericRepeatedColorContractionEntryManifest {
     left_group_index: usize,
     right_group_index: usize,
     weight: Vec<f64>,
+    #[serde(default, rename = "exact_weight")]
+    _exact_weight: Option<[String; 4]>,
     #[serde(default = "default_symmetry_factor")]
     symmetry_factor: f64,
 }

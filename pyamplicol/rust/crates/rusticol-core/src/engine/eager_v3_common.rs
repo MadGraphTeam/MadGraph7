@@ -418,6 +418,7 @@ fn build_color_topology_replay_manifest(
 
 pub(super) fn load_eager_color_topology_replay_manifests(
     decoded: &DecodedEagerRuntimeV3,
+    include_exact_weights: bool,
 ) -> RusticolResult<
     Option<(
         GenericColorTopologyReplayAmplitudeManifest,
@@ -603,6 +604,11 @@ pub(super) fn load_eager_color_topology_replay_manifests(
             (0..contraction_entries.row_count as usize)
                 .map(|index| {
                     Ok(GenericColorContractionEntryManifest {
+                        _exact_weight: if include_exact_weights {
+                            eager_exact_color_weight(decoded, weight_ids[index])?
+                        } else {
+                            None
+                        },
                         left_group_id: i64::from(left_ids[index]),
                         right_group_id: i64::from(right_ids[index]),
                         weight: eager_exact_factor(
@@ -638,6 +644,11 @@ pub(super) fn load_eager_color_topology_replay_manifests(
         let repeated_entries = (0..contraction_entries.row_count as usize)
             .map(|index| {
                 Ok(GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: if include_exact_weights {
+                        eager_exact_color_weight(decoded, weight_ids[index])?
+                    } else {
+                        None
+                    },
                     left_group_index: left_indices[index] as usize,
                     right_group_index: right_indices[index] as usize,
                     weight: eager_exact_factor(decoded, weight_ids[index], "contraction weight")?,
@@ -682,7 +693,7 @@ pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
     output_count: usize,
 ) -> RusticolResult<Option<AmplitudeRuntime>> {
     let Some((amplitude_manifest, contraction_manifest)) =
-        load_eager_color_topology_replay_manifests(decoded)?
+        load_eager_color_topology_replay_manifests(decoded, false)?
     else {
         return Ok(None);
     };
@@ -693,6 +704,32 @@ pub(super) fn build_eager_color_topology_replay_amplitude_runtime(
         &contraction_manifest,
     )
     .map(Some)
+}
+
+pub(super) fn eager_exact_color_weight(
+    decoded: &DecodedEagerRuntimeV3,
+    factor_id: u32,
+) -> RusticolResult<Option<[String; 4]>> {
+    let factor = decoded
+        .exact_factors
+        .get(factor_id as usize)
+        .ok_or_else(|| integrity("eager exact colour weight is absent"))?;
+    if factor.exact_source != 1 {
+        return Ok(None);
+    }
+    let raw = decoded
+        .exact_ir
+        .get(factor.exact_ir_id as usize)
+        .ok_or_else(|| integrity("eager exact colour weight source is absent"))?;
+    let payload: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|error| integrity(format!("invalid exact colour weight source: {error}")))?;
+    let source = &payload["source"];
+    if source["kind"] != "rational-complex" {
+        return Ok(None);
+    }
+    serde_json::from_value(source["value"].clone())
+        .map(Some)
+        .map_err(|error| integrity(format!("invalid rational colour weight: {error}")))
 }
 
 fn eager_exact_factor(

@@ -541,6 +541,19 @@ def test_contracted_color_reductions_are_columnar(color_accuracy: str) -> None:
     assert reductions.row_count > 0
     assert set(int(value) for value in reductions.column("color_selector_id")) == {0}
     assert result.table("color_selectors").row_count == 1
+    factors = result.table("exact_factors")
+    for factor_id, entry in zip(
+        entries.column("weight_factor_id"), logical_entries, strict=True
+    ):
+        assert (
+            int(factors.column("exact_source")[factor_id])
+            == FACTOR_EXACT_SOURCE_CANONICAL_IR
+        )
+        ir_id = int(factors.column("exact_ir_id")[factor_id])
+        source = json.loads(result.canonical_ir_catalog[ir_id])["source"]
+        assert source == {
+            "kind": "rational-complex", "value": entry.to_json_dict()["exact_weight"]
+        }
 
 
 def test_lc_replay_proof_ownership_is_retained() -> None:
@@ -624,6 +637,16 @@ def test_generic_color_replay_retains_compact_physical_contraction() -> None:
         (1 << 32) - 1
     }
     assert not bool(result.table("color_contraction_metadata").column("present")[0])
+    factors = result.table("exact_factors")
+    for factor_id in entries.column("weight_factor_id"):
+        assert (
+            int(factors.column("exact_source")[factor_id])
+            == FACTOR_EXACT_SOURCE_CANONICAL_IR
+        )
+        ir_id = int(factors.column("exact_ir_id")[factor_id])
+        source = json.loads(result.canonical_ir_catalog[ir_id])["source"]
+        assert source["kind"] == "rational-complex"
+        assert len(source["value"]) == 4
 
 
 def test_exactness_audit_reports_the_remaining_resolver_blocker(

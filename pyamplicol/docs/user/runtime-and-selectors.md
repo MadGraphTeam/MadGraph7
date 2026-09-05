@@ -488,6 +488,9 @@ evaluation. Derived model parameters and couplings are reevaluated from their
 retained symbolic definitions at this precision, including constants such as
 pi. Coupling powers and combinatorial normalization factors are also evaluated
 in the requested arithmetic, rather than copied from the native f64 result.
+Generated full-colour and NLC contraction weights also retain their rational
+coefficients for higher-precision evaluation; native evaluation continues to
+use their binary64 values.
 This matters when subtracting matrix elements at different multiplicities.
 
 After updating from a version that rounded these definitions during generation,

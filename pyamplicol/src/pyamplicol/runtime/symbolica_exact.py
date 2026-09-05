@@ -33,6 +33,7 @@ from pyamplicol.runtime._color_topology_exact import (
     parse_exact_color_topology_replay,
     reduce_exact_color_topology_replay,
 )
+from pyamplicol.runtime._color_weight_exact import exact_color_weight
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime._native_selection import (
     exact_runtime_state_payload,
@@ -602,6 +603,12 @@ class SymbolicaExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            if self._color_replay is not None:
+                # Rational metric coefficients must be rounded here, not in
+                # the default Decimal context used when the executor loads.
+                self._color_replay = parse_exact_color_topology_replay(
+                    self._execution, self._physics, self._permutation
+                )
             parameters = self._derive_model_parameters(parameters, working_precision)
             normalization = exact_normalization(
                 self._physics,
@@ -3757,7 +3764,8 @@ def _validated_color_contraction_entries(
             (
                 left_group_index,
                 right_group_index,
-                _complex_decimal_pair(
+                exact_color_weight(raw_template)
+                or _complex_decimal_pair(
                     raw_template.get("weight"),
                     "color contraction weight",
                 ),
@@ -3804,9 +3812,8 @@ def _validated_color_contraction_entry(
     return _ExactColorContractionEntry(
         left_group_id=left_group_id,
         right_group_id=right_group_id,
-        weight=_complex_decimal_pair(
-            raw_entry.get("weight"), "color contraction weight"
-        ),
+        weight=exact_color_weight(raw_entry)
+        or _complex_decimal_pair(raw_entry.get("weight"), "color contraction weight"),
         symmetry_factor=_decimal(
             raw_entry.get("symmetry_factor", 1), "color symmetry factor"
         ),

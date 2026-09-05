@@ -148,6 +148,7 @@ jobs:
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
             tests/unit/test_exact_parameter_precision.py \
+            tests/unit/test_exact_color_weight.py \
             tests/unit/test_exact_vertex_normalization.py \
             tests/unit/test_external_model_independence.py \
             tests/unit/test_generation_config_provenance.py \
@@ -174,6 +175,8 @@ jobs:
           tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
           tests/integration/test_exact_precision_normalization.py
+          tests/integration/test_compiled_exact_color.py
+          tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
           -q
       - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
         run: >-

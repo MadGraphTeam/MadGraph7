@@ -13,6 +13,88 @@ const TEST_SYMJIT_PLANE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-applica
 const TEST_PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL: u64 = 2;
 const TEST_PREPARED_JIT_PORTABLE_TARGET: &str = "symjit-storage-v3-portable";
 
+#[test]
+fn eager_color_topology_replay_preserves_amplitude_major_batches() {
+    let materialized_groups = [
+        RawSumGroup {
+            id: 10,
+            indices: vec![0, 1],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![0],
+        },
+        RawSumGroup {
+            id: 20,
+            indices: vec![2],
+            weight: 1.0,
+            all_sector_weight: 1.0,
+            sector_ids: vec![1],
+        },
+    ];
+    let replay = serde_json::from_value(json!({
+        "contract_version": 1,
+        "physical_group_count": 2,
+        "physical_groups": [
+            {"group_id": 0, "helicities": [1, -1], "color_sector_id": 0,
+             "color_word": [1, 2], "helicity_weight": 1.0},
+            {"group_id": 1, "helicities": [1, -1], "color_sector_id": 1,
+             "color_word": [2, 1], "helicity_weight": 1.0},
+        ],
+        "mappings": [{"label_permutation": [], "group_routes": [
+            {"source_group_id": 10, "target_group_id": 0, "factor": [1.0, 0.0]},
+            {"source_group_id": 20, "target_group_id": 1, "factor": [0.0, 1.0]},
+        ]}],
+    }))
+    .expect("color topology replay fixture");
+    let contraction = serde_json::from_value(json!({
+        "supported": true,
+        "group_count": 2,
+        "includes_color_factor": true,
+        "entries": [
+            {"left_group_id": 0, "right_group_id": 0, "weight": [2.0, 0.0]},
+            {"left_group_id": 1, "right_group_id": 1, "weight": [3.0, 0.0]},
+            {"left_group_id": 0, "right_group_id": 1, "weight": [1.0, 0.0],
+             "symmetry_factor": 2.0},
+        ],
+    }))
+    .expect("color contraction fixture");
+    let mut reducer = AmplitudeRuntime::color_topology_replay_reducer(
+        3,
+        &materialized_groups,
+        &replay,
+        &contraction,
+    )
+    .expect("color topology replay reducer");
+
+    // Include repeated and distinct points, and a batch crossing the normal
+    // eager point-tile boundary. Each amplitude occupies one point plane.
+    for point_count in [1, 2, 3, 65] {
+        let value = |amplitude: usize, point: usize| {
+            let point = (point / 2) as f64;
+            crate::EagerComplex64::new(1.0 + amplitude as f64 * 3.0 + point, point - 2.0)
+        };
+        let amplitudes = (0..3)
+            .flat_map(|amplitude| (0..point_count).map(move |point| value(amplitude, point)))
+            .collect::<Vec<_>>();
+        reducer.begin_color_topology_replay(point_count).unwrap();
+        reducer
+            .gather_color_topology_replay_eager_amplitudes(&amplitudes, point_count, 0)
+            .unwrap();
+        let mut totals = vec![0.0; point_count];
+        reducer
+            .reduce_color_topology_replay_f64_into(point_count, &mut totals)
+            .unwrap();
+        for (point, total) in totals.iter().copied().enumerate() {
+            let left = value(0, point) + value(1, point);
+            let right = value(2, point) * crate::EagerComplex64::new(0.0, 1.0);
+            let expected =
+                (2.0 * left * left.conj() + 3.0 * right * right.conj() + 2.0 * left * right.conj())
+                    .re;
+            assert_eq!(total, expected, "batch {point_count}, point {point}");
+        }
+    }
+}
+
 fn symjit_manifest(application_path: &str, exact_state_path: &str, input_len: usize) -> Value {
     let plane_application_path = application_path.strip_suffix(".symjit").map_or_else(
         || format!("{application_path}.plane.symjit"),

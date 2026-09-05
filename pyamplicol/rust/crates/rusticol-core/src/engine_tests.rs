@@ -3150,18 +3150,21 @@ fn compact_repeated_color_manifest_builds_without_expanded_entries() {
             component_group_ids: vec![10, 11, 12, 13],
             entries: vec![
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index: 0,
                     right_group_index: 0,
                     weight: vec![1.25, 0.0],
                     symmetry_factor: 1.0,
                 },
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index: 0,
                     right_group_index: 1,
                     weight: vec![-0.75, 0.0],
                     symmetry_factor: 2.0,
                 },
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index: 1,
                     right_group_index: 1,
                     weight: vec![2.0, 0.0],
@@ -3222,6 +3225,7 @@ fn compact_walsh_color_manifest_matches_expanded_repeated_reduction() {
         .flat_map(|left_group_index| {
             (left_group_index..4).map(move |right_group_index| {
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index,
                     right_group_index,
                     weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
@@ -3305,6 +3309,7 @@ fn compact_c2k_walsh_h8_manifest_matches_expanded_repeated_reduction() {
         .flat_map(|left_group_index| {
             (left_group_index..local_group_count).map(move |right_group_index| {
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index,
                     right_group_index,
                     weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
@@ -3429,6 +3434,7 @@ fn compact_c2k_walsh_h8_multiple_cosets_matches_expanded_reference() {
             local_coordinates.iter().enumerate().skip(left_group_index)
         {
             entries.push(GenericRepeatedColorContractionEntryManifest {
+                _exact_weight: None,
                 left_group_index,
                 right_group_index,
                 weight: vec![
@@ -3579,6 +3585,7 @@ fn compact_c2k_walsh_generic_rank_four_matches_expanded_reduction() {
             let kernel = &kernel;
             (left_group_index..local_group_count).map(move |right_group_index| {
                 GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index,
                     right_group_index,
                     weight: vec![kernel[left_group_index ^ right_group_index], 0.0],
@@ -3669,6 +3676,7 @@ fn compact_walsh_color_manifest_rejects_malformed_or_noninvariant_plans() {
             manifest(
                 vec![[0, 1, 2, 3]],
                 vec![GenericRepeatedColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_index: 0,
                     right_group_index: 0,
                     weight: vec![1.0, 0.0],
@@ -3713,6 +3721,7 @@ fn compact_c2k_walsh_manifest_fails_closed_on_invalid_metadata() {
                  weight_re: f64|
      -> GenericRepeatedColorContractionEntryManifest {
         GenericRepeatedColorContractionEntryManifest {
+            _exact_weight: None,
             left_group_index,
             right_group_index,
             weight: vec![weight_re, 0.0],
@@ -3859,6 +3868,7 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
             component_count: 2,
             component_group_ids: vec![10, 11],
             entries: vec![GenericRepeatedColorContractionEntryManifest {
+                _exact_weight: None,
                 left_group_index,
                 right_group_index: 0,
                 weight,
@@ -3898,6 +3908,7 @@ fn compact_repeated_color_manifest_rejects_malformed_storage() {
                 group_count: 2,
                 includes_color_factor: true,
                 entries: vec![GenericColorContractionEntryManifest {
+                    _exact_weight: None,
                     left_group_id: 10,
                     right_group_id: 10,
                     weight: vec![1.0, 0.0],

@@ -257,7 +257,12 @@ fn load_prepared_model_parameter_evaluator(
     let derived_names = runtime_parameters
         .iter()
         .filter(|parameter| parameter.kind == "derived_parameter_component")
-        .filter_map(|parameter| parameter.runtime_name.clone())
+        .map(|parameter| {
+            parameter
+                .runtime_name
+                .clone()
+                .unwrap_or_else(|| parameter.name.clone())
+        })
         .collect::<BTreeSet<_>>();
     if derived_names.is_empty() {
         return Ok(None);
@@ -306,11 +311,6 @@ fn load_prepared_model_parameter_evaluator(
                 "derived runtime parameter {name:?} has no logical slots"
             ))
         })?;
-        let imaginary = slots.imaginary.ok_or_else(|| {
-            RusticolError::integrity(format!(
-                "derived runtime parameter {name:?} lacks an imaginary component"
-            ))
-        })?;
         let output_index = *output_index_by_name.get(&name).ok_or_else(|| {
             RusticolError::integrity(format!(
                 "prepared derivation kernel does not output runtime parameter {name:?}"
@@ -320,7 +320,7 @@ fn load_prepared_model_parameter_evaluator(
             runtime_name: name,
             output_index,
             real_parameter_index: slots.real,
-            imag_parameter_index: imaginary,
+            imag_parameter_index: slots.imaginary,
         });
     }
     let evaluator_manifest = kernel.runtime_evaluator_manifest()?;

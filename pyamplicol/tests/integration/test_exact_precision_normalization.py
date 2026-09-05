@@ -81,12 +81,10 @@ def test_gg_helicity_sum_has_consistent_normalization_and_precision(
         model_parameters={"normalization.alpha_s_me_check": 0.125},
     )
     frames = _exact_frames()
-    # Separate native calls isolate the normalization/precision invariant
-    # from the independently tracked eager full-colour batching defect.
-    native = [
-        runtime.evaluate([[[float(x) for x in p] for p in frame]])[0]
-        for frame in frames
-    ]
+    native_frames = [[[float(x) for x in p] for p in frame] for frame in frames]
+    native = runtime.evaluate(native_frames)
+    separate = [runtime.evaluate([frame])[0] for frame in native_frames]
+    assert native == pytest.approx(separate, rel=3e-13, abs=0)
     exact = runtime.evaluate(frames, precision=80)
     with localcontext() as context:
         context.prec = 90
@@ -95,3 +93,20 @@ def test_gg_helicity_sum_has_consistent_normalization_and_precision(
         # In particular, full colour must not acquire the extra LC factor81.
         for value, reference in zip(exact, native, strict=True):
             assert float(value) == pytest.approx(reference.real, rel=3e-13, abs=0)
+
+    if execution_mode == "eager" and color_accuracy == "full":
+        # Exercise both the ordinary and profiled topology-replay gathers.
+        # Repeated points exposed an amplitude/point stride mix-up even when
+        # each separate evaluation and the arbitrary-precision path agreed.
+        for point_count in (2, 3, 65):
+            batch = [native_frames[(index // 2) % 2] for index in range(point_count)]
+            expected = [separate[(index // 2) % 2] for index in range(point_count)]
+            assert runtime.evaluate(batch) == pytest.approx(expected, rel=3e-13, abs=0)
+            resolved = runtime.evaluate_resolved(batch)
+            totals = [
+                sum(value for helicity in point for value in helicity)
+                for point in resolved.values
+            ]
+            assert totals == pytest.approx(expected, rel=3e-13, abs=0)
+            profiled = runtime._backend.profile(batch, include_values=True)
+            assert profiled["values"] == pytest.approx(expected, rel=3e-13, abs=0)

@@ -804,6 +804,7 @@ fn exact_amplitude_stage(
                 "left_group_id": row.left_id,
                 "right_group_id": row.right_id,
                 "weight": weight,
+                "exact_weight": super::eager_v3_common::eager_exact_color_weight(decoded, row.factor_id)?,
                 "symmetry_factor": symmetry,
             }))
         })
@@ -829,7 +830,7 @@ fn exact_color_topology_replay(
     decoded: &DecodedEagerRuntimeV3,
 ) -> RusticolResult<Option<(Value, Value)>> {
     let Some((replay, contraction)) =
-        super::eager_v3_common::load_eager_color_topology_replay_manifests(decoded)?
+        super::eager_v3_common::load_eager_color_topology_replay_manifests(decoded, true)?
     else {
         return Ok(None);
     };
@@ -885,6 +886,7 @@ fn exact_color_topology_replay(
                 "left_group_id": entry.left_group_id,
                 "right_group_id": entry.right_group_id,
                 "weight": exact_f64_pair(&entry.weight, "color replay contraction")?,
+                "exact_weight": entry._exact_weight,
                 "symmetry_factor": exact_number(entry.symmetry_factor),
             }))
         })
@@ -909,6 +911,7 @@ fn exact_color_topology_replay(
                             &entry.weight,
                             "repeated color replay contraction",
                         )?,
+                        "exact_weight": entry._exact_weight,
                         "symmetry_factor": exact_number(entry.symmetry_factor),
                     }))
                 })

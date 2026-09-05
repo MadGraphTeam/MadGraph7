@@ -18,14 +18,18 @@ class ColorContractionEntry:
     weight_re: float
     weight_im: float = 0.0
     symmetry_factor: float = 1.0
+    exact_weight: tuple[Fraction, Fraction] | None = None
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result = {
             "left_group_id": self.left_group_id,
             "right_group_id": self.right_group_id,
             "weight": [self.weight_re, self.weight_im],
             "symmetry_factor": self.symmetry_factor,
         }
+        if self.exact_weight is not None:
+            result["exact_weight"] = _exact_weight_payload(self.exact_weight)
+        return result
 
 
 @dataclass(frozen=True)
@@ -35,14 +39,25 @@ class ColorContractionTemplateEntry:
     weight_re: float
     weight_im: float = 0.0
     symmetry_factor: float = 1.0
+    exact_weight: tuple[Fraction, Fraction] | None = None
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result = {
             "left_group_index": self.left_group_index,
             "right_group_index": self.right_group_index,
             "weight": [self.weight_re, self.weight_im],
             "symmetry_factor": self.symmetry_factor,
         }
+        if self.exact_weight is not None:
+            result["exact_weight"] = _exact_weight_payload(self.exact_weight)
+        return result
+
+
+def _exact_weight_payload(weight: tuple[Fraction, Fraction]) -> list[str]:
+    # Strings keep arbitrarily large integers exact in every JSON consumer.
+    return [
+        str(part) for value in weight for part in (value.numerator, value.denominator)
+    ]
 
 
 @dataclass(frozen=True)
@@ -526,6 +541,7 @@ class ColorContractionPlan:
                     weight_re=entry.weight_re,
                     weight_im=entry.weight_im,
                     symmetry_factor=entry.symmetry_factor,
+                    exact_weight=entry.exact_weight,
                 )
 
     def to_json_dict(self) -> dict[str, object]:

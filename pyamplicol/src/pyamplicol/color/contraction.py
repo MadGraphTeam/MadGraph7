@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import struct
 from collections.abc import Sequence
+from fractions import Fraction
 
 from .contraction_factors import (
     _coloured_word,
@@ -81,7 +82,7 @@ def build_color_contraction_plan(
         )
 
     entries: list[ColorContractionEntry] = []
-    factor_cache: dict[tuple[int, int], float] = {}
+    factor_cache: dict[tuple[int, int], Fraction] = {}
     for helicity_descriptors in descriptors_by_helicity.values():
         for left_offset, left in enumerate(helicity_descriptors):
             left_sector = sector_by_id.get(left.sector_id)
@@ -106,7 +107,7 @@ def build_color_contraction_plan(
                 sector_pair = (left.sector_id, right.sector_id)
                 weight = factor_cache.get(sector_pair)
                 if weight is None:
-                    weight = color_contraction_factor(
+                    weight = exact_color_contraction_factor(
                         color_plan,
                         left_sector,
                         right_sector,
@@ -122,8 +123,9 @@ def build_color_contraction_plan(
                     ColorContractionEntry(
                         left_group_id=left.group_id,
                         right_group_id=right.group_id,
-                        weight_re=helicity_weight * weight,
+                        weight_re=helicity_weight * float(weight),
                         symmetry_factor=symmetry,
+                        exact_weight=(Fraction(helicity_weight) * weight, Fraction(0)),
                     )
                 )
     return ColorContractionPlan(
@@ -184,7 +186,7 @@ def _build_repeated_color_contraction_block(
             right_sector = sector_by_id.get(right_sector_id)
             if right_sector is None:
                 return None
-            weight = color_contraction_factor(
+            weight = exact_color_contraction_factor(
                 color_plan,
                 left_sector,
                 right_sector,
@@ -197,10 +199,11 @@ def _build_repeated_color_contraction_block(
                 ColorContractionTemplateEntry(
                     left_group_index=left_group_index,
                     right_group_index=right_group_index,
-                    weight_re=helicity_weight * weight,
+                    weight_re=helicity_weight * float(weight),
                     symmetry_factor=(
                         1.0 if left_group_index == right_group_index else 2.0
                     ),
+                    exact_weight=(Fraction(helicity_weight) * weight, Fraction(0)),
                 )
             )
     return RepeatedColorContractionBlock(

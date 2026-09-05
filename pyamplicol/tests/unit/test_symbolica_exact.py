@@ -993,7 +993,9 @@ def test_exact_executor_switches_to_helicity_sum_color_replay(
     )
 
     assert executor._execution is summed_execution
-    assert parse_calls == [(summed_execution, physics, None)]
+    # Activation checks the gather; evaluation rebinds rational colour weights
+    # inside the requested arithmetic context, not the load-time context.
+    assert parse_calls == [(summed_execution, physics, None)] * 2
     assert tuple(point[0][0] for point in evaluated_points) == (
         Decimal(1),
         Decimal(2),

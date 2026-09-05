@@ -198,6 +198,10 @@ class EagerExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            if self._color_replay is not None:
+                self._color_replay = parse_exact_color_topology_replay(
+                    self._exact_execution, self._physics, self._permutation
+                )
             normalization = exact_normalization(
                 self._physics,
                 parameters,

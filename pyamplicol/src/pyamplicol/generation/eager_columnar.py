@@ -22,6 +22,10 @@ from typing import Any
 import numpy as np
 
 from ..color import build_color_contraction_plan
+from ..color.contraction_types import (
+    ColorContractionEntry,
+    ColorContractionTemplateEntry,
+)
 from ..models.base import Model
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import GenericDAG
@@ -58,7 +62,8 @@ _SEMANTIC_LIMITATIONS = (
     "Every numeric factor carries both its f64 payload and a canonical exact-IR "
     "reference. Values whose source contract is intrinsically f64 use an exact "
     "IEEE-754 binary64 literal, preserving signed zero and every payload bit.",
-    "GenericDAG proof/color weights, contraction coefficients, and "
+    "Rational colour-contraction weights retain their pre-f64 exact source. "
+    "Other GenericDAG proof weights, contraction coefficients, and "
     "EagerKernelResolver normalization factors do not expose their pre-f64 "
     "Symbolica expressions. Their exact-IR entries therefore certify the f64 "
     "value from which current exact and double-double execution deliberately "
@@ -1456,6 +1461,7 @@ class _Builder:
             contraction_entries["weight_factor_id"][row] = self.factors.add(
                 (entry.weight_re, entry.weight_im),
                 "color replay contraction weight",
+                exact_ir=_color_weight_ir(entry),
             )
             contraction_entries["symmetry_factor_id"][row] = self.factors.add(
                 (entry.symmetry_factor, 0.0),
@@ -2028,7 +2034,9 @@ class _Builder:
             contraction_columns["left_group_id"][row] = entry.left_group_id
             contraction_columns["right_group_id"][row] = entry.right_group_id
             contraction_columns["weight_factor_id"][row] = self.factors.add(
-                (entry.weight_re, entry.weight_im), "color contraction weight"
+                (entry.weight_re, entry.weight_im),
+                "color contraction weight",
+                exact_ir=_color_weight_ir(entry),
             )
             contraction_columns["symmetry_factor_id"][row] = self.factors.add(
                 (entry.symmetry_factor, 0.0), "color contraction symmetry"
@@ -2707,6 +2715,14 @@ def _binary64_exact_ir(value: tuple[float, float]) -> dict[str, object]:
         "real_bits": f"{_f64_bits(value[0]):016x}",
         "imaginary_bits": f"{_f64_bits(value[1]):016x}",
     }
+
+
+def _color_weight_ir(
+    entry: ColorContractionEntry | ColorContractionTemplateEntry,
+) -> dict[str, object] | None:
+    if entry.exact_weight is None:
+        return None
+    return {"kind": "rational-complex", "value": entry.to_json_dict()["exact_weight"]}
 
 
 def _hash_text(digest: Any, value: str) -> None:

@@ -48,13 +48,13 @@ impl AmplitudeSamples for RowMajorAmplitudeSamples<'_> {
 }
 
 #[derive(Clone, Copy)]
-struct EagerRowMajorAmplitudeSamples<'a> {
+struct EagerAmplitudeMajorSamples<'a> {
     values: &'a [crate::EagerComplex64],
     point_count: usize,
     output_length: usize,
 }
 
-impl<'a> EagerRowMajorAmplitudeSamples<'a> {
+impl<'a> EagerAmplitudeMajorSamples<'a> {
     fn new(
         values: &'a [crate::EagerComplex64],
         point_count: usize,
@@ -77,13 +77,15 @@ impl<'a> EagerRowMajorAmplitudeSamples<'a> {
     }
 }
 
-impl AmplitudeSamples for EagerRowMajorAmplitudeSamples<'_> {
+impl AmplitudeSamples for EagerAmplitudeMajorSamples<'_> {
     #[inline(always)]
     fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64> {
         debug_assert_eq!(output_length, self.output_length);
         debug_assert!(row < self.point_count);
         debug_assert!(output < self.output_length);
-        let value = self.values[row * self.output_length + output];
+        // The eager scheduler copies each amplitude's complete point plane,
+        // unlike the point-major generic evaluator output.
+        let value = self.values[output * self.point_count + row];
         c64(value.re, value.im)
     }
 }
@@ -595,14 +597,13 @@ impl AmplitudeRuntime {
         result
     }
 
-    pub(in crate::engine) fn gather_color_topology_replay_row_major(
+    pub(in crate::engine) fn gather_color_topology_replay_eager_amplitudes(
         &mut self,
         amplitudes: &[crate::EagerComplex64],
         batch_size: usize,
         mapping_index: usize,
     ) -> RusticolResult<()> {
-        let samples =
-            EagerRowMajorAmplitudeSamples::new(amplitudes, batch_size, self.output_length)?;
+        let samples = EagerAmplitudeMajorSamples::new(amplitudes, batch_size, self.output_length)?;
         self.gather_color_topology_replay_samples(samples, batch_size, 0, mapping_index)
     }
 

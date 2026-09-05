@@ -290,13 +290,14 @@ pub(super) fn refresh_derived_model_parameter_values(
             )));
         };
         *real = value.re;
-        let Some(imaginary) = values.get_mut(output.imag_parameter_index) else {
-            return Err(RusticolError::invalid_argument(format!(
-                "derived model-parameter imaginary slot {} is out of range",
-                output.imag_parameter_index
-            )));
-        };
-        *imaginary = value.im;
+        if let Some(index) = output.imag_parameter_index {
+            let imaginary = values.get_mut(index).ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "derived model-parameter imaginary slot {index} is out of range"
+                ))
+            })?;
+            *imaginary = value.im;
+        }
     }
     Ok(())
 }

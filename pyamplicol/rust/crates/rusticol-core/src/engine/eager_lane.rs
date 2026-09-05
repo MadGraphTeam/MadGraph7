@@ -739,7 +739,7 @@ impl EagerNativeRuntime {
                 );
                 self.reduced.resize(point_count, 0.0);
                 self.execute_full_scheduler(point_count)?;
-                replay.gather_color_topology_replay_row_major(
+                replay.gather_color_topology_replay_eager_amplitudes(
                     &self.amplitudes,
                     point_count,
                     mapping_index,
@@ -1518,7 +1518,7 @@ impl EagerNativeRuntime {
                 let evaluator_start = Instant::now();
                 self.execute_full_scheduler(point_count)?;
                 evaluator_s += evaluator_start.elapsed().as_secs_f64();
-                replay.gather_color_topology_replay_row_major(
+                replay.gather_color_topology_replay_eager_amplitudes(
                     &self.amplitudes,
                     point_count,
                     mapping_index,
