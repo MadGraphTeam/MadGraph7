@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import subprocess
 import threading
@@ -113,6 +114,27 @@ def test_unknown_symbolica_operation_fails_without_dense_fallback() -> None:
         match=r"cannot lower Symbolica operation.*refusing a dense-row fallback",
     ):
         render_native_direct_cpp(evaluator, _spec())
+
+
+def test_exact_wavefunction_radical_renders_as_an_f64_constant() -> None:
+    symbolica = pytest.importorskip("symbolica")
+    momentum = symbolica.S("direct_radical_input")
+    evaluator = symbolica.E("1i/sqrt(2)*direct_radical_input").evaluator(
+        [momentum], iterations=0, n_cores=1, jit_compile=False
+    )
+    exact_state = evaluator.save()
+
+    rendered = render_native_direct_cpp(
+        evaluator,
+        _spec(parameter_kinds=(ParameterKind.COMPLEX_PLANE,)),
+    )
+
+    assert (
+        f"direct_constant<Lane>({math.sqrt(0.5).hex()}, {0.0.hex()})"
+        in rendered.source
+    )
+    assert "direct_multiply(" in rendered.source
+    assert evaluator.save() == exact_state
 
 
 def test_real_argument_and_stack_contracts_fail_closed() -> None:

@@ -15,6 +15,7 @@ dense ABI.
 
 from __future__ import annotations
 
+import cmath
 import hashlib
 import math
 import os
@@ -796,6 +797,35 @@ def _lower_instruction_program(
             written.add(destination)
             real_values[destination] = real_values.get(source, False)
             continue
+        if operation == "fun" and len(raw_row) == 6:
+            function_name = getattr(raw_row[2], "get_name", None)
+            arguments = raw_row[4]
+            if (
+                callable(function_name)
+                and function_name() == "symbolica::sqrt"
+                and raw_row[3] == []
+                and isinstance(arguments, list)
+                and len(arguments) == 1
+                and isinstance(raw_row[5], bool)
+            ):
+                destination = parse_reference(raw_row[1], destination=True)
+                source = parse_reference(arguments[0])
+                if source[0] == "const":
+                    # Keep the saved evaluator exact; round constant radicals
+                    # only when emitting this f64 C++ evaluation path.
+                    value = cmath.sqrt(constants[source[1]])
+                    if raw_row[5] and value.imag != 0.0:
+                        raise NativeEvaluationError(
+                            "Symbolica real square-root metadata is inconsistent"
+                        )
+                    statements.append(
+                        f"    {reference_expression(destination)} = "
+                        f"direct_constant<Lane>({_cpp_f64(value.real)}, "
+                        f"{_cpp_f64(value.imag)});"
+                    )
+                    written.add(destination)
+                    real_values[destination] = value.imag == 0.0
+                    continue
         raise NativeEvaluationError(
             "native DirectApplication cannot lower Symbolica operation "
             f"{operation!r}; refusing a dense-row fallback"
