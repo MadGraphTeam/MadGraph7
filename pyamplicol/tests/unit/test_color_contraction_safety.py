@@ -8,6 +8,7 @@ from math import isclose, nextafter
 import pytest
 
 import pyamplicol.color as color
+import pyamplicol.color.contraction_factors as contraction_factors
 import pyamplicol.generation.artifact_writer as artifact_writer
 from pyamplicol.color import (
     ColorContractionEntry,
@@ -17,6 +18,7 @@ from pyamplicol.color import (
     RepeatedColorContractionBlock,
     build_color_contraction_plan,
     build_color_plan,
+    color_contraction_factor,
     color_contraction_factors,
     exact_color_contraction_factor,
     exact_color_contraction_factors,
@@ -107,6 +109,34 @@ def test_pure_adjoint_full_factors_cache_relative_permutations_exactly() -> None
     info = _pure_adjoint_full_factor_by_relative_permutation.cache_info()
     assert info.misses == len(words)
     assert info.hits == len(words) * (len(words) - 1)
+
+
+def test_pure_adjoint_exact_nlc_does_not_compute_full_color(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = build_color_plan(
+        build_process_ir("g g > g g", color_accuracy="nlc"),
+        color_accuracy="nlc",
+    )
+
+    def reject_full_color(*args: object, **kwargs: object) -> None:
+        raise AssertionError("NLC requested an unnecessary full-colour trace")
+
+    monkeypatch.setattr(
+        contraction_factors,
+        "_pure_adjoint_full_factor_exact_by_relative_permutation",
+        reject_full_color,
+    )
+    monkeypatch.setattr(
+        contraction_factors,
+        "_pure_adjoint_full_factor_exact_uncached",
+        reject_full_color,
+    )
+    for left in plan.sectors:
+        for right in plan.sectors:
+            assert exact_color_contraction_factor(
+                plan, left, right, accuracy="nlc"
+            ) == Fraction(color_contraction_factor(plan, left, right, accuracy="nlc"))
 
 
 def test_color_plan_json_exposes_structural_open_line_roles() -> None:

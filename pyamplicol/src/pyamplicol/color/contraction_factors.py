@@ -563,6 +563,20 @@ def exact_color_contraction_factor(
 ) -> Fraction:
     """Return one exact reference-normalized color factor."""
 
+    if accuracy not in {"lc", "nlc", "full"}:
+        return Fraction(0)
+    if color_plan.process.color_endpoints.pair_count == 0:
+        n_ord = len(_coloured_word(left))
+        if len(_coloured_word(right)) != n_ord:
+            return Fraction(0)
+        # LC/NLC have direct formulae and must not evaluate the full trace.
+        return _pure_adjoint_color_factor_exact(
+            left,
+            right,
+            n_ord,
+            accuracy=accuracy,
+            full_col_acc=full_col_acc,
+        )
     values = exact_color_contraction_factors(
         color_plan,
         left,
@@ -586,9 +600,7 @@ def _open_line_nc_power_terms(
     right_by_antifundamental = {
         line.antifundamental_label: line for line in right_lines
     }
-    if set(left_by_fundamental) != {
-        line.fundamental_label for line in right_lines
-    }:
+    if set(left_by_fundamental) != {line.fundamental_label for line in right_lines}:
         return {}
     if {line.antifundamental_label for line in left_lines} != set(
         right_by_antifundamental
@@ -608,9 +620,7 @@ def _open_line_nc_power_terms(
             if left_line is None:
                 return {}
             trace.extend(left_line.adjoint_labels)
-            right_line = right_by_antifundamental.get(
-                left_line.antifundamental_label
-            )
+            right_line = right_by_antifundamental.get(left_line.antifundamental_label)
             if right_line is None:
                 return {}
             trace.extend(reversed(right_line.adjoint_labels))
