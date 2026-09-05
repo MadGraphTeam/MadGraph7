@@ -30,36 +30,88 @@ concurrency:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
+  # Build the madspace install exactly once per workflow run. It is cached with a
+  # content-addressed key (hash of the madspace sources), so it is only rebuilt
+  # when madspace actually changes and is never shared between differing builds.
+  # Every test job below depends on this job (needs: build_madspace) and restores
+  # the cached install via the install_madspace action instead of recompiling the
+  # C++/CUDA extension itself. The build logic lives in the build_madspace
+  # composite action so it stays in sync with check_xsec_processes_mg7.yml.
+  build_madspace:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build_madspace
+
   acceptancetest_mg7_ufo_aloha:
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test test_mg7_ufo_aloha
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_ufo_aloha -pA -t0 -l INFO
 
-  acceptancetest_mg7_output_directory:
+  # FD gauge: the madmatrix and the fortran standalone must compute the same
+  # value, and the scalar and vectorised madmatrix backends must agree with each
+  # other (the FD wavefunctions are written once per backend in helas_fd.h)
+  acceptancetest_mg7_fd_gauge:
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test FD gauge madmatrix vs fortran
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_fd_vs_fortran test_madmatrix_fd_simd_lanes -pA -t0 -l INFO
+
+  acceptancetest_mg7_output_directory:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test test_output_mg7_directory
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_output_mg7_directory -pA -t0 -l INFO
 
-  acceptancetest_mg7_ungroup_decay:
+  acceptancetest_mg7_gridpack:
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_gridpack_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gridpack_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_ungroup_decay:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test test_ungroup_decay_mg7
         run: |
@@ -67,11 +119,13 @@ jobs:
             ./tests/test_manager.py test_ungroup_decay_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_e_p_collision:
+    needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test test_e_p_collision_mg7
         run: |
@@ -79,12 +133,14 @@ jobs:
             ./tests/test_manager.py test_e_p_collision_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_leshouche_sextet:
+    needs: build_madspace
     # xfail: mg7 does not yet generate leshouche.inc (kept on the to-do list)
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       - name: test one of the test test_leshouche_sextet_diquarks_mg7
@@ -93,29 +149,83 @@ jobs:
             ./tests/test_manager.py test_leshouche_sextet_diquarks_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_madspin_mixed_flavor:
-    # xfail: mg7 + MadSpin pipeline not wired up yet (kept on the to-do list)
+    needs: build_madspace
+    # mg7 + MadSpin density-summary check driven through the madevent-style
+    # launch command interface. restore_heptools provides LHAPDF and the mg7
+    # default PDF set for the u u~ > z g generation.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_madspin_mixed_flavor_decay_log_summary_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_merged_flavor_mirroring:
+    # Output-level check of the initial-state mirroring for merged-flavor
+    # processes (u q > u q must not mirror any flavor; q q > q q must mirror only
+    # the mixed one). No event generation, so no madspace runtime needed.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
-      - name: test one of the test test_madspin_mixed_flavor_decay_log_summary_mg7
+      - name: test one of the test test_merged_flavor_initial_state_mirroring_mg7
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madspin_mixed_flavor_decay_log_summary_mg7 -pA -t0 -l INFO
+            ./tests/test_manager.py test_merged_flavor_initial_state_mirroring_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_single_qcd_order:
+    # Output-level check that the mg7 output records the single alpha_s power
+    # (single_qcd_order in proc_characteristics), which systematics uses to
+    # reconstruct the LO reweighting info. No event generation, so no madspace
+    # runtime needed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_single_qcd_order_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_single_qcd_order_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_relaunch_defaults:
+    # Re-launching an mg7 output must not default every tool to ON: the launch
+    # question prunes the cards of the unselected tools. Output-level (drives the
+    # question twice), so no madspace runtime needed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_relaunch_switch_defaults_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_relaunch_switch_defaults_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_group_subprocess:
+    needs: build_madspace
     # mg7 cross-section run (u u > u u). madspace is installed by checkout_mg5;
-    # LHAPDF (incl. NNPDF23_lo_as_0130_qed) comes from the heptools cache.
+    # LHAPDF (incl. NNPDF40MC_lo_as_01180) comes from the heptools cache.
     # The test self-skips if that stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_group_subprocess_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -123,18 +233,46 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_group_subprocess_mg7 -pA -t0 -l INFO
 
+  acceptancetest_mg7_flavor_grouping:
+    needs: build_madspace
+    # p p > l+ l- must give the same cross-section for all four
+    # apply_flavor_grouping/group_subprocesses combinations. It used not to:
+    # with grouping off the mg7 exporter enumerated only the merged-leg flavors
+    # and dropped the flavors carried by the *processes* mapped onto the same
+    # matrix element, so 4 of the 16 channels survived (~538 pb instead of
+    # ~1336 pb). The madevent counterpart is test_flavor_grouping_consistency
+    # in acceptancetest_madevent.yml. Self-skips if the madspace +
+    # LHAPDF(NNPDF23) stack is absent.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_flavor_grouping_consistency_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            # make the cached lhapdf-config resolvable so the test finds the data dir
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_flavor_grouping_consistency_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_merged_flavor_uq:
-    # KNOWN-FAILING (not xfail): mg7 currently segfaults on u q > u q with the
-    # merged q = u d multiparticle. This job is expected to be red until the mg7
-    # integrator handles merged-flavor processes; it keeps the crash visible.
+    needs: build_madspace
+    # mg7 cross-section for the merged-flavor u q > u q (q = u d), pinned to the
+    # 4428 pb obtained from the separate single-flavor processes. It used to come
+    # out too large because the mixed u d initial flavor was mirrored; see
+    # acceptancetest_mg7_merged_flavor_mirroring, which guards that flag directly.
     # The test self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_madevent_merged_flavor_uq_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -142,17 +280,20 @@ jobs:
             ./tests/test_manager.py test_madevent_merged_flavor_uq_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_e_e_collision:
-    # KNOWN-FAILING (not xfail): mg7 has no lepton-beam support (run_card.toml
-    # only carries a hadron PDF), so e+ e- > e+ e- aborts with
-    # "PID 11 not found in pdf grid". Red until mg7 supports lepton beams.
+    needs: build_madspace
+    # mg7 Bhabha cross-section (e+ e- > e+ e-), pinned to the madevent value for
+    # the same run_card settings (40.3 pb) plus an explicit check that neither
+    # beam flavor is mirrored -- the beams are different particles, and mirroring
+    # them used to double the result to ~81 pb.
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_e_e_collision_mg7
         run: |
             cd $GITHUB_WORKSPACE
@@ -160,6 +301,7 @@ jobs:
             ./tests/test_manager.py test_e_e_collision_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_generation_heft:
+    needs: build_madspace
     # KNOWN-FAILING (not xfail): mg7 runs HEFT g g > b b~ HIW but its cross
     # section is ~257x below the physical value (~1.6e6 vs 4.117e8 pb). Red
     # until the mg7 normalisation for the effective ggH coupling is fixed.
@@ -169,12 +311,179 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
       - uses: ./.github/actions/restore-pip-cache
-      - uses: ./.github/actions/restore_heptools_lhapdf
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_generation_heft_mg7
         run: |
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_generation_heft_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_mssm_gogo:
+    # mg7/madmatrix now generates the MSSM merged-flavor squark/gluino vertices
+    # (single-merged-leg / event-by-event flavored couplings); `output
+    # standalone` reproduces the standalone_fortran per-flavor |M|^2 (~1e-4).
+    # This is a
+    # matrix-element (standalone) check only -- full mg7 event generation for
+    # merged-flavor processes is not wired up yet (see test_madevent_merged_
+    # flavor_uq_mg7). The madevent counterpart is test_madevent_mssm_gogo in
+    # acceptancetest_madevent.yml.
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - name: test one of the test test_madmatrix_mssm_gogo
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_mssm_gogo -pA -t0 -l INFO
+
+  acceptancetest_mg7_mssm_gogo_xsec:
+    # Pins the mg7 (madspace) cross-section for MSSM p p > go go to the madevent
+    # reference (5.024 pb, run_01 of test_generation_from_file_1), on top of the
+    # per-flavor |M|^2 check in test_madmatrix_mssm_gogo. This job used to
+    # be red at random rather than for a physics reason: the 1% assertion sat
+    # below the ~1.1% statistical error of a 2000-event run, so it failed on
+    # roughly 40% of runs. _run_mg7_xsec now runs 50000 events (error ~0.08%).
+    # Self-skips if the madspace + LHAPDF(NNPDF23) stack is absent.
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/install_madspace
+      - name: test one of the test test_generation_from_file_1_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_generation_from_file_1_mg7 -pA -t0 -l INFO
+
+
+  # ---------------------------------------------------------------------------
+  # mg7 post-processing chaining (command interface + new output).
+  #
+  # Each job below runs a full mg7 generation and then chains one post-processing
+  # tool (time-of-flight, Pythia8, Rivet, MadSpin, reweighting) through the mg7 command
+  # interface (bin/generate_events -> the merged tool-selection question ->
+  # run_selected_tools -> MG7RunCmd), giving at least one CI check that every
+  # tool still works with the default output. The tools come from the combined
+  # `restore_heptools` cache (heptools-<os>), the same one the madevent jobs use
+  # -- restore_heptools fails loudly if that cache is missing. NB: a test that
+  # self-skips (missing runtime stack) is reported as a failure by
+  # test_manager.py, so these jobs need the real cache to be green.
+  # (Delphes has no dedicated job: it is not part of the heptools cache; the
+  #  test_delphes_mg7 method still exists and self-skips where Delphes is absent.)
+  # ---------------------------------------------------------------------------
+  acceptancetest_mg7_time_of_flight:
+    needs: build_madspace
+    # time-of-flight is a pure-python LHE post-processing (no external tool); it
+    # only needs the madspace + LHAPDF(NNPDF23) stack.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_add_time_of_flight_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_add_time_of_flight_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_pythia8:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_pythia8_shower_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_pythia8_shower_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_rivet:
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_rivet_from_file_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_rivet_from_file_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_reweight:
+    needs: build_madspace
+    # Matrix-element reweighting ships with MG5 (no external tool); it only needs
+    # the madspace + LHAPDF(NNPDF23) stack (and a Fortran compiler for the
+    # standalone reweighting matrix element, which the runner provides).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_mass_reweighting_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_mass_reweighting_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_systematics:
+    needs: build_madspace
+    # Scale/PDF systematics on the mg7 output, end to end: the mg7 LHE has no
+    # <mgrwt>, so the LO reweighting info is reconstructed from single_qcd_order.
+    # Needs the madspace + LHAPDF(NNPDF23) stack (systematics reads the PDF).
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_systematics_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_systematics_mg7 -pA -t0 -l INFO
+
+  acceptancetest_mg7_madspin:
+    needs: build_madspace
+    # MadSpin ships with MG5 (no external tool); it only needs the madspace +
+    # LHAPDF(NNPDF23) stack.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_w_production_with_ms_decay_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_w_production_with_ms_decay_mg7 -pA -t0 -l INFO
 
 

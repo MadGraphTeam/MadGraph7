@@ -2624,6 +2624,40 @@ class FLV_Coupling(PhysicsObject):
         """return all couplings"""
         return misc.make_unique(list(self['flavors'].values()))
 
+    @staticmethod
+    def get_partner_indices(key):
+        """Return the (k1, k2) partner flavor indices for one flavor key.
+
+        k1 is the flavor index of the first fermion (F1) of the vertex and k2
+        that of the second (F2); the consuming ALOHA routine fills
+        PARTNER(k1)=k2, PARTNER2(k2)=k1 and indexes VAL by k1.  For a vertex
+        with two merged fermions both indices come straight from the key.  For
+        a single merged fermion the unmerged partner is assigned flavor index
+        1, and which fermion (F1 or F2) carries the merged leg is decided by the
+        position of the non-zero entry in the key: the merged leg is F1 iff it
+        is the first entry, otherwise it is F2 (so PARTNER is filled in the
+        F1->F2 direction expected by the routine).
+
+        This is the single source of truth shared by every backend (Fortran,
+        C++, Python) so their FLV_COUPLING tables stay consistent -- keeping the
+        merged leg's position is what makes a single-merged-leg vertex such as
+        `w+ ta+ vt~` (unmerged tau, merged neutrino) work identically in all of
+        them.
+        """
+        nonzero = [i for i in key if i != 0]
+        if len(nonzero) == 2:
+            return nonzero[0], nonzero[1]
+        elif len(nonzero) == 1:
+            k = nonzero[0]
+            if key[0] == k:
+                return k, 1
+            else:
+                return 1, k
+        raise MadGraph5Error(
+            'Flavor coupling with %d merged legs is not supported (key=%s); '
+            'only one or two merged flavor legs are handled.'
+            % (len(nonzero), repr(key)))
+
     def __str__(self):
 
         max_flav = max([max([i for i in k]) for k in  self['flavors']])
@@ -2946,7 +2980,7 @@ class Vertex(PhysicsObject):
     """
     
     sorted_keys = ['id', 'legs']
-    
+
     # This sets what are the ID's of the vertices that must be ignored for the
     # purpose of the multi-channeling. 0 and -1 are ID's of various technical
     # vertices which have no relevance from the perspective of the diagram 
@@ -2980,7 +3014,6 @@ class Vertex(PhysicsObject):
         #       that it can be easily identified when constructing the DiagramChainLinks.
         self['id'] = 0
         self['legs'] = LegList()
-
     def filter(self, name, value):
         """Filter for valid vertex property values."""
 
@@ -4228,6 +4261,40 @@ class Process(PhysicsObject):
             else:
                 return [-1*abs(f) for f in legs[0].get('flavor')]
         
+    def get_initial_leg_signature(self, number):
+        """Return a flavor signature for one initial leg: the (sorted) content of
+        its multiparticle definition when it has one, else its concrete pdg.
+
+        The pdgs are kept *signed*. A beam that can only be an e+ does not span
+        the same flavors as one that can only be an e-, so "e+ e- > e+ e-" must
+        not be seen as having two interchangeable beams -- taking abs() here made
+        both beams look like "an electron", the e+ e- flavor got mirrored and the
+        cross-section came out twice too large."""
+
+        flavor = self.get_initial_flavor(number)
+        if flavor:
+            return tuple(sorted(flavor))
+        pdg = self.get_initial_pdg(number)
+        if pdg is None:
+            return tuple()
+        return (pdg,)
+
+    def has_same_initial_multiparticle(self):
+        """True when both initial legs range over the *same* set of flavors.
+
+        This is what decides whether the beam-swapped (mirror) initial state is
+        part of the process: only then was the swapped flavor combination
+        collapsed into this one and does it have to be recovered by a mirror
+        call. It must be derived from the process definition (per-beam
+        multiparticle content), not from the pdg of the matrix-element legs: with
+        flavor merging both initial legs of e.g. "u q > u q" (q = u d) carry the
+        same merged pdg, yet leg 1 is fixed to u, so "d u > u d" is *not* part of
+        the process and mirroring the u d flavor would double count it."""
+
+        return (self.get_ninitial() == 2 and
+                self.get_initial_leg_signature(1) ==
+                self.get_initial_leg_signature(2))
+
     def get_initial_final_ids(self):
         """return a tuple of two tuple containing the id of the initial/final
            state particles. Each list is ordered"""

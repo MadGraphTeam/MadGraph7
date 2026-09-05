@@ -73,7 +73,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         self.do('import model %s' % model)
         self.do('generate %s' % process)
         generated_process = self.cmd._curr_amps[0].get('process')
-        self.do('output standalone %s -f' % self.standalone_dir)
+        self.do('output standalone_fortran %s -f' % self.standalone_dir)
         self.do('output madevent %s -f' % self.madevent_dir)
 
         standalone_dir = self._get_single_subprocess_dir(

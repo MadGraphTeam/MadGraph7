@@ -16,6 +16,9 @@ int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_
     if (index_map.contains("partial_weight_product")) {
         flags |= EventRecord::f_partial_weights;
     }
+    if (index_map.contains("subprocess_index")) {
+        flags |= EventRecord::f_subproc_index;
+    }
     return flags;
 }
 
@@ -120,8 +123,8 @@ ChannelEventGenerator::ChannelEventGenerator(
         },
         [](auto sampler) {}
     };
-    std::visit(add_names, integrand.discrete_before());
-    std::visit(add_names, integrand.discrete_after());
+    std::visit(add_names, integrand.discrete_sym());
+    std::visit(add_names, integrand.discrete_flavor());
     std::optional<DiscreteOptimizer> discrete_optimizer;
     RuntimePtr discrete_histogram = nullptr;
     if (prob_names.size() > 0) {
@@ -275,6 +278,11 @@ void ChannelEventGenerator::init_field_indices() {
         _field_indices.cluster_scales = index_map.at("cluster_scales");
     } else {
         _field_indices.cluster_scales = -1;
+    }
+    if (index_map.contains("subprocess_index")) {
+        _field_indices.subprocess_index = index_map.at("subprocess_index");
+    } else {
+        _field_indices.subprocess_index = -1;
     }
     _field_indices.random = index_map.at("random");
     _field_indices.rest = _field_indices.random + 1;
@@ -552,7 +560,7 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
 
-    double w_sum = 0, w_prev = 0;
+    double w_sum = 0;
     double max_truncation = _config.max_overweight_truncation *
         std::min(_status.count_target,
                  static_cast<double>(_config.freeze_max_weight_after));
@@ -563,15 +571,14 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
         }
         w_sum += w;
         ++count;
-        if (w_sum / w - count > max_truncation) {
+        if (w_sum / w > max_truncation) {
             if (_max_weight < w) {
-                _status.count_unweighted *= _max_weight / w_prev;
-                _max_weight = w_prev;
+                _status.count_unweighted *= _max_weight / w;
+                _max_weight = w;
                 _unweighted_count = 0;
             }
             break;
         }
-        w_prev = w;
     }
     _large_weights.erase(_large_weights.begin() + count, _large_weights.end());
 }
@@ -658,6 +665,15 @@ void ChannelEventGenerator::write_events(
                 auto particle = event_buffer.particle(i, j);
                 particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
             }
+        }
+    }
+
+    if (_field_indices.subprocess_index != -1) {
+        auto subproc_view =
+            unweighted_events.at(_field_indices.subprocess_index).view<me_int_t, 1>();
+        for (std::size_t i = 0; i < subproc_view.size(); ++i) {
+            auto event = event_buffer.event(i);
+            event.subprocess_index() = subproc_view[i];
         }
     }
 

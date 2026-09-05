@@ -1,21 +1,72 @@
 #! /usr/bin/env python3
 
-import madspace as ms
+import gzip
 import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# search order for madspace package:
+#   1. a precompiled install (madspace/install/madspace)
+#   2. bundled source that still needs to be built (madspace/install.py)
+#   3. otherwise fall back to madspace is available in the environment
+_GRIDPACK_DIR = Path(os.path.realpath(__file__)).parent.parent
+_LOCAL_MADSPACE_DIR = _GRIDPACK_DIR / "madspace"
+_LOCAL_INSTALL_DIR = _LOCAL_MADSPACE_DIR / "install"
+if (_LOCAL_INSTALL_DIR / "madspace").is_dir():
+    sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
+elif (_LOCAL_MADSPACE_DIR / "install.py").is_file():
+    print()
+    print("You don't have madspace installed for this gridpack")
+    print("Running interactive madspace installation script")
+    print()
+
+    _result = subprocess.run([sys.executable, str(_LOCAL_MADSPACE_DIR / "install.py")])
+    if _result.returncode != 0:
+        raise RuntimeError("madspace installation failed — see output above")
+    sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
+
+import madspace as ms
 import glob
 import json
 import tomllib
 import argparse
 
+
+def resolve_verbosity(verbosity: str) -> str:
+    """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
+    whether stdout is attached to a terminal; other values pass through
+    unchanged."""
+    if verbosity == "auto":
+        return "pretty" if sys.stdout.isatty() else "log"
+    return verbosity
+
+
 def main() -> None:
-    # load run card and metadata
-    with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
-        run_card = tomllib.load(f)
+    # load run card and metadata. Use the RunCardMG7 representation when the
+    # madgraph package is importable; gridpacks are meant to be portable, so
+    # fall back to a plain tomllib parse otherwise (the card is the same TOML).
+    run_card_path = os.path.join("Cards", "grid_run_card.toml")
+    try:
+        from madgraph.various.banner import RunCardMG7
+        run_card = RunCardMG7(run_card_path)
+    except ImportError:
+        with open(run_card_path, "rb") as f:
+            run_card = tomllib.load(f)
     run_args = run_card["run"]
     gen_args = run_card["generation"]
     param_card_path = os.path.join("Cards", "param_card.dat")
     with open(os.path.join("data", "data.json")) as f:
         madspace_data = json.load(f)
+    if madspace_data["source_hash"] != ms.SOURCE_HASH:
+        print()
+        print(
+            "\033[1m\033[31mWARNING\033[39m: The madspace version is not identical "
+            "to the one used to generate the gridpack. This can lead to errors or "
+            "incorrect results\033[0m"
+        )
+        print()
 
     # parse command line arguments
     parser = argparse.ArgumentParser()
@@ -31,7 +82,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log"]
+        choices=["none", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -65,9 +116,10 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["devices"]
+    device_names = args.device if args.device else run_args["device"]
+    cpu_mode = run_args["cpu_mode"]
     contexts = []
-    device_types = []
+    backends = []
     for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
@@ -75,7 +127,9 @@ def main() -> None:
         else:
             device_type = device_name
             device_index = 0
-        device_types.append(device_type)
+        # cpu_mode names the SIMD width of the CPU code, so it applies to the
+        # 'cpu' devices only: cuda/hip build the backend named after the device.
+        backends.append(cpu_mode if device_type == "cpu" else device_type)
         if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
@@ -94,18 +148,18 @@ def main() -> None:
     config.freeze_max_weight_after = args.freeze_max_weight_after
     config.cpu_batch_size = args.cpu_batch_size
     config.gpu_batch_size = args.gpu_batch_size
-    config.verbosity = args.verbosity
+    config.verbosity = resolve_verbosity(args.verbosity)
     config.combine_thread_count = run_args["combine_thread_pool_size"]
     config.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context, device_type in zip(contexts, device_types):
+    for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=device_type), param_card_path
+                me_path.format(device=backend), param_card_path
             )
 
     # set up generators
@@ -122,7 +176,7 @@ def main() -> None:
     event_generator = ms.EventGenerator(
         contexts=contexts,
         channels=channel_generators,
-        status_file=os.path.join(run_path, "info.json"),
+        status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
     )
 
@@ -140,9 +194,18 @@ def main() -> None:
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
-        event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
-        )
+        lhe_path = os.path.join(run_path, "events.lhe")
+        event_generator.combine_to_lhe(lhe_path, lhe_completer)
+        # Ship the LHE compressed, as the launcher that produced this gridpack
+        # does: the file is large and very compressible, and the consumers of
+        # an mg7 event file accept either form. The stdlib is used rather than
+        # madgraph.various.misc.gzip because a gridpack is meant to run without
+        # a madgraph installation, and copyfileobj streams the file instead of
+        # holding it in memory.
+        with open(lhe_path, "rb") as fin, \
+                gzip.open(lhe_path + ".gz", "wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        os.remove(lhe_path)
     else:
         raise ValueError("Unknown output format")
 

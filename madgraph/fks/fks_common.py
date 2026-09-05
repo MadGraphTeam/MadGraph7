@@ -196,14 +196,19 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
                                for d in born_confs]
 
 
-    real_tags = [FKSDiagramTag(d['diagram'], 
-                               real_amp.get('process').get('model')) \
-                               for d in good_diags ]
+    # Dropping a duplicated tag has to drop its diagram with it: the two are
+    # walked in lockstep below, real_tags.index giving the position popped out
+    # of good_diags, so a tag left without its diagram misaligns everything
+    # after it. Which of two equal tags survives is decided by the order they
+    # come in, so keeping them apart also made the result order dependent.
     real_tags = []
+    kept_diags = []
     for d in good_diags:
         tag = FKSDiagramTag(d['diagram'], real_amp.get('process').get('model'))
         if not tag in real_tags:
             real_tags.append(tag)
+            kept_diags.append(d)
+    good_diags = kept_diags
 
     # and compare them
     if len(born_tags) != len(real_tags):

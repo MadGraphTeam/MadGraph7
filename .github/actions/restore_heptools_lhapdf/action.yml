@@ -38,4 +38,23 @@ runs:
       if: ${{ env.CACHE_KEY  == 'lhapdf-ubuntu24' }}
       run: |
         echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages" >> $GITHUB_ENV
-      shell: bash 
+      shell: bash
+
+    # The mg7 run_card.toml default PDF (NNPDF40MC_lo_as_01180). warm_cache.yml
+    # bakes it into the lhapdf cache, but that cache is only rebuilt when
+    # warm_cache runs with a reset, so a branch that changes the default would
+    # otherwise face a cache that predates it: the mg7 tests guard on the set
+    # being present and would all self-skip (test_manager.py counts a skip as a
+    # failure). Fetching it here costs ~0.7 MB and is a no-op once the cache
+    # carries it. Non-fatal on failure: the tests skip as they did before.
+    - name: ensure the mg7 default PDF set is present
+      run: |
+        DATADIR=/home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
+        SET=NNPDF40MC_lo_as_01180
+        if [ -d "$DATADIR" ] && [ ! -d "$DATADIR/$SET" ]; then
+          ( cd "$DATADIR" \
+            && wget -q https://lhapdfsets.web.cern.ch/current/$SET.tar.gz \
+            && tar -xzpf $SET.tar.gz \
+            && rm -f $SET.tar.gz ) || echo "::warning::could not fetch $SET"
+        fi
+      shell: bash

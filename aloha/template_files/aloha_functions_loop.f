@@ -3042,3 +3042,43 @@ c         end if
 c
       return
       end
+
+      subroutine sumw_1(w1, w2, wout)
+c
+c     Sum two currents standing for the same off shell line: the four
+c     gluon current and the pair of three gluon vertices it factorises
+c     into carry the same colour factor, so the amplitude reading the sum
+c     gets both contributions from a single call. See
+c     HelasMatrixElement.get_quartic_current_sums.
+c
+c     The two share their momentum, so only the wavefunction is added and
+c     everything else is taken over from the first one.
+c
+          use ALOHA_OBJECT
+      implicit none
+      type(aloha) w1
+      type(aloha) w2
+      type(aloha) wout
+
+      wout = w1
+      wout%W(:) = w1%W(:) + w2%W(:)
+
+      return
+      end
+
+
+      subroutine subw_1(w1, w2, wout)
+c
+c     As sumw_1, for the contributions which enter with a minus sign.
+c
+          use ALOHA_OBJECT
+      implicit none
+      type(aloha) w1
+      type(aloha) w2
+      type(aloha) wout
+
+      wout = w1
+      wout%W(:) = w1%W(:) - w2%W(:)
+
+      return
+      end

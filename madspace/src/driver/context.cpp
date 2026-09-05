@@ -10,6 +10,10 @@
 using namespace madspace;
 using json = nlohmann::json;
 
+namespace {
+UmamiStatus umami_key_query_not_implemented(bool const**, int*) { return UMAMI_ERROR_NOT_IMPLEMENTED; }
+} // namespace
+
 MatrixElementApi::MatrixElementApi(
     const std::string& file,
     const std::string& param_card,
@@ -34,6 +38,30 @@ MatrixElementApi::MatrixElementApi(
         throw std::runtime_error(
             std::format("Did not find symbol umami_get_meta in shared object {}", file)
         );
+    }
+
+    // These symbols are optional: implementations may not report which keys they
+    // support, in which case queries for that information fail with
+    // UMAMI_ERROR_NOT_IMPLEMENTED instead of the constructor throwing.
+    _supported_inputs = reinterpret_cast<decltype(&umami_supported_inputs)>(
+        dlsym(_shared_lib.get(), "umami_supported_inputs")
+    );
+    if (_supported_inputs == nullptr) {
+        _supported_inputs = umami_key_query_not_implemented;
+    }
+
+    _required_inputs = reinterpret_cast<decltype(&umami_required_inputs)>(
+        dlsym(_shared_lib.get(), "umami_required_inputs")
+    );
+    if (_required_inputs == nullptr) {
+        _required_inputs = umami_key_query_not_implemented;
+    }
+
+    _supported_outputs = reinterpret_cast<decltype(&umami_supported_outputs)>(
+        dlsym(_shared_lib.get(), "umami_supported_outputs")
+    );
+    if (_supported_outputs == nullptr) {
+        _supported_outputs = umami_key_query_not_implemented;
     }
 
     _initialize = reinterpret_cast<decltype(&umami_initialize)>(
@@ -275,6 +303,34 @@ void Context::load_globals(const std::string& dir) {
         );
         global_tensor.copy_from(tensor);
     }
+}
+
+Tensor Context::cached_tensor(std::size_t size) {
+    auto& tensors = _tensor_cache.get();
+    int largest_unused = -1, size_pos = 0;
+    for (int i = 0; auto& tensor : tensors) {
+        std::size_t byte_size = tensor.byte_size();
+        if (size >= byte_size) {
+            size_pos = i;
+        }
+        if (tensor.is_only_reference()) {
+            if (byte_size >= size) {
+                return tensor;
+            }
+            largest_unused = i;
+        }
+        ++i;
+    }
+    if (largest_unused != -1) {
+        tensors.erase(tensors.begin() + largest_unused);
+        if (size_pos > largest_unused) {
+            --size_pos;
+        }
+    }
+    std::size_t word_count = (size + 7) / 8;
+    Tensor new_tensor(DataType::dt_float, {word_count}, device());
+    tensors.insert(tensors.begin() + size_pos, new_tensor);
+    return new_tensor;
 }
 
 ContextPtr madspace::default_context() {

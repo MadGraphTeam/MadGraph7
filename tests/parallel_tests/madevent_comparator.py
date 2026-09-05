@@ -749,8 +749,8 @@ class MG5RunnerMG7Aligned(MG5Runner):
     run_card.toml defaults, so its cross-section is directly comparable with
     :class:`MG7Runner`.
 
-    Matched settings: e_cm = 13 TeV (ebeam 6500 each), PDF NNPDF23_lo_as_0130_qed
-    (lhaid 247000), the dynamical HT/2 scale (dynamical_scale_choice=3, which is
+    Matched settings: e_cm = 13 TeV (ebeam 6500 each), PDF NNPDF40MC_lo_as_01180
+    (lhaid 338500), the dynamical HT/2 scale (dynamical_scale_choice=3, which is
     the madevent equivalent of mg7's ``half_transverse_mass``), and the mg7 jet
     cuts (pt>20, |eta|<5, dR>0.4).  Returns the total cross-section under the
     'cross' key so the comparison is total-to-total.
@@ -758,9 +758,10 @@ class MG5RunnerMG7Aligned(MG5Runner):
 
     name = 'MadGraph madevent (mg7-aligned)'
     type = 'v5_mg7aligned'
-    # lhaid for NNPDF23_lo_as_0130_qed (the mg7 run_card.toml default PDF), so
-    # both sides use exactly the same LHAPDF set.
-    lhaid = 247000
+    # lhaid for NNPDF40MC_lo_as_01180 (the mg7 run_card.toml default PDF), so
+    # both sides use exactly the same LHAPDF set. Must be kept in sync with the
+    # [beam] pdf default in banner.py.
+    lhaid = 338500
 
     def format_mg5_proc_card(self, proc_list, model, orders):
         if model != 'mssm':
@@ -781,7 +782,7 @@ class MG5RunnerMG7Aligned(MG5Runner):
         # --- align with the mg7 run_card.toml -------------------------------
         v5_string += "set ebeam1 6500\n"
         v5_string += "set ebeam2 6500\n"
-        # Use exactly the mg7 run_card.toml PDF (NNPDF23_lo_as_0130_qed) via
+        # Use exactly the mg7 run_card.toml PDF (NNPDF40MC_lo_as_01180) via
         # LHAPDF, now that the AlphaS_FlavorScheme metadata hotfix patches the
         # source set in pdfsets_dir.
         v5_string += "set pdlabel lhapdf\n"
@@ -854,10 +855,10 @@ class MG5OldRunner(MG5Runner):
         devnull = open(os.devnull,'w') 
 
         if logging.root.level >=20:
-            subprocess.call([pjoin(self.mg5_path,'bin','mg5_aMC'), proc_card_location],
+            subprocess.call([pjoin(self.mg5_path,'bin','madgraph'), proc_card_location],
                         stdout=devnull, stderr=devnull)
         else:       
-            subprocess.call([pjoin(self.mg5_path,'bin','mg5_aMC'), proc_card_location])
+            subprocess.call([pjoin(self.mg5_path,'bin','madgraph'), proc_card_location])
         os.remove(proc_card_location)
 
         values = self.get_values()
