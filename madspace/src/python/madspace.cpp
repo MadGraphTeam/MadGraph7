@@ -3,6 +3,7 @@
 #include <pybind11/stl.h>
 #include <sstream>
 
+#include "docstrings.hpp"
 #include "function_runtime.hpp"
 #include "instruction_set.hpp"
 #include "madspace/compgraphs.hpp"
@@ -72,10 +73,11 @@ void add_enum(
     ParentType& parent,
     const char* enum_name,
     std::initializer_list<std::pair<const std::string, EnumType>> values,
-    const std::string& prefix = ""
+    const std::string& prefix = "",
+    const char* doc = ""
 ) {
     std::unordered_map<std::string, EnumType> str_to_enum_map(values);
-    py::enum_<EnumType> enumeration(parent, enum_name);
+    py::enum_<EnumType> enumeration(parent, enum_name, doc);
     for (auto& [key, value] : values) {
         enumeration.value((prefix + key).c_str(), value);
     }
@@ -136,28 +138,37 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"int", DataType::dt_int},
             {"float", DataType::dt_float},
             {"batch_sizes", DataType::batch_sizes},
-        }
+        },
+        "",
+        pydoc::doc("DataType")
     );
 
-    py::classh<BatchSize>(m, "BatchSize")
+    py::classh<BatchSize>(m, "BatchSize", pydoc::doc("BatchSize"))
         .def(py::init<>())
-        .def(py::init<std::string>(), py::arg("name"))
-        .def_readonly_static("one", &BatchSize::one)
+        .def(
+            py::init<std::string>(), py::arg("name"), pydoc::doc("BatchSize::BatchSize")
+        )
+        .def_readonly_static("one", &BatchSize::one, pydoc::doc("BatchSize::one"))
         .def("__str__", &to_string<BatchSize>)
         .def("__repr__", &to_string<BatchSize>);
     m.attr("batch_size") = py::cast(batch_size);
 
-    py::classh<Type>(m, "Type")
+    py::classh<Type>(m, "Type", pydoc::doc("Type"))
         .def(
             py::init<DataType, BatchSize, std::vector<int>>(),
             py::arg("dtype"),
             py::arg("batch_size"),
-            py::arg("shape")
+            py::arg("shape"),
+            pydoc::doc("Type::Type")
         )
-        .def(py::init<std::vector<BatchSize>>(), py::arg("batch_size_list"))
-        .def_readonly("dtype", &Type::dtype)
-        .def_readonly("batch_size", &Type::batch_size)
-        .def_readonly("shape", &Type::shape)
+        .def(
+            py::init<std::vector<BatchSize>>(),
+            py::arg("batch_size_list"),
+            pydoc::doc("Type::Type#2")
+        )
+        .def_readonly("dtype", &Type::dtype, pydoc::doc("Type::dtype"))
+        .def_readonly("batch_size", &Type::batch_size, pydoc::doc("Type::batch_size"))
+        .def_readonly("shape", &Type::shape, pydoc::doc("Type::shape"))
         .def("__str__", &to_string<Type>)
         .def("__repr__", &to_string<Type>);
     m.attr("single_float") = py::cast(single_float);
@@ -169,45 +180,68 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("batch_float_array", &batch_float_array, py::arg("count"));
     m.def("batch_four_vec_array", &batch_four_vec_array, py::arg("count"));
 
-    py::classh<InstrCopy>(m, "Instruction")
+    py::classh<InstrCopy>(m, "Instruction", pydoc::doc("Instruction"))
         .def("__str__", [](const InstrCopy& instr) { return instr.name; })
-        .def_readonly("name", &InstrCopy::name)
-        .def_readonly("opcode", &InstrCopy::opcode);
+        .def_readonly("name", &InstrCopy::name, pydoc::doc("Instruction::name"))
+        .def_readonly("opcode", &InstrCopy::opcode, pydoc::doc("Instruction::opcode"));
 
-    py::classh<Value>(m, "Value")
-        .def(py::init<me_int_t>(), py::arg("value"))
-        .def(py::init<double>(), py::arg("value"))
+    py::classh<Value>(m, "Value", pydoc::doc("Value"))
+        .def(py::init<me_int_t>(), py::arg("value"), pydoc::doc("Value::Value#2"))
+        .def(py::init<double>(), py::arg("value"), pydoc::doc("Value::Value#3"))
         .def("__str__", &to_string<Value>)
         .def("__repr__", &to_string<Value>)
-        .def_readonly("type", &Value::type)
-        .def_readonly("literal_value", &Value::literal_value)
-        .def_readonly("local_index", &Value::local_index);
+        .def_readonly("type", &Value::type, pydoc::doc("Value::type"))
+        .def_readonly(
+            "literal_value", &Value::literal_value, pydoc::doc("Value::literal_value")
+        )
+        .def_readonly(
+            "local_index", &Value::local_index, pydoc::doc("Value::local_index")
+        );
     py::implicitly_convertible<me_int_t, Value>();
     py::implicitly_convertible<double, Value>();
 
     named_vector_instance<Value>(m, "NamedValues");
     named_vector_instance<Type>(m, "NamedTypes");
 
-    py::classh<InstructionCall>(m, "InstructionCall")
+    py::classh<InstructionCall>(m, "InstructionCall", pydoc::doc("InstructionCall"))
         .def("__str__", &to_string<InstructionCall>)
         .def("__repr__", &to_string<InstructionCall>)
         .def_property_readonly(
             "instruction",
-            [](const InstructionCall& call) -> InstrCopy { return call.instruction; }
+            [](const InstructionCall& call) -> InstrCopy { return call.instruction; },
+            pydoc::doc("InstructionCall::instruction")
         )
-        .def_readonly("inputs", &InstructionCall::inputs)
-        .def_readonly("outputs", &InstructionCall::outputs);
+        .def_readonly(
+            "inputs", &InstructionCall::inputs, pydoc::doc("InstructionCall::inputs")
+        )
+        .def_readonly(
+            "outputs", &InstructionCall::outputs, pydoc::doc("InstructionCall::outputs")
+        );
 
-    py::classh<Function>(m, "Function", py::dynamic_attr())
+    py::classh<Function>(m, "Function", pydoc::doc("Function"), py::dynamic_attr())
         .def("__str__", &to_string<Function>)
         .def("__repr__", &to_string<Function>)
-        .def("save", &Function::save, py::arg("file"))
-        .def_static("load", &Function::load, py::arg("file"))
-        .def_property_readonly("inputs", &Function::inputs)
-        .def_property_readonly("outputs", &Function::outputs)
-        .def_property_readonly("locals", &Function::locals)
-        .def_property_readonly("globals", &Function::globals)
-        .def_property_readonly("instructions", &Function::instructions);
+        .def("save", &Function::save, py::arg("file"), pydoc::doc("Function::save"))
+        .def_static(
+            "load", &Function::load, py::arg("file"), pydoc::doc("Function::load")
+        )
+        .def_property_readonly(
+            "inputs", &Function::inputs, pydoc::doc("Function::inputs")
+        )
+        .def_property_readonly(
+            "outputs", &Function::outputs, pydoc::doc("Function::outputs")
+        )
+        .def_property_readonly(
+            "locals", &Function::locals, pydoc::doc("Function::locals")
+        )
+        .def_property_readonly(
+            "globals", &Function::globals, pydoc::doc("Function::globals")
+        )
+        .def_property_readonly(
+            "instructions",
+            &Function::instructions,
+            pydoc::doc("Function::instructions")
+        );
 
     py::classh<Device> device(m, "Device");
     m.def("cpu_device", &cpu_device, py::return_value_policy::reference);
@@ -290,42 +324,76 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("call_backward", &FunctionRuntime::call_backward);
 
     auto& fb =
-        py::classh<FunctionBuilder>(m, "FunctionBuilder")
+        py::classh<FunctionBuilder>(m, "FunctionBuilder", pydoc::doc("FunctionBuilder"))
             .def(
                 py::init<const NamedVector<Type>&, const NamedVector<Type>&>(),
                 py::arg("input_types"),
-                py::arg("output_types")
+                py::arg("output_types"),
+                pydoc::doc("FunctionBuilder::FunctionBuilder")
             )
-            .def("input", &FunctionBuilder::input, py::arg("index"))
+            .def(
+                "input",
+                &FunctionBuilder::input,
+                py::arg("index"),
+                pydoc::doc("FunctionBuilder::input")
+            )
             .def(
                 "input_range",
                 &FunctionBuilder::input_range,
                 py::arg("start_index"),
-                py::arg("end_index")
+                py::arg("end_index"),
+                pydoc::doc("FunctionBuilder::input_range")
             )
-            .def("output", &FunctionBuilder::output, py::arg("index"), py::arg("value"))
+            .def(
+                "output",
+                &FunctionBuilder::output,
+                py::arg("index"),
+                py::arg("value"),
+                pydoc::doc("FunctionBuilder::output")
+            )
             .def(
                 "output_range",
                 &FunctionBuilder::output_range,
                 py::arg("start_index"),
-                py::arg("values")
+                py::arg("values"),
+                pydoc::doc("FunctionBuilder::output_range")
             )
             .def(
                 "get_global",
                 &FunctionBuilder::global,
                 py::arg("name"),
                 py::arg("dtype"),
-                py::arg("shape")
+                py::arg("shape"),
+                pydoc::doc("FunctionBuilder::global")
             )
             //.def("instruction", &FunctionBuilder::instruction, py::arg("name"),
             // py::arg("args"))
-            .def("product", &FunctionBuilder::product, py::arg("values"))
-            .def("current_stream", &FunctionBuilder::current_stream)
-            .def("set_current_stream", &FunctionBuilder::set_current_stream)
-            .def("function", &FunctionBuilder::function);
+            .def(
+                "product",
+                &FunctionBuilder::product,
+                py::arg("values"),
+                pydoc::doc("FunctionBuilder::product")
+            )
+            .def(
+                "current_stream",
+                &FunctionBuilder::current_stream,
+                pydoc::doc("FunctionBuilder::current_stream")
+            )
+            .def(
+                "set_current_stream",
+                &FunctionBuilder::set_current_stream,
+                pydoc::doc("FunctionBuilder::set_current_stream")
+            )
+            .def(
+                "function",
+                &FunctionBuilder::function,
+                pydoc::doc("FunctionBuilder::function")
+            );
     add_instructions(fb);
 
-    py::classh<Mapping, PyMapping>(m, "Mapping", py::dynamic_attr())
+    py::classh<Mapping, PyMapping>(
+        m, "Mapping", pydoc::doc("Mapping"), py::dynamic_attr()
+    )
         .def(
             py::init<
                 const std::string&,
@@ -335,10 +403,19 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("name"),
             py::arg("input_types"),
             py::arg("output_types"),
-            py::arg("condition_types")
+            py::arg("condition_types"),
+            pydoc::doc("Mapping::Mapping")
         )
-        .def("forward_function", &Mapping::forward_function)
-        .def("inverse_function", &Mapping::inverse_function)
+        .def(
+            "forward_function",
+            &Mapping::forward_function,
+            pydoc::doc("Mapping::forward_function")
+        )
+        .def(
+            "inverse_function",
+            &Mapping::inverse_function,
+            pydoc::doc("Mapping::inverse_function")
+        )
         .def(
             "build_forward",
             py::overload_cast<FunctionBuilder&, const ValueVec&, const ValueVec&>(
@@ -346,7 +423,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             ),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_forward")
         )
         .def(
             "build_forward",
@@ -356,7 +434,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Value>&>(&Mapping::build_forward, py::const_),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_forward")
         )
         .def(
             "build_inverse",
@@ -365,7 +444,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             ),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_inverse")
         )
         .def(
             "build_inverse",
@@ -375,11 +455,12 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Value>&>(&Mapping::build_inverse, py::const_),
             py::arg("builder"),
             py::arg("inputs"),
-            py::arg("conditions")
+            py::arg("conditions"),
+            pydoc::doc("Mapping::build_inverse")
         );
 
     py::classh<FunctionGenerator, PyFunctionGenerator>(
-        m, "FunctionGenerator", py::dynamic_attr()
+        m, "FunctionGenerator", pydoc::doc("FunctionGenerator"), py::dynamic_attr()
     )
         .def(
             py::init<
@@ -388,16 +469,22 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const NamedVector<Type>&>(),
             py::arg("name"),
             py::arg("arg_types"),
-            py::arg("return_types")
+            py::arg("return_types"),
+            pydoc::doc("FunctionGenerator::FunctionGenerator")
         )
-        .def("function", &FunctionGenerator::function)
+        .def(
+            "function",
+            &FunctionGenerator::function,
+            pydoc::doc("FunctionGenerator::function")
+        )
         .def(
             "build_function",
             py::overload_cast<FunctionBuilder&, const ValueVec&>(
                 &FunctionGenerator::build_function, py::const_
             ),
             py::arg("builder"),
-            py::arg("args")
+            py::arg("args"),
+            pydoc::doc("FunctionGenerator::build_function")
         )
         .def(
             "build_function",
@@ -405,56 +492,82 @@ PYBIND11_MODULE(_madspace_py, m) {
                 &FunctionGenerator::build_function, py::const_
             ),
             py::arg("builder"),
-            py::arg("args")
+            py::arg("args"),
+            pydoc::doc("FunctionGenerator::build_function")
         );
 
-    py::classh<Invariant, Mapping>(m, "Invariant")
+    py::classh<Invariant, Mapping>(m, "Invariant", pydoc::doc("Invariant"))
         .def(
             py::init<double, double, double>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            pydoc::doc("Invariant::Invariant")
         );
 
-    py::classh<Luminosity, Mapping>(m, "Luminosity")
+    py::classh<Luminosity, Mapping>(m, "Luminosity", pydoc::doc("Luminosity"))
         .def(
             py::init<double, double, double, double, double, double>(),
             py::arg("s_lab"),
             py::arg("s_hat_min"),
             py::arg("s_hat_max") = 0.,
-            py::arg("invariant_power") = 0.,
+            py::arg("invariant_power") = 1.,
             py::arg("mass") = 0.,
-            py::arg("width") = 0.
+            py::arg("width") = 0.,
+            pydoc::doc("Luminosity::Luminosity")
         );
 
-    py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay")
-        .def(py::init<bool>(), py::arg("com"));
+    py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
+        .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
+        .def(
+            "random_dim",
+            &TwoBodyDecay::random_dim,
+            pydoc::doc("TwoBodyDecay::random_dim")
+        );
 
-    py::classh<TwoToTwoParticleScattering, Mapping>(m, "TwoToTwoParticleScattering")
+    py::classh<TwoToTwoParticleScattering, Mapping>(
+        m, "TwoToTwoParticleScattering", pydoc::doc("TwoToTwoParticleScattering")
+    )
         .def(
             py::init<bool, double, double, double, bool>(),
             py::arg("com"),
             py::arg("invariant_power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
-            py::arg("has_cut") = false
+            py::arg("has_cut") = false,
+            pydoc::doc("TwoToTwoParticleScattering::TwoToTwoParticleScattering")
         );
 
-    py::classh<DoubleT, Mapping>(m, "DoubleT")
+    py::classh<DoubleT, Mapping>(m, "DoubleT", pydoc::doc("DoubleT"))
         .def(
-            py::init<double, double, double, double, double, double>(),
+            py::init<double, double, double, double, double, double, bool>(),
             py::arg("t1_invariant_power") = 0.,
             py::arg("t1_mass") = 0.,
             py::arg("t1_width") = 0.,
             py::arg("t2_invariant_power") = 0.,
             py::arg("t2_mass") = 0.,
-            py::arg("t2_width") = 0.
+            py::arg("t2_width") = 0.,
+            py::arg("has_cut") = false,
+            pydoc::doc("DoubleT::DoubleT")
         );
 
-    py::classh<ThreeBodyDecay, Mapping>(m, "ThreeBodyDecay")
-        .def(py::init<bool>(), py::arg("com"));
+    py::classh<ThreeBodyDecay, Mapping>(
+        m, "ThreeBodyDecay", pydoc::doc("ThreeBodyDecay")
+    )
+        .def(
+            py::init<bool>(),
+            py::arg("com"),
+            pydoc::doc("ThreeBodyDecay::ThreeBodyDecay")
+        )
+        .def(
+            "random_dim",
+            &ThreeBodyDecay::random_dim,
+            pydoc::doc("ThreeBodyDecay::random_dim")
+        );
 
-    py::classh<TwoToThreeParticleScattering, Mapping>(m, "TwoToThreeParticleScattering")
+    py::classh<TwoToThreeParticleScattering, Mapping>(
+        m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
+    )
         .def(
             py::init<double, double, double, double, double, double, bool>(),
             py::arg("t_invariant_power") = 0.,
@@ -463,10 +576,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_invariant_power") = 0.,
             py::arg("s_mass") = 0.,
             py::arg("s_width") = 0.,
-            py::arg("has_cut") = false
+            py::arg("has_cut") = false,
+            pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
+        )
+        .def(
+            "discrete_dim",
+            &TwoToThreeParticleScattering::discrete_dim,
+            pydoc::doc("TwoToThreeParticleScattering::discrete_dim")
         );
 
-    py::classh<Propagator>(m, "Propagator")
+    py::classh<Propagator>(m, "Propagator", pydoc::doc("Propagator"))
         .def(
             py::init<double, double, int, double, double, int>(),
             py::arg("mass") = 0.,
@@ -476,23 +595,36 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("e_max") = 0.,
             py::arg("pdg_id") = 0
         )
-        .def_readonly("mass", &Propagator::mass)
-        .def_readonly("width", &Propagator::width)
-        .def_readonly("integration_order", &Propagator::integration_order)
-        .def_readonly("e_min", &Propagator::e_min)
-        .def_readonly("e_max", &Propagator::e_max)
-        .def_readonly("pdg_id", &Propagator::pdg_id);
+        .def_readonly("mass", &Propagator::mass, pydoc::doc("Propagator::mass"))
+        .def_readonly("width", &Propagator::width, pydoc::doc("Propagator::width"))
+        .def_readonly(
+            "integration_order",
+            &Propagator::integration_order,
+            pydoc::doc("Propagator::integration_order")
+        )
+        .def_readonly("e_min", &Propagator::e_min, pydoc::doc("Propagator::e_min"))
+        .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
+        .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"));
 
-    py::classh<TPropagatorMapping, Mapping>(m, "TPropagatorMapping")
+    py::classh<TPropagatorMapping, Mapping>(
+        m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
+    )
         .def(
             py::init<std::vector<std::size_t>, double, std::vector<double>>(),
             py::arg("integration_order"),
-            py::arg("invariant_power") = 0.,
-            py::arg("pt_min") = std::vector<double>{}
+            py::arg("invariant_power") = 0.8,
+            py::arg("pt_min") = std::vector<double>{},
+            pydoc::doc("TPropagatorMapping::TPropagatorMapping")
         )
-        .def("random_dim", &TPropagatorMapping::random_dim);
+        .def(
+            "random_dim",
+            &TPropagatorMapping::random_dim,
+            pydoc::doc("TPropagatorMapping::random_dim")
+        );
 
-    py::classh<ColorOrderedMapping, Mapping>(m, "ColorOrderedMapping")
+    py::classh<ColorOrderedMapping, Mapping>(
+        m, "ColorOrderedMapping", pydoc::doc("ColorOrderedMapping")
+    )
         .def(
             py::init<
                 std::vector<std::size_t>,
@@ -502,43 +634,103 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>>(),
             py::arg("color_order"),
-            py::arg("t_invariant_power") = 0.,
-            py::arg("s_invariant_power") = 0.,
+            py::arg("t_invariant_power") = 0.8,
+            py::arg("s_invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
-            py::arg("dr_min") = std::vector<std::vector<double>>{}
+            py::arg("dr_min") = std::vector<std::vector<double>>{},
+            pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
-        .def("random_dim", &ColorOrderedMapping::random_dim)
-        .def("discrete_dim", &ColorOrderedMapping::discrete_dim);
+        .def(
+            "random_dim",
+            &ColorOrderedMapping::random_dim,
+            pydoc::doc("ColorOrderedMapping::random_dim")
+        )
+        .def(
+            "discrete_dim",
+            &ColorOrderedMapping::discrete_dim,
+            pydoc::doc("ColorOrderedMapping::discrete_dim")
+        );
 
-    py::classh<VegasHistogram, FunctionGenerator>(m, "VegasHistogram")
+    py::classh<ChiliMapping, Mapping>(m, "ChiliMapping", pydoc::doc("ChiliMapping"))
+        .def(
+            py::init<
+                std::size_t,
+                const std::vector<double>&,
+                const std::vector<double>&>(),
+            py::arg("n_particles"),
+            py::arg("y_max"),
+            py::arg("pt_min"),
+            pydoc::doc("ChiliMapping::ChiliMapping")
+        )
+        .def(
+            "random_dim",
+            &ChiliMapping::random_dim,
+            pydoc::doc("ChiliMapping::random_dim")
+        );
+
+    py::classh<VegasHistogram, FunctionGenerator>(
+        m, "VegasHistogram", pydoc::doc("VegasHistogram")
+    )
         .def(
             py::init<std::size_t, std::size_t>(),
             py::arg("dimension"),
-            py::arg("bin_count")
+            py::arg("bin_count"),
+            pydoc::doc("VegasHistogram::VegasHistogram")
         );
 
-    py::classh<VegasMapping, Mapping>(m, "VegasMapping")
+    py::classh<VegasMapping, Mapping>(m, "VegasMapping", pydoc::doc("VegasMapping"))
         .def(
             py::init<std::size_t, std::size_t, const std::string&>(),
             py::arg("dimension"),
             py::arg("bin_count"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("VegasMapping::VegasMapping")
         )
-        .def("grid_name", &VegasMapping::grid_name)
         .def(
-            "initialize_globals", &VegasMapping::initialize_globals, py::arg("context")
+            "grid_name", &VegasMapping::grid_name, pydoc::doc("VegasMapping::grid_name")
+        )
+        .def(
+            "initialize_globals",
+            &VegasMapping::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("VegasMapping::initialize_globals")
+        )
+        .def(
+            "dimension", &VegasMapping::dimension, pydoc::doc("VegasMapping::dimension")
+        )
+        .def(
+            "bin_count", &VegasMapping::bin_count, pydoc::doc("VegasMapping::bin_count")
         );
 
-    py::classh<FastRamboMapping, Mapping>(m, "FastRamboMapping")
+    py::classh<FastRamboMapping, Mapping>(
+        m, "FastRamboMapping", pydoc::doc("FastRamboMapping")
+    )
         .def(
-            py::init<std::size_t, bool>(), py::arg("n_particles"), py::arg("massless")
+            py::init<std::size_t, bool, bool>(),
+            py::arg("n_particles"),
+            py::arg("massless"),
+            py::arg("com") = true,
+            pydoc::doc("FastRamboMapping::FastRamboMapping")
+        )
+        .def(
+            "random_dim",
+            &FastRamboMapping::random_dim,
+            pydoc::doc("FastRamboMapping::random_dim")
         );
 
-    py::classh<MultiChannelMapping, Mapping>(m, "MultiChannelMapping")
-        .def(py::init<std::vector<std::shared_ptr<Mapping>>&>(), py::arg("mappings"));
+    py::classh<MultiChannelMapping, Mapping>(
+        m, "MultiChannelMapping", pydoc::doc("MultiChannelMapping")
+    )
+        .def(
+            py::init<std::vector<std::shared_ptr<Mapping>>&>(),
+            py::arg("mappings"),
+            pydoc::doc("MultiChannelMapping::MultiChannelMapping")
+        );
 
-    auto obs = py::classh<Observable, FunctionGenerator>(m, "Observable");
+    auto obs = py::classh<Observable, FunctionGenerator>(
+        m, "Observable", pydoc::doc("Observable")
+    );
     add_enum<Observable::ObservableOption>(
         obs,
         "ObservableOption",
@@ -582,7 +774,8 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("order_observable") = std::nullopt,
            py::arg("order_indices") = std::vector<int>{},
            py::arg("ignore_incoming") = true,
-           py::arg("name") = ""
+           py::arg("name") = "",
+           pydoc::doc("Observable::Observable")
     )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
@@ -590,7 +783,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly_static("missing_pids", &Observable::missing_pids)
         .def_readonly_static("photon_pids", &Observable::photon_pids);
 
-    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts");
+    auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
         "CutMode",
@@ -599,7 +792,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"all", Cuts::all},
         }
     );
-    py::classh<Cuts::CutItem>(m, "CutItem")
+    py::classh<Cuts::CutItem>(m, "CutItem", pydoc::doc("Cuts::CutItem"))
         .def(
             py::init<Observable, double, double, Cuts::CutMode>(),
             py::arg("observable"),
@@ -607,19 +800,33 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max") = std::numeric_limits<double>::infinity(),
             py::arg("mode") = Cuts::CutMode::all
         )
-        .def_readonly("observable", &Cuts::CutItem::observable)
-        .def_readonly("min", &Cuts::CutItem::min)
-        .def_readonly("max", &Cuts::CutItem::max)
-        .def_readonly("mode", &Cuts::CutItem::mode);
-    cuts.def(py::init<const std::vector<Cuts::CutItem>&>(), py::arg("cut_data"))
-        .def(py::init<std::size_t>(), py::arg("particle_count"))
-        .def("sqrt_s_min", &Cuts::sqrt_s_min)
-        .def("eta_max", &Cuts::eta_max)
-        .def("pt_min", &Cuts::pt_min)
-        .def("m_inv_min", &Cuts::m_inv_min)
-        .def("dr_min", &Cuts::dr_min);
+        .def_readonly(
+            "observable",
+            &Cuts::CutItem::observable,
+            pydoc::doc("Cuts::CutItem::observable")
+        )
+        .def_readonly("min", &Cuts::CutItem::min, pydoc::doc("Cuts::CutItem::min"))
+        .def_readonly("max", &Cuts::CutItem::max, pydoc::doc("Cuts::CutItem::max"))
+        .def_readonly("mode", &Cuts::CutItem::mode, pydoc::doc("Cuts::CutItem::mode"));
+    cuts.def(
+            py::init<const std::vector<Cuts::CutItem>&>(),
+            py::arg("cut_data"),
+            pydoc::doc("Cuts::Cuts")
+    )
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("Cuts::Cuts#2")
+        )
+        .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
+        .def("eta_max", &Cuts::eta_max, pydoc::doc("Cuts::eta_max"))
+        .def("pt_min", &Cuts::pt_min, pydoc::doc("Cuts::pt_min"))
+        .def("m_inv_min", &Cuts::m_inv_min, pydoc::doc("Cuts::m_inv_min"))
+        .def("dr_min", &Cuts::dr_min, pydoc::doc("Cuts::dr_min"));
 
-    py::classh<ObservableHistograms::HistItem>(m, "HistItem")
+    py::classh<ObservableHistograms::HistItem>(
+        m, "HistItem", pydoc::doc("ObservableHistograms::HistItem")
+    )
         .def(
             py::init<Observable, double, double, std::size_t>(),
             py::arg("observable"),
@@ -627,21 +834,68 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max"),
             py::arg("bin_count")
         )
-        .def_readonly("observable", &ObservableHistograms::HistItem::observable)
-        .def_readonly("min", &ObservableHistograms::HistItem::min)
-        .def_readonly("max", &ObservableHistograms::HistItem::max)
-        .def_readonly("bin_count", &ObservableHistograms::HistItem::bin_count);
-    py::classh<ObservableHistograms, FunctionGenerator>(m, "ObservableHistograms")
+        .def_readonly(
+            "observable",
+            &ObservableHistograms::HistItem::observable,
+            pydoc::doc("ObservableHistograms::HistItem::observable")
+        )
+        .def_readonly(
+            "min",
+            &ObservableHistograms::HistItem::min,
+            pydoc::doc("ObservableHistograms::HistItem::min")
+        )
+        .def_readonly(
+            "max",
+            &ObservableHistograms::HistItem::max,
+            pydoc::doc("ObservableHistograms::HistItem::max")
+        )
+        .def_readonly(
+            "bin_count",
+            &ObservableHistograms::HistItem::bin_count,
+            pydoc::doc("ObservableHistograms::HistItem::bin_count")
+        );
+    py::classh<ObservableHistograms, FunctionGenerator>(
+        m, "ObservableHistograms", pydoc::doc("ObservableHistograms")
+    )
         .def(
             py::init<const std::vector<ObservableHistograms::HistItem>&>(),
-            py::arg("observables")
+            py::arg("observables"),
+            pydoc::doc("ObservableHistograms::ObservableHistograms")
+        )
+        .def(
+            "observables",
+            &ObservableHistograms::observables,
+            pydoc::doc("ObservableHistograms::observables")
         );
 
-    py::classh<Diagram::LineRef>(m, "LineRef")
-        .def(py::init<std::string>(), py::arg("str"))
+    auto line_ref =
+        py::classh<Diagram::LineRef>(m, "LineRef", pydoc::doc("Diagram::LineRef"));
+    add_enum<Diagram::LineType>(
+        line_ref,
+        "LineType",
+        {
+            {"incoming", Diagram::incoming},
+            {"outgoing", Diagram::outgoing},
+            {"propagator", Diagram::propagator},
+        }
+    );
+    line_ref
+        .def(
+            py::init<Diagram::LineType, std::size_t>(),
+            py::arg("type"),
+            py::arg("index"),
+            pydoc::doc("Diagram::LineRef::LineRef")
+        )
+        .def(
+            py::init<std::string>(),
+            py::arg("str"),
+            pydoc::doc("Diagram::LineRef::LineRef#2")
+        )
+        .def("type", &Diagram::LineRef::type, pydoc::doc("Diagram::LineRef::type"))
+        .def("index", &Diagram::LineRef::index, pydoc::doc("Diagram::LineRef::index"))
         .def("__repr__", &to_string<Diagram::LineRef>);
     py::implicitly_convertible<std::string, Diagram::LineRef>();
-    py::classh<Diagram>(m, "Diagram")
+    py::classh<Diagram>(m, "Diagram", pydoc::doc("Diagram"))
         .def(
             py::init<
                 std::vector<double>&,
@@ -651,50 +905,145 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("incoming_masses"),
             py::arg("outgoing_masses"),
             py::arg("propagators"),
-            py::arg("vertices")
+            py::arg("vertices"),
+            pydoc::doc("Diagram::Diagram")
         )
-        .def_property_readonly("incoming_masses", &Diagram::incoming_masses)
-        .def_property_readonly("outgoing_masses", &Diagram::outgoing_masses)
-        .def_property_readonly("propagators", &Diagram::propagators)
-        .def_property_readonly("vertices", &Diagram::vertices)
-        .def_property_readonly("incoming_vertices", &Diagram::incoming_vertices)
-        .def_property_readonly("outgoing_vertices", &Diagram::outgoing_vertices)
-        .def_property_readonly("propagator_vertices", &Diagram::propagator_vertices);
-    py::classh<Topology::Decay>(m, "Decay")
-        .def_readonly("index", &Topology::Decay::index)
-        .def_readonly("parent_index", &Topology::Decay::parent_index)
-        .def_readonly("child_indices", &Topology::Decay::child_indices)
-        .def_readonly("mass", &Topology::Decay::mass)
-        .def_readonly("width", &Topology::Decay::width)
-        .def_readonly("e_min", &Topology::Decay::e_min)
-        .def_readonly("e_max", &Topology::Decay::e_max)
-        .def_readonly("pdg_id", &Topology::Decay::pdg_id)
-        .def_readonly("on_shell", &Topology::Decay::on_shell)
-        .def_readonly("on_shell_boundary", &Topology::Decay::on_shell_boundary);
+        .def_property_readonly(
+            "incoming_masses",
+            &Diagram::incoming_masses,
+            pydoc::doc("Diagram::incoming_masses")
+        )
+        .def_property_readonly(
+            "outgoing_masses",
+            &Diagram::outgoing_masses,
+            pydoc::doc("Diagram::outgoing_masses")
+        )
+        .def_property_readonly(
+            "propagators", &Diagram::propagators, pydoc::doc("Diagram::propagators")
+        )
+        .def_property_readonly(
+            "vertices", &Diagram::vertices, pydoc::doc("Diagram::vertices")
+        )
+        .def_property_readonly(
+            "incoming_vertices",
+            &Diagram::incoming_vertices,
+            pydoc::doc("Diagram::incoming_vertices")
+        )
+        .def_property_readonly(
+            "outgoing_vertices",
+            &Diagram::outgoing_vertices,
+            pydoc::doc("Diagram::outgoing_vertices")
+        )
+        .def_property_readonly(
+            "propagator_vertices",
+            &Diagram::propagator_vertices,
+            pydoc::doc("Diagram::propagator_vertices")
+        );
+    py::classh<Topology::Decay>(m, "Decay", pydoc::doc("Topology::Decay"))
+        .def_readonly(
+            "index", &Topology::Decay::index, pydoc::doc("Topology::Decay::index")
+        )
+        .def_readonly(
+            "parent_index",
+            &Topology::Decay::parent_index,
+            pydoc::doc("Topology::Decay::parent_index")
+        )
+        .def_readonly(
+            "child_indices",
+            &Topology::Decay::child_indices,
+            pydoc::doc("Topology::Decay::child_indices")
+        )
+        .def_readonly(
+            "mass", &Topology::Decay::mass, pydoc::doc("Topology::Decay::mass")
+        )
+        .def_readonly(
+            "width", &Topology::Decay::width, pydoc::doc("Topology::Decay::width")
+        )
+        .def_readonly(
+            "e_min", &Topology::Decay::e_min, pydoc::doc("Topology::Decay::e_min")
+        )
+        .def_readonly(
+            "e_max", &Topology::Decay::e_max, pydoc::doc("Topology::Decay::e_max")
+        )
+        .def_readonly(
+            "pdg_id", &Topology::Decay::pdg_id, pydoc::doc("Topology::Decay::pdg_id")
+        )
+        .def_readonly(
+            "on_shell",
+            &Topology::Decay::on_shell,
+            pydoc::doc("Topology::Decay::on_shell")
+        )
+        .def_readonly(
+            "on_shell_boundary",
+            &Topology::Decay::on_shell_boundary,
+            pydoc::doc("Topology::Decay::on_shell_boundary")
+        );
     auto& topology =
-        py::classh<Topology>(m, "Topology")
-            .def(py::init<const Diagram&>(), py::arg("diagram"))
-            .def_static("topologies", &Topology::topologies, py::arg("diagram"))
-            .def_property_readonly("t_propagator_count", &Topology::t_propagator_count)
-            .def_property_readonly(
-                "t_integration_order", &Topology::t_integration_order
+        py::classh<Topology>(m, "Topology", pydoc::doc("Topology"))
+            .def(
+                py::init<const Diagram&>(),
+                py::arg("diagram"),
+                pydoc::doc("Topology::Topology")
+            )
+            .def_static(
+                "topologies",
+                &Topology::topologies,
+                py::arg("diagram"),
+                pydoc::doc("Topology::topologies")
             )
             .def_property_readonly(
-                "t_propagator_masses", &Topology::t_propagator_masses
+                "t_propagator_count",
+                &Topology::t_propagator_count,
+                pydoc::doc("Topology::t_propagator_count")
             )
             .def_property_readonly(
-                "t_propagator_widths", &Topology::t_propagator_widths
+                "t_integration_order",
+                &Topology::t_integration_order,
+                pydoc::doc("Topology::t_integration_order")
             )
-            .def_property_readonly("decays", &Topology::decays)
             .def_property_readonly(
-                "decay_integration_order", &Topology::decay_integration_order
+                "t_propagator_masses",
+                &Topology::t_propagator_masses,
+                pydoc::doc("Topology::t_propagator_masses")
             )
-            .def_property_readonly("outgoing_indices", &Topology::outgoing_indices)
-            .def_property_readonly("incoming_masses", &Topology::incoming_masses)
-            .def_property_readonly("outgoing_masses", &Topology::outgoing_masses)
-            .def("propagator_momentum_terms", &Topology::propagator_momentum_terms)
+            .def_property_readonly(
+                "t_propagator_widths",
+                &Topology::t_propagator_widths,
+                pydoc::doc("Topology::t_propagator_widths")
+            )
+            .def_property_readonly(
+                "decays", &Topology::decays, pydoc::doc("Topology::decays")
+            )
+            .def_property_readonly(
+                "decay_integration_order",
+                &Topology::decay_integration_order,
+                pydoc::doc("Topology::decay_integration_order")
+            )
+            .def_property_readonly(
+                "outgoing_indices",
+                &Topology::outgoing_indices,
+                pydoc::doc("Topology::outgoing_indices")
+            )
+            .def_property_readonly(
+                "incoming_masses",
+                &Topology::incoming_masses,
+                pydoc::doc("Topology::incoming_masses")
+            )
+            .def_property_readonly(
+                "outgoing_masses",
+                &Topology::outgoing_masses,
+                pydoc::doc("Topology::outgoing_masses")
+            )
+            .def(
+                "propagator_momentum_terms",
+                &Topology::propagator_momentum_terms,
+                py::arg("only_decays") = false,
+                pydoc::doc("Topology::propagator_momentum_terms")
+            )
             .def("__str__", &Topology::to_string);
-    py::classh<PhaseSpaceMapping, Mapping> psmap(m, "PhaseSpaceMapping");
+    py::classh<PhaseSpaceMapping, Mapping> psmap(
+        m, "PhaseSpaceMapping", pydoc::doc("PhaseSpaceMapping")
+    );
     add_enum<PhaseSpaceMapping::TChannelMode>(
         psmap,
         "TChannelMode",
@@ -722,8 +1071,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("invariant_power") = 0.8,
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
-            py::arg("permutations") = std::vector<Topology>{},
-            py::arg("color_order") = std::nullopt
+            py::arg("permutations") = nested_vector2<std::size_t>{},
+            py::arg("color_order") = std::nullopt,
+            pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
             py::init<
@@ -734,26 +1084,49 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
                 const std::optional<std::vector<std::size_t>>&>(),
-            py::arg("masses"),
+            py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
-        .def("random_dim", &PhaseSpaceMapping::random_dim)
-        .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)
-        .def("particle_count", &PhaseSpaceMapping::particle_count)
-        .def("channel_count", &PhaseSpaceMapping::channel_count);
-
-    py::classh<MultiChannelFunction, FunctionGenerator>(m, "MultiChannelFunction")
         .def(
-            py::init<std::vector<std::shared_ptr<FunctionGenerator>>&>(),
-            py::arg("functions")
+            "random_dim",
+            &PhaseSpaceMapping::random_dim,
+            pydoc::doc("PhaseSpaceMapping::random_dim")
+        )
+        .def(
+            "discrete_dim",
+            &PhaseSpaceMapping::discrete_dim,
+            pydoc::doc("PhaseSpaceMapping::discrete_dim")
+        )
+        .def(
+            "particle_count",
+            &PhaseSpaceMapping::particle_count,
+            pydoc::doc("PhaseSpaceMapping::particle_count")
+        )
+        .def(
+            "channel_count",
+            &PhaseSpaceMapping::channel_count,
+            pydoc::doc("PhaseSpaceMapping::channel_count")
         );
 
-    py::classh<MatrixElement, FunctionGenerator> matrix_element(m, "MatrixElement");
+    py::classh<MultiChannelFunction, FunctionGenerator>(
+        m, "MultiChannelFunction", pydoc::doc("MultiChannelFunction")
+    )
+        .def(
+            py::init<std::vector<std::shared_ptr<FunctionGenerator>>&, bool>(),
+            py::arg("functions"),
+            py::arg("return_batch_sizes") = false,
+            pydoc::doc("MultiChannelFunction::MultiChannelFunction")
+        );
+
+    py::classh<MatrixElement, FunctionGenerator> matrix_element(
+        m, "MatrixElement", pydoc::doc("MatrixElement")
+    );
     add_enum<MatrixElement::MatrixElementInput>(
         matrix_element,
         "MatrixElementInput",
@@ -791,10 +1164,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
+            // C++ defaults to {momenta_in} / {matrix_element_out}; kept required
+            // in Python because pybind11-stubgen cannot render an enum-list
+            // default (see the header @param docs).
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
             py::init<
@@ -805,13 +1182,33 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            pydoc::doc("MatrixElement::MatrixElement#2")
         )
-        .def("matrix_element_index", &MatrixElement::diagram_count)
-        .def("diagram_count", &MatrixElement::diagram_count)
-        .def("particle_count", &MatrixElement::particle_count);
+        .def(
+            "matrix_element_index",
+            &MatrixElement::matrix_element_index,
+            pydoc::doc("MatrixElement::matrix_element_index")
+        )
+        .def(
+            "diagram_count",
+            &MatrixElement::diagram_count,
+            pydoc::doc("MatrixElement::diagram_count")
+        )
+        .def(
+            "particle_count",
+            &MatrixElement::particle_count,
+            pydoc::doc("MatrixElement::particle_count")
+        )
+        .def("inputs", &MatrixElement::inputs, pydoc::doc("MatrixElement::inputs"))
+        .def("outputs", &MatrixElement::outputs, pydoc::doc("MatrixElement::outputs"))
+        .def(
+            "external_inputs",
+            &MatrixElement::external_inputs,
+            pydoc::doc("MatrixElement::external_inputs")
+        );
 
-    py::classh<MLP, FunctionGenerator> mlp(m, "MLP");
+    py::classh<MLP, FunctionGenerator> mlp(m, "MLP", pydoc::doc("MLP"));
     add_enum<MLP::Activation>(
         mlp,
         "Activation",
@@ -838,13 +1235,25 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("hidden_dim") = 32,
            py::arg("layers") = 3,
            py::arg("activation") = MLP::leaky_relu,
-           py::arg("prefix") = ""
+           py::arg("prefix") = "",
+           pydoc::doc("MLP::MLP")
     )
-        .def("input_dim", &MLP::input_dim)
-        .def("output_dim", &MLP::output_dim)
-        .def("initialize_globals", &MLP::initialize_globals, py::arg("context"));
+        .def("input_dim", &MLP::input_dim, pydoc::doc("MLP::input_dim"))
+        .def("output_dim", &MLP::output_dim, pydoc::doc("MLP::output_dim"))
+        .def(
+            "initialize_globals",
+            &MLP::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("MLP::initialize_globals")
+        )
+        .def(
+            "last_layer_bias_name",
+            &MLP::last_layer_bias_name,
+            pydoc::doc("MLP::last_layer_bias_name")
+        )
+        .def("global_names", &MLP::global_names, pydoc::doc("MLP::global_names"));
 
-    py::classh<Flow, Mapping>(m, "Flow")
+    py::classh<Flow, Mapping>(m, "Flow", pydoc::doc("Flow"))
         .def(
             py::init<
                 std::size_t,
@@ -862,20 +1271,27 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
             py::arg("subnet_activation") = MLP::leaky_relu,
-            py::arg("invert_spline") = true
+            py::arg("invert_spline") = true,
+            pydoc::doc("Flow::Flow")
         )
-        .def("input_dim", &Flow::input_dim)
-        .def("condition_dim", &Flow::condition_dim)
-        .def("initialize_globals", &Flow::initialize_globals, py::arg("context"))
+        .def("input_dim", &Flow::input_dim, pydoc::doc("Flow::input_dim"))
+        .def("condition_dim", &Flow::condition_dim, pydoc::doc("Flow::condition_dim"))
+        .def(
+            "initialize_globals",
+            &Flow::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("Flow::initialize_globals")
+        )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
-            py::arg("grid_name")
+            py::arg("grid_name"),
+            pydoc::doc("Flow::initialize_from_vegas")
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
-        m, "PropagatorChannelWeights"
+        m, "PropagatorChannelWeights", pydoc::doc("PropagatorChannelWeights")
     )
         .def(
             py::init<
@@ -884,10 +1300,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&>(),
             py::arg("topologies"),
             py::arg("permutations"),
-            py::arg("channel_indices")
+            py::arg("channel_indices"),
+            pydoc::doc("PropagatorChannelWeights::PropagatorChannelWeights")
         );
 
-    py::classh<SubchannelWeights, FunctionGenerator>(m, "SubchannelWeights")
+    py::classh<SubchannelWeights, FunctionGenerator>(
+        m, "SubchannelWeights", pydoc::doc("SubchannelWeights")
+    )
         .def(
             py::init<
                 const nested_vector2<Topology>&,
@@ -895,15 +1314,32 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>>(),
             py::arg("topologies"),
             py::arg("permutations"),
-            py::arg("channel_indices")
+            py::arg("channel_indices"),
+            pydoc::doc("SubchannelWeights::SubchannelWeights")
         )
-        .def("channel_count", &SubchannelWeights::channel_count);
+        .def(
+            "channel_count",
+            &SubchannelWeights::channel_count,
+            pydoc::doc("SubchannelWeights::channel_count")
+        );
 
-    py::classh<MomentumPreprocessing, FunctionGenerator>(m, "MomentumPreprocessing")
-        .def(py::init<std::size_t>(), py::arg("particle_count"))
-        .def("output_dim", &MomentumPreprocessing::output_dim);
+    py::classh<MomentumPreprocessing, FunctionGenerator>(
+        m, "MomentumPreprocessing", pydoc::doc("MomentumPreprocessing")
+    )
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("MomentumPreprocessing::MomentumPreprocessing")
+        )
+        .def(
+            "output_dim",
+            &MomentumPreprocessing::output_dim,
+            pydoc::doc("MomentumPreprocessing::output_dim")
+        );
 
-    py::classh<ChannelWeightNetwork, FunctionGenerator>(m, "ChannelWeightNetwork")
+    py::classh<ChannelWeightNetwork, FunctionGenerator>(
+        m, "ChannelWeightNetwork", pydoc::doc("ChannelWeightNetwork")
+    )
         .def(
             py::init<
                 std::size_t,
@@ -919,21 +1355,39 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("layers") = 3,
             py::arg("activation") = MLP::leaky_relu,
             py::arg("prefix") = "",
-            py::arg("include_preprocessing") = true
+            py::arg("include_preprocessing") = true,
+            pydoc::doc("ChannelWeightNetwork::ChannelWeightNetwork")
         )
-        .def("mlp", &ChannelWeightNetwork::mlp)
-        .def("preprocessing", &ChannelWeightNetwork::preprocessing)
-        .def("mask_name", &ChannelWeightNetwork::mask_name)
+        .def("mlp", &ChannelWeightNetwork::mlp, pydoc::doc("ChannelWeightNetwork::mlp"))
+        .def(
+            "preprocessing",
+            &ChannelWeightNetwork::preprocessing,
+            pydoc::doc("ChannelWeightNetwork::preprocessing")
+        )
+        .def(
+            "mask_name",
+            &ChannelWeightNetwork::mask_name,
+            pydoc::doc("ChannelWeightNetwork::mask_name")
+        )
         .def(
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            pydoc::doc("ChannelWeightNetwork::initialize_globals")
         );
 
-    py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
-        .def(py::init<std::vector<std::size_t>>(), py::arg("option_counts"));
+    py::classh<DiscreteHistogram, FunctionGenerator>(
+        m, "DiscreteHistogram", pydoc::doc("DiscreteHistogram")
+    )
+        .def(
+            py::init<std::vector<std::size_t>>(),
+            py::arg("option_counts"),
+            pydoc::doc("DiscreteHistogram::DiscreteHistogram")
+        );
 
-    py::classh<DiscreteSampler, Mapping>(m, "DiscreteSampler")
+    py::classh<DiscreteSampler, Mapping>(
+        m, "DiscreteSampler", pydoc::doc("DiscreteSampler")
+    )
         .def(
             py::init<
                 const std::vector<std::size_t>&,
@@ -941,17 +1395,27 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&>(),
             py::arg("option_counts"),
             py::arg("prefix") = "",
-            py::arg("dims_with_prior") = std::vector<std::size_t>{}
+            py::arg("dims_with_prior") = std::vector<std::size_t>{},
+            pydoc::doc("DiscreteSampler::DiscreteSampler")
         )
-        .def("option_counts", &DiscreteSampler::option_counts)
-        .def("prob_names", &DiscreteSampler::prob_names)
+        .def(
+            "option_counts",
+            &DiscreteSampler::option_counts,
+            pydoc::doc("DiscreteSampler::option_counts")
+        )
+        .def(
+            "prob_names",
+            &DiscreteSampler::prob_names,
+            pydoc::doc("DiscreteSampler::prob_names")
+        )
         .def(
             "initialize_globals",
             &DiscreteSampler::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            pydoc::doc("DiscreteSampler::initialize_globals")
         );
 
-    py::classh<DiscreteFlow, Mapping>(m, "DiscreteFlow")
+    py::classh<DiscreteFlow, Mapping>(m, "DiscreteFlow", pydoc::doc("DiscreteFlow"))
         .def(
             py::init<
                 const std::vector<std::size_t>&,
@@ -967,12 +1431,24 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("condition_dim") = 0,
             py::arg("subnet_hidden_dim") = 32,
             py::arg("subnet_layers") = 3,
-            py::arg("subnet_activation") = MLP::leaky_relu
+            py::arg("subnet_activation") = MLP::leaky_relu,
+            pydoc::doc("DiscreteFlow::DiscreteFlow")
         )
-        .def("option_counts", &DiscreteFlow::option_counts)
-        .def("condition_dim", &DiscreteFlow::condition_dim)
         .def(
-            "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
+            "option_counts",
+            &DiscreteFlow::option_counts,
+            pydoc::doc("DiscreteFlow::option_counts")
+        )
+        .def(
+            "condition_dim",
+            &DiscreteFlow::condition_dim,
+            pydoc::doc("DiscreteFlow::condition_dim")
+        )
+        .def(
+            "initialize_globals",
+            &DiscreteFlow::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
@@ -1071,32 +1547,58 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("input_types", &AdamOptimizer::input_types)
         .def("context", &AdamOptimizer::context);
 
-    py::classh<PdfGrid>(m, "PdfGrid")
-        .def(py::init<const std::string&>(), py::arg("file"))
-        .def_readonly("x", &PdfGrid::x)
-        .def_readonly("logx", &PdfGrid::logx)
-        .def_readonly("q", &PdfGrid::q)
-        .def_readonly("logq2", &PdfGrid::logq2)
-        .def_readonly("pids", &PdfGrid::pids)
-        .def_readonly("values", &PdfGrid::values)
-        .def_readonly("region_sizes", &PdfGrid::region_sizes)
-        .def_property_readonly("grid_point_count", &PdfGrid::grid_point_count)
-        .def_property_readonly("q_count", &PdfGrid::q_count)
+    py::classh<PdfGrid>(m, "PdfGrid", pydoc::doc("PdfGrid"))
+        .def(
+            py::init<const std::string&>(),
+            py::arg("file"),
+            pydoc::doc("PdfGrid::PdfGrid")
+        )
+        .def_readonly("x", &PdfGrid::x, pydoc::doc("PdfGrid::x"))
+        .def_readonly("logx", &PdfGrid::logx, pydoc::doc("PdfGrid::logx"))
+        .def_readonly("q", &PdfGrid::q, pydoc::doc("PdfGrid::q"))
+        .def_readonly("logq2", &PdfGrid::logq2, pydoc::doc("PdfGrid::logq2"))
+        .def_readonly("pids", &PdfGrid::pids, pydoc::doc("PdfGrid::pids"))
+        .def_readonly("values", &PdfGrid::values, pydoc::doc("PdfGrid::values"))
+        .def_readonly(
+            "region_sizes", &PdfGrid::region_sizes, pydoc::doc("PdfGrid::region_sizes")
+        )
+        .def_property_readonly(
+            "grid_point_count",
+            &PdfGrid::grid_point_count,
+            pydoc::doc("PdfGrid::grid_point_count")
+        )
+        .def_property_readonly(
+            "q_count", &PdfGrid::q_count, pydoc::doc("PdfGrid::q_count")
+        )
         .def(
             "coefficients_shape",
             &PdfGrid::coefficients_shape,
-            py::arg("batch_dim") = false
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::coefficients_shape")
         )
-        .def("logx_shape", &PdfGrid::logx_shape, py::arg("batch_dim") = false)
-        .def("logq2_shape", &PdfGrid::logq2_shape, py::arg("batch_dim") = false)
+        .def(
+            "logx_shape",
+            &PdfGrid::logx_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::logx_shape")
+        )
+        .def(
+            "logq2_shape",
+            &PdfGrid::logq2_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("PdfGrid::logq2_shape")
+        )
         .def(
             "initialize_globals",
             &PdfGrid::initialize_globals,
             py::arg("context"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("PdfGrid::initialize_globals")
         );
 
-    py::classh<PartonDensity, FunctionGenerator>(m, "PartonDensity")
+    py::classh<PartonDensity, FunctionGenerator>(
+        m, "PartonDensity", pydoc::doc("PartonDensity")
+    )
         .def(
             py::init<
                 const PdfGrid&,
@@ -1106,37 +1608,60 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("grid"),
             py::arg("pids"),
             py::arg("dynamic_pid") = false,
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("PartonDensity::PartonDensity")
         );
 
-    py::classh<AlphaSGrid>(m, "AlphaSGrid")
-        .def(py::init<const std::string&>(), py::arg("file"))
-        .def_readonly("q", &AlphaSGrid::q)
-        .def_readonly("logq2", &AlphaSGrid::logq2)
-        .def_readonly("values", &AlphaSGrid::values)
-        .def_readonly("region_sizes", &AlphaSGrid::region_sizes)
-        .def_property_readonly("q_count", &AlphaSGrid::q_count)
+    py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
+        .def(
+            py::init<const std::string&>(),
+            py::arg("file"),
+            pydoc::doc("AlphaSGrid::AlphaSGrid")
+        )
+        .def_readonly("q", &AlphaSGrid::q, pydoc::doc("AlphaSGrid::q"))
+        .def_readonly("logq2", &AlphaSGrid::logq2, pydoc::doc("AlphaSGrid::logq2"))
+        .def_readonly("values", &AlphaSGrid::values, pydoc::doc("AlphaSGrid::values"))
+        .def_readonly(
+            "region_sizes",
+            &AlphaSGrid::region_sizes,
+            pydoc::doc("AlphaSGrid::region_sizes")
+        )
+        .def_property_readonly(
+            "q_count", &AlphaSGrid::q_count, pydoc::doc("AlphaSGrid::q_count")
+        )
         .def(
             "coefficients_shape",
             &AlphaSGrid::coefficients_shape,
-            py::arg("batch_dim") = false
+            py::arg("batch_dim") = false,
+            pydoc::doc("AlphaSGrid::coefficients_shape")
         )
-        .def("logq2_shape", &AlphaSGrid::logq2_shape, py::arg("batch_dim") = false)
+        .def(
+            "logq2_shape",
+            &AlphaSGrid::logq2_shape,
+            py::arg("batch_dim") = false,
+            pydoc::doc("AlphaSGrid::logq2_shape")
+        )
         .def(
             "initialize_globals",
             &AlphaSGrid::initialize_globals,
             py::arg("context"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("AlphaSGrid::initialize_globals")
         );
 
-    py::classh<RunningCoupling, FunctionGenerator>(m, "RunningCoupling")
+    py::classh<RunningCoupling, FunctionGenerator>(
+        m, "RunningCoupling", pydoc::doc("RunningCoupling")
+    )
         .def(
             py::init<const AlphaSGrid&, const std::string&>(),
             py::arg("grid"),
-            py::arg("prefix") = ""
+            py::arg("prefix") = "",
+            pydoc::doc("RunningCoupling::RunningCoupling")
         );
 
-    py::classh<EnergyScale, FunctionGenerator> scale(m, "EnergyScale");
+    py::classh<EnergyScale, FunctionGenerator> scale(
+        m, "EnergyScale", pydoc::doc("EnergyScale")
+    );
     add_enum<EnergyScale::DynamicalScaleType>(
         scale,
         "DynamicalScaleType",
@@ -1147,16 +1672,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"partonic_energy", EnergyScale::partonic_energy},
         }
     );
-    scale.def(py::init<std::size_t>(), py::arg("particle_count"))
+    scale
+        .def(
+            py::init<std::size_t>(),
+            py::arg("particle_count"),
+            pydoc::doc("EnergyScale::EnergyScale")
+        )
         .def(
             py::init<std::size_t, EnergyScale::DynamicalScaleType>(),
             py::arg("particle_count"),
-            py::arg("type")
+            py::arg("type"),
+            pydoc::doc("EnergyScale::EnergyScale#2")
         )
         .def(
             py::init<std::size_t, double>(),
             py::arg("particle_count"),
-            py::arg("fixed_scale")
+            py::arg("fixed_scale"),
+            pydoc::doc("EnergyScale::EnergyScale#3")
         )
         .def(
             py::init<
@@ -1173,14 +1705,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale_fixed"),
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
-            py::arg("fact_scale2")
+            py::arg("fact_scale2"),
+            pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
-    py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
-    py::classh<DifferentialCrossSection::CachedScale>(m, "CachedScale")
+    py::classh<DifferentialCrossSection::CachedPdf>(
+        m, "CachedPdf", pydoc::doc("DifferentialCrossSection::CachedPdf")
+    )
+        .def(py::init<>());
+    py::classh<DifferentialCrossSection::CachedScale>(
+        m, "CachedScale", pydoc::doc("DifferentialCrossSection::CachedScale")
+    )
         .def(py::init<>());
     py::classh<DifferentialCrossSection, FunctionGenerator>(
-        m, "DifferentialCrossSection"
+        m, "DifferentialCrossSection", pydoc::doc("DifferentialCrossSection")
     )
         .def(
             py::init<
@@ -1208,14 +1746,38 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
-            py::arg("input_momentum_fraction") = true
+            py::arg("input_momentum_fraction") = true,
+            pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
-        .def("pid_options", &DifferentialCrossSection::pid_options)
-        .def("matrix_element", &DifferentialCrossSection::matrix_element);
+        .def(
+            "pid_options",
+            &DifferentialCrossSection::pid_options,
+            pydoc::doc("DifferentialCrossSection::pid_options")
+        )
+        .def(
+            "has_pdf",
+            &DifferentialCrossSection::has_pdf,
+            py::arg("pdf_index"),
+            pydoc::doc("DifferentialCrossSection::has_pdf")
+        )
+        .def(
+            "matrix_element",
+            &DifferentialCrossSection::matrix_element,
+            pydoc::doc("DifferentialCrossSection::matrix_element")
+        )
+        .def(
+            "running_coupling",
+            &DifferentialCrossSection::running_coupling,
+            pydoc::doc("DifferentialCrossSection::running_coupling")
+        );
 
-    py::classh<Unweighter, FunctionGenerator>(m, "Unweighter")
-        .def(py::init<const NamedVector<Type>&>(), py::arg("types"));
-    py::classh<Integrand, FunctionGenerator>(m, "Integrand")
+    py::classh<Unweighter, FunctionGenerator>(m, "Unweighter", pydoc::doc("Unweighter"))
+        .def(
+            py::init<const NamedVector<Type>&>(),
+            py::arg("types"),
+            pydoc::doc("Unweighter::Unweighter")
+        );
+    py::classh<Integrand, FunctionGenerator>(m, "Integrand", pydoc::doc("Integrand"))
         .def(
             py::init<
                 const PhaseSpaceMapping&,
@@ -1273,35 +1835,109 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
-            py::arg("compressed_channel_weight_count") = 50
+            py::arg("compressed_channel_weight_count") = 50,
+            pydoc::doc("Integrand::Integrand")
         )
-        .def("particle_count", &Integrand::particle_count)
-        .def("madnis_training", &Integrand::madnis_training)
-        .def("vegas_grid_name", &Integrand::vegas_grid_name)
-        .def("mapping", &Integrand::mapping)
-        .def("diff_xs", &Integrand::diff_xs)
-        .def("adaptive_map", &Integrand::adaptive_map)
-        .def("discrete_sym", &Integrand::discrete_sym)
-        .def("discrete_flavor", &Integrand::discrete_flavor)
-        .def("energy_scale", &Integrand::energy_scale)
-        .def("prop_chan_weights", &Integrand::prop_chan_weights)
-        .def("chan_weight_net", &Integrand::chan_weight_net)
-        .def("random_dim", &Integrand::random_dim)
-        .def("latent_dims", &Integrand::latent_dims)
-        .def_readonly_static("matrix_element_inputs", &Integrand::matrix_element_inputs)
+        .def(
+            "particle_count",
+            &Integrand::particle_count,
+            pydoc::doc("Integrand::particle_count")
+        )
+        .def(
+            "madnis_training",
+            &Integrand::madnis_training,
+            pydoc::doc("Integrand::madnis_training")
+        )
+        .def(
+            "vegas_grid_name",
+            &Integrand::vegas_grid_name,
+            pydoc::doc("Integrand::vegas_grid_name")
+        )
+        .def(
+            "vegas_dimension",
+            &Integrand::vegas_dimension,
+            pydoc::doc("Integrand::vegas_dimension")
+        )
+        .def(
+            "vegas_bin_count",
+            &Integrand::vegas_bin_count,
+            pydoc::doc("Integrand::vegas_bin_count")
+        )
+        .def("mapping", &Integrand::mapping, pydoc::doc("Integrand::mapping"))
+        .def("diff_xs", &Integrand::diff_xs, pydoc::doc("Integrand::diff_xs"))
+        .def(
+            "adaptive_map",
+            &Integrand::adaptive_map,
+            pydoc::doc("Integrand::adaptive_map")
+        )
+        .def(
+            "discrete_sym",
+            &Integrand::discrete_sym,
+            pydoc::doc("Integrand::discrete_sym")
+        )
+        .def(
+            "discrete_flavor",
+            &Integrand::discrete_flavor,
+            pydoc::doc("Integrand::discrete_flavor")
+        )
+        .def(
+            "energy_scale",
+            &Integrand::energy_scale,
+            pydoc::doc("Integrand::energy_scale")
+        )
+        .def(
+            "prop_chan_weights",
+            &Integrand::prop_chan_weights,
+            pydoc::doc("Integrand::prop_chan_weights")
+        )
+        .def(
+            "chan_weight_net",
+            &Integrand::chan_weight_net,
+            pydoc::doc("Integrand::chan_weight_net")
+        )
+        .def("random_dim", &Integrand::random_dim, pydoc::doc("Integrand::random_dim"))
+        .def(
+            "latent_dims", &Integrand::latent_dims, pydoc::doc("Integrand::latent_dims")
+        )
+        .def(
+            "channel_indices",
+            &Integrand::channel_indices,
+            pydoc::doc("Integrand::channel_indices")
+        )
+        .def(
+            "active_flavors",
+            &Integrand::active_flavors,
+            pydoc::doc("Integrand::active_flavors")
+        )
         .def_readonly_static(
-            "matrix_element_outputs", &Integrand::matrix_element_outputs
+            "matrix_element_inputs",
+            &Integrand::matrix_element_inputs,
+            pydoc::doc("Integrand::matrix_element_inputs")
+        )
+        .def_readonly_static(
+            "matrix_element_outputs",
+            &Integrand::matrix_element_outputs,
+            pydoc::doc("Integrand::matrix_element_outputs")
         );
-    py::classh<MultiChannelIntegrand, FunctionGenerator>(m, "MultiChannelIntegrand")
+    py::classh<MultiChannelIntegrand, FunctionGenerator>(
+        m, "MultiChannelIntegrand", pydoc::doc("MultiChannelIntegrand")
+    )
         .def(
             py::init<const std::vector<std::shared_ptr<Integrand>>&, bool>(),
             py::arg("integrands"),
-            py::arg("return_sizes") = false
+            py::arg("return_sizes") = false,
+            pydoc::doc("MultiChannelIntegrand::MultiChannelIntegrand")
         );
-    py::classh<IntegrandProbability, FunctionGenerator>(m, "IntegrandProbability")
-        .def(py::init<const Integrand&>(), py::arg("integrand"));
+    py::classh<IntegrandProbability, FunctionGenerator>(
+        m, "IntegrandProbability", pydoc::doc("IntegrandProbability")
+    )
+        .def(
+            py::init<const Integrand&>(),
+            py::arg("integrand"),
+            pydoc::doc("IntegrandProbability::IntegrandProbability")
+        );
 
-    py::classh<MadnisLoss, FunctionGenerator>(m, "MadnisLoss")
+    py::classh<MadnisLoss, FunctionGenerator>(m, "MadnisLoss", pydoc::doc("MadnisLoss"))
         .def(
             py::init<
                 const std::vector<std::shared_ptr<FunctionGenerator>>&,
@@ -1311,7 +1947,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("functions"),
             py::arg("cwnet"),
             py::arg("softclip_threshold") = 0.0,
-            py::arg("compressed_channel_weight_count") = 50
+            py::arg("compressed_channel_weight_count") = 50,
+            pydoc::doc("MadnisLoss::MadnisLoss")
         );
 
     add_enum<Verbosity>(

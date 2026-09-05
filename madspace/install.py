@@ -524,6 +524,20 @@ def main() -> None:
         "--no-simd", dest="simd", action="store_false", help="Disable SIMD backend."
     )
 
+    docs_grp = parser.add_mutually_exclusive_group()
+    docs_grp.add_argument(
+        "--docs",
+        dest="docs",
+        action="store_true",
+        help="Generate API docstrings (requires doxygen) and .pyi type stubs.",
+    )
+    docs_grp.add_argument(
+        "--no-docs",
+        dest="docs",
+        action="store_false",
+        help="Skip docstring and .pyi generation (default; no doxygen needed).",
+    )
+
     debug_grp = parser.add_mutually_exclusive_group()
     debug_grp.add_argument(
         "--debug",
@@ -564,7 +578,9 @@ def main() -> None:
     )
 
     # None = not provided by user; overridden by set_defaults below
-    parser.set_defaults(cuda=None, hip=None, openblas=None, simd=None, build_type=None)
+    parser.set_defaults(
+        cuda=None, hip=None, openblas=None, simd=None, docs=None, build_type=None
+    )
     args = parser.parse_args()
     _set_noninteractive(args.yes)
 
@@ -654,6 +670,15 @@ def main() -> None:
             enable_simd = menu_defaults.get("simd", False)
             build_type = _saved_build_type(menu_defaults)
 
+    # Docs/.pyi generation: explicit flag wins, else reuse saved value under
+    # --yes, else off. Not part of the interactive menu (niche / CI use).
+    if args.docs is not None:
+        enable_docs = args.docs
+    elif args.yes:
+        enable_docs = saved.get("docs", False)
+    else:
+        enable_docs = False
+
     # Compute capability prompts
     cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)
     hip_arch = saved.get("hip_arch", DEFAULT_HIP_ARCH)
@@ -709,6 +734,8 @@ def main() -> None:
     cmd.append(f"-Ccmake.define.ENABLE_OPENBLAS={'ON' if enable_openblas else 'OFF'}")
     if enable_simd:
         cmd.append("-Ccmake.define.ENABLE_SIMD=ON")
+    if enable_docs:
+        cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
 
     env = install_build_deps(system=args.system)
@@ -722,6 +749,7 @@ def main() -> None:
             "hip_arch": hip_arch,
             "openblas": enable_openblas,
             "simd": enable_simd,
+            "docs": enable_docs,
             "build_type": build_type,
         }
     )

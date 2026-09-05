@@ -18,7 +18,7 @@ jobs:
             build_small: cp312-manylinux_x86_64
             build_full: cp3*-manylinux_x86_64
             CIBW_BEFORE_ALL: >
-              yum -y install openblas-devel yum-utils &&
+              yum -y install openblas-devel yum-utils doxygen &&
               yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
               yum-config-manager --add-repo /project/.github/workflows/rocm.repo &&
               yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 libcurand-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocrand-devel rocthrust-devel hipcub-devel
@@ -39,12 +39,15 @@ jobs:
                 PATH=$PATH:/usr/local/cuda/bin
                 CMAKE_PREFIX_PATH=/opt/rocm
                 HIPFLAGS=--gcc-toolchain=$(dirname $(which g++))/../..
-                SKBUILD_CMAKE_ARGS="-DENABLE_CUDA=ON;-DENABLE_HIP=ON;-DENABLE_SIMD=ON;-DENABLE_OPENBLAS=OFF"
+                SKBUILD_CMAKE_ARGS="-DENABLE_CUDA=ON;-DENABLE_HIP=ON;-DENABLE_SIMD=ON;-DENABLE_OPENBLAS=OFF;-DENABLE_DOCS=ON"
 
           - os: macos-14
             build_small: cp312-macosx_arm64
             build_full: cp3*-macosx_arm64
             MACOSX_DEPLOYMENT_TARGET: 14.5
+            CIBW_BEFORE_ALL: brew install doxygen
+            CIBW_ENVIRONMENT: >
+                SKBUILD_CMAKE_ARGS="-DENABLE_DOCS=ON"
             CIBW_REPAIR_WHEEL_COMMAND: >
               delocate-wheel
               --ignore-missing-dependencies

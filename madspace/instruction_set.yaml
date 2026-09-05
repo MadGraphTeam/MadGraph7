@@ -15,9 +15,9 @@ stack:
 unstack:
   inputs:
     - name: in1
-      desc:
+      desc: "tensor with shape (batch, n, *)"
   outputs: any
-  desc:
+  desc: "Splits a tensor along the dimension after the batch dimension into a list of tensors."
   class: UnstackInstruction
   custom_op: True
   differentiable: True
@@ -26,16 +26,17 @@ stack_sizes:
   inputs: any
   outputs:
     - name: sizes
-  desc:
+      desc: "combined batch-size list, one entry per input"
+  desc: "Packs the batch sizes of several batch-size-list values into one list."
   class: StackSizesInstruction
   custom_op: True
 
 unstack_sizes:
   inputs:
     - name: in1
-      desc:
+      desc: "batch-size list"
   outputs: any
-  desc:
+  desc: "Splits a batch-size list into its individual batch sizes."
   class: UnstackSizesInstruction
   custom_op: True
 
@@ -43,25 +44,26 @@ pop:
   inputs:
     - name: in1
       type: [float, n, ...]
-      desc:
+      desc: "tensor with shape (batch, n, ...)"
   outputs:
     - name: rest
       type: [float, n-1, ...]
-      desc:
+      desc: "the remaining n-1 slices"
     - name: item
       type: [float, ...]
-      desc:
+      desc: "the first slice"
   custom_op: True
   differentiable: True
+  desc: "Splits off the first slice along the dimension after the batch dimension."
 
 batch_cat:
   inputs: any
   outputs:
     - name: out
-      desc:
+      desc: "concatenation, with batch size the sum of the inputs'"
     - name: counts
-      desc:
-  desc:
+      desc: "batch-size list giving each input's batch size"
+  desc: "Concatenates several tensors along the batch dimension."
   class: BatchCatInstruction
   custom_op: True
   differentiable: True
@@ -69,11 +71,11 @@ batch_cat:
 batch_split:
   inputs:
     - name: in1
-      desc:
+      desc: "tensor to split, with a batch dimension"
     - name: counts
-      desc:
+      desc: "batch-size list giving the size of each output slice"
   outputs: any
-  desc:
+  desc: "Splits a tensor along the batch dimension according to a batch-size list."
   class: BatchSplitInstruction
   custom_op: True
   differentiable: True
@@ -82,8 +84,8 @@ cat:
   inputs: any
   outputs:
     - name: out
-      desc:
-  desc:
+      desc: "concatenation along the last dimension"
+  desc: "Concatenates several tensors along their last dimension."
   class: CatInstruction
   custom_op: True
   differentiable: True
@@ -92,82 +94,91 @@ batch_size:
   inputs: any
   outputs:
     - name: batch_size
-      desc:
+      desc: "batch-size list with the shared batch size"
   class: BatchSizeInstruction
   custom_op: True
+  desc: "Returns the common batch size of its arguments as a single-entry batch-size list."
 
 offset_indices:
   inputs:
     - name: batch_sizes_offset
-      desc:
+      desc: "batch-size list of the offsets to add"
     - name: batch_sizes_out
-      desc:
+      desc: "batch-size list of the output layout"
   outputs:
     - name: offsets
-      desc:
+      desc: "integer offset per output element"
   class: OffsetIndicesInstruction
   custom_op: True
+  desc: "Builds flat offsets into a concatenated batch from two batch-size lists."
 
 full:
   inputs: any
   outputs:
     - name: output
-      desc:
+      desc: "tensor filled with the constant value"
   class: FullInstruction
   custom_op: True
+  desc: "Creates a tensor of the given batch size and shape filled with a constant."
 
 squeeze:
   inputs:
     - name: input
-      desc:
+      desc: "tensor with at least one trailing dimension"
   outputs:
     - name: output
-      desc:
+      desc: "tensor with that dimension removed"
   class: SqueezeInstruction
   custom_op: True
   differentiable: True
+  desc: "Removes the first trailing dimension of a tensor."
 
 unsqueeze:
   inputs:
     - name: input
-      desc:
+      desc: "input tensor"
   outputs:
     - name: output
-      desc:
+      desc: "tensor with a leading size-1 trailing dimension"
   class: UnsqueezeInstruction
   custom_op: True
   differentiable: True
+  desc: "Inserts a size-1 dimension after the batch dimension."
 
 accept_norm:
   inputs:
     - name: accepted_batch
-      desc:
+      desc: "the accepted events"
     - name: full_batch
-      desc:
+      desc: "the full batch before acceptance"
   outputs:
     - name: norm
+      desc: "ratio of full to accepted batch size"
   class: AcceptNormInstruction
   custom_op: True
+  desc: "Normalization factor relating an accepted sub-batch to the full batch."
 
 batch_split_by_index:
   inputs:
     - name: indices
       type: [int]
-      desc:
+      desc: "per-event sub-batch index"
     - name: count
       type: [int, single]
-      desc:
+      desc: "number of sub-batches"
   outputs: any
   class: BatchSplitByIndexInstruction
   custom_op: True
+  desc: "Splits a batch by a per-event integer index into that many sub-batches."
 
 batch_merge_by_index:
   inputs: any
   outputs:
     - name: output
-      desc:
+      desc: "the merged batch"
   class: BatchMergeByIndexInstruction
   custom_op: True
+  desc: "Inverse of `batch_split_by_index`: merges indexed sub-batches back into one batch."
 
 ---
 title: Math
@@ -255,135 +266,144 @@ reduce_sum:
   inputs:
     - name: in1
       type: [float, ..., n]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "sum over the last dimension"
   dims: 0
+  desc: "Sums a tensor over its last dimension."
 
 reduce_sum_vector:
   inputs:
     - name: in1
       type: [float, ..., n, m]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ..., m]
-      desc:
+      desc: "sum over the second-to-last dimension"
   dims: 0
+  desc: "Sums a tensor over its second-to-last dimension."
 
 batch_reduce_sum:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, single]
-      desc:
+      desc: "sum over the batch"
   differentiable: True
   custom_op: True
+  desc: "Sums a tensor over the batch dimension."
 
 batch_reduce_mean:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, single]
-      desc:
+      desc: "mean over the batch"
   differentiable: True
   custom_op: True
+  desc: "Averages a tensor over the batch dimension."
 
 batch_reduce_mean_keepdim:
   inputs:
     - name: in1
       type: [float]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float]
-      desc:
+      desc: "batch mean, broadcast back over the batch dimension"
   differentiable: True
   custom_op: True
+  desc: "Averages a tensor over the batch dimension, keeping that dimension with the mean broadcast across it."
 
 reduce_product:
   inputs:
     - name: in1
       type: [float, n]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float]
-      desc:
+      desc: "product over the last dimension"
   differentiable: True
+  desc: "Multiplies the entries of a tensor along its last dimension."
 
 sqrt:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "square root of the input"
   differentiable: True
   dims: 0
+  desc: "Element-wise square root."
 
 square:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "square of the input"
   differentiable: True
   dims: 0
+  desc: "Element-wise square."
 
 min:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "first input"
     - name: in2
       type: [float, ...]
-      desc:
+      desc: "second input"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
-  desc:
+      desc: "element-wise minimum"
+  desc: "Element-wise minimum of two tensors."
   dims: 0
 
 max:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "first input"
     - name: in2
       type: [float, ...]
-      desc:
+      desc: "second input"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
-  desc:
+      desc: "element-wise maximum"
+  desc: "Element-wise maximum of two tensors."
   dims: 0
 
 abs:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "absolute value of the input"
   dims: 0
+  desc: "Element-wise absolute value."
 
 ---
 title: Observables
@@ -392,196 +412,213 @@ obs_sqrt_s:
   inputs:
     - name: p_ext
       type: [float, n, 4]
-      desc:
+      desc: "external four-momenta"
   outputs:
     - name: obs
       type: [float]
-      desc:
+      desc: "center-of-mass energy"
+  desc: "Invariant mass of the sum of all external momenta. See @ref Observable."
 
 obs_e:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "energy"
   dims: 0
+  desc: "Energy component of a four-momentum. See @ref Observable."
 
 obs_px:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "momentum x component"
   dims: 0
+  desc: "x component of a four-momentum. See @ref Observable."
 
 obs_py:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "momentum y component"
   dims: 0
+  desc: "y component of a four-momentum. See @ref Observable."
 
 obs_pz:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "momentum z component"
   dims: 0
+  desc: "z component of a four-momentum. See @ref Observable."
 
 obs_mass:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "invariant mass"
   dims: 0
+  desc: "Invariant mass of a four-momentum. See @ref Observable."
 
 obs_pt:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "transverse momentum"
   dims: 0
+  desc: "Transverse momentum of a four-momentum. See @ref Observable."
 
 obs_p_mag:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "spatial momentum magnitude"
   dims: 0
+  desc: "Magnitude of the spatial momentum. See @ref Observable."
 
 obs_phi:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "azimuthal angle"
   dims: 0
+  desc: "Azimuthal angle of a four-momentum. See @ref Observable."
 
 obs_theta:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "polar angle"
   dims: 0
+  desc: "Polar angle of a four-momentum. See @ref Observable."
 
 obs_y:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "rapidity"
   dims: 0
+  desc: "Rapidity of a four-momentum. See @ref Observable."
 
 obs_y_abs:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "absolute rapidity"
   dims: 0
+  desc: "Absolute rapidity of a four-momentum. See @ref Observable."
 
 obs_eta:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "pseudorapidity"
   dims: 0
+  desc: "Pseudorapidity of a four-momentum. See @ref Observable."
 
 obs_eta_abs:
   inputs:
     - name: p
       type: [float, ..., 4]
-      desc:
+      desc: "four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "absolute pseudorapidity"
   dims: 0
+  desc: "Absolute pseudorapidity of a four-momentum. See @ref Observable."
 
 obs_delta_eta:
   inputs:
     - name: p1
       type: [float, ..., 4]
-      desc:
+      desc: "first four-momentum"
     - name: p2
       type: [float, ..., 4]
-      desc:
+      desc: "second four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "pseudorapidity difference"
   dims: 0
+  desc: "Pseudorapidity difference between two four-momenta. See @ref Observable."
 
 obs_delta_phi:
   inputs:
     - name: p1
       type: [float, ..., 4]
-      desc:
+      desc: "first four-momentum"
     - name: p2
       type: [float, ..., 4]
-      desc:
+      desc: "second four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "azimuthal angle difference"
   dims: 0
+  desc: "Azimuthal angle difference between two four-momenta. See @ref Observable."
 
 obs_delta_r:
   inputs:
     - name: p1
       type: [float, ..., 4]
-      desc:
+      desc: "first four-momentum"
     - name: p2
       type: [float, ..., 4]
-      desc:
+      desc: "second four-momentum"
   outputs:
     - name: obs
       type: [float, ...]
-      desc:
+      desc: "delta-R separation"
   dims: 0
+  desc: "Angular separation in the eta-phi plane between two four-momenta. See @ref Observable."
 
 ---
 title: Kinematics
@@ -590,1187 +627,1230 @@ boost_beam:
   inputs:
     - name: p1
       type: [float, n, 4]
-      desc:
+      desc: "momenta in the partonic center-of-mass frame"
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "momenta in the lab frame"
+  desc: "Boosts momenta from the partonic center-of-mass frame to the lab frame given the momentum fractions. See @ref Luminosity."
 
 boost_beam_inverse:
   inputs:
     - name: p1
       type: [float, n, 4]
-      desc:
+      desc: "momenta in the lab frame"
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "momenta in the partonic center-of-mass frame"
+  desc: "Inverse of `boost_beam`: boosts lab-frame momenta back to the partonic center-of-mass frame."
 
 com_p_in:
   inputs:
     - name: e_cm
       type: [float]
-      desc:
+      desc: "center-of-mass energy"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "incoming momentum along +z"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "incoming momentum along -z"
+  desc: "Builds the two incoming momenta for a given center-of-mass energy."
 
 r_to_x1x2:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: s_hat
       type: [float]
-      desc:
+      desc: "partonic invariant mass squared"
     - name: s_lab
       type: [float]
-      desc:
+      desc: "hadronic invariant mass squared"
   outputs:
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Maps a random number to the beam momentum fractions at fixed partonic energy. See @ref Luminosity."
 
 x1x2_to_r:
   inputs:
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
     - name: s_lab
       type: [float]
-      desc:
+      desc: "hadronic invariant mass squared"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `r_to_x1x2`: maps beam momentum fractions back to the random number. See @ref Luminosity."
 
 diff_cross_section:
   inputs:
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
     - name: pdf1
       type: [float]
-      desc:
+      desc: "PDF value for beam 1"
     - name: pdf2
       type: [float]
-      desc:
+      desc: "PDF value for beam 2"
     - name: matrix_element
       type: [float]
-      desc:
+      desc: "matrix element value"
     - name: e_cm2
       type: [float]
-      desc:
+      desc: "squared center-of-mass energy"
   outputs:
     - name: result
       type: [float]
-      desc:
+      desc: "differential cross section"
+  desc: "Assembles the differential cross section from PDFs, the matrix element and the flux factor. See @ref DifferentialCrossSection."
 
 two_body_decay_com:
   inputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Two-body decay in the rest frame of the decaying particle. Building block of @ref TwoBodyDecay."
 
 two_body_decay_com_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
   outputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Inverse of `two_body_decay_com`. Building block of @ref TwoBodyDecay."
 
 two_body_decay:
   inputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "momentum of the decaying particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Two-body decay of a particle with given momentum. Building block of @ref TwoBodyDecay."
 
 two_body_decay_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
   outputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "momentum of the decaying particle"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Inverse of `two_body_decay`. Building block of @ref TwoBodyDecay."
 
 two_to_two_particle_scattering_com:
   inputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the Mandelstam t"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "2 to 2 scattering in the center-of-mass frame at fixed momentum transfer. Building block of @ref TwoToTwoParticleScattering."
 
 two_to_two_particle_scattering_com_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
   outputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `two_to_two_particle_scattering_com`. Building block of @ref TwoToTwoParticleScattering."
 
 two_to_two_particle_scattering:
   inputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the Mandelstam t"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "2 to 2 scattering with general incoming momenta at fixed momentum transfer. Building block of @ref TwoToTwoParticleScattering."
 
 two_to_two_particle_scattering_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
   outputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `two_to_two_particle_scattering`. Building block of @ref TwoToTwoParticleScattering."
 
 two_to_three_particle_scattering:
   inputs:
     - name: phi_choice
       type: [int]
-      desc:
+      desc: "branch selector for the azimuthal solution"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the already-generated third particle"
     - name: s23
       type: [float]
-      desc:
+      desc: "invariant mass squared of particles 2 and 3"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "2 to 3 scattering step used for t-channel topologies. Building block of @ref TwoToThreeParticleScattering."
 
 two_to_three_particle_scattering_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the third particle"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: s23
       type: [float]
-      desc:
+      desc: "invariant mass squared of particles 2 and 3"
   outputs:
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
     - name: phi_choice
       type: [int]
-      desc:
+      desc: "branch selector for the azimuthal solution"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `two_to_three_particle_scattering`. Building block of @ref TwoToThreeParticleScattering."
 
 double_t_scattering:
   inputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: t2_abs
       type: [float]
-      desc:
+      desc: "absolute value of the second momentum transfer"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the outgoing particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Scattering step with two t-channel momentum transfers. Building block of @ref DoubleT."
 
 double_t_scattering_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
   outputs:
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `double_t_scattering`. Building block of @ref DoubleT."
 
 three_body_decay_com:
   inputs:
     - name: r_e1
       type: [float]
-      desc:
+      desc: "random number for the first energy"
     - name: r_e2
       type: [float]
-      desc:
+      desc: "random number for the second energy"
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: r_beta
       type: [float]
-      desc:
+      desc: "random number for the remaining rotation"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: m3
       type: [float]
-      desc:
+      desc: "mass of the third decay product"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "third decay product momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Three-body decay in the rest frame of the decaying particle. Building block of @ref ThreeBodyDecay."
 
 three_body_decay_com_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "third decay product momentum"
   outputs:
     - name: r_e1
       type: [float]
-      desc:
+      desc: "random number for the first energy"
     - name: r_e2
       type: [float]
-      desc:
+      desc: "random number for the second energy"
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: r_beta
       type: [float]
-      desc:
+      desc: "random number for the remaining rotation"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: m3
       type: [float]
-      desc:
+      desc: "mass of the third decay product"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Inverse of `three_body_decay_com`. Building block of @ref ThreeBodyDecay."
 
 three_body_decay:
   inputs:
     - name: r_e1
       type: [float]
-      desc:
+      desc: "random number for the first energy"
     - name: r_e2
       type: [float]
-      desc:
+      desc: "random number for the second energy"
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: r_beta
       type: [float]
-      desc:
+      desc: "random number for the remaining rotation"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: m3
       type: [float]
-      desc:
+      desc: "mass of the third decay product"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "momentum of the decaying particle"
   outputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "third decay product momentum"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Three-body decay of a particle with given momentum. Building block of @ref ThreeBodyDecay."
 
 three_body_decay_inverse:
   inputs:
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first decay product momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second decay product momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "third decay product momentum"
   outputs:
     - name: r_e1
       type: [float]
-      desc:
+      desc: "random number for the first energy"
     - name: r_e2
       type: [float]
-      desc:
+      desc: "random number for the second energy"
     - name: r_phi
       type: [float]
-      desc:
+      desc: "random number for the azimuthal angle"
     - name: r_cos_theta
       type: [float]
-      desc:
+      desc: "random number for the polar angle"
     - name: r_beta
       type: [float]
-      desc:
+      desc: "random number for the remaining rotation"
     - name: m0
       type: [float]
-      desc:
+      desc: "mass of the decaying particle"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first decay product"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second decay product"
     - name: m3
       type: [float]
-      desc:
+      desc: "mass of the third decay product"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "momentum of the decaying particle"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the decay mapping"
+  desc: "Inverse of `three_body_decay`. Building block of @ref ThreeBodyDecay."
 
 t_inv_min_max:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
   outputs:
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the momentum transfer"
+  desc: "Kinematic limits of the Mandelstam t for a 2 to 2 configuration. Building block of @ref TwoToTwoParticleScattering."
 
 t_inv_value_and_min_max:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
   outputs:
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the momentum transfer"
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the momentum transfer"
+  desc: "Momentum transfer and its kinematic limits for a given final state. Building block of @ref TwoToTwoParticleScattering."
 
 t_inv_min_max_cut:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
     - name: etmin_1
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the first outgoing particle"
     - name: etmin_2
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the second outgoing particle"
   outputs:
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the momentum transfer"
+  desc: "Kinematic limits of the Mandelstam t restricted by transverse-energy cuts. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
 
 t_inv_value_and_min_max_cut:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: etmin_1
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the first outgoing particle"
     - name: etmin_2
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the second outgoing particle"
   outputs:
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the momentum transfer"
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the momentum transfer"
+  desc: "Momentum transfer and its cut-restricted limits for a given final state. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
 
 t1_inv_min_max_doublet:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the outgoing particle"
     - name: mir_min
       type: [float]
-      desc:
+      desc: "minimum invariant mass of the i-r system"
     - name: etmin_i
       type: [float]
-      desc:
+      desc: "minimum transverse energy of particle i"
     - name: etmin_ir
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the i-r system"
   outputs:
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the first momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the first momentum transfer"
+  desc: "Limits of the first momentum transfer in a double-t configuration. Building block of @ref DoubleT."
 
 t1_inv_value_and_min_max_doublet:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "outgoing momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the outgoing particle"
     - name: mir_min
       type: [float]
-      desc:
+      desc: "minimum invariant mass of the i-r system"
     - name: etmin_i
       type: [float]
-      desc:
+      desc: "minimum transverse energy of particle i"
     - name: etmin_ir
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the i-r system"
   outputs:
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the first momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the first momentum transfer"
+  desc: "First momentum transfer and its limits in a double-t configuration. Building block of @ref DoubleT."
 
 t2_inv_min_max_doublet:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the outgoing particle"
     - name: mir_min
       type: [float]
-      desc:
+      desc: "minimum invariant mass of the i-r system"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: etmin_i
       type: [float]
-      desc:
+      desc: "minimum transverse energy of particle i"
     - name: etmin_ir
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the i-r system"
   outputs:
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the second momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the second momentum transfer"
+  desc: "Limits of the second momentum transfer in a double-t configuration. Building block of @ref DoubleT."
 
 t2_inv_value_and_min_max_doublet:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "outgoing momentum"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the outgoing particle"
     - name: mir_min
       type: [float]
-      desc:
+      desc: "minimum invariant mass of the i-r system"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: etmin_i
       type: [float]
-      desc:
+      desc: "minimum transverse energy of particle i"
     - name: etmin_ir
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the i-r system"
   outputs:
     - name: t_abs
       type: [float]
-      desc:
+      desc: "absolute value of the second momentum transfer"
     - name: t_min
       type: [float]
-      desc:
+      desc: "lower limit of the second momentum transfer"
     - name: t_max
       type: [float]
-      desc:
+      desc: "upper limit of the second momentum transfer"
+  desc: "Second momentum transfer and its limits in a double-t configuration. Building block of @ref DoubleT."
 
 s23_min_max:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the third particle"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
   outputs:
     - name: s23_min
       type: [float]
-      desc:
+      desc: "lower limit of the 2-3 invariant mass squared"
     - name: s23_max
       type: [float]
-      desc:
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "Kinematic limits of the 2-3 invariant mass squared. Building block of @ref TwoToThreeParticleScattering."
 
 s23_value_and_min_max:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the third particle"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
   outputs:
     - name: s_23
       type: [float]
-      desc:
+      desc: "the 2-3 invariant mass squared"
     - name: s23_min
       type: [float]
-      desc:
+      desc: "lower limit of the 2-3 invariant mass squared"
     - name: s23_max
       type: [float]
-      desc:
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "The 2-3 invariant mass squared and its limits for a given final state. Building block of @ref TwoToThreeParticleScattering."
 
 s23_min_max_cut:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the third particle"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: m1
       type: [float]
-      desc:
+      desc: "mass of the first outgoing particle"
     - name: m2
       type: [float]
-      desc:
+      desc: "mass of the second outgoing particle"
     - name: etmin_1
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the first outgoing particle"
     - name: etmin_2
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the second outgoing particle"
     - name: drcut
       type: [float]
-      desc:
+      desc: "minimum angular separation between the outgoing particles"
     - name: s23_min_cut
       type: [float]
-      desc:
+      desc: "explicit lower cut on the 2-3 invariant mass squared"
   outputs:
     - name: s23_min
       type: [float]
-      desc:
+      desc: "lower limit of the 2-3 invariant mass squared"
     - name: s23_max
       type: [float]
-      desc:
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "Cut-restricted limits of the 2-3 invariant mass squared. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
 
 s23_value_and_min_max_cut:
   inputs:
     - name: pa
       type: [float, 4]
-      desc:
+      desc: "first incoming momentum"
     - name: pb
       type: [float, 4]
-      desc:
+      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
-      desc:
+      desc: "momentum of the third particle"
     - name: t1_abs
       type: [float]
-      desc:
+      desc: "absolute value of the first momentum transfer"
     - name: p1
       type: [float, 4]
-      desc:
+      desc: "first outgoing momentum"
     - name: p2
       type: [float, 4]
-      desc:
+      desc: "second outgoing momentum"
     - name: etmin_1
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the first outgoing particle"
     - name: etmin_2
       type: [float]
-      desc:
+      desc: "minimum transverse energy of the second outgoing particle"
     - name: drcut
       type: [float]
-      desc:
+      desc: "minimum angular separation between the outgoing particles"
     - name: s23_min_cut
       type: [float]
-      desc:
+      desc: "explicit lower cut on the 2-3 invariant mass squared"
   outputs:
     - name: s_23
       type: [float]
-      desc:
+      desc: "the 2-3 invariant mass squared"
     - name: s23_min
       type: [float]
-      desc:
+      desc: "lower limit of the 2-3 invariant mass squared"
     - name: s23_max
       type: [float]
-      desc:
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "The 2-3 invariant mass squared and its cut-restricted limits. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
 
 invariants_from_momenta:
   inputs:
     - name: p_ext
       type: [float, n, 4]
-      desc:
+      desc: "external four-momenta"
     - name: factors
       type: [float, m, n]
-      desc:
+      desc: "coefficient matrix selecting the invariant combinations"
   outputs:
     - name: invariants
       type: [float, m]
-      desc:
+      desc: "the requested invariant combinations"
+  desc: "Linear combinations of the pairwise invariants built from the external momenta. Building block of @ref PropagatorChannelWeights."
 
 sde2_channel_weights:
   inputs:
     - name: invariants
       type: [float, m]
-      desc:
+      desc: "propagator invariants"
     - name: masses
       type: [float, c, n]
-      desc:
+      desc: "propagator masses per channel"
     - name: widths
       type: [float, c, n]
-      desc:
+      desc: "propagator widths per channel"
     - name: indices
       type: [int, c, n]
-      desc:
+      desc: "invariant index feeding each propagator"
   outputs:
     - name: channel_weights
       type: [float, c]
-      desc:
+      desc: "normalized weight per channel"
+  desc: "Single-diagram-enhanced channel weights from propagator invariants. Building block of @ref PropagatorChannelWeights."
 
 subchannel_weights:
   inputs:
     - name: invariants
       type: [float, m]
-      desc:
+      desc: "propagator invariants"
     - name: masses
       type: [float, c, n]
-      desc:
+      desc: "propagator masses per channel"
     - name: widths
       type: [float, c, n]
-      desc:
+      desc: "propagator widths per channel"
     - name: indices
       type: [int, c, n]
-      desc:
+      desc: "invariant index feeding each propagator"
     - name: on_shell
       type: [int, c, n]
-      desc:
+      desc: "flag marking on-shell propagators per channel"
     - name: group_sizes
       type: [int, single, g]
-      desc:
+      desc: "number of subchannels in each channel group"
   outputs:
     - name: channel_weights
       type: [float, c]
-      desc:
+      desc: "normalized weight per subchannel"
+  desc: "Channel weights refined into subchannel weights using on-shell information. Building block of @ref SubchannelWeights."
 
 apply_subchannel_weights:
   inputs:
     - name: channel_weights_in
       type: [float, c]
-      desc:
+      desc: "weight per channel"
     - name: subchannel_weights
       type: [float, n]
-      desc:
+      desc: "weight per subchannel"
     - name: channel_indices
       type: [int, d]
-      desc:
+      desc: "channel index per diagram"
     - name: subchannel_indices
       type: [int, d]
-      desc:
+      desc: "subchannel index per diagram"
   outputs:
     - name: channel_weights_out
       type: [float, d]
-      desc:
+      desc: "weight per diagram"
+  desc: "Combines channel and subchannel weights into a per-diagram weight. Building block of @ref SubchannelWeights."
 
 compress_channel_weights:
   inputs:
     - name: channel_index
       type: [int]
-      desc:
+      desc: "index of the current channel"
     - name: channel_weights
       type: [float, n]
-      desc:
+      desc: "dense weight per channel"
     - name: keep_count
       type: [size, k]
-      desc:
+      desc: "number of channels to keep"
   outputs:
     - name: chan_weight_values
       type: [float, k]
-      desc:
+      desc: "the kept weights"
     - name: chan_weight_indices
       type: [int, k]
-      desc:
+      desc: "channel index of each kept weight"
+  desc: "Keeps only the largest channel weights, returning them as a sparse list. Building block of @ref PropagatorChannelWeights."
 
 restore_channel_weights:
   inputs:
     - name: chan_weight_values
       type: [float, k]
-      desc:
+      desc: "the kept weights"
     - name: chan_weight_indices
       type: [int, k]
-      desc:
+      desc: "channel index of each kept weight"
     - name: full_count
       type: [size, n]
-      desc:
+      desc: "length of the dense weight vector"
   outputs:
     - name: channel_weights
       type: [float, n]
-      desc:
+      desc: "dense weight per channel"
+  desc: "Inverse of `compress_channel_weights`: expands the sparse weights back to a dense vector. Building block of @ref PropagatorChannelWeights."
 
 pt_eta_phi_x:
   inputs:
     - name: p_ext
       type: [float, n+2, 4]
-      desc:
+      desc: "external four-momenta, including the two incoming particles"
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
   outputs:
     - name: output
       type: [float, 3n+2]
-      desc:
+      desc: "flattened (pt, eta, phi) per final-state particle plus the two momentum fractions"
+  desc: "Converts external momenta to the transverse-momentum, pseudorapidity, azimuth and momentum-fraction parametrization. Building block of @ref ChiliMapping."
 
 mirror_momenta:
   inputs:
     - name: p_ext
       type: [float, n, 4]
-      desc:
+      desc: "external four-momenta"
     - name: mirror
       type: [int]
-      desc:
+      desc: "per-event flag selecting whether to reflect"
   outputs:
     - name: p_mirror
       type: [float, n, 4]
-      desc:
+      desc: "the possibly reflected momenta"
+  desc: "Optionally reflects the momenta along the beam axis to symmetrize the final state."
 
 momenta_to_x1x2:
   inputs:
     - name: p_ext
       type: [float, n, 4]
-      desc:
+      desc: "external four-momenta"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "hadronic center-of-mass energy"
   outputs:
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
+  desc: "Recovers the beam momentum fractions from a set of external momenta."
 
 
 ---
@@ -1780,183 +1860,191 @@ uniform_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant flat in s. Building block of @ref Invariant."
 
 uniform_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `uniform_invariant`. Building block of @ref Invariant."
 
 breit_wigner_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "resonance mass"
     - name: width
       type: [float]
-      desc:
+      desc: "resonance width"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a Breit-Wigner density around the pole mass. Building block of @ref Invariant."
 
 breit_wigner_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "resonance mass"
     - name: width
       type: [float]
-      desc:
+      desc: "resonance width"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `breit_wigner_invariant`. Building block of @ref Invariant."
 
 stable_invariant:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a 1/s power law around a stable pole. Building block of @ref Invariant."
 
 stable_invariant_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `stable_invariant`. Building block of @ref Invariant."
 
 stable_invariant_nu:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: nu
       type: [float]
-      desc:
+      desc: "exponent of the power law"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: s
       type: [float]
-      desc:
+      desc: "sampled invariant"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a tunable 1/s^nu power law. Building block of @ref Invariant."
 
 stable_invariant_nu_inverse:
   inputs:
     - name: s
       type: [float]
-      desc:
+      desc: "invariant value"
     - name: mass
       type: [float]
-      desc:
+      desc: "pole mass"
     - name: nu
       type: [float]
-      desc:
+      desc: "exponent of the power law"
     - name: s_min
       type: [float]
-      desc:
+      desc: "lower bound of the invariant"
     - name: s_max
       type: [float]
-      desc:
+      desc: "upper bound of the invariant"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: gs
       type: [float]
-      desc:
+      desc: "sampling density at s"
+  desc: "Inverse of `stable_invariant_nu`. Building block of @ref Invariant."
 
 ---
 title: Fast RAMBO on diet
@@ -1965,118 +2053,124 @@ fast_rambo_massless:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massless momenta with a given total momentum. Building block of @ref FastRamboMapping."
 
 fast_rambo_massless_inverse:
   inputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n momenta"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
   outputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `fast_rambo_massless`. Building block of @ref FastRamboMapping."
 
 fast_rambo_massless_com:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massless momenta in the center-of-mass frame. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massive momenta with a given total momentum. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive_inverse:
   inputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n momenta"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
   outputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: p0
       type: [float, 4]
-      desc:
+      desc: "total momentum of the system"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `fast_rambo_massive`. Building block of @ref FastRamboMapping."
 
 fast_rambo_massive_com:
   inputs:
     - name: r
       type: [float, 3n-4]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "total center-of-mass energy"
     - name: masses
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc:
+      desc: "the n generated momenta"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "RAMBO-on-diet mapping to n massive momenta in the center-of-mass frame. Building block of @ref FastRamboMapping."
 
 ---
 title: Cuts
@@ -2085,68 +2179,72 @@ cut_unphysical:
   inputs:
     - name: w_in
       type: [float]
-      desc:
+      desc: "incoming weight"
     - name: p
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
     - name: x1
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 1"
     - name: x2
       type: [float]
-      desc:
+      desc: "momentum fraction of beam 2"
   outputs:
     - name: w_out
       type: [float]
-      desc:
+      desc: "weight, set to zero for unphysical events"
+  desc: "Zeroes the weight of events with unphysical momenta or momentum fractions. See @ref Cuts."
 
 cut_one:
   inputs:
     - name: obs
       type: [float]
-      desc:
+      desc: "observable value"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero when the observable is outside [min, max]"
+  desc: "Zeroes the weight when a single observable falls outside its window. See @ref Cuts."
 
 cut_all:
   inputs:
     - name: obs
       type: [float, n]
-      desc:
+      desc: "observable values"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound applied to each observable"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound applied to each observable"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero unless all observables are in [min, max]"
+  desc: "Zeroes the weight unless every observable in the vector is inside its window. See @ref Cuts."
 
 cut_any:
   inputs:
     - name: obs
       type: [float, n]
-      desc:
+      desc: "observable values"
     - name: min
       type: [float]
-      desc:
+      desc: "lower bound applied to each observable"
     - name: max
       type: [float]
-      desc:
+      desc: "upper bound applied to each observable"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "weight, zero unless some observable is in [min, max]"
+  desc: "Zeroes the weight unless at least one observable in the vector is inside its window. See @ref Cuts."
 
 ---
 title: Energy scale
@@ -2155,41 +2253,45 @@ scale_transverse_energy:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the summed transverse energy of the final state. See @ref EnergyScale."
 
 scale_transverse_mass:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the summed transverse mass of the final state. See @ref EnergyScale."
 
 scale_half_transverse_mass:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to half the summed transverse mass of the final state. See @ref EnergyScale."
 
 scale_partonic_energy:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "final-state momenta"
   outputs:
     - name: scale
       type: [float]
-      desc:
+      desc: "the energy scale"
+  desc: "Dynamical scale set to the partonic center-of-mass energy. See @ref EnergyScale."
 
 ---
 title: Chili
@@ -2198,51 +2300,53 @@ chili_forward:
   inputs:
     - name: r
       type: [float, 3n-2]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "hadronic center-of-mass energy"
     - name: m_out
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: pt_min
       type: [float, n]
-      desc:
+      desc: "minimum transverse momentum per final-state particle"
     - name: y_max
       type: [float, n]
-      desc:
+      desc: "maximum rapidity per final-state particle"
   outputs:
     - name: p_ext
       type: [float, n+2, 4]
-      desc:
+      desc: "external momenta, incoming particles first"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Chili hadron-collider mapping from the unit hypercube to external momenta. Building block of @ref ChiliMapping."
 
 chili_inverse:
   inputs:
     - name: p_ext
       type: [float, n+2, 4]
-      desc:
+      desc: "external momenta, incoming particles first"
     - name: e_cm
       type: [float]
-      desc:
+      desc: "hadronic center-of-mass energy"
     - name: m_out
       type: [float, n]
-      desc:
+      desc: "mass of each final-state particle"
     - name: pt_min
       type: [float, n]
-      desc:
+      desc: "minimum transverse momentum per final-state particle"
     - name: y_max
       type: [float, n]
-      desc:
+      desc: "maximum rapidity per final-state particle"
   outputs:
     - name: r
       type: [float, 3n-2]
-      desc:
+      desc: "random numbers, one per phase-space degree of freedom"
     - name: det
       type: [float]
-      desc:
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `chili_forward`. Building block of @ref ChiliMapping."
 
 ---
 title: Interface to ME and PDF
@@ -2252,65 +2356,69 @@ matrix_element:
   outputs: any
   class: MatrixElementInstruction
   custom_op: True
+  desc: "Evaluates a loaded matrix element on a batch of momenta. See @ref MatrixElement."
 
 collect_channel_weights:
   inputs:
     - name: amp2
       type: [float, n]
-      desc:
+      desc: "squared amplitude per diagram"
     - name: channel_indices
       type: [int, single, n]
-      desc:
+      desc: "channel index of each diagram"
     - name: channel_count
       type: [size, c]
-      desc:
+      desc: "number of channels"
   outputs:
     - name: channel_weights
       type: [float, c]
-      desc:
+      desc: "weight per channel"
+  desc: "Sums squared amplitudes into per-channel weights. Building block of @ref PropagatorChannelWeights."
 
 interpolate_pdf:
   inputs:
     - name: x
       type: [float]
-      desc:
+      desc: "momentum fraction"
     - name: q
       type: [float]
-      desc:
+      desc: "factorization scale"
     - name: pid_indices
       type: [int, n]
-      desc:
+      desc: "grid index for each requested parton flavour"
     - name: grid_logx
       type: [float, single, a]
-      desc:
+      desc: "log-x grid nodes"
     - name: grid_logq2
       type: [float, single, b]
-      desc:
+      desc: "log-Q2 grid nodes"
     - name: grid_coeffs
       type: [float, single, 16, c, d]
-      desc:
+      desc: "bicubic interpolation coefficients"
   outputs:
     - name: pdf
       type: [float, n]
-      desc:
+      desc: "PDF value per requested flavour"
   vectorized: False
+  desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid. See @ref PartonDensity."
 
 interpolate_alpha_s:
   inputs:
     - name: q
       type: [float]
-      desc:
+      desc: "renormalization scale"
     - name: grid_logq2
       type: [float, single, b+1]
-      desc:
+      desc: "log-Q2 grid nodes"
     - name: grid_coeffs
       type: [float, single, 4, b]
-      desc:
+      desc: "cubic interpolation coefficients"
   outputs:
     - name: alpha_s
       type: [float]
-      desc:
+      desc: "the strong coupling at q"
   vectorized: False
+  desc: "Evaluates the running coupling by cubic interpolation of a log-Q2 grid. See @ref RunningCoupling."
 
 ---
 title: Normalizing flows and MLPs
@@ -2319,209 +2427,223 @@ matmul:
   inputs:
     - name: x
       type: [float, n]
-      desc:
+      desc: "input vector"
       backward_arg: True
     - name: weight
       type: [float, single, m, n]
-      desc:
+      desc: "weight matrix"
       backward_arg: True
     - name: bias
       type: [float, single, m]
-      desc:
+      desc: "bias vector"
   outputs:
     - name: y
       type: [float, m]
-      desc:
+      desc: "the affine transform of the input"
   custom_op: True
   differentiable: True
+  desc: "Affine layer y = weight x + bias. Building block of @ref MLP."
 
 relu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise ReLU activation. Building block of @ref MLP."
 
 leaky_relu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise leaky ReLU activation. Building block of @ref MLP."
 
 elu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise ELU activation. Building block of @ref MLP."
 
 gelu:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise GELU activation. Building block of @ref MLP."
 
 sigmoid:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
       backward_arg: True
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise sigmoid activation. Building block of @ref MLP."
 
 scaled_tanh:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
       backward_arg: True
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise scaled hyperbolic tangent activation. Building block of @ref MLP."
 
 softplus:
   inputs:
     - name: in1
       type: [float, ...]
-      desc:
+      desc: "input tensor"
   outputs:
     - name: out
       type: [float, ...]
-      desc:
+      desc: "activated tensor"
   dims: 0
   differentiable: True
+  desc: "Element-wise softplus activation. Building block of @ref MLP."
 
 rqs_reshape:
   inputs:
     - name: input
-      desc:
+      desc: "raw spline parameters from the subnetwork"
     - name: bin_count
-      desc:
+      desc: "number of spline bins"
   outputs:
     - name: widths
-      desc:
+      desc: "normalized bin widths"
     - name: heights
-      desc:
+      desc: "normalized bin heights"
     - name: derivatives
-      desc:
+      desc: "knot derivatives"
   class: RqsReshapeInstruction
   differentiable: True
   custom_op: True
+  desc: "Reshapes raw network outputs into rational-quadratic-spline bin widths, heights and derivatives. Building block of @ref Flow."
 
 rqs_find_bin:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to be transformed"
     - name: in_sizes
       type: [float, n, b]
-      desc:
+      desc: "cumulative input-side bin sizes"
     - name: out_sizes
       type: [float, n, b]
-      desc:
+      desc: "cumulative output-side bin sizes"
     - name: derivatives
       type: [float, n, b+1]
-      desc:
+      desc: "knot derivatives"
   outputs:
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters for the active bin"
   differentiable: True
   dims: 2
+  desc: "Builds the per-element spline condition by locating the active bin. Building block of @ref Flow."
 
 rqs_forward:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to transform"
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "transformed values"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-element Jacobian"
   differentiable: True
   dims: 2
+  desc: "Applies a rational-quadratic spline in the forward direction. Building block of @ref Flow."
 
 rqs_inverse:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "values to transform"
     - name: condition
       type: [float, n, 6]
-      desc:
+      desc: "packed spline parameters"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "transformed values"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-element Jacobian"
   differentiable: True
   dims: 2
+  desc: "Applies a rational-quadratic spline in the inverse direction. Building block of @ref Flow."
 
 softmax:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "logits"
   outputs:
     - name: output
       type: [float, ...]
-      desc:
+      desc: "normalized probabilities"
       backward_arg: True
   differentiable: True
   dims: 0
+  desc: "Softmax over the last dimension. Building block of @ref DiscreteSampler."
 
 softmax_prior:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "logits"
     - name: prior
       type: [float, n]
-      desc:
+      desc: "prior probabilities"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "normalized probabilities"
       backward_arg: True
   differentiable: True
+  desc: "Softmax over the last dimension reweighted by a prior. Building block of @ref DiscreteSampler."
 
 ---
 title: Discrete sampling
@@ -2530,307 +2652,327 @@ sample_discrete:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: option_count
       type: [int]
-      desc:
+      desc: "number of choices"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "sampled index"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the sampled index"
+  desc: "Samples a uniform discrete choice from a random number. Building block of @ref DiscreteSampler."
 
 sample_discrete_inverse:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index"
     - name: option_count
       type: [int, single]
-      desc:
+      desc: "number of choices"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the index"
+  desc: "Inverse of `sample_discrete`. Building block of @ref DiscreteSampler."
 
 sample_discrete_probs:
   inputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: probs
       type: [float, n]
-      desc:
+      desc: "probability of each choice"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "sampled index"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the sampled index"
+  desc: "Samples a discrete choice from a given probability vector. Building block of @ref DiscreteFlow."
 
 sample_discrete_probs_inverse:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index"
     - name: probs
       type: [float, n]
-      desc:
+      desc: "probability of each choice"
   outputs:
     - name: r
       type: [float]
-      desc:
+      desc: "random number in [0, 1]"
     - name: det
       type: [float]
-      desc:
+      desc: "probability of the index"
   differentiable: True
+  desc: "Inverse of `sample_discrete_probs`. Building block of @ref DiscreteFlow."
 
 discrete_histogram:
   inputs:
     - name: input
       type: [int]
-      desc:
+      desc: "discrete value per event"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: option_count
       type: [size, n]
-      desc:
+      desc: "number of bins"
   outputs:
     - name: values
       type: [float, single, n]
-      desc:
+      desc: "summed weight per bin"
     - name: counts
       type: [int, single, n]
-      desc:
+      desc: "event count per bin"
   custom_op: True
+  desc: "Accumulates a weighted histogram over a discrete variable. Building block of @ref DiscreteHistogram."
 
 permute_momenta:
   inputs:
     - name: momenta
       type: [float, n, 4]
-      desc:
+      desc: "input momenta"
     - name: permutations
       type: [int, single, m, n]
-      desc:
+      desc: "table of permutations"
     - name: index
       type: [int]
-      desc:
+      desc: "permutation index per event"
   outputs:
     - name: output
       type: [float, n, 4]
-      desc:
+      desc: "permuted momenta"
+  desc: "Reorders momenta according to a stored permutation selected per event. Building block of @ref MultiChannelMapping."
 
 gather:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to select"
       backward_arg: True
     - name: choices
       type: [float, n]
-      desc:
+      desc: "vector of choices"
   outputs:
     - name: output
       type: [float]
-      desc:
+      desc: "the selected entry"
   differentiable: True
+  desc: "Selects one entry per event from a vector of float choices."
 
 gather_int:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to select"
     - name: choices
       type: [int, n]
-      desc:
+      desc: "vector of choices"
   outputs:
     - name: output
       type: [int]
-      desc:
+      desc: "the selected entry"
+  desc: "Selects one entry per event from a vector of integer choices."
 
 gather_vector:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "row index to select"
     - name: choices
       type: [float, n, m]
-      desc:
+      desc: "matrix of choices"
   outputs:
     - name: output
       type: [float, m]
-      desc:
+      desc: "the selected row"
   vectorized: False
+  desc: "Selects one row per event from a matrix of choices."
 
 select_int:
   inputs:
     - name: input
       type: [int, n]
-      desc:
+      desc: "source vector"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "indices to gather"
   outputs:
     - name: output
       type: [int, m]
-      desc:
+      desc: "gathered entries"
+  desc: "Gathers several entries from an integer vector by index."
 
 select:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "source vector"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "indices to gather"
       backward_arg: True
   outputs:
     - name: output
       type: [float, m]
-      desc:
+      desc: "gathered entries"
   differentiable: True
+  desc: "Gathers several entries from a float vector by index."
 
 select_vector:
   inputs:
     - name: input
       type: [float, n, k]
-      desc:
+      desc: "source matrix"
     - name: indices
       type: [int, m]
-      desc:
+      desc: "row indices to gather"
   outputs:
     - name: output
       type: [float, m, k]
-      desc:
+      desc: "gathered rows"
   vectorized: False
+  desc: "Gathers several rows from a matrix by index."
 
 argsort:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "vector to sort"
   outputs:
     - name: indices
       type: [int, n]
-      desc:
+      desc: "permutation that sorts the input"
   vectorized: False
+  desc: "Indices that sort a vector in ascending order."
 
 quantile:
   inputs:
     - name: input
       type: [float]
-      desc:
+      desc: "value per event"
     - name: q
       type: [float, single]
-      desc:
+      desc: "quantile level in [0, 1]"
   outputs:
     - name: output
       type: [float, single]
-      desc:
+      desc: "the estimated quantile"
   custom_op: True
+  desc: "Estimates a quantile of a value over the batch."
 
 one_hot:
   inputs:
     - name: index
       type: [int]
-      desc:
+      desc: "index to encode"
     - name: option_count
       type: [size, n]
-      desc:
+      desc: "length of the one-hot vector"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "one-hot vector"
+  desc: "One-hot encoding of a discrete index."
 
 madnis_abs_weight:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "absolute weight f / q"
   differentiable: True
+  desc: "Absolute integrand contribution used by the MadNIS loss. Building block of @ref MadnisLoss."
 
 madnis_softclip:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density"
     - name: norm
       type: [float]
-      desc:
+      desc: "normalization used for the clip threshold"
     - name: threshold
       type: [float]
-      desc:
+      desc: "relative clipping threshold"
   outputs:
     - name: f_clip
       type: [float]
-      desc:
+      desc: "softly clipped integrand"
   differentiable: True
+  desc: "Softly clips the integrand to limit large weights during training. Building block of @ref MadnisLoss."
 
 madnis_variance:
   inputs:
     - name: f
       type: [float]
-      desc:
+      desc: "integrand value"
     - name: g
       type: [float]
-      desc:
+      desc: "trained sampling density"
     - name: q
       type: [float]
-      desc:
+      desc: "sampling density used to draw the event"
     - name: mean
       type: [float]
-      desc:
+      desc: "running estimate of the integral"
   outputs:
     - name: w
       type: [float]
-      desc:
+      desc: "per-event variance contribution"
   differentiable: True
+  desc: "Per-event contribution to the variance loss. Building block of @ref MadnisLoss."
 
 madnis_single_channel_variance:
   inputs:
     - name: var
       type: [float]
-      desc:
+      desc: "running variance estimate"
     - name: abs_mean
       type: [float]
-      desc:
+      desc: "running mean of the absolute weight"
       backward_arg: True
   outputs:
     - name: loss
       type: [float]
-      desc:
+      desc: "the variance loss"
   differentiable: True
+  desc: "Single-channel variance loss from its running moments. Building block of @ref MadnisLoss."
 
 madnis_multi_channel_variance:
   inputs:
     - name: vars
       type: [float, c]
-      desc:
+      desc: "running variance estimate per channel"
     - name: abs_means
       type: [float, c]
-      desc:
+      desc: "running mean of the absolute weight per channel"
   outputs:
     - name: loss
       type: [float]
-      desc:
+      desc: "the variance loss"
   differentiable: True
+  desc: "Multi-channel variance loss summed over channels. Building block of @ref MadnisLoss."
 
 ---
 title: Indexing
@@ -2838,38 +2980,41 @@ title: Indexing
 nonzero:
   inputs:
     - name: input
-      desc:
+      desc: "mask, nonzero where an event is kept"
   outputs:
     - name: indices
-      desc:
+      desc: "batch indices of the kept events"
   class: NonzeroInstruction
   custom_op: True
+  desc: "Indices of the nonzero entries of a batched mask."
 
 batch_gather:
   inputs:
     - name: indices
-      desc:
+      desc: "batch indices to keep"
     - name: values
-      desc:
+      desc: "values to select from"
   outputs:
     - name: selection
-      desc:
+      desc: "the selected events"
   class: BatchGatherInstruction
   custom_op: True
+  desc: "Selects events from a batch by index."
 
 batch_scatter:
   inputs:
     - name: indices
-      desc:
+      desc: "target batch indices"
     - name: target
-      desc:
+      desc: "batch to write into"
     - name: source
-      desc:
+      desc: "events to write"
   outputs:
     - name: output
-      desc:
+      desc: "the updated batch"
   class: BatchScatterInstruction
   custom_op: True
+  desc: "Writes source events into a target batch at the given indices."
 
 ---
 title: Random numbers
@@ -2877,40 +3022,43 @@ title: Random numbers
 random:
   inputs:
     - name: batch_size
-      desc:
+      desc: "batch size to generate"
     - name: count
-      desc:
+      desc: "random numbers per event"
   outputs:
     - name: output
-      desc:
+      desc: "uniform random numbers in [0, 1]"
   class: RandomInstruction
   custom_op: True
+  desc: "Draws a batch of uniform random numbers."
 
 random_int:
   inputs:
     - name: batch_size
-      desc:
+      desc: "batch size to generate"
     - name: max
-      desc:
+      desc: "exclusive upper bound"
   outputs:
     - name: output
-      desc:
+      desc: "random integers in [0, max)"
   class: RandomIntInstruction
   custom_op: True
+  desc: "Draws a batch of uniform random integers."
 
 unweight:
   inputs:
     - name: weights
-      desc:
+      desc: "event weights"
     - name: max_weight
-      desc:
+      desc: "maximum weight used for the acceptance test"
   outputs:
     - name: indices
-      desc:
+      desc: "batch indices of the accepted events"
     - name: uw_weights
-      desc:
+      desc: "residual weights of the accepted events"
   class: UnweightInstruction
   custom_op: True
+  desc: "Accept/reject unweighting against a maximum weight. See @ref Unweighter."
 
 ---
 title: VEGAS
@@ -2919,78 +3067,82 @@ vegas_forward:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: grid
       type: [float, single, n, b]
-      desc:
+      desc: "VEGAS bin edges per dimension"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "remapped points"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-dimension Jacobian"
   dims: 2
+  desc: "Applies the VEGAS grid mapping in the forward direction. Building block of @ref VegasMapping."
 
 vegas_inverse:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "remapped points"
     - name: grid
       type: [float, single, n, b]
-      desc:
+      desc: "VEGAS bin edges per dimension"
   outputs:
     - name: output
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: det
       type: [float, n]
-      desc:
+      desc: "per-dimension Jacobian"
   dims: 2
+  desc: "Inverse of `vegas_forward`. Building block of @ref VegasMapping."
 
 vegas_histogram:
   inputs:
     - name: input
       type: [float, n]
-      desc:
+      desc: "points in the unit hypercube"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: bin_count
       type: [size, b]
-      desc:
+      desc: "number of grid bins per dimension"
   outputs:
     - name: values
       type: [float, single, n, b]
-      desc:
+      desc: "summed weight per bin and dimension"
     - name: counts
       type: [int, single, n, b]
-      desc:
+      desc: "event count per bin and dimension"
   custom_op: True
+  desc: "Accumulates the weighted histograms VEGAS uses to refine its grid. Building block of @ref VegasHistogram."
 
 histogram:
   inputs:
     - name: input
       type: [float, ...]
-      desc:
+      desc: "value per event"
     - name: weights
       type: [float]
-      desc:
+      desc: "event weight"
     - name: min
       type: [float]
-      desc:
+      desc: "lower edge of the histogram range"
     - name: max
       type: [float]
-      desc:
+      desc: "upper edge of the histogram range"
     - name: bin_count
       type: [size, b]
-      desc:
+      desc: "number of interior bins"
   outputs:
     - name: values
       type: [float, single, b+2]
-      desc:
+      desc: "summed weight per bin, with underflow and overflow"
     - name: square_values
       type: [float, single, b+2]
-      desc:
+      desc: "summed squared weight per bin, for the statistical error"
   custom_op: True
+  desc: "Accumulates a weighted histogram with underflow and overflow bins. See @ref Histogram."

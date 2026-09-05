@@ -19,14 +19,29 @@ enum Opcode {
 };
 } // namespace opcodes
 
+/**
+ * Base class for a compute-graph operation.
+ *
+ * Each instruction has a name, an integer opcode and a differentiable flag, and
+ * derives its output types from its input types through `signature`. The
+ * concrete subclasses are an internal implementation detail. User code adds
+ * instructions through the generated @ref FunctionBuilder methods.
+ */
 class Instruction {
 public:
+    /// @param name instruction name, matching `instruction_set.yaml`
+    /// @param opcode integer opcode used by the runtime dispatch
+    /// @param differentiable whether the runtime can backpropagate through it
     Instruction(const std::string& name, int opcode, bool differentiable) :
         _name(name), _opcode(opcode), _differentiable(differentiable) {}
     virtual ~Instruction() = default;
+    /// Output types produced for the given argument values.
     virtual TypeVec signature(const ValueVec& args) const = 0;
+    /// Instruction name, matching `instruction_set.yaml`.
     const std::string& name() const { return _name; }
+    /// Integer opcode used by the runtime dispatch.
     int opcode() const { return _opcode; }
+    /// Whether the runtime can backpropagate through this instruction.
     bool differentiable() const { return _differentiable; }
 
 protected:

@@ -10,13 +10,33 @@
 
 namespace madspace {
 
-enum class DataType { dt_int, dt_float, batch_sizes };
+/**
+ * Element data type of a compute-graph @ref Value.
+ *
+ * `dt_int` and `dt_float` are ordinary integer and floating-point tensors.
+ * `batch_sizes` marks a value that instead carries a list of batch sizes, used
+ * to split and recombine batches in multi-channel functions.
+ */
+enum class DataType {
+    dt_int,      ///< Integer tensor.
+    dt_float,    ///< Floating-point tensor.
+    batch_sizes, ///< A list of batch sizes rather than tensor data.
+};
 
 using me_int_t = int;
 
 template <typename T>
 concept ScalarType = std::same_as<T, me_int_t> || std::same_as<T, double>;
 
+/**
+ * Symbolic size of the batch dimension of a @ref Value.
+ *
+ * A batch size is one of: the scalar size `one` (no batch dimension), a named
+ * symbol such as `"batch_size"`, an anonymous symbol created for an
+ * intermediate result, or a sum of such terms with integer coefficients.
+ * Sizes are added and compared symbolically, so a graph can be type checked
+ * without knowing the actual number of events.
+ */
 class BatchSize {
 public:
     using Named = std::string;
@@ -36,16 +56,23 @@ public:
     using One = std::monostate;
     using Compound = std::map<std::variant<Named, Unnamed, One>, int>;
 
-    static const BatchSize zero;
-    static const BatchSize one;
+    static const BatchSize zero; ///< The empty batch size (a sum of no terms).
+    static const BatchSize one;  ///< The scalar batch size (no batch dimension).
 
+    /// Named batch size such as `"batch_size"`.
+    /// @param name symbol name
     BatchSize(const std::string& name) : value(name) {}
+    /// Scalar batch size (no batch dimension).
     BatchSize(One value) : value(value) {}
+    /// Fresh anonymous batch size, distinct from every other.
     BatchSize() : value(std::make_shared<UnnamedBody>()) {}
+    /// Symbolic sum of two batch sizes.
     BatchSize operator+(const BatchSize& other) const { return add(other, 1); }
+    /// Symbolic difference of two batch sizes.
     BatchSize operator-(const BatchSize& other) const { return add(other, -1); }
     bool operator==(const BatchSize& other) const { return value == other.value; }
     bool operator!=(const BatchSize& other) const { return value != other.value; }
+    /// Human-readable representation such as `"batch_size + 1"`.
     std::string to_string() const;
 
     friend std::ostream& operator<<(std::ostream& out, const BatchSize& batch_size);
@@ -64,14 +91,31 @@ void to_json(nlohmann::json& j, const BatchSize& batch_size);
 void to_json(nlohmann::json& j, const BatchSize& batch_size);
 void from_json(const nlohmann::json& j, BatchSize& batch_size);
 
+/**
+ * Full type of a compute-graph @ref Value. It combines an element `DataType`, a
+ * symbolic @ref BatchSize and a static trailing shape.
+ *
+ * The logical tensor shape is `(batch_size, shape...)`. A `batch_sizes` value
+ * instead holds @p batch_size_list and has no element shape.
+ */
 struct Type {
+    /// Element data type.
     DataType dtype;
+    /// Symbolic size of the leading batch dimension.
     BatchSize batch_size;
+    /// Static trailing dimensions, without the batch dimension.
     std::vector<int> shape;
+    /// For a `batch_sizes` value: the list of sizes it carries.
     std::vector<BatchSize> batch_size_list;
 
+    /**
+     * @param dtype element data type
+     * @param batch_size symbolic size of the batch dimension
+     * @param shape static trailing dimensions
+     */
     Type(DataType dtype, BatchSize batch_size, const std::vector<int>& shape) :
         dtype(dtype), batch_size(batch_size), shape(shape) {}
+    /// Construct a `batch_sizes` type carrying @p batch_size_list.
     Type(const std::vector<BatchSize>& batch_size_list) :
         dtype(DataType::batch_sizes),
         batch_size(BatchSize::one),
@@ -132,14 +176,29 @@ using TensorValue = std::tuple<
 
 using LiteralValue = std::variant<me_int_t, double, TensorValue, std::monostate>;
 
+/**
+ * A node in a compute graph: a typed tensor that is either a literal constant
+ * or a reference to a graph local.
+ *
+ * @ref FunctionBuilder methods take and return `Value`s. A value with
+ * `local_index >= 0` refers to the output of an earlier instruction. Otherwise
+ * @p literal_value holds an inline scalar or dense tensor constant. Scalars and
+ * nested `std::vector`s convert to a `Value` implicitly.
+ */
 struct Value {
+    /// Type of the value.
     Type type;
+    /// Inline constant, or `std::monostate` for a graph local.
     LiteralValue literal_value;
+    /// Index of the referenced graph local, or -1 for a literal.
     int local_index = -1;
 
+    /// Empty value (no literal, no local); tests as `false`.
     Value() : type(single_float), literal_value(std::monostate{}) {}
 
+    /// Scalar integer constant.
     Value(me_int_t value) : type(single_int), literal_value(value) {}
+    /// Scalar floating-point constant.
     Value(double value) : type(single_float), literal_value(value) {}
 
     template <ScalarType T>

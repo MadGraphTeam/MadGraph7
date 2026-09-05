@@ -5,8 +5,47 @@
 
 namespace madspace {
 
+/**
+ * Autoregressive adaptive sampler for discrete choices.
+ *
+ * Like @ref DiscreteSampler, but the categorical distribution for each discrete
+ * dimension is predicted by an @ref MLP subnetwork from the earlier choices and
+ * an optional conditioning input [1]. The subnetwork weights are compute-graph
+ * globals named after @p prefix; call `initialize_globals(context)` once before
+ * use.
+ *
+ * `batch` is the leading batch dimension. `d` indexes the discrete dimensions.
+ *
+ * **Inputs**
+ * - `random_d` – `float`, shape `(batch,)` – one uniform number per dimension.
+ *
+ * **Conditions**
+ * - `condition` – `float`, shape `(batch, condition_dim)` – conditioning input.
+ *   Present only when @p condition_dim is nonzero.
+ * - `prior_d` – `float`, shape `(batch, option_counts[d])` – prior category
+ *   weights. Present only for the dimensions in @p dims_with_prior.
+ *
+ * **Outputs**
+ * - `index_d` – `int`, shape `(batch,)` – the chosen category per dimension.
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ */
 class DiscreteFlow : public Mapping {
 public:
+    /**
+     * @param option_counts     Number of categories for each discrete dimension.
+     * @param prefix            Prefix for the trainable global names.
+     * @param dims_with_prior   Dimensions conditioned on a `prior_d` input.
+     * @param condition_dim     Width of the conditioning input; `0` for none.
+     * @param subnet_hidden_dim Hidden width of the @ref MLP subnetworks.
+     * @param subnet_layers     Number of layers in the subnetworks.
+     * @param subnet_activation  Activation of the subnetworks.
+     */
     DiscreteFlow(
         const std::vector<std::size_t>& option_counts,
         const std::string& prefix = "",
@@ -16,8 +55,11 @@ public:
         std::size_t subnet_layers = 3,
         MLP::Activation subnet_activation = MLP::leaky_relu
     );
+    /// Number of categories per discrete dimension.
     const std::vector<std::size_t>& option_counts() const { return _option_counts; }
+    /// Width of the conditioning input.
     std::size_t condition_dim() const { return _condition_dim; }
+    /// Register the flow's trainable parameters on @p context.
     void initialize_globals(ContextPtr context) const;
 
 private:
