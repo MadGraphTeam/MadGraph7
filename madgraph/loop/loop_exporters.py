@@ -1235,10 +1235,12 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
 
         writer.writelines(proc_include)
                                 
-    def generate_subprocess_directory(self, matrix_element, fortran_model, second_exporter=None):
+    def generate_subprocess_directory(self, matrix_element, fortran_model,
+                                      me_number=None, second_exporter=None):
         """ To overload the default name for this function such that the correct
         function is used when called from the command interface """
-        
+        # 3rd positional slot is the subprocess number (base-class convention);
+        # loop_interface.ML5export omits it, madgraph_interface.export passes it.
         assert second_exporter is None
         self.unique_id +=1
         return self.generate_loop_subprocess(matrix_element,fortran_model,
