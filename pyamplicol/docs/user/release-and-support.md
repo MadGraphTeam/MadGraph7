@@ -42,6 +42,8 @@ Version `0.4.1` preserves exact model constants, colour weights, and
 normalization factors through higher-precision evaluation. It also corrects
 native evaluation and retains the exact next-to-leading-colour generation
 shortcut. The release keeps the same supported platforms and Python versions.
+Equivalent exact and floating-point coefficients are again recognized when
+selecting optimized recurrence kernels, including in the bundled SM and HEFT models.
 
 ## 0.2.0 release
 
