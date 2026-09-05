@@ -1391,7 +1391,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
         )
-        .def_readwrite("buffered_steps", &MadnisTraining::Config::buffered_steps)
+        .def_readwrite(
+            "buffered_steps_fraction",
+            &MadnisTraining::Config::buffered_steps_fraction
+        )
         .def_readwrite(
             "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
         )

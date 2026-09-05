@@ -729,7 +729,7 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps = madnis_args["buffered_steps"]
+            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
             config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]

@@ -61,12 +61,8 @@ void MadnisTraining::train_step(std::size_t batch_index) {
     _abort_check_function();
     _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
-    // Delta-sigma modulation: the target fraction of buffered steps is
-    // accumulated and one quantum is spent on a buffered step whenever the
-    // accumulator reaches one, which spreads the buffered steps out evenly.
-    // The buffer fill levels are read once here, before this batch's flush
-    // (see start_generator_jobs), so the schedule only depends on the batch
-    // index.
+    // delta-sigma modulation: accumulate the target fraction and spend one
+    // quantum per buffered step, which spreads them out evenly
     _buffered_step_accumulator += buffered_step_target();
     bool try_buffered = _buffered_step_accumulator >= _buffered_step_scale;
     if (try_buffered) {
@@ -169,15 +165,10 @@ double MadnisTraining::buffered_fraction() const {
     return static_cast<double>(buffered_count) / _buffered_history.size();
 }
 
-// Target fraction of buffered training steps, as a fixed-point fraction of
-// _buffered_step_scale. Ramps up linearly from zero at
-// config.minimum_buffer_size to buffered_steps / (buffered_steps + 1) -- the
-// fraction of the fixed one-online/n-buffered schedule -- at
-// config.buffer_capacity, using the least filled channel buffer. All integer
-// arithmetic, so the schedule is bit-identical independent of platform and
-// compiler flags.
+// Target fraction of buffered steps in units of _buffered_step_scale, ramped up
+// linearly between minimum_buffer_size and buffer_capacity of the least filled buffer
 std::size_t MadnisTraining::buffered_step_target() const {
-    if (_config.buffer_capacity == 0 || _config.buffered_steps == 0) {
+    if (_config.buffer_capacity == 0 || _config.buffered_steps_fraction <= 0.) {
         return 0;
     }
     std::size_t buffer_size = _config.buffer_capacity;
@@ -191,8 +182,10 @@ std::size_t MadnisTraining::buffered_step_target() const {
         ? _config.buffer_capacity - _config.minimum_buffer_size
         : 1;
     std::size_t filled = std::min(buffer_size - _config.minimum_buffer_size, range);
-    return _buffered_step_scale * _config.buffered_steps * filled /
-        ((_config.buffered_steps + 1) * range);
+    std::size_t max_target = static_cast<std::size_t>(
+        _buffered_step_scale * std::min(_config.buffered_steps_fraction, 1.)
+    );
+    return max_target * filled / range;
 }
 
 std::size_t MadnisTraining::buffer_event_count() const {
@@ -509,9 +502,8 @@ void MadnisTraining::start_single_job(
     std::size_t global_channel_index = _channel_index_offset + channel_index;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
     job.dispatch_seq = channel_seq;
-    // evaluated on the dispatching thread and captured by value: reading
-    // _batch_index inside the job would make the buffer content depend on
-    // thread scheduling
+    // captured by value: reading _batch_index inside the job would make the
+    // buffer content depend on thread scheduling
     bool store_buffer = _batch_index >= _config.buffer_skip_batches;
     _generator_context->thread_pool().submit(
         [this, channel_index, global_channel_index, batch_size, job_id, store_buffer,

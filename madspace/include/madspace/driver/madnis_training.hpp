@@ -42,9 +42,10 @@ public:
         double grad_clip_threshold = 0.0;
         std::size_t buffer_capacity = 0;
         std::size_t minimum_buffer_size = 10000;
-        std::size_t buffered_steps = 0;
-        // no unweighted samples are stored in the buffer during the first
-        // buffer_skip_batches batches
+        // fraction of training steps done on buffered samples, reached once the
+        // buffers are full (see buffered_step_target)
+        double buffered_steps_fraction = 0.;
+        // number of initial batches during which no samples are buffered
         std::size_t buffer_skip_batches = 1000;
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
@@ -178,11 +179,11 @@ private:
     std::vector<std::size_t> _status_generated_events;
     std::vector<std::size_t> _status_buffer_sizes;
     std::size_t _generated_event_count = 0;
-    // index of the batch currently being trained. Only read on the thread
-    // dispatching generator jobs, never inside a job (see start_single_job)
+    // index of the current batch, only read on the dispatching thread
+    // (see start_single_job)
     std::size_t _batch_index = 0;
-    // delta-sigma modulator state deciding online vs. buffered steps, in units
-    // of _buffered_step_scale (see buffered_step_target)
+    // delta-sigma modulator state deciding online vs. buffered steps,
+    // in units of _buffered_step_scale (see buffered_step_target)
     static constexpr std::size_t _buffered_step_scale = 1 << 20;
     std::size_t _buffered_step_accumulator = 0;
     std::size_t _job_id = 0;
