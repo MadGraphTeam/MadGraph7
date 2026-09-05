@@ -285,6 +285,32 @@ def test_authenticated_wheel_rejects_frontend_maturin_overrides(
         backend._release_wheel_config_settings({argument_key: ["--profile", "dev"]})
 
 
+@pytest.mark.parametrize("platform_name", ("linux", "darwin"))
+def test_release_bootstrap_wheel_uses_the_producer_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_name: str,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    monkeypatch.setattr(backend.sys, "platform", platform_name)
+    observed: dict[str, object] = {}
+
+    def delegated(operation, *args, **kwargs):
+        observed["settings"] = args[1]
+        observed["context"] = kwargs["release_prepared_model_bootstrap_context"]
+        return "pyamplicol.whl"
+
+    monkeypatch.setattr(backend, "_from_overlay", delegated)
+    assert backend.build_release_prepared_model_bootstrap_wheel(
+        "dist",
+        bootstrap_context="test",
+        config_settings={"frontend.setting": "preserved"},
+    ) == "pyamplicol.whl"
+    expected: dict[str, object] = {"frontend.setting": "preserved"}
+    if platform_name == "linux":
+        expected["maturin.build-args"] = ["--compatibility", "linux"]
+    assert observed == {"settings": expected, "context": "test"}
+
+
 def test_release_bootstrap_wheel_rejects_frontend_maturin_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

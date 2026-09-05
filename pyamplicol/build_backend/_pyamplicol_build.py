@@ -1861,6 +1861,11 @@ def build_release_prepared_model_bootstrap_wheel(
     """Build a release-version wheel usable only to regenerate prepared packs."""
 
     config_settings = _release_wheel_config_settings(config_settings)
+    if sys.platform == "linux":
+        # This non-publishable wheel runs only on its producer, which need not
+        # be a manylinux image. The generated prepared packs remain portable.
+        config_settings = dict(config_settings or {})
+        config_settings["maturin.build-args"] = ["--compatibility", "linux"]
     return _from_overlay(
         maturin.build_wheel,
         wheel_directory,
