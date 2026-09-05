@@ -305,7 +305,7 @@ def test_release_staging_accepts_older_package_producer(
     overlay = _release_overlay(tmp_path)
     store = overlay / "release_assets" / "prepared_models"
     shutil.copytree(ROOT / "release_assets" / "prepared_models", store)
-    assert RELEASE_VERSION == "0.2.0"
+    assert RELEASE_VERSION == "0.4.1"
 
     assert project_release_packaged_prepared_model_store(
         overlay,

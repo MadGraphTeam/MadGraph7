@@ -13,6 +13,9 @@ record of the supported release boundary and explains how to report a problem.
 
 ## Current release boundary
 
+The `main` branch prepares version `0.4.1` for the next publication. It is not
+yet published on PyPI; the current published release remains `0.2.0`.
+
 Version `0.2.0` is represented by the immutable
 [`v0.2.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.2.0),
 the [HEFFT GitHub release](https://github.com/mg5amcnlo/pyamplicol/releases/tag/v0.2.0),
@@ -32,6 +35,13 @@ Publication uploads these already validated files without rebuilding them.
 Release dependencies include Symbolica 2.2.0 and the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
 immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
+
+## 0.4.1 (unreleased)
+
+Version `0.4.1` preserves exact model constants, colour weights, and
+normalization factors through higher-precision evaluation. It also corrects
+native evaluation and retains the exact next-to-leading-colour generation
+shortcut. The release keeps the same supported platforms and Python versions.
 
 ## 0.2.0 release
 

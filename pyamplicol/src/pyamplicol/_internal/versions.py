@@ -969,7 +969,7 @@ def verify_native_module(module: Any, *, expected_version: str | None = None) ->
         )
 
 
-def package_version(default: str = "0.2.0") -> str:
+def package_version(default: str = "0.4.1") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
     if _is_source_checkout(_SOURCE_PACKAGE_ROOT, _SOURCE_ROOT):
