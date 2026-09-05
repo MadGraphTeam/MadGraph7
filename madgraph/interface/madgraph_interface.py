@@ -827,6 +827,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("       through the LO madevent template and uses 'me_frame' exactly as at")
         logger.info("       LO, [sqrvirt=...] squares one amplitude standalone.")
         logger.info("   A polarized massless particle needs no frame and was always allowed.")
+        logger.info(" > A colour-charged polarized particle is refused in the [QCD]/[real=]/")
+        logger.info("   [LOonly=] modes only: it is also an FKS emitter, and that is untested.")
         logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
         logger.info(" > Example: generate g g > z{0} z{0} [noborn=QCD]  with me_frame = [3]",'$MG:color:GREEN')
         logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")

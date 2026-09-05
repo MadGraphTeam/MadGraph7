@@ -1089,6 +1089,7 @@ Still refused, each for a reason rather than by omission:
   links, `sreal_deg`) go through the same `sborn_frame`/`sborn_sf_frame`, so
   this is likely to work — but nothing in the QED sector has been run, and
   the plan does not cover it. `[virt=QED]` is fine, being standalone.
+
 `[noborn=…]` / `[sqrvirt=…]` (loop-induced) with a massive polarised particle
 was on this list. It has since been checked end to end and **opened** — see
 M6.
@@ -1432,7 +1433,8 @@ comes out with `FRAME_ID = 8`, i.e. bit 3, the first Z. The boost routine is
 `Template/LO/SubProcesses/genps.f`'s `boost_to_frame` — the same one M2 fixed,
 so the fix is inherited by construction rather than ported.
 
-**The quantisation axis survives MadLoop.** This was the one thing that could
+**The quantisation axis survives MadLoop** (on `me_frame=[3]`; `[4]` needed
+PR #91, see below). This was the one thing that could
 not be settled by reading: `improve_ps` deforms the PS point before the loop is
 evaluated (`ImprovePSPoint=2` by default), and moving the deliberately-zeroed
 leg off zero is precisely what flips the HELAS `vxxxxx` branch. Instrumented
@@ -1548,10 +1550,19 @@ shrink with `ANS(1,0)` when the helicity sum is restricted. Measured, with the
 two changes merged and the check active at its default `1.0d-2`:
 2.543e-02 +- 9.9e-05 pb, zero `##E02`, 0.8 sigma from the number above.
 
-**What is not touched.** The colour-charged refusal is a separate rule that
-applies in every mode and stays. The QCD-only restriction on the run_card
-NLO modes also stays; it does not apply to loop-induced, which has no
-subtraction and therefore no order-dependent counterterms to validate.
+**What is not touched.** The QCD-only restriction on the run_card NLO modes
+stays; it does not apply to loop-induced, which has no subtraction and
+therefore no order-dependent counterterms to validate.
+
+**Colour is not refused here either.** The colour-charged refusal is scoped to
+the subtracted regime alone (`madgraph_interface.py`, the `if
+subtracted_boost_ok:` branch), a decision taken on the base branch in
+`ee63ba492`: a coloured polarised leg is also an FKS emitter, which is what is
+untested, and loop-induced has no FKS. `g{L} g > z z [noborn=QCD]` and
+`g g > t{L} t~ [noborn=QCD]` are therefore accepted, and the unit test asserts
+so. Nothing in the LO path cares: `boost_to_frame` is purely kinematic and
+`SMATRIX1` hands the boosted momenta straight to MadLoop. It is a *format*
+decision only — no coloured polarised loop-induced process has been run.
 
 **Write `g g`, not `p p`.** `p p > z z [noborn=QCD]` -- the spelling section 1
 uses -- is not a physical request: `q q~ > z z` has a tree-level Born, so
