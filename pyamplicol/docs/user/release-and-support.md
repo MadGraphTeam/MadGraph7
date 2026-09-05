@@ -44,6 +44,8 @@ native evaluation and retains the exact next-to-leading-colour generation
 shortcut. The release keeps the same supported platforms and Python versions.
 Equivalent exact and floating-point coefficients are again recognized when
 selecting optimized recurrence kernels, including in the bundled SM and HEFT models.
+Batched recurrence evaluations now fill the already allocated SIMD-aligned
+workspace, avoiding unnecessarily small batches at higher multiplicities.
 
 ## 0.2.0 release
 

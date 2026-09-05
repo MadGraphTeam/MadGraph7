@@ -1498,6 +1498,44 @@ fn high_footprint_runtime_uses_a_power_of_two_cache_tile() {
 }
 
 #[test]
+fn cache_tile_fills_one_aligned_pitch_without_overriding_request_or_workspace() {
+    for (requested_points, workspace_mib, expected_points) in [
+        (1, 256, 1),
+        (2, 256, 2),
+        (4, 256, 4),
+        (8, 256, 8),
+        (1024, 256, 8),
+        (1024, 17, 8),
+    ] {
+        let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+        parts.strategy = RecurrenceStrategy::ContractedColorUnion;
+        parts.point_tile_size = requested_points;
+        parts.workspace_mib = workspace_mib;
+        parts.current_arena_components = 131_071;
+        // Including the one amplitude, the split-complex footprint is exactly
+        // 2 MiB per point. The old 4 MiB cache target admitted only two lanes,
+        // although every tiled arena already allocated an eight-lane pitch.
+        assert_eq!(parts.amplitude_destination_count, 1);
+        let plan = DirectRecurrencePlan::new(parts).unwrap();
+        let executors = DirectExecutorCatalog::new(
+            &plan,
+            plan.direct_template_catalog_digest(),
+            direct_executor_handles(),
+        )
+        .unwrap();
+        let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+        assert_eq!(runtime.point_tile_size(), expected_points);
+        assert_eq!(runtime.point_stride(), 8);
+        let (current_re, current_im) = runtime.current_arenas();
+        let (amplitude_re, amplitude_im) = runtime.amplitude_arenas();
+        assert_eq!(current_re.len(), 131_071 * 8);
+        assert_eq!(current_im.len(), current_re.len());
+        assert_eq!(amplitude_re.len(), 8);
+        assert_eq!(amplitude_im.len(), amplitude_re.len());
+    }
+}
+
+#[test]
 fn cache_target_never_rejects_a_point_that_fits_the_workspace_limit() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
     parts.point_tile_size = 1024;

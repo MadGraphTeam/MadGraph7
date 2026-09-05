@@ -433,10 +433,17 @@ impl DirectRecurrenceExecutionRuntime {
         // The accepted recurrence cache policy is deliberately lane-local:
         // it counts current+amplitude split halves, while the hard workspace
         // budget above counts those halves plus every momentum plane.
+        // Fill at least one already allocated aligned pitch when the request
+        // and hard budget allow it, rather than repeatedly running a few lanes.
+        let minimum_tiled_points = (DIRECT_RUNTIME_ARENA_ALIGNMENT / size_of::<f64>()) as u32;
         let packed_singleton_capable = executors.packed_singleton_capable();
         let (tile_capacity, deferred_tiled_layout_error) = match hard_budget_tile {
             Ok(hard_budget_tile) => (
-                hard_budget_tile.min(u32::try_from(cache_tile).unwrap_or(u32::MAX).max(1)),
+                hard_budget_tile.min(
+                    u32::try_from(cache_tile)
+                        .unwrap_or(u32::MAX)
+                        .max(minimum_tiled_points),
+                ),
                 None,
             ),
             Err(error)
