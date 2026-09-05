@@ -538,17 +538,17 @@ class ExternalModelCatalogMixin:
         if color_accuracy not in {"lc", "nlc", "full"}:
             raise ValueError(f"unknown colour accuracy: {color_accuracy}")
         power = self._kernel(vertex.kind).lc_color_normalization_power
-        normalization = 2.0 ** (-0.5 * power)
         structure, coefficient = self._vertex_color_projection(vertex)
+        # The possibly irrational 2**(-power/2) belongs to the symbolic
+        # kernel. Recurrence colour weights are exact complex rationals.
         if structure in {
             "adjoint-structure-constant",
             "adjoint-structure-constant-product",
         }:
             phase = (-1j) ** power
-            weight = coefficient * normalization * phase
+            weight = coefficient * phase
             return (weight.real, weight.imag)
-        weight = coefficient * normalization
-        return (weight.real, weight.imag)
+        return (coefficient.real, coefficient.imag)
 
     def vertex_color_structure(self, vertex: Vertex) -> str:
         return self._vertex_color_projection(vertex)[0]

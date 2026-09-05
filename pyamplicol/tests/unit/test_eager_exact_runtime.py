@@ -391,6 +391,7 @@ def _runtime_schema(*, direct_closure: bool) -> dict[str, object]:
 
 def _physics() -> dict[str, object]:
     return {
+        "extensions": {"normalization": {}},
         "schema_version": 1,
         "kind": "pyamplicol-runtime-physics",
         "process_id": "synthetic",

@@ -147,6 +147,8 @@ jobs:
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
+            tests/unit/test_exact_parameter_precision.py \
+            tests/unit/test_exact_vertex_normalization.py \
             tests/unit/test_external_model_independence.py \
             tests/unit/test_generation_config_provenance.py \
             tests/unit/test_generation_execution_schema.py \
@@ -171,6 +173,7 @@ jobs:
           .venv/bin/python -m pytest
           tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
+          tests/integration/test_exact_precision_normalization.py
           -q
       - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
         run: >-

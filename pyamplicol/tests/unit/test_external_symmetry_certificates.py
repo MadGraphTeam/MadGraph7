@@ -22,6 +22,7 @@ from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_so
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
 from pyamplicol.models.compiler_entry import (
+    _annotate_oriented_kernel_evaluation_equivalence,
     _term_supports_transverse_massless_yang_mills,
 )
 from pyamplicol.models.compiler_tensor_ordering import (
@@ -384,6 +385,29 @@ def test_external_sm_symmetries_are_proven_from_compiled_tensors(external_sm) ->
         (1.0, 0.0),
         (-1.0, 0.0),
     }
+
+
+def test_external_kernel_reuse_includes_exact_colour_normalization(external_sm) -> None:
+    from pyamplicol._internal.physics.symbols import symbols
+
+    compiled, _model = external_sm
+    cubic = next(
+        kernel
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.particles == ("g", "g", "g")
+    )
+    different_normalization = replace(
+        cubic, lc_color_normalization_power=cubic.lc_color_normalization_power + 1
+    )
+    annotated = _annotate_oriented_kernel_evaluation_equivalence(
+        (cubic, different_normalization),
+        compiled.ir.particles,
+        compiled.ir.vertex_terms,
+        symbols.model(compiled.ir.name),
+    )
+
+    assert annotated[0].evaluation_class != annotated[1].evaluation_class
+    assert all(kernel.evaluation_equivalence_verified for kernel in annotated)
 
 
 def test_tensor_product_signature_alpha_normalizes_contracted_indices() -> None:

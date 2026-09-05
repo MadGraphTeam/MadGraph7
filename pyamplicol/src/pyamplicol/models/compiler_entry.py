@@ -552,6 +552,10 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             _sym.E(kernel.coupling_expression),
             derived_couplings,
         )
+        # The algebraic colour-flow normalization is evaluated by the kernel,
+        # so it must also participate in proofs of shared kernel evaluations.
+        if kernel.lc_color_normalization_power:
+            coupling *= _sym.E(f"2^(-{kernel.lc_color_normalization_power}/2)")
         dimensions = tuple(
             compiled_particle_component_dimension(particle)
             for particle in (
@@ -587,7 +591,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                 dimensions[input_order[1]],
                 dimensions[2],
             )
-            for sign in (1.0, -1.0):
+            for sign in (1, -1):
                 component_strings = tuple(
                     _canonicalize_oriented_kernel_component(
                         sign * component
@@ -607,7 +611,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                     (
                         signature,
                         input_order,
-                        (sign, 0.0),
+                        (float(sign), 0.0),
                         hashlib.sha256(signature.encode("utf-8")).hexdigest(),
                     )
                 )
@@ -620,7 +624,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             direct_components = components_by_input_order[(0, 1)]
             swapped_components = components_by_input_order[(1, 0)]
             zero = _sym.E("0").to_canonical_string()
-            for exchange_sign in (1.0, -1.0):
+            for exchange_sign in (1, -1):
                 if all(
                     (swapped - exchange_sign * direct).expand().to_canonical_string()
                     == zero
@@ -630,7 +634,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                         strict=True,
                     )
                 ):
-                    input_exchange_factor = (exchange_sign, 0.0)
+                    input_exchange_factor = (float(exchange_sign), 0.0)
                     break
         annotated.append(
             replace(

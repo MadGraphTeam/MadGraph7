@@ -19,6 +19,7 @@ from pyamplicol.runtime._native_selection import (
     native_process_selection,
     representative_vector_to_public,
 )
+from pyamplicol.runtime._normalization_exact import exact_normalization
 from pyamplicol.runtime.eager_exact._contracts import (
     _KernelLoader,
     _mapping,
@@ -281,10 +282,6 @@ class RecurrenceExactExecutor:
             _decimal(value, "runtime model parameter")
             for value in state["model_parameter_values"]
         )
-        normalization = _decimal(
-            state["normalization_factor"],
-            "runtime normalization",
-        )
         helicity_records = tuple(
             _mapping(value, f"physics helicity {index}")
             for index, value in enumerate(
@@ -322,6 +319,15 @@ class RecurrenceExactExecutor:
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            normalization = exact_normalization(
+                self._physics,
+                runtime_parameters,
+                working_precision,
+                tuple(
+                    {"name": row.runtime_name, "parameter_index": row.runtime_slot}
+                    for row in self._plan.runtime_parameter_schema
+                ),
+            )
             parameters = self._plan.resolve_model_parameters(
                 runtime_parameters,
                 working_precision,

@@ -712,7 +712,12 @@ def _compile_kernel(
     staging.mkdir(parents=True, exist_ok=True)
     scalar_staging = staging / "scalar"
     scalar_staging.mkdir(parents=True, exist_ok=True)
-    outputs = tuple(Expression.parse(value) for value in kernel.exact_expressions)
+    from .compiler_records import _replace_evaluator_constants
+
+    outputs = tuple(
+        _replace_evaluator_constants(Expression.parse(value))
+        for value in kernel.exact_expressions
+    )
     parameters = [Expression.parse(item.symbol) for item in kernel.inputs]
     real_parameters = _real_kernel_parameter_indices(
         kernel,
@@ -1054,6 +1059,7 @@ def _split_complex_kernel_contract(
             tree.head
             for expression in (real, imag)
             for symbol in expression.get_all_symbols(False)
+            if not symbol.is_constant()
             for tree in (symbol.to_atom_tree(),)
             if tree.atom_type == AtomType.Var and isinstance(tree.head, str)
         }
@@ -1785,6 +1791,7 @@ def _independent_block_contract(
             symbol.to_canonical_string()
             for expression in lane_outputs
             for symbol in expression.get_all_symbols(False)
+            if not symbol.is_constant()
         }
         if not used_symbols.issubset(lane_symbols):
             raise PreparedModelBundleError(

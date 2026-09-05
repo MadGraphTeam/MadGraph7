@@ -33,6 +33,7 @@ from pyamplicol.runtime.symbolica_exact import (
     _ComplexDecimal,
     _decimal,
     _ExactEvaluator,
+    _ExactExpressionEvaluator,
 )
 
 _ZERO = Decimal(0)
@@ -312,6 +313,11 @@ def _default_kernel_loader(
     record: PreparedKernelRecord,
     payload_root: Path,
 ) -> _KernelEvaluator:
+    if record.contract_kind == "model-parameter":
+        return _ExactExpressionEvaluator(
+            record.exact_expressions,
+            tuple(str(item["symbol"]) for item in record.input_contracts),
+        )
     return _ExactEvaluator.load(
         {
             "evaluator_state_path": record.exact_evaluator_state_path,
@@ -329,6 +335,11 @@ def _artifact_kernel_loader(
         record: PreparedKernelRecord,
         payload_root: Path,
     ) -> _KernelEvaluator:
+        if record.contract_kind == "model-parameter":
+            return _ExactExpressionEvaluator(
+                record.exact_expressions,
+                tuple(str(item["symbol"]) for item in record.input_contracts),
+            )
         return _ExactEvaluator.load(
             {
                 "evaluator_state_path": record.exact_evaluator_state_path,

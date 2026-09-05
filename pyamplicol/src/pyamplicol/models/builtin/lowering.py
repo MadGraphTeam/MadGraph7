@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -22,6 +21,7 @@ from ..expressions import (
 )
 from .expressions import (
     _embed_weyl_current_in_dirac,
+    _exact_imaginary_inverse_sqrt_two,
     _expr_fermion_antifermion_to_vector_dirac,
     _expr_fermion_antifermion_to_vector_weyl,
     _expr_fermion_scalar_to_fermion,
@@ -34,6 +34,7 @@ from .expressions import (
     _expr_vector_tensor_to_vector,
     _flat_index,
     _gluon_tensor_to_gluon_data,
+    _imaginary_inverse_sqrt_two,
     _quark_vector_weyl_data,
     _tensor_gluon_to_gluon_data,
     _two_gluon_to_tensor_data,
@@ -543,23 +544,26 @@ class BuiltinSMLoweringMixin:
             )
         if kind == 17:
             return (
-                (1j / math.sqrt(2.0))
+                _imaginary_inverse_sqrt_two(*left, *right, *coupling)
                 * coupling[0]
                 * _expr_minkowski_dot(tuple(left), tuple(right)),
             )
         if kind == 18:
+            prefactor = _imaginary_inverse_sqrt_two(*left, *right, *coupling)
             return tuple(
-                (1j / math.sqrt(2.0)) * coupling[0] * left[0] * component
+                prefactor * coupling[0] * left[0] * component
                 for component in tuple(right)
             )
         if kind == 19:
+            prefactor = _imaginary_inverse_sqrt_two(*left, *right, *coupling)
             return tuple(
-                (1j / math.sqrt(2.0)) * coupling[0] * right[0] * component
+                prefactor * coupling[0] * right[0] * component
                 for component in tuple(left)
             )
         if kind == 20:
             phase = 1j if coupling[1] == -10.0 else 1.0
-            return ((1j / math.sqrt(2.0)) * phase * coupling[0] * left[0] * right[0],)
+            prefactor = _imaginary_inverse_sqrt_two(*left, *right, *coupling)
+            return (prefactor * phase * coupling[0] * left[0] * right[0],)
         if kind in {4, 6}:
             fermion, vector = (
                 (tuple(right), tuple(left))
@@ -814,7 +818,7 @@ class BuiltinSMLoweringMixin:
         right_momentum = TensorName(right_momentum_tensor_name)
         left_dot_slot = mink(f"{dummy_prefix}_left_dot")
         right_dot_slot = mink(f"{dummy_prefix}_right_dot")
-        prefactor = Expression.num(1j / math.sqrt(2.0))
+        prefactor = _exact_imaginary_inverse_sqrt_two()
 
         return prefactor * (
             metric(left_slot, right_slot).to_expression()

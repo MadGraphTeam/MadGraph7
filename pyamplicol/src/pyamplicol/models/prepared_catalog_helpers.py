@@ -203,6 +203,7 @@ def proves_independent_current_block_eligibility(
             symbol.to_canonical_string()
             for expression in expressions
             for symbol in _sym.E(expression).get_all_symbols(False)
+            if not symbol.is_constant()
         }
     except Exception:
         return False

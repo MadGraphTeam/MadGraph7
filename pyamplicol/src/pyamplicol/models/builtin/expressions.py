@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+from functools import cache
+from numbers import Number
 from typing import Any
 
 from ..base import Model, Vertex
@@ -9,6 +11,21 @@ from ..expressions import (
     _expr_minkowski_dot,
     _index_particle_id,
 )
+
+
+@cache
+def _exact_imaginary_inverse_sqrt_two() -> Any:
+    from symbolica import E
+
+    return E("1i/sqrt(2)")
+
+
+def _imaginary_inverse_sqrt_two(*values: Any) -> Any:
+    """Keep symbolic vertices exact without changing direct numeric evaluation."""
+
+    if all(isinstance(value, Number) for value in values):
+        return 1j / math.sqrt(2.0)
+    return _exact_imaginary_inverse_sqrt_two()
 
 
 def _flat_index(indices: tuple[int, ...], dims: tuple[int, ...]) -> int:
@@ -134,7 +151,9 @@ def _expr_three_vector_current(
     dot = _expr_minkowski_dot(left, right)
     left_dot_right_momentum = _expr_minkowski_dot(left, right_momentum)
     right_dot_left_momentum = _expr_minkowski_dot(right, left_momentum)
-    prefactor = 1j / math.sqrt(2.0)
+    prefactor = _imaginary_inverse_sqrt_two(
+        *left, *left_momentum, *right, *right_momentum
+    )
     return tuple(
         prefactor
         * (
@@ -165,7 +184,12 @@ def _expr_three_vector_current_coupled(
     )
     tmp2 = _expr_minkowski_dot(left, tmp2_momentum)
     tmp3 = _expr_minkowski_dot(right, tmp3_momentum)
-    prefactor = (1j / math.sqrt(2.0)) * coupling[0]
+    prefactor = (
+        _imaginary_inverse_sqrt_two(
+            *left, *left_momentum, *right, *right_momentum, *coupling
+        )
+        * coupling[0]
+    )
     return tuple(
         prefactor
         * (
@@ -234,7 +258,7 @@ def _expr_fermion_vector_weyl(
     coupling: tuple[Any, Any] | None,
 ) -> tuple[Any, ...]:
     tmp1, tmp2, tmp3, tmp4 = _expr_vector_slash_terms(vector)
-    prefactor = 1j / math.sqrt(2.0)
+    prefactor = _imaginary_inverse_sqrt_two(*fermion, *vector, *(coupling or ()))
     f1, f2 = fermion
     if antifermion:
         if chirality == 1:
@@ -291,7 +315,7 @@ def _expr_fermion_vector_dirac(
     if len(fermion) != 4 or len(vector) != 4:
         raise ValueError("Dirac fermion-vector current expects dimensions 4 and 4")
     tmp1, tmp2, tmp3, tmp4 = _expr_vector_slash_terms(vector)
-    prefactor = 1j / math.sqrt(2.0)
+    prefactor = _imaginary_inverse_sqrt_two(*fermion, *vector, *(coupling or ()))
     f1, f2, f3, f4 = fermion
     if coupling is None:
         left_coupling = 1.0
@@ -325,7 +349,7 @@ def _expr_fermion_antifermion_to_vector_weyl(
     fermion_chirality: int,
     antifermion_chirality: int,
 ) -> tuple[Any, ...]:
-    prefactor = 1j / math.sqrt(2.0)
+    prefactor = _imaginary_inverse_sqrt_two(*fermion, *antifermion, *coupling)
     left, right = coupling
     f1, f2 = fermion
     a1, a2 = antifermion
@@ -358,7 +382,7 @@ def _expr_fermion_antifermion_to_vector_dirac(
         raise ValueError(
             "Dirac fermion-antifermion vector current expects dimensions 4 and 4"
         )
-    prefactor = 1j / math.sqrt(2.0)
+    prefactor = _imaginary_inverse_sqrt_two(*fermion, *antifermion, *coupling)
     left_coupling, right_coupling = coupling
     f1, f2, f3, f4 = fermion
     a1, a2, a3, a4 = antifermion
@@ -387,7 +411,7 @@ def _expr_fermion_scalar_to_fermion(
 ) -> tuple[Any, ...]:
     if len(fermion) != 4 or len(scalar) != 1:
         raise ValueError("Dirac fermion-scalar current expects dimensions 4 and 1")
-    prefactor = -1j / math.sqrt(2.0)
+    prefactor = -_imaginary_inverse_sqrt_two(*fermion, *scalar, *coupling)
     return tuple(
         prefactor * coupling[0] * scalar[0] * component for component in fermion
     )
@@ -442,12 +466,12 @@ def _gluon_tensor_to_gluon_data() -> list[complex]:
     return data
 
 
-def _quark_vector_weyl_data(*, chirality: int) -> list[complex]:
-    data = [0j] * (2 * 4 * 2)
-    prefactor = 1j / math.sqrt(2.0)
+def _quark_vector_weyl_data(*, chirality: int) -> list[Any]:
+    prefactor = _exact_imaginary_inverse_sqrt_two()
+    data: list[Any] = [prefactor * 0] * (2 * 4 * 2)
     metric = (1.0, -1.0, -1.0, -1.0)
 
-    def add(q_in: int, vector: int, q_out: int, coefficient: complex) -> None:
+    def add(q_in: int, vector: int, q_out: int, coefficient: Any) -> None:
         # spenso canonicalizes T(weyl, mink, weyl) storage as
         # (weyl_in, weyl_out, mink), while expression calls keep the original
         # slot order.

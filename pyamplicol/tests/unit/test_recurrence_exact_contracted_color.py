@@ -862,6 +862,7 @@ def test_contracted_exact_resolved_output_and_selector_contract(
     executor = object.__new__(RecurrenceExactExecutor)
     executor._plan = _contracted_plan()
     executor._physics = {
+        "extensions": {"normalization": {"average_factor": 2}},
         "external_particles": [{}, {}],
         "helicities": [
             {

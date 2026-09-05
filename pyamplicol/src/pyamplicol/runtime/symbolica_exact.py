@@ -40,6 +40,7 @@ from pyamplicol.runtime._native_selection import (
     native_process_selection,
     remap_reduction,
 )
+from pyamplicol.runtime._normalization_exact import exact_normalization
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ZERO = Decimal(0)
@@ -375,6 +376,56 @@ class _ExactEvaluator:
         return tuple(outputs)
 
 
+class _ExactExpressionEvaluator:
+    """Evaluate retained parameter definitions without pre-rounding constants.
+
+    The optimized f64 evaluator requires Pi to be lowered when it is built.
+    Parameter derivation is small and runs once per call, so
+    its original expressions can instead be evaluated at the requested
+    precision. Matrix-element kernels retain their optimized evaluators.
+    """
+
+    def __init__(self, expressions: Sequence[str], parameters: Sequence[str]) -> None:
+        from symbolica import E
+
+        self.input_len = len(parameters)
+        self._expressions = tuple(E(value) for value in expressions)
+        self._parameters = tuple(E(value) for value in parameters)
+
+    def evaluate(
+        self,
+        values: Sequence[_ComplexDecimal],
+        precision: int,
+    ) -> tuple[_ComplexDecimal, ...]:
+        if len(values) != self.input_len:
+            raise EvaluationError(
+                "exact parameter evaluator input width is inconsistent"
+            )
+        substitutions = dict(
+            zip(
+                self._parameters,
+                _upcast_complex_inputs(values, precision),
+                strict=True,
+            )
+        )
+        try:
+            outputs = tuple(
+                expression.evaluate(
+                    cast(Any, substitutions), decimal_digit_precision=precision
+                )
+                for expression in self._expressions
+            )
+        except Exception as exc:
+            raise EvaluationError(f"exact parameter derivation failed: {exc}") from exc
+        return tuple(
+            (
+                _decimal(value[0], "derived real parameter"),
+                _decimal(value[1], "derived imaginary parameter"),
+            )
+            for value in outputs
+        )
+
+
 def _exact_chunk_input_indices(value: object, input_len: int) -> tuple[int, ...]:
     if (
         input_len < 0
@@ -547,13 +598,19 @@ class SymbolicaExactExecutor:
             _decimal(value, "runtime model parameter")
             for value in state_payload["model_parameter_values"]
         )
-        normalization = _decimal(
-            state_payload["normalization_factor"], "runtime normalization"
-        )
         self._load_evaluators()
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            parameters = self._derive_model_parameters(parameters, working_precision)
+            normalization = exact_normalization(
+                self._physics,
+                parameters,
+                working_precision,
+                cast(
+                    Any, self._execution["runtime_schema"].get("model_parameters", ())
+                ),
+            )
             if self._lc_replay is not None:
                 evaluation_points = tuple(
                     _apply_lc_replay_input_mapping(point, entry.input_mapping)
@@ -562,9 +619,7 @@ class SymbolicaExactExecutor:
                 )
             elif self._color_replay is not None:
                 evaluation_points = tuple(
-                    apply_exact_color_replay_input_mapping(
-                        point, mapping.input_mapping
-                    )
+                    apply_exact_color_replay_input_mapping(point, mapping.input_mapping)
                     for mapping in self._color_replay.mappings
                     for point in points
                 )
@@ -706,6 +761,81 @@ class SymbolicaExactExecutor:
             logical_path,
             process_id=self._representative_id,
         )
+
+    def _derive_model_parameters(
+        self,
+        parameters: tuple[Decimal, ...],
+        precision: int,
+    ) -> tuple[Decimal, ...]:
+        """Recompute UFO couplings; native cached values are only binary64."""
+        compiled = cast(Mapping[str, Any], self._execution["compiled"])
+        derivation = compiled.get("model_parameter_evaluator")
+        if derivation is None:
+            return parameters
+        from pyamplicol._internal.physics.symbols import symbols
+
+        schema = cast(Mapping[str, Any], self._execution["runtime_schema"])
+        records = schema["model_parameters"]
+        inputs: dict[str, list[int | None]] = {}
+        for record in records:
+            if record.get("kind") not in {
+                "external_parameter",
+                "external_parameter_component",
+            }:
+                continue
+            name = str(record.get("runtime_name", record["name"]))
+            component = int(record.get("complex_component") == "imag")
+            inputs.setdefault(name, [None, None])[component] = int(
+                record["parameter_index"]
+            )
+        model = getattr(self, "_exact_compiled_model", None)
+        if model is None:
+            manifest = load_manifest(self._artifact)
+            model_records = tuple(
+                record
+                for record in manifest.payloads
+                if record.role == "compiled-model"
+            )
+            if len(model_records) != 1:
+                raise ArtifactError(
+                    "exact parameter derivation requires one compiled model"
+                )
+            model = json.loads(
+                confined_path(self._artifact, model_records[0].path).read_text()
+            )["ir"]
+            self._exact_compiled_model = model
+        definitions = {
+            record["name"]: record["resolved_expression"]
+            for record in model["parameters"]
+            if record["nature"] == "internal"
+        }
+        definitions.update(
+            {
+                f"derived_coupling_{record['id']}": record["coupling_expression"]
+                for record in model["vertex_terms"]
+            }
+        )
+        outputs = derivation["outputs"]
+        model_symbols = symbols.model(model["name"])
+        evaluator = _ExactExpressionEvaluator(
+            tuple(definitions[record["runtime_name"]] for record in outputs),
+            tuple(model_symbols.symbol(name).to_canonical_string() for name in inputs),
+        )
+        values = evaluator.evaluate(
+            tuple(
+                (
+                    parameters[indices[0]] if indices[0] is not None else _ZERO,
+                    parameters[indices[1]] if indices[1] is not None else _ZERO,
+                )
+                for indices in inputs.values()
+            ),
+            precision,
+        )
+        result = list(parameters)
+        for value, record in zip(values, outputs, strict=True):
+            result[record["real_parameter_index"]] = value[0]
+            result[record["imag_parameter_index"]] = value[1]
+        return tuple(result)
 
     def _evaluate_point(
         self,

@@ -841,8 +841,18 @@ def _vertex_expressions(
             .replace(coupling_symbols[1], vertex.coupling[1])
             for expression in expressions
         )
-        if _canonical_expressions(substituted, context="formal coupling check") != (
-            _canonical_expressions(actual, context="actual coupling check")
+        # Equal exact values may retain different float/integer atom spellings
+        # after substitution (for example 1.0*i versus i next to sqrt(2)).
+        # Prove equality by cancellation, not by comparing those spellings.
+        differences = tuple(
+            _as_expression(formal) - _as_expression(concrete)
+            for formal, concrete in zip(substituted, actual, strict=True)
+        )
+        if any(
+            value != "0"
+            for value in _canonical_expressions(
+                differences, context="formal coupling difference"
+            )
         ):
             coupling = (coupling_symbols[0], vertex.coupling[1])
             coupling_inputs = (0,)
@@ -864,10 +874,16 @@ def _vertex_expressions(
                 )
                 for expression in expressions
             )
-            if _canonical_expressions(
-                branch_substituted,
-                context="branch coupling check",
-            ) != _canonical_expressions(actual, context="actual coupling check"):
+            branch_differences = tuple(
+                _as_expression(formal) - _as_expression(concrete)
+                for formal, concrete in zip(branch_substituted, actual, strict=True)
+            )
+            if any(
+                value != "0"
+                for value in _canonical_expressions(
+                    branch_differences, context="branch coupling difference"
+                )
+            ):
                 raise PreparedKernelCatalogError(
                     "vertex coupling control flow cannot be represented by the "
                     "prepared scalar coupling inputs"
@@ -1124,6 +1140,7 @@ def _candidate_from_payload(
         symbol.to_canonical_string()
         for expression in exact_expressions
         for symbol in _sym.E(expression).get_all_symbols(False)
+        if not symbol.is_constant()
     }
     unbound_symbols = sorted(used_symbols - declared_symbols)
     if unbound_symbols:

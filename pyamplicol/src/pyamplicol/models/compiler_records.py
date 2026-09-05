@@ -224,7 +224,7 @@ def _resolve_parameter_records(
                 continue
             expression = expression.replace(symbol, resolve(dependency))
         active.pop()
-        resolved[name] = _replace_evaluator_constants(expression)
+        resolved[name] = expression
         return resolved[name]
 
     return tuple(
@@ -250,7 +250,6 @@ def _resolve_coupling_records(
         for symbol, replacement_expression in replacements.items():
             if symbol in expression_symbols:
                 expression = expression.replace(symbol, replacement_expression)
-        expression = _replace_evaluator_constants(expression)
         result.append(
             replace(
                 record,
@@ -261,8 +260,9 @@ def _resolve_coupling_records(
 
 
 def _replace_evaluator_constants(expression: _sym.Expression) -> _sym.Expression:
-    # Persist a backend-independent numeric value; not every evaluator backend
-    # lowers Symbolica's built-in Pi atom.
+    # Only call at the f64 evaluator boundary. The model's symbolic records
+    # must retain Pi: rounding it before resolving G and G**2 independently
+    # breaks gauge identities that higher-precision evaluation cannot recover.
     return expression.replace(_sym.E("pi"), _sym.E(repr(math.pi)))
 
 

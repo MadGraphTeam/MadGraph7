@@ -29,6 +29,7 @@ from ..evaluators.execution_schema import (
     evaluator_runtime_capabilities,
 )
 from ..models.base import Model
+from ..models.compiler_records import _replace_evaluator_constants
 from .contracts import StageCompilationInput
 from .dag_types import GenericDAG
 from .stage_parameters import _dict, _list, _logical_model_parameter_symbols
@@ -300,7 +301,14 @@ def write_model_parameter_evaluator_artifact(
         )
     )
     evaluator = _compile_stage_evaluator_artifact(
-        stage,
+        # Native evaluators use f64 constants, whereas the retained compiled
+        # model keeps the exact definitions used by the high-precision path.
+        replace(
+            stage,
+            output_expressions=tuple(
+                _replace_evaluator_constants(expression) for expression in outputs
+            ),
+        ),
         Path(artifact_dir).expanduser(),
         compiler=None,
         blueprint=None,
@@ -543,8 +551,7 @@ def _compiled_plane_arena_leaves(
             plane.get("application_abi") != SYMJIT_PLANE_APPLICATION_ABI
             or plane.get("storage_abi") != SYMJIT_APPLICATION_ABI
             or plane.get("element_layout") != "split-complex-plane-major"
-            or plane.get("descriptor_order")
-            != "inputs-re-im-then-outputs-re-im"
+            or plane.get("descriptor_order") != "inputs-re-im-then-outputs-re-im"
         ):
             raise ValueError("compiled SymJIT leaf has an incompatible plane ABI")
         application_path = plane.get("application_path")

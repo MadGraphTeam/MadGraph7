@@ -101,6 +101,7 @@ class ExternalModelEvaluationMixin:
         coupling_expression = self._resolved_kernel_coupling_expression(
             kernel,
             runtime_parameter_values,
+            numeric=True,
         )
         return tuple(component * coupling_expression for component in components)
 

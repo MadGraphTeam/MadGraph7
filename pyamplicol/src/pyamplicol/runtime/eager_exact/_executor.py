@@ -24,6 +24,7 @@ from pyamplicol.runtime._native_selection import (
     native_process_selection,
     remap_reduction_group,
 )
+from pyamplicol.runtime._normalization_exact import exact_normalization
 from pyamplicol.runtime.eager_exact._contracts import (
     _KernelLoader,
     _mapping,
@@ -194,10 +195,15 @@ class EagerExactExecutor:
             _decimal(value, "runtime model parameter")
             for value in state["model_parameter_values"]
         )
-        normalization = _decimal(state["normalization_factor"], "runtime normalization")
         with localcontext() as context:
             context.prec = working_precision
             context.rounding = ROUND_HALF_EVEN
+            normalization = exact_normalization(
+                self._physics,
+                parameters,
+                working_precision,
+                cast(Any, self._plan.runtime_schema["model_parameters"]),
+            )
             exact_parameters = self._plan.resolve_model_parameters(
                 parameters,
                 working_precision,

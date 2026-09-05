@@ -834,6 +834,7 @@ def _quotient_metadata() -> tuple[dict[str, object], dict[str, object]]:
     physics: dict[str, object] = {
         "color_accuracy": "lc",
         "external_particles": [{}],
+        "extensions": {"normalization": {"global_coupling_factor": 2}},
         "helicities": [
             {
                 "id": "h:-1",
@@ -911,6 +912,7 @@ def test_exact_executor_switches_to_helicity_sum_color_replay(
     physics: dict[str, object] = {
         "color_accuracy": "full",
         "external_particles": [{}, {}],
+        "extensions": {"normalization": {"global_coupling_factor": 2}},
         "helicities": [{"id": "h", "values": [1, -1]}],
         "color_components": [{"id": "contracted"}],
     }

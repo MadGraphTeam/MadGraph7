@@ -687,6 +687,7 @@ def test_union_exact_resolved_values_sum_incoherently_by_flow(
     executor = object.__new__(RecurrenceExactExecutor)
     executor._plan = plan
     executor._physics = {
+        "extensions": {"normalization": {}},
         "helicities": [
             {
                 "id": "h:0,0",

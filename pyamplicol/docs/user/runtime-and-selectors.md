@@ -484,7 +484,18 @@ subject to Symbolica availability and licensing. Decimal inputs retain their
 digits. Values first supplied as binary64 do not acquire new physical
 information simply because a larger arithmetic precision is requested.
 Results are rounded to the requested decimal precision after guard-digit
-evaluation. See
+evaluation. Derived model parameters and couplings are reevaluated from their
+retained symbolic definitions at this precision, including constants such as
+pi. Coupling powers and combinatorial normalization factors are also evaluated
+in the requested arithmetic, rather than copied from the native f64 result.
+This matters when subtracting matrix elements at different multiplicities.
+
+After updating from a version that rounded these definitions during generation,
+regenerate the prepared model and process output: increasing `precision` cannot
+repair coefficients already rounded in an older output. The prepared-model
+compiler version rejects incompatible bundled kernels. The public
+`precision=32` call uses guarded arbitrary precision, not a dedicated
+double-double runtime. See
 [Symbolica and Licensing](symbolica-and-licensing.md).
 
 Native C, C++, Fortran, and Rust APIs expose f64 only. Their shared SDK is

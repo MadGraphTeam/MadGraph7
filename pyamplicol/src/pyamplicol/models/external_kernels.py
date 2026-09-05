@@ -362,16 +362,24 @@ class ExternalModelKernelMixin:
         self,
         kernel: CompiledOrientedKernel,
         runtime_parameter_values: Mapping[str, Any],
+        *,
+        numeric: bool = False,
     ) -> Any:
         template = self._kernel_coupling_expression_cache.get(kernel.kind)
         if template is None:
             template = _sym.E(kernel.coupling_expression)
+            # Keep the colour-flow normalization algebraic until evaluation.
+            # Putting sqrt(2) in a binary64 recurrence weight would freeze its
+            # rounding error even when evaluating the process at high precision.
+            power = kernel.lc_color_normalization_power
+            if power:
+                template *= _sym.E(f"2^(-{power}/2)")
             self._kernel_coupling_expression_cache[kernel.kind] = template
         substitutions = {
             symbols.runtime_model_parameter(self.name, name): value
             for name, value in runtime_parameter_values.items()
         }
-        if all(_is_numeric(value) for value in substitutions.values()):
+        if numeric and all(_is_numeric(value) for value in substitutions.values()):
             try:
                 return complex(template.evaluate(substitutions))
             except Exception:
