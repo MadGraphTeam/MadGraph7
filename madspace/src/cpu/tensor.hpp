@@ -305,6 +305,20 @@ inline void tensor_foreach_impl(
     bool single_job,
     S... scalar_args
 ) {
+    // A broadcast *output* (size(0) != batch_size, e.g. a global's gradient
+    // accumulator during backward) is shared across the whole batch instead of
+    // having one slot per batch element. Splitting the batch across worker threads
+    // would then have multiple threads accumulate into the very same memory
+    // concurrently with no synchronization, so force a single job in that case
+    // (the whole batch handled sequentially by one thread). Broadcast *inputs* are
+    // only ever read, never written, in both forward and backward -- concurrent
+    // reads of the same memory are safe, so they don't need this.
+    for (const Tensor* out : outputs) {
+        if (out->size(0) != batch_size) {
+            single_job = true;
+        }
+    }
+
     // get views to the tensors with the correct types based on the signature of
     // scalar_func
     auto flat_views = std::apply(

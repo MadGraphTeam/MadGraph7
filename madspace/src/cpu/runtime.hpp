@@ -1,10 +1,12 @@
 #pragma once
 
+#include <optional>
 #include <random>
 
 #include "madspace/compgraphs/function.hpp"
 #include "madspace/driver/backend.hpp"
 #include "madspace/driver/context.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
@@ -49,7 +51,8 @@ public:
     ) override;
 
     Context& context() { return *_context; }
-    std::mt19937& rand_gen() { return _rand_gens.get(); }
+    MixMaxRandom& rand_gen() { return _rand_gens.get(); }
+    void set_seed(DerivedSeed seed) override { rand_gen().set_seed(seed); }
 
 private:
     TensorVec run_single(const TensorVec& inputs) const;
@@ -83,7 +86,7 @@ private:
     std::vector<Sizes> _grad_global_shapes;
     std::size_t _grad_global_total_size;
     ContextPtr _context;
-    ThreadResource<std::mt19937> _rand_gens;
+    ThreadResource<MixMaxRandom>& _rand_gens;
     bool _concurrent;
     SizeVec _ready_instructions_init;
     SizeVec _ready_instructions_backward_init;

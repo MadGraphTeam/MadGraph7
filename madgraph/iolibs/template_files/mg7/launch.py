@@ -115,6 +115,14 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
+
+
 def device_type_of(device_name: str) -> str:
     """The device type of one 'device' run_card entry (the optional ':<index>'
     suffix is stripped)."""
@@ -247,6 +255,10 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        # Resolved once so every generator built during this run shares the same
+        # seed; the concrete value (even if randomly drawn) is recorded in each
+        # generator's info.json.
+        self.run_seed = resolve_seed(self.run_card["run"]["seed"])
         self.param_card_path = os.path.join("Cards", "param_card.dat")
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
@@ -286,7 +298,7 @@ class MadgraphProcess:
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
-        for i, device_name in enumerate(device_names):
+        for device_name in device_names:
             if ":" in device_name:
                 device_type, device_index_str = device_name.split(":")
                 device_index = int(device_index_str)
@@ -589,6 +601,7 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=self.status_file,
             config=self.event_generator_config,
+            seed=self.run_seed,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -599,29 +612,35 @@ class MadgraphProcess:
         return event_generator
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace | None]
+        self, phasespaces: list[PhaseSpace | None], survey_pass: int = 0
     ) -> ms.EventGenerator | None:
         ps_filtered = [ps for ps in phasespaces if ps is not None]
         if len(ps_filtered) == 0:
             return None
         event_generator = self.build_event_generator(ps_filtered)
-        event_generator.survey()
+        event_generator.survey(survey_pass)
         return event_generator
 
     def survey(self) -> None:
+        # survey_pass distinguishes the survey() calls below: "both" mode can
+        # re-survey a channel carried over unchanged from the multichannel pass
+        # into the final (simplified) pass, and both passes schedule jobs on the
+        # same underlying ChannelEventGenerator. The explicit pass index keeps each
+        # pass's job seeds independent of the other passes' job counts, rather than
+        # depending on call history.
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if phasespace_mode in ["multichannel", "both", "auto"]:
             self.phasespaces = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         elif phasespace_mode == "flat":
             self.phasespaces = [
                 subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -633,8 +652,8 @@ class MadgraphProcess:
             variance = 0.
             count_opt = 0
             for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
-                mean += status.mean
-                variance += status.error**2
+                mean += status.mean_abs
+                variance += status.error_abs**2
                 count_opt += status.count_opt
             rsd = (variance * count_opt)**0.5 / mean
             subproc.set_madnis_auto_settings(rsd)
@@ -667,7 +686,10 @@ class MadgraphProcess:
             ps_multi is not ps_both
             for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
         ):
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            # distinct survey_pass: a channel carried over unchanged from the
+            # multichannel pass (pass 0) into this resurvey must not share its
+            # seed stream with that earlier pass.
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 1)
 
     def train_madnis(self) -> None:
         madnis_args = self.run_card["madnis"]
@@ -707,7 +729,8 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps = madnis_args["buffered_steps"]
+            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
@@ -738,6 +761,11 @@ class MadgraphProcess:
             training_args=training_args,
             verbosity=verbosity,
             status_file=self.status_file,
+            # Reuses the run's resolved seed (also used by build_event_generator()).
+            # Only the single-channel CPU sample-generation path is currently seeded
+            # -- buffered training and GPU multi-channel batches are still
+            # non-deterministic.
+            seed=self.run_seed,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -949,6 +977,9 @@ class MadgraphProcess:
                 headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
         headers.append(ms.LHEHeader(name="slha", content=param_text))
         headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        # The resolved seed (even when the run_card requested a random one via
+        # seed = -1), so the run can be reproduced from the LHE file alone.
+        headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -1728,6 +1759,9 @@ class MadgraphSubprocess:
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
+        # Shared across all networks below: initialize_globals() derives an
+        # independent, non-colliding stream per tensor from this one base seed.
+        seed = self.process.run_seed
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -1745,10 +1779,11 @@ class MadgraphSubprocess:
                 invert_spline=madnis_args["flow_invert_spline"],
             )
             if channel.adaptive_mapping is None:
-                flow.initialize_globals(self.process.contexts[0])
+                flow.initialize_globals(self.process.contexts[0], seed)
             else:
                 flow.initialize_from_vegas(
-                    self.process.contexts[0], channel.adaptive_mapping.grid_name()
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name(),
+                    seed
                 )
             cond_dim += flow_dim
 
@@ -1765,7 +1800,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_sym.initialize_globals(self.process.contexts[0])
+                discrete_sym.initialize_globals(self.process.contexts[0], seed)
                 cond_dim += perm_count
 
             discrete_flavor = channel.discrete_flavor
@@ -1779,7 +1814,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_flavor.initialize_globals(self.process.contexts[0])
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
@@ -1853,7 +1888,9 @@ class MadgraphSubprocess:
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        cwnet.initialize_globals(self.process.contexts[0])
+        cwnet.initialize_globals(
+            self.process.contexts[0], self.process.run_seed
+        )
         return cwnet
 
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:

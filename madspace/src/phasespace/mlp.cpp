@@ -1,7 +1,8 @@
 #include "madspace/phasespace/mlp.hpp"
 
 #include <format>
-#include <random>
+
+#include "madspace/driver/random.hpp"
 
 using namespace madspace;
 
@@ -51,11 +52,9 @@ void initialize_layer(
     std::size_t output_dim,
     const std::string& prefix,
     int layer_index,
-    std::mt19937& rand_gen,
+    std::optional<std::uint64_t> seed,
     bool zeros
 ) {
-    double bound = 1 / std::sqrt(input_dim);
-    std::uniform_real_distribution<double> rand_dist(-bound, bound);
     auto weight_name =
         prefixed_name(prefix, std::format("layer{}.weight", layer_index));
     auto bias_name = prefixed_name(prefix, std::format("layer{}.bias", layer_index));
@@ -75,14 +74,35 @@ void initialize_layer(
     }
 
     auto weight_view = weight_tensor.view<double, 3>()[0];
-    for (std::size_t i = 0; i < output_dim; ++i) {
-        for (std::size_t j = 0; j < input_dim; ++j) {
-            weight_view[i][j] = zeros ? 0. : rand_dist(rand_gen);
-        }
-    }
     auto bias_view = bias_tensor.view<double, 2>()[0];
-    for (std::size_t i = 0; i < output_dim; ++i) {
-        bias_view[i] = zeros ? 0. : rand_dist(rand_gen);
+    if (zeros) {
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            for (std::size_t j = 0; j < input_dim; ++j) {
+                weight_view[i][j] = 0.;
+            }
+            bias_view[i] = 0.;
+        }
+    } else {
+        double bound = 1 / std::sqrt(input_dim);
+        auto uniform = [&](MixMaxRandom& gen) {
+            return bound * (2. * gen.generate_double() - 1.);
+        };
+        // Independently seeded per tensor, via a fresh unique_seed_index() rather
+        // than a hash of the tensor's name.
+        MixMaxRandom weight_rand_gen(
+            DerivedSeed(seed, DerivedSeed::global_init, context->unique_seed_index())
+        );
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            for (std::size_t j = 0; j < input_dim; ++j) {
+                weight_view[i][j] = uniform(weight_rand_gen);
+            }
+        }
+        MixMaxRandom bias_rand_gen(
+            DerivedSeed(seed, DerivedSeed::global_init, context->unique_seed_index())
+        );
+        for (std::size_t i = 0; i < output_dim; ++i) {
+            bias_view[i] = uniform(bias_rand_gen);
+        }
     }
 
     if (!is_cpu) {
@@ -133,15 +153,15 @@ MLP::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) co
     };
 }
 
-void MLP::initialize_globals(ContextPtr context) const {
-    std::random_device rand_device;
-    std::mt19937 rand_gen(rand_device());
+void MLP::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
     std::size_t dim = _input_dim;
     for (std::size_t i = 1; i < _layers; ++i) {
-        initialize_layer(context, dim, _hidden_dim, _prefix, i, rand_gen, false);
+        initialize_layer(context, dim, _hidden_dim, _prefix, i, seed, false);
         dim = _hidden_dim;
     }
-    initialize_layer(context, dim, _output_dim, _prefix, _layers, rand_gen, true);
+    initialize_layer(context, dim, _output_dim, _prefix, _layers, seed, true);
 }
 
 std::vector<std::string> MLP::global_names() const {

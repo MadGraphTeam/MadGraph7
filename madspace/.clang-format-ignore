@@ -7,3 +7,5 @@ src/cpu/runtime_mixin.inc
 src/gpu/runtime_mixin.inc
 src/cpu/runtime_backward_mixin.inc
 src/gpu/runtime_backward_mixin.inc
+include/madspace/mixmax/mixmax.hpp
+include/madspace/mixmax/mixmax_skip_N17.c

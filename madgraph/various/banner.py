@@ -6473,6 +6473,12 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
+        self.add_toml_param('run', 'seed', -1, gridpack=True,
+            comment="every run is reproducible: the same seed reproduces the run "
+                    "bit-identically. -1 draws a fresh random seed each run instead "
+                    "of fixing one here; the seed actually used is still recorded "
+                    "(the MG7Seed tag in the LHE file, or the info.json status "
+                    "file), so the run can be reproduced later")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
             comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
@@ -6614,10 +6620,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
         self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
         self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 100000)
+        self.add_toml_param('madnis', 'buffer_capacity', 60000)
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
-        self.add_toml_param('madnis', 'buffered_steps', 5)
-        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8)
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
+        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95)
         self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)
         self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
