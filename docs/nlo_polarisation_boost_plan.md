@@ -18,7 +18,7 @@ Status:
 | M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
 | M4 | **done** — guard open, `help_polarization` rewritten, acceptance test written, run and wired into CI |
 | M5 NLO+PS | **done** — MC counterterm azimuth boosted, `generate_events` validated, second acceptance test in CI |
-| M6 loop-induced | **done** — `[noborn=…]`/`[sqrvirt=…]` opened; the LO boost was already in the generated code, verified at runtime. Uncovered a MadLoop `improve_ps` bug on a last-leg `me_frame`, fixed separately |
+| M6 loop-induced | **done** — `[noborn=…]`/`[sqrvirt=…]` opened; the LO boost was already in the generated code, verified at runtime. Uncovered a MadLoop `improve_ps` bug on a last-leg `me_frame`, fixed by PR #91 and now covered by a test |
 
 `[LOonly=QCD]`, `[real=QCD]`, `[QCD]`, `[virt=…]`, `[noborn=…]` and
 `[sqrvirt=…]` all accept a polarised massive particle today. The first three
@@ -1432,37 +1432,41 @@ comes out with `FRAME_ID = 8`, i.e. bit 3, the first Z. The boost routine is
 `Template/LO/SubProcesses/genps.f`'s `boost_to_frame` — the same one M2 fixed,
 so the fix is inherited by construction rather than ported.
 
-**The quantisation axis survives MadLoop — but only for a frame leg that is
-not the last external leg.** This was the one thing that could not be settled
-by reading: `improve_ps` deforms the PS point before the loop is evaluated
-(`ImprovePSPoint=2` by default), and moving the deliberately-zeroed leg off
-zero is precisely what flips the HELAS `vxxxxx` branch. Instrumented the
-`gg > z{0} z{0}` MadLoop dir's `loop_matrix.f` to print the selected leg's
+**The quantisation axis survives MadLoop.** This was the one thing that could
+not be settled by reading: `improve_ps` deforms the PS point before the loop is
+evaluated (`ImprovePSPoint=2` by default), and moving the deliberately-zeroed
+leg off zero is precisely what flips the HELAS `vxxxxx` branch. Instrumented
+the `gg > z{0} z{0}` MadLoop dir's `loop_matrix.f` to print the selected leg's
 `|p|` and energy immediately before and after `IMPROVE_PS_POINT_PRECISION`,
-over a full survey (256 prints, 16 distinct phase-space points):
+over a full survey (256 prints, 16 distinct phase-space points): `0.0` exactly
+in and `0.0` exactly out, every point.
 
-| `me_frame` | `\|p\|` in | `\|p\|` out |
-|---|---|---|
-| `[3]` | `0.0` exactly, every point | `0.0` exactly, every point |
-| `[4]` | `0.0` exactly | **`1.5888e-14`** |
+**History: it did not, for a frame built on the last external leg.** The
+milestone was written on `me_frame=[3]` and the property held; `me_frame=[4]`
+broke it, and the two are the same observable because the two Z are identical:
 
-and the cross-section splits with it: **2.543e-02 pb at `[3]` against
-3.211e-02 pb at `[4]`, +26%, 34 sigma** — for two identical Z, i.e. the same
-observable twice. An LO control on the same final state gives `[3]` and `[4]`
-bit-identical, so the split is a MadLoop artefact, not physics. Restoring the
-exact zero inside the shared quad routine closes it to 0.06 sigma; that fix is
-being done on its own branch off `main`, since `improve_ps` is shared by every
-MadLoop output. `test_polarised_loop_induced_me_frame_last_leg` is the
-regression, skipped until then.
+| `me_frame` | `\|p\|` in | `\|p\|` out | cross-section |
+|---|---|---|---|
+| `[3]` | `0.0` exactly | `0.0` exactly | 2.543e-02 pb |
+| `[4]` | `0.0` exactly | **`1.5888e-14`** | 3.211e-02 pb, +26% |
 
-An earlier revision of this section claimed the zero survives in general. It
-does not, and the reasoning was wrong in three places, all worth recording:
+An LO control on the same final state gave `[3]` and `[4]` bit-identical, so
+the split was a MadLoop artefact, not physics. **Fixed by PR #91** ("MadLoop:
+keep an external leg exactly at rest through improve_ps", merged to `main`
+2026-09-03): the momentum-conservation residual is absorbed into the
+largest-`|p|` final-state leg (`IABSORB`) instead of `NEXTERNAL`. That went on
+its own branch because `improve_ps` is shared by every MadLoop output.
+`test_polarised_loop_induced_me_frame_last_leg` is the regression and now runs
+unskipped.
 
-- **PSMC does not merely rescale.** Its *first* step
-  (`improve_ps.inc:707-714`) overwrites `NEWP(1:3,NEXTERNAL)` with the
-  momentum-conservation residual, unconditionally, before any rescaling. A
-  frame built on the last external leg is therefore hit before the argument
-  about common factors applies.
+The reasoning that first talked this section into "the zero always survives"
+was wrong in three places, all worth recording:
+
+- **PSMC does not merely rescale.** Its *first* step overwrote
+  `NEWP(1:3,NEXTERNAL)` with the momentum-conservation residual,
+  unconditionally, before any rescaling, so a frame built on the last external
+  leg was hit before the argument about common factors applied. This is the
+  line PR #91 changed.
 - **The ORIG half of the argument is vacuous in a boosted frame.** ORIG sets
   `ERRCODE=200` as soon as the initial state has transverse momentum and
   `GOTO 100`s out (`improve_ps.inc:540`) without touching `P`. Its onshellness
@@ -1518,8 +1522,13 @@ output this milestone uses was never affected.
 
 A factor 2.3. That gap is what the acceptance test asserts on: a boost that
 were silently skipped could not reproduce the first number (it sits 62 sigma
-out). `me_frame=[4]` must give the same number as `[3]` and does not, for the
-`improve_ps` reason above.
+out).
+
+`me_frame=[4]` must give the same number as `[3]`, the two Z being identical,
+and now does. Measured on top of PR #91, same card, one run each:
+**2.543e-02 +- 9.9e-05 pb** from both, with `FRAME_ID = 16` and `FRAME_ID = 8`
+in their respective `run_card.inc` and **byte-identical `results.dat`**. Before
+PR #91 the same pair gave 2.543e-02 against 3.211e-02.
 
 Re-measured on top of M5 (`montecarlocounter.f`, `boost_to_frame.f`), where
 nothing should move because loop-induced goes through the LO madevent template
@@ -1574,7 +1583,7 @@ does it.
 | M5 | `p p > z{0} j` | `[QCD]` + `generate_events` | **run**: 2.189e+03 +- 8.2e+00 pb, absolute cross-section ratio 2.00 (2.23 before the fix) |
 | M5 | `p p > z{0} z{0} j` | `[QCD]` + `generate_events`, `me_frame=[3,4]` | **run**: 3.134e-01 +- 2.2e-03 pb, `test_ME`/`test_MC`/`check_poles` 20/20 in all 12 P dirs |
 | M6 | `g g > z{0} z{0}` | `[noborn=QCD]`, `me_frame=[3]` | **run**: 2.534e-02 +- 5.0e-05 pb, against 5.805e-02 +- 4.8e-04 pb in the partonic c.m. |
-| M6 | `g g > z{0} z{0}` | `[noborn=QCD]`, `me_frame=[4]` | **must equal the `[3]` row**; gives 3.211e-02 pb instead. Skipped test, pending the `improve_ps` fix |
+| M6 | `g g > z{0} z{0}` | `[noborn=QCD]`, `me_frame=[4]` | **run**: 2.543e-02 +- 9.9e-05 pb, byte-identical `results.dat` to `me_frame=[3]` (was 3.211e-02 before PR #91) |
 
 **Which process tests what.** The two are complementary, but not in the obvious
 way:

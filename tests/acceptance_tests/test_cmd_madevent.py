@@ -3827,20 +3827,16 @@ set draw_rivet_plots True
 
         self.check_parton_output(cross=0.02534, error=5e-4)
 
-    @unittest.skip("fails until improve_ps is fixed: PSMC's first step "
-                   "(improve_ps.inc:707-714) absorbs the momentum-conservation "
-                   "residual into leg NEXTERNAL unconditionally, so a frame "
-                   "built on the last leg does not stay exactly at rest and "
-                   "HELAS picks a different quantisation axis. Delete this "
-                   "skip once that is fixed.")
     def test_polarised_loop_induced_me_frame_last_leg(self):
         """me_frame = [4] must give the same cross-section as me_frame = [3].
 
         The two Z are identical, so the rest frame of one and the rest frame of
-        the other are the same observable. Measured: 2.543e-02 pb at [3] and
-        3.211e-02 pb at [4], +26% and 34 sigma apart. An LO control on the same
-        final state gives the two bit-identical, so the split is a MadLoop
-        artefact, not physics.
+        the other are the same observable. This used to fail: improve_ps
+        absorbed the momentum-conservation residual into leg NEXTERNAL, so a
+        frame built on the last leg did not stay exactly at rest and HELAS
+        picked a different quantisation axis -- 3.211e-02 pb against 2.543e-02
+        at [3]. Fixed by PR #91, which absorbs the residual in the largest
+        final-state leg instead.
         """
         cmd = MGCmd.MasterCmd()
         cmd.no_notification()
