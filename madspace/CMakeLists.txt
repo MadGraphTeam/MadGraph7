@@ -214,6 +214,8 @@ add_library(
     src/driver/discrete_optimizer.cpp
     src/driver/backend.cpp
     src/driver/lhe_output.cpp
+    src/driver/systematics.cpp
+    src/driver/event_histograms.cpp
     src/driver/madnis_training.cpp
     src/compgraphs/type.cpp
     src/compgraphs/function.cpp

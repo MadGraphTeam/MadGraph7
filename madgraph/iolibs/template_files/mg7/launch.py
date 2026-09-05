@@ -439,12 +439,344 @@ class MadgraphProcess:
         self.ensure_pdf_set(pdf_set)
         if PDF_PATH is None:
             raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
+        self.pdf_set = pdf_set
         self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
         self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
             self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
+        # built lazily by build_systematics (needs the subprocess data)
+        self.systematics = None
+        self.systematics_data = None
+        self.systematics_context = None
+        self.event_histograms = None
+        self.event_histograms_context = None
+
+    # ------------------------------------------------------------------
+    # scale / PDF systematics
+    # ------------------------------------------------------------------
+    def systematics_enabled(self) -> bool:
+        """The native scale/PDF weights are requested ([systematics] enable, or
+        the legacy [generation] systematics alias)."""
+        try:
+            if self.run_card["systematics"]["enable"]:
+                return True
+        except Exception:
+            pass
+        try:
+            return bool(self.run_card["generation"]["systematics"])
+        except Exception:
+            return False
+
+    @staticmethod
+    def pdf_set_info(info_path: str) -> dict:
+        """Read SetIndex, NumMembers, ErrorType and SetDesc from an LHAPDF
+        .info file (missing keys get neutral defaults)."""
+        info = {"SetIndex": 0, "NumMembers": 1, "ErrorType": "", "SetDesc": ""}
+        try:
+            with open(info_path) as f:
+                for line in f:
+                    key, sep, value = line.partition(":")
+                    key = key.strip()
+                    if not sep or key not in info:
+                        continue
+                    value = value.strip().strip('"').strip("'")
+                    if key in ("SetIndex", "NumMembers"):
+                        info[key] = int(value)
+                    else:
+                        info[key] = value
+        except OSError as err:
+            logger.warning("could not read %s: %s", info_path, err)
+        return info
+
+    def resolve_pdf_set_name(self, entry: str) -> tuple[str, int | None]:
+        """Turn a [systematics] pdf entry ("<set>", "<lhaid>", "<set>@<member>",
+        "<lhaid>@<member>") into (set name, member or None) using the LHAPDF
+        pdfsets.index when an id is given."""
+        member = None
+        if "@" in entry:
+            entry, member_str = entry.split("@", 1)
+            member = int(member_str)
+        entry = entry.strip()
+        if not entry.isdigit():
+            return entry, member
+        lhaid = int(entry)
+        index_path = os.path.join(PDF_PATH or "", "pdfsets.index")
+        sets = []
+        try:
+            with open(index_path) as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0].isdigit():
+                        sets.append((int(parts[0]), parts[1]))
+        except OSError:
+            raise ValueError(
+                "cannot resolve LHAPDF id %s: no %s" % (lhaid, index_path))
+        for set_id, name in sets:
+            if set_id == lhaid:
+                return name, member
+        # an id inside a set's member range
+        sets.sort()
+        for (set_id, name), (next_id, _) in zip(sets, sets[1:] + [(None, None)]):
+            if set_id < lhaid and (next_id is None or lhaid < next_id):
+                return name, lhaid - set_id if member is None else member
+        raise ValueError("cannot resolve LHAPDF id %s" % lhaid)
+
+    def resolve_pdf_variations(self) -> list:
+        """Expand the [systematics] pdf entries into ms.PdfMemberSpec objects
+        (downloading the sets when needed). The nominal member itself is never
+        listed: the calculator adds it as the central weight of its group."""
+        entries = self.run_card["systematics"]["pdf"]
+        if isinstance(entries, str):
+            entries = [entries]
+        specs = []
+        seen = set()
+        for raw in entries:
+            entry = str(raw).strip()
+            if not entry or entry.lower() in ("none", "no", "false"):
+                continue
+            if entry.lower() == "central":
+                continue
+            if entry.lower() == "errorset":
+                set_name, member = self.pdf_set, None
+            else:
+                set_name, member = self.resolve_pdf_set_name(entry)
+            self.ensure_pdf_set(set_name)
+            info_path = os.path.join(PDF_PATH, set_name, f"{set_name}.info")
+            if not os.path.exists(info_path):
+                logger.warning("PDF set %s not available; its variation is skipped", set_name)
+                continue
+            info = self.pdf_set_info(info_path)
+            is_nominal = set_name == self.pdf_set
+            if member is not None:
+                members = [member]
+            else:
+                members = list(range(info["NumMembers"]))
+                if is_nominal:
+                    members = members[1:]
+                    if not members:
+                        logger.warning(
+                            "PDF set %s has a single member: no PDF uncertainty can be "
+                            "computed from it. Use a set with error members in "
+                            "[systematics] pdf (e.g. a PDF4LHC or NNPDF error set).",
+                            set_name)
+            for m in members:
+                if is_nominal and m == 0:
+                    continue
+                if (set_name, m) in seen:
+                    continue
+                seen.add((set_name, m))
+                grid_file = os.path.join(PDF_PATH, set_name, f"{set_name}_{m:04d}.dat")
+                if not os.path.exists(grid_file):
+                    logger.warning("PDF member file %s not found; skipped", grid_file)
+                    continue
+                specs.append(ms.PdfMemberSpec(
+                    set_name=set_name, set_lhaid=info["SetIndex"], member=m,
+                    grid_file=grid_file, info_file=info_path,
+                    error_type=info["ErrorType"], description=info["SetDesc"],
+                ))
+        return specs
+
+    def build_systematics_args(self) -> list:
+        """One ms.SubprocessSystArgs per (unmerged) subprocess: the alpha_s power
+        of |M|^2 and the beam parton ids of every flavor index, indexed like the
+        LHECompleter (subprocess_index / flavor_index of the combined events)."""
+        args = []
+        for meta in self.subprocess_data:
+            beam_pdgs = [
+                [int(flavor["options"][0][0]), int(flavor["options"][0][1])]
+                for flavor in meta["flavors"]
+            ]
+            args.append(ms.SubprocessSystArgs(
+                qcd_power=int(meta.get("qcd_power", -1)), beam_pdgs=beam_pdgs))
+        return args
+
+    def build_systematics(self):
+        """Create the ms.SystematicsCalculator from the [systematics] section, or
+        None when disabled. Also keeps the JSON description needed by gridpacks."""
+        if not self.systematics_enabled():
+            self.systematics = None
+            return None
+        syst = self.run_card["systematics"]
+        config = ms.SystematicsConfig()
+        config.mur = [float(v) for v in syst["mur"]]
+        config.muf = [float(v) for v in syst["muf"]]
+        config.together = bool(syst["together"])
+        config.dyn_scales = self.resolve_dynamical_scales()
+        config.write_inputs = bool(syst["write_inputs"])
+        config.has_pdf = not self.leptonic
+        info_path = os.path.join(PDF_PATH, self.pdf_set, f"{self.pdf_set}.info")
+        info = self.pdf_set_info(info_path)
+        config.nominal_set_name = self.pdf_set
+        config.nominal_lhaid = info["SetIndex"]
+        config.nominal_error_type = info["ErrorType"]
+        config.nominal_description = info["SetDesc"]
+        config.pdf_members = self.resolve_pdf_variations() if not self.leptonic else []
+        args = self.build_systematics_args()
+        # the PDFs, alpha_s and (for mixed-order subprocesses) the matrix
+        # elements are evaluated with the batched madspace functions on this
+        # CPU context
+        self.systematics_context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        matrix_elements, flavor_remap, me_backend = self.build_systematics_matrix_elements(
+            args, self.systematics_context)
+        self.systematics = ms.SystematicsCalculator(
+            config, args, self.pdf_grid, self.alphas_grid,
+            self.systematics_context, matrix_elements, flavor_remap)
+        for warning in self.systematics.warnings:
+            logger.warning("systematics: %s", warning)
+        self.systematics_data = {
+            "config": json.loads(config.to_json()),
+            "subproc_args": [json.loads(a.to_json()) for a in args],
+            "nominal_grid_file": os.path.join(PDF_PATH, self.pdf_set, f"{self.pdf_set}_0000.dat"),
+            "nominal_info_file": info_path,
+            # matrix elements re-evaluated for the mixed-order subprocesses
+            "me_paths": [meta["me_path"] for meta in self.subprocess_data],
+            "me_backend": me_backend,
+            "flavor_remap": flavor_remap,
+        }
+        return self.systematics
+
+    _DYN_SCALE_CODES = {
+        "transverse_energy": 1, "transverse_mass": 2,
+        "half_transverse_mass": 3, "partonic_energy": 4,
+    }
+
+    def resolve_dynamical_scales(self) -> list:
+        """[systematics] dynamical_scale entries (names or systematics.py codes
+        1-4) as codes, without the choice the events were generated with."""
+        try:
+            entries = self.run_card["systematics"]["dynamical_scale"]
+        except Exception:
+            return []
+        if isinstance(entries, str):
+            entries = [entries]
+        beam = self.run_card["beam"]
+        generated = None
+        if not (beam["fixed_ren_scale"] and beam["fixed_fact_scale"]):
+            generated = self._DYN_SCALE_CODES.get(beam["dynamical_scale_choice"])
+        codes = []
+        for raw in entries:
+            entry = str(raw).strip().lower()
+            if not entry:
+                continue
+            if entry.isdigit():
+                code = int(entry)
+            elif entry in self._DYN_SCALE_CODES:
+                code = self._DYN_SCALE_CODES[entry]
+            else:
+                raise ValueError("unknown dynamical scale choice %r in [systematics] "
+                                 "dynamical_scale" % raw)
+            if code not in (1, 2, 3, 4):
+                raise ValueError("dynamical scale code %s must be 1-4" % code)
+            if code == generated or code in codes:
+                continue
+            codes.append(code)
+        return codes
+
+    def build_systematics_matrix_elements(self, args, context):
+        """For the subprocesses whose |M|^2 mixes several powers of alpha_s
+        (qcd_power = -1), load the matrix element into the systematics CPU
+        context so that the renormalisation scale variations can re-evaluate it
+        at the varied alpha_s. Returns ([MatrixElement or None per subprocess],
+        flavor remap, backend name); empty when nothing is needed or no CPU
+        library exists."""
+        need = [i for i, a in enumerate(args) if a.qcd_power < 0]
+        empty = ([], [], None)
+        if not need or self.run_card["run"]["dummy_matrix_element"]:
+            return empty
+        cpu_backends = [b for b in self.backends if not b.startswith(("cuda", "hip"))]
+        if not cpu_backends:
+            logger.warning("systematics: no CPU matrix-element library available, the "
+                           "renormalisation scale variations of the mixed-order "
+                           "subprocesses cannot be computed")
+            return empty
+        backend = cpu_backends[0]
+        matrix_elements = []
+        flavor_remap = []
+        for i, meta in enumerate(self.subprocess_data):
+            flavor_remap.append([int(f["index"]) for f in meta["flavors"]])
+            if i not in need:
+                matrix_elements.append(None)
+                continue
+            api = context.load_matrix_element(
+                meta["me_path"].format(device=backend), self.param_card_path)
+            matrix_elements.append(ms.MatrixElement(
+                api,
+                [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                 ms.MatrixElement.flavor_in],
+                [ms.MatrixElement.matrix_element_out],
+                False,
+            ))
+        logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
+                    "subprocess(es) for the renormalisation scale variations", len(need))
+        return matrix_elements, flavor_remap, backend
+
+    def build_event_histograms(self):
+        """ms.EventHistograms for the [histograms] observables, filled with the
+        written events and all their variation weights (info.json
+        "event_histograms"); None without histograms."""
+        if not self.hist_data:
+            self.event_histograms = None
+            return None
+        context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        specs = [
+            ms.EventHistogramSpec(
+                name=item.observable_kwargs["name"], min=item.min, max=item.max,
+                bin_count=item.bin_count)
+            for item in self.hist_data
+        ]
+        observables = []
+        for meta in self.subprocess_data:
+            all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+            values = ms.ObservableValues([
+                ms.Observable(all_pids, **item.observable_kwargs)
+                for item in self.hist_data
+            ])
+            observables.append(ms.SubprocessObservables(values, len(all_pids)))
+        self.event_histograms_context = context
+        self.event_histograms = ms.EventHistograms(context, specs, observables)
+        return self.event_histograms
+
+    def log_systematics_summary(self) -> None:
+        """Print the scale/PDF uncertainties on the total cross section (the
+        per-variation cross sections are in events.weights.json / info.json)."""
+        if self.systematics is None or self.systematics.weight_count == 0:
+            return
+        summary = json.loads(self.systematics.summary())
+        nominal = summary.get("nominal", {})
+        xsec = nominal.get("cross_section")
+        if not xsec:
+            return
+        def format_variation(up, down):
+            # right-justify the signed numbers (not the sign alone) so the %
+            # values line up across rows, with extra spacing between the two
+            return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
+
+        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        member_count = len(self.systematics.members)
+        rows = [("Variations per event:",
+                 f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
+        for pdf in summary.get("pdf", []):
+            rows.append(("PDF set:", f"{pdf['pdf_set']}, {pdf['error_type']}"))
+        rows.append(("Original cross-section:", f"{xsec} pb"))
+        if "scale" in summary:
+            lo, hi = summary["scale"]["min"], summary["scale"]["max"]
+            rows.append(("Scale variation:", format_variation(
+                (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)))
+        for pdf in summary.get("pdf", []):
+            if "uncertainty_up" in pdf and pdf.get("central"):
+                rows.append(("PDF variation:", format_variation(
+                    pdf["uncertainty_up"] / pdf["central"] * 100,
+                    pdf["uncertainty_down"] / pdf["central"] * 100)))
+        if self.event_generator_config.verbosity == ms.Verbosity.pretty:
+            box = ms.PrettyBox("Systematics", len(rows), [24, 0])
+            box.set_column(0, [label for label, _ in rows])
+            box.set_column(1, [value for _, value in rows])
+            box.print_first()
+        else:
+            for label, value in rows:
+                logger.info("systematics, %s %s", label, value)
 
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
@@ -839,22 +1171,25 @@ class MadgraphProcess:
         start_time = get_start_time()
         self.event_generator.generate()
         output_format = self.run_card["run"]["output_format"]
+        systematics = self.build_systematics()
+        histograms = self.build_event_histograms()
         if output_format == "compact_npy":
             self.lhe_completer = None
             self.event_generator.combine_to_compact_npy(
-                os.path.join(self.run_path, "events.npy")
+                os.path.join(self.run_path, "events.npy"), systematics, histograms
             )
         elif output_format == "lhe_npy":
             self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe_npy(
-                os.path.join(self.run_path, "events.npy"), self.lhe_completer
+                os.path.join(self.run_path, "events.npy"), self.lhe_completer,
+                systematics, histograms
             )
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
             lhe_path = os.path.join(self.run_path, "events.lhe")
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
-                self.build_lhe_meta(),
+                self.build_lhe_meta(), systematics, histograms
             )
             # Ship the LHE compressed by default. These files are large and
             # very compressible, madevent has always stored its events
@@ -865,7 +1200,23 @@ class MadgraphProcess:
             misc.gzip(lhe_path)
         else:
             raise ValueError("Unknown output format")
+        if systematics is not None:
+            self.write_systematics_sidecar()
+            self.log_systematics_summary()
         self.save_gridpack()
+
+    def write_systematics_sidecar(self) -> None:
+        """Describe the variation weights next to the event file
+        (events.weights.json): ids, scale factors, PDF set/member and the
+        <initrwgt> text, so npy consumers get the same metadata as the LHE
+        header, plus the per-variation cross sections."""
+        if self.systematics is None:
+            return
+        data = json.loads(self.systematics.summary())
+        data["initrwgt"] = self.systematics.initrwgt()
+        data["columns"] = ["rwgt_%d" % i for i in self.systematics.weight_ids]
+        with open(os.path.join(self.run_path, "events.weights.json"), "w") as f:
+            json.dump(data, f, indent=1)
 
     @staticmethod
     def _histogram_mean(hist):
@@ -886,6 +1237,20 @@ class MadgraphProcess:
         status = self.event_generator.status()
         result = {'cross(pb)': status.mean, 'error(pb)': status.error,
                   'nb_event': status.count_unweighted}
+        try:
+            if self.systematics is not None and self.systematics.weight_count:
+                summary = json.loads(self.systematics.summary())
+                xsec = summary.get("nominal", {}).get("cross_section")
+                if xsec and "scale" in summary:
+                    result['scale_up(%)'] = (summary["scale"]["max"] - xsec) / xsec * 100
+                    result['scale_down(%)'] = (xsec - summary["scale"]["min"]) / xsec * 100
+                for pdf in summary.get("pdf", []):
+                    if pdf.get("central") and "uncertainty_up" in pdf:
+                        result['pdf_up(%)'] = pdf["uncertainty_up"] / pdf["central"] * 100
+                        result['pdf_down(%)'] = pdf["uncertainty_down"] / pdf["central"] * 100
+                        break
+        except Exception as err:
+            logger.warning("could not extract the systematics summary: %s", err)
         try:
             for hist in self.event_generator.histograms():
                 mean = self._histogram_mean(hist)
@@ -1091,6 +1456,9 @@ class MadgraphProcess:
         if self.lhe_completer is None:
             self.lhe_completer = self.build_lhe_completer()
         self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
+        if self.systematics_data is not None:
+            with open(os.path.join(data_path, "systematics.json"), "w") as f:
+                json.dump(self.systematics_data, f)
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
@@ -1942,7 +2310,7 @@ class MadgraphSubprocess:
                     input_momentum_fraction=True,
                 )
             )
-        partial_weights = self.process.run_card["generation"]["systematics"]
+        partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         integrands = []
         for channel in phasespace.channels:
@@ -2540,11 +2908,18 @@ def run_lhe_postprocessing(process) -> None:
     log = logging.getLogger('madevent')
 
     if cfg.get('systematics'):
-        try:
-            _run_systematics(lhe_path, cfg, log)
-        except Exception as error:
-            _report_failure(log, "systematics computation", error,
-                            os.path.dirname(lhe_path))
+        native = getattr(process, 'systematics', None)
+        if native is not None and native.weight_count > 0:
+            log.warning("[postprocessing] systematics is ignored: the scale/PDF "
+                        "weights were already computed by madspace ([systematics] "
+                        "section); set systematics.enable = false to use the legacy "
+                        "systematics.py path instead.")
+        else:
+            try:
+                _run_systematics(lhe_path, cfg, log)
+            except Exception as error:
+                _report_failure(log, "systematics computation", error,
+                                os.path.dirname(lhe_path))
 
     tof = cfg.get('time_of_flight', -1.0)
     try:

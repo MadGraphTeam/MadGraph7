@@ -6530,7 +6530,28 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'survey_target_precision', 0.1)
         self.add_toml_param('generation', 'cut_efficiency_threshold', 0.7, gridpack=True)
         self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True)
-        self.add_toml_param('generation', 'systematics', False)
+        # legacy alias of systematics.enable (kept so that older cards still
+        # read; not written to new cards)
+        self.add_toml_param('generation', 'systematics', False, hidden=True)
+
+        # --------------------------- [systematics] --------------------
+        # scale/PDF variation weights computed by madspace when the events are
+        # written (LHE <rwgt> blocks / npy columns), replacing the systematics.py
+        # post-processing step.
+        self.add_toml_param('systematics', 'enable', True, gridpack=True,
+            comment="compute scale/PDF variation weights when writing the events")
+        self.add_toml_param('systematics', 'mur', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="renormalisation scale variation factors")
+        self.add_toml_param('systematics', 'muf', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="factorisation scale variation factors")
+        self.add_toml_param('systematics', 'together', True, gridpack=True,
+            comment="true: all mur x muf combinations; false: vary one scale at a time")
+        self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,
+            comment="alternative dynamical scale choices to evaluate the weights with: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy")
+        self.add_toml_param('systematics', 'pdf', ['errorset'], typelist=str, gridpack=True,
+            comment="PDF variations: 'errorset' (all members of the nominal set), 'central', LHAPDF set names or ids, optionally with @member")
+        self.add_toml_param('systematics', 'write_inputs', False, gridpack=True,
+            comment="also write the per-event reweighting inputs (x1/x2/scales columns in npy, <mgrwt> block in LHE)")
 
         # ------------------------- [postprocessing] -------------------
         # LHE-level post-processing of the generated event file (only applied
@@ -6538,8 +6559,8 @@ class RunCardMG7(RunCard):
         # legacy run_card (add_time_of_flight and systematics.py).
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
             comment="threshold (in mm) below which the invariant livetime is not written (-1 means not written)")
-        self.add_toml_param('postprocessing', 'systematics', True,
-            comment="compute scale/PDF systematic uncertainties on the events (systematics.py)")
+        self.add_toml_param('postprocessing', 'systematics', False,
+            comment="legacy: recompute the scale/PDF uncertainties with systematics.py (LHAPDF) after the generation; superseded by the [systematics] section")
         self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
             comment="factorisation scale variation factors")
         self.add_toml_param('postprocessing', 'systematics_mur', [0.5, 1.0, 2.0], typelist=float,
@@ -7226,7 +7247,7 @@ class RunCardMG7(RunCard):
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',
         'bwcutoff': 'phasespace.bw_cutoff',
-        'use_syst': 'generation.systematics',
+        'use_syst': 'systematics.enable',
     }
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',

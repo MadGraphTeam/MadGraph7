@@ -47,10 +47,25 @@ survey_max_iters = %(generation.survey_max_iters)s
 survey_target_precision = %(generation.survey_target_precision)s
 cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
-systematics = %(generation.systematics)s
+
+[systematics]
+# scale/PDF variation weights, computed by madspace when the events are written
+# (LHEF3 <rwgt> blocks in the lhe output, rwgt_<id> columns in the npy outputs)
+enable = %(systematics.enable)s
+mur = %(systematics.mur)s # renormalisation scale factors (1.0 is the nominal point)
+muf = %(systematics.muf)s # factorisation scale factors
+together = %(systematics.together)s # true: all mur x muf combinations, false: one scale at a time
+# alternative dynamical scale choices (transverse_energy, transverse_mass, half_transverse_mass, partonic_energy),
+# each combined with the mur/muf factors above
+dynamical_scale = %(systematics.dynamical_scale)s
+# PDF variations: "errorset" (all members of the nominal set), "central" (its central member),
+# LHAPDF set names or ids (all members), "<set>@<member>" for a single member
+pdf = %(systematics.pdf)s
+write_inputs = %(systematics.write_inputs)s # keep the per-event reweighting inputs (x1, x2, scales) in the output
 
 [postprocessing]
 time_of_flight = %(postprocessing.time_of_flight)s # threshold (in mm) below which the invariant livetime is not written (-1 means not written)
+# legacy path: recompute the uncertainties with systematics.py + LHAPDF after the run (needs the lhe output)
 systematics = %(postprocessing.systematics)s
 systematics_muf = %(postprocessing.systematics_muf)s
 systematics_mur = %(postprocessing.systematics_mur)s
