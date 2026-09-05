@@ -164,3 +164,91 @@ comparison against the validated madevent MLM disagree.
   external legs (a photon and a Z, say). The compiler keeps whichever has a
   width, since that is the one the resonance test is about, but this is an
   arbitrary choice where the diagrams genuinely disagree.
+
+## Comparison against the madevent MLM
+
+Process `p p > e+ ve j` at 13 TeV, 5000 unweighted events each, with the cuts,
+the PDF set (`NNPDF23_lo_as_0130_qed`, lhaid 247000) and the collider energy
+matched between the two runs.
+
+* mg7: `output mg7`, then `dynamical_scale_choice = "mlm"` in
+  `Cards/run_card.toml`.
+* madevent: `output madevent`, then `dynamical_scale_choice = -1` (the CKKW
+  back-clustering scale) in `Cards/run_card.dat`. A second madevent run adds
+  `ickkw = 1` and `xqcut = 20` — neither is written into the run card for a
+  fixed-multiplicity process, so they have to be appended by hand — because
+  `addmothers.f` only writes the `<scales>` block when `ickkw > 0`.
+
+The hardest-parton pT distributions of the two runs agree closely, so the
+differences below are the scale definitions rather than a different population
+of phase space.
+
+### Renormalisation scale
+
+|                    | mean | q05 | q50 | q95 |
+|--------------------|-----:|----:|----:|----:|
+| mg7 MLM            |  62.1 | 40.9 |  54.1 |  92.7 |
+| madevent CKKW      | 101.7 | 81.1 |  87.5 | 172.8 |
+| mg7 / pT of the hardest parton      | 1.58 | 0.94 | 1.62 | 2.13 |
+| madevent / pT of the hardest parton | 2.89 | 1.42 | 2.87 | 4.15 |
+
+mg7's mu_R is about 0.61 of madevent's. This follows from the definitions and
+is reproducible in closed form. For this process there are two clustering
+steps: the resonant `(e+, nu) -> W`, and the jet clustered onto a beam. The
+first is not a QCD splitting, so mg7 replaces its scale by the largest scale in
+the history and takes the geometric mean, giving
+`mu_R = sqrt(max(m_W, mT_j) * mT_j)`. Recomputing that directly from the LHE
+momenta reproduces mg7's `scale` field exactly for 72.8% of events (all of the
+`q qbar` ones), the rest being the case discussed below. madevent instead takes
+the geometric mean of the four `jfirst`/`jlast`/`jcentral` scales, of which
+three are the W here, so its mu_R sits close to m_W.
+
+Cross sections, same cuts and PDF, no merging on either side: mg7
+1557.5 +- 7.2 pb against madevent 1616 +- 8.4 pb, a 3.7% difference driven by
+the scale.
+
+### Per-jet clustering scales
+
+When both codes assign a real clustering scale to the jet they agree exactly:
+`pt_clust / pT_jet` is 1.000 at every quantile in both. Two differences remain.
+
+**mg7 leaves 27.2% of jets with `pt_clust = 0`; madevent leaves none.** The
+cause is a topology whose clustering history contains no QCD splitting at all.
+For the `g q > e+ ve q` subprocess one of the two channels is the s-channel
+`g q -> q* -> (W)(q)`, whose only available clusterings are `(e+, nu) -> W` and
+`(W, jet) -> q`. The second has a colourless parent, so it is not a QCD vertex,
+and the branch that books a clustering scale onto a jet only runs for QCD
+clusterings. In about 36% of `g q` events that history has the smaller measure
+and wins, and the jet comes out with no scale. That also explains the remaining
+27% of the mu_R comparison above: both clusterings are non-QCD there, so every
+scale is replaced by the largest one and mu_R comes out as m_W exactly.
+
+This matters for merging, not just for bookkeeping: `pt_clust` is what the
+matching veto compares against `qcut`, and a jet reported at zero is
+indistinguishable from a lepton.
+
+**Non-jet legs are written as 0 by mg7 and as sqrt(s) = 13000 by madevent.**
+madevent has an explicit fallback (`ptclus(...) = etot` in
+`Template/LO/SubProcesses/reweight.f`) that sets any leg without a jet vertex to
+the collider energy, so a veto of the form "reject if any pt_clust < qcut" can
+never trip on it. About 5% of madevent's *jets* also hit that fallback. mg7
+writes 0 in the same situations, which would make such a veto reject every
+event.
+
+### What to do about it
+
+Both differences point the same way: something has to guarantee that every jet
+ends up with a usable clustering scale. Options, roughly in increasing order of
+work:
+
+1. Adopt madevent's fallback and write sqrt(s) rather than 0 for any leg that
+   no QCD clustering booked a scale onto. Cheap, and makes the LHE output
+   directly usable by an MLM veto.
+2. Restrict the clustering to histories that do cluster every jet, by rejecting
+   candidate transitions that would leave a jet unclustered — a change to the
+   state-machine compiler rather than the kernel.
+3. Trace the parton lines through the event the way `ipartupdate` does, which
+   is also what would be needed for per-beam factorisation scales.
+
+Option 1 is a band-aid over option 2 or 3, but it is what madevent does today,
+so matching it is at least a defensible starting point.
