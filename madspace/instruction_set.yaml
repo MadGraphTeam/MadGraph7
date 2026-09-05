@@ -2217,6 +2217,9 @@ mlm_clustering_hadronic:
     - name: jet_radius
       type: [float, single]
       desc:
+    - name: cm_energy
+      type: [float, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2259,6 +2262,9 @@ mlm_clustering_leptonic:
       type: [float, single]
       desc:
     - name: jet_radius
+      type: [float, single]
+      desc:
+    - name: cm_energy
       type: [float, single]
       desc:
   outputs:

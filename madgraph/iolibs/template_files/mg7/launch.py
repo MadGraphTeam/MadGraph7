@@ -1358,6 +1358,7 @@ class MadgraphSubprocess:
                     topologies=[topo[0] for topo in mc_data.topologies],
                     permutations=mc_data.permutations,
                     diagram_indices=mc_data.diagram_indices,
+                    cm_energy=self.process.e_cm,
                     bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
                     jet_radius=self.process.run_card["beam"]["jet_radius"],
                     hadronic=not self.process.leptonic,

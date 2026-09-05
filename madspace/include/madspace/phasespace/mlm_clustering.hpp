@@ -11,6 +11,10 @@ public:
         std::vector<Topology> topologies,
         nested_vector3<std::size_t> permutations,
         nested_vector2<std::size_t> diagram_indices,
+        // Collider energy. An outgoing leg that no QCD clustering assigned a
+        // scale to is reported at this value rather than at zero, so that an
+        // MLM veto can never trip on it.
+        double cm_energy,
         double bw_cutoff = 15,
         double jet_radius = 0.4,
         bool hadronic = true,
@@ -38,6 +42,7 @@ private:
     std::vector<double> _external_masses;
     std::vector<double> _bw_masses;
     std::vector<double> _bw_widths;
+    double _cm_energy;
     double _bw_cutoff;
     double _jet_radius;
     bool _hadronic;

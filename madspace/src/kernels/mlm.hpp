@@ -196,6 +196,7 @@ KERNELSPEC void mlm_clustering(
     FIn<T, 1> bw_widths,
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
+    FIn<T, 0> cm_energy,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -354,6 +355,20 @@ KERNELSPEC void mlm_clustering(
         }
         is_last_cluster &= ~((1 << particle1) | (1 << particle2));
     }
+
+    // Any outgoing leg that no QCD clustering booked a scale onto keeps
+    // sqrt(s) rather than zero, mirroring the "ptclus = etot" fallback in
+    // Template/LO/SubProcesses/reweight.f. This covers the legs that are not
+    // jets at all, and jets whose winning clustering history happened to
+    // contain no QCD splitting. pt_clust is what an MLM veto compares against
+    // qcut, so a leg reported at zero would trip a veto that a leg with no
+    // clustering scale must never trip.
+    for (int i = 0; i < n_part - 2; ++i) {
+        if (outgoing_scales[i] == 0.0) {
+            outgoing_scales[i] = cm_energy;
+        }
+    }
+
     ren_scale_val = pow(ren_scale_val, 1.0 / cluster_max);
     if (fac_scale > ren_scale_val) {
         fac_scale = ren_scale_val;
@@ -381,6 +396,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     FIn<T, 1> bw_widths,
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
+    FIn<T, 0> cm_energy,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -396,6 +412,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         bw_widths,
         bw_cutoff,
         jet_radius,
+        cm_energy,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -415,6 +432,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     FIn<T, 1> bw_widths,
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
+    FIn<T, 0> cm_energy,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -430,6 +448,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         bw_widths,
         bw_cutoff,
         jet_radius,
+        cm_energy,
         ren_scale,
         fact_scale1,
         fact_scale2,

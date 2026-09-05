@@ -150,6 +150,11 @@ comparison against the validated madevent MLM disagree.
   another scale choice, and the clustering scale cannot be used without merging.
   A separate `[matching]`-style switch is the likely shape.
 
+* Whether the sqrt(s) fallback should stay a fallback. It is what madevent does
+  and it makes the output veto-safe, but a jet at sqrt(s) carries no
+  information; if merging is to work well, the fraction of jets landing there
+  needs to come down.
+
 * Pass the selected diagram index through to the matrix element. The plumbing is
   in place (`MatrixElement::diagram_in` replaces `random_diagram_in` when MLM is
   active) but the madmatrix side needs per-event diagram input support. Affects
@@ -227,28 +232,49 @@ This matters for merging, not just for bookkeeping: `pt_clust` is what the
 matching veto compares against `qcut`, and a jet reported at zero is
 indistinguishable from a lepton.
 
-**Non-jet legs are written as 0 by mg7 and as sqrt(s) = 13000 by madevent.**
+**Non-jet legs were written as 0 by mg7 and as sqrt(s) = 13000 by madevent.**
 madevent has an explicit fallback (`ptclus(...) = etot` in
 `Template/LO/SubProcesses/reweight.f`) that sets any leg without a jet vertex to
 the collider energy, so a veto of the form "reject if any pt_clust < qcut" can
-never trip on it. About 5% of madevent's *jets* also hit that fallback. mg7
-writes 0 in the same situations, which would make such a veto reject every
-event.
+never trip on it.
 
-### What to do about it
+### The sqrt(s) fallback, now implemented
 
-Both differences point the same way: something has to guarantee that every jet
-ends up with a usable clustering scale. Options, roughly in increasing order of
-work:
+The kernel now does the same: any outgoing leg that no QCD clustering assigned a
+scale to is reported at the collider energy rather than at zero. This needed the
+collider energy in the kernel, which it did not have, so `MLMClustering` takes it
+as a constructor argument (`cm_energy`, filled by `launch.py` from
+`process.e_cm`) and it is threaded through as a new instruction input.
 
-1. Adopt madevent's fallback and write sqrt(s) rather than 0 for any leg that
-   no QCD clustering booked a scale onto. Cheap, and makes the LHE output
-   directly usable by an MLM veto.
-2. Restrict the clustering to histories that do cluster every jet, by rejecting
+Rerunning the same comparison afterwards:
+
+|                                       |   mg7 | madevent |
+|---------------------------------------|------:|---------:|
+| jets reported at zero                  |  0.0% |     0.0% |
+| jets at the sqrt(s) fallback           | 26.4% |    10.1% |
+| `pt_clust / pT_jet`, where assigned    | 1.000 |    1.000 |
+| median assigned jet scale              | 29.50 |    30.67 |
+| non-jet legs                           | 13000 |    13000 |
+
+The convention now matches exactly, and where both assign a real scale they
+still agree exactly. madevent reaches the fallback for 10.1% of its own jets, so
+the mechanism is shared rather than an mg7 artefact — but mg7 reaches it 2.6
+times as often.
+
+### What is still open on this
+
+The fallback makes the LHE output usable by a matching veto; it does not remove
+the reason mg7 lands there so much more often, which is the non-QCD clustering
+history described above. Two further options, in increasing order of work:
+
+1. Restrict the clustering to histories that do cluster every jet, by rejecting
    candidate transitions that would leave a jet unclustered — a change to the
    state-machine compiler rather than the kernel.
-3. Trace the parton lines through the event the way `ipartupdate` does, which
-   is also what would be needed for per-beam factorisation scales.
+2. Trace the parton lines through the event the way `ipartupdate` does, which is
+   also what would be needed for per-beam factorisation scales.
 
-Option 1 is a band-aid over option 2 or 3, but it is what madevent does today,
-so matching it is at least a defensible starting point.
+One more difference in the same area, not addressed: madevent takes the
+**maximum** clustering scale over every jet vertex a leg takes part in
+(`ptclus(leg) = max(ptclus(leg), ...)`), while the kernel takes the scale of the
+**first** clustering the leg takes part in and freezes it there (the
+`is_last_cluster` mask).

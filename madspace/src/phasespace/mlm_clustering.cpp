@@ -239,6 +239,7 @@ MLMClustering::MLMClustering(
     std::vector<Topology> topologies,
     nested_vector3<std::size_t> permutations,
     nested_vector2<std::size_t> diagram_indices,
+    double cm_energy,
     double bw_cutoff,
     double jet_radius,
     bool hadronic,
@@ -256,6 +257,7 @@ MLMClustering::MLMClustering(
           batch_float_array(topologies.at(0).outgoing_masses().size())},
          {"diagram_index", batch_int}}
     ),
+    _cm_energy(cm_energy),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
     _hadronic(hadronic) {
@@ -473,7 +475,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_masses,
             _bw_widths,
             _bw_cutoff,
-            _jet_radius
+            _jet_radius,
+            _cm_energy
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -484,7 +487,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_masses,
             _bw_widths,
             _bw_cutoff,
-            _jet_radius
+            _jet_radius,
+            _cm_energy
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

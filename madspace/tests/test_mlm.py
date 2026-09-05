@@ -80,6 +80,7 @@ def make_diagram_indices(diagrams):
 
 
 def make_clustering(diagrams, **kwargs):
+    kwargs.setdefault("cm_energy", CM_ENERGY)
     return ms.MLMClustering(
         make_topologies(diagrams),
         [d["permutations"] for d in diagrams],
@@ -160,28 +161,63 @@ def test_pdg_id_count_is_checked(process):
 
 
 def test_flavor_information_selects_which_legs_are_jets(process):
-    """Only jets get a clustering scale in the LHE output. Without pdg ids the
-    clustering has to assume every leg is one; with them, the tops (legs 2 and
-    3 of these processes) never are."""
+    """Only jets get a real clustering scale. Without pdg ids the clustering has
+    to assume every leg is one; with them, the tops (legs 2 and 3 of these
+    processes) never are and always fall back to sqrt(s)."""
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     *_, out_no_pdg, _ = run(make_clustering(diagrams), momenta)
     *_, out_pdg, _ = run(
         make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
     )
-    # the tops are not jets, so with flavor information they never get a scale
-    assert np.all(out_pdg[:, 0] == 0.0)
-    assert np.all(out_pdg[:, 1] == 0.0)
+    # the tops are not jets, so with flavor information they never get one
+    assert np.all(out_pdg[:, 0] == CM_ENERGY)
+    assert np.all(out_pdg[:, 1] == CM_ENERGY)
     # ... whereas without it they do, at least sometimes
-    assert np.any(out_no_pdg[:, :2] > 0.0)
-    # the gluons are jets either way, and usually pick up a scale; a history
-    # made up entirely of clusterings between the tops leaves them all at zero
-    assert np.mean(out_pdg[:, 2:].max(axis=1) > 0.0) > 0.5
-    # a leg that gets a scale gets the same one either way when it is a jet in
-    # both, so the flavour information only ever removes scales, never changes
-    # the ones that survive
-    assigned = out_pdg > 0.0
-    assert np.all(out_no_pdg[assigned] > 0.0)
+    assert np.any(out_no_pdg[:, :2] < CM_ENERGY)
+    # the gluons are jets either way and usually pick up a real scale
+    assert np.mean(out_pdg[:, 2:].min(axis=1) < CM_ENERGY) > 0.5
+
+
+def test_unclustered_legs_fall_back_to_the_collider_energy(process):
+    """Every outgoing leg is reported at a scale, never at zero.
+
+    pt_clust is what an MLM veto compares against qcut, so a leg that no QCD
+    clustering assigned a scale to has to come out at a value no veto can trip
+    on. madevent does the same, via the "ptclus = etot" fallback in
+    Template/LO/SubProcesses/reweight.f.
+    """
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=2000, seed=4321)
+    for clustering in (
+        make_clustering(diagrams),
+        make_clustering(diagrams, external_pdg_ids=pdg_ids),
+    ):
+        *_, out, _ = run(clustering, momenta)
+        assert np.all(out > 0.0)
+        assert np.all(out <= CM_ENERGY)
+        # the fallback value appears exactly, not as a rounded-down scale
+        fallback = out == CM_ENERGY
+        assert fallback.any()
+
+
+def test_the_fallback_value_follows_the_collider_energy(process):
+    """The fallback is the collider energy the clustering was built with, so
+    changing it moves only the unassigned legs."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    *_, out, _ = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+    )
+    *_, out_half, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, cm_energy=CM_ENERGY / 2
+        ),
+        momenta,
+    )
+    assigned = out != CM_ENERGY
+    assert np.array_equal(out[assigned], out_half[assigned])
+    assert np.all(out_half[~assigned] == CM_ENERGY / 2)
 
 
 # --------------------------------------------------------------------------
@@ -346,7 +382,14 @@ def test_scales_are_homogeneous_for_a_single_clustering():
     # 1e-6 even though the relation is exact in real arithmetic
     assert ren_s == pytest.approx(ren * factor, rel=1e-6)
     assert fac_s == pytest.approx(fac * factor, rel=1e-6)
-    assert_jet_scales_agree(out * factor, out_s, max_flip_fraction=0.3)
+    # the sqrt(s) fallback is a fixed constant, so only the legs that were
+    # actually assigned a clustering scale scale with the momenta
+    assigned = (out != CM_ENERGY) & (out_s != CM_ENERGY)
+    assert_jet_scales_agree(
+        np.where(assigned, out * factor, 0.0),
+        np.where(assigned, out_s, 0.0),
+        max_flip_fraction=0.3,
+    )
 
 
 def test_scales_mostly_scale_with_the_momenta(process):
@@ -391,8 +434,8 @@ def test_renormalization_scale_is_a_geometric_mean(process):
     assert np.all(ren >= fac * (1.0 - 1e-12))
     # mu_F is the smallest QCD clustering scale, so every jet scale - each of
     # which is a QCD clustering scale - is at least as large
-    nonzero = out > 0.0
-    smallest_jet_scale = np.where(nonzero, out, np.inf).min(axis=1)
+    assigned = out != CM_ENERGY
+    smallest_jet_scale = np.where(assigned, out, np.inf).min(axis=1)
     assert np.all(smallest_jet_scale >= fac * (1.0 - 1e-9))
 
 
