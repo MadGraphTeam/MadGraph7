@@ -73,9 +73,24 @@ DEFAULT_RADIUS = 1.0
 DEFAULT_ETA_MAX = 1000.0
 DEFAULT_N_DJR = 4
 
-# Particles SlowJet leaves out of the clustering with select=2, i.e. those that
-# a detector would not see. Neutrinos, plus the usual stable BSM candidates.
-INVISIBLE_PDGS = frozenset([12, 14, 16, 18, 1000022, 1000039, 5000039])
+# Particles the jet matching keeps out of the clustering. This is the list
+# JetMatchingMadgraph applies when it builds workEventJet, the event it both
+# vetoes on and takes its own DJRs from:
+#
+#     // Original AG+Py6 algorithm explicitly excludes tops,
+#     // leptons and photons.
+#     if ((id >= ID_LEPMIN && id <= ID_LEPMAX) || id == ID_TOP
+#       || id == ID_PHOTON || id == 23 || id == 24 || id == 25) ...
+#
+# i.e. charged leptons and neutrinos (11-16), the top, the photon and the
+# electroweak bosons. Getting this wrong does not fail loudly, it just fills
+# the rates with things the veto never looked at: for t tbar + jets the top
+# decay products swamp d01 and d12 and the merging structure disappears.
+NON_JET_PDGS = frozenset([11, 12, 13, 14, 15, 16, 6, 22, 23, 24, 25])
+
+# workEventJet is built from the hardest subsystem plus ISR and FSR, with no
+# resonance showers, so the shower has to be run with the resonances left
+# undecayed for the reconstruction to see the same final state.
 
 
 ################################################################################
@@ -391,11 +406,13 @@ def differential_jet_rates(momenta, radius=DEFAULT_RADIUS, count=DEFAULT_N_DJR):
     return result
 
 
-def visible_final_state(pdgs, momenta, eta_max=DEFAULT_ETA_MAX):
-    """The particles SlowJet would cluster: visible, and inside the acceptance."""
+def visible_final_state(pdgs, momenta, eta_max=DEFAULT_ETA_MAX, exclude=None):
+    """The particles the matching would cluster: light partons inside the
+    acceptance, with the tops, leptons, photons and bosons taken out."""
     if len(pdgs) == 0:
         return momenta
-    keep = ~np.isin(np.abs(pdgs), list(INVISIBLE_PDGS))
+    excluded = NON_JET_PDGS if exclude is None else exclude
+    keep = ~np.isin(np.abs(pdgs), list(excluded))
     if eta_max < 100.0:
         px, py, pz = momenta[:, 0], momenta[:, 1], momenta[:, 2]
         p = np.sqrt(px * px + py * py + pz * pz)
@@ -497,7 +514,9 @@ def analyse(sample, args):
         sample.label, args.n_djr, args.bins, args.log_min, args.log_max
     )
     for weight, pdgs, momenta in read_hepmc(sample.path, args.max_events):
-        selected = visible_final_state(pdgs, momenta, args.eta_max)
+        selected = visible_final_state(
+            pdgs, momenta, args.eta_max, args.exclude_pdg
+        )
         djrs = differential_jet_rates(selected, args.radius, args.n_djr)
         histograms.fill(djrs, weight)
     histograms.normalise(sample.cross_section)
@@ -505,51 +524,50 @@ def analyse(sample, args):
     return histograms
 
 
-def smoothness_across(centres, total, errors, qcut, window=6):
+def smoothness_across(centres, total, errors, qcut, window=2):
     """How big a step the summed distribution has across the merging scale.
 
-    The samples are supposed to hand over at qcut without leaving a mark, so
-    fit log(sum) linearly against log10(DJR) on each side, extrapolate both to
-    qcut and take the ratio. A merging that works gives 1 within the
-    uncertainty; a normalisation mismatch between the samples, or a qcut the
-    samples do not agree on, shows up as a ratio away from 1.
+    Interpolate log(sum) across qcut from the `window` bins on each side and
+    compare with what is actually in the bins that straddle it. A merging that
+    works gives 1 within the uncertainty; a normalisation mismatch between the
+    samples, or a qcut they do not agree on, shows up as a departure from 1.
 
-    Returns (ratio, uncertainty) or (None, None) when there is not enough on
-    one of the two sides to fit.
+    Interpolating locally rather than extrapolating a fit from each side
+    matters: a DJR distribution has a maximum not far from qcut, and a
+    straight-line fit through a curved distribution lands well off the mark and
+    reports a step that is not there.
+
+    Returns (ratio, uncertainty) or (None, None) when the bins around qcut are
+    not filled well enough to say anything.
     """
     log_qcut = math.log10(qcut)
-    # skip the bin straddling qcut: it holds a mixture of both sides
     width = centres[1] - centres[0]
-    below = (centres < log_qcut - 0.5 * width) & (total > 0)
-    above = (centres > log_qcut + 0.5 * width) & (total > 0)
+    index = int(np.searchsorted(centres, log_qcut))
 
-    def extrapolate(mask):
-        x = centres[mask][-window:] if mask is below else centres[mask][:window]
-        y = total[mask][-window:] if mask is below else total[mask][:window]
-        e = errors[mask][-window:] if mask is below else errors[mask][:window]
-        if len(x) < 2:
-            return None, None
-        # weights from the relative errors, since the fit is in log space
-        relative = np.where(y > 0, e / y, 1.0)
-        weights = 1.0 / np.maximum(relative, 1e-6) ** 2
-        slope, intercept = np.polyfit(x, np.log(y), 1, w=np.sqrt(weights))
-        value = math.exp(slope * log_qcut + intercept)
-        # a plain scatter of the points about the fit, as the uncertainty
-        residual = np.log(y) - (slope * x + intercept)
-        spread = float(np.sqrt(np.mean(residual**2))) if len(x) > 2 else float(
-            np.mean(relative)
-        )
-        return value, value * spread
+    left = slice(max(index - 1 - window, 0), max(index - 1, 0))
+    right = slice(index + 1, index + 1 + window)
+    middle = slice(max(index - 1, 0), index + 1)
 
-    low, low_error = extrapolate(below)
-    high, high_error = extrapolate(above)
-    if low is None or high is None or low <= 0:
+    x = np.concatenate([centres[left], centres[right]])
+    y = np.concatenate([total[left], total[right]])
+    if len(x) < 2 or np.any(y <= 0):
         return None, None
-    ratio = high / low
-    uncertainty = ratio * math.sqrt(
-        (high_error / high) ** 2 + (low_error / low) ** 2
+
+    slope, intercept = np.polyfit(x, np.log(y), 1)
+    predicted = np.exp(slope * centres[middle] + intercept)
+    observed = total[middle]
+    if len(observed) == 0 or np.any(predicted <= 0):
+        return None, None
+
+    ratio = float(np.mean(observed / predicted))
+    # statistical uncertainty of the straddling bins, plus the scatter of the
+    # bins the interpolation is built on
+    statistical = float(
+        np.sqrt(np.sum(errors[middle] ** 2)) / max(np.sum(observed), 1e-30)
     )
-    return ratio, uncertainty
+    residual = np.log(y) - (slope * x + intercept)
+    scatter = float(np.sqrt(np.mean(residual**2)))
+    return ratio, ratio * math.sqrt(statistical**2 + scatter**2)
 
 
 def report_smoothness(histograms, args):
@@ -558,8 +576,9 @@ def report_smoothness(histograms, args):
         return
     print(
         "\nContinuity of the summed distribution across qcut = %g GeV\n"
-        "(the ratio of the two sides extrapolated to qcut; 1 means the samples\n"
-        " hand over without leaving a step)" % args.qcut
+        "(what is in the bins straddling qcut, over what the neighbouring bins\n"
+        " interpolate to; 1 means the samples hand over without a step)"
+        % args.qcut
     )
     centres = histograms[0].centres
     for index in range(args.n_djr):
@@ -728,6 +747,14 @@ def build_parser():
         help="stop after this many events per sample",
     )
     parser.add_argument("--output-prefix", default="djr")
+    parser.add_argument(
+        "--exclude-pdg",
+        type=lambda text: frozenset(abs(int(v)) for v in text.split(",")),
+        default=None,
+        help="comma-separated |pdg| to keep out of the clustering "
+        "(default: the tops, leptons, photon and bosons that "
+        "JetMatchingMadgraph excludes)",
+    )
     parser.add_argument(
         "--format", default="pdf", help="plot file format (default %(default)s)"
     )

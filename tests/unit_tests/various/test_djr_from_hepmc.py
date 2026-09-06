@@ -352,13 +352,23 @@ class TestDifferentialJetRates(unittest.TestCase):
 
 class TestVisibleFinalState(unittest.TestCase):
 
-    def test_neutrinos_are_dropped(self):
-        pdgs = np.array([21, 12, -14, 11, 16])
-        p = np.array([momentum(10.0 * (i + 1), 0.0, 0.0) for i in range(5)])
+    def test_non_jet_particles_are_dropped(self):
+        """The matching builds workEventJet without tops, leptons, photons or
+        bosons, so the reconstruction has to leave out the same things."""
+        pdgs = np.array([21, 12, -14, 11, 16, 6, -6, 22, 23, 24, 25, 1, -2])
+        p = np.array([momentum(10.0 * (i + 1), 0.0, 0.0) for i in range(13)])
         kept = djr.visible_final_state(pdgs, p, eta_max=1000.0)
-        self.assertEqual(len(kept), 2)
+        # only the gluon and the two light quarks survive
+        self.assertEqual(len(kept), 3)
         np.testing.assert_allclose(kept[0], p[0])
-        np.testing.assert_allclose(kept[1], p[3])
+        np.testing.assert_allclose(kept[1], p[11])
+        np.testing.assert_allclose(kept[2], p[12])
+
+    def test_exclusion_list_can_be_overridden(self):
+        pdgs = np.array([21, 6, 11])
+        p = np.array([momentum(10.0 * (i + 1), 0.0, 0.0) for i in range(3)])
+        kept = djr.visible_final_state(pdgs, p, exclude=frozenset([11]))
+        self.assertEqual(len(kept), 2)
 
     def test_eta_cut_is_off_by_default(self):
         pdgs = np.array([21, 21])
