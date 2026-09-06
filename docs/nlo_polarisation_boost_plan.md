@@ -18,11 +18,20 @@ Status:
 | M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
 | M4 | **done** — guard open, `help_polarization` rewritten, acceptance test written, run and wired into CI |
 | M5 NLO+PS | **done** — MC counterterm azimuth boosted, `generate_events` validated, second acceptance test in CI |
+| M6 regimes + colour | **done** — the three NLO regimes checked separately; coloured polarisation allowed when *massive*, on a measured `p p > t t~ [QCD]` closure |
 
 `[LOonly=QCD]`, `[real=QCD]`, `[QCD]` and `[virt=…]` all accept a polarised
 massive particle today. The first three get their frame from `me_frame` in the
 run_card; `[virt=…]` is standalone MadLoop, where the user supplies the
 phase-space point and therefore picks the frame themselves (see M3).
+
+**A polarised *coloured* particle is allowed too, if it is massive**:
+`p p > t{+} t~{-} [QCD]` works, validated by a five-configuration closure
+study (`+0.03 sigma`, `check_poles` 20/20 everywhere, `test_ME` clean on the
+FKS configurations whose emitter *is* the polarised top). A **massless**
+coloured one — a gluon, a light quark, and hence `p` and `j` — is still
+refused, because it was never tested. See M6 and
+`docs/nlo_polarisation_massive_colour.md`.
 
 **NLO+PS works too**, not only fixed order: `generate_events` on
 `p p > z{0} j [QCD]` with `me_frame=[3]` gives 2.189e+03 +- 8.2e+00 pb with all
@@ -1087,7 +1096,8 @@ Still refused, each for a reason rather than by omission:
   unchanged: loop-induced is exported through the LO madevent template and so
   already has `me_frame`, but `check()` has always rejected massive there.
   Worth revisiting; not touched here because nothing in this work exercises
-  it. See section 1.
+  it. See section 1. **Superseded in M6**, which is where it was revisited:
+  loop-induced now has no restriction at all.
 
 `tests/unit_tests/interface/test_cmd.py::test_check_generate` encoded the old
 restriction (`'u u~ > w+{L} [QCD]'` in the *invalid* list) and is updated: the
@@ -1398,6 +1408,148 @@ shower's phase space, so switching the comparison on would very likely fail for
 unrelated processes and is its own piece of work. It is recorded because it
 explains why `test_MC` passed on the broken code, and why the M5 validation had
 to be built by hand.
+
+### M6 — The three regimes, and colour — **DONE**
+
+#### The three regimes get three different checks
+
+One flag used to gate all of NLO polarisation, and the two halves of it
+disagreed: the first admitted `noborn`/`sqrvirt` explicitly, the second
+refused them again for being massive, so the first clause was dead and
+loop-induced polarisation was refused outright — including
+`g g > z{0} z{0} [noborn=QCD]`, the case this milestone validated. They do not
+share a hazard, so they no longer share a check
+(`madgraph_interface.py`, `check_process_format`):
+
+| regime | `nlo_mode` | where the frame comes from | restriction |
+|---|---|---|---|
+| standalone MadLoop | `virt` | the caller's phase-space point | none, any perturbation order |
+| loop-induced | `noborn`, `sqrvirt` | `noborn` uses the LO `boost_to_frame`, exactly like a tree process; `sqrvirt` squares one amplitude standalone | none, any perturbation order |
+| subtracted | `all` (= a bare `[QCD]`), `real`, `loonly` | `me_frame` in the run_card, threaded by hand through Born (M1), real + FKS counterterms (M2), virtual (M3) and the MC-counterterm azimuth (M5) | QCD only, and no *massless* coloured polarised particle |
+
+The mode is read out of the brackets the way the parser reads it (no keyword
+means `all`), not by a substring test on the process line, so a stray `real`
+elsewhere in the process cannot match. Everything reaching the per-particle
+walk now has a frame, so the old mass check there was unreachable and is gone.
+
+Verified that `g g > z{0} z{0} [sqrvirt=QCD]` is not merely admitted but
+generated: `P0_gg_z0z0` with `NCOMB=4` (2x2 gluon x 1x1 longitudinal Z)
+against `NCOMB=36` unpolarised. `[noborn=QCD]` outputs madevent.
+
+#### Colour: massive yes, massless no
+
+The subtracted regime is the only one that restricts colour, and it now
+refuses a polarised particle only when that particle is **both colour-charged
+and massless**:
+
+```python
+if p.get('color') != 1 and p.get('mass').lower() == 'zero':
+    raise self.InvalidCmd(...)
+```
+
+The worry the restriction was written for is that a coloured polarised
+particle is also an FKS emitter, so its polarisation axis and the
+subtraction's singular regions meet somewhere the boost threading was never
+validated — the threading having been validated on colourless massive bosons
+(`p p > z{0} j [QCD]`, `z{0} z{0} j`).
+
+**For a massive emitter that was measured, and it does not bite.** A closure
+study of `p p > t t~ [QCD]` at 13 TeV was run on this branch's tip
+(`54dc8a361`) with **exactly one** guard bypassed — this colour check —
+in all four top-helicity combinations plus the unpolarised reference, at
+fixed order and at NLO+PS, `me_frame = [3,4]` (the `t t~` rest frame,
+`FRAME_ID = 24`, read back out of `Source/run_card.inc` after every run).
+`check_poles` and `test_ME` ran exactly as shipped, at shipped tolerances.
+The full write-up is `docs/nlo_polarisation_massive_colour.md`.
+
+The top is spin-1/2, so `{+}`/`{-}` on each of `t` and `t~` is the complete
+spin sum and `sum(4) = unpolarised` is an exact identity up to Monte Carlo.
+
+| | `sum(4) - unpolarised` | relative | pull |
+|---|---|---|---|
+| NLO fixed order, 6 seeds/config | +0.0050 +- 0.196 pb | **+0.0006 %** | **+0.03 sigma** |
+| NLO+PS, parton level, 6 seeds/config | -1.66 +- 1.45 pb | -0.19 % | -1.15 sigma |
+
+Differentially the ratio `sum(4)/unpolarised` sits on 1 across pT(t), y(t),
+m(t t~), pT(t t~) and dphi(t, t~). `sigma(++) = sigma(--)` and
+`sigma(+-) = sigma(-+)` are reproduced to 5 digits, unforced.
+
+`check_poles` cancelled **20 points out of 20 in every P directory of every
+configuration** at the shipped tolerance `1.0e-5` (`IRPoleCheckThreshold`
+untouched). The worst relative miscancellation actually attained was 3.1e-13
+(double pole) and 5.1e-12 (single pole) for the polarised runs, against
+6.8e-14 and 2.9e-12 unpolarised — the same range, eleven orders inside
+tolerance. The poles are proportional to the Born, so a polarisation /
+subtraction mismatch would surface here first (that is exactly how the M3
+blocker gave itself away).
+
+`test_ME` (= `test_soft_col_limits`, mode 2, 100 soft and 100 collinear points
+per FKS configuration) failed nowhere. The configurations that matter are the
+ones whose emitter `j_fks` **is** the polarised top — the exact case the guard
+was written for. They were isolated: **30 such configurations across five
+polarisation states, 28 at failure fraction 0.00 and 2 at 0.01**,
+indistinguishable from the unpolarised run's own fluctuations.
+
+`test_MC` reported a perfect 0.00 everywhere and is **not** quoted as
+evidence: it is structurally vacuous on this codebase (M5), and these logs
+corroborate that — a test that can fail gives 0.01-0.05 on the same points.
+
+Why it turns out not to bite: the FKS counterterms multiply the **Born**, and
+the polarisation projection acts on that Born through the same frame wrappers
+the subtracted path already threads for a colourless massive boson. Colour
+enters the subtraction only through colour-linked Borns and the FKS partition,
+neither of which touches the spin projection.
+
+#### Two limitations, which is why this narrows rather than removes
+
+1. **Massless coloured is untested, so it stays refused.** Nothing in the
+   study had a massless polarised coloured leg. That refusal is now an
+   **evidence gap, not a rule**: it is waiting on the corresponding study,
+   the natural one being a closure where a genuine collinear singularity sits
+   on the polarised leg. A massive `j_fks` has none — the soft limit was the
+   whole of the test above.
+2. **Only a two-leg frame was run.** `me_frame = [3,4]` never triggers
+   `boost_to_me_frame`'s `nsel == 1` zeroing, so no leg sits exactly at rest.
+   A **single-leg** frame on a coloured polarised particle (`me_frame = [3]`
+   with leg 3 coloured) is untested, and it is precisely the configuration
+   that exercises the HELAS at-rest quantisation axis — the mechanism behind
+   B8, B11 and the `improve_ps` last-leg bug fixed in PR #91. Anyone relying
+   on that combination should run it first.
+
+Unchanged and deliberate: `[QED]` and mixed orders stay refused in the
+subtracted regime (nothing in the QED sector has been validated), `[tree=…]`
+stays refused (no frame), and loop-induced and `virt` stay unrestricted.
+
+#### A flavour-scheme consequence that will surprise someone
+
+The predicate reads the *model's* mass, so the same process string is accepted
+or refused depending on which model is loaded:
+
+| model | `b` mass | `p p > b{+} b~ [QCD]` |
+|---|---|---|
+| `loop_sm` (4-flavour, massive b) | `mdl_MB` | accepted |
+| `loop_sm-no_b_mass` (5-flavour) | `ZERO` | refused |
+
+That is correct — a massless b *is* the untested case — but it is worth
+knowing before someone reports it as a bug.
+
+#### `p` and `j` are refused through their constituents
+
+The per-particle walk expands a multiparticle and calls the check on every
+member, so `p{+}`/`j{+}` are refused through their gluon (and through their
+massless quarks). This is the reason the change is safe for the common case
+and it is tested rather than assumed:
+`test_polarisation_nlo_regimes` asserts on `p{+} p > t t~ [QCD]`,
+`p p > j{+} j [QCD]` and — to show the walk reaches every constituent and not
+just the first — a gluon-free `define qlight = u u~ d d~`.
+
+`tests/unit_tests/interface/test_cmd.py::test_check_generate` and
+`::test_polarisation_nlo_regimes` both encoded the blanket colour refusal
+(`'u u~ > t{L} t~ [QCD]'` in the rejected list) and are updated: the massive
+coloured forms move to the accepted list, the massless coloured and
+multiparticle forms are added to the rejected one. Both fail on the base
+branch and pass here, and both load a model first — without `import model`
+the colour lookup is skipped and any assertion about it passes vacuously.
 
 ## 4. Acceptance test
 

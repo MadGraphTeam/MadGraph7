@@ -824,7 +824,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     - [virt=QCD] and standalone MadLoop take the frame from the momenta the")
         logger.info("       caller supplies, so any perturbation order is allowed.")
         logger.info("   A polarized massless particle needs no frame and was always allowed.")
+        logger.info(" > Colour, in [QCD]/[real=QCD]/[LOonly=QCD] only: a polarized coloured")
+        logger.info("   particle must be massive. p p > t{+} t~{-} [QCD] is allowed -- the")
+        logger.info("   closure and the FKS soft limit off the polarized top were measured --")
+        logger.info("   but a polarized gluon or massless quark is untested and refused, and")
+        logger.info("   so are 'p' and 'j', which contain one. Note this depends on the model:")
+        logger.info("   b is massive in a 4-flavour scheme and massless in a 5-flavour one.")
         logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Example: generate p p > t{+} t~{-} [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
         logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")
         logger.info("   (generate_events, i.e. MC@NLO matching) are supported: the MC")
         logger.info("   counterterms and the weights written to the LHE use the same frame as")
@@ -1319,21 +1326,51 @@ class CheckValidForCmd(cmd.CheckCmd):
             # else first -- which is precisely the restriction that should not
             # apply there.)
             #
-            # Colour, in the subtracted regime only. The threading is
-            # validated on colourless massive bosons, p p > z{0} j [QCD] and
-            # z{0} z{0} j; a coloured polarised particle is also an FKS
-            # emitter, so its polarisation axis and the subtraction's singular
-            # regions meet in a way nothing here has tested. Neither branch
-            # allowed it -- upstream refused u u~ > t{L} t~ [QCD] through the
-            # blanket NLO gate and this branch through a colour check -- so it
-            # stays refused rather than being opened as a side effect of
-            # dropping either one.
+            # Colour, in the subtracted regime only, and only when the
+            # polarised particle is also MASSLESS. A coloured polarised
+            # particle is an FKS emitter, so the worry was that its
+            # polarisation axis and the subtraction's singular regions meet
+            # somewhere untested. For a MASSIVE emitter that was measured and
+            # does not bite: a closure study of p p > t t~ [QCD] with this
+            # guard bypassed, in all four top-helicity combinations plus the
+            # unpolarised reference, me_frame = [3,4] (see M6 in
+            # docs/nlo_polarisation_boost_plan.md and
+            # docs/nlo_polarisation_massive_colour.md), gives
+            # sum(4) - unpolarised = +0.0006 % (+0.03 sigma) at fixed order
+            # and -0.19 % (-1.15 sigma) at NLO+PS; check_poles cancels 20/20
+            # in every P dir at the shipped 1.0e-5 with a worst
+            # miscancellation of 3.1e-13, the same range as unpolarised; and
+            # test_ME (= test_soft_col_limits) on the 30 FKS configurations
+            # whose emitter j_fks IS the polarised top scores 0.00 on 28 and
+            # 0.01 on 2, i.e. unpolarised noise. (test_MC reported 0.00
+            # everywhere and is NOT evidence -- it is vacuous on this
+            # codebase.)
+            #
+            # Two things that study did NOT cover, which is why the refusal
+            # narrows rather than disappears:
+            #  - massless coloured is simply untested. This refusal is now an
+            #    evidence gap, not a statement of principle.
+            #  - only a two-leg frame was run. me_frame = [3,4] never trips
+            #    boost_to_me_frame's nsel == 1 zeroing, so no leg sits exactly
+            #    at rest; a single-leg frame on a coloured polarised particle
+            #    is the case that exercises the HELAS at-rest quantisation
+            #    axis (the PR #91 improve_ps mechanism) and is untested.
+            #
+            # Consequence worth knowing: b is massive in a 4-flavour scheme
+            # and massless in a 5-flavour one, so the same process string is
+            # accepted or refused depending on the model. That is correct, and
+            # it will surprise someone.
+            #
+            # p and j stay refused: the walk below expands a multiparticle and
+            # checks every constituent, and both contain the gluon.
             if subtracted_boost_ok:
                 def check(p):
-                    if p.get('color') != 1:
-                        raise self.InvalidCmd('Polarization restriction can '
-                                              'not be used for color charged '
-                                              'particles')
+                    if p.get('color') != 1 and p.get('mass').lower() == 'zero':
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'massless color charged particles (%s) in a '
+                            'subtracted NLO computation. Massive coloured '
+                            'particles are supported.' % p.get('name'))
 
                 for p in particles_parts[0].split() + particles_parts[-1].split():
                     if '{' not in p:
