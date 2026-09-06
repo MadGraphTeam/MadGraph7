@@ -23,6 +23,23 @@ enum class JetScaleScheme {
     production = 1,
 };
 
+// How the renormalisation and factorisation scales are read off the clustering
+// history once it has been chosen.
+enum class ScaleScheme {
+    // Geometric mean of every clustering scale, with the non-QCD ones replaced
+    // by the largest, and a single factorisation scale taken as the smallest
+    // QCD clustering scale capped at mu_R.
+    clustering_mean = 0,
+    // What madevent does: follow each beam's parton line through the
+    // clustering and take
+    //     mu_R   = (s[jlast1] s[jcentral1] s[jlast2] s[jcentral2])^(1/4)
+    //     mu_F,b = sqrt(s[jlast_b] s[jcentral_b])
+    // where jlast is the last initial-state clustering while the beam line is
+    // still a jet, and jcentral the last one while it is still coloured. The
+    // two beams get different factorisation scales.
+    madevent = 1,
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
     MLMClustering(
@@ -34,6 +51,9 @@ public:
         // MLM veto can never trip on it.
         double cm_energy,
         JetScaleScheme jet_scale_scheme = JetScaleScheme::production,
+        // Left at the existing definition by default: unlike
+        // jet_scale_scheme, this one moves the cross section.
+        ScaleScheme scale_scheme = ScaleScheme::clustering_mean,
         // Signed color representation per pdg id, as exported in the
         // subprocess metadata. Used to follow a parton line through the
         // clustering; falls back to the Standard Model assignment for a pdg id
@@ -72,6 +92,8 @@ private:
     std::vector<double> _bw_widths;
     double _cm_energy;
     JetScaleScheme _jet_scale_scheme;
+    ScaleScheme _scale_scheme;
+    int _beam_flags;
     double _xqcut;
     double _bw_cutoff;
     double _jet_radius;

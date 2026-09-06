@@ -976,6 +976,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
+    add_enum<ScaleScheme>(
+        mlm,
+        "ScaleScheme",
+        {
+            {"clustering_mean", ScaleScheme::clustering_mean},
+            {"madevent", ScaleScheme::madevent},
+        }
+    );
     add_enum<JetScaleScheme>(
         mlm,
         "JetScaleScheme",
@@ -992,6 +1000,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector2<std::size_t>,
                 double,
                 JetScaleScheme,
+                ScaleScheme,
                 std::unordered_map<int, int>,
                 double,
                 double,
@@ -1004,6 +1013,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("diagram_indices"),
             py::arg("cm_energy"),
             py::arg("jet_scale_scheme") = JetScaleScheme::production,
+            py::arg("scale_scheme") = ScaleScheme::clustering_mean,
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("xqcut") = 0.,
             py::arg("bw_cutoff") = 15.,

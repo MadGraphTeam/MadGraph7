@@ -2226,6 +2226,12 @@ mlm_clustering_hadronic:
     - name: xqcut
       type: [float, single]
       desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2281,6 +2287,12 @@ mlm_clustering_leptonic:
       desc:
     - name: xqcut
       type: [float, single]
+      desc:
+    - name: scale_scheme
+      type: [int, single]
+      desc:
+    - name: beam_flags
+      type: [int, single]
       desc:
   outputs:
     - name: ren_scale

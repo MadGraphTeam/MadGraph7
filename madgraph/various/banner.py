@@ -6534,6 +6534,16 @@ class RunCardMG7(RunCard):
         #                 the softest clustering it takes part in.
         self.add_toml_param('beam', 'jet_scale_scheme', "production",
             allowed=['production', 'emission'])
+        # How mu_R and mu_F are read off the clustering history:
+        #   "clustering_mean": geometric mean of every clustering scale, with a
+        #                      single factorisation scale.
+        #   "madevent":        follow each beam's parton line and use
+        #                      (s_jlast1 s_jcentral1 s_jlast2 s_jcentral2)^(1/4),
+        #                      with a separate factorisation scale per beam.
+        # Left at "clustering_mean" by default because it moves the cross
+        # section, unlike jet_scale_scheme.
+        self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
+            allowed=['clustering_mean', 'madevent'])
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)

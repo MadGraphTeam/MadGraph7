@@ -43,6 +43,10 @@ max_jet_flavor = %(beam.max_jet_flavor)s
 # options: production (the scale at which the parton's line was produced, as in
 #          madevent), emission (the scale at which the leg itself was emitted)
 jet_scale_scheme = %(beam.jet_scale_scheme)s
+# how mu_R and mu_F are read off the clustering history
+# options: clustering_mean (geometric mean of every clustering scale),
+#          madevent (follow each beam's parton line, as madevent does)
+scale_scheme = %(beam.scale_scheme)s
 
 [generation]
 events = %(generation.events)s

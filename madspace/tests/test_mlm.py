@@ -720,9 +720,17 @@ BIT_IS_LAST = (30, 1)
 # Words per transition: (data, next_offset, trace_data).
 STATE_ITEM_SIZE = 3
 
-# trace_data values: which daughter the mother's parton line continues into.
+# trace_data: the low two bits say which daughter the mother's parton line
+# continues into, the next two carry the mother's own flavour.
+TRACE_MODE_MASK = 0x3
 TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH = 0, 1, 2, 3
 TRACE_MODES = {TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH}
+TRACE_IS_JET_IN = 1 << 2
+TRACE_IS_COLORED_IN = 1 << 3
+
+
+def trace_mode(trace):
+    return trace & TRACE_MODE_MASK
 
 
 def field(data, spec):
@@ -866,15 +874,15 @@ def test_state_machine_trace_modes_are_valid(machine):
     non_terminal, _ = walk(flat, n_ext)
     for _, (_, transitions) in non_terminal.items():
         for data, _, trace in transitions:
-            assert trace in TRACE_MODES
+            assert trace_mode(trace) in TRACE_MODES
             if field(data, BIT_PARTICLE1) < 2:
-                assert trace == TRACE_FIRST
+                assert trace_mode(trace) == TRACE_FIRST
 
 
 def trace_modes_of(clustering, n_ext):
     non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), n_ext)
     return {
-        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)): trace
+        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)): trace_mode(trace)
         for _, (_, transitions) in non_terminal.items()
         for data, _, trace in transitions
     }

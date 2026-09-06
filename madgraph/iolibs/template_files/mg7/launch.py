@@ -1363,6 +1363,10 @@ class MadgraphSubprocess:
                         ms.MLMClustering.JetScaleScheme,
                         self.process.run_card["beam"]["jet_scale_scheme"],
                     ),
+                    scale_scheme=getattr(
+                        ms.MLMClustering.ScaleScheme,
+                        self.process.run_card["beam"]["scale_scheme"],
+                    ),
                     pdg_color_types={
                         int(key): value
                         for key, value in self.meta["pdg_color_types"].items()

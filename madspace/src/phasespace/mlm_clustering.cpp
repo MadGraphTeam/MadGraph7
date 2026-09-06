@@ -138,6 +138,10 @@ struct StateItem {
     bool is_jet1;
     bool is_jet2;
     TraceMode trace_mode;
+    // Flavour of the *mother*. madevent's scale definition needs to know where
+    // a beam's parton line stops being a jet and where it stops being coloured.
+    bool is_jet_in;
+    bool is_colored_in;
 };
 
 // 1-based index into the Breit-Wigner tables handed to the kernel, or 0 for
@@ -230,6 +234,9 @@ StateItem make_state_item(
         .is_jet1 = is_jet1,
         .is_jet2 = is_jet2,
         .trace_mode = trace_mode,
+        .is_jet_in = !ctx.have_pdg_ids ||
+            is_jet_pdg(meta_in.pdg_id, ctx.max_jet_flavor),
+        .is_colored_in = !ctx.have_pdg_ids || color_in != 1,
     };
 }
 
@@ -318,6 +325,8 @@ void find_clusterings(
                             .is_jet1 = false,
                             .is_jet2 = false,
                             .trace_mode = trace_first,
+                            .is_jet_in = false,
+                            .is_colored_in = false,
                         });
                     }
                 } else {
@@ -362,6 +371,7 @@ MLMClustering::MLMClustering(
     nested_vector2<std::size_t> diagram_indices,
     double cm_energy,
     JetScaleScheme jet_scale_scheme,
+    ScaleScheme scale_scheme,
     std::unordered_map<int, int> pdg_color_types,
     double xqcut,
     double bw_cutoff,
@@ -384,6 +394,8 @@ MLMClustering::MLMClustering(
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
+    _scale_scheme(scale_scheme),
+    _beam_flags(0),
     _xqcut(xqcut),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
@@ -401,6 +413,19 @@ MLMClustering::MLMClustering(
         throw std::invalid_argument(std::format(
             "expected {} external pdg ids, got {}", n_ext, external_pdg_ids.size()
         ));
+    }
+
+    // madevent seeds its walk with the flavour of each beam: qcdline from
+    // isqcd(beam) and partonline from the same. Bake those two bits per beam
+    // in, since they are a property of the subprocess.
+    for (int beam = 0; beam < 2; ++beam) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(beam) : 21;
+        if (color_rep(pdg, pdg_color_types) != 1) {
+            _beam_flags |= 1 << (2 * beam);
+        }
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            _beam_flags |= 1 << (2 * beam + 1);
+        }
     }
 
     nested_vector2<int> valid_diags(1 << n_ext);
@@ -599,7 +624,10 @@ MLMClustering::MLMClustering(
                     ((&item == &state.back()) << 30)
                 );
                 _cluster_state_machine.push_back(first_indices.at(item.next_state));
-                _cluster_state_machine.push_back(static_cast<int>(item.trace_mode));
+                _cluster_state_machine.push_back(
+                    static_cast<int>(item.trace_mode) + (item.is_jet_in << 2) +
+                    (item.is_colored_in << 3)
+                );
             }
         }
     }
@@ -622,7 +650,9 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _jet_radius,
             _cm_energy,
             static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut
+            _xqcut,
+            static_cast<me_int_t>(_scale_scheme),
+            static_cast<me_int_t>(_beam_flags)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -636,7 +666,9 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _jet_radius,
             _cm_energy,
             static_cast<me_int_t>(_jet_scale_scheme),
-            _xqcut
+            _xqcut,
+            static_cast<me_int_t>(_scale_scheme),
+            static_cast<me_int_t>(_beam_flags)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
