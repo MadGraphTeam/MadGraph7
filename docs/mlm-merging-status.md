@@ -141,6 +141,15 @@ comparison against the validated madevent MLM disagree.
 
 * **No Sudakov reweighting**, which is the other half of what the NLO code does.
 
+## Validating the merging
+
+Differential jet rates reconstructed from a showered event record are what say
+whether the merging works: each multiplicity sample has to switch off where the
+next switches on, and their sum has to be smooth across the merging scale. That
+tooling lives on its own branch (`claude/mlm-djr-plots`,
+`madgraph/various/djr_from_hepmc.py`), since it is useful for madevent just as
+much as for madspace.
+
 ## Open items
 
 * **The trigger for MLM is `dynamical_scale_choice = "mlm"`, which is probably
