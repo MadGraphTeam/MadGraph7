@@ -254,7 +254,9 @@ class TestValidCmd(unittest.TestCase):
             only the QCD path is validated. Colour is restricted there, but
             only for MASSLESS coloured particles: a massive coloured emitter
             was measured (see the p p > t t~ [QCD] closure study), a massless
-            one has not been.
+            one has not been -- and for a massless one the real emission
+            could not carry the born's polarization onto the FKS emitter
+            anyway (g -> q q~ changes the identity of leg j).
 
         The two gates used to disagree: the first admitted noborn/sqrvirt and
         the second refused them again for being massive, so the first clause
@@ -300,13 +302,33 @@ class TestValidCmd(unittest.TestCase):
                           cmd.check_process_format, 'p{+} p > t t~ [QCD]')
         self.assertRaises(cmd.InvalidCmd,
                           cmd.check_process_format, 'p p > j{+} j [QCD]')
-        # ... and the expansion has to reach every constituent, not just the
-        # first: a multiparticle of massless quarks only (no gluon) is refused
-        # too.
-        cmd.do_define('qlight = u u~ d d~')
-        self.assertRaises(cmd.InvalidCmd,
-                          cmd.check_process_format,
+        # ... and the refusal is not keyed on the gluon: a multiparticle with
+        # no gluon in it is refused too, through its massless quarks.
+        # (This does NOT show the walk reaches every constituent. MG5 orders
+        # multiparticle members gluon first, then by |pdg| ascending, so
+        # 'qlight = u u~ d d~' is stored as [2, 1, -2, -1] and the refusal
+        # fires on the FIRST member. In the SM one cannot build a
+        # multiparticle whose first member is massive-coloured and a later one
+        # massless-coloured, so "reaches every constituent" is untestable
+        # here.)
+        # do_define mutates the interface, and self.cmd is a class attribute
+        # shared by every test in this class, so use a private instance.
+        own = self.cmd.__class__()
+        own.no_notification()
+        own.do_import('sm')
+        own.do_define('qlight = u u~ d d~')
+        self.assertRaises(own.InvalidCmd,
+                          own.check_process_format,
                           'p p > qlight{+} qlight [QCD]')
+        # An UPPERCASE multiparticle label: do_define lowercases the key it
+        # stores, so the walk has to look it up lowercased. It used to fall
+        # through to get_particle('qq') -> None and crash with an
+        # AttributeError instead of accepting the (massive, coloured) members.
+        own.do_define('QQ = t t~')
+        own.check_process_format('p p > QQ{+} QQ [QCD]')
+        # An unknown particle name is not this check's business: it must not
+        # crash here, the process parser reports it.
+        own.check_process_format('p p > nosuchparticle{+} t~ [QCD]')
         # ... but colour is no restriction where there is no subtraction
         cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
         cmd.check_process_format('g{+} g > t t~ [noborn=QCD]')

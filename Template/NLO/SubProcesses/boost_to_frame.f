@@ -477,11 +477,21 @@ c         real r  ->  Born r-1    for r >  i_fks
 c         real i_fks has no Born counterpart (it is the extra parton)
 c     so no separate table is needed for the reals.
 c
-c     Note on r = j_fks: positionally the Born leg is the *mother* of i_fks
-c     and j_fks, not the same particle as the real leg j_fks. Selecting a
-c     splitting parton in me_frame is meaningless for polarisation anyway --
-c     the particles whose polarisation is being fixed are spectators, present
-c     unchanged in both the real and the Born.
+c     Note on r = j_fks: positionally the Born leg is the *mother* ij of
+c     i_fks and j_fks. That is still the right leg to inherit the mask from,
+c     and NOT because the polarised legs are spectators -- they are not: a
+c     polarised massive quark IS j_fks in some configurations, and the real
+c     carries its polarisation (see fks_common.carry_polarization).
+c     It is right because in that case the real's j_fks is the SAME particle
+c     as the Born's ij, so "the leg the user selected" means the same thing on
+c     both sides, and the two matrix elements are boosted into frames that
+c     coincide in the singular limit.
+c
+c     That equality is what makes the whole polarised subtraction well
+c     defined, and it is exactly what fails for a massless emitter
+c     (g -> q q~ has no such correspondence). Do not read this routine as a
+c     licence to relax the massless-coloured refusal in
+c     madgraph_interface.check_process_format.
 c
 c     output: ids(nexternal)
 c**************************************************************************

@@ -101,7 +101,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         for born in self['born_processes']:
             # the copy.copy is needed as duplicate configurations will be removed on the fly
             for real in copy.copy(born.real_amps):
-                pdgs = ' '.join([ '%d' % pdg for pdg in real.pdgs])
+                # keyed on the polarizations too, for the same reason as
+                # FKSRealProcess.pdgs_pols: same flavours, different helicity
+                # is a different real. (This method has no caller today.)
+                pdgs = '%s' % (real.pdgs_pols,)
                 for info in copy.copy(real.fks_infos):
                     ij = [info['i'], info['j']]
                     try:
@@ -456,6 +459,14 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
+        # Key used to decide whether two real processes can share one
+        # amplitude / matrix element.  The PDGs alone are not enough once a
+        # polarization restriction is in play: two reals can have the same
+        # flavours and fix a different helicity (e.g. p p > t{+} t~ [QCD] and
+        # p p > t{-} t~ [QCD] added to the same run), and sharing there would
+        # silently give one born the other's reals.
+        self.pdgs_pols = (self.pdgs,
+                          tuple(tuple(leg.get('polarization')) for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:
@@ -676,11 +687,11 @@ class FKSProcess(object):
         no_diags_amps = []
         for amp in self.real_amps:
             try:
-                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs)]
+                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs_pols)]
             except ValueError:
                 amplitude = amp.generate_real_amplitude()
                 if amplitude['diagrams']:
-                    pdg_list.append(amp.pdgs)
+                    pdg_list.append(amp.pdgs_pols)
                     real_amp_list.append(amplitude)
                 else:
                     no_diags_amps.append(amp)
@@ -698,10 +709,10 @@ class FKSProcess(object):
         old_real_amps = copy.copy(self.real_amps)
         for amp in old_real_amps:
             try:
-                real_amps[pdgs.index(amp.pdgs)].fks_infos.extend(amp.fks_infos)
+                real_amps[pdgs.index(amp.pdgs_pols)].fks_infos.extend(amp.fks_infos)
             except ValueError:
                 real_amps.append(amp)
-                pdgs.append(amp.pdgs)
+                pdgs.append(amp.pdgs_pols)
 
         self.real_amps = real_amps
 

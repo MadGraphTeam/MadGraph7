@@ -340,6 +340,47 @@ def find_mothers(leg1, leg2, model, dict={}, pert='', mom_mass=''):
     return mothers
 
 
+def carry_polarization(mother, split): #test written
+    """Carries the polarization of the born leg ij onto the daughter j of one
+    splitting (split is ordered [j, i]).
+
+    In the singular limit the real's leg j *is* the born's leg ij: the two
+    matrix elements are subtracted against each other, so they have to fix the
+    same helicity state or the subtraction is comparing a fixed-helicity Born
+    with a helicity-summed real. This is only meaningful when j carries the
+    same identity as the mother, which for a massive QCD emitter is always the
+    case (the only splitting is t -> t g). It is *not* the case for e.g.
+    g -> q q~, where there is no correspondence to transport; those mothers
+    are massless and coloured, and are refused at generation time by the
+    polarization guard in madgraph_interface.CheckValidForCmd.check_process_format.
+    Raise rather than silently dropping the polarization if that guard is ever
+    relaxed further.
+    """
+    pol = mother.get('polarization')
+    if not pol:
+        return
+    j_leg = split[0]
+    if j_leg['id'] != mother['id'] or j_leg['state'] != mother['state']:
+        raise FKSProcessError(
+            'Cannot carry the polarization %s of the born leg with id %d '
+            'through the splitting into ids %s: the FKS emitter j is a '
+            'different particle, so the born and the real would not fix the '
+            'same helicity state.' % \
+            (pol, mother['id'], [l['id'] for l in split]))
+    # ... and it has to be j and not i: for g -> g g in the final state both
+    # daughters have the mother's identity and there is nothing to pick
+    # between them away from the soft limit.
+    if len(split) > 1 and split[1]['id'] == mother['id'] and \
+       split[1]['state'] == mother['state']:
+        raise FKSProcessError(
+            'Cannot carry the polarization %s of the born leg with id %d '
+            'through the splitting into ids %s: both daughters have the '
+            'identity of the mother, so which one inherits the polarization '
+            'is not defined.' % \
+            (pol, mother['id'], [l['id'] for l in split]))
+    j_leg['polarization'] = copy.copy(pol)
+
+
 def split_leg(leg, parts, model): #test written
     """Splits the leg into parts, and returns the two new legs.
     """
@@ -374,6 +415,10 @@ def split_leg(leg, parts, model): #test written
                             to_fks_leg({'state': True, 
                                   'id': parts[1].get_anti_pdg_code(),
                                   'fks': 'i'}, model)])
+    # the born leg ij is replaced by the daughter j (see insert_legs), so any
+    # polarization it carries has to follow it there
+    for s in split:
+        carry_polarization(leg, s)
     return split
 
 

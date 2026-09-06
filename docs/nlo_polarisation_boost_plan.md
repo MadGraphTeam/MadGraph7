@@ -1500,13 +1500,35 @@ the subtracted path already threads for a colourless massive boson. Colour
 enters the subtraction only through colour-linked Borns and the FKS partition,
 neither of which touches the spin projection.
 
+#### A prerequisite the study could not have caught
+
+Making a coloured particle polarisable also makes it an **FKS emitter**, and
+`fks_common.split_leg` used to build the daughter legs from a bare dict, so
+they took `polarization = []` and `insert_legs` replaced the polarised Born
+leg with an unpolarised one: a polarised Born subtracted against a
+helicity-summed real. `p p > t t~` never showed it, because reals are
+deduplicated on PDGs alone and the ISR-generated real — in which the top *is* a
+spectator and does keep its polarisation — is enumerated first and survives.
+`e+ e- > t{+} t~ [QCD]`, which has no ISR QCD splitting, did: the launch aborted
+on `test_ME` with `Soft test FAILED, fraction 1.00`. Fixed by
+`fks_common.carry_polarization`, which puts the mother's polarisation on leg
+`j` and **raises** when `j` is not the same particle as the mother — the
+massless case. Details and the before/after numbers:
+`docs/nlo_polarisation_massive_colour.md`. `p p > t t~ [QCD]` generates the
+identical reals and the identical amplitude sharing before and after, so every
+number in this section stands.
+
 #### Two limitations, which is why this narrows rather than removes
 
-1. **Massless coloured is untested, so it stays refused.** Nothing in the
-   study had a massless polarised coloured leg. That refusal is now an
-   **evidence gap, not a rule**: it is waiting on the corresponding study,
-   the natural one being a closure where a genuine collinear singularity sits
-   on the polarised leg. A massive `j_fks` has none — the soft limit was the
+1. **Massless coloured is untested, so it stays refused** — and it is no
+   longer only an evidence gap. `fks_common.carry_polarization` can only put
+   the Born's polarisation on the real's leg `j` when `j` is the same particle
+   as the mother; `g -> q q~` has no such correspondence, and
+   `boost_to_frame.f`'s real-side frame mask relies on the same equality.
+   Lifting the refusal therefore needs a definition of what the polarisation
+   even *means* across the splitting, not just a closure run. If one is found,
+   the natural test is a closure where a genuine collinear singularity sits on
+   the polarised leg. A massive `j_fks` has none — the soft limit was the
    whole of the test above.
 2. **Only a two-leg frame was run.** `me_frame = [3,4]` never triggers
    `boost_to_me_frame`'s `nsel == 1` zeroing, so no leg sits exactly at rest.
@@ -1533,6 +1555,12 @@ or refused depending on which model is loaded:
 That is correct — a massless b *is* the untested case — but it is worth
 knowing before someone reports it as a bug.
 
+The predicate also reads the **symbolic** mass, once, at generation time.
+`import model loop_sm` then `p p > b{+} b~ [QCD]` is accepted because the
+model says `mdl_MB`; setting `MB = 0` in the param card afterwards puts the
+run squarely in the refused regime and nothing re-checks it. Stated in
+`help polarization`.
+
 #### `p` and `j` are refused through their constituents
 
 The per-particle walk expands a multiparticle and calls the check on every
@@ -1540,8 +1568,15 @@ member, so `p{+}`/`j{+}` are refused through their gluon (and through their
 massless quarks). This is the reason the change is safe for the common case
 and it is tested rather than assumed:
 `test_polarisation_nlo_regimes` asserts on `p{+} p > t t~ [QCD]`,
-`p p > j{+} j [QCD]` and — to show the walk reaches every constituent and not
-just the first — a gluon-free `define qlight = u u~ d d~`.
+`p p > j{+} j [QCD]` and — to show the refusal is not keyed on the *gluon* —
+a gluon-free `define qlight = u u~ d d~`.
+
+That last case does **not** show the walk reaches every constituent. MG5
+orders multiparticle members gluon first, then by `|pdg|` ascending, so
+`qlight` is stored as `[2, 1, -2, -1]` and the refusal fires on the **first**
+member. In the SM one cannot build a multiparticle whose first member is
+massive-coloured and a later member massless-coloured, so "reaches every
+constituent" has no test case there.
 
 `tests/unit_tests/interface/test_cmd.py::test_check_generate` and
 `::test_polarisation_nlo_regimes` both encoded the blanket colour refusal

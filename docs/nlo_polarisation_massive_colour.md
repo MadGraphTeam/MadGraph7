@@ -25,6 +25,58 @@ Both limitations that survive the narrowing are recorded in the guard's own
 comment in `madgraph/interface/madgraph_interface.py` and in
 `docs/nlo_polarisation_boost_plan.md`, M6.
 
+## A prerequisite the study did not exercise: the real must keep the polarisation
+
+Allowing a *coloured* polarised particle makes it an **FKS emitter**, and until
+this branch the FKS real emission threw its polarisation away.
+`fks_common.split_leg` built the daughter legs from a bare dict, so they took
+the `Leg` default `polarization = []`, and `insert_legs` then *replaced* the
+polarised Born leg by that unpolarised daughter. The result was a polarised
+Born subtracted against a helicity-summed real.
+
+This was harmless while polarised legs were forced colour-singlet — a singlet
+never splits in QCD, so it stayed a spectator that the `deepcopy` preserved —
+and `p p > t t~ [QCD]`, the process this study ran, never showed it either:
+`find_reals` enumerates the initial-state splittings first and reals are
+deduplicated on **PDGs alone**, so the surviving amplitude is the ISR one, in
+which the top *is* a spectator and does keep its polarisation. The FSR
+configurations merge onto it. The study's numbers are therefore valid, but they
+never exercised the broken path.
+
+A process with **no ISR QCD splitting giving the same real PDGs** does exercise
+it: a leptonic or photonic initial state, or a 1→N decay. On `54dc8a361`,
+`e+ e- > t{+} t~ [QCD]` exported a Born `e+ e- > t{R} t~` with `NCOMB = 8`
+against a real `e+ e- > t t~ g` with `NCOMB = 32`, and `launch NLO -f` aborted:
+`test_ME` (`test_soft_col_limits`, which the launch always runs) reported
+`Soft test 1 FAILED. Fraction of failures: 1.00` and the same for `Soft test 2`.
+
+The fix (`fks_common.carry_polarization`) carries the mother's polarisation
+onto the daughter **j**, which is the leg the Born's `ij` becomes in the
+singular limit. It is only defined when `j` has the mother's identity — true
+for `t -> t g`, the only QCD splitting of a massive quark, and *false* for
+`g -> q q~`. The function raises rather than silently dropping the polarisation
+when that fails, so relaxing the massless refusal cannot reintroduce the bug
+quietly. This is a second, independent reason to keep massless coloured
+refused, on top of the evidence gap.
+
+Two reals may now share one amplitude only if their PDGs **and** their
+per-leg polarisations agree (`FKSRealProcess.pdgs_pols`); without that,
+`generate p p > t{+} t~ [QCD]` + `add process p p > t{-} t~ [QCD]` could hand
+one Born the other's reals. For any process without a polarisation restriction
+the key is the PDG tuple plus a tuple of empty tuples, so nothing changes.
+
+After the fix, `e+ e- > t{+} t~ [QCD]` exports a real `e+ e- > t{R} t~ g` with
+`NCOMB = 16` (Born `NCOMB = 8` times the gluon's two helicities), `check_poles`
+cancels 20/20, `test_ME`'s two soft tests pass at failure fraction 0.00, and
+the run completes (`sigma = 6.678e-02 +- 2.9e-04 pb` at a 1 TeV `e+ e-`
+collider, `me_frame = [3,4]`). `p p > t{+} t~ [QCD]` generates the identical set
+of reals, with the identical amplitude-sharing pattern, before and after — so
+every number in this document stands unchanged.
+
+Note that `check_poles` is **blind** to this bug: the poles are proportional to
+the polarised Born on both sides, and it reported the same 20/20 and the same
+worst single-pole miscancellation `3.17e-14` before and after the fix.
+
 ---
 
 # Should the colour restriction on polarised particles be kept or removed?
