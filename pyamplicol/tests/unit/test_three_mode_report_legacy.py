@@ -1067,7 +1067,10 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     assert measurement["status"] == "ok"
     assert measurement["matrix_element"] == 3.25
     assert measurement["generation_seconds"] == pytest.approx(0.55)
-    assert measurement["wall_seconds_per_point"] == pytest.approx(1.0e-3)
+    # The fake driver reports amplitude evaluation at 1.0 ms and the complete
+    # observable, including squaring, at 1.1 ms. The headline must use total.
+    assert measurement["wall_seconds_per_point"] == pytest.approx(1.1e-3)
+    assert measurement["execution_seconds_per_point"] == pytest.approx(1.1e-3)
     contract = SelectorContract.from_mapping(measurement["selector_contract"])
     assert contract.selected_color_flow_ids == ("flow:2,4,1",)
     assert contract.all_flow_helicity_ids == ("h:-1,+1,-1,+1",)

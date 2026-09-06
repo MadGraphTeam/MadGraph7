@@ -1830,7 +1830,9 @@ class LegacyMeasurementAdapter:
                 log_path=log_path,
             ),
             settings=settings,
-            timing_labels=("amplitude evaluation", "total"),
+            # Match pyAmpliCol's selected-flow observable: the physical
+            # helicity sum of squared amplitudes, not amplitude production alone.
+            timing_labels=("total",),
             phase_reporter=phase_reporter,
         )
         if phase_reporter is not None:
