@@ -814,7 +814,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
         logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
         logger.info(" > For the proces 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
-        logger.info("Polarization at fixed-order NLO:",'$MG:BOLD')
+        logger.info("Polarization at NLO:",'$MG:BOLD')
         logger.info(" > A polarized massive particle needs a frame, so it is allowed for the NLO modes")
         logger.info("   that have one:")
         logger.info("     - [QCD], [real=QCD] and [LOonly=QCD] take 'me_frame' from the run_card.")
@@ -825,6 +825,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("       caller supplies, so any perturbation order is allowed.")
         logger.info("   A polarized massless particle needs no frame and was always allowed.")
         logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")
+        logger.info("   (generate_events, i.e. MC@NLO matching) are supported: the MC")
+        logger.info("   counterterms and the weights written to the LHE use the same frame as")
+        logger.info("   the cross-section. The shower itself knows nothing about the frame, so")
+        logger.info("   the polarised sample is defined by the hard process, as at LO.")
         logger.info(" > Define the frame from final-state particles only. A frame built from the")
         logger.info("   initial state is not infrared safe at NLO -- the real emission and the reduced")
         logger.info("   Born carry different momentum fractions even in the collinear limit -- and is")
@@ -1268,66 +1273,82 @@ class CheckValidForCmd(cmd.CheckCmd):
                 # no keyword, e.g. '[QCD]': the parser calls that mode 'all'
                 nlo_mode, pert_orders = 'all', bracket
 
-            # A polarized massive particle needs a frame to be defined in.
-            # There are two ways to have one.
+            # A polarised massive particle needs a frame to be defined in,
+            # but the three NLO regimes get there in completely different ways
+            # and so need different checks -- not one shared flag.
             #
-            # 'virt' outputs standalone MadLoop, where the user supplies the
-            # phase-space point themselves and so chooses the frame. There is
-            # no run_card, no me_frame and nothing for the code to get wrong,
-            # whatever the perturbation orders.
+            # 1. 'virt' outputs standalone MadLoop. The user supplies the
+            #    phase-space point themselves and so chooses the frame. There
+            #    is no run_card, no me_frame and nothing for the code to get
+            #    wrong, whatever the perturbation orders.
             standalone_olp = nlo_mode == 'virt'
 
-            # Otherwise the frame comes from me_frame in the run_card, and
-            # every piece of the computation is boosted into it: the Born
-            # (M1), the real emission and the full set of FKS counterterms
-            # (M2), and the virtual, which goes through binothlha_frame (M3).
-            # check_poles cancels 20/20 in every P dir of p p > z{0} j [QCD]
-            # with me_frame=[3]. See docs/nlo_polarisation_boost_plan.md.
+            # 2. Loop-induced. There is no Born to subtract against and no
+            #    counterterm that has to be evaluated in the same frame as
+            #    anything else: 'noborn' is exported through the LO madevent
+            #    template and boosted by the very same
+            #    Template/LO/SubProcesses/genps.f boost_to_frame as a tree
+            #    process, and 'sqrvirt' squares one amplitude standalone. So
+            #    nothing here is an NLO-specific hazard, and no NLO-specific
+            #    restriction applies -- massive or not, whatever the orders.
+            #    Verified at runtime on g g > z{0} z{0} [noborn=QCD]: see
+            #    docs/nlo_polarisation_boost_plan.md, M6.
+            loop_induced = nlo_mode in ('noborn', 'sqrvirt')
+
+            # 3. The subtracted modes. Here the frame comes from me_frame in
+            #    the run_card and every piece has to be boosted into it by
+            #    hand: the Born (M1), the real emission and the full set of FKS
+            #    counterterms (M2), the virtual through binothlha_frame (M3),
+            #    and the MC counterterms' azimuth for NLO+PS (M5). That
+            #    threading is what can be got wrong, so this is the only
+            #    regime worth restricting, and the restriction is exactly the
+            #    reach of the boost: validated for QCD, since the QED
+            #    counterterms go through the same wrappers but nothing in the
+            #    QED sector has been validated.
+            subtracted_boost_ok = (nlo_mode in ('loonly', 'real', 'all')
+                                   and pert_orders.strip().lower() == 'qcd')
+
+            if not (standalone_olp or loop_induced or subtracted_boost_ok):
+                raise self.InvalidCmd('Polarization restriction can not be '
+                                      'used for NLO processes')
+
+            # The mass of the polarised particle needs no check of its own:
+            # everything reaching here either never needed a frame or has the
+            # boost threaded through it. (Upstream's mass check only ever bit
+            # loop-induced, since its blanket NLO refusal caught everything
+            # else first -- which is precisely the restriction that should not
+            # apply there.)
             #
-            # Restricted to QCD corrections: the frame wrappers are
-            # order-agnostic and the QED counterterms go through them too, so
-            # this is likely to work, but nothing in the QED sector has been
-            # validated, so mixed or pure-QED perturbation stays refused.
-            frame_supported = standalone_olp or \
-                              (nlo_mode in ('loonly', 'real', 'all')
-                               and pert_orders.strip().lower() == 'qcd')
-            if 'noborn' in process or 'sqrvirt' in process \
-                                                      or frame_supported:
-                pass
-            else:
-                raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
+            # Colour, in the subtracted regime only. The threading is
+            # validated on colourless massive bosons, p p > z{0} j [QCD] and
+            # z{0} z{0} j; a coloured polarised particle is also an FKS
+            # emitter, so its polarisation axis and the subtraction's singular
+            # regions meet in a way nothing here has tested. Neither branch
+            # allowed it -- upstream refused u u~ > t{L} t~ [QCD] through the
+            # blanket NLO gate and this branch through a colour check -- so it
+            # stays refused rather than being opened as a side effect of
+            # dropping either one.
+            if subtracted_boost_ok:
+                def check(p):
+                    if p.get('color') != 1:
+                        raise self.InvalidCmd('Polarization restriction can '
+                                              'not be used for color charged '
+                                              'particles')
 
-            def check(p):
-                # Polarisation restriction can now be used for color charged
-                # particles, so there is no longer a color check here. The mass
-                # restriction is independent of the color one and must stay
-                # outside it -- keeping it in an "elif" would have silently
-                # exempted massive color-charged particles. A massive
-                # polarisation needs a frame, so it is refused only in the
-                # modes whose matrix elements are not boosted.
-                if p.get('mass') != 'ZERO' and not frame_supported:
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
- 
-
-
-            for p in particles_parts[0].split()+ particles_parts[-1].split():
-                if '{' in p:
+                for p in particles_parts[0].split() + particles_parts[-1].split():
+                    if '{' not in p:
+                        continue
                     part = p.split('{')[0]
-                else:
-                    continue
-                if self._curr_model:
-                    p = self._curr_model.get_particle(part)
-                    if not p:
-                        if part in self._multiparticles:
-                            for part2 in self._multiparticles[part]:
-                                p = self._curr_model.get_particle(part2)
-                                check(p)
-                        else:
-                            p = self._curr_model.get_particle(part.lower())
-                            check(p)
+                    if not self._curr_model:
+                        continue
+                    particle = self._curr_model.get_particle(part)
+                    if particle:
+                        check(particle)
+                    elif part in self._multiparticles:
+                        for part2 in self._multiparticles[part]:
+                            check(self._curr_model.get_particle(part2))
                     else:
-                        check(p)
-                    
+                        check(self._curr_model.get_particle(part.lower()))
 
 
     def check_tutorial(self, args):

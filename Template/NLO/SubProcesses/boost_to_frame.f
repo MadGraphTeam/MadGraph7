@@ -94,6 +94,111 @@ c**************************************************************************
       end
 
 
+      subroutine me_frame_born_boost(p_born_in, pboost, boosted)
+c**************************************************************************
+c     The boost sborn_frame() would apply to these Born momenta, exposed so
+c     the MC counterterms can put their azimuthal ingredients in the same
+c     frame. boosted=.false. means no frame was requested.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_born_in(0:3,nexternal-1), pboost(0:3)
+      logical boosted
+      integer ids(nexternal-1)
+      logical trivial
+
+      call get_frame_mask_born(ids)
+      call get_me_frame_boost(p_born_in, nexternal-1, ids, pboost,
+     &                        trivial)
+      boosted=.not.trivial
+
+      return
+      end
+
+
+      subroutine azifact_from_spinors(pi, pj, azifact)
+c**************************************************************************
+c     <ij>/[ij] from two massless momenta -- the expression the legacy
+c     branches build inline. Those keep their own copies on purpose:
+c     rewriting them would break the byte-identity of the no-frame path.
+c**************************************************************************
+      USE ALOHA_OBJECT
+      implicit none
+      double precision pi(0:3), pj(0:3)
+      double complex azifact
+      double precision zero
+      parameter (zero=0d0)
+      TYPE(ALOHA) W1,W2,W3,W4
+      double complex Wij_angle,Wij_recta
+      integer i
+
+      CALL IXXXXX(pi ,ZERO ,+1,+1,1,W1)
+      CALL OXXXXX(pj ,ZERO ,-1,+1,1,W2)
+      CALL IXXXXX(pi ,ZERO ,-1,+1,1,W3)
+      CALL OXXXXX(pj ,ZERO ,+1,+1,1,W4)
+      Wij_angle=(0d0,0d0)
+      Wij_recta=(0d0,0d0)
+      do i=1,4
+         Wij_angle = Wij_angle + W1%W(i)*W2%W(i)
+         Wij_recta = Wij_recta + W3%W(i)*W4%W(i)
+      enddo
+      azifact=Wij_angle/Wij_recta
+
+      return
+      end
+
+
+      subroutine azifact_mc_frame(p_born_in, imother, p_i, p_j,
+     &                            y_ij_fks, pboost, azifact,
+     &                            cphi_mother, sphi_mother)
+c**************************************************************************
+c     Azimuthal ingredients of the MC counterterms, in the me_frame, scaled
+c     so that the caller's existing multiply comes out right:
+c         ISR   -(cphi_mother + i sphi_mother)**2 * conjg(azifact)
+c         FSR   -(cphi_mother - i sphi_mother)**2 *       azifact
+c     both = +-exp(-+2 i psi), psi the emission azimuth about the mother.
+c     The boost (pboost, from me_frame_born_boost) is the Born's own, since
+c     the phase multiplies borntilde. azifact is <ij>/[ij] only in the
+c     generic branch; the collinear one pre-cancels the caller's mother
+c     factor instead, so do not assume it if you change the caller.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_born_in(0:3,nexternal-1)
+      integer imother
+      double precision p_i(0:3), p_j(0:3), y_ij_fks, pboost(0:3)
+      double complex azifact
+      double precision cphi_mother, sphi_mother
+      double precision pm(0:3), kp(0:3), pib(0:3), pjb(0:3)
+      double precision xij_kperp(0:3)
+      common/cxij_kperp/xij_kperp
+
+      call boostx(p_born_in(0,imother), pboost, pm)
+      call getaziangles(pm, cphi_mother, sphi_mother)
+
+      if (1d0-y_ij_fks.le.0d0) then
+c        Exactly collinear: <ij>/[ij] is 0/0 in every frame, so rebuild it
+c        from the stored emission direction, using
+c            lim_{kt->0} <ij>/[ij] = -exp(2 i psi) * exp(2 i phi_m),
+c        the identity that makes this branch agree with the generic one;
+c        azifact_from_kperp returns only the first factor.
+c
+c        Taken at kt exactly zero and nowhere else, on purpose: the spinors
+c        are exact at any kt>0, while this reconstruction carries an
+c        O((kt/E)/betaT) error, betaT the transverse velocity of the boost.
+         call boostx(xij_kperp, pboost, kp)
+         call azifact_from_kperp(pm, kp, azifact)
+         azifact=azifact*dcmplx(cphi_mother,sphi_mother)**2
+      else
+         call boostx(p_i, pboost, pib)
+         call boostx(p_j, pboost, pjb)
+         call azifact_from_spinors(pib, pjb, azifact)
+      endif
+
+      return
+      end
+
+
       subroutine azifact_from_kperp(pmother, kperp, azifact)
 c**************************************************************************
 c     Rebuild the collinear limit of <ij>/[ij] from the emission direction.

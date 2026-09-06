@@ -238,6 +238,54 @@ class TestValidCmd(unittest.TestCase):
                 self.assertEqual(to_check, target[key])
 
     @test_aloha.set_global()
+    def test_polarisation_nlo_regimes(self):
+        """A polarised NLO process is checked differently in each regime.
+
+        The three do not share a hazard, so they must not share a check:
+
+          - 'virt' is standalone MadLoop: the user supplies the phase-space
+            point and so picks the frame themselves;
+          - loop-induced ('noborn', 'sqrvirt') has no Born to subtract and no
+            counterterm that has to sit in the same frame, and 'noborn' is
+            boosted by the same LO boost_to_frame as a tree process, so
+            nothing NLO-specific applies;
+          - the subtracted modes thread the frame through Born, real, FKS
+            counterterms, virtual and the MC-counterterm azimuth by hand, and
+            only the QCD path is validated.
+
+        The two gates used to disagree: the first admitted noborn/sqrvirt and
+        the second refused them again for being massive, so the first clause
+        was dead and loop-induced polarisation was refused outright.
+        """
+        cmd = self.cmd
+        cmd.do_import('sm')
+
+        # loop-induced: no restriction at all, massive or not, any order
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [sqrvirt=QCD]')
+        cmd.check_process_format('g g > z{0} z{0} [noborn=QED]')
+        # standalone MadLoop: likewise
+        cmd.check_process_format('u u~ > w+{0} w-{0} [virt=QED]')
+        # subtracted, QCD: the boost is threaded through
+        cmd.check_process_format('p p > z{0} j [QCD]')
+        cmd.check_process_format('p p > z{0} j [real=QCD]')
+
+        # subtracted, but outside the reach of the validated boost
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > z{0} j [QED]')
+        # no frame at all in this mode
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > z{0} j [tree=QCD]')
+        # a coloured polarised particle is also an FKS emitter: untested, and
+        # refused by both parents (upstream through its blanket NLO gate, this
+        # branch through a colour check), so it must not become allowed just
+        # because each of those was relaxed for its own reason.
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+        # ... but colour is no restriction where there is no subtraction
+        cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
+
+    @test_aloha.set_global()
     def test_check_generate(self):
         """check if generate format are correctly supported"""
     

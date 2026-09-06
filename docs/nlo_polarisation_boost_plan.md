@@ -17,11 +17,17 @@ Status:
 | M2 rest | **done** — reals + counterterms boosted, azimuthal wiring in, `test_soft_col_limits` passes, `[real=QCD]` enabled |
 | M3 `[QCD]` | **done** — `check_poles` cancels 20/20 in every P dir, `calculate_xsect NLO` runs end to end, `[QCD]` enabled |
 | M4 | **done** — guard open, `help_polarization` rewritten, acceptance test written, run and wired into CI |
+| M5 NLO+PS | **done** — MC counterterm azimuth boosted, `generate_events` validated, second acceptance test in CI |
 
 `[LOonly=QCD]`, `[real=QCD]`, `[QCD]` and `[virt=…]` all accept a polarised
 massive particle today. The first three get their frame from `me_frame` in the
 run_card; `[virt=…]` is standalone MadLoop, where the user supplies the
 phase-space point and therefore picks the frame themselves (see M3).
+
+**NLO+PS works too**, not only fixed order: `generate_events` on
+`p p > z{0} j [QCD]` with `me_frame=[3]` gives 2.189e+03 +- 8.2e+00 pb with all
+of `test_ME`, `test_MC` and `check_poles` (20/20 in every P dir) passing. See
+M5 for what had to be fixed and for the number that actually detects it.
 
 Fixed along the way, and **live at LO on its own**: the `me_frame` boost left
 the selected leg at rest only to rounding, and HELAS switches quantisation axis
@@ -491,6 +497,8 @@ nothing MadLoop.
    aMC@NLO (not just fixed-order) is in scope: `montecarlocounter.f:2969-3012`
    and `montecarlocounter_alt.f:1445-1533`. `sreal_deg` (`fks_singular.f:5844`)
    has no azimuthal term — it needs the boost for the ordinary Born only.
+   **DONE in M5**, and it was real: the phase was wrong by a constant
+   37 to 157 degrees.
 
 **Step 1 (the B5 sweep) DONE.** Every ME entry point now goes through a frame
 wrapper, so the boost is a pure function of the momenta passed in.
@@ -1153,6 +1161,244 @@ Remaining:
   `me_frame` already; `check()` has always refused massive there and nothing
   in this work exercises it.
 
+### M5 — NLO+PS (MC@NLO matching) — **DONE**
+
+Fixed order was already covered by M3. This milestone is about
+`generate_events`, i.e. the MC@NLO-matched sample, which adds two things the
+cross-section run never touches: the MC (shower) counterterms, and the event
+record written to the LHE.
+
+**Nothing blocked it.** No guard in `madgraph_interface.py` or
+`amcatnlo_run_interface.py` distinguishes fixed order from NLO+PS for a
+polarised process, and `generate_events aMC@NLO --parton` ran to completion on
+the unfixed code. The gap was silent and numerical.
+
+#### The gap
+
+`get_mbar` (`montecarlocounter.f:2820`) takes `borntilde` from `ans_cnt(2,·)`,
+which `sborn_frame` filled with the Born evaluated in the me_frame, and then
+multiplies it by an azimuthal phase built entirely in the partonic c.m.:
+`azifact` from the unboosted emission spinors, and `cphi_mother=+-1` from the
+mother lying on the beam axis. `borntilde` is the +/- gluon-helicity
+interference, so the mother's little-group phase enters it; that phase cancels
+against the one in the azimuthal factor **only if the two are computed in the
+same frame**. They were not.
+
+The FKS collinear counterterms had exactly this problem and it was solved in
+M2 with `azifact_me_frame`. The MC counterterms are different in one useful
+respect: they are evaluated at generic `y_ij_fks`, where `<ij>/[ij]` is a
+regular function of the momenta rather than the `0/0` limit B1 is about, so it
+can simply be recomputed on boosted momenta. No new covariant machinery is
+needed away from the exactly-collinear point, and `azifact_from_kperp` covers
+that point.
+
+#### The fix
+
+Three new routines in `boost_to_frame.f`:
+
+- `me_frame_born_boost` — the boost `sborn_frame` would apply to these Born
+  momenta, exposed so the phase can use the same one;
+- `azifact_from_spinors` — `<ij>/[ij]`, the expression the legacy branches
+  build inline, factored out so the boosted branch can reuse it;
+- `azifact_mc_frame` — `azifact` plus the mother azimuth, both in the
+  me_frame, returned in the *legacy convention* so the caller's multiply is
+  textually unchanged and unpolarised runs stay bit-identical by construction.
+
+Both `get_mbar` sites (ISR `ileg=1,2` and FSR `ileg=3,4`) gain an
+`if (me_boosted) … else <legacy verbatim> endif`. The `R_y(pi)` flip of the
+`j_fks=2` ISR branch is **skipped** when a frame is requested — it only ever
+existed to put the mother back on `+z`, which is meaningless once the mother
+is off the beam axis, and B3 already said it must be deleted rather than
+boosted. Skipping it also removes a second hazard that only bites a polarised
+run: for a one-leg `me_frame` the selected leg sits at rest, HELAS quantises it
+along the frame `z` axis rather than along its own momentum, and a rotation
+therefore does *not* carry the polarisation axis with it. Harmless for `{0}`
+(`eps_L -> -eps_L`), but it would swap `{+}` and `{-}`.
+
+`montecarlocounter_alt.f` gets the same edit. It is dead code — neither
+`export_fks.py` nor `makefile_fks_dir` mentions it — but the plan named it and
+leaving the two copies inconsistent is a trap.
+
+**The collinear branch is taken at `kt` exactly zero and nowhere else.**
+`azifact_mc_frame` can reach `<ij>/[ij]` two ways: recompute it from the
+boosted spinors, or rebuild its collinear limit from `xij_kperp` through
+`azifact_from_kperp`. The first is exact for any `kt>0`; the second is exact
+only at `kt=0`, and its error away from there was measured in review to scale
+as `(kt/E)/betaT`, with `betaT` the *transverse* velocity of the me_frame
+boost — 1.1e-3 at `kt/E=1e-6, betaT=1e-2`, but 1.36 at `betaT=1e-5`. The
+`betamin` guard in `get_me_frame_boost` bounds `|beta|`, not `betaT`, so it
+does not cover this. The condition is therefore `1-y_ij_fks <= 0` rather than
+the legacy `< 1d-12`: at `y=1` the spinor product is genuinely `0/0` and the
+`kperp` route is the only one available; everywhere else the exact route is.
+
+Not reachable in the channel validated here (`ptj 30` forces the Z's pT above
+30 GeV, so `betaT` is O(1)), but reachable whenever the frame-defining system
+can have small transverse momentum. The change is inside `if (me_boosted)`, so
+the no-frame path is untouched. `azifact_me_frame`, which the fixed-order
+counterterms use and which is *always* handed exactly `y=1`, is deliberately
+left alone: there the `kperp` route is not an approximation but the only
+correct one (B1).
+
+The identity that makes the two routes agree,
+`lim_{kt->0} <ij>/[ij] = -exp(2 i psi) exp(2 i phi_m)`, is what the
+convergence table below measures — the generic branch is its left-hand side
+and the reference its right-hand side.
+
+Measured cost of the change: none. A freshly generated directory carrying it,
+run at `me_frame=[3]` with the same card and seed, reproduces `res_0.txt`,
+`res_1.txt` and `res_2.txt` byte for byte against the run made before it
+(ratio 1.999850 both ways), and the LHE differs only in the banner's git hash
+and output path. The same directory at `me_frame=[1,2]` is likewise byte for
+byte identical to the **unmodified base branch** (1.748300e+03 pb, ratio
+1.971314), so the no-frame guarantee survives the follow-up. Neither is a
+surprise -- production kinematics never reach `1-y = 0`, and the only caller
+that passes exactly `y=1` is the counter-event -- but it is cheap to check and
+the branch condition is the kind of thing that is easy to get subtly wrong.
+
+Read the byte-identity as structural, not as coverage: `xmcsubt_wrap` has no
+production caller at all (all five call sites are in `test_soft_col_limits.f`),
+so after this change the `kperp` branch is unreachable in an integration. The
+change removes the small-`betaT` exposure rather than measuring it.
+
+#### What was measured
+
+*The azimuthal phase itself.* A debug print in `get_mbar` next to a call to
+`azifact_me_frame`, which is the covariant collinear reference validated in M2,
+run through the collinear scan of `test_soft_col_limits` on
+`p p > z{0} j [QCD]`, `me_frame=[3]`. The quantity is the net factor
+multiplying `borntilde`; the reference is exact only as `y_ij_fks -> 1`, so
+what matters is whether the difference goes to zero.
+
+| `1-y` | ISR, before | ISR, after | FSR, before | FSR, after |
+|---|---|---|---|---|
+| 1e-1  | 156.59 deg | 10.07 deg | 0.1920 deg | 0.0371 deg |
+| 1e-3  | 156.59 deg | 0.97 deg  | 0.0352 deg | 0.0050 deg |
+| 1e-5  | 156.59 deg | 0.097 deg | 0.0036 deg | 0.0005 deg |
+| 1e-10 | 156.59 deg | 0.0003 deg| 0.0000 deg | 0.0000 deg |
+
+(`P0_uux_z0g`; `P0_gu_z0u` gives constant errors of 37.38 and 63.38 degrees on
+its two scans.) Before the fix the ISR phase error is a **constant** — it never
+converges, at any depth. After it, it falls like `sqrt(1-y)`, i.e. like
+`k_T/E`, which is the right rate for an azimuth approaching a collinear limit.
+
+FSR was already nearly right here and gets better by a factor 5. That is an
+accident of the channel, not a general statement: the reduced Born of
+`p p > z j` is 2 -> 2, so the `me_frame=[3]` boost is almost along the FSR
+mother, and a boost along the mother has no Wigner rotation. A process with a
+2 -> 3 reduced Born would not be so lucky.
+
+*The physics.* `generate_events aMC@NLO --parton -f`, 1000 events,
+`iseed=33`, nn23lo1, fixed scales 91.188, `ptj 30`, `etaj 4.0`, `me_frame=[3]`
+(`FRAME_ID = 8` read back from `Source/run_card.inc`):
+
+| | before | after |
+|---|---|---|
+| total cross-section | 2.172e+03 +- 8.3e+00 pb | 2.189e+03 +- 8.2e+00 pb |
+| absolute cross-section | 4.837e+03 +- 1.2e+01 pb | 4.378e+03 +- 9.8e+00 pb |
+| ratio | 2.227 | 2.000 |
+
+**The total is the observable that must not move and does not** (1.4 sigma):
+the MC counterterm enters the S event with one sign and the H event with the
+other and cancels in the sum, which is the defining property of MC@NLO. The
+absolute cross-section is the one that must move and does, by 30 sigma: it
+measures how well the subtraction cancels *locally*, which is exactly what the
+azimuthal phase controls. A wrong phase makes the counterterm less local, and
+the price is a 9.5% larger `int |dsigma|`, i.e. more unweighting work and a
+noisier sample for the same cross-section.
+
+That pair — total unchanged, absolute cross-section down — is what the
+acceptance test asserts on. A cross-section comparison alone would have seen
+nothing.
+
+Repeated with `iseed=7717` on a freshly generated pair of directories, to make
+sure the ratio is not a property of one MINT grid history: 2.2220 before,
+2.0060 after, with the totals agreeing at 0.02 sigma (2.1868e+03 +- 8.8e+00 vs
+2.1871e+03 +- 9.5e+00). The threshold in the test is 2.15.
+
+*A two-leg frame.* `p p > z{0} z{0} j [QCD]` with `me_frame=[3,4]`
+(`FRAME_ID = 24`), same cuts and seed, `generate_events aMC@NLO --parton -f`:
+3.134e-01 +- 2.2e-03 pb over 1000 events, with `test_ME`, `test_MC` and
+`check_poles` (20/20) passing in all 12 P dirs and zero miscancellations. That
+agrees at 1.3 sigma with the fixed-order 3.084e-01 +- 3.0e-03 pb of M4. No new
+assertion is added for it: with `nsel >= 2` `boost_to_me_frame` never runs its
+`nsel.eq.1` zeroing, so no leg sits on the HELAS at-rest branch and the two-leg
+case is structurally the safer of the two. The run is here as coverage.
+
+The full shower step could not be exercised on the development machine: the
+`MG5aMC_PY8_interface` there was installed against MG5aMC v3.5.15 and its C++
+link now fails (`ld: symbol(s) not found for architecture arm64`). That is a
+local toolchain problem, not a polarisation one -- it happens after
+`events.lhe` is written, and the run that hit it had already produced its 1000
+events at 2.212e+03 +- 8.2e+00 pb. Everything under test here happens before
+the handover to PYTHIA8.
+
+#### The test was checked against the unfixed code
+
+`test_polarised_nlo_ps_me_frame` was run twice through `./tests/test_manager.py`:
+it passes on the branch (399 s) and, with `montecarlocounter.f` alone reverted
+to its pre-M5 state, fails on exactly the intended assertion with
+`AssertionError: 2.22732091828047 not less than 2.15`. That reproduces the
+by-hand measurement above to every digit, so the test really drives the code
+path it claims to.
+
+*No frame requested stays bit-identical.* Same process, `me_frame=[1,2]`
+(`FRAME_ID = 6`, the partonic c.m., which `get_me_frame_boost` skips), run
+twice from two copies of one output directory differing only in
+`montecarlocounter.f`/`boost_to_frame.f`: `res_0.txt`, `res_1.txt`,
+`res_2.txt` and the 2.1 MB `events.lhe.gz` all compare byte for byte identical
+(1.748e+03 +- 1.0e+01 pb both times). Note this run also shows the frame is not
+cosmetic: the same process with `me_frame=[3]` gives 2.189e+03 pb.
+
+#### Audited and left alone
+
+- Every ME entry point in the shipped NLO template already goes through a
+  frame wrapper (the M2 step 1 sweep); a fresh grep for `call sborn`,
+  `smatrix_real`, `sborn_sf`, `extra_cnt`, `BinothLHA`, `sreal`, `compute_born`
+  finds nothing outside them except the EW Sudakov files and
+  `symmetry_fks_v3.f`, both excluded on purpose in M2.
+- `add_write_info.f` (the LHE record) uses `sborn_frame` already — B7.
+- `reweight_xsec_events.f` does not evaluate matrix elements; it reweights
+  stored contributions with PDFs and scales, which are frame-independent.
+- The shower-scale machinery (`assign_emsca`, `assign_ref_scale`,
+  `compute_pTparton`) and `fill_MC_mshell.f` are kinematic only.
+- The shower itself is handed an LHE file: momenta and colour, no
+  polarisation. As at LO, the polarised sample is defined by the hard process.
+
+#### A pre-existing bug found on the way: `test_MC` is vacuous
+
+`test_soft_col_limits.f` offers three modes. `ilim=2` (`ME/ME(limit)`) is what
+`test_ME` runs and is correct. `ilim=1` (`MC/ME(limit)`) is what `test_MC`
+runs, and for every scan point after the first it assigns *the same* value to
+both sides of the comparison:
+
+```fortran
+call xmcsubt_wrap(p,xi_i_fks_ev,y_ij_fks_ev,fx)
+fxl(i)=fx*wgt      ! the "limit" side
+...
+limit(i)=fx*wgt    ! the value being tested
+```
+
+`checkres2` then sees a ratio of exactly 1 everywhere and returns PASS
+unconditionally. The counter-event `sreal` that `fxl(i)` is supposed to hold is
+simply never recomputed for `i>=2`. `ilim=0` has the same shape.
+
+`ilim=0` (`MC/MC(limit)`) is broken twice over: it has the same shape, and it
+also stops outright with `Third bit of MCcntcalled should not be set yet` as
+soon as it reaches the collinear section, because the driver does not reset
+`MCcntcalled` between the counter-event and the real-event calls. Verified to
+happen identically on unmodified code with no frame at all. The split-order
+sub-check of both modes is broken in a third way, pointed out in review: it
+compares the same matrix element under two different jacobians
+(`amp_split_mc*jac_cnt(1)` against `amp_split_mc*wgt`), which prints a
+convincing-looking convergence that means nothing.
+
+This is on `origin/main`, is not related to polarisation, and is **not fixed
+here**: the MC counterterms only reproduce the real emission inside the
+shower's phase space, so switching the comparison on would very likely fail for
+unrelated processes and is its own piece of work. It is recorded because it
+explains why `test_MC` passed on the broken code, and why the M5 validation had
+to be built by hand.
+
 ## 4. Acceptance test
 
 One new test in `tests/acceptance_tests/test_cmd_amcatnlo.py`, modelled on
@@ -1170,6 +1416,8 @@ does it.
 | M3 | `p p > z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 2.193e+03 +- 1.2e+01 pb |
 | M3 | `p p > z{0} z{0}` | `[QCD]` | **run**: `check_poles` 20/20 in all 4 P dirs, 1.217e+00 +- 6.6e-03 pb |
 | M3 | `p p > z{0} z{0} j` | `[QCD]` | **run**: `check_poles` 20/20 in all 12 P dirs, 4.779e-01 +- 3.3e-03 pb |
+| M5 | `p p > z{0} j` | `[QCD]` + `generate_events` | **run**: 2.189e+03 +- 8.2e+00 pb, absolute cross-section ratio 2.00 (2.23 before the fix) |
+| M5 | `p p > z{0} z{0} j` | `[QCD]` + `generate_events`, `me_frame=[3,4]` | **run**: 3.134e-01 +- 2.2e-03 pb, `test_ME`/`test_MC`/`check_poles` 20/20 in all 12 P dirs |
 
 **Which process tests what.** The two are complementary, but not in the obvious
 way:
@@ -1197,8 +1445,10 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   `mapid` is `ids(i)=btest(id,i)` (`cluster.f:141`), which matches
   `sum(2**n)` at `banner.py:4869`. The comment at `genps.f:1758` saying
   `sum 2**(N-1)` is stale; fix the comment.
-- **B3 — the `R_y(pi)` flip must be deleted, not boosted**, and
-  `montecarlocounter.f:3000-3006` must not keep double-encoding it.
+- **B3 — RESOLVED.** The `R_y(pi)` flip is deleted rather than boosted in
+  `sborncol_isr` (M2) and skipped in `get_mbar` when a frame is requested
+  (M5); `montecarlocounter.f` no longer applies it together with
+  `cphi_mother=-1`.
 - **B4 — RESOLVED, both parts.** FSR counter-events do collapse onto the
   `vtiny` branch, exactly like ISR (they are handed the literal `one` for
   `y_ij_fks`). And `shybst = O(1-y) -> 0` in the FSR collinear limit, because
