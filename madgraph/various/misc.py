@@ -473,7 +473,13 @@ def multiple_try(nb_try=5, sleep=20):
                     time.sleep(sleep * (i+1))
 
             if __debug__:
-                raise
+                # Re-raise the original error, traceback included. A bare
+                # `raise` here is *outside* the except block, so it does not
+                # re-raise my_error: it fails with "RuntimeError: No active
+                # exception to reraise" and hides the real cause (which, after
+                # nb_try attempts and their sleeps, is the only thing that
+                # explains what went wrong).
+                raise my_error
             raise my_error.__class__('[Fail %i times] \n %s ' % (i+1, my_error))
         return deco_f_retry
     return deco_retry
@@ -1279,7 +1285,11 @@ def gunzip(path, keep=False, stdout=None):
         if stdout:
             os.system('gunzip  %s -c %s > %s' % (options, path, stdout))
         else:
-            os.system('gunzip %s %s' % (options, path)) 
+            # -f: without it gunzip asks "already exists -- do you wish to
+            # overwrite (y or n)?" as soon as the uncompressed file is already
+            # there. Nothing answers that prompt here, so gunzip would silently
+            # decompress nothing and leave a stale file behind.
+            os.system('gunzip -f %s %s' % (options, path))
         return 0
     
     if not stdout:
@@ -1731,6 +1741,32 @@ def timeout(func, args=(), kwargs={}, timeout_duration=1, default=None):
 def mmin(iter, default=None):
     
     return min(iter, default=default)
+
+
+################################################################################
+# MODEL FINGERPRINT
+################################################################################
+def hash_model_files(model_path):
+    """Return an md5 hex digest of the UFO model's python source (the ``*.py``
+    files in ``model_path``). Used to detect that the model on disk still
+    matches the one a process was generated with. Returns None if the path has
+    no python file (or cannot be read)."""
+    import hashlib
+    try:
+        pyfiles = sorted(f for f in os.listdir(model_path) if f.endswith('.py'))
+    except OSError:
+        return None
+    if not pyfiles:
+        return None
+    h = hashlib.md5()
+    for name in pyfiles:
+        h.update(name.encode('utf-8'))
+        try:
+            with open(os.path.join(model_path, name), 'rb') as f:
+                h.update(f.read())
+        except OSError:
+            return None
+    return h.hexdigest()
 
 
 ################################################################################

@@ -62,9 +62,9 @@ class Switcher(object):
         self.change_principal_cmd(main)
         self.cmd.__init__(self, *args, **opt)       
 
-    interface_names= {'MadGraph':('MG5_aMC',MGcmd.MadGraphCmd),
-                      'MadLoop':('MG5_aMC',LoopCmd.LoopInterface),
-                      'aMC@NLO':('MG5_aMC',amcatnloCmd.aMCatNLOInterface)}
+    interface_names= {'MadGraph':(MGcmd.MG7_PROMPT,MGcmd.MadGraphCmd),
+                      'MadLoop':(MGcmd.MG7_PROMPT,LoopCmd.LoopInterface),
+                      'aMC@NLO':(MGcmd.MG7_PROMPT,amcatnloCmd.aMCatNLOInterface)}
 
     _switch_opts = list(interface_names.keys())
     current_interface = None
@@ -271,7 +271,7 @@ class Switcher(object):
                 elif nlo_mode in ['all', 'real', 'LOonly']:
                     self._fks_multi_proc = fks_base.FKSMultiProcess()
                     self.change_principal_cmd('aMC@NLO')
-                elif nlo_mode == 'virt' or nlo_mode == 'virtsqr':
+                elif nlo_mode == 'virt' or nlo_mode == 'sqrvirt':
                     self.change_principal_cmd('MadLoop')
             else:
                 self.change_principal_cmd('MadGraph')        
@@ -504,7 +504,8 @@ class Switcher(object):
         # if there is a path, find what output has been done
             if path:
                 type = self.cmd.find_output_type(self, path) 
-                if type in ['standalone', 'standalone_cpp', 'pythia8', 'madevent']:
+                if type in ['standalone_fortran', 'standalone_cpp_family',
+                            'pythia8', 'madevent']:
                     self.change_principal_cmd('MadGraph')
                 elif type == 'aMC@NLO':
                     self.change_principal_cmd('aMC@NLO')
@@ -612,6 +613,9 @@ class Switcher(object):
     def help_set2_loop_color_flows(self, *args, **opts):
         return self.cmd.help_set2_loop_color_flows(self, *args, **opts)
 
+    def help_set2_merge_quartic_vertices(self, *args, **opts):
+        return self.cmd.help_set2_merge_quartic_vertices(self, *args, **opts)
+
     def help_set2_loop_optimized_output(self, *args, **opts):
         return self.cmd.help_set2_loop_optimized_output(self, *args, **opts)
 
@@ -658,7 +662,7 @@ class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, 
             
         # define the interface
         if main in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[main][0]+'>'
+            self.prompt= self.interface_names[main][0]
             self.cmd= self.interface_names[main][1]
             self.current_interface=main
         else:
@@ -691,7 +695,7 @@ class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, 
             raise InvalidCmd("Command not compatible with previous command: Can not combine LO/NLO feature.")
             
         if name in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[name][0]+'>'
+            self.prompt= self.interface_names[name][0]
             self.cmd= self.interface_names[name][1]
             self.current_interface=name
         else:

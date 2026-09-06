@@ -24,7 +24,7 @@ Dependencies :
 
  * MadGraph5_aMC@NLO *
 
-- Python 3.7 (or higher)
+- Python 3.12 (or higher)
 
  * MadEvent *
 Package for the LO cross-section computation and generation of events 
@@ -48,7 +48,7 @@ On Windows:
 
 In order to run MG5 you need to
 1) add the Python directory to the PATH
-2) run $> python ./bin/mg5_aMC
+2) run $> python ./bin/madgraph
 
 Note that most of the output (including madevent/aMCatNLO)
 are not compatible with Windows. We do recomend to use unix subsystem.

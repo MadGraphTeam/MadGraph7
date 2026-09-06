@@ -12,7 +12,8 @@ public:
     MadnisLoss(
         const std::vector<std::shared_ptr<FunctionGenerator>>& functions,
         const std::optional<ChannelWeightNetwork>& cwnet,
-        double softclip_threshold = 0.0
+        double softclip_threshold = 0.0,
+        std::size_t compressed_channel_weight_count = 50
     );
 
 private:
@@ -23,6 +24,7 @@ private:
     std::vector<std::shared_ptr<FunctionGenerator>> _functions;
     std::optional<ChannelWeightNetwork> _cwnet;
     double _softclip_threshold;
+    std::size_t _compressed_channel_weight_count;
 };
 
 } // namespace madspace

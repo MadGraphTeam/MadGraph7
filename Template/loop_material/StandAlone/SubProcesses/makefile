@@ -113,22 +113,31 @@ $(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
 $(DOTO) : $(DOTF)
 	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
-$(OLP): $(OLP_PROCESS) $(LIBS) 
-	$(FC) -shared $(OLP_PROCESS) -o libMadLoop.$(dylibext) $(LINKLIBS)
+$(OLP): $(OLP_PROCESS) $(LIBS) mg5_citation.o
+	$(FC) -shared $(OLP_PROCESS) mg5_citation.o -o libMadLoop.$(dylibext) $(LINKLIBS)
 
 $(OLP)_static: $(OLP_PROCESS)
 	ar rcs libMadLoop.$(libext) $(OLP_PROCESS)
 	mv libMadLoop.$(libext) $(MADLOOP_LIB)
 
 ../$(OLP):
-	rm -f libMadLoop.$(dylibext)
-	ln -s ../libMadLoop.$(dylibext)
+	ln -sf ../libMadLoop.$(dylibext) libMadLoop.$(dylibext)
 	cd $(ROOT)/SubProcesses; make $(OLP)
 
 ../$(OLP)_static:
 	cd $(ROOT)/SubProcesses; make $(OLP)_static
 
+# ROOT is .. only when this makefile runs from SubProcesses itself; from a
+# P<i>_* subdirectory it is ../.. . The ../$(OLP) route symlinks to the
+# SubProcesses-level library and recurses into $(ROOT)/SubProcesses, which
+# from SubProcesses is this very directory: that second make rebuilds the
+# same objects as the local $(OLP) rule, so under -j the two collide (torn
+# .o files, or "ln: File exists"). Build libMadLoop here directly instead.
+ifeq ($(ROOT),..)
+libMadLoop.$(dylibext): $(OLP)
+else
 libMadLoop.$(dylibext): ../$(OLP)
+endif
 
 WRAPPER_SRCS := $(wildcard */f2py_wrapper.f)
 WRAPPER_OBJS := $(patsubst %.f,%.o,$(wildcard */f2py_wrapper.f))

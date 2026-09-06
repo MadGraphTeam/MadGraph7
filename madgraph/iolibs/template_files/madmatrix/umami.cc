@@ -210,6 +210,37 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
+  UmamiStatus umami_supported_inputs( bool const** supported, int* count )
+  {
+    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
+    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    *supported = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
+  UmamiStatus umami_required_inputs( bool const** required, int* count )
+  {
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true }; // MOMENTA only
+    *required = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
+  UmamiStatus umami_supported_outputs( bool const** supported, int* count )
+  {
+    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
+#ifdef MGONGPUCPP_GPUIMPL
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true };
+#else
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
+#endif
+    *supported = data;
+    *count = UMAMI_OUTPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+  }
+
   UmamiStatus umami_initialize( UmamiHandle* handle, char const* param_card_path )
   {
     CPPProcess process;
@@ -355,8 +386,10 @@ extern "C"
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
+        // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
+        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},

@@ -207,11 +207,33 @@ class MatrixElementEvaluator(object):
         process = matrix_element.get('processes')[0]
         model = process.get('model')
 
-        # Extract per-leg flavor indices for FLV_Coupling / merged-particle models.
-        # For legs without an explicit flavor tag the value is -1 (no flavor).
+        # Build the per-leg flavor index array passed to smatrix, using exactly
+        # the convention the Fortran/C++ standalone drivers build into their
+        # FLAV_TABLE (e.g. `DATA FLAV_TABLE / 1, 3, 1, 1 /`):
+        #   * a merged leg carries the 1-based *position* of its flavor inside
+        #     the merged group (e.g. vt is position 3 of {12,14,16}), and
+        #   * every other leg carries index 1 -- NOT the physical PDG and NOT
+        #     -1.  The unmerged partner of a single-merged-leg FLV vertex is
+        #     always flavor index 1 (see FLV_Coupling.get_partner_indices), so
+        #     PARTNER(1)=<merged pos> resolves the coupling.
+        # The leg 'flavor' tag stores the physical PDG, so convert it here.
+        # NB: for the light quarks the PDG (1..4) already equals the position,
+        # which is why this used to appear correct and only broke for a single
+        # merged lepton/neutrino paired with an unmerged partner, e.g.
+        # `w+ vt~ > z ta+` (vt is position 3, the tau must be index 1 -- passing
+        # -1 short-circuited the flavor check and returned zero).
+        merged = model.get('merged_particles') or {}
+        def _flavor_group_pos(leg):
+            tag = leg.get('flavor')
+            if not tag:
+                return 1
+            pdg = abs(tag[0])
+            for sub_ids in merged.values():
+                if pdg in sub_ids:
+                    return list(sub_ids).index(pdg) + 1
+            return 1
         legs = process.get('legs')
-        flavor = [leg.get('flavor')[0] if leg.get('flavor') else -1
-                  for leg in legs]
+        flavor = [_flavor_group_pos(leg) for leg in legs]
 
         if "matrix_elements" not in self.stored_quantities:
             self.stored_quantities['matrix_elements'] = []
@@ -4062,7 +4084,7 @@ def check_language(process_definition, param_card=None, options=None,
     cpp_compiler     = (hasattr(cmd, 'options') and
                         cmd.options.get('cpp_compiler'))     or 'g++'
 
-    # MG7 (standalone_mg7 / madmatrix) availability: needs the madmatrix
+    # MG7 (standalone / madmatrix) availability: needs the madmatrix
     # package, a C++ compiler and make.  Its check_sa.exe "matrix" mode
     # evaluates the same phase-space point as the Fortran/C++ drivers and
     # prints the per-flavor PDG / matrix-element lines in the same format.
@@ -4255,7 +4277,7 @@ def check_language(process_definition, param_card=None, options=None,
     # tuple.  All individual-flavor procs share the same matrix element code.
     sa_f_output_cache   = {}
     sa_cpp_output_cache = {}
-    # Cache of MG7 (standalone_mg7) check_sa.exe matrix-mode output text.
+    # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
     energy_str = str(energy)
@@ -4292,7 +4314,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_f  = tempfile.mkdtemp(prefix='mg5_langcheck_f_')
                 sa_dir_f  = pjoin(parent_f, 'sa_f')
                 try:
-                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone',
+                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
@@ -4380,7 +4402,7 @@ def check_language(process_definition, param_card=None, options=None,
 
             out_cpp_text = sa_cpp_output_cache.get(sa_key)
 
-        # ── MG7 SA (standalone_mg7 / madmatrix) ──────────────────────────────
+        # ── MG7 SA (standalone / madmatrix) ─────────────────────────────────
         out_mg7_text = None
         if has_mg7:
             if sa_key not in sa_mg7_output_cache:
@@ -4388,7 +4410,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_mg7 = tempfile.mkdtemp(prefix='mg5_langcheck_mg7_')
                 sa_dir_mg7 = pjoin(parent_mg7, 'sa_mg7')
                 try:
-                    opt_mg7 = {'export_format': 'standalone_mg7',
+                    opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
@@ -4410,7 +4432,7 @@ def check_language(process_definition, param_card=None, options=None,
                     if p_dirs_mg7:
                         check_dir_mg7 = pjoin(sa_dir_mg7, 'SubProcesses',
                                               p_dirs_mg7[0])
-                        backends = ["cppnone", "cppsse4", "cppavx2", "cpp512z", "cuda", "hip"]
+                        backends = ["scalar", "simd_128", "simd_256", "simd_512", "cuda", "hip"]
                         for backend in backends:
                             with open(os.devnull, 'w') as devnull:
                                 ret = subprocess.call(f'make clean && make BACKEND={backend} USEBUILDDIR=1', shell=True, cwd=check_dir_mg7,

@@ -63,6 +63,10 @@ std::ostream& operator<<(std::ostream& out, const Diagram::LineRef& value);
 
 class Topology {
 public:
+    // Sentinel for Decay::flat_propagator_index: no corresponding entry in
+    // Diagram::propagators() (outgoing leaf or virtual t-channel root).
+    static constexpr std::size_t no_propagator = static_cast<std::size_t>(-1);
+
     struct Decay {
         std::size_t index;
         std::size_t parent_index;
@@ -73,6 +77,10 @@ public:
         double e_max;
         int pdg_id;
         bool on_shell;
+        bool on_shell_boundary;
+        // Position in the flat Diagram::propagators() list (no_propagator if
+        // none). Lets callers apply a per-diagram pdg override to pdg_id.
+        std::size_t flat_propagator_index;
     };
 
     static std::vector<Topology> topologies(const Diagram& diagram);
@@ -99,6 +107,7 @@ public:
     const std::vector<double>& outgoing_masses() const { return _outgoing_masses; }
     std::vector<std::tuple<std::vector<int>, double, double>>
     propagator_momentum_terms(bool only_decays = false) const;
+    std::string to_string() const;
 
 private:
     Topology() = default;

@@ -51,6 +51,7 @@ class Systematics(object):
     
     def __init__(self, input_file, output_file,
                  start_event=0, stop_event=sys.maxsize, write_banner=False,
+                 no_banner=False, no_closing_tag=False,
                  mur=[0.5,1,2],
                  muf=[0.5,1,2],
                  alps=[1],
@@ -66,6 +67,7 @@ class Systematics(object):
                  ion_scaling=True,
                  weight_format=None,
                  weight_info=None,
+                 lo_nqcd=None,
                  ):
 
 
@@ -92,6 +94,13 @@ class Systematics(object):
         #get some information from the run_card.
         self.banner = banner_mod.Banner(self.input.banner)  
         self.force_write_banner = bool(write_banner)
+        # when each job reweights its own file (rather than a range of a shared
+        # one) every job starts at event 0 and reaches EOF, so each would write
+        # a banner and a closing tag. The caller concatenates the outputs, hence
+        # it asks all but the first to skip the banner and all but the last to
+        # skip the closing tag.
+        self.no_banner = bool(no_banner)
+        self.no_closing_tag = bool(no_closing_tag)
         self.orig_dyn = self.banner.get('run_card', 'dynamical_scale_choice')
         if  self.banner.run_card.LO:
             scalefact = self.banner.get('run_card', 'scalefact')
@@ -105,6 +114,17 @@ class Systematics(object):
 
         self.orig_pdf = self.banner.run_card.get_lhapdf_id()
         matching_mode = self.banner.get('run_card', 'ickkw')
+
+        # Reconstruction of the LO reweighting info for event files that do not
+        # carry an <mgrwt> block (e.g. the mg7 output): lo_nqcd is the single
+        # alpha_s power of the process, and the beam energies (needed for the
+        # Bjorken-x) come from the run_card. See Event.reconstruct_lo_weight.
+        self.lo_nqcd = lo_nqcd
+        try:
+            self.lo_ebeam = (float(self.banner.get('run_card', 'ebeam1')),
+                             float(self.banner.get('run_card', 'ebeam2')))
+        except Exception:
+            self.lo_ebeam = None
 
         #check for beam
         beam1, beam2 = self.banner.get_pdg_beam()
@@ -167,7 +187,7 @@ class Systematics(object):
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling
         self.only_beam = only_beam 
-        if isinstance(self.banner.run_card, banner_mod.RunCardLO):
+        if self.banner.run_card.LO:  # RunCardLO and the mg7 RunCardMG7 are LO
             self.is_lo = True
             if not self.banner.run_card['use_syst']:
                 raise SystematicsError('The events have not been generated with use_syst=True. Cannot evaluate systematics error on these events.')
@@ -271,8 +291,8 @@ class Systematics(object):
             elif p.lhapdfID == self.orig_pdf:
                 self.orig_pdf = p
                 break
-            else:  
-                self.orig_pdf = lhapdf.mkPDF(self.orig_pdf)
+        else:  
+            self.orig_pdf = lhapdf.mkPDF(self.orig_pdf)
         if not self.b1 == 0 == self.b2 and not isEVA and not isEVAxDIS: 
             self.log( "# Events generated with PDF: %s (%s)" %(self.orig_pdf.set().name,self.orig_pdf.lhapdfID ))
         elif isEVAxDIS:
@@ -391,7 +411,7 @@ class Systematics(object):
     def run(self, stdout=sys.stdout):
         """ """
         start_time = time.time()
-        if self.start_event == 0 or self.force_write_banner:
+        if (self.start_event == 0 and not self.no_banner) or self.force_write_banner:
             lowest_id = self.write_banner(self.output)
         else:
             lowest_id = self.get_id()        
@@ -442,7 +462,8 @@ class Systematics(object):
             # order the 
             self.output.write(str(event))
         else:
-            self.output.write('</LesHouchesEvents>\n')
+            if not self.no_closing_tag:
+                self.output.write('</LesHouchesEvents>\n')
         self.output.close()
         self.print_cross_sections(all_cross, min(nb_event,self.stop_event)-self.start_event+1, stdout)
         
@@ -932,7 +953,14 @@ class Systematics(object):
         """ 
         pdf is a lhapdf object!"""
         
-        loinfo = event.parse_lo_weight()
+        loinfo = event.parse_lo_weight(nqcd=self.lo_nqcd, ebeam=self.lo_ebeam)
+        if loinfo is None:
+            raise SystematicsError(
+                "The event file does not contain the per-event reweighting "
+                "information (<mgrwt>: scales, x1/x2, parton PDGs and the "
+                "alpha_s power) required to compute LO systematics. For a "
+                "process with a single alpha_s power, pass lo_nqcd (that power) "
+                "so it can be reconstructed from the events.")
         if dyn == -1:
             mur = loinfo['ren_scale']
             if self.b1 != 0 and loinfo['pdf_pdg_code1']:
@@ -1338,9 +1366,9 @@ def call_systematics(args, result=sys.stdout, running=True,
                     opts[key]=[tuple(values)]
             elif key == 'result':
                 result = open(values[0],'w')
-            elif key in ['start_event', 'stop_event', 'only_beam']:
+            elif key in ['start_event', 'stop_event', 'only_beam', 'lo_nqcd']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], int, key)
-            elif key in ['write_banner', 'ion_scalling']:
+            elif key in ['write_banner', 'ion_scalling', 'no_banner', 'no_closing_tag']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], bool, key)
             else:
                 if key in opts:

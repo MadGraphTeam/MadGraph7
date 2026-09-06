@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <memory>
 #include <optional>
 #include <random>
 #include <vector>
@@ -14,6 +15,8 @@
 #include "madspace/driver/format.hpp"
 #include "madspace/driver/generator_data.hpp"
 #include "madspace/driver/io.hpp"
+#include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/status_file.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -29,14 +32,22 @@ public:
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
-        const std::string& status_file = "",
+        std::shared_ptr<StatusFile> status_file = nullptr,
         const GeneratorConfig& config = default_config
     );
+    EventGenerator(EventGenerator&&) = default;
+    EventGenerator& operator=(EventGenerator&&) = default;
+    EventGenerator(const EventGenerator&) = delete;
+    EventGenerator& operator=(const EventGenerator&) = delete;
     void survey();
     void generate();
     void combine_to_compact_npy(const std::string& file_name);
     void combine_to_lhe_npy(const std::string& file_name, LHECompleter& lhe_completer);
-    void combine_to_lhe(const std::string& file_name, LHECompleter& lhe_completer);
+    void combine_to_lhe(
+        const std::string& file_name,
+        LHECompleter& lhe_completer,
+        const LHEMeta& meta = {}
+    );
     GeneratorStatus status() const { return _status; }
     std::vector<GeneratorStatus> channel_status() const;
     std::vector<Histogram> histograms() const;
@@ -74,10 +85,9 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;
     std::chrono::time_point<std::chrono::steady_clock> _last_print_time;
-    std::chrono::time_point<std::chrono::steady_clock> _last_status_time;
     PrettyBox _pretty_box_upper;
     PrettyBox _pretty_box_lower;
-    std::string _status_file;
+    std::shared_ptr<StatusFile> _status_file;
     std::unordered_map<std::string, TimingData> _timing_data;
 
     bool start_jobs();

@@ -64,15 +64,15 @@ jobs:
             ./tests/test_manager.py testIO_test_pptt_fks_loonly testIO_test_pptt_fksreal testIO_test_pptt_fksrealew testIO_test_ppw_fksall testIO_test_tdecay_fksreal testIO_test_wprod_fksew -t0
 
 
-  # C++ exporter IOTests (from unittest_20)
-  IOtest_cpp_write:
+  # FD gauge output reference files (fortran DHELAS + madmatrix HelAmps)
+  IOtest_fd_gauge:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: test C++ write IO tests
+      - name: test FD gauge output IO tests
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py testIO_write_cpp_go_process_cc_file testIO_write_dec_multiprocess_files -t0
+            ./tests/test_manager.py testIO_FDgauge_standalone_fortran testIO_FDgauge_madmatrix -pA -t0
 
 
   # Export v4 and Python matrix element IOTests (from unittest_21, unittest_22, unittest_23)

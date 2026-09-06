@@ -131,8 +131,8 @@ def get_first_contributions(repo_path):
 
 
 import sys
-if sys.version_info < (3, 7):
-    sys.exit('MadGraph5_aMC@NLO works only with python 3.7 or later.\n\
+if sys.version_info < (3, 12):
+    sys.exit('MadGraph5_aMC@NLO works only with python 3.12 or later.\n\
                Please upgrate your version of python.')
 
 import glob
@@ -351,7 +351,7 @@ except:
     pass
 shutil.rmtree(path.join(filepath, '.git'))
 for data in glob.glob(path.join(filepath, 'bin', '*')):
-    if not data.endswith('mg5') and not data.endswith('mg5_aMC'):
+    if not data.endswith('mg5') and not data.endswith('madgraph'):
         if 'compile.py' not in data:
             os.remove(data)
         else:
