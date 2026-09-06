@@ -1520,7 +1520,7 @@ number in this section stands.
 
 #### Three limitations, which is why this narrows rather than removes
 
-0. **A coloured particle in the INITIAL state stays refused, whatever its
+1. **A coloured particle in the INITIAL state stays refused, whatever its
    mass.** The initial-state splitting is read backwards,
    `g -> q(-> Born) q~`: the polarised parton that enters the Born is an
    *internal* line of the real emission, so there is no external leg to carry
@@ -1532,6 +1532,8 @@ number in this section stands.
    `fks_common.FKSProcessError: Cannot carry the polarization [1] of the born
    leg with id 5 through the splitting into ids [21, -5]`. On `0198d8a92` it
    generated and *silently dropped* the polarisation in 2 of its 3 reals.
+   `e- b{+} > e- b [QCD]` — DIS with a massive `b` — is the same failure on a
+   more realistic process, and is likewise a clean `InvalidCmd` now.
    Note also that the closure study above had its polarised legs in the
    **final state only**, so there is no evidence for an initial-state one
    either. The refusal is per leg and wholesale: the same initial-state quark
@@ -1543,7 +1545,7 @@ number in this section stands.
    `h > b{+} b~ QED=1 [QCD]` are accepted and their reals do carry the
    polarisation. `check_process_format` recognises a decay as "exactly one
    particle before the `>`".
-1. **Massless coloured is untested, so it stays refused** — and it is no
+2. **Massless coloured is untested, so it stays refused** — and it is no
    longer only an evidence gap. `fks_common.carry_polarization` can only put
    the Born's polarisation on the real's leg `j` when `j` is the same particle
    as the mother; `g -> q q~` has no such correspondence, and
@@ -1553,7 +1555,7 @@ number in this section stands.
    the natural test is a closure where a genuine collinear singularity sits on
    the polarised leg. A massive `j_fks` has none — the soft limit was the
    whole of the test above.
-2. **Only a two-leg frame was run.** `me_frame = [3,4]` never triggers
+3. **Only a two-leg frame was run.** `me_frame = [3,4]` never triggers
    `boost_to_me_frame`'s `nsel == 1` zeroing, so no leg sits exactly at rest.
    A **single-leg** frame on a coloured polarised particle (`me_frame = [3]`
    with leg 3 coloured) is untested, and it is precisely the configuration

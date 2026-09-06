@@ -365,8 +365,9 @@ def carry_polarization(mother, split): #test written
         there is no external leg to carry the projection at all. The raise is
         all-or-nothing per leg: the same initial-state quark also has the
         well-defined q -> q g splitting, but split_leg is called for every
-        splitting of the leg and the backward one raises first, so the
-        initial state is refused wholesale rather than channel by channel.
+        splitting of the leg and the backward one raises, aborting the whole
+        call, so the initial state is refused wholesale rather than channel
+        by channel.
     """
     pol = mother.get('polarization')
     if not pol:

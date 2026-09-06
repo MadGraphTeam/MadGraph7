@@ -2428,6 +2428,19 @@ class TestFKSProcess(unittest.TestCase):
             self.assertIn('the FKS emitter j is a different particle',
                           str(error))
 
+        # (1b) g -> g g asked for directly. Both daughters ARE the mother, so
+        #      the first condition passes and the SECOND one raises. Asking
+        #      through find_splittings would not pin this raise on its own:
+        #      the gluon also has g -> q q~, which raises on the first
+        #      condition, so the assertRaises above holds either way.
+        try:
+            fks_common.split_leg(gluon,
+                                 [model.get_particle(21),
+                                  model.get_particle(21)], model)
+            self.fail('g -> g g must not silently pick a daughter')
+        except fks_common.FKSProcessError as error:
+            self.assertIn('both daughters have the identity', str(error))
+
         # (2) a polarized quark in the INITIAL state. Its two QCD splittings
         #     are [j=u, i=g] -- perfectly well defined -- and the backward
         #     [j=g, i=u~], in which the polarized quark is an internal line.

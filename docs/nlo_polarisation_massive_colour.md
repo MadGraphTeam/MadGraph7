@@ -64,9 +64,32 @@ where the splitting runs backwards (`g -> q(-> Born) q~`) and the polarised
 parton is an internal line of the real. That is a topological statement, not a
 mass one, so it is a rule of its own: `check_process_format` refuses a
 polarised coloured *initial-state* leg whatever its mass, and only a **decay**
-(one particle before the `>`, never split by `find_reals`) is exempt. After
-that guard, `carry_polarization`'s raise is unreachable from any accepted
-process — which is what a backstop should be.
+(one particle before the `>`, never split by `find_reals`) is exempt. Two
+processes that hit it: `b{+} b~ > h [QCD]`, and the more realistic
+`e- b{+} > e- b [QCD]` (DIS with a massive `b`) — both die on `6a7717288` with
+a raw `FKSProcessError` traceback and are a clean INITIAL-state `InvalidCmd`
+here.
+
+After that guard, `carry_polarization`'s raise is unreachable from any accepted
+process — which is what a backstop should be — and that is not a property of
+the `sm` alone. What the guard leaves through is a **massive** coloured
+final-state mother, and for such a mother `find_splittings` returns
+`[mother, g]` and nothing else: `find_mothers` keeps only splittings in which
+one daughter carries the *mother's own mass symbol*, and the `nsoft >= 1`
+filter then forces the other daughter to be a massless coloured particle, i.e.
+the gluon. `g -> q q~`, the channel that would break the identity, needs a
+massless mother and is refused by rule (b). Scanned exhaustively over every
+particle of `sm`, `loop_sm` and `MSSM_SLHA2`, in both flavour-grouping modes:
+**zero** massive coloured final-state mothers with a splitting other than
+`[self, g]` — the gluino and each squark give exactly one splitting, `[self, g]`,
+with no `go -> q sq~` channel surviving. So a BSM model is not an escape hatch
+either.
+
+(The soft set itself is *not* gluon-only, contrary to what it looks like under
+the default flavour grouping: `find_pert_particles_interactions(model, 'QCD')`
+gives `soft_particles = {21, ±81}` when quarks are grouped but `{21, ±1..±4}`
+when they are not. That extra freedom only ever produces `g -> q q~`, off a
+massless mother.)
 
 Two reals may now share one amplitude only if their PDGs **and** their
 per-leg polarisations agree (`FKSRealProcess.pdgs_pols`). For any process
