@@ -863,6 +863,30 @@ def _staged_process_file(repository: Path, process_file: Path):
         backup.unlink(missing_ok=True)
 
 
+@contextmanager
+def _generation_lepton_pt_cut(repository: Path):
+    """Keep massless-lepton discovery away from the singular zero-energy map."""
+
+    common = repository / "common.f03"
+    original = common.read_text(encoding="utf-8")
+    modified, count = re.subn(
+        r"(?im)^(\s*real\(kind=8\),parameter\s*::\s*pTl_min\s*=\s*)[^!\n]+",
+        r"\g<1>30d0",
+        original,
+    )
+    if count != 1:
+        raise LegacyAdapterError("could not configure library-generation lepton pT cut")
+    common.write_text(modified, encoding="utf-8")
+    # Rebuild this module and its Make dependants even on coarse timestamps.
+    common_object = repository / "common.o"
+    common_object.unlink(missing_ok=True)
+    try:
+        yield
+    finally:
+        common.write_text(original, encoding="utf-8")
+        common_object.unlink(missing_ok=True)
+
+
 class LegacyMeasurementAdapter:
     """Measure one original-AmpliCol report workload."""
 
@@ -1623,6 +1647,7 @@ class LegacyMeasurementAdapter:
         repository: Path,
         raw_color: bool,
         n_final: int,
+        process_key: str | None,
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
@@ -1671,6 +1696,16 @@ class LegacyMeasurementAdapter:
                 if raw_color or n_final == 1 or massless_two_body_leptons
                 else ("--seed=101",)
             )
+            if (
+                not raw_color
+                and n_final >= 4
+                and process_key in {"dd_epemzh_jets", "ud_epve_jets"}
+            ):
+                # The default gen23 inverse map aborts with smin >= smax
+                # for these multi-body leptonic families. The existing
+                # t-channel map avoids that branch while retaining distinct
+                # seeded discovery points.
+                generation_point_arguments += ("--phasespace=4",)
             momenta_directory = repository / "Utilities" / "ME_checks"
             momenta_directory.mkdir(parents=True, exist_ok=True)
             for entry in context.entries:
@@ -1728,16 +1763,27 @@ class LegacyMeasurementAdapter:
         log_path: Path,
         phase_reporter: WorkerPhaseReporter | None,
     ) -> _SelectedFlowMeasurement:
-        generation_seconds = self._generate_library(
-            context=context,
-            repository=repository,
-            raw_color=False,
-            n_final=cell.n_final,
-            settings=settings,
-            commands=commands,
-            log_path=log_path,
-            phase_reporter=phase_reporter,
+        # With no jets or masses, the default disabled lepton cuts make
+        # gen23's inverse-power energy map start at zero and reject forever.
+        # These cuts only choose ten distinct library-discovery points; restore
+        # the original module before building the fixed-momenta benchmark.
+        discovery_cuts = (
+            _generation_lepton_pt_cut(repository)
+            if cell.process_key == "dd_4l_jets" and cell.n_final == 4
+            else nullcontext()
         )
+        with discovery_cuts:
+            generation_seconds = self._generate_library(
+                context=context,
+                repository=repository,
+                raw_color=False,
+                n_final=cell.n_final,
+                process_key=cell.process_key,
+                settings=settings,
+                commands=commands,
+                log_path=log_path,
+                phase_reporter=phase_reporter,
+            )
         self._run(
             ("make", f"-j{settings.jobs}", "amplicol_library_benchmark"),
             cwd=repository,
@@ -2005,6 +2051,7 @@ class LegacyMeasurementAdapter:
             repository=repository,
             raw_color=True,
             n_final=cell.n_final,
+            process_key=cell.process_key,
             settings=settings,
             commands=commands,
             log_path=log_path,

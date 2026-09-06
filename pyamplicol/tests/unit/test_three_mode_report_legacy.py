@@ -25,6 +25,7 @@ from tools.performance_report.legacy import (
     _canonical_mapped_color_word,
     _canonical_process_entry,
     _fixed_helicity,
+    _generation_lepton_pt_cut,
     _helicity_id,
     _parse_generated_library_color_probe_output,
     adaptive_profile_points,
@@ -1081,6 +1082,7 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create" in command for command in flattened)
     assert any("--seed=101" in command for command in flattened)
+    assert not any("--phasespace=" in command for command in flattened)
     assert not any("--amplicol_momenta_probe=10" in command for command in flattened)
     assert not any("--library=create-raw" in command for command in flattened)
     assert not any("amplicol_color_probe" in command for command in flattened)
@@ -1172,6 +1174,145 @@ def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(
         command["environment"] == {"PDF_BACKEND": "internal"}
         for command in make_commands
     )
+
+
+@pytest.mark.parametrize("generation_fails", (False, True))
+def test_four_lepton_discovery_restores_cuts_before_benchmark(
+    generation_fails: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdgs = (1, -1, -11, 11, -11, 11)
+    adapter, api, executor = _adapter(FakeApi(pdgs))
+    point = tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (api.pdgs, point, (point,)),
+    )
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    common = repository / "common.f03"
+    original = "  real(kind=8),parameter :: pTl_min      = -1d0\n"
+    common.write_text(original, encoding="utf-8")
+    common_object = repository / "common.o"
+    common_object.write_bytes(b"stale")
+    original_run = executor.run
+
+    def check_configuration(args, *, cwd, environment=None):
+        if args[0] == "./amplicol_generate":
+            assert "pTl_min      = 30d0" in common.read_text(encoding="utf-8")
+            assert "--seed=101" in args
+            assert not common_object.exists()
+            common_object.write_bytes(b"generation cuts")
+            if generation_fails:
+                raise LegacyAdapterError("generation fixture failed")
+        if "amplicol_library_benchmark" in args:
+            assert common.read_text(encoding="utf-8") == original
+            assert not common_object.exists()
+        return original_run(args, cwd=cwd, environment=environment)
+
+    monkeypatch.setattr(executor, "run", check_configuration)
+
+    def measure():
+        return adapter.measure(
+            _cell(
+                Accuracy.LC,
+                Workload.SELECTED_FLOW,
+                process_key="dd_4l_jets",
+                n_final=4,
+            ),
+            artifact_path=tmp_path / "four-leptons",
+            settings=_settings(repository),
+        )
+
+    if generation_fails:
+        with pytest.raises(LegacyAdapterError, match="generation fixture failed"):
+            measure()
+    else:
+        validate_measurement(measure())
+    assert common.read_text(encoding="utf-8") == original
+    assert not common_object.exists()
+
+
+def test_generation_lepton_cut_requires_known_configuration(tmp_path: Path) -> None:
+    common = tmp_path / "common.f03"
+    common.write_text("unexpected configuration\n", encoding="utf-8")
+    with (
+        pytest.raises(LegacyAdapterError, match="could not configure"),
+        _generation_lepton_pt_cut(tmp_path),
+    ):
+        pytest.fail("unsupported configuration must not start generation")
+    assert common.read_text(encoding="utf-8") == "unexpected configuration\n"
+
+
+@pytest.mark.parametrize(
+    ("process_key", "base_pdgs"),
+    (
+        ("dd_epemzh_jets", (1, -1, -11, 11, 23, 25)),
+        ("ud_epve_jets", (2, -1, -11, 12)),
+    ),
+)
+@pytest.mark.parametrize(
+    ("accuracy", "workload", "n_final"),
+    (
+        *(
+            (Accuracy.LC, Workload.SELECTED_FLOW, n_final)
+            for n_final in range(4, 8)
+        ),
+        (Accuracy.NLC, Workload.CONTRACTED, 4),
+    ),
+)
+def test_multibody_lepton_library_uses_t_channel_only_for_seeded_discovery(
+    process_key: str,
+    base_pdgs: tuple[int, ...],
+    accuracy: Accuracy,
+    workload: Workload,
+    n_final: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdgs = (*base_pdgs, *(21 for _ in range(n_final + 2 - len(base_pdgs))))
+    adapter, api, executor = _adapter(FakeApi(pdgs))
+    api.entry = FakeEntry(
+        process_pdgs=pdgs,
+        color_order=(
+            2,
+            *range(len(base_pdgs) + 1, len(pdgs) + 1),
+            1,
+            *range(3, len(base_pdgs) + 1),
+        ),
+    )
+    point = tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (api.pdgs, point, (point,)),
+    )
+
+    measurement = adapter.measure(
+        _cell(
+            accuracy,
+            workload,
+            process_key=process_key,
+            n_final=n_final,
+        ),
+        artifact_path=tmp_path / process_key,
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    validate_measurement(measurement)
+    generation_command = next(
+        command
+        for command in executor.commands
+        if command[0] == "./amplicol_generate"
+    )
+    if workload is Workload.SELECTED_FLOW:
+        assert "--seed=101" in generation_command
+        assert "--phasespace=4" in generation_command
+        assert "--amplicol_momenta_probe=10" not in generation_command
+    else:
+        assert "--amplicol_momenta_probe=10" in generation_command
+        assert "--seed=101" not in generation_command
+        assert "--phasespace=4" not in generation_command
 
 
 @pytest.mark.parametrize(
