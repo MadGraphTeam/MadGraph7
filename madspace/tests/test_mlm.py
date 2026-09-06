@@ -113,7 +113,13 @@ def process(request):
 
 
 def run(clustering, momenta):
-    """Call a clustering and return the five outputs as numpy arrays."""
+    """The scale outputs of a clustering, as numpy arrays: ren_scale,
+    fact_scale1, fact_scale2, outgoing_scales, diagram_index."""
+    return run_all(clustering, momenta)[:5]
+
+
+def run_all(clustering, momenta):
+    """As run(), plus the trailing xqcut_weight."""
     out = clustering(momenta)
     return tuple(np.asarray(v) for v in out)
 
@@ -1190,3 +1196,118 @@ def test_production_is_the_default():
     )
     momenta = sample_momenta(diagrams, batch_size=64, seed=11)
     assert np.array_equal(run(default, momenta)[3], run(explicit, momenta)[3])
+
+
+# --------------------------------------------------------------------------
+# the generation-level merging cut
+# --------------------------------------------------------------------------
+
+
+def xqcut_weights(diagrams, pdg_ids, momenta, xqcut, **kwargs):
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, xqcut=xqcut, **kwargs
+    )
+    return run_all(clustering, momenta)[5]
+
+
+def test_xqcut_is_off_by_default(process):
+    """Without a merging cut every event keeps its weight, so turning the
+    feature on is the only thing that can change an existing result."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    weights = run_all(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+    )[5]
+    assert np.all(weights == 1.0)
+
+
+def test_xqcut_weight_is_a_veto(process):
+    """It multiplies the event weight, so it has to be exactly zero or one."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    weights = xqcut_weights(diagrams, pdg_ids, momenta, 50.0)
+    assert np.all((weights == 0.0) | (weights == 1.0))
+    assert np.any(weights == 0.0), "a 50 GeV cut should reject something"
+
+
+def test_xqcut_rejects_monotonically(process):
+    """Raising the cut can only ever reject more events."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=1000, seed=808)
+    kept = [
+        float(xqcut_weights(diagrams, pdg_ids, momenta, cut).sum())
+        for cut in (0.0, 10.0, 30.0, 60.0, 120.0)
+    ]
+    assert kept == sorted(kept, reverse=True), kept
+    assert kept[0] == len(momenta)
+    assert kept[-1] < kept[0]
+
+
+def test_xqcut_rejects_exactly_the_soft_jet_emissions(process):
+    """madevent's rule: a clustering step whose daughter is still a bare
+    final-state jet has to be at or above xqcut. In the "emission" scheme the
+    per-jet scales are booked at exactly those steps, so the veto can be
+    recomputed from them and compared."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=500, seed=99)
+    cut = 40.0
+    clustering = make_clustering(
+        diagrams,
+        external_pdg_ids=pdg_ids,
+        xqcut=cut,
+        jet_scale_scheme=EMISSION,
+    )
+    *_, jet_scales, _, weights = run_all(clustering, momenta)
+    # a leg left at the sqrt(s) fallback was never booked and cannot fail
+    booked = jet_scales < CM_ENERGY
+    softest = np.where(booked, jet_scales, np.inf).min(axis=1)
+    expected = np.where(np.isfinite(softest) & (softest < cut), 0.0, 1.0)
+    assert np.array_equal(weights, expected)
+
+
+def test_xqcut_does_not_disturb_the_scales(process):
+    """The cut only vetoes. Events that survive keep exactly the scales the
+    clustering would have given without it."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    ren_off, fac_off, _, out_off, _ = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta
+    )
+    ren_on, fac_on, _, out_on, _, weights = run_all(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids, xqcut=40.0), momenta
+    )
+    keep = weights > 0
+    assert keep.any()
+    assert np.array_equal(ren_off[keep], ren_on[keep])
+    assert np.array_equal(fac_off[keep], fac_on[keep])
+    assert np.array_equal(out_off[keep], out_on[keep])
+
+
+def test_xqcut_survivors_have_no_soft_jet_scale(process):
+    """Every booked jet scale of a surviving event is at or above the cut,
+    which is what makes the merging scale mean anything downstream."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=1000, seed=4242)
+    cut = 35.0
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids, xqcut=cut, jet_scale_scheme=EMISSION
+    )
+    *_, jet_scales, _, weights = run_all(clustering, momenta)
+    booked = jet_scales[weights > 0]
+    booked = booked[booked < CM_ENERGY]
+    assert len(booked) > 0
+    assert np.all(booked >= cut)
+
+
+def test_xqcut_does_not_depend_on_the_jet_scale_scheme(process):
+    """The veto is defined on the clustering history, which the scheme switch
+    does not touch: it only moves which leg a scale is booked against."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=500, seed=17)
+    emission = xqcut_weights(
+        diagrams, pdg_ids, momenta, 40.0, jet_scale_scheme=EMISSION
+    )
+    production = xqcut_weights(
+        diagrams, pdg_ids, momenta, 40.0, jet_scale_scheme=PRODUCTION
+    )
+    assert np.array_equal(emission, production)

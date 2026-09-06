@@ -39,6 +39,10 @@ public:
         // clustering; falls back to the Standard Model assignment for a pdg id
         // that is not listed.
         std::unordered_map<int, int> pdg_color_types = {},
+        // Generation-level merging cut, the counterpart of madevent's xqcut.
+        // A clustering that emitted a jet below this scale drops the event.
+        // Zero disables it.
+        double xqcut = 0,
         double bw_cutoff = 15,
         double jet_radius = 0.4,
         bool hadronic = true,
@@ -68,6 +72,7 @@ private:
     std::vector<double> _bw_widths;
     double _cm_energy;
     JetScaleScheme _jet_scale_scheme;
+    double _xqcut;
     double _bw_cutoff;
     double _jet_radius;
     bool _hadronic;

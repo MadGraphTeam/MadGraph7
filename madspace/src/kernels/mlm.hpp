@@ -211,11 +211,13 @@ KERNELSPEC void mlm_clustering(
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
     IIn<T, 0> jet_scale_scheme,
+    FIn<T, 0> xqcut,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index,
+    FOut<T, 0> xqcut_weight,
     bool hadronic
 ) {
     // we do not support SIMD for now, so we can assume simple types
@@ -363,6 +365,17 @@ KERNELSPEC void mlm_clustering(
 
     bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
     FVal<T> ren_scale_val = 1.0;
+    // The generation-level merging cut. A clustering that emitted a jet has to
+    // be at or above xqcut, otherwise the matrix element is describing
+    // radiation the parton shower is meant to produce and the event is
+    // dropped. This mirrors the "Check xqcut for vertices with jet daughters
+    // only" block of Template/LO/SubProcesses/reweight.f: the test runs per
+    // clustering step, on each daughter that is still a bare final-state jet,
+    // and it does not ask whether the vertex was a QCD one.
+    //
+    // is_last_cluster is exactly the "still a bare external leg" bookkeeping
+    // the emission scheme already needs, so the two share it.
+    bool passes_xqcut = true;
     int is_last_cluster = 0b11111111'11111111'11111100;
     for (int i = 0; i < cluster_max; ++i) {
         FVal<T> scale = cluster_scales[i];
@@ -372,6 +385,11 @@ KERNELSPEC void mlm_clustering(
         bool is_qcd = (data >> 27) & 1;
         bool is_jet1 = (data >> 28) & 1;
         bool is_jet2 = (data >> 29) & 1;
+        if (FVal<T>(xqcut) > 0.0 && scale < FVal<T>(xqcut) &&
+            ((is_jet1 && (is_last_cluster & (1 << particle1))) ||
+             (is_jet2 && (is_last_cluster & (1 << particle2))))) {
+            passes_xqcut = false;
+        }
         if (is_qcd) {
             if (by_production) {
                 // Book this vertex onto every external leg the two daughters'
@@ -464,6 +482,9 @@ KERNELSPEC void mlm_clustering(
     ren_scale = ren_scale_val;
     fact_scale1 = fac_scale;
     fact_scale2 = fac_scale;
+    // A weight rather than a flag, so that it can simply multiply the event
+    // weight the way every other cut in madspace does.
+    xqcut_weight = passes_xqcut ? 1.0 : 0.0;
 
     int diag_count = state_machine[state];
     int rand_index = static_cast<int>(FVal<T>(random) * diag_count);
@@ -485,11 +506,13 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
     IIn<T, 0> jet_scale_scheme,
+    FIn<T, 0> xqcut,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
     FOut<T, 1> outgoing_scales,
-    IOut<T, 0> diagram_index
+    IOut<T, 0> diagram_index,
+    FOut<T, 0> xqcut_weight
 ) {
     mlm_clustering<T>(
         momenta,
@@ -502,11 +525,13 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         jet_radius,
         cm_energy,
         jet_scale_scheme,
+        xqcut,
         ren_scale,
         fact_scale1,
         fact_scale2,
         outgoing_scales,
         diagram_index,
+        xqcut_weight,
         true
     );
 }
@@ -523,11 +548,13 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
     IIn<T, 0> jet_scale_scheme,
+    FIn<T, 0> xqcut,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
     FOut<T, 1> outgoing_scales,
-    IOut<T, 0> diagram_index
+    IOut<T, 0> diagram_index,
+    FOut<T, 0> xqcut_weight
 ) {
     mlm_clustering<T>(
         momenta,
@@ -540,11 +567,13 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         jet_radius,
         cm_energy,
         jet_scale_scheme,
+        xqcut,
         ren_scale,
         fact_scale1,
         fact_scale2,
         outgoing_scales,
         diagram_index,
+        xqcut_weight,
         false
     );
 }
