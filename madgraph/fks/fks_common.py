@@ -726,6 +726,26 @@ def legs_to_color_link_string(leg1, leg2, pert = 'QCD'): #test written, all case
     return dict
 
 
+def get_user_leg_order(process, pert = 'QCD'):
+    """Return, for each position of the FKS-sorted leg list, the number the
+    leg carried in the process as the user wrote it.
+
+    sort_proc() both permutes and renumbers the legs, so after it has run the
+    user's numbering is gone for good. me_frame in the run_card is expressed
+    in the user's numbering, so this mapping is what lets the fortran get back
+    to it; it is written out as frame_map_born in frame_info.inc.
+
+    The returned list is 0-indexed by FKS position: entry i is the user number
+    of the leg sitting at FKS position i+1.
+
+    Call this *before* sort_proc. to_fks_legs() copies the legs, so this does
+    not disturb the process it is given.
+    """
+    leglist = to_fks_legs(process.get('legs'), process.get('model'))
+    leglist.sort(pert = pert)
+    return [leg['number'] for leg in leglist]
+
+
 def sort_proc(process,pert = 'QCD'):
     """Given a process, this function returns the same process 
     but with sorted FKSLegs.

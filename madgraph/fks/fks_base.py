@@ -611,6 +611,8 @@ class FKSProcess(object):
         self.extra_cnt_amp_list = diagram_generation.AmplitudeList()
         self.ncores_for_proc_gen = ncores_for_proc_gen
         self.sudakov_amps = []
+        # user number of each FKS-sorted born leg; see fks_common.get_user_leg_order
+        self.user_leg_order = []
 
         if not remove_reals in [True, False]:
             raise fks_common.FKSProcessError(\
@@ -622,12 +624,18 @@ class FKSProcess(object):
                 pertur = start_proc['perturbation_couplings']
                 if pertur:
                     self.perturbation = sorted(pertur)[0]
+                # record the user's leg numbering before sort_proc discards it
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc, pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                         start_proc, pert = self.perturbation)))
             #initialize with an amplitude
             elif isinstance(start_proc, diagram_generation.Amplitude):
                 pertur = start_proc.get('process')['perturbation_couplings']
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc['process'],
+                                        pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                     start_proc['process'], 

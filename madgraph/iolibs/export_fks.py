@@ -608,6 +608,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               matrix_element,
                               fortran_model)
 
+        filename = 'frame_info.inc'
+        self.write_frame_info_file(writers.FortranWriter(filename),
+                              matrix_element)
+
         filename = 'maxconfigs.inc'
         self.write_maxconfigs_file(writers.FortranWriter(filename),
                 max(nconfigs,matrix_element.born_me.get_number_of_amplitudes()))
@@ -711,6 +715,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'weight_lines.f',
                      'genps_fks.f',
                      'boostwdir2.f',
+                     'boost_to_frame.f',
                      'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
@@ -1745,6 +1750,36 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         lines = "integer max_particles, max_branch\n"
         lines += "parameter (max_particles=%d) \n" % maxparticles
         lines += "parameter (max_branch=max_particles-1)"
+        writer.writelines(lines)
+
+
+    def write_frame_info_file(self, writer, matrix_element):
+        """Write frame_info.inc, the bridge between the me_frame entries of the
+        run_card and the leg positions the fortran actually uses.
+
+        me_frame is given in the numbering of the process as the user wrote it,
+        but sort_proc() reorders and renumbers the born legs, so the two do not
+        coincide. frame_map_born(i) is the user number of the born leg sitting
+        at position i.
+
+        No table is needed for the real emissions: the FKS convention fixes the
+        real->born correspondence in terms of i_fks alone (see set_pdg in
+        chooser_functions.f), so get_frame_mask_real derives it at runtime.
+        """
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        nexternal_born = len(born_legs)
+
+        user_order = getattr(matrix_element, 'user_leg_order', [])
+        if len(user_order) != nexternal_born:
+            # No recorded ordering (e.g. a matrix element built by hand in the
+            # tests). Fall back to the identity: correct whenever the FKS sort
+            # left the user's ordering alone, which is the common case.
+            user_order = list(range(1, nexternal_born + 1))
+
+        lines = []
+        lines.append("integer frame_map_born(nexternal-1)")
+        lines.append("data frame_map_born /%s/" % \
+                     ','.join('%d' % n for n in user_order))
         writer.writelines(lines)
 
 

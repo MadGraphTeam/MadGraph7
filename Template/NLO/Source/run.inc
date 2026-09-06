@@ -50,8 +50,16 @@ c
       double precision    ebeam(2), xbk(2),q2fact(2)
       common/to_collider/ ebeam   , xbk   ,q2fact,   lpp
 c
+c     Rest frame in which the matrix-elements are evaluated (polarization).
+c     Bit n of frame_id is set for each leg n listed in me_frame; see
+c     mapid() and boost_to_me_frame() in boost_to_frame.f. The default
+c     me_frame=[1,2] gives frame_id=6, which means "no boost".
+c
+      integer frame_id
+      common/to_frame_me/frame_id
+c
 c     BW treatment
-c      
+c
       double precision bwcutoff
       common/to_bwcutoff/ bwcutoff
 c

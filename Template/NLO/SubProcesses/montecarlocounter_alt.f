@@ -1329,6 +1329,9 @@ c the same method
       double complex ximag
       parameter (ximag=(0.d0,1.d0))
 
+      double precision pboost(0:3)
+      logical me_boosted
+
       double precision xi_i_fks_ev,y_ij_fks_ev,t
       double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
       common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
@@ -1372,7 +1375,8 @@ c
       
 c
 C BORN
-      call sborn(p_born,wgt_born)
+      call me_frame_born_boost(p_born,pboost,me_boosted)
+      call sborn_frame(p_born,wgt_born)
       do iord = 1, nsplitorders
         if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
         born(iord)=dble(ans_cnt(1,iord))
@@ -1391,8 +1395,10 @@ c sumborn is the sum of the leading-color amplitudes squared
 
 c BORN TILDE
 C check if momenta have to be rotated
+c The R_y(pi) flip only ever served to put a j_fks=2 mother back on +z; in
+c the me_frame the mother is off the beam axis anyway. See montecarlocounter.f.
       if (ileg.eq.1.or.ileg.eq.2) then
-        if (j_fks.eq.2 .and. nexternal-1.ne.3) then
+        if (j_fks.eq.2 .and. nexternal-1.ne.3 .and. .not.me_boosted) then
 c Rotation according to innerpin.m. Use rotate_invar() if a more 
 c general rotation is needed.
 c Exclude 2->1 (at the Born level) processes: matrix elements are
@@ -1405,12 +1411,12 @@ c might flip when rotating the momenta.
             p_born_rot(3,i)=-p_born(3,i)
           enddo
           calculatedBorn=.false.
-          call sborn(p_born_rot,wgt_born)
-          if (iextra_cnt.gt.0) call extra_cnt(p_born_rot, iextra_cnt, ans_extra_cnt)
+          call sborn_frame(p_born_rot,wgt_born)
+          if (iextra_cnt.gt.0) call extra_cnt_frame(p_born_rot, iextra_cnt, ans_extra_cnt)
           calculatedBorn=.false.
         else
-          call sborn(p_born,wgt_born)
-          if (iextra_cnt.gt.0) call extra_cnt(p_born, iextra_cnt, ans_extra_cnt)
+          call sborn_frame(p_born,wgt_born)
+          if (iextra_cnt.gt.0) call extra_cnt_frame(p_born, iextra_cnt, ans_extra_cnt)
         endif
 
         do iord = 1, nsplitorders
@@ -1447,6 +1453,13 @@ C check if any extra_cnt is needed
         enddo
 
 c Insert <ij>/[ij] which is not included by sborn()
+        if (me_boosted) then
+c borntilde was computed in the me_frame, so the phase multiplying it has to
+c be as well: emission spinors and mother azimuth both from boosted momenta.
+           call azifact_mc_frame(p_born,j_fks,p_i_fks_ev,p(0,j_fks),
+     &                           y_ij_fks,pboost,azifact,cphi_mother,
+     &                           sphi_mother)
+        else
         if (1d0-y_ij_fks.lt.vtiny)then
            azifact=xij_aor
         else
@@ -1482,6 +1495,7 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
            cphi_mother=1.d0
            sphi_mother=0.d0
         endif
+        endif
         do iord=1, nsplitorders
            borntilde(iord) = -(cphi_mother+ximag*sphi_mother)**2 *
      #                borntilde(iord) * dconjg(azifact)
@@ -1502,6 +1516,13 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
             enddo
          elseif((m_type.eq.8.or.m_type.eq.1).and.ch_m.eq.0d0)then
 c Insert <ij>/[ij] which is not included by sborn()
+            imother_fks=min(i_fks,j_fks)
+            if (me_boosted) then
+c Same as the ISR case: both ingredients in the frame borntilde lives in.
+               call azifact_mc_frame(p_born,imother_fks,p_i_fks_ev,
+     &                               p(0,j_fks),y_ij_fks,pboost,azifact,
+     &                               cphi_mother,sphi_mother)
+            else
             if(1.d0-y_ij_fks.lt.vtiny)then
                azifact=xij_aor
             else
@@ -1522,9 +1543,9 @@ c Insert <ij>/[ij] which is not included by sborn()
                azifact=Wij_angle/Wij_recta
             endif
 c Insert the extra factor due to Madgraph convention for polarization vectors
-            imother_fks=min(i_fks,j_fks)
             call getaziangles(p_born(0,imother_fks),
      #                           cphi_mother,sphi_mother)
+            endif
             do iord=1, nsplitorders
                borntilde(iord) = -(cphi_mother-ximag*sphi_mother)**2 *
      #                  borntilde(iord) * azifact

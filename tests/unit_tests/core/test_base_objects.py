@@ -2166,6 +2166,29 @@ class ProcessDefinitionTest(unittest.TestCase):
             else:
                 self.assertEqual(myleglist, testproc[k])
 
+    def test_get_process_keeps_polarization(self):
+        """test that get_process carries the polarization of the multi-legs
+        over to the legs of the returned process."""
+
+        my_new_process_definition = copy.deepcopy(self.my_process_definition)
+        # one initial state and one final state leg are polarized
+        my_new_process_definition['legs'][1].set('polarization', [-1])
+        my_new_process_definition['legs'][3].set('polarization', [0])
+
+        testproc = my_new_process_definition.get_process([3, 3], [4, 5, 3])
+
+        self.assertEqual([l.get('id') for l in testproc.get('legs')],
+                         [3, 3, 4, 5, 3])
+        self.assertEqual([l.get('state') for l in testproc.get('legs')],
+                         [False, False, True, True, True])
+        self.assertEqual([l.get('polarization') for l in testproc.get('legs')],
+                         [[], [-1], [], [0], []])
+
+        # the process must not share the polarization list of the multi-leg
+        testproc.get('legs')[1].get('polarization').append(1)
+        self.assertEqual(my_new_process_definition['legs'][1].get('polarization'),
+                         [-1])
+
     def test_values_for_prop(self):
         """Test filters for process properties"""
 
