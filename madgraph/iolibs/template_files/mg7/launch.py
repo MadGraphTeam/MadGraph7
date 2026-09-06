@@ -1359,6 +1359,14 @@ class MadgraphSubprocess:
                     permutations=mc_data.permutations,
                     diagram_indices=mc_data.diagram_indices,
                     cm_energy=self.process.e_cm,
+                    jet_scale_scheme=getattr(
+                        ms.MLMClustering.JetScaleScheme,
+                        self.process.run_card["beam"]["jet_scale_scheme"],
+                    ),
+                    pdg_color_types={
+                        int(key): value
+                        for key, value in self.meta["pdg_color_types"].items()
+                    },
                     bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
                     jet_radius=self.process.run_card["beam"]["jet_radius"],
                     hadronic=not self.process.leptonic,

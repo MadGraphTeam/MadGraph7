@@ -1,9 +1,27 @@
 #pragma once
 
+#include <unordered_map>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/topology.hpp"
 
 namespace madspace {
+
+// Number of words each clustering transition occupies in the compiled state
+// machine: (data, next_offset, trace_data).
+inline constexpr int state_machine_item_size = 3;
+
+// How a clustering scale is assigned to an outgoing jet.
+enum class JetScaleScheme {
+    // The scale of the vertex at which the leg itself was emitted, i.e. the
+    // softest clustering it takes part in.
+    emission = 0,
+    // The hardest vertex on the parton line the leg belongs to, which is the
+    // scale at which that line was produced. This is what madevent writes, and
+    // what Pythia uses as the shower starting scale for the leg when MLM
+    // merging turns on Beams:setProductionScalesFromLHEF.
+    production = 1,
+};
 
 class MLMClustering : public FunctionGenerator {
 public:
@@ -15,6 +33,12 @@ public:
         // scale to is reported at this value rather than at zero, so that an
         // MLM veto can never trip on it.
         double cm_energy,
+        JetScaleScheme jet_scale_scheme = JetScaleScheme::production,
+        // Signed color representation per pdg id, as exported in the
+        // subprocess metadata. Used to follow a parton line through the
+        // clustering; falls back to the Standard Model assignment for a pdg id
+        // that is not listed.
+        std::unordered_map<int, int> pdg_color_types = {},
         double bw_cutoff = 15,
         double jet_radius = 0.4,
         bool hadronic = true,
@@ -43,6 +67,7 @@ private:
     std::vector<double> _bw_masses;
     std::vector<double> _bw_widths;
     double _cm_energy;
+    JetScaleScheme _jet_scale_scheme;
     double _bw_cutoff;
     double _jet_radius;
     bool _hadronic;

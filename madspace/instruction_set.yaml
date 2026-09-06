@@ -2220,6 +2220,9 @@ mlm_clustering_hadronic:
     - name: cm_energy
       type: [float, single]
       desc:
+    - name: jet_scale_scheme
+      type: [int, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2266,6 +2269,9 @@ mlm_clustering_leptonic:
       desc:
     - name: cm_energy
       type: [float, single]
+      desc:
+    - name: jet_scale_scheme
+      type: [int, single]
       desc:
   outputs:
     - name: ren_scale

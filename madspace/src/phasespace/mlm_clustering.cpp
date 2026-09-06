@@ -4,6 +4,8 @@
 #include <cmath>
 #include <format>
 #include <map>
+#include <set>
+#include <unordered_map>
 
 using namespace madspace;
 
@@ -31,12 +33,85 @@ bool is_jet_pdg(int pdg_id, int max_jet_flavor) {
     return (a >= 1 && a <= max_jet_flavor) || a == 21 || a == 81;
 }
 
+// Color representation of a line, as the signed color of the model (1 for a
+// singlet, +-3 for a (anti)triplet, 8 for an octet, +-6 for a sextet). The
+// merged-flavor placeholders that survive in propagator pdg ids stand for the
+// particles clean_pids() maps them to in launch.py: 81 is a quark, 82 an
+// electron and 83 a neutrino.
+int color_rep(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
+    if (auto search = pdg_color_types.find(pdg_id); search != pdg_color_types.end()) {
+        return std::abs(search->second);
+    }
+    int a = std::abs(pdg_id);
+    if ((a >= 1 && a <= 6) || a == 81) {
+        return 3;
+    }
+    if (a == 21) {
+        return 8;
+    }
+    return 1;
+}
+
 // Whether a line carries color. Used to decide whether a *vertex* is a QCD
 // splitting, which is what selects the clustering scales entering mu_R/mu_F.
-// 81-83 are the merged-flavor placeholders.
-bool is_colored_pdg(int pdg_id) {
-    int a = std::abs(pdg_id);
-    return (a >= 1 && a <= 6) || a == 21 || (a >= 81 && a <= 83);
+bool is_colored_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
+    return color_rep(pdg_id, pdg_color_types) != 1;
+}
+
+// How the parton line of the mother of a clustering continues into its two
+// daughters, so that a clustering scale can be booked onto the external legs
+// the line ends at. Mirrors ipartupdate() in
+// Template/LO/SubProcesses/reweight.f, which decides the same thing from the
+// color representations (its leading pdg-equality tests give the same answer
+// as the color ones for every case they cover).
+enum TraceMode {
+    trace_first = 0,   // the line continues into daughter 1
+    trace_second = 1,  // ... into daughter 2
+    trace_harder = 2,  // ... into whichever daughter is harder (decided per event)
+    trace_both = 3,    // the mother stands for both daughters' lines
+};
+
+TraceMode trace_mode_for(int color_in, int color_1, int color_2) {
+    if (color_in == 8) {
+        // g -> g g, or an octet splitting to two octets: follow the harder one
+        if (color_1 == 8 && color_2 == 8) {
+            return trace_harder;
+        }
+        // g -> q qbar: both daughters carry the line on
+        if (color_1 == 3 && color_2 == 3) {
+            return trace_both;
+        }
+        // g -> g H and friends: follow the colored daughter
+        if (color_1 == 8) {
+            return trace_first;
+        }
+        if (color_2 == 8) {
+            return trace_second;
+        }
+    } else if (color_in == 3) {
+        // an epsilon^ijk vertex, 3 -> 3 3, is treated like a photon emission
+        // and follows the first daughter
+        if (color_1 == 3 && color_2 == 3) {
+            return trace_first;
+        }
+        // q -> q g, q -> q Z/H/W, and the exotic q -> q' S variants
+        if (color_1 == 3) {
+            return trace_first;
+        }
+        if (color_2 == 3) {
+            return trace_second;
+        }
+    } else if (color_in == 6) {
+        if (color_1 == 3 && color_2 == 3) {
+            return trace_both;
+        }
+    } else if (color_in == 1) {
+        return trace_both;
+    }
+    // Nothing matched. The Fortran stops the run here; keeping the line on the
+    // first daughter is wrong but local, and only costs the clustering scale of
+    // one leg rather than the whole event.
+    return trace_first;
 }
 
 struct CompileContext {
@@ -45,6 +120,7 @@ struct CompileContext {
     std::vector<double>& bw_masses;
     std::vector<double>& bw_widths;
     std::map<std::pair<double, double>, int>& bw_indices;
+    const std::unordered_map<int, int>& pdg_color_types;
     bool have_pdg_ids;
     int max_jet_flavor;
 };
@@ -61,6 +137,7 @@ struct StateItem {
     bool is_qcd;
     bool is_jet1;
     bool is_jet2;
+    TraceMode trace_mode;
 };
 
 // 1-based index into the Breit-Wigner tables handed to the kernel, or 0 for
@@ -97,6 +174,27 @@ StateItem make_state_item(
     // resonance test is only meaningful for a final-state clustering.
     int mass_index = is_initial ? 0 : breit_wigner_index(ctx, meta_in);
 
+    int color_1 = color_rep(meta_1.pdg_id, ctx.pdg_color_types);
+    int color_2 = color_rep(meta_2.pdg_id, ctx.pdg_color_types);
+    int color_in = color_rep(meta_in.pdg_id, ctx.pdg_color_types);
+    if (meta_in.pdg_id == 0) {
+        // The propagator's flavor was not supplied (the topology fixtures used
+        // by the tests carry masses only), so color_rep would call it a
+        // singlet. Infer it from the daughters instead, which is unambiguous
+        // for a QCD vertex.
+        if (color_1 == 3 && color_2 == 3) {
+            color_in = 8;
+        } else if (color_1 == 8 && color_2 == 8) {
+            color_in = 8;
+        } else if (color_1 == 3 || color_2 == 3) {
+            color_in = 3;
+        }
+    }
+    // An initial-state clustering carries the beam line on, which is daughter 1
+    // by construction, so the color-based table does not apply to it.
+    TraceMode trace_mode =
+        is_initial ? trace_first : trace_mode_for(color_in, color_1, color_2);
+
     bool is_qcd, is_jet1, is_jet2;
     if (!ctx.have_pdg_ids) {
         // No flavor information supplied: fall back to assuming every
@@ -112,8 +210,8 @@ StateItem make_state_item(
         // the two children then: a splitting of two colored lines is QCD unless
         // the parent says otherwise, which is also the only test available for
         // t-channel lines whose flavor changes along the chain.
-        is_qcd = is_colored_pdg(meta_1.pdg_id) && is_colored_pdg(meta_2.pdg_id) &&
-            (meta_in.pdg_id == 0 || is_colored_pdg(meta_in.pdg_id));
+        is_qcd = color_1 != 1 && color_2 != 1 &&
+            (meta_in.pdg_id == 0 || color_in != 1);
         // Only final state particles get a clustering scale in the LHE output,
         // so a beam leg is never a jet here.
         is_jet1 = !is_initial && is_jet_pdg(meta_1.pdg_id, ctx.max_jet_flavor);
@@ -131,6 +229,7 @@ StateItem make_state_item(
         .is_qcd = is_qcd,
         .is_jet1 = is_jet1,
         .is_jet2 = is_jet2,
+        .trace_mode = trace_mode,
     };
 }
 
@@ -140,6 +239,7 @@ void find_clusterings(
     const std::vector<int>& diagrams,
     nested_vector2<StateItem>& states,
     std::map<StateKey, int>& state_map,
+    std::set<int>& dead_states,
     int prev_index
 ) {
     int n_masks = particle_masks.size();
@@ -169,6 +269,13 @@ void find_clusterings(
                     new_diags.push_back(index);
                 }
             }
+            // valid_diags says some diagram allows this clustering, not that
+            // any of the diagrams still in play does. With none left there is
+            // no clustering history to continue, and following it anyway
+            // builds a state the walk can never leave.
+            if (new_diags.size() == 0) {
+                continue;
+            }
 
             bool is_terminal = new_masks.size() == 3;
             StateKey key;
@@ -182,41 +289,55 @@ void find_clusterings(
             if (auto search = state_map.find(key); search != state_map.end()) {
                 index = search->second;
                 is_new_state = false;
+                // A state already known to be a dead end stays one.
+                if (dead_states.contains(index)) {
+                    continue;
+                }
             } else {
                 index = states.size();
                 state_map[key] = index;
                 states.push_back({});
                 is_new_state = true;
             }
-            states.at(prev_index)
-                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j));
 
             // Only expand a state the first time it is reached. Expanding it
             // again would append a second copy of the same transitions, once
             // per path leading to it.
-            if (!is_new_state) {
-                continue;
-            }
-            if (is_terminal) {
-                for (int diag_index : new_diags) {
-                    states.at(index).push_back({
-                        .next_state = diag_index,
-                        .particle1 = 0,
-                        .particle2 = 0,
-                        .mass_index = 0,
-                        .massive_in = false,
-                        .massive_out1 = false,
-                        .massive_out2 = false,
-                        .is_qcd = false,
-                        .is_jet1 = false,
-                        .is_jet2 = false,
-                    });
+            if (is_new_state) {
+                if (is_terminal) {
+                    for (int diag_index : new_diags) {
+                        states.at(index).push_back({
+                            .next_state = diag_index,
+                            .particle1 = 0,
+                            .particle2 = 0,
+                            .mass_index = 0,
+                            .massive_in = false,
+                            .massive_out1 = false,
+                            .massive_out2 = false,
+                            .is_qcd = false,
+                            .is_jet1 = false,
+                            .is_jet2 = false,
+                            .trace_mode = trace_first,
+                        });
+                    }
+                } else {
+                    find_clusterings(
+                        ctx, new_masks, new_diags, states, state_map,
+                        dead_states, index
+                    );
                 }
-            } else {
-                find_clusterings(
-                    ctx, new_masks, new_diags, states, state_map, index
-                );
+                // The expansion may have found nothing: every clustering left
+                // is unsupported by the remaining diagrams. Drop the
+                // transition rather than pointing it at a state the walk
+                // cannot leave.
+                if (states.at(index).size() == 0) {
+                    dead_states.insert(index);
+                    continue;
+                }
             }
+
+            states.at(prev_index)
+                .push_back(make_state_item(ctx, index, mask, mask_i, mask_j));
         }
     }
 }
@@ -240,6 +361,8 @@ MLMClustering::MLMClustering(
     nested_vector3<std::size_t> permutations,
     nested_vector2<std::size_t> diagram_indices,
     double cm_energy,
+    JetScaleScheme jet_scale_scheme,
+    std::unordered_map<int, int> pdg_color_types,
     double bw_cutoff,
     double jet_radius,
     bool hadronic,
@@ -258,6 +381,7 @@ MLMClustering::MLMClustering(
          {"diagram_index", batch_int}}
     ),
     _cm_energy(cm_energy),
+    _jet_scale_scheme(jet_scale_scheme),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
     _hadronic(hadronic) {
@@ -415,32 +539,48 @@ MLMClustering::MLMClustering(
         .bw_masses = _bw_masses,
         .bw_widths = _bw_widths,
         .bw_indices = bw_indices,
+        .pdg_color_types = pdg_color_types,
         .have_pdg_ids = have_pdg_ids,
         .max_jet_flavor = max_jet_flavor,
     };
-    find_clusterings(ctx, masks, all_diags, states, state_map, 0);
+    std::set<int> dead_states;
+    find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
 
-    for (auto& state : states) {
-        if (state.size() == 0) {
-            // A state with no way on would leave the kernel reading past the end
-            // of its transition list.
+    if (states.at(0).size() == 0) {
+        throw std::logic_error(
+            "MLM clustering found no valid clustering for this process"
+        );
+    }
+    for (std::size_t i = 0; auto& state : states) {
+        // Dead ends are unreachable: no transition points at them any more, but
+        // they still occupy a slot in `states` so that the offsets stay stable.
+        if (state.size() == 0 && !dead_states.contains(static_cast<int>(i))) {
             throw std::logic_error(
                 "MLM clustering reached a state with no valid clustering left"
             );
         }
+        ++i;
     }
 
+    // Layout: a clustering state is a run of (data, next_offset, trace_data)
+    // triples ending at the triple whose data has the is_last bit set; a
+    // terminal state is a count followed by that many diagram indices.
     std::vector<int> first_indices;
     first_indices.reserve(states.size());
     for (int offset = 0; auto& state : states) {
         first_indices.push_back(offset);
-        if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
+        if (state.size() == 0) {
+            // a dropped dead end: nothing points at it, so it takes no space
+        } else if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
             offset += 1 + state.size();
         } else {
-            offset += 2 * state.size();
+            offset += state_machine_item_size * state.size();
         }
     }
     for (auto& state : states) {
+        if (state.size() == 0) {
+            continue;
+        }
         if (state.at(0).particle1 == 0 && state.at(0).particle2 == 0) {
             _cluster_state_machine.push_back(state.size());
             for (auto& item : state) {
@@ -456,6 +596,7 @@ MLMClustering::MLMClustering(
                     ((&item == &state.back()) << 30)
                 );
                 _cluster_state_machine.push_back(first_indices.at(item.next_state));
+                _cluster_state_machine.push_back(static_cast<int>(item.trace_mode));
             }
         }
     }
@@ -476,7 +617,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_widths,
             _bw_cutoff,
             _jet_radius,
-            _cm_energy
+            _cm_energy,
+            static_cast<me_int_t>(_jet_scale_scheme)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -488,7 +630,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_widths,
             _bw_cutoff,
             _jet_radius,
-            _cm_energy
+            _cm_energy,
+            static_cast<me_int_t>(_jet_scale_scheme)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

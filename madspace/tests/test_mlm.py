@@ -496,7 +496,7 @@ def test_resonant_propagators_get_a_breit_wigner_index():
     resonant_pairs = set()
     non_terminal, _ = walk(np.asarray(with_width.cluster_state_machine), 6)
     for _, (_, transitions) in non_terminal.items():
-        for data, _ in transitions:
+        for data, _, _ in transitions:
             if field(data, BIT_MASS_INDEX) != 0:
                 resonant_pairs.add(
                     (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2))
@@ -592,7 +592,7 @@ def first_step_candidates(clustering, n_ext, event, jet_radius, masses):
     """
     flat = np.asarray(clustering.cluster_state_machine)
     candidates = {}
-    for data, _ in decode_transitions(flat, 0):
+    for data, _, _ in decode_transitions(flat, 0):
         p1 = field(data, BIT_PARTICLE1)
         p2 = field(data, BIT_PARTICLE2)
         if p1 < 2:
@@ -675,7 +675,7 @@ def test_kt_measure_matches_the_fortran():
     flat = np.asarray(clustering.cluster_state_machine)
     offered = {
         (field(d, BIT_PARTICLE1), field(d, BIT_PARTICLE2))
-        for d, _ in decode_transitions(flat, 0)
+        for d, _, _ in decode_transitions(flat, 0)
     }
     assert (2, 3) in offered
 
@@ -711,6 +711,13 @@ BIT_IS_JET1 = (28, 1)
 BIT_IS_JET2 = (29, 1)
 BIT_IS_LAST = (30, 1)
 
+# Words per transition: (data, next_offset, trace_data).
+STATE_ITEM_SIZE = 3
+
+# trace_data values: which daughter the mother's parton line continues into.
+TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH = 0, 1, 2, 3
+TRACE_MODES = {TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH}
+
 
 def field(data, spec):
     shift, mask = spec
@@ -718,15 +725,18 @@ def field(data, spec):
 
 
 def decode_transitions(machine, offset):
-    """The (data, next_offset) pairs of the non-terminal state at `offset`."""
+    """The (data, next_offset, trace) triples of the non-terminal state at
+    `offset`."""
     transitions = []
     while True:
-        assert offset + 1 < len(machine), "transition list runs past the machine"
-        data, next_offset = machine[offset], machine[offset + 1]
-        transitions.append((data, next_offset))
+        assert offset + STATE_ITEM_SIZE <= len(machine), (
+            "transition list runs past the machine"
+        )
+        data, next_offset, trace = machine[offset : offset + STATE_ITEM_SIZE]
+        transitions.append((data, next_offset, trace))
         if field(data, BIT_IS_LAST):
             return transitions
-        offset += 2
+        offset += STATE_ITEM_SIZE
 
 
 def walk(machine, n_ext):
@@ -750,7 +760,7 @@ def walk(machine, n_ext):
             continue
         transitions = decode_transitions(machine, offset)
         non_terminal[offset] = (depth, transitions)
-        for _, next_offset in transitions:
+        for _, next_offset, _ in transitions:
             todo.append((next_offset, depth + 1))
     return non_terminal, terminal
 
@@ -784,7 +794,7 @@ def test_state_machine_transitions_are_in_range(machine):
     _, flat, n_ext = machine
     non_terminal, _ = walk(flat, n_ext)
     for offset, (_, transitions) in non_terminal.items():
-        for data, next_offset in transitions:
+        for data, next_offset, _ in transitions:
             particle1 = field(data, BIT_PARTICLE1)
             particle2 = field(data, BIT_PARTICLE2)
             # the merged pseudo-particle is always named by the lower index, so
@@ -802,7 +812,7 @@ def test_state_machine_has_no_duplicate_transitions(machine):
     for offset, (_, transitions) in non_terminal.items():
         keys = [
             (field(d, BIT_PARTICLE1), field(d, BIT_PARTICLE2), nxt)
-            for d, nxt in transitions
+            for d, nxt, _ in transitions
         ]
         assert len(keys) == len(set(keys)), f"duplicate transitions at state {offset}"
 
@@ -813,7 +823,7 @@ def test_state_machine_marks_exactly_one_last_transition(machine):
     _, flat, n_ext = machine
     non_terminal, _ = walk(flat, n_ext)
     for offset, (_, transitions) in non_terminal.items():
-        flags = [field(d, BIT_IS_LAST) for d, _ in transitions]
+        flags = [field(d, BIT_IS_LAST) for d, _, _ in transitions]
         assert flags[-1] == 1
         assert sum(flags) == 1
 
@@ -826,7 +836,7 @@ def test_state_machine_mass_indices_are_in_range(machine):
     assert len(clustering.bw_widths) == bw_count
     non_terminal, _ = walk(flat, n_ext)
     for _, (_, transitions) in non_terminal.items():
-        for data, _ in transitions:
+        for data, _, _ in transitions:
             assert field(data, BIT_MASS_INDEX) <= bw_count
 
 
@@ -835,11 +845,81 @@ def test_initial_state_clusterings_are_never_resonant(machine):
     _, flat, n_ext = machine
     non_terminal, _ = walk(flat, n_ext)
     for _, (_, transitions) in non_terminal.items():
-        for data, _ in transitions:
+        for data, _, _ in transitions:
             if field(data, BIT_PARTICLE1) < 2:
                 assert field(data, BIT_MASS_INDEX) == 0
                 # a beam leg is not a final-state particle and gets no jet scale
                 assert field(data, BIT_IS_JET1) == 0
+
+
+def test_state_machine_trace_modes_are_valid(machine):
+    """Every transition says how the mother's parton line continues into its
+    daughters, and an initial-state clustering always carries the beam line on,
+    which is daughter 1 by construction."""
+    _, flat, n_ext = machine
+    non_terminal, _ = walk(flat, n_ext)
+    for _, (_, transitions) in non_terminal.items():
+        for data, _, trace in transitions:
+            assert trace in TRACE_MODES
+            if field(data, BIT_PARTICLE1) < 2:
+                assert trace == TRACE_FIRST
+
+
+def trace_modes_of(clustering, n_ext):
+    non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), n_ext)
+    return {
+        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)): trace
+        for _, (_, transitions) in non_terminal.items()
+        for data, _, trace in transitions
+    }
+
+
+def three_gluon_diagram(propagator_pdgs):
+    """g g > g g g through an s-channel gluon splitting, legs (g, g, g, g, g)."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [[0.0, 0.0, 0, 0.0, 0.0, pdg] for pdg in propagator_pdgs],
+            "vertices": [
+                ["o0", "o1", "p0"],
+                ["i0", "o2", "p1"],
+                ["p1", "p0", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+def test_gluon_splitting_follows_the_harder_gluon():
+    """A g -> g g vertex carries the parton line into the harder gluon, as
+    ipartupdate does. p0 recombines legs 2 and 3 into a gluon."""
+    clustering = make_clustering(
+        three_gluon_diagram([21, 21]), external_pdg_ids=[21] * 5
+    )
+    assert trace_modes_of(clustering, 5)[(2, 3)] == TRACE_HARDER
+
+
+def test_gluon_to_quarks_carries_the_line_into_both():
+    """A g -> q qbar vertex has no single continuing line, so both daughters
+    carry it on and both get booked at later vertices."""
+    diagrams = three_gluon_diagram([21, 21])
+    diagrams[0]["propagators"][0] = [0.0, 0.0, 0, 0.0, 0.0, 21]
+    clustering = make_clustering(diagrams, external_pdg_ids=[21, 21, 1, -1, 21])
+    assert trace_modes_of(clustering, 5)[(2, 3)] == TRACE_BOTH
+
+
+def test_quark_line_follows_the_quark():
+    """A q -> q g vertex keeps the line on the quark, whichever daughter it is."""
+    # p0 recombines legs 2 and 3 into a quark
+    quark_first = make_clustering(
+        three_gluon_diagram([1, 21]), external_pdg_ids=[21, 21, 1, 21, 21]
+    )
+    assert trace_modes_of(quark_first, 5)[(2, 3)] == TRACE_FIRST
+    quark_second = make_clustering(
+        three_gluon_diagram([1, 21]), external_pdg_ids=[21, 21, 21, 1, 21]
+    )
+    assert trace_modes_of(quark_second, 5)[(2, 3)] == TRACE_SECOND
 
 
 def test_terminal_states_select_known_diagrams(machine):
@@ -904,3 +984,161 @@ def test_exactly_collinear_momenta_are_handled(process):
     assert np.all(np.isfinite(ren))
     assert np.all(np.isfinite(fac1))
     assert np.all(np.isfinite(out))
+
+
+# --------------------------------------------------------------------------
+# the jet-scale scheme switch
+# --------------------------------------------------------------------------
+
+
+EMISSION = ms.MLMClustering.JetScaleScheme.emission
+PRODUCTION = ms.MLMClustering.JetScaleScheme.production
+
+
+def test_production_scheme_is_never_softer_than_emission(process):
+    """The two schemes book the same vertices onto a leg plus, for "production",
+    every later vertex on the line the leg belongs to. Since "production" keeps
+    the hardest of those and "emission" keeps the one "production" starts from,
+    the production scale of a leg can only be larger or equal.
+    """
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=1000, seed=2468)
+    *_, emission, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=EMISSION
+        ),
+        momenta,
+    )
+    *_, production, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=PRODUCTION
+        ),
+        momenta,
+    )
+    assert np.all(production >= emission * (1.0 - 1e-12))
+
+
+def gluon_chain_diagram():
+    """g g > g g g g through a chain of two s-channel gluon splittings, so that
+    one gluon line carries on past the vertex that emitted it:
+    p0 = g(o0, o1), p1 = g(p0, o2). Legs (g, g, g, g, g, g)."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0, 0.0],
+            "propagators": [[0.0, 0.0, 0, 0.0, 0.0, 21] for _ in range(3)],
+            "vertices": [
+                ["o0", "o1", "p0"],
+                ["p0", "o2", "p1"],
+                ["i0", "o3", "p2"],
+                ["p2", "p1", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4, 5]],
+        }
+    ]
+
+
+def test_the_two_schemes_disagree_on_continuing_lines():
+    """The schemes differ only for a leg whose parton line carries on past the
+    vertex that emitted it. In the chain above the harder of the first two
+    gluons stays on the line and is booked again at the second vertex, so
+    "production" gives it the harder of the two scales and "emission" the
+    softer. That is the whole point of the switch."""
+    diagrams = gluon_chain_diagram()
+    pdg_ids = [21] * 6
+    momenta = sample_momenta(diagrams, batch_size=1000, seed=2468)
+    *_, emission, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=EMISSION
+        ),
+        momenta,
+    )
+    *_, production, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=PRODUCTION
+        ),
+        momenta,
+    )
+    differs = ~np.isclose(production, emission)
+    assert differs.any(), "the two schemes gave identical jet scales"
+    # and where they differ it is because production kept a harder vertex
+    assert np.all(production[differs] > emission[differs])
+
+
+def test_the_schemes_coincide_when_no_line_continues(process):
+    """With propagator flavours unknown a merged node is not recognised as a
+    jet, so nothing is booked onto a continuing line and the two schemes fall
+    back to the same answer. The ttgg/ttggg fixtures carry propagator masses
+    only, so this pins that degradation as intentional rather than accidental.
+    """
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=500, seed=2468)
+    *_, emission, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=EMISSION
+        ),
+        momenta,
+    )
+    *_, production, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=PRODUCTION
+        ),
+        momenta,
+    )
+    assert np.array_equal(production, emission)
+
+
+def test_the_schemes_agree_for_a_single_clustering():
+    """A 2 -> 3 process has one clustering per leg, so nothing continues past
+    the vertex that emitted it and the two schemes have to coincide."""
+    diagrams = three_gluon_diagram([21, 21])
+    pdg_ids = [21] * 5
+    momenta = sample_momenta(diagrams, batch_size=256, seed=1357)
+    *_, emission, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=EMISSION
+        ),
+        momenta,
+    )
+    *_, production, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=PRODUCTION
+        ),
+        momenta,
+    )
+    assert np.array_equal(production, emission)
+
+
+def test_the_scheme_does_not_change_the_scales(process):
+    """The switch only moves which leg a clustering scale is booked against; the
+    clustering history, and therefore mu_R and mu_F, are untouched."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams, batch_size=1000, seed=2468)
+    ren_e, fac_e, _, _, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=EMISSION
+        ),
+        momenta,
+    )
+    ren_p, fac_p, _, _, _ = run(
+        make_clustering(
+            diagrams, external_pdg_ids=pdg_ids, jet_scale_scheme=PRODUCTION
+        ),
+        momenta,
+    )
+    assert np.array_equal(ren_e, ren_p)
+    assert np.array_equal(fac_e, fac_p)
+
+
+def test_production_is_the_default():
+    """The default matches madevent, which is the validated reference."""
+    diagrams = three_gluon_diagram([21, 21])
+    assert (
+        ms.MLMClustering.JetScaleScheme.__members__["production"] == PRODUCTION
+    )
+    default = make_clustering(diagrams, external_pdg_ids=[21] * 5)
+    explicit = make_clustering(
+        diagrams, external_pdg_ids=[21] * 5, jet_scale_scheme=PRODUCTION
+    )
+    momenta = sample_momenta(diagrams, batch_size=64, seed=11)
+    assert np.array_equal(run(default, momenta)[3], run(explicit, momenta)[3])

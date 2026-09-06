@@ -39,6 +39,10 @@ dynamical_scale_choice = %(beam.dynamical_scale_choice)s
 jet_radius = %(beam.jet_radius)s
 # heaviest quark flavour treated as a jet by the MLM back-clustering
 max_jet_flavor = %(beam.max_jet_flavor)s
+# how the MLM back-clustering assigns a clustering scale to each outgoing jet
+# options: production (the scale at which the parton's line was produced, as in
+#          madevent), emission (the scale at which the leg itself was emitted)
+jet_scale_scheme = %(beam.jet_scale_scheme)s
 
 [generation]
 events = %(generation.events)s

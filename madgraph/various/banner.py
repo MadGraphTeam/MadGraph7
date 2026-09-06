@@ -6524,6 +6524,16 @@ class RunCardMG7(RunCard):
         # Heaviest quark flavour treated as a jet by the MLM back-clustering
         # (the counterpart of maxjetflavor in the legacy run_card).
         self.add_toml_param('beam', 'max_jet_flavor', 4)
+        # How the MLM back-clustering assigns a clustering scale to each
+        # outgoing jet (written to the LHE as pt_clust_i, and used by Pythia as
+        # the shower starting scale for that parton).
+        #   "production": the hardest vertex on the parton line the leg belongs
+        #                 to, i.e. the scale at which that line was produced.
+        #                 This is what madevent does.
+        #   "emission":   the vertex at which the leg itself was emitted, i.e.
+        #                 the softest clustering it takes part in.
+        self.add_toml_param('beam', 'jet_scale_scheme', "production",
+            allowed=['production', 'emission'])
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)

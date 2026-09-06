@@ -273,8 +273,53 @@ history described above. Two further options, in increasing order of work:
 2. Trace the parton lines through the event the way `ipartupdate` does, which is
    also what would be needed for per-beam factorisation scales.
 
-One more difference in the same area, not addressed: madevent takes the
-**maximum** clustering scale over every jet vertex a leg takes part in
-(`ptclus(leg) = max(ptclus(leg), ...)`), while the kernel takes the scale of the
-**first** clustering the leg takes part in and freezes it there (the
-`is_last_cluster` mask).
+### Which vertex a jet's scale comes from: `beam.jet_scale_scheme`
+
+madevent takes the **maximum** clustering scale over every jet vertex a leg's
+*line* takes part in (`ptclus(leg) = max(ptclus(leg), ...)`, with the line
+followed by `ipartupdate`), where the kernel originally took the scale of the
+**first** clustering the bare leg took part in and froze it there. Both are now
+available, selected by `beam.jet_scale_scheme`:
+
+* `"production"` (the default) - the hardest vertex on the parton line the leg
+  belongs to, i.e. the scale at which that line was produced. This is what
+  madevent does.
+* `"emission"` - the vertex at which the leg itself was emitted, i.e. the
+  softest clustering it takes part in.
+
+**Why it matters.** `pt_clust_i` is not read by the jet-matching veto at all:
+`madevent_interface.py` turns on `Beams:setProductionScalesFromLHEF` for an MLM
+run, so Pythia reads it into `event[i].scale()` and uses it as the **starting
+scale of the shower off parton i** (with `pTmaxMatch = 1`). The shipped
+`JetMatching.h` uses the kinematical `pT()` for its veto, and only FxFx reads
+the per-particle scale, as a tag.
+
+That makes `"production"` the motivated choice. It is the CKKW-style
+prescription: reconstruct the branching history and restart the shower off each
+line at the scale of the node that produced it, letting the veto handle the
+overlap. In MLM the Sudakov suppression *is* the vetoed trial emissions, so
+starting the shower at the last ME emission scale instead - which is what
+`"emission"` does for a line that carries on - never attempts them, and the
+relative normalisation between the n-jet samples comes out wrong.
+
+**What it took.** `"emission"` needs no knowledge of the event beyond the leg
+indices; `"production"` needs the parton line followed through the clustering,
+which is what `ipartupdate` exists for. The compiler now works out, per
+transition and from the colour representations of the mother and the two
+daughters, which daughter the line continues into (follow the first, the second,
+the harder one, or both after a `g -> q qbar`), and stores it as a third word in
+the state machine. The kernel keeps the resulting representative legs per slot,
+the equivalent of `ipart`, and compares transverse momenta in the *original*
+event when it has to pick the harder daughter, as the Fortran does. Colour
+representations come from the `pdg_color_types` map already exported in the
+subprocess metadata, with a Standard Model fallback.
+
+Where madevent's `ipartupdate` keys its leading cases on pdg equality
+(`idmo.eq.idda1`), the colour-based table gives the same answer for every case
+those cover. Where `ipartupdate` stops the run on an unrecognised vertex, the
+compiler keeps the line on the first daughter: wrong, but local, and it costs
+the clustering scale of one leg rather than the whole run.
+
+The two schemes coincide whenever no parton line carries on past the vertex that
+emitted it, which is every leg of a 2 -> 3 process - and is why the earlier
+`p p > e+ ve j` comparison could not have seen the difference.

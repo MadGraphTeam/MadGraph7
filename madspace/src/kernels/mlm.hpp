@@ -11,6 +11,19 @@ constexpr double ONE_PLUS_TINY = 1.000001;
 // Stand-in for a clustering measure that came out inf or NaN; still far
 // above any physical scale, and small enough that SCALE_MAX * 10 is finite.
 constexpr double SCALE_MAX = 1e307;
+// Words per clustering transition in the compiled state machine:
+// (data, next_offset, trace_data). Must match state_machine_item_size in
+// madspace/phasespace/mlm_clustering.hpp.
+constexpr int STATE_ITEM_SIZE = 3;
+// trace_data values, mirroring TraceMode in mlm_clustering.cpp: which daughter
+// of a clustering the mother's parton line continues into.
+constexpr int TRACE_FIRST = 0;
+constexpr int TRACE_SECOND = 1;
+constexpr int TRACE_HARDER = 2;
+constexpr int TRACE_BOTH = 3;
+// JetScaleScheme in mlm_clustering.hpp.
+constexpr int SCHEME_EMISSION = 0;
+constexpr int SCHEME_PRODUCTION = 1;
 
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
@@ -197,6 +210,7 @@ KERNELSPEC void mlm_clustering(
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
+    IIn<T, 0> jet_scale_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -215,6 +229,7 @@ KERNELSPEC void mlm_clustering(
     FVal<T> masses_tmp[N_EXT_MAX];
     int alive = (1 << n_part) - 1;
     int cluster_history[N_EXT_MAX - 3];
+    int cluster_trace[N_EXT_MAX - 3];
     FVal<T> cluster_scales[N_EXT_MAX - 3];
 
     for (int i = 0; i < n_part; ++i) {
@@ -224,12 +239,13 @@ KERNELSPEC void mlm_clustering(
         masses_tmp[i] = external_masses[i];
     }
 
-    int win_next_state = -1, win_data = 0;
+    int win_next_state = -1, win_data = 0, win_trace = TRACE_FIRST;
     bool win_resonant = false;
     FVal<T> win_scale = SCALE_MAX * 10.;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
         int next_state = state_machine[state + 1];
+        int trace_data = state_machine[state + 2];
         int particle1 = data & 0xFF;
         int particle2 = (data >> 8) & 0xFF;
         int mass_index = (data >> 16) & 0xFF;
@@ -289,6 +305,7 @@ KERNELSPEC void mlm_clustering(
             win_next_state = next_state;
             win_scale = scale;
             win_data = data;
+            win_trace = trace_data & 0x3;
             win_resonant = resonant;
         }
         if (is_last) {
@@ -299,6 +316,7 @@ KERNELSPEC void mlm_clustering(
             );
             state = win_next_state;
             cluster_history[cluster_count] = win_data;
+            cluster_trace[cluster_count] = win_trace;
             cluster_scales[cluster_count] = win_scale;
             ++cluster_count;
             // Reset the whole selection, not just the scale: leaving
@@ -307,10 +325,11 @@ KERNELSPEC void mlm_clustering(
             // the walk to a stale state if that happened.
             win_next_state = -1;
             win_data = 0;
+            win_trace = TRACE_FIRST;
             win_resonant = false;
             win_scale = SCALE_MAX * 10.;
         } else {
-            state += 2;
+            state += STATE_ITEM_SIZE;
         }
     }
 
@@ -332,6 +351,17 @@ KERNELSPEC void mlm_clustering(
     for (int i = 0; i < n_part - 2; ++i) {
         outgoing_scales[i] = 0.0;
     }
+
+    // Which external legs the parton line of each surviving slot ends at.
+    // madevent calls this ipart; a slot stands for two legs after a
+    // g -> q qbar splitting, and for none once its line has been absorbed.
+    int rep1[N_EXT_MAX], rep2[N_EXT_MAX];
+    for (int i = 0; i < n_part; ++i) {
+        rep1[i] = i;
+        rep2[i] = -1;
+    }
+
+    bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
     FVal<T> ren_scale_val = 1.0;
     int is_last_cluster = 0b11111111'11111111'11111100;
     for (int i = 0; i < cluster_max; ++i) {
@@ -343,17 +373,74 @@ KERNELSPEC void mlm_clustering(
         bool is_jet1 = (data >> 28) & 1;
         bool is_jet2 = (data >> 29) & 1;
         if (is_qcd) {
-            if (is_jet1 && (is_last_cluster & (1 << particle1))) {
-                outgoing_scales[particle1 - 2] = scale;
-            }
-            if (is_jet2 && (is_last_cluster & (1 << particle2))) {
-                outgoing_scales[particle2 - 2] = scale;
+            if (by_production) {
+                // Book this vertex onto every external leg the two daughters'
+                // lines end at, keeping the hardest vertex each leg takes part
+                // in. That is the scale at which the leg's line was produced.
+                for (int k = 0; k < 2; ++k) {
+                    if (!(k == 0 ? is_jet1 : is_jet2)) {
+                        continue;
+                    }
+                    int daughter = k == 0 ? particle1 : particle2;
+                    for (int m = 0; m < 2; ++m) {
+                        int leg = m == 0 ? rep1[daughter] : rep2[daughter];
+                        if (leg >= 2 && scale > outgoing_scales[leg - 2]) {
+                            outgoing_scales[leg - 2] = scale;
+                        }
+                    }
+                }
+            } else {
+                // Book the vertex at which the leg itself was emitted, i.e.
+                // the first (softest) clustering it takes part in.
+                if (is_jet1 && (is_last_cluster & (1 << particle1))) {
+                    outgoing_scales[particle1 - 2] = scale;
+                }
+                if (is_jet2 && (is_last_cluster & (1 << particle2))) {
+                    outgoing_scales[particle2 - 2] = scale;
+                }
             }
             ren_scale_val *= scale;
         } else {
             ren_scale_val *= max_scale;
         }
         is_last_cluster &= ~((1 << particle1) | (1 << particle2));
+
+        // Carry the parton line into the mother, which occupies slot
+        // particle1. Only needed for the production scheme, but keeping it
+        // unconditional costs nothing and keeps the two branches comparable.
+        int trace = cluster_trace[i];
+        int a1 = rep1[particle1], a2 = rep2[particle1];
+        int b1 = rep1[particle2], b2 = rep2[particle2];
+        if (trace == TRACE_HARDER || trace == TRACE_BOTH) {
+            // madevent compares the transverse momenta of the representative
+            // legs in the original event, not in the clustered one
+            bool second_harder;
+            if (a1 < 0) {
+                second_harder = true;
+            } else if (b1 < 0) {
+                second_harder = false;
+            } else {
+                FVal<T> pt_a = momenta[a1][1] * momenta[a1][1] +
+                    momenta[a1][2] * momenta[a1][2];
+                FVal<T> pt_b = momenta[b1][1] * momenta[b1][1] +
+                    momenta[b1][2] * momenta[b1][2];
+                second_harder = pt_b > pt_a;
+            }
+            if (trace == TRACE_HARDER) {
+                if (second_harder) {
+                    rep1[particle1] = b1;
+                    rep2[particle1] = b2;
+                }
+            } else {
+                // both daughters carry the line on, hardest first
+                rep1[particle1] = second_harder ? b1 : a1;
+                rep2[particle1] = second_harder ? a1 : b1;
+            }
+        } else if (trace == TRACE_SECOND) {
+            rep1[particle1] = b1;
+            rep2[particle1] = b2;
+        }
+        // TRACE_FIRST: slot particle1 already holds daughter 1's line
     }
 
     // Any outgoing leg that no QCD clustering booked a scale onto keeps
@@ -397,6 +484,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
+    IIn<T, 0> jet_scale_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -413,6 +501,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         bw_cutoff,
         jet_radius,
         cm_energy,
+        jet_scale_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -433,6 +522,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     FIn<T, 0> bw_cutoff,
     FIn<T, 0> jet_radius,
     FIn<T, 0> cm_energy,
+    IIn<T, 0> jet_scale_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -449,6 +539,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         bw_cutoff,
         jet_radius,
         cm_energy,
+        jet_scale_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,
