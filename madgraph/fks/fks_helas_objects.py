@@ -865,7 +865,10 @@ class FKSHelasProcess(object):
         tuple, so this leaves the comparison of unpolarized processes strictly
         unchanged."""
         process = amplitude.get('process')
-        return tuple(tuple(leg.get('polarization'))
+        # sorted + deduplicated: the polarization list is a set of allowed
+        # helicities, so 'w+{+-}' and 'w+{-+}' must stay one matrix element
+        # (they also share one directory name).
+        return tuple(tuple(sorted(set(leg.get('polarization'))))
                      for leg in process.get('legs'))
 
     def __eq__(self, other):
