@@ -114,7 +114,7 @@ def async_generate_born(args):
         # if the pdg_list is not there, it has been removed
         # because there are no diagrams
         try:
-            idx = pdg_list.index(amp.pdgs)
+            idx = pdg_list.index(amp.pdgs_pols)
             infilename = realmapout[idx]
             infile = open(infilename,'rb')
             realdata = cPickle.load(infile)
@@ -304,8 +304,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             real_amp_list = []
             for born in born_procs:
                 for amp in born.real_amps:
-                    if not pdg_list.count(amp.pdgs):
-                        pdg_list.append(amp.pdgs)
+                    if not pdg_list.count(amp.pdgs_pols):
+                        pdg_list.append(amp.pdgs_pols)
                         real_amp_list.append(amp)
                         
             #generating and store in tmp files all output corresponding to each real_amplitude
@@ -849,22 +849,52 @@ class FKSHelasProcess(object):
             nexternal += 1
         return (nexternal, ninitial)
     
+    @staticmethod
+    def get_polarization_key(amplitude):
+        """Return the polarization content of the external legs of the process
+        behind an amplitude, in the leg order of that process.
+
+        helas_objects.IdentifyMETag (through its link_from_leg) does not carry
+        the polarization of the external legs, so two processes which differ
+        only by the polarization of one of their legs get the very same tag.
+        This key is compared on top of the tag (see __eq__) so that they are
+        not combined into a single matrix element.  Only the polarizations
+        enter it (not the pdg codes), so that matrix elements which differ by
+        the flavour of their legs keep being combined exactly as before; for a
+        process with no polarization restriction every entry is the empty
+        tuple, so this leaves the comparison of unpolarized processes strictly
+        unchanged."""
+        process = amplitude.get('process')
+        # sorted + deduplicated: the polarization list is a set of allowed
+        # helicities, so 'w+{+-}' and 'w+{-+}' must stay one matrix element
+        # (they also share one directory name).
+        return tuple(tuple(sorted(set(leg.get('polarization'))))
+                     for leg in process.get('legs'))
+
     def __eq__(self, other):
-        """the equality between two FKSHelasProcesses is defined up to the 
+        """the equality between two FKSHelasProcesses is defined up to the
         color links"""
         #first compare the born
-        selftag = helas_objects.IdentifyMETag.\
-                        create_tag(self.born_me.get('base_amplitude'))
-        othertag = helas_objects.IdentifyMETag.\
-                        create_tag(other.born_me.get('base_amplitude'))
+        selfamp = self.born_me.get('base_amplitude')
+        otheramp = other.born_me.get('base_amplitude')
+        selftag = helas_objects.IdentifyMETag.create_tag(selfamp)
+        othertag = helas_objects.IdentifyMETag.create_tag(otheramp)
 
-        # MZ: if EW sudakov are included, do not combine. 
+        # MZ: if EW sudakov are included, do not combine.
         # This is not 100% ideal, as it is quite inefficient, but it is the safest option
         if self.ewsudakov:
             logger.warning('With --ewsudakov, matrix elements will not be combined')
             return False
 
         if selftag != othertag:
+            return False
+
+        # the tag above is blind to the polarization of the external legs:
+        # compare it explicitly, otherwise e.g. 'p p > t{+} t~' and
+        # 'p p > t{-} t~' would be merged into a single matrix element and
+        # only the first polarization would ever be written out.
+        if self.get_polarization_key(selfamp) != \
+                                        self.get_polarization_key(otheramp):
             return False
 
         # now the virtuals

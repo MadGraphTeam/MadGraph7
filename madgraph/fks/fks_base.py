@@ -456,6 +456,17 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
+        # Key used to decide whether two real processes can share one
+        # amplitude / matrix element.  The PDGs alone are not enough once a
+        # polarization restriction is in play: two reals can have the same
+        # flavours and fix a different helicity (e.g. p p > t{+} t~ [QCD] and
+        # p p > t{-} t~ [QCD] added to the same run), and the PDG-only key
+        # would put them in the same bucket.
+        # Sharing there would silently give one born the other's reals.
+        # For an unpolarized process the key is the PDG tuple plus a tuple of
+        # empty tuples, so nothing changes.
+        self.pdgs_pols = (self.pdgs,
+                          tuple(tuple(leg.get('polarization')) for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:
@@ -676,11 +687,11 @@ class FKSProcess(object):
         no_diags_amps = []
         for amp in self.real_amps:
             try:
-                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs)]
+                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs_pols)]
             except ValueError:
                 amplitude = amp.generate_real_amplitude()
                 if amplitude['diagrams']:
-                    pdg_list.append(amp.pdgs)
+                    pdg_list.append(amp.pdgs_pols)
                     real_amp_list.append(amplitude)
                 else:
                     no_diags_amps.append(amp)
