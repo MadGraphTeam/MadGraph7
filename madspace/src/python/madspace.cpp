@@ -975,6 +975,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
         );
 
+    py::classh<MLMClustering, FunctionGenerator>(m, "MLMClustering")
+        .def(
+            py::init<
+                std::vector<Topology>,
+                nested_vector3<std::size_t>,
+                nested_vector2<std::size_t>,
+                double,
+                double,
+                bool>(),
+            py::arg("topologies"),
+            py::arg("permutations"),
+            py::arg("diagram_indices"),
+            py::arg("bw_cutoff") = 15.,
+            py::arg("jet_radius") = 0.4,
+            py::arg("hadronic") = true
+        );
+
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(
             "add_data",
@@ -1174,7 +1191,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2")
-        );
+        )
+        .def(py::init<const MLMClustering&>(), py::arg("clustering"))
+        .def("is_mlm", &EnergyScale::is_mlm);
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
     py::classh<DifferentialCrossSection::CachedScale>(m, "CachedScale")

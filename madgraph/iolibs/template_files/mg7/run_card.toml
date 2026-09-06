@@ -33,8 +33,10 @@ fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
 fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
-# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
+# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
+# jet radius used by the MLM clustering measure (only for dynamical_scale_choice = "mlm")
+jet_radius = %(beam.jet_radius)s
 
 [generation]
 events = %(generation.events)s

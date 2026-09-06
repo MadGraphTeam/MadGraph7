@@ -2191,6 +2191,94 @@ scale_partonic_energy:
       type: [float]
       desc:
 
+mlm_clustering_hadronic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+  vectorized: False
+
+mlm_clustering_leptonic:
+  inputs:
+    - name: momenta
+      type: [float, n, 4]
+      desc:
+    - name: random
+      type: [float]
+      desc:
+    - name: state_machine
+      type: [int, single, m]
+      desc:
+    - name: external_masses
+      type: [float, n]
+      desc:
+    - name: bw_masses
+      type: [float, single, k]
+      desc:
+    - name: bw_widths
+      type: [float, single, k]
+      desc:
+    - name: bw_cutoffs
+      type: [float, single]
+      desc:
+    - name: jet_radius
+      type: [float, single]
+      desc:
+  outputs:
+    - name: ren_scale
+      type: [float]
+      desc:
+    - name: fact_scale1
+      type: [float]
+      desc:
+    - name: fact_scale2
+      type: [float]
+      desc:
+    - name: outgoing_scales
+      type: [float, n-2]
+      desc:
+    - name: diagram_index
+      type: [int]
+      desc:
+  vectorized: False
+
 ---
 title: Chili
 

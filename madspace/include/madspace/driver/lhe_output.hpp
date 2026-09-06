@@ -50,6 +50,7 @@ struct LHEParticle {
     double px, py, pz, energy, mass;
     double lifetime;
     double spin;
+    double cluster_scale;
 };
 
 struct LHEEvent {
@@ -60,6 +61,7 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     std::vector<LHEParticle> particles;
+    bool has_cluster_scales;
 
     void format_to(std::string& buffer) const;
 };

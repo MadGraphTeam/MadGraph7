@@ -274,6 +274,11 @@ void ChannelEventGenerator::init_field_indices() {
     } else {
         _field_indices.partial_weight_product = -1;
     }
+    if (index_map.contains("cluster_scales")) {
+        _field_indices.cluster_scales = index_map.at("cluster_scales");
+    } else {
+        _field_indices.cluster_scales = -1;
+    }
     if (index_map.contains("subprocess_index")) {
         _field_indices.subprocess_index = index_map.at("subprocess_index");
     } else {
@@ -648,6 +653,18 @@ void ChannelEventGenerator::write_events(
         for (std::size_t i = 0; i < pw_view.size(); ++i) {
             auto event = event_buffer.event(i);
             event.partial_weight_product() = pw_view[i];
+        }
+    }
+
+    if (_field_indices.cluster_scales != -1) {
+        auto cluster_view =
+            unweighted_events.at(_field_indices.cluster_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = cluster_view[i];
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
+            }
         }
     }
 

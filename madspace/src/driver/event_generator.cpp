@@ -435,10 +435,14 @@ void EventGenerator::combine_to_lhe_npy(
             buffer_out.event(i).from_lhe_event(lhe_event);
             std::size_t j = 0;
             for (; j < lhe_event.particles.size(); ++j) {
-                buffer_out.particle(i, j).from_lhe_particle(lhe_event.particles[j]);
+                buffer_out.particle(i, j).from_lhe_particle(
+                    lhe_event.particles[j], lhe_event.has_cluster_scales
+                );
             }
             for (; j < lhe_completer.max_particle_count(); ++j) {
-                buffer_out.particle(i, j).from_lhe_particle(LHEParticle{});
+                buffer_out.particle(i, j).from_lhe_particle(
+                    LHEParticle{}, lhe_event.has_cluster_scales
+                );
             }
         }
         event_file.write(buffer_out);
@@ -642,6 +646,8 @@ void EventGenerator::read_and_combine(
     bool has_beam2 = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_beam2;
     bool has_partial =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
+    bool has_clustering =
+        _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
 
@@ -711,6 +717,9 @@ void EventGenerator::read_and_combine(
             particle_out.px() = particle_in.px();
             particle_out.py() = particle_in.py();
             particle_out.pz() = particle_in.pz();
+            if (has_clustering) {
+                particle_out.cluster_scale() = particle_in.cluster_scale();
+            }
         }
         for (; i < buffer.particle_count(); ++i) {
             auto particle_out = buffer.particle(event_index, i);
@@ -750,6 +759,15 @@ void EventGenerator::fill_lhe_event(
                 .energy = particle_in.energy(),
             }
         );
+    }
+    bool has_clustering =
+        _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
+    lhe_event.has_cluster_scales = has_clustering;
+    if (has_clustering) {
+        for (std::size_t i = 0; i < lhe_event.particles.size(); ++i) {
+            lhe_event.particles.at(i).cluster_scale =
+                buffer.particle(event_index, i).cluster_scale();
+        }
     }
     lhe_completer.complete_event_data(
         lhe_event,

@@ -12,7 +12,7 @@ constexpr double INV_GEV2_TO_PB = 0.38937937217186e9;
 template <typename T>
 struct FourMom {
     KERNELSPEC FVal<T>& operator[](int i) { return p[i]; }
-    KERNELSPEC FVal<T>& operator[](int i) const { return p[i]; }
+    KERNELSPEC const FVal<T>& operator[](int i) const { return p[i]; }
     FVal<T> p[4];
 };
 
@@ -190,6 +190,16 @@ KERNELSPEC FVal<T> lsquare(FourMom<T> p) {
 template <typename T>
 KERNELSPEC FVal<T> esquare(FourMom<T> p) {
     return p[1] * p[1] + p[2] * p[2] + p[3] * p[3];
+}
+
+template <typename T>
+KERNELSPEC FVal<T> ldot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[0] * p2[0] - p1[1] * p2[1] - p1[2] * p2[2] - p1[3] * p2[3];
+}
+
+template <typename T>
+KERNELSPEC FVal<T> edot(FourMom<T> p1, FourMom<T> p2) {
+    return p1[1] * p2[1] + p1[2] * p2[2] + p1[3] * p2[3];
 }
 
 template <typename T>

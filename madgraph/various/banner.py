@@ -6517,7 +6517,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'fact_scale2', 91.188)
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
-                     'half_transverse_mass', 'partonic_energy'])
+                     'half_transverse_mass', 'partonic_energy', 'mlm'])
+        # Jet radius entering the kt clustering measure of the MLM back-clustering
+        # (only used when dynamical_scale_choice = "mlm").
+        self.add_toml_param('beam', 'jet_radius', 0.4)
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)
