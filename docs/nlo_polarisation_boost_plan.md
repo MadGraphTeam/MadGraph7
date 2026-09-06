@@ -1518,8 +1518,31 @@ massless case. Details and the before/after numbers:
 identical reals and the identical amplitude sharing before and after, so every
 number in this section stands.
 
-#### Two limitations, which is why this narrows rather than removes
+#### Three limitations, which is why this narrows rather than removes
 
+0. **A coloured particle in the INITIAL state stays refused, whatever its
+   mass.** The initial-state splitting is read backwards,
+   `g -> q(-> Born) q~`: the polarised parton that enters the Born is an
+   *internal* line of the real emission, so there is no external leg to carry
+   the projection and nothing for `get_frame_mask_real` to select. That is a
+   statement about the topology, not about the mass, which is exactly why the
+   massless-only rule below does not catch it: `b{+} b~ > h [QCD]` has a
+   massive `b` in the default `sm`, used to pass `check_process_format`, and
+   then died inside generation with a raw
+   `fks_common.FKSProcessError: Cannot carry the polarization [1] of the born
+   leg with id 5 through the splitting into ids [21, -5]`. On `0198d8a92` it
+   generated and *silently dropped* the polarisation in 2 of its 3 reals.
+   Note also that the closure study above had its polarised legs in the
+   **final state only**, so there is no evidence for an initial-state one
+   either. The refusal is per leg and wholesale: the same initial-state quark
+   also has the perfectly well-defined `q -> q g` splitting, but `split_leg`
+   builds every splitting of the leg and the backward one raises, so the leg
+   is refused as a whole rather than channel by channel.
+   A **1 → N decay is exempt**: `fks_base.find_reals` skips initial-state
+   splittings for a decay process, so `t{+} > w+ b QED=1 [QCD]` and
+   `h > b{+} b~ QED=1 [QCD]` are accepted and their reals do carry the
+   polarisation. `check_process_format` recognises a decay as "exactly one
+   particle before the `>`".
 1. **Massless coloured is untested, so it stays refused** — and it is no
    longer only an evidence gap. `fks_common.carry_polarization` can only put
    the Born's polarisation on the real's leg `j` when `j` is the same particle

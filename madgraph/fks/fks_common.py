@@ -348,13 +348,25 @@ def carry_polarization(mother, split): #test written
     matrix elements are subtracted against each other, so they have to fix the
     same helicity state or the subtraction is comparing a fixed-helicity Born
     with a helicity-summed real. This is only meaningful when j carries the
-    same identity as the mother, which for a massive QCD emitter is always the
-    case (the only splitting is t -> t g). It is *not* the case for e.g.
-    g -> q q~, where there is no correspondence to transport; those mothers
-    are massless and coloured, and are refused at generation time by the
-    polarization guard in madgraph_interface.CheckValidForCmd.check_process_format.
-    Raise rather than silently dropping the polarization if that guard is ever
-    relaxed further.
+    same identity as the mother, which for a massive QCD emitter in the FINAL
+    state is always the case (the only splitting is t -> t g).
+
+    Two families of mother do not satisfy it, and both are refused at
+    generation time by the polarization guard in
+    madgraph_interface.CheckValidForCmd.check_process_format. This function
+    raises rather than silently dropping the polarization, so that it stays a
+    backstop if that guard is ever relaxed:
+      - a MASSLESS coloured final-state mother. g -> q q~ turns the polarized
+        gluon into a quark pair, so there is no leg with the mother's identity
+        to transport the projection to.
+      - ANY coloured INITIAL-state mother, whatever its mass. The initial-state
+        splitting is read backwards, g -> q(-> born) q~: the polarized quark
+        that enters the born is an *internal* line of the real emission, so
+        there is no external leg to carry the projection at all. The raise is
+        all-or-nothing per leg: the same initial-state quark also has the
+        well-defined q -> q g splitting, but split_leg is called for every
+        splitting of the leg and the backward one raises first, so the
+        initial state is refused wholesale rather than channel by channel.
     """
     pol = mother.get('polarization')
     if not pol:
@@ -369,7 +381,10 @@ def carry_polarization(mother, split): #test written
             (pol, mother['id'], [l['id'] for l in split]))
     # ... and it has to be j and not i: for g -> g g in the final state both
     # daughters have the mother's identity and there is nothing to pick
-    # between them away from the soft limit.
+    # between them away from the soft limit. (Only split[1] is inspected;
+    # find_splittings can hand split_leg a 3-particle parts list -- the
+    # 4-gluon vertex -- whose split[2] would go unchecked. That is gluon-only,
+    # so a polarized mother reaching it is already refused by the guard.)
     if len(split) > 1 and split[1]['id'] == mother['id'] and \
        split[1]['state'] == mother['state']:
         raise FKSProcessError(

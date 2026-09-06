@@ -59,11 +59,40 @@ when that fails, so relaxing the massless refusal cannot reintroduce the bug
 quietly. This is a second, independent reason to keep massless coloured
 refused, on top of the evidence gap.
 
+The same raise also fires for a coloured particle in the **initial** state,
+where the splitting runs backwards (`g -> q(-> Born) q~`) and the polarised
+parton is an internal line of the real. That is a topological statement, not a
+mass one, so it is a rule of its own: `check_process_format` refuses a
+polarised coloured *initial-state* leg whatever its mass, and only a **decay**
+(one particle before the `>`, never split by `find_reals`) is exempt. After
+that guard, `carry_polarization`'s raise is unreachable from any accepted
+process — which is what a backstop should be.
+
 Two reals may now share one amplitude only if their PDGs **and** their
-per-leg polarisations agree (`FKSRealProcess.pdgs_pols`); without that,
-`generate p p > t{+} t~ [QCD]` + `add process p p > t{-} t~ [QCD]` could hand
-one Born the other's reals. For any process without a polarisation restriction
-the key is the PDG tuple plus a tuple of empty tuples, so nothing changes.
+per-leg polarisations agree (`FKSRealProcess.pdgs_pols`). For any process
+without a polarisation restriction the key is the PDG tuple plus a tuple of
+empty tuples, so nothing changes.
+
+This is **defensive**, not a fix for an observable symptom. The obvious way to
+collide the old PDG-only key,
+
+```
+generate    p p > t{+} t~ [real=QCD]
+add process p p > t{-} t~ [real=QCD]
+```
+
+does not in fact reach it: all 18 FKS matrix elements are generated (9 `t{R}`
+plus 9 `t{L}`, both visible in the log) and then only **3** P directories are
+written, all `tRtx` — `t{L}` appears in no file at all. The second
+polarisation is eaten earlier, by `FKSHelasProcess.__eq__`
+(`madgraph/fks/fks_helas_objects.py`), which compares Borns through
+`helas_objects.IdentifyMETag.create_tag`, and `IdentifyMETag.link_from_leg`
+does not include `polarization`: the two Borns compare equal and
+`add_process` merges one away. That behaviour is identical on the parent
+commit and here, it is a separate pre-existing bug tracked elsewhere, and it
+is **not** fixed on this branch. LO is unaffected. The `pdgs_pols` key would
+have collided had the reals ever got that far, and it becomes load-bearing the
+moment the `IdentifyMETag` bug is fixed.
 
 After the fix, `e+ e- > t{+} t~ [QCD]` exports a real `e+ e- > t{R} t~ g` with
 `NCOMB = 16` (Born `NCOMB = 8` times the gluon's two helicities), `check_poles`

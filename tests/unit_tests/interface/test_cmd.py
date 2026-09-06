@@ -251,12 +251,20 @@ class TestValidCmd(unittest.TestCase):
             nothing NLO-specific applies;
           - the subtracted modes thread the frame through Born, real, FKS
             counterterms, virtual and the MC-counterterm azimuth by hand, and
-            only the QCD path is validated. Colour is restricted there, but
-            only for MASSLESS coloured particles: a massive coloured emitter
-            was measured (see the p p > t t~ [QCD] closure study), a massless
-            one has not been -- and for a massless one the real emission
-            could not carry the born's polarization onto the FKS emitter
-            anyway (g -> q q~ changes the identity of leg j).
+            only the QCD path is validated. Colour is restricted there by two
+            separate rules:
+              * FINAL state: only MASSLESS coloured particles are refused. A
+                massive coloured emitter was measured (see the p p > t t~
+                [QCD] closure study), a massless one has not been -- and for a
+                massless one the real emission could not carry the born's
+                polarization onto the FKS emitter anyway (g -> q q~ changes
+                the identity of leg j).
+              * INITIAL state: ANY coloured particle is refused, whatever its
+                mass. The initial-state splitting runs backwards,
+                g -> q(-> born) q~, so the polarized quark is an internal line
+                of the real and no external leg can carry the projection.
+                A 1 -> N decay is exempt: fks_base.find_reals never splits the
+                initial state of a decay process.
 
         The two gates used to disagree: the first admitted noborn/sqrvirt and
         the second refused them again for being massive, so the first clause
@@ -296,6 +304,45 @@ class TestValidCmd(unittest.TestCase):
                           cmd.check_process_format, 'g{+} g > t t~ [QCD]')
         self.assertRaises(cmd.InvalidCmd,
                           cmd.check_process_format, 'u{+} u~ > t t~ [QCD]')
+
+        # A coloured particle in the INITIAL state is refused whatever its
+        # mass: the initial-state splitting is read backwards,
+        # g -> q(-> born) q~, so the polarized quark is an internal line of the
+        # real emission and there is no external leg to carry the projection.
+        # The massless-only rule above does not catch this, which is why it is
+        # a rule of its own: b and t are massive in the default sm, and
+        # b{+} b~ > h [QCD] used to reach generation and die there with a raw
+        # fks_common.FKSProcessError traceback.
+        for proc in ['b{+} b~ > h [QCD]',
+                     't{+} t~ > z [QCD]',
+                     'b~{+} b > h [real=QCD]',
+                     'g{+} g > t t~ [LOonly=QCD]']:
+            self.assertRaises(cmd.InvalidCmd, cmd.check_process_format, proc)
+        # control: the same colliders, with the polarization on a colourless
+        # leg or on a coloured FINAL-state one -- accepted
+        cmd.check_process_format('b b~ > h{0} [QCD]')
+        cmd.check_process_format('b b~ > t{+} t~ [QCD]')
+        # the two colour rules give distinguishable messages
+        try:
+            cmd.check_process_format('t{+} t~ > z [QCD]')
+            self.fail('an initial-state coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('INITIAL', str(error))
+        try:
+            cmd.check_process_format('p p > u{+} u~ [QCD]')
+            self.fail('a massless coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('massless color charged', str(error))
+            self.assertNotIn('INITIAL', str(error))
+
+        # A 1 -> N DECAY is exempt. Its "initial state" is the decaying
+        # particle, and fks_base.find_reals skips initial-state splittings for
+        # decay processes ("no splittings for initial states in decay
+        # processes"), so that leg is a spectator and keeps its polarization.
+        cmd.check_process_format('t{+} > w+ b QED=1 [QCD]')
+        cmd.check_process_format('h > b{+} b~ QED=1 [QCD]')
+        cmd.check_process_format('t{+} > w+ b{-} QED=1 [QCD]')
+
         # The multiparticle case is what proves the constituent expansion
         # works: p and j are refused through their gluon / massless quarks.
         self.assertRaises(cmd.InvalidCmd,

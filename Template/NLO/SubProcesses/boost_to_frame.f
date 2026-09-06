@@ -488,10 +488,16 @@ c     both sides, and the two matrix elements are boosted into frames that
 c     coincide in the singular limit.
 c
 c     That equality is what makes the whole polarised subtraction well
-c     defined, and it is exactly what fails for a massless emitter
-c     (g -> q q~ has no such correspondence). Do not read this routine as a
-c     licence to relax the massless-coloured refusal in
-c     madgraph_interface.check_process_format.
+c     defined, and it fails in two places, both refused at generation time by
+c     madgraph_interface.check_process_format. Do not read this routine as a
+c     licence to relax either refusal:
+c       - a massless coloured emitter in the final state: g -> q q~ has no
+c         leg with the mother's identity to correspond to.
+c       - a coloured particle in the INITIAL state, whatever its mass. The
+c         initial-state splitting runs backwards, g -> q(-> Born) q~, so the
+c         polarised Born leg is an INTERNAL line of the real: there is no
+c         real-side external leg for this mask to select at all, and the
+c         positional r <-> b table above has nothing to say about it.
 c
 c     output: ids(nexternal)
 c**************************************************************************

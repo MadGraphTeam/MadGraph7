@@ -825,13 +825,21 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("       caller supplies, so any perturbation order is allowed.")
         logger.info("   A polarized massless particle needs no frame and was always allowed.")
         logger.info(" > Colour, in [QCD]/[real=QCD]/[LOonly=QCD] only: a polarized coloured")
-        logger.info("   particle must be massive. p p > t{+} t~{-} [QCD] is allowed -- the")
-        logger.info("   closure and the FKS soft limit off the polarized top were measured --")
-        logger.info("   but a polarized gluon or massless quark is untested and refused, and")
-        logger.info("   so are 'p' and 'j', which contain one. Note this depends on the model:")
-        logger.info("   b is massive in a 4-flavour scheme and massless in a 5-flavour one.")
-        logger.info("   The check reads the symbolic mass at generation time, so setting a mass")
-        logger.info("   to zero in the param card afterwards is NOT re-checked.")
+        logger.info("   particle must be in the FINAL state and must be massive.")
+        logger.info("     - final state, massive: allowed. p p > t{+} t~{-} [QCD] -- the closure")
+        logger.info("       and the FKS soft limit off the polarized top were measured.")
+        logger.info("     - final state, massless: untested and refused, so a polarized gluon or")
+        logger.info("       massless quark, and 'p'/'j', which contain one. Note this depends on")
+        logger.info("       the model: b is massive in a 4-flavour scheme and massless in a")
+        logger.info("       5-flavour one. The check reads the symbolic mass at generation time,")
+        logger.info("       so setting a mass to zero in the param card afterwards is NOT")
+        logger.info("       re-checked.")
+        logger.info("     - INITIAL state: refused whatever the mass, so b{+} b~ > h [QCD] and")
+        logger.info("       t{+} t~ > z [QCD] are both rejected. The initial-state splitting runs")
+        logger.info("       backwards, g -> q(-> Born) q~, so the polarized parton is an internal")
+        logger.info("       line of the real emission and no external leg can carry the")
+        logger.info("       projection. A 1 -> N decay is exempt: its initial leg is never split,")
+        logger.info("       so t{+} > w+ b [QCD] and h > b{+} b~ [QCD] are fine.")
         logger.info(" > Caveat, coloured polarized particle + single-leg 'me_frame': what was")
         logger.info("   measured is a two-leg frame, me_frame = [3,4]. A frame made of ONE leg")
         logger.info("   puts that leg exactly at rest, which is where HELAS picks the spin")
@@ -1326,10 +1334,36 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be '
                                       'used for NLO processes')
 
-            # Colour, in the subtracted regime only, and only when the
-            # polarised particle is also MASSLESS. A coloured polarised
+            # Colour, in the subtracted regime only. A coloured polarised
             # particle is an FKS emitter, so its polarisation axis and the
-            # subtraction's singular regions have to be shown to agree.
+            # subtraction's singular regions have to be shown to agree. Two
+            # separate rules come out of that, with two distinguishable
+            # messages:
+            #
+            # (a) INITIAL state: refused outright, whatever the mass. The
+            #     initial-state splitting is read backwards, g -> q(->Born) q~:
+            #     the polarised quark that enters the Born is an *internal*
+            #     line of the real, so there is no external leg left to carry
+            #     the projection and nothing for boost_to_frame.f's real-side
+            #     mask to point at. Mass is irrelevant, which is why the
+            #     massless-only rule (b) does not catch it -- b{+} b~ > h [QCD]
+            #     used to get past this check with a massive b and then die
+            #     inside fks_common.carry_polarization with a raw traceback.
+            #     The refusal is per LEG and wholesale: the same initial-state
+            #     quark also has the perfectly well-defined q -> q g splitting,
+            #     but split_leg loops over every splitting of the leg and the
+            #     backward one raises first, so the leg is refused as a whole
+            #     rather than only in the g -> q q~ channel.
+            #     Note also that the massive closure study below had its
+            #     polarised legs in the FINAL state only, so there is no
+            #     evidence covering an initial-state one either.
+            #     A 1 -> N decay is NOT covered by this: its "initial state" is
+            #     the decaying particle, which fks_base.find_reals never splits
+            #     ("no splittings for initial states in decay processes"), so
+            #     it stays a spectator. t{+} > w+ b QED=1 [QCD] is fine.
+            #
+            # (b) FINAL state: refused only when the polarised particle is also
+            #     MASSLESS.
             #  - MASSIVE: measured and fine. p p > t t~ [QCD] with this guard
             #    bypassed closes to +0.0006 % at fixed order and -0.19 % at
             #    NLO+PS, check_poles cancels 20/20 in every P dir, and test_ME
@@ -1357,37 +1391,63 @@ class CheckValidForCmd(cmd.CheckCmd):
             #    refused depending on the model -- and a user who accepts
             #    p p > b{+} b~ [QCD] under a 4F model and then sets MB = 0 in
             #    the param card lands in the refused regime with no re-check.
+            #    (Rule (a) does not have this problem: it never looks at the
+            #    mass.)
             #
-            # p and j stay refused: the walk below expands a multiparticle and
-            # checks its constituents, and both contain the gluon.
+            # p and j stay refused in the final state: the walk below expands a
+            # multiparticle and checks its constituents, and both contain the
+            # gluon. In the initial state they are refused by (a) directly.
             if subtracted_boost_ok:
-                def check(p):
+                # A 1 -> N decay: the single particle before the '>' is the
+                # decaying one, never an FKS initial-state splitter.
+                is_decay = len(particles_parts[0].split()) == 1
+
+                def check(p, initial):
                     # get_particle returns None for a name the model does not
                     # know; leave the real diagnostic to the process parser
                     if p is None:
                         return
-                    if p.get('color') != 1 and p.get('mass').lower() == 'zero':
+                    if p.get('color') == 1:
+                        return
+                    if initial and not is_decay:
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'color charged particles (%s) in the INITIAL '
+                            'state of a subtracted NLO computation, whatever '
+                            'their mass: the initial-state splitting makes '
+                            'the polarized particle an internal line of the '
+                            'real emission, so no external leg can carry the '
+                            'polarization. Only final-state coloured '
+                            'particles may be polarized.' % p.get('name'))
+                    if p.get('mass').lower() == 'zero':
                         raise self.InvalidCmd(
                             'Polarization restriction can not be used for '
                             'massless color charged particles (%s) in a '
                             'subtracted NLO computation. Massive coloured '
-                            'particles are supported.' % p.get('name'))
+                            'particles are supported in the final state.'
+                            % p.get('name'))
 
-                for p in particles_parts[0].split() + particles_parts[-1].split():
-                    if '{' not in p:
-                        continue
-                    part = p.split('{')[0]
-                    if not self._curr_model:
-                        continue
-                    particle = self._curr_model.get_particle(part)
-                    if particle:
-                        check(particle)
-                    elif part.lower() in self._multiparticles:
-                        # do_define lowercases the label it stores
-                        for part2 in self._multiparticles[part.lower()]:
-                            check(self._curr_model.get_particle(part2))
-                    else:
-                        check(self._curr_model.get_particle(part.lower()))
+                def walk(particles, initial):
+                    for p in particles.split():
+                        if '{' not in p:
+                            continue
+                        part = p.split('{')[0]
+                        if not self._curr_model:
+                            continue
+                        particle = self._curr_model.get_particle(part)
+                        if particle:
+                            check(particle, initial)
+                        elif part.lower() in self._multiparticles:
+                            # do_define lowercases the label it stores
+                            for part2 in self._multiparticles[part.lower()]:
+                                check(self._curr_model.get_particle(part2),
+                                      initial)
+                        else:
+                            check(self._curr_model.get_particle(part.lower()),
+                                  initial)
+
+                walk(particles_parts[0], True)
+                walk(particles_parts[-1], False)
 
 
     def check_tutorial(self, args):

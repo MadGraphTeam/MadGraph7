@@ -2409,3 +2409,48 @@ class TestFKSProcess(unittest.TestCase):
                                               'polarization': [1]}), model)
         self.assertRaises(fks_common.FKSProcessError,
                           fks_common.find_splittings, gluon, model, {}, 'QCD')
+        # ... but that one raises on the SECOND condition (both daughters have
+        # the mother's identity): find_splittings reaches the ggg vertex
+        # first, so it never exercises the identity-change condition. Two
+        # cases that do:
+        #
+        # (1) g -> q q~ asked for directly. Leg j is the quark, which is not
+        #     the mother.
+        # (tests.unit_tests.TestCase.assertRaises is not usable as a context
+        #  manager -- it swallows the return value -- so check the message by
+        #  hand)
+        try:
+            fks_common.split_leg(gluon,
+                                 [model.get_particle(1),
+                                  model.get_particle(-1)], model)
+            self.fail('g -> q q~ must not silently drop the polarization')
+        except fks_common.FKSProcessError as error:
+            self.assertIn('the FKS emitter j is a different particle',
+                          str(error))
+
+        # (2) a polarized quark in the INITIAL state. Its two QCD splittings
+        #     are [j=u, i=g] -- perfectly well defined -- and the backward
+        #     [j=g, i=u~], in which the polarized quark is an internal line.
+        #     split_leg builds both and carries the polarization onto both, so
+        #     the bad one raises and the whole leg is refused: this is why the
+        #     interface guard refuses a coloured initial state wholesale
+        #     rather than channel by channel.
+        u_init = fks_common.to_fks_leg(MG.Leg({'id': 2, 'number': 1,
+                                               'state': False,
+                                               'polarization': [1]}), model)
+        try:
+            fks_common.find_splittings(u_init, model, {}, 'QCD')
+            self.fail('a polarized initial-state quark must not split '
+                      'silently')
+        except fks_common.FKSProcessError as error:
+            self.assertIn('the FKS emitter j is a different particle',
+                          str(error))
+        # the well-defined channel really is there when the mother carries no
+        # polarization -- so the refusal above is a whole-leg one, not the
+        # absence of a good splitting
+        u_unpol = fks_common.to_fks_leg(MG.Leg({'id': 2, 'number': 1,
+                                                'state': False}), model)
+        self.assertEqual(
+            [[l['id'] for l in s]
+             for s in fks_common.find_splittings(u_unpol, model, {}, 'QCD')],
+            [[2, 21], [21, -2]])
