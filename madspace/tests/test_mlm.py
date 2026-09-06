@@ -930,10 +930,53 @@ def test_terminal_states_select_known_diagrams(machine):
         assert all(index >= 0 for index in diagrams)
 
 
+def massive_leg_permutation_diagram():
+    """A topology whose permutations move a massive leg onto a slot that a
+    different permutation gives to a massless one.
+
+    The shipped fixtures cannot exercise the slot-versus-leg question at all:
+    their permutations only exchange identical gluons, so the two orderings
+    agree and indexing by the wrong one is invisible. Here leg 2 is the top
+    under the first permutation and a gluon under the second.
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, 0.0, 0.0],
+            "propagators": [[0.0, 0.0], [0.0, 0.0]],
+            "vertices": [
+                ["o0", "o1", "p0"],
+                ["i0", "o2", "p1"],
+                ["p1", "p0", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4], [0, 1, 3, 2, 4]],
+        }
+    ]
+
+
+def test_permutations_moving_a_mass_between_legs_are_rejected():
+    """external_masses is indexed by external leg, while a topology's masses
+    are indexed by topology slot, so the permutation has to be applied. The
+    kernel keeps a single mass per leg, so permutations that disagree about a
+    leg's mass cannot be represented at all and have to be refused rather than
+    silently given one of the two answers.
+    """
+    with pytest.raises(Exception) as caught:
+        make_clustering(
+            massive_leg_permutation_diagram(), external_pdg_ids=[21, 21, 6, 21, 21]
+        )
+    assert "mass" in str(caught.value).lower()
+
+
 def test_external_masses_are_in_leg_order(process):
     """The kernel indexes external_masses by external leg while a topology's
     masses are indexed by topology slot, so the permutation has to be applied.
-    For these processes legs 2 and 3 are the tops."""
+    For these processes legs 2 and 3 are the tops.
+
+    On its own this does not pin the ordering down: these fixtures permute only
+    identical gluons, so slot and leg order coincide. The case that tells them
+    apart is test_permutations_moving_a_mass_between_legs_are_rejected.
+    """
     _, diagrams, pdg_ids = process
     clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
     masses = list(clustering.external_masses)
@@ -957,7 +1000,12 @@ def test_extreme_kinematics_do_not_break_the_walk(process):
     machine.
 
     Strongly asymmetric beam energies reach that configuration, so this is a
-    regression test for the crash it used to cause.
+    regression test for the crash it used to cause. Three guards stand between
+    that crash and this assertion - dj_clus zeroing a NaN, the selection
+    mapping a non-finite measure onto SCALE_MAX, and taking the first candidate
+    unconditionally - and they are deliberately redundant, so dropping any one
+    of them leaves the others covering it. What is pinned here is the behaviour
+    they exist for, not each guard individually.
     """
     _, diagrams, pdg_ids = process
     clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
