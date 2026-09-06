@@ -35,10 +35,89 @@ import tests.IOTests as IOTests
 import madgraph.interface.master_interface as MGCmd
 
 import madgraph.fks.fks_common as fks_common
+import madgraph.core.base_objects as base_objects
+import madgraph.iolibs.export_fks as export_fks
+from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
 _input_file_path = os.path.join(_file_path, os.path.pardir, os.path.pardir,
                                 'input_files')
+
+class TestBornDirCollision(unittest.TestCase):
+    """P<...> directory names must never be shared by two different matrix
+    elements.
+
+    shell_string() concatenates particle names and polarization labels with
+    no separator, and every FKS born process carries id 0, so a clash is
+    possible for some models.  os.mkdir always raises EEXIST, so the base
+    died loudly but opaquely; the guard names both processes instead.
+    """
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp('', 'TMPBornDir', None)
+        self.cwd = os.getcwd()
+        os.chdir(self.tmpdir)
+        self.model = base_objects.Model()
+        self.model.set('particles', base_objects.ParticleList([
+            base_objects.Particle({'name': 'c', 'antiname': 'c~',
+                                   'pdg_code': 3})]))
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        shutil.rmtree(self.tmpdir)
+
+    def make_process(self, polarization):
+        legs = base_objects.LegList(
+            [base_objects.Leg({'id': 3, 'number': i + 1, 'state': i > 1})
+             for i in range(4)])
+        legs[2].set('polarization', polarization)
+        return base_objects.Process({'legs': legs, 'model': self.model,
+                                     'id': 0})
+
+    def test_born_dir_collision_is_explicit(self):
+        """A second matrix element asking for a taken directory must get an
+        error naming both processes, not a bare FileExistsError."""
+
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+                                    export_fks.ProcessExporterFortranFKS)
+
+        first = self.make_process([1])
+        second = self.make_process([-1])
+        # force the clash: whatever shell_string() does, both want 'P0_clash'
+        exporter.mkdir_born_dir('P0_clash', first)
+        self.assertTrue(os.path.isdir('P0_clash'))
+
+        try:
+            exporter.mkdir_born_dir('P0_clash', second)
+        except MadGraph5Error as error:
+            message = str(error)
+        else:
+            self.fail('no error raised on a P directory name collision')
+
+        self.assertIn('P0_clash', message)
+        self.assertIn(first.nice_string(prefix=False).strip(), message)
+        self.assertIn(second.nice_string(prefix=False).strip(), message)
+
+    def test_born_dir_no_collision(self):
+        """Distinct names are created without complaint, and the guard does
+        not interfere with an ordinary (unpolarized) name."""
+
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+                                    export_fks.ProcessExporterFortranFKS)
+        plain = self.make_process([])
+        self.assertEqual('0_cc_cc', plain.shell_string())
+        exporter.mkdir_born_dir('P%s' % plain.shell_string(), plain)
+
+        # 'c{S,S}' and 'c{A}' are different restrictions and used to render
+        # the same string; they must now get one directory each
+        left = self.make_process([9, 9])
+        right = self.make_process([99])
+        self.assertNotEqual(left.shell_string(), right.shell_string())
+        exporter.mkdir_born_dir('P%s' % left.shell_string(), left)
+        exporter.mkdir_born_dir('P%s' % right.shell_string(), right)
+        self.assertEqual(sorted(os.listdir('.')),
+                         ['P0_cc_c99c', 'P0_cc_c9c', 'P0_cc_cc'])
+
 
 class IOExportFKSTest(IOTests.IOTestManager):
     """Test class for the export fks module"""
