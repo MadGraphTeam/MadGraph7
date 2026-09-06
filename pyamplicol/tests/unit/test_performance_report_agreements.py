@@ -19,6 +19,7 @@ from tools.performance_report.agreements import (
     MADGRAPH_COMPARISON_FIELD,
     MADGRAPH_FULL_COLOUR,
     Z_RECURRENCE_CROSS_MODE,
+    AgreementError,
     agreement_edges,
     attach_direct_agreements,
     evaluate_lc_common_component,
@@ -142,6 +143,69 @@ def test_lc_common_component_uses_signed_zero_runtime_alias() -> None:
 
     assert component["value"] == 1.0
     assert component["helicity_ids"] == ["h:-1,+1,-1,+1,-1,0"]
+
+
+@pytest.mark.parametrize("target_position", (0, 1))
+def test_selected_flow_common_component_selects_full_helicity_axis_by_id(
+    target_position: int,
+) -> None:
+    cell = _cell("matrix_compiled_builtin_sm_lc", workload=Workload.SELECTED_FLOW)
+    contract = SelectorContract.from_mapping(_selector())
+    helicity_ids = ["h:+1,-1,+1"]
+    values = [(19.0 + 0.0j,)]
+    helicity_ids.insert(target_position, contract.runtime_all_flow_helicity_ids[0])
+    values.insert(target_position, (7.0 + 0.0j,))
+
+    class Runtime:
+        def evaluate_resolved(self, _points: object, **selectors: object) -> object:
+            assert selectors == {
+                "precision": 16,
+                "helicities": None,
+                "color_flows": contract.selected_color_flow_ids,
+            }
+            return SimpleNamespace(
+                helicity_ids=tuple(helicity_ids),
+                color_ids=contract.selected_color_flow_ids,
+                values=(tuple(values),),
+            )
+
+    component = evaluate_lc_common_component(
+        Runtime(),
+        object(),
+        cell=cell,
+        contract=contract,
+    )
+    assert component["value"] == 7.0
+    assert component["helicity_ids"] == list(contract.all_flow_helicity_ids)
+
+
+@pytest.mark.parametrize(
+    ("helicity_ids", "values", "message"),
+    (
+        (("h:+1,-1,+1",), (((1.0,),),), "helicity axis"),
+        (("h:-1,+1,-1", "h:-1,+1,-1"), (((1.0,), (2.0,)),), "helicity axis"),
+        (("h:-1,+1,-1", "h:+1,-1,+1"), (((1.0,),),), "not a scalar"),
+        (("h:-1,+1,-1",), (((1.0, 2.0),),), "not a scalar"),
+    ),
+)
+def test_selected_flow_common_component_rejects_invalid_axes_or_shape(
+    helicity_ids: tuple[str, ...],
+    values: object,
+    message: str,
+) -> None:
+    cell = _cell("matrix_compiled_builtin_sm_lc", workload=Workload.SELECTED_FLOW)
+    contract = SelectorContract.from_mapping(_selector())
+
+    class Runtime:
+        def evaluate_resolved(self, _points: object, **_selectors: object) -> object:
+            return SimpleNamespace(
+                helicity_ids=helicity_ids,
+                color_ids=contract.selected_color_flow_ids,
+                values=values,
+            )
+
+    with pytest.raises(AgreementError, match=message):
+        evaluate_lc_common_component(Runtime(), object(), cell=cell, contract=contract)
 
 
 def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:

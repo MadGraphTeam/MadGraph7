@@ -1763,13 +1763,13 @@ class LegacyMeasurementAdapter:
         log_path: Path,
         phase_reporter: WorkerPhaseReporter | None,
     ) -> _SelectedFlowMeasurement:
-        # With no jets or masses, the default disabled lepton cuts make
-        # gen23's inverse-power energy map start at zero and reject forever.
+        # Disabled lepton cuts leave singular zero-energy/transfer endpoints
+        # in gen23, also when the four-lepton family includes jets.
         # These cuts only choose ten distinct library-discovery points; restore
         # the original module before building the fixed-momenta benchmark.
         discovery_cuts = (
             _generation_lepton_pt_cut(repository)
-            if cell.process_key == "dd_4l_jets" and cell.n_final == 4
+            if cell.process_key == "dd_4l_jets" and cell.n_final >= 4
             else nullcontext()
         )
         with discovery_cuts:

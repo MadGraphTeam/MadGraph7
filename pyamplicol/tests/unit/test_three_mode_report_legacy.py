@@ -1177,13 +1177,19 @@ def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(
 
 
 @pytest.mark.parametrize("generation_fails", (False, True))
+@pytest.mark.parametrize("n_final", range(4, 8))
 def test_four_lepton_discovery_restores_cuts_before_benchmark(
     generation_fails: bool,
+    n_final: int,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    pdgs = (1, -1, -11, 11, -11, 11)
+    pdgs = (1, -1, -11, 11, -11, 11, *(21 for _ in range(n_final - 4)))
     adapter, api, executor = _adapter(FakeApi(pdgs))
+    api.entry = FakeEntry(
+        process_pdgs=pdgs,
+        color_order=(2, *range(7, len(pdgs) + 1), 1, 3, 4, 5, 6),
+    )
     point = tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs)
     monkeypatch.setattr(
         "tools.performance_report.legacy._shared_point",
@@ -1219,7 +1225,7 @@ def test_four_lepton_discovery_restores_cuts_before_benchmark(
                 Accuracy.LC,
                 Workload.SELECTED_FLOW,
                 process_key="dd_4l_jets",
-                n_final=4,
+                n_final=n_final,
             ),
             artifact_path=tmp_path / "four-leptons",
             settings=_settings(repository),

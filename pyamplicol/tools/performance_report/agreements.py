@@ -457,15 +457,27 @@ def evaluate_lc_common_component(
 ) -> dict[str, object]:
     """Evaluate the selector intersection common to both LC layouts."""
 
+    # Selected-flow topology replay exposes its complete physical-helicity
+    # axis, but need not have an independently executable singleton lane.
+    # Resolve that same workload, then select the untimed comparison by ID.
+    full_helicity_axis = cell.workload is Workload.SELECTED_FLOW
     resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
         points,
         precision=16,
-        helicities=contract.runtime_all_flow_helicity_ids,
+        helicities=(
+            None if full_helicity_axis else contract.runtime_all_flow_helicity_ids
+        ),
         color_flows=contract.selected_color_flow_ids,
     )
     helicity_ids = tuple(getattr(resolved, "helicity_ids", ()))
     color_ids = tuple(getattr(resolved, "color_ids", ()))
-    if helicity_ids != contract.runtime_all_flow_helicity_ids:
+    expected_helicity_ids = contract.runtime_all_flow_helicity_ids
+    if (
+        len(expected_helicity_ids) != 1
+        or len(set(helicity_ids)) != len(helicity_ids)
+        or expected_helicity_ids[0] not in helicity_ids
+        or (not full_helicity_axis and helicity_ids != expected_helicity_ids)
+    ):
         raise AgreementError(
             f"{cell.cell_id} LC common component has a different helicity axis"
         )
@@ -475,8 +487,13 @@ def evaluate_lc_common_component(
         )
     values = getattr(resolved, "values", None)
     try:
-        raw_value = values[0][0][0]
-        if len(values) != 1 or len(values[0]) != 1 or len(values[0][0]) != 1:
+        helicity_index = helicity_ids.index(expected_helicity_ids[0])
+        raw_value = values[0][helicity_index][0]
+        if (
+            len(values) != 1
+            or len(values[0]) != len(helicity_ids)
+            or any(len(row) != 1 for row in values[0])
+        ):
             raise IndexError
     except (IndexError, TypeError) as error:
         raise AgreementError(
