@@ -38,6 +38,10 @@ after each completed format/limit batch. A failed real-emission batch is
 bisected diagnostically, retaining its valid points; this exceptional fallback
 is recorded in `real_batch`. Measured failures are preserved on resume unless
 `--retry-failed` is explicit. Ordinary successful evaluation is batched.
+Completing a scan requires successful oracle measurements for every requested
+point; missing or failed references cause a nonzero exit after checkpointing.
+Target-precision failures remain stability data, and `--render` remains
+available for partial results.
 Results record the Git revision, artifact IDs, batch call counts, and elapsed
 times. `--prepare-only` generates/reuses the two artifacts without starting a scan.
 

@@ -828,6 +828,24 @@ def validate_factorization(report):
             raise AssertionError(f"{limit} counterterm does not converge: {errors}")
 
 
+def validate_requested_oracles(report, limits, exponents):
+    """A completed scan needs references; partial render-only requests do not."""
+    missing = [
+        key
+        for limit in limits
+        for exponent in exponents
+        if report["records"].get(key := f"{limit}:oracle:{exponent}", {}).get("status")
+        != "ok"
+    ]
+    if missing:
+        raise ValueError(
+            "Missing or failed requested oracle measurements: "
+            + ", ".join(missing)
+            + ". Checkpoints are retained; use --retry-failed to retry failures "
+            "or --render to redraw available results."
+        )
+
+
 def render(report, output):
     import matplotlib
 
@@ -1069,6 +1087,7 @@ def main(argv=None):
                 report["records"][record_key(record)] = record
             update_comparisons(report)
             checkpoint(args.output, report)
+    validate_requested_oracles(report, args.limits, exponents)
     validate_factorization(report)
     render(report, args.plot or args.output.with_suffix(""))
     print(f"Saved {args.output}", flush=True)

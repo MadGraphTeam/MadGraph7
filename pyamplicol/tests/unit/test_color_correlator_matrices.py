@@ -85,6 +85,29 @@ def test_sector_adapter_adds_pairing_phase_and_ignores_traversal_replicas():
     assert any(entry.weight.real == -3 for entry in matrix.entries)
 
 
+def test_literal_identity_matches_crossed_multiquark_metric():
+    plan = _plan("d d~ > u u~ g")
+    identity = ColorConnection(process_color_legs(plan.process))
+    images = []
+    for sector in plan.sectors:
+        term = sector_color_tensor(sector, plan.process)
+        images.append(
+            apply_color_connection(term.tensor, identity, coefficient=term.coefficient)
+        )
+    # The Born matrix bypasses the literal adapter and uses the inherited
+    # metric directly. Contract its tensor images independently to protect
+    # crossed endpoints, pairing phases and gluon placement in the adapter.
+    for left, bra in zip(plan.sectors, images, strict=True):
+        for right, ket in zip(plan.sectors, images, strict=True):
+            actual = evaluate_color_nc_terms(
+                contract_connected_tensor_nc_terms(bra, ket)
+            )
+            expected = exact_color_contraction_factor(
+                plan, left, right, accuracy="full"
+            )
+            assert actual == ExactColorCoefficient(expected)
+
+
 def test_process_roles_are_already_crossed_and_include_singlets():
     process = _plan("d d~ > z").process
     assert process_color_legs(process) == (

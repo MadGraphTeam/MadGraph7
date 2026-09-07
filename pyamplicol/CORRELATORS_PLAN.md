@@ -422,3 +422,24 @@ calls. Completion now includes all existing native SDK languages.
 User request (verbatim):
 
 I want all the native SDKs to also supported correlated evaluations, so add them. Also for the python API, make sure the spin correlating vectors can also be supplied in arb prec through python's Decimal when defining them for an arb prec or double-double evaluation.
+
+## Four-part completion cross-audit (7 September 2026)
+
+Four independent audits covered colour algebra/catalogue completeness, Python
+runtime/precision and reuse, native SDKs, and the plan/NLO-study/documentation
+boundary. They found no missing requested capability. Independent probes
+included N4LO labelled forests and explicit SU(3) overlaps, DD source arithmetic
+and parameter changes, and 65-point batches across all four native SDKs.
+
+The review found one reporting defect: a scan could exit successfully with
+failed oracle measurements. Completed scans now require every requested
+reference to succeed, retaining checkpoints and allowing explicit partial
+rendering. Target-precision failures remain valid stability data. Focused tests
+cover those cases; an additional literal colour-adapter test independently
+protects its agreement with the ordinary full-colour metric. No numerical
+kernel changed and the retained scientific results remain valid. Final-head
+CI and mergeability remain the outstanding completion gate.
+
+User request (verbatim):
+
+Is there anything missing int he plan? Launch four subagents to do a deep cross-audit of the code.

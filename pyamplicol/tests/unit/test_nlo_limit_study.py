@@ -298,6 +298,65 @@ def test_resume_preserves_failed_measurements_unless_retry_is_explicit():
     ) == [2, 3]
 
 
+@pytest.mark.parametrize(
+    ("oracle_status", "target_status"),
+    (("failed", "ok"), ("missing", "ok"), ("ok", "failed"), ("ok", "ok")),
+)
+def test_scan_requires_requested_oracles_but_partial_render_is_available(
+    tmp_path, monkeypatch, oracle_status, target_status
+):
+    output = tmp_path / "results.json"
+    study.checkpoint(output, {
+        "study": study.STUDY,
+        "oracle_precision": 1200,
+        "records": {
+            f"{limit}:oracle:{exponent}": {
+                "limit": limit, "format": "oracle", "exponent": exponent,
+                "status": "failed",
+            }
+            for limit, exponent in (("soft", 2), ("collinear", 99))
+        },
+    })
+    rendered = []
+
+    def evaluate(paths, sources, format_name, precision, **kwargs):
+        status = oracle_status if format_name == "oracle" else target_status
+        if status == "missing":
+            return []
+        return [{
+            "limit": source["limit"], "exponent": source["exponent"],
+            "format": format_name, "precision": precision, "status": status,
+            "F": "1", "F_over_R": "0.001",
+        } for source in sources]
+
+    monkeypatch.setattr(study, "generate_artifacts", lambda path: ({}, {}))
+    monkeypatch.setattr(study, "evaluate_batch", evaluate)
+    monkeypatch.setattr(study, "render", lambda report, path: rendered.append(report))
+    arguments = [
+        "--_guard-child", "--formats", "arbitrary-1000", "--limits", "collinear",
+        "--exponents", "2", "--output", str(output),
+    ]
+    if oracle_status == "ok":
+        # One requested point suffices; historical failed references are irrelevant.
+        assert study.main(arguments) == 0
+        assert len(rendered) == 1
+    else:
+        with pytest.raises(ValueError, match="oracle measurements: collinear:oracle:2"):
+            study.main(arguments)
+        assert not rendered
+    retained = json.loads(output.read_text())
+    target = retained["records"]["collinear:arbitrary-1000:2"]
+    assert target["status"] == target_status
+    if oracle_status == "failed":
+        assert retained["records"]["collinear:oracle:2"]["status"] == "failed"
+    if oracle_status == "ok" and target_status == "failed":
+        assert target["stable_fraction"] == 0
+    # An explicit redraw remains available even when no valid reference exists.
+    rendered.clear()
+    assert study.main(["--render", "--output", str(output)]) == 0
+    assert rendered == [retained]
+
+
 def test_prepare_only_allows_smaller_oracle_without_starting_arithmetic(monkeypatch):
     calls = []
 
