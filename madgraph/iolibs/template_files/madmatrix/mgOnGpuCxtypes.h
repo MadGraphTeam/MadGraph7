@@ -452,7 +452,13 @@ namespace mg5amcCpu
   // CUDA - using thrust::complex
   //------------------------------
 
-  template<typename FP>
+  inline __host__ __device__ cxtype
+  cxmake( const fptype& r, const fptype& i )
+  {
+    return cxtype( r, i ); // thrust::complex<fptype> constructor
+  }
+
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline __host__ __device__ thrust::complex<FP>
   cxmake( const FP& r, const FP& i )
   {
@@ -697,7 +703,7 @@ namespace mg5amcCpu
     return cxmake( cxreal( c ), -cximag( c ) );
   }
 
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline __host__ __device__ cxsmpl<FP>
   cxmake( const FP& r, const FP& i )
   {
