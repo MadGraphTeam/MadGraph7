@@ -114,6 +114,33 @@ def test_multiple_legs_and_point_specific_vectors_are_copied():
     assert first[0][1][0] == (Decimal(1), Decimal(0))
 
 
+def test_real_decimal_vectors_preserve_all_digits_before_source_arithmetic():
+    first = Decimal("1.000000000000000000000000000000000000000000000000000000000001")
+    second = Decimal("1.000000000000000000000000000000000000000000000000000000000002")
+    with localcontext() as context:
+        context.prec = 7
+        vectors = _prepare_spin_vectors(
+            {1: (first, 0, 0, 0), 2: ((second, 0, 0, 0), (first, 0, 0, 0))},
+            allowed_legs=(1, 2),
+            point_count=2,
+        )
+    assert vectors[0][1][0][0] is first
+    assert vectors[1][1][0][0] is first
+    assert vectors[0][2][0][0] is second
+    assert vectors[1][2][0][0] is first
+    assert vectors[0][1] != vectors[0][2]
+
+
+def test_complex_decimal_pairs_broadcast_and_batch_without_float_conversion():
+    tiny = Decimal("1.00000000000000000000000000000000000000001")
+    wave = ((tiny, tiny), 0, 0, 0)
+    prepared = _prepare_spin_vectors(
+        {1: wave, 2: (wave, wave)}, allowed_legs=(1, 2), point_count=2
+    )
+    assert prepared[0][1][0] == (tiny, tiny)
+    assert prepared[1][2][0] == (tiny, tiny)
+
+
 def test_multiple_vector_sources_write_independent_full_slots():
     overrides = _prepare_spin_vectors(
         {1: (1, 2, 3, 4), 2: (5j, 6, 7, 8)},

@@ -148,6 +148,19 @@ def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
     assert_type(results["dipole13_spin"][0].real, Decimal)
     assert_type(results["dipole13_spin"][0].imag, Decimal)
     assert_type(runtime.evaluate_correlated(momenta), tuple[CorrelatedValue, ...])
+    runtime.set_spin_correlation_vectors(
+        {3: (Decimal(0), (Decimal("1.00000000000000000001"), Decimal("1e-25")), 0, 0)}
+    )
+    assert_type(
+        runtime.evaluate_correlated(momenta, arithmetic="double-double", precision=31),
+        tuple[CorrelatedValue, ...],
+    )
+    assert_type(
+        runtime.evaluate_correlated_many(
+            momenta, requests, arithmetic="double-double", precision=31
+        ),
+        dict[str, tuple[CorrelatedValue, ...]],
+    )
     runtime.set_spin_correlation_vectors(None)
 
 

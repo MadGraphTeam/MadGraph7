@@ -101,7 +101,33 @@ def _complex_component(value: object) -> _ComplexDecimal:
             _decimal(value.real, "spin-vector real component"),
             _decimal(value.imag, "spin-vector imaginary component"),
         )
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+        if len(value) != 2:
+            raise EvaluationError(
+                "a complex spin component must be a (real, imaginary) pair"
+            )
+        return (
+            _decimal(value[0], "spin-vector real component"),
+            _decimal(value[1], "spin-vector imaginary component"),
+        )
     return (_decimal(value, "spin-vector component"), Decimal(0))
+
+
+def _is_spin_vector(value: Sequence[object]) -> bool:
+    """Distinguish four complex scalars from a per-point vector batch."""
+
+    def scalar(item: object) -> bool:
+        return not isinstance(item, Sequence) or isinstance(item, str | bytes)
+
+    return len(value) == 4 and all(
+        scalar(item)
+        or (
+            isinstance(item, Sequence)
+            and len(item) == 2
+            and all(scalar(part) for part in item)
+        )
+        for item in value
+    )
 
 
 def _vector(value: object) -> tuple[_ComplexDecimal, ...]:
@@ -139,10 +165,7 @@ def _prepare_spin_vectors(
                 "spin vectors must be complex four-vectors or a batch"
             )
         # A four-scalar vector broadcasts; a sequence of vectors is point-specific.
-        broadcast = len(raw) == 4 and all(
-            not isinstance(item, Sequence) or isinstance(item, str | bytes)
-            for item in raw
-        )
+        broadcast = _is_spin_vector(raw)
         if broadcast:
             prepared = (_vector(raw),) * point_count
         else:
@@ -162,7 +185,10 @@ def _fill_correlated_sources(
     schema: Mapping[str, object],
     model_parameters: Sequence[Decimal],
     spin_vectors: Mapping[int, tuple[_ComplexDecimal, ...]],
+    *,
+    scalar: type[Decimal] | None = None,
 ) -> None:
+    scalar = Decimal if scalar is None else scalar
     source_fill = _record(schema.get("source_fill"), "source fill")
     seen: set[int] = set()
     for source in _records(source_fill.get("sources"), "sources"):
@@ -185,13 +211,19 @@ def _fill_correlated_sources(
             # v=p remains a nonzero leaf, so a Ward test exercises the amplitude.
             # The public vector is not negated, projected, normalized or conjugated;
             # SourceIR's ordinary amplitude crossing phase is applied once.
-            phase = _crossing_phase(crossing)
+            phase = cast(
+                _ComplexDecimal,
+                tuple(scalar(value) for value in _crossing_phase(crossing)),
+            )
             wave = tuple(
-                _complex_mul(component, phase) for component in spin_vectors[leg]
+                _complex_mul((scalar(component[0]), scalar(component[1])), phase)
+                for component in spin_vectors[leg]
             )
             seen.add(leg)
         else:
-            wave = _source_wavefunction(source, point, schema, model_parameters)
+            wave = _source_wavefunction(
+                source, point, schema, model_parameters, scalar=scalar
+            )
         if len(wave) != stop - start:
             raise ArtifactError(
                 "correlated source wavefunction does not match its value slot"
@@ -207,6 +239,8 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
     Each call owns its vector data. Passing ``None`` or ``{}`` restores ordinary
     helicity sources; no global patching or cross-instance source state is used.
     """
+
+    _scalar: type[Decimal] | None = None
 
     def __init__(
         self,
@@ -536,6 +570,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 parameters,
                 working_precision,
                 cast(Any, schema.get("model_parameters", ())),
+                scalar=self._scalar,
             )
             result = []
             for point, overrides in zip(points, vectors, strict=True):
@@ -603,6 +638,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 parameters,
                 working_precision,
                 cast(Any, schema.get("model_parameters", ())),
+                scalar=self._scalar,
             )
         with localcontext() as context:
             context.prec = precision
@@ -673,6 +709,15 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
         *,
         stage_memo: _StageMemo | None = None,
     ) -> tuple[_ComplexDecimal, ...]:
+        scalar = Decimal if self._scalar is None else self._scalar
+        if scalar is not Decimal:
+            point = tuple(
+                cast(
+                    tuple[Decimal, Decimal, Decimal, Decimal],
+                    tuple(scalar(value) for value in vector),
+                )
+                for vector in point
+            )
         schema = _record(self._execution.get("runtime_schema"), "runtime schema")
         layout = _record(schema.get("parameter_layout"), "parameter layout")
         model_start = _json_integer(layout["value_component_count"]) + _json_integer(
@@ -687,7 +732,9 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 )
             )
         ]
-        _fill_correlated_sources(state, point, schema, model_parameters, spin_vectors)
+        _fill_correlated_sources(
+            state, point, schema, model_parameters, spin_vectors, scalar=self._scalar
+        )
         _fill_momenta(state, point, schema)
         for index, value in enumerate(model_parameters):
             state[model_start + index] = (value, Decimal(0))
@@ -718,3 +765,42 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             ),
             amplitude,
         )
+
+
+class CorrelatedDoubleDoubleExecutor(CorrelatedExactExecutor):
+    """The same retained plan, with explicitly owned DoubleFloat arithmetic."""
+
+    _scalar: type[Decimal]
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        from pyamplicol.runtime._double_double import DoubleDoubleArithmetic
+
+        self._double_double = DoubleDoubleArithmetic()
+        self._scalar = self._double_double.scalar
+        super().__init__(*args, **kwargs)
+
+    def _derive_model_parameters(
+        self,
+        parameters: tuple[Decimal, ...],
+        precision: int,
+        *,
+        arithmetic: str = "arbitrary",
+    ) -> tuple[Decimal, ...]:
+        return tuple(
+            self._scalar(value)
+            for value in super()._derive_model_parameters(
+                tuple(self._scalar(value) for value in parameters),
+                precision,
+                arithmetic="double-double",
+            )
+        )
+
+    def _evaluate_stage(
+        self, evaluator: Any, inputs: tuple[_ComplexDecimal, ...], precision: int
+    ) -> tuple[_ComplexDecimal, ...]:
+        from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+        # Bypass the arbitrary-precision policy, not the evaluator itself.
+        # Each retained stage (including chunks) executes at DoubleFloat precision.
+        outputs = evaluator._evaluate_prepared(_upcast_complex_inputs(inputs, 80), 32)
+        return tuple((self._scalar(real), self._scalar(imag)) for real, imag in outputs)

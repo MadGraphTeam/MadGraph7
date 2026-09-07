@@ -18,24 +18,111 @@ uses the wheel's PyO3 binding for these native operations.
 > [Quick Start](quick-start.md). Native consumers need the corresponding language compiler;
 > they do **not** need a Rust compiler unless the consumer itself is Rust.
 
-## Born-correlation boundary
+## Correlated Born evaluations
 
-The native ABI and its C/C++/Fortran/Rust wrappers do **not** expose colour
-correlator IDs, `set_spin_correlation_vectors`, or `evaluate_correlated` yet.
-These are Python-only capabilities, enabled by
-`Generator.generate(..., correlators=CorrelatorConfig(...))`. A declaration
-prepares complete full-colour, direct, generic compiled amplitudes, with LC,
-NLC or full colour selected for the Python correlated contraction.
+The C, C++, Fortran and standalone Rust SDKs expose the same generation-time
+colour catalogue, literal spin replacements and grouped correlated evaluations.
+These additions are on the `correlators` development branch; use its matching
+SDK and library, not an older installed release. Declare the operators with
+`Generator.generate(..., correlators=CorrelatorConfig(...))` or
+`generate ... --correlators FILE.json` as in [Born Correlations](../correlators.md).
 
-Python's `Runtime.evaluate_correlated(...)` uses retained Symbolica evaluator
-states through a separate exact executor, even at precision 16. Rusticol
-continues to provide ordinary compiled evaluation. Spin-vector state affects
-only the Python correlated method, not native or ordinary Python calls.
-The generated standalone drivers, including the Python driver, demonstrate
-ordinary total/resolved evaluation and do not invoke correlated evaluation.
-See [Born Correlations](../correlators.md) for the declaration, setter, result
-type, conventions, and unsupported correlation execution modes. The native
-LC/NLC/full support described below concerns ordinary squared amplitudes.
+Native correlated evaluation is **binary64 only**, like the ordinary native
+SDK. It runs in RustiCol without Python or Symbolica. The separate Python
+correlated executor retains Symbolica-backed double-double and arbitrary
+precision; its `precision=16` path also uses that executor.
+
+LC, NLC and full colour are selected at generation for each inserted colour
+matrix, independently of connection order. The underlying amplitudes remain
+complete and full-colour: ordinary `evaluate`/`evaluate_resolved` still return
+that underlying process, while the correlated `"born"` request returns the
+Born result at the requested correlated accuracy. Spin defaults affect only
+correlated calls, never ordinary totals or resolved components.
+
+### Catalogue, grouped requests and result indices
+
+| Language | Catalogue | Grouped evaluation and component access |
+| --- | --- | --- |
+| C | `rusticol_runtime_color_correlation_count`, `_id`, `_catalogue_json` | `rusticol_runtime_evaluate_correlated_many_f64`; output offset `2*(request*point_count + point)` gives real then imaginary parts |
+| C++ | `runtime.color_correlation_ids()`, `.color_correlation_catalogue_json()` | `runtime.evaluate_correlated_many(...)`; `result(request, point)` is `std::complex<double>` |
+| Fortran | `runtime%color_correlation_ids()`, `%color_correlation_catalogue_json()` | `runtime%evaluate_correlated_many(...)`; `values(point, request)` is `complex(c_double_complex)` |
+| Rust | `runtime.color_correlation_ids()`, `.color_correlation_catalogue_json()` | `runtime.evaluate_correlated_many_f64(...)`; `result.get(request, point)` returns `Option<Complex64>` |
+
+The ID list and full JSON histories follow generation order, including
+`"born"`. C/C++/Rust indices are zero-based; Fortran array indices are
+one-based. Requests follow caller order and points follow input order.
+Different requests share amplitudes and unchanged spin-dependent stages in
+one call. All momenta use `[point][external particle][E,px,py,pz]`.
+
+For example, using the registered `"T13"` dipole from the correlation guide:
+
+```cpp
+// runtime and flattened momenta have already been prepared.
+std::vector<rusticol::SpinCorrelationVector> vectors{
+    {3, {{{0., 0., 1., 0.}}}}};
+std::vector<rusticol::SpinCorrelationVector> physical;
+auto values = runtime.evaluate_correlated_many(momenta, point_count, {
+    {"born", physical}, {"T13", physical}, {"T13", vectors},
+});
+std::complex<double> first_spin_dipole = values(2, 0);
+runtime.set_spin_correlation_vectors(vectors);
+auto inherited = runtime.evaluate_correlated(momenta, point_count, "T13");
+runtime.set_spin_correlation_vectors();  // Clear defaults.
+```
+
+```fortran
+type(rusticol_correlated_request) :: requests(2)
+complex(c_double_complex), allocatable :: values(:, :)
+! Unallocated spin_vectors inherits defaults; allocated size zero is physical.
+requests(1)%color_correlation = "born"
+allocate(requests(1)%spin_vectors(0), requests(2)%spin_vectors(1))
+requests(2)%color_correlation = "T13"
+requests(2)%spin_vectors(1)%leg = 3_c_size_t
+allocate(requests(2)%spin_vectors(1)%components(4, 1))
+requests(2)%spin_vectors(1)%components(:, 1) = cmplx([0,0,1,0], kind=c_double)
+call runtime%evaluate_correlated_many(momenta, point_count, requests, values)
+print *, values(1, 2)  ! First point, spin-correlated dipole.
+```
+
+```rust
+let mut physical = rusticol::CorrelatedRequest::new("born");
+physical.spin_vectors = Some(vec![]);
+let mut spin = rusticol::CorrelatedRequest::new("T13");
+spin.spin_vectors = Some(vec![rusticol::SpinCorrelationVector {
+    leg: 3,
+    components: vec![[rusticol::Complex64::new(0., 0.),
+                      rusticol::Complex64::new(0., 0.),
+                      rusticol::Complex64::new(1., 0.),
+                      rusticol::Complex64::new(0., 0.)]],
+}]);
+let values = runtime.evaluate_correlated_many_f64(
+    &momenta, point_count, &[physical, spin], &[])?;
+let first_spin_dipole = values.get(1, 0).unwrap();
+```
+
+Spin labels are **one-based public external legs** in every language. Supply
+one complex four-vector to broadcast, or one per momentum point. Fortran uses
+`components(4,points)`; C++ and Rust use a vector of complex four-vectors. The
+C representation explicitly interleaves real/imaginary doubles, avoiding any
+assumption about a language's complex-number memory layout. The nonempty set
+of replaced legs must match a declared spin class.
+
+A C request sets `use_default_spin_vectors=1` with zero explicit vectors to
+inherit the setter, or `0` to use its own vectors (zero means physical
+helicities). C++ uses `std::nullopt` versus an explicit vector; Rust uses
+`None` versus `Some(...)`; Fortran uses unallocated versus allocated
+`spin_vectors`. Setters copy their input, and empty setter input clears it.
+Optional helicity IDs select physical helicities of the unreplaced legs.
+
+Complete examples for the mixed adjoint/fundamental N3LO interference are in
+[`examples/native/correlated.c`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.c),
+[`correlated.cpp`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.cpp),
+[`correlated.f90`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.f90), and
+[`correlated.rs`](https://github.com/mg5amcnlo/pyamplicol/blob/correlators/examples/native/correlated.rs).
+The [generation example](../correlators.md#native-correlated-evaluations)
+prepares their input. Build all four with `make -C examples/native correlated`;
+each executable accepts `ARTIFACT PROCESS`. The generated ordinary standalone
+drivers still demonstrate total/resolved evaluation, not correlations.
 
 ## What the wheel provides
 
@@ -417,7 +504,8 @@ precision when the artifact retains an exact evaluator. OTF does not retain
 that path and rejects non-f64 precision. See
 [Symbolica and Licensing](symbolica-and-licensing.md).
 The separate Python correlated API is also Symbolica-backed at precision 16;
-it is not an additional entry point in this native ABI.
+the native correlated entry points instead use the independent RustiCol
+binary64 executor described above.
 
 ## Common setup failures
 
@@ -436,4 +524,4 @@ See [Troubleshooting](troubleshooting.md) for a fuller decision tree.
 - [Examples Gallery](examples-gallery.md) — complete copied examples and generated API commands.
 - [Artifacts and Portability](artifacts-and-portability.md) — target rules and trusted-input boundary.
 - [Runtime and Selectors](runtime-and-selectors.md) — process ordering and selector semantics.
-- [Born Correlations](../correlators.md) — Python-only, opt-in LC/NLC/full-colour correlations.
+- [Born Correlations](../correlators.md) — opt-in LC/NLC/full-colour correlations in Python and native SDKs.

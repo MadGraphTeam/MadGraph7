@@ -181,6 +181,95 @@ def test_generated_many_colour_spin_and_point_axes_match_separate_calls(correlat
     )
 
 
+def test_generated_arb_preserves_decimal_spin_vectors_in_single_and_many_calls(
+    correlated_gg,
+):
+    runtime = Runtime.load(correlated_gg)
+    first = Decimal("1.00000000000000000000000000000000000000000000000001")
+    second = Decimal("1.00000000000000000000000000000000000000000000000002")
+    zero = Decimal(0)
+    vector = [zero, zero, first, zero]
+    points = (
+        POINT,
+        (POINT[0], POINT[1], (500, 400, 0, 300), (500, -400, 0, -300)),
+    )
+    runtime.set_spin_correlation_vectors({3: vector})
+    vector[2] = second  # The setter owns a copy, without rounding its Decimals.
+    single = runtime.evaluate_correlated(points, precision=100)
+    combined = runtime.evaluate_correlated_many(
+        points,
+        {
+            "inherited": CorrelatedRequest(),
+            "same-broadcast": CorrelatedRequest(
+                spin_vectors={3: (zero, zero, first, zero)}
+            ),
+            "per-point": CorrelatedRequest(
+                spin_vectors={
+                    3: ((zero, zero, first, zero), (zero, zero, second, zero))
+                }
+            ),
+            "unit": CorrelatedRequest(spin_vectors={3: (zero, zero, Decimal(1), zero)}),
+        },
+        precision=100,
+    )
+    assert single == combined["inherited"] == combined["same-broadcast"]
+    assert combined["per-point"][0] == single[0]
+    assert combined["per-point"][1] != single[1]
+    with localcontext() as context:
+        context.prec = 110
+        for index, scale in enumerate((first, second)):
+            unit = combined["unit"][index].real
+            assert unit > 0
+            assert abs(single[index].real / unit - first**2) < Decimal("1e-90")
+            assert abs(combined["per-point"][index].real / unit - scale**2) < Decimal(
+                "1e-90"
+            )
+            assert single[index].real != unit
+
+
+def test_generated_double_double_decimal_spin_and_ward_identities(correlated_gg):
+    runtime = Runtime.load(correlated_gg)
+    first = Decimal("1.0000000000000000000000001")
+    second = Decimal("1.0000000000000000000000002")
+    zero = Decimal(0)
+    points = (POINT, POINT)
+    runtime.set_spin_correlation_vectors({3: (zero, zero, first, zero)})
+    before = runtime.evaluate_correlated(points, precision=70)
+    single = runtime.evaluate_correlated(
+        points, arithmetic="double-double", precision=31
+    )
+    grouped = runtime.evaluate_correlated_many(
+        points,
+        {
+            "inherited": CorrelatedRequest(),
+            "unit": CorrelatedRequest(spin_vectors={3: (0, 0, 1, 0)}),
+            "pointwise": CorrelatedRequest(
+                spin_vectors={3: ((0, 0, first, 0), (0, 0, second, 0))}
+            ),
+            "complex": CorrelatedRequest(spin_vectors={3: (0, 0, (zero, first), 0)}),
+            "ward": CorrelatedRequest(
+                spin_vectors={3: tuple(Decimal(value) for value in POINT[2])}
+            ),
+        },
+        arithmetic="double-double",
+        precision=31,
+    )
+    assert single == grouped["inherited"] == grouped["complex"]
+    assert grouped["pointwise"][0] == single[0]
+    assert grouped["pointwise"][1] != single[1]
+    with localcontext() as context:
+        context.prec = 80
+        for index, scale in enumerate((first, second)):
+            unit = grouped["unit"][index].real
+            assert abs(single[index].real / unit - first**2) < Decimal("1e-28")
+            assert abs(grouped["pointwise"][index].real / unit - scale**2) < Decimal(
+                "1e-28"
+            )
+            assert abs(grouped["ward"][index].real / unit) < Decimal("1e-48")
+            assert abs(single[index].real / before[index].real - 1) < Decimal("1e-28")
+    assert runtime.evaluate_correlated(points, precision=70) == before
+
+
 def test_generated_born_recovery_and_n3lo_colour_coherence(correlated_gg):
     runtime = Runtime.load(correlated_gg)
     born = _value(runtime)

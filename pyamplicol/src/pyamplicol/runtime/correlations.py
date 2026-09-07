@@ -18,11 +18,14 @@ from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
 from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
 from pyamplicol.correlators import CorrelatedRequest, CorrelatedValue, CorrelatorConfig
+from pyamplicol.runtime._double_double import correlated_precision
 from pyamplicol.runtime._native_selection import native_process_selection
 from pyamplicol.runtime.correlated_exact import (
     CoherentAmplitudeBatch,
     CoherentAmplitudeGroup,
+    CorrelatedDoubleDoubleExecutor,
     CorrelatedExactExecutor,
+    _is_spin_vector,
     _prepare_spin_vectors,
 )
 from pyamplicol.runtime.symbolica_exact import _complex_mul, _working_precision
@@ -136,7 +139,8 @@ class _ContractionPlan:
                     raise ArtifactError(
                         "correlated amplitude point has an invalid group count"
                     )
-                real, imag = Decimal(0), Decimal(0)
+                scalar = type(batch.normalization_factor)
+                real, imag = scalar(0), scalar(0)
                 for left, right, weight in self.terms:
                     a, b = point[left], point[right]
                     # Keep the single-ID multiplication/accumulation order.
@@ -152,7 +156,10 @@ class _ContractionPlan:
         with localcontext() as context:
             context.prec = precision
             context.rounding = ROUND_HALF_EVEN
-            return tuple(CorrelatedValue(+real, +imag) for real, imag in results)
+            return tuple(
+                CorrelatedValue(+Decimal(real), +Decimal(imag))
+                for real, imag in results
+            )
 
 
 def _prepare_contraction(
@@ -160,6 +167,7 @@ def _prepare_contraction(
     matrix: _Matrix,
     *,
     precision: int,
+    scalar: type[Decimal] = Decimal,
 ) -> _ContractionPlan:
     """Prepare exact weights and indices once, without numerical amplitude state."""
     groups: dict[str, dict[int, int]] = {}
@@ -179,8 +187,8 @@ def _prepare_contraction(
                 entry.left,
                 entry.right,
                 (
-                    Decimal(entry.real.numerator) / Decimal(entry.real.denominator),
-                    Decimal(entry.imag.numerator) / Decimal(entry.imag.denominator),
+                    scalar(entry.real.numerator) / scalar(entry.real.denominator),
+                    scalar(entry.imag.numerator) / scalar(entry.imag.denominator),
                 ),
             )
             for entry in matrix.entries
@@ -199,9 +207,12 @@ def _contract(
     batch: CoherentAmplitudeBatch, matrix: _Matrix, *, precision: int
 ) -> tuple[CorrelatedValue, ...]:
     """Sum spectator helicities incoherently, but retain all colour phases."""
-    return _prepare_contraction(batch.groups, matrix, precision=precision).evaluate(
-        batch, precision=precision
-    )
+    return _prepare_contraction(
+        batch.groups,
+        matrix,
+        precision=precision,
+        scalar=type(batch.normalization_factor),
+    ).evaluate(batch, precision=precision)
 
 
 def load_correlator_catalogue(backend: Any) -> CorrelatorCatalogue:
@@ -274,6 +285,8 @@ class CorrelatorEvaluator:
         if catalogue is None:
             catalogue = load_correlator_catalogue(backend)
         self._matrices = {matrix.id: matrix for matrix in catalogue.matrices}
+        self._catalogue = catalogue
+        self._double_double_executor: CorrelatedDoubleDoubleExecutor | None = None
         self._declarations = catalogue.declarations
         self._vectors: dict[int, object] = {}
         self._executor = CorrelatedExactExecutor(
@@ -283,6 +296,20 @@ class CorrelatorEvaluator:
             spin_correlated_legs=catalogue.declarations.spin_legs,
             coherent_groups=catalogue.coherent_groups,
         )
+
+    def _select_executor(self, arithmetic: str) -> CorrelatedExactExecutor:
+        if arithmetic != "double-double":
+            return self._executor
+        if self._double_double_executor is None:
+            catalogue = self._catalogue
+            self._double_double_executor = CorrelatedDoubleDoubleExecutor(
+                catalogue.artifact,
+                catalogue.process_id,
+                catalogue.native_runtime,
+                spin_correlated_legs=catalogue.declarations.spin_legs,
+                coherent_groups=catalogue.coherent_groups,
+            )
+        return self._double_double_executor
 
     def set_spin_correlation_vectors(
         self, vectors: Mapping[int, object] | None
@@ -302,22 +329,21 @@ class CorrelatorEvaluator:
         if legs and tuple(sorted(legs)) not in self._declarations.spin_correlations:
             raise EvaluationError("this joint spin-correlation class was not declared")
         frozen: dict[int, object] = {}
+
+        def freeze(value: object) -> object:
+            if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+                return tuple(freeze(item) for item in value)
+            return value
+
         for leg, value in vectors.items():
             if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
                 raise EvaluationError("spin vectors must be four-vectors or a batch")
-            vector = tuple(
-                tuple(item)
-                if isinstance(item, Sequence) and not isinstance(item, (str, bytes))
-                else item
-                for item in value
-            )
+            vector = tuple(freeze(item) for item in value)
             if not vector:
                 raise EvaluationError(
                     "a spin-vector batch must contain at least one point"
                 )
-            broadcast = len(vector) == 4 and all(
-                not isinstance(item, tuple) for item in vector
-            )
+            broadcast = _is_spin_vector(vector)
             # Validate before replacing the old state; a failed setter is atomic.
             _prepare_spin_vectors(
                 {leg: vector},
@@ -330,6 +356,8 @@ class CorrelatorEvaluator:
     def clear(self) -> None:
         """Release warmed evaluators, preserving current numerical spin inputs."""
         self._executor.clear()
+        if self._double_double_executor is not None:
+            self._double_double_executor.clear()
 
     def evaluate(
         self,
@@ -338,6 +366,7 @@ class CorrelatorEvaluator:
         color_correlation: str = "born",
         helicities: Sequence[str] | None = None,
         precision: int = 16,
+        arithmetic: str = "arbitrary",
     ) -> tuple[CorrelatedValue, ...]:
         if (
             isinstance(precision, bool)
@@ -354,11 +383,12 @@ class CorrelatorEvaluator:
             raise EvaluationError(
                 f"unknown colour correlation ID {color_correlation!r}"
             )
-        batch = self._executor.coherent_amplitudes(
+        amplitude_precision = correlated_precision(precision, arithmetic)
+        batch = self._select_executor(arithmetic).coherent_amplitudes(
             momenta,
             spin_vectors=self._vectors,
             helicities=helicities,
-            precision=_working_precision(precision),
+            precision=amplitude_precision,
         )
         return _contract(batch, self._matrices[color_correlation], precision=precision)
 
@@ -369,12 +399,14 @@ class CorrelatorEvaluator:
         *,
         helicities: Sequence[str] | None = None,
         precision: int = 16,
+        arithmetic: str = "arbitrary",
     ) -> dict[str, tuple[CorrelatedValue, ...]]:
         """Share amplitudes and exact unchanged stages within one labelled batch."""
         if type(precision) is not int or precision < 1:
             raise EvaluationError(
                 "precision must be a positive number of decimal digits"
             )
+        amplitude_precision = correlated_precision(precision, arithmetic)
         if not isinstance(requests, Mapping):
             raise EvaluationError(
                 "correlated requests must map labels to CorrelatedRequest"
@@ -436,17 +468,20 @@ class CorrelatorEvaluator:
             point_index,
             assignment,
             batch,
-        ) in self._executor.iter_coherent_amplitudes_many(
+        ) in self._select_executor(arithmetic).iter_coherent_amplitudes_many(
             momenta,
             spin_vector_sets=assignments,
             helicities=helicities,
-            precision=_working_precision(precision),
+            precision=amplitude_precision,
         ):
             for identifier, labels in by_assignment[assignment].items():
                 plan_key = (assignment, identifier)
                 if plan_key not in plans:
                     plans[plan_key] = _prepare_contraction(
-                        batch.groups, self._matrices[identifier], precision=precision
+                        batch.groups,
+                        self._matrices[identifier],
+                        precision=precision,
+                        scalar=type(batch.normalization_factor),
                     )
                 value = plans[plan_key].evaluate(batch, precision=precision)[0]
                 for label in labels:

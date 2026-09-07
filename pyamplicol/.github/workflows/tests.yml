@@ -190,6 +190,7 @@ jobs:
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           .venv/bin/python -m pytest
           tests/integration/test_multilanguage_api.py
+          tests/integration/test_correlated_native_sdk.py
           -q
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-

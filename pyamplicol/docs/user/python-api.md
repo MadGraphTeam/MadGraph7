@@ -283,7 +283,7 @@ evaluation. See the [automatic catalogue guide](../correlators.md)
 for generation and grouped evaluation.
 
 `evaluate_correlated(momenta, *, color_correlation="born", helicities=None,
-precision=16)` returns one `CorrelatedValue` per point. The reserved ID
+precision=16, arithmetic="arbitrary")` returns one `CorrelatedValue` per point. The reserved ID
 `"born"` uses the Born metric at the requested colour accuracy; other IDs are the declared
 operators. Optional batch-global helicity selectors accept stable IDs or typed
 `HelicityConfiguration` objects. There is no colour-flow or per-point selector
@@ -314,6 +314,32 @@ without resetting vectors. The setter affects `evaluate_correlated` and
 inherited requests in `evaluate_correlated_many`, not `evaluate` or
 `evaluate_resolved`.
 
+`Decimal` vector components retain their digits; a `(Decimal(real),
+Decimal(imaginary))` pair represents one complex component without first
+rounding it through Python's binary64 `complex`. For example:
+
+```python
+from decimal import Decimal
+
+zero = Decimal(0)
+correlated_runtime.set_spin_correlation_vectors({3: (
+    zero, zero,
+    (Decimal("1.0000000000000000000000001"), Decimal("2e-25")),
+    zero,
+)})
+arb = correlated_runtime.evaluate_correlated((point,), precision=80)
+dd = correlated_runtime.evaluate_correlated(
+    (point,), arithmetic="double-double", precision=31,
+)
+correlated_runtime.set_spin_correlation_vectors(None)
+```
+
+The default is arbitrary precision. Explicit `arithmetic="double-double"`
+uses genuine DoubleFloat arithmetic throughout sources, evaluation stages,
+normalization and reduction; at most 31 result digits are supported. The same
+keyword and Decimal vector syntax apply to `evaluate_correlated_many` and its
+explicit request vectors. See the [grouped precision example](../correlators.md#decimal-inputs-and-double-double-arithmetic).
+
 Artifacts without declarations, append generation, partial source coverage,
 FFT, eager/recurrence/OTF correlated execution, replay reductions, and
 nonidentity process permutations are not supported. Ordered `EmitGluon` and
@@ -322,6 +348,11 @@ order is distinct from LC/NLC colour approximations and does not supply a
 complete higher-order subtraction calculation. See [Born Correlations](../correlators.md)
 for the bra-adjoint/ket convention, joint spin contractions, JSON declarations,
 Ward checks, and current limitations.
+
+The same generated colour catalogue and spin classes are available to the
+[C/C++/Fortran/Rust SDKs](native-apis.md#correlated-born-evaluations), whose
+correlated evaluation is binary64 and independent of Python/Symbolica.
+The Python methods described here retain their precision-controlled executor.
 
 ## Select helicities and color flows
 
@@ -388,6 +419,9 @@ precision.
 
 `evaluate_correlated` always uses retained Symbolica evaluator states through
 the separate Python exact executor, including at its default precision 16.
+Its default `arithmetic="arbitrary"` is distinct from the explicit
+`arithmetic="double-double", precision=31` mode; neither is selected by an
+ordinary native SDK precision flag.
 Its real and imaginary results remain `Decimal` values; `complex(value)` is an
 explicit conversion to ordinary double precision.
 

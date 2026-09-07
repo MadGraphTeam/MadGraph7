@@ -215,7 +215,7 @@ catalogue without initializing the amplitude executor; original leg ordering
 and a correlation-enabled artifact are required.
 
 `Runtime.evaluate_correlated(momenta, *, color_correlation="born",
-helicities=None, precision=16) -> tuple[CorrelatedValue, ...]` selects a declared
+helicities=None, precision=16, arithmetic="arbitrary") -> tuple[CorrelatedValue, ...]` selects a declared
 colour ID and returns one value per point using the current model parameters
 and spin vectors. Global helicity IDs or `HelicityConfiguration` records may
 be selected; LC-flow and per-point selectors are not arguments to this method.
@@ -226,7 +226,7 @@ once, spectator helicities are summed incoherently, and ordinary initial-state
 averages and identical-particle factors remain in place.
 
 `Runtime.evaluate_correlated_many(momenta, requests, *, helicities=None,
-precision=16) -> dict[str, tuple[CorrelatedValue, ...]]` accepts an ordered
+precision=16, arithmetic="arbitrary") -> dict[str, tuple[CorrelatedValue, ...]]` accepts an ordered
 mapping of user result labels to `CorrelatedRequest` records. Each record has
 `color_correlation="born"` and `spin_vectors=None` defaults. `None` inherits a
 snapshot of the setter; `{}` explicitly selects physical helicities. Request
@@ -237,6 +237,13 @@ one colour operator. The output preserves label order and input point order;
 Every series has `len(momenta)` entries. Spectator helicities are summed or
 selected globally, not an additional output axis.
 
+Both methods accept `arithmetic="double-double"` for genuine DoubleFloat
+arithmetic with at most 31 output digits (`precision=31`). Their default
+`"arbitrary"` retains arbitrary precision. Spin-vector real components may be
+`Decimal`; complex components may be `(Decimal(real), Decimal(imaginary))`
+pairs. Setter and request validation preserve their digits until conversion
+to the selected arithmetic, and results always use plain `Decimal` fields.
+
 Identical spin assignments share coherent amplitudes across colour IDs;
 unchanged complete stage inputs can share stage outputs across assignments.
 Numerical sharing is exact, signed-zero preserving, call-local and streamed
@@ -244,11 +251,16 @@ point by point. There is no persistent numerical cache or full spin-response
 tensor. The underlying ordinary `evaluate()` remains full-colour; the
 correlated `"born"` request uses the chosen correlated accuracy.
 
-Correlated evaluation currently uses the Python Symbolica-backed exact
-executor even at `precision=16`; it is not a native f64 correlator API. It
-requires an explicitly correlated artifact and its original leg ordering.
-Recurrence, eager, on-the-fly, FFT, and the native C/C++/Fortran/Rust interfaces
-do not expose correlated evaluation.
+Python correlated evaluation uses the Symbolica-backed exact executor even
+at `precision=16`. The C/C++/Fortran/Rust SDKs provide a separate binary64
+RustiCol executor, catalogue enumeration, spin defaults and grouped requests.
+Both paths require an explicitly correlated artifact and its original leg
+ordering; both use the generation-time LC/NLC/full inserted colour matrices.
+Native results are complex and request-major, with point-major Fortran array
+access `values(point,request)`. Native APIs do not expose Python's arbitrary
+precision or double-double arithmetic. Recurrence, eager, on-the-fly and FFT
+correlated evaluation remain unsupported. See [Native APIs](../user/native-apis.md#correlated-born-evaluations)
+for the typed SDK request and spin-vector conventions.
 
 `Runtime.set_model_parameters(mapping)` validates the complete update before
 committing it. `set_model_parameter(name, value)` is a convenience wrapper.

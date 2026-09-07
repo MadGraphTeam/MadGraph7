@@ -42,7 +42,7 @@ compilation, process generation, or retained exact evaluator state.
 | Import `pyamplicol` | No | Public exports are lazy. |
 | Inspect an artifact | No | Reads metadata and indexes only. |
 | Ordinary Python f64 evaluation (`precision=16`) | No | Runs through Rusticol and the artifact's native evaluator. |
-| C11/C++17/Fortran 2008/Rust 2021 runtime | No | Native APIs are f64-only. |
+| C11/C++17/Fortran 2008/Rust 2021 runtime | No | Ordinary and opt-in correlated APIs are f64-only. |
 | Direct JIT f64 load | No | Uses the separate MIT-licensed SymJIT runtime. |
 | Compatible C++/ASM evaluator load | No | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
@@ -191,10 +191,12 @@ kinematics JSON when input precision matters.
 
 Native C, C++, Fortran, and Rust callers reject precision other than 16.
 
-The opt-in [Born Correlations API](../correlators.md) uses the same retained
-Symbolica-state machinery through a separate Python exact executor at **all**
-requested precisions, including 16. Its current full-colour direct compiled
-path is not part of the Symbolica-independent native f64 ABI.
+The Python [Born Correlations API](../correlators.md) uses the same retained
+Symbolica-state machinery through a separate exact executor at **all**
+requested precisions, including 16. The C/C++/Fortran/Rust correlated SDK calls
+instead use a separate RustiCol binary64 executor without importing or
+licensing Symbolica at runtime. Both contract the selected LC/NLC/full colour
+matrices prepared during generation, which still requires Symbolica.
 
 ## SymJIT is a separate dependency
 
@@ -267,9 +269,9 @@ Use JSON when attaching diagnostics to an issue:
 pyamplicol doctor --json
 ```
 
-If ordinary f64 evaluation fails, do not assume it is a Symbolica-license
+If ordinary or native correlated f64 evaluation fails, do not assume it is a Symbolica-license
 problem: first run `pyamplicol self-test` and inspect the artifact target. If
-generation, precision-80 evaluation, or correlated evaluation at any precision
+generation, precision-80 evaluation, or Python correlated evaluation at any precision
 fails, then inspect the Symbolica check. See
 [Troubleshooting](troubleshooting.md).
 
@@ -278,5 +280,5 @@ fails, then inspect the Symbolica check. See
 - [Installation](installation.md) — wheel and source requirements.
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md) — where symbolic work occurs.
 - [Artifacts and Portability](artifacts-and-portability.md) — what the resulting f64 artifact carries.
-- [Born Correlations](../correlators.md) — the opt-in Python exact correlation path.
+- [Born Correlations](../correlators.md) — Python exact and native binary64 correlation paths.
 - [Release and Support](release-and-support.md) — published dependency and validation boundary.

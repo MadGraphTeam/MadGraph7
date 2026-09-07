@@ -22,6 +22,8 @@ def exact_normalization(
     parameters: Sequence[Decimal],
     precision: int,
     parameter_schema: Sequence[Mapping[str, object]] | None = None,
+    *,
+    scalar: type[Decimal] | None = None,
 ) -> Decimal:
     """Use exact combinatorial factors and current, not default, couplings.
 
@@ -29,6 +31,7 @@ def exact_normalization(
     of the Born and real-emission normalizations spoils local subtraction.
     This function is called only by the non-f64 executors.
     """
+    scalar = Decimal if scalar is None else scalar
     extensions = physics.get("extensions", {})
     if not isinstance(extensions, Mapping):
         raise ArtifactError("exact normalization has invalid physics extensions")
@@ -38,17 +41,17 @@ def exact_normalization(
     # Full/NLC contractions already include their colour metric. Only LC
     # needs the common colour factor, exactly as in the native executor.
     color = (
-        Decimal(str(normalization.get("color_factor", 1)))
+        scalar(str(normalization.get("color_factor", 1)))
         if physics.get("color_accuracy") == "lc"
-        else Decimal(1)
+        else scalar(1)
     )
-    average = Decimal(str(normalization.get("average_factor", 1)))
-    identical = Decimal(str(normalization.get("identical_factor", 1)))
+    average = scalar(str(normalization.get("average_factor", 1)))
+    identical = scalar(str(normalization.get("identical_factor", 1)))
     if average <= 0 or identical <= 0:
         raise ArtifactError("exact normalization has a nonpositive averaging factor")
     qcd_power = int(normalization.get("qcd_coupling_power", 0))
     ew_power = int(normalization.get("electroweak_coupling_power", 0))
-    coupling = Decimal(1)
+    coupling = scalar(1)
     if qcd_power or ew_power:
         records = parameter_schema or physics.get("model_parameters", ())
         if not isinstance(records, Sequence):
@@ -59,7 +62,7 @@ def exact_normalization(
             if isinstance(record, Mapping) and "name" in record
         }
         try:
-            pi = _pi(precision)
+            pi = scalar(_pi(precision))
             if qcd_power:
                 coupling *= (
                     4 * pi * by_name["normalization.alpha_s_me_check"]
@@ -71,5 +74,5 @@ def exact_normalization(
                 "exact normalization lacks its current coupling parameter"
             ) from exc
     else:
-        coupling = Decimal(str(normalization.get("global_coupling_factor", 1)))
+        coupling = scalar(str(normalization.get("global_coupling_factor", 1)))
     return color * coupling / (average * identical)

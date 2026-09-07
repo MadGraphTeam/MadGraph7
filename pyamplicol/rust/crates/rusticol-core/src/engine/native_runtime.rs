@@ -1728,6 +1728,7 @@ impl NativeRuntime {
             pending_warnings: Vec::new(),
             point_selector_scratch: PointSelectorExecutionScratch::default(),
             selector_simd_lane_width,
+            correlated: None,
         };
         if let Some(path) = model_parameters_path {
             loaded.set_model_parameters_json(path)?;
@@ -1904,6 +1905,7 @@ impl NativeRuntime {
                 pending_warnings: Vec::new(),
                 point_selector_scratch: PointSelectorExecutionScratch::default(),
                 selector_simd_lane_width: 1,
+                correlated: None,
             };
             if let Some(path) = model_parameters_path {
                 runtime.set_model_parameters_json(path)?;

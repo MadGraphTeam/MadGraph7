@@ -19,8 +19,8 @@ It is not restricted to NLO or NNLO. This is **not** a complete subtraction impl
 loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.
 
-The correlated path supports **LC, NLC and full colour** through the Python
-runtime, with the approximation selected at generation. It retains the
+The correlated path supports **LC, NLC and full colour** through Python and
+the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation. It retains the
 complete colour basis and uses direct contraction. Ordinary uncorrelated
 generation and evaluation are unchanged.
 
@@ -153,6 +153,46 @@ runtime.set_spin_correlation_vectors({3: (0, 0, 1, 0), 4: (0, 0, 1, 0)})
 joint = runtime.evaluate_correlated((point,), precision=40)[0]
 runtime.set_spin_correlation_vectors({})  # Reset; None is equivalent.
 ```
+
+### Decimal inputs and double-double arithmetic
+
+Supply `Decimal` components directly when their digits matter. For a complex
+component, use a `(real, imaginary)` pair of `Decimal` values; constructing a
+Python `complex` first would round both parts to binary64. The setter and
+`CorrelatedRequest.spin_vectors` both preserve these inputs until evaluation:
+
+```python
+from decimal import Decimal
+from pyamplicol import CorrelatedRequest
+
+zero = Decimal(0)
+vector = (zero, zero, (
+    Decimal("1.0000000000000000000000001"),
+    Decimal("0.0000000000000000000000002"),
+), zero)
+runtime.set_spin_correlation_vectors({3: vector})
+arb = runtime.evaluate_correlated((point,), precision=80)
+dd = runtime.evaluate_correlated(
+    (point,), arithmetic="double-double", precision=31,
+)
+grouped = runtime.evaluate_correlated_many(
+    (point,), {"spin_dipole": CorrelatedRequest("T13", {3: vector})},
+    arithmetic="double-double", precision=31,
+)
+print(grouped["spin_dipole"][0].real)  # Decimal result, no float conversion.
+runtime.set_spin_correlation_vectors(None)
+```
+
+The default `arithmetic="arbitrary"` uses arbitrary-precision arithmetic at
+the requested decimal precision. `arithmetic="double-double"` explicitly
+selects genuine Symbolica DoubleFloat arithmetic for sources, retained
+evaluation stages, colour contraction and normalization; `precision` then
+controls output rounding and must not exceed 31 digits. Inputs finer than
+that are rounded when entering DoubleFloat, not when defining the vector.
+Both modes return `Decimal` real/imaginary parts. Supply `Decimal` momenta as
+well when kinematic input accuracy beyond binary64 is needed. Native SDK
+correlated calls are binary64 only; the Python arithmetic selection does not
+change their numerical type.
 
 The nonempty set of supplied legs must match a declared class **exactly**.
 Here `{3}` and `{3, 4}` are allowed, but `{4}` is not. Every declared leg must
@@ -337,7 +377,60 @@ pyamplicol generate 'g g > g g' artifacts/gg_correlated_cli \
 `CorrelatorConfig.to_json_dict()` and `from_json_dict()` use this same schema.
 A splitting step uses `{"kind": "split-gluon", "parent": -1,
 "quark": -2, "antiquark": -3}`. The CLI option prepares the artifact;
-numerical vector setting and correlated evaluation currently use Python.
+numerical vector setting and correlated evaluation use Python or the native
+SDKs rather than the CLI `evaluate` command.
+
+## Native correlated evaluations
+
+The `correlators` development branch provides binary64 correlated evaluation
+in C, C++, Fortran and standalone Rust. These entry points use RustiCol and do
+not load Python or Symbolica. Python's separate executor supports
+double-double and arbitrary precision. See [Native APIs](user/native-apis.md#correlated-born-evaluations)
+for the language-specific owned request types, catalogue enumeration, spin
+setter and result indexing.
+
+The complete native examples evaluate the Born overlap, a mixed
+adjoint/fundamental N3LO interference and its spin-correlated counterpart
+together over two points. Generate their input with:
+
+```python
+from pyamplicol import ColorCorrelator, CorrelatorConfig, EmitGluon
+from pyamplicol import Generator, ModelSource, ProcessSet
+from pyamplicol.config import ColorConfig, RunConfig
+
+alpha = (EmitGluon(2, -3), EmitGluon(-3, -1), EmitGluon(-3, -2))
+beta = (EmitGluon(1, -1), EmitGluon(3, -2), EmitGluon(4, -3))
+declarations = CorrelatorConfig(
+    color_correlations=(ColorCorrelator("cascade-interference", alpha, beta),),
+    spin_correlations=((5,),),
+)
+config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
+Generator(config).generate(
+    ProcessSet.from_expressions(("d d~ > d d~ g",), names=("dd_ddg",)),
+    "artifacts/native_correlated", model=ModelSource.built_in_sm(),
+    correlators=declarations,
+)
+```
+
+The auxiliary gluon emitted from leg 2 radiates twice in `alpha`; `beta`
+attaches three gluons to distinct quark or antiquark legs. Their final auxiliary colour
+labels match, so their overlap is the interference, not the square of either
+history. With the matching development SDK installed, run from the checkout:
+
+```console
+make -C examples/native correlated
+examples/native/correlated_cpp artifacts/native_correlated dd_ddg
+examples/native/correlated_fortran artifacts/native_correlated dd_ddg
+examples/native/correlated_rust artifacts/native_correlated dd_ddg
+examples/native/correlated_c artifacts/native_correlated dd_ddg
+```
+
+Each reports `VALUE request_index point_index real imaginary`, with zero-based
+indices and request order Born, colour interference, colour-plus-spin
+interference. The programs also demonstrate reading catalogue IDs and full
+histories, supplying default spin vectors, clearing them, and keeping ordinary
+evaluation unchanged. C/C++/Rust grouped result access is request then point;
+Fortran's natural array layout is `values(point,request)`.
 
 ## Colour accuracy and execution scope
 
@@ -364,11 +457,12 @@ for the inherited LC/NLC prescription and its retained-order checks.
 
 Correlated generation selects complete full-colour, direct, generic compiled
 amplitudes and disables helicity-specific zero/parity reductions and current
-reuse that would invalidate arbitrary source vectors. Correlated evaluation
-uses a separate Python exact executor over the retained Symbolica evaluator
-states. RustiCol remains the ordinary compiled executor; the native
-C/C++/Fortran/Rust interfaces are not correlation-aware yet. This reference
-path prioritizes correctness, not native warmed-loop throughput.
+reuse that would invalidate arbitrary source vectors. Python correlated
+evaluation uses a separate exact executor over retained Symbolica evaluator
+states. Native SDK correlated evaluation uses RustiCol's binary64 coherent
+amplitude executor. Both share amplitudes and unchanged stages between
+requests and contract the generation-time colour matrices directly; neither
+uses FFT or physical-helicity reductions for the correlated result.
 
 FFT, recurrence, on-the-fly execution, replay-based reductions, nonidentity
 process aliases/permutations, partial helicity/colour generation, and append

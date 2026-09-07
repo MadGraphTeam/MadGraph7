@@ -109,17 +109,19 @@ be mixed.
 
 Declaring [Born Correlations](../correlators.md) is an explicit exception to
 the independent mode/accuracy choices: the current path selects generic
-`compiled` amplitudes, `full` SU(3) colour, and `direct` contraction. Requested
-settings are preserved alongside these effective adjustments. LC/NLC
-correlation approximations, recurrence, eager, OTF, and FFT correlation
-executors are not implemented.
+`compiled` amplitudes, a complete full-colour basis, and `direct` contraction.
+Requested LC/NLC/full accuracy selects the inserted colour matrices; requested
+settings are preserved alongside the effective generation adjustments.
+Recurrence, eager, OTF and FFT correlation executors are not implemented.
 
 Correlated generation retains complete source dependence without
 physical-helicity zero/parity reductions, replay, or numerical current reuse.
 Partial generation coverage and append mode are rejected. Correlated
-evaluation uses a separate Python Symbolica-backed exact executor, including
-at `precision=16`; the ordinary native evaluation path remains available and
-unchanged. See the linked guide for declarations and runtime spin vectors.
+evaluation uses either the Python Symbolica-backed exact executor (including
+at `precision=16`) or the independent RustiCol binary64 executor exposed by
+the C/C++/Fortran/Rust SDKs. The ordinary native evaluation path remains
+available and unchanged. See the linked guide for declarations and runtime
+spin vectors.
 
 ### Eager
 
@@ -379,7 +381,7 @@ pyamplicol profile --card otf_pp_zjj.toml
 | --- | --- |
 | First built-in-SM artifact | Recurrence + JIT O2 (defaults) |
 | Raw JSON/UFO model without a prepared pack | Compiled mode, or prepare a pack first |
-| Spin-/colour-correlated Born quantities | Declare correlations; LC/NLC/full, complete direct compiled generation and grouped Python exact evaluation |
+| Spin-/colour-correlated Born quantities | Declare correlations; LC/NLC/full, complete direct compiled generation, grouped Python exact or native binary64 evaluation |
 | Reuse prepared kernels with process tables | Eager + the pack's backend |
 | Keep a high-multiplicity LC artifact compact and repeatedly run one selected flow | On-the-fly + an explicit one-point warm-up |
 | Cross-architecture release-host movement | Compiled all-JIT O1/O2 artifact, or eager/recurrence with a prepared JIT O2 pack |

@@ -38,6 +38,8 @@ class CorrelatedRequest:
     ``spin_vectors=None`` inherits the runtime setter's state at the start of
     the call; ``{}`` selects ordinary physical helicities for this request.
     Explicit maps use the setter's broadcast/per-point vector convention.
+    Decimal real components, or pairs of Decimal real/imaginary components,
+    retain their precision until the requested arithmetic is applied.
     The runtime validates and copies all requests before numerical work.
     """
 

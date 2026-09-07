@@ -14,6 +14,62 @@ use std::rc::Rc;
 /// C ABI version implemented by this source wrapper.
 pub const ABI_VERSION: u32 = 1;
 
+/// Dependency-free complex value; no C complex memory layout is assumed.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Complex64 {
+    pub re: f64,
+    pub im: f64,
+}
+
+impl Complex64 {
+    pub const fn new(re: f64, im: f64) -> Self {
+        Self { re, im }
+    }
+}
+
+/// A literal vector on a one-based public leg. One entry broadcasts over points.
+#[derive(Clone, Debug)]
+pub struct SpinCorrelationVector {
+    pub leg: usize,
+    pub components: Vec<[Complex64; 4]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CorrelatedRequest {
+    pub color_correlation: String,
+    /// None inherits the setter; Some(vec![]) selects physical helicities.
+    pub spin_vectors: Option<Vec<SpinCorrelationVector>>,
+}
+
+impl CorrelatedRequest {
+    pub fn new(color_correlation: impl Into<String>) -> Self {
+        Self {
+            color_correlation: color_correlation.into(),
+            spin_vectors: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CorrelatedEvaluation {
+    pub values: Vec<Complex64>,
+    pub request_count: usize,
+    pub point_count: usize,
+}
+
+impl CorrelatedEvaluation {
+    /// Access request-major output by its zero-based request and point indices.
+    pub fn get(&self, request: usize, point: usize) -> Option<Complex64> {
+        if request >= self.request_count || point >= self.point_count {
+            None
+        } else {
+            self.values
+                .get(request.checked_mul(self.point_count)?.checked_add(point)?)
+                .copied()
+        }
+    }
+}
+
 /// The category of a Rusticol SDK error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorKind {
@@ -576,6 +632,149 @@ impl Runtime {
             )
         })?;
         Ok(values)
+    }
+
+    pub fn color_correlation_catalogue_json(&mut self) -> Result<String> {
+        read_string(|buffer, capacity, required| {
+            // SAFETY: read_string owns the output buffer; this handle is exclusive.
+            unsafe {
+                ffi::rusticol_runtime_color_correlation_catalogue_json(
+                    self.handle.as_ptr(),
+                    buffer,
+                    capacity,
+                    required,
+                )
+            }
+        })
+    }
+
+    pub fn color_correlation_ids(&mut self) -> Result<Vec<String>> {
+        let mut count = 0;
+        // SAFETY: The output and exclusively borrowed handle are live.
+        check(unsafe {
+            ffi::rusticol_runtime_color_correlation_count(self.handle.as_ptr(), &mut count)
+        })?;
+        (0..count)
+            .map(|index| {
+                read_string(|buffer, capacity, required| {
+                    // SAFETY: read_string owns the output buffer.
+                    unsafe {
+                        ffi::rusticol_runtime_color_correlation_id(
+                            self.handle.as_ptr(),
+                            index,
+                            buffer,
+                            capacity,
+                            required,
+                        )
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Replace defaults atomically; an empty slice clears them. Ordinary calls are unaffected.
+    pub fn set_spin_correlation_vectors(
+        &mut self,
+        vectors: &[SpinCorrelationVector],
+    ) -> Result<()> {
+        let storage = SpinCorrelationStorage::new(vectors);
+        // SAFETY: storage owns every component and descriptor until the call returns.
+        check(unsafe {
+            ffi::rusticol_runtime_set_spin_correlation_vectors_f64(
+                self.handle.as_ptr(),
+                storage.vectors.as_ptr(),
+                storage.vectors.len(),
+            )
+        })
+    }
+
+    pub fn evaluate_correlated_many_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        requests: &[CorrelatedRequest],
+        helicity_ids: &[String],
+    ) -> Result<CorrelatedEvaluation> {
+        self.validate_momenta(momenta, point_count)?;
+        if requests.is_empty() {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "a correlated batch requires requests",
+            ));
+        }
+        let output_count = requests
+            .len()
+            .checked_mul(point_count)
+            .and_then(|n| n.checked_mul(2))
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::SizeOverflow,
+                    "correlated output dimensions overflow",
+                )
+            })?;
+        let ids = requests
+            .iter()
+            .map(|request| checked_cstring(&request.color_correlation, "colour correlation ID"))
+            .collect::<Result<Vec<_>>>()?;
+        let storage = requests
+            .iter()
+            .map(|request| {
+                SpinCorrelationStorage::new(request.spin_vectors.as_deref().unwrap_or(&[]))
+            })
+            .collect::<Vec<_>>();
+        let raw_requests = requests
+            .iter()
+            .zip(&ids)
+            .zip(&storage)
+            .map(|((request, id), vectors)| ffi::CorrelatedRequest {
+                color_correlation: id.as_ptr(),
+                spin_vectors: vectors.vectors.as_ptr(),
+                spin_vector_count: vectors.vectors.len(),
+                use_default_spin_vectors: u32::from(request.spin_vectors.is_none()),
+            })
+            .collect::<Vec<_>>();
+        let helicities = cstring_list(helicity_ids, "helicity ID")?;
+        let helicity_pointers = cstring_pointers(&helicities);
+        let mut raw = vec![0.0; output_count];
+        // SAFETY: Owned buffers retain all nested pointers; output is disjoint and correctly sized.
+        check(unsafe {
+            ffi::rusticol_runtime_evaluate_correlated_many_f64(
+                self.handle.as_ptr(),
+                momenta.as_ptr(),
+                momenta.len(),
+                point_count,
+                raw_requests.as_ptr(),
+                raw_requests.len(),
+                helicity_pointers.as_ptr(),
+                helicity_pointers.len(),
+                raw.as_mut_ptr(),
+                raw.len(),
+            )
+        })?;
+        Ok(CorrelatedEvaluation {
+            values: raw
+                .chunks_exact(2)
+                .map(|value| Complex64::new(value[0], value[1]))
+                .collect(),
+            request_count: requests.len(),
+            point_count,
+        })
+    }
+
+    pub fn evaluate_correlated_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        request: &CorrelatedRequest,
+        helicity_ids: &[String],
+    ) -> Result<Vec<Complex64>> {
+        self.evaluate_correlated_many_f64(
+            momenta,
+            point_count,
+            std::slice::from_ref(request),
+            helicity_ids,
+        )
+        .map(|result| result.values)
     }
 
     /// Construct and retain one selected OTF family, then evaluate exactly one
@@ -1186,6 +1385,42 @@ fn select_colors(available: Vec<ColorComponent>, selected: &[String]) -> Vec<Col
     }
 }
 
+struct SpinCorrelationStorage {
+    // Buffers own the memory referenced by vectors even after moving this struct.
+    _components: Vec<Vec<f64>>,
+    vectors: Vec<ffi::SpinCorrelationVector>,
+}
+
+impl SpinCorrelationStorage {
+    fn new(input: &[SpinCorrelationVector]) -> Self {
+        let components = input
+            .iter()
+            .map(|vector| {
+                vector
+                    .components
+                    .iter()
+                    .flatten()
+                    .flat_map(|value| [value.re, value.im])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let vectors = input
+            .iter()
+            .zip(&components)
+            .map(|(vector, flat)| ffi::SpinCorrelationVector {
+                leg: vector.leg,
+                point_count: vector.components.len(),
+                components: flat.as_ptr(),
+                component_count: flat.len(),
+            })
+            .collect();
+        Self {
+            _components: components,
+            vectors,
+        }
+    }
+}
+
 mod ffi {
     use super::{c_char, c_int, c_void};
 
@@ -1206,6 +1441,22 @@ mod ffi {
     #[repr(C)]
     pub(super) struct RuntimeHandle {
         _private: [u8; 0],
+    }
+
+    #[repr(C)]
+    pub(super) struct SpinCorrelationVector {
+        pub(super) leg: usize,
+        pub(super) point_count: usize,
+        pub(super) components: *const f64,
+        pub(super) component_count: usize,
+    }
+
+    #[repr(C)]
+    pub(super) struct CorrelatedRequest {
+        pub(super) color_correlation: *const c_char,
+        pub(super) spin_vectors: *const SpinCorrelationVector,
+        pub(super) spin_vector_count: usize,
+        pub(super) use_default_spin_vectors: u32,
     }
 
     #[repr(C)]
@@ -1249,6 +1500,40 @@ mod ffi {
         unsafe extern "C" fn(*const RuntimeHandle, usize, *mut c_char, usize, *mut usize) -> c_int;
 
     unsafe extern "C" {
+        pub(super) fn rusticol_runtime_color_correlation_count(
+            handle: *mut RuntimeHandle,
+            output: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_color_correlation_id(
+            handle: *mut RuntimeHandle,
+            index: usize,
+            buffer: *mut c_char,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_color_correlation_catalogue_json(
+            handle: *mut RuntimeHandle,
+            buffer: *mut c_char,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_set_spin_correlation_vectors_f64(
+            handle: *mut RuntimeHandle,
+            vectors: *const SpinCorrelationVector,
+            count: usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_evaluate_correlated_many_f64(
+            handle: *mut RuntimeHandle,
+            momenta: *const f64,
+            momentum_count: usize,
+            point_count: usize,
+            requests: *const CorrelatedRequest,
+            request_count: usize,
+            helicity_ids: *const *const c_char,
+            helicity_count: usize,
+            output: *mut f64,
+            output_capacity: usize,
+        ) -> c_int;
         pub(super) fn rusticol_abi_version() -> u32;
         pub(super) fn rusticol_supported_runtime_capabilities_json(
             buffer: *mut c_char,

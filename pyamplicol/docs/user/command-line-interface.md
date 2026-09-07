@@ -111,7 +111,7 @@ Useful generation options include:
 - `--color-accuracy {lc,nlc,full}`;
 - `--color-contraction {direct,symmetric-group-fft}`;
 - `--correlators FILE.json` to prepare named colour operators and allowed spin
-  replacements for the [Python correlated API](../correlators.md);
+  replacements for the [Python and native correlated APIs](../correlators.md);
 - `--lc-flow-layout {topology-replay,all-flow-union}`;
 - `--execution-mode {recurrence,compiled,eager,on-the-fly}`;
 - `--backend {jit,asm,cpp}`;
@@ -171,7 +171,8 @@ helicity/colour generation, append, and `--dry-run` are not supported on this
 path. Numerical spin-vector setting and correlated evaluation use
 `Runtime.set_spin_correlation_vectors(...)` and
 `Runtime.evaluate_correlated(...)` or `Runtime.evaluate_correlated_many(...)`
-in Python, not the CLI `evaluate` command.
+in Python, or the corresponding [native SDK calls](native-apis.md#correlated-born-evaluations),
+not the CLI `evaluate` command.
 
 ## Inspect and select a process
 

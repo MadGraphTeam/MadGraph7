@@ -388,3 +388,37 @@ Because it seems like you're just describing dipoles, but my PDF was showing the
 So yeah do a generic discussion in the paper closer to my generic discussion in the MadNkLO PDF, and also add to pyAmpliCol a shorthand for automatically registering *all* relevant color correlations at NkLO for a given process, following the spirit of the pseudo code I discribed in my PDF. Put subagents on it to research that topic, validate my construction (or correct it) and audit the implementation to make sure it covers all generic NkLO correlators (those typically needed for fixed-order NkLO subtraction, but it does not need to be the usual basis, just a valid one that guarantees to expose all possibly relevant correlators, the user can then do any additional projection/transformation on his results as they want).
 
 (and then insist in the paper (and the introduction too) that the support in pyAmpliCol is therefore fully generic and not restricted to NLO or NNLO)
+
+
+## Native SDK parity and Decimal spin inputs — approved extension
+
+This supersedes the earlier first-runtime exclusion of native correlated
+calls. Completion now includes all existing native SDK languages.
+
+1. Add an isolated, lazy RustiCol binary64 correlated lane using the generated
+   coherent amplitude groups, retained generic compiled stages and existing
+   inserted LC/NLC/full-colour matrices. Preserve the ordinary hot paths.
+   Include literal complex spin sources, same-spin amplitude reuse across
+   requested matrices, and request-major phase-space-batched complex results.
+2. Expose one C interface for catalogue enumeration/full histories, default
+   spin-vector setting, and grouped colour/spin evaluation. Thin C++, Fortran
+   and standalone Rust wrappers provide natural owned request/result types.
+   Empty spin maps restore physical helicities; omitted maps inherit the
+   setter. One vector broadcasts or one is supplied per phase-space point.
+3. Retain Python Decimal input digits before arithmetic begins. Test both
+   high-precision Arb and genuine double-double arithmetic; precision=32
+   alone must not be misrepresented as double-double. Add an explicit,
+   instance-local arithmetic choice if needed, without global monkeypatching
+   or changing ordinary evaluation defaults.
+4. Validate the N3LO interference, dipole coherence, Ward/polarisation checks,
+   LC/NLC/full-colour Born recovery, batching/grouping and setter isolation
+   against the Python oracle in every SDK. Include null/shape/error boundary
+   tests and a focused ordinary regression check. Reuse one native build and
+   run one authoritative updated CI cycle after integration.
+5. Update API docs, runnable examples, paper design/appendix/minimal manual
+   and the source-only Paper/src mirror. Keep version0.4.1, commit/push on
+   correlators, finish the green merge-ready PR without merging/publishing.
+
+User request (verbatim):
+
+I want all the native SDKs to also supported correlated evaluations, so add them. Also for the python API, make sure the spin correlating vectors can also be supplied in arb prec through python's Decimal when defining them for an arb prec or double-double evaluation.

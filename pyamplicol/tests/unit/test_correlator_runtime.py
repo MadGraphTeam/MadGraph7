@@ -549,6 +549,70 @@ def test_many_scalar_batch_equivalence_and_exact_vector_grouping(controller_fact
     assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 2
 
 
+def test_decimal_setter_and_grouped_broadcast_preserve_sub_binary64_differences(
+    controller_factory,
+):
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    first = Decimal("1.000000000000000000000000000000000000000000000000000000000001")
+    second = Decimal("1.000000000000000000000000000000000000000000000000000000000002")
+    vector = [first, Decimal(0), Decimal(0), Decimal(0)]
+    points = [[(1, 0, 0, 1)], [(2, 0, 0, 2)]]
+    runtime.set_spin_correlation_vectors({1: vector})
+    vector[0] = second
+    runtime.evaluate_correlated(points, precision=80)
+    evaluator = runtime._correlated_evaluator
+    assert evaluator._vectors[1][0] is first
+
+    assert evaluator._executor.calls[0][1]["spin_vectors"][1][0] == first
+    runtime.evaluate_correlated_many(
+        points,
+        {
+            "inherited": CorrelatedRequest(),
+            "same-broadcast": CorrelatedRequest(spin_vectors={1: (first, 0, 0, 0)}),
+            "same-batch": CorrelatedRequest(spin_vectors={1: ((first, 0, 0, 0),) * 2}),
+            "different-second-point": CorrelatedRequest(
+                spin_vectors={1: ((first, 0, 0, 0), (second, 0, 0, 0))}
+            ),
+        },
+        precision=80,
+    )
+    assignments = evaluator._executor.many_calls[0][1]["spin_vector_sets"]
+    assert len(assignments) == 2
+    assert assignments[0][1][0] == first
+    assert assignments[1][1][0][0] == first
+    assert assignments[1][1][1][0] == second
+    assert evaluator._vectors[1][0] is first
+
+
+@pytest.mark.parametrize("point_count", (2, 4))
+def test_complex_decimal_pairs_are_copied_and_not_confused_with_point_batches(
+    controller_factory, point_count
+):
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    real = Decimal("1.000000000000000000000000000000001")
+    imaginary = Decimal("0.000000000000000000000000000000001")
+    component = [real, imaginary]
+    runtime.set_spin_correlation_vectors({1: [component, 0, 0, 0]})
+    component[0] = Decimal(9)
+    points = [[(1, 0, 0, 1)]] * point_count
+    result = runtime.evaluate_correlated_many(
+        points,
+        {
+            "inherited": CorrelatedRequest(),
+            "batch": CorrelatedRequest(
+                spin_vectors={1: (((real, imaginary), 0, 0, 0),) * point_count}
+            ),
+        },
+        precision=60,
+    )
+    assert result["batch"] == result["inherited"]
+    evaluator = runtime._correlated_evaluator
+    assert evaluator._vectors[1][0] == (real, imaginary)
+    assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 1
+
+
 @pytest.mark.parametrize("defect", ("id", "class", "shape", "label", "type"))
 def test_many_validates_all_requests_before_evaluation_without_setter_mutation(
     controller_factory, defect

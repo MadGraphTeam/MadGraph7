@@ -710,6 +710,8 @@ class Runtime:
         or one such vector per phase-space point. The set of keys must match a
         spin class declared at generation. ``None`` or ``{}`` restores ordinary
         helicity states. Vectors are neither normalized nor projected.
+        Real components accept Decimal; a ``(real, imaginary)`` Decimal pair
+        represents a complex component without a binary64 conversion.
         This affects the correlated evaluation methods, not :meth:`evaluate`.
         """
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
@@ -721,6 +723,7 @@ class Runtime:
         color_correlation: str = "born",
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int = 16,
+        arithmetic: str = "arbitrary",
     ) -> tuple[_pyamplicol.CorrelatedValue, ...]:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -728,6 +731,11 @@ class Runtime:
         Born metric at the declared colour accuracy. All ordinary normalization
         factors remain in place; a replaced spin leg is counted once in the
         helicity sum.
+
+        ``arithmetic="double-double"`` selects genuine DoubleFloat arithmetic
+        (at most 31 output digits); the default uses arbitrary precision.
+        Decimal spin inputs (including complex-component pairs) retain their
+        digits until conversion into the requested arithmetic.
         """
         return self._correlator_evaluator().evaluate(
             momenta,
@@ -736,6 +744,7 @@ class Runtime:
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
             precision=_validate_precision(precision),
+            arithmetic=arithmetic,
         )
 
     def evaluate_correlated_many(
@@ -745,6 +754,7 @@ class Runtime:
         *,
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         precision: int = 16,
+        arithmetic: str = "arbitrary",
     ) -> dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]:
         """Evaluate labelled colour/spin combinations over a point batch.
 
@@ -753,6 +763,7 @@ class Runtime:
         reuse is local to this call; requests never change the spin setter.
         ``None`` vectors inherit its initial state and ``{}`` selects physical
         helicities. Each result tuple follows the input point order.
+        Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
         """
         return self._correlator_evaluator().evaluate_many(
             momenta,
@@ -761,6 +772,7 @@ class Runtime:
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),
             precision=_validate_precision(precision),
+            arithmetic=arithmetic,
         )
 
     def clear(self) -> None:
