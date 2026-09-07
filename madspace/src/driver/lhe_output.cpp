@@ -138,8 +138,20 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.spin
         );
     }
-    if (has_cluster_scales) {
+    if (has_cluster_scales || has_scales) {
         std::format_to(insert_iter, "<scales");
+    }
+    if (has_scales) {
+        std::format_to(
+            insert_iter,
+            " mur=\"{:.6g}\" muf=\"{:.6g}\" muf1=\"{:.6g}\" muf2=\"{:.6g}\"",
+            mu_r,
+            std::max(mu_f1, mu_f2),
+            mu_f1,
+            mu_f2
+        );
+    }
+    if (has_cluster_scales) {
         for (std::size_t i = 1; auto& particle : particles) {
             if (particle.status_code == 1) {
                 std::format_to(
@@ -148,6 +160,8 @@ void LHEEvent::format_to(std::string& buffer) const {
             }
             ++i;
         }
+    }
+    if (has_cluster_scales || has_scales) {
         std::format_to(insert_iter, "></scales>\n");
     }
     buffer += "</event>\n";

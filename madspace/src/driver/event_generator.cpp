@@ -745,6 +745,17 @@ void EventGenerator::fill_lhe_event(
     lhe_event.scale = event_in.ren_scale();
     lhe_event.alpha_qed = 0; // TODO: populate this
     lhe_event.alpha_qcd = event_in.alpha_qcd();
+    // Both scales, as LHEF3 <scales> attributes: SCALUP holds only one number
+    // and the codes do not agree on which, so write them out explicitly.
+    int scale_flags = _channels.at(0)->event_layout_extra_flags();
+    lhe_event.mu_r = event_in.ren_scale();
+    lhe_event.mu_f1 = (scale_flags & EventRecord::f_beam1)
+        ? double(event_in.fact_scale1())
+        : double(event_in.ren_scale());
+    lhe_event.mu_f2 = (scale_flags & EventRecord::f_beam2)
+        ? double(event_in.fact_scale2())
+        : lhe_event.mu_f1;
+    lhe_event.has_scales = true;
     lhe_event.particles.clear();
     for (std::size_t i = 0; i < buffer.particle_count(); ++i) {
         auto particle_in = buffer.particle(event_index, i);
