@@ -354,10 +354,13 @@ print(json.dumps({"ok": True, "process": runtime.physics.process_id, "target": t
 _INSTALLED_BACKEND_AND_PRECISION_SMOKE = (
     _PATH_ISOLATION_SMOKE
     + r"""
+import faulthandler
 import json
 import math
 import os
 from pathlib import Path
+
+faulthandler.enable()
 
 from pyamplicol import Generator, Runtime
 from pyamplicol.config import (
@@ -397,6 +400,7 @@ for backend in (
         ),
         symbolica=SymbolicaConfig(suggest_license=False),
     )
+    print(f"deployment: {backend.value} generation", flush=True)
     Generator(config).generate("d d~ > z", artifact)
     manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
     process_id = manifest["processes"][0]["id"]
@@ -414,6 +418,7 @@ for backend in (
             for particle in validation["points"][0]
         ]
     ]
+    print(f"deployment: {backend.value} load and f64 evaluation", flush=True)
     runtime = Runtime.load(artifact)
     assert runtime.artifact_id == manifest["artifact_id"]
     assert runtime.execution_mode == "compiled"
@@ -423,6 +428,7 @@ for backend in (
     assert math.isclose(total.imag, 0.0, abs_tol=1.0e-15)
     totals[backend.value] = total.real
     if backend is EvaluatorBackend.JIT:
+        print("deployment: jit arbitrary-precision evaluation", flush=True)
         precise = runtime.evaluate(momenta, precision=80)[0]
         assert math.isclose(
             float(precise),
@@ -454,6 +460,7 @@ eager_config = RunConfig(
     ),
     symbolica=SymbolicaConfig(suggest_license=False),
 )
+print("deployment: eager-jit generation", flush=True)
 Generator(eager_config).generate("d d~ > z", eager_artifact)
 eager_manifest = json.loads(
     (eager_artifact / "artifact.json").read_text(encoding="utf-8")
@@ -469,6 +476,7 @@ eager_execution = json.loads(
 )
 assert eager_execution["kind"] == "pyamplicol-runtime-eager-execution"
 assert (eager_artifact / "model/eager-kernel-pack.json").is_file()
+print("deployment: eager-jit load and f64 evaluation", flush=True)
 eager_runtime = Runtime.load(eager_artifact)
 assert eager_runtime.artifact_id == eager_manifest["artifact_id"]
 assert eager_runtime.execution_mode == "eager"
@@ -483,6 +491,7 @@ assert math.isclose(
     abs_tol=1.0e-15,
 )
 assert math.isclose(eager_total.imag, 0.0, abs_tol=1.0e-15)
+print("deployment: eager-jit arbitrary-precision evaluation", flush=True)
 eager_precise = eager_runtime.evaluate(momenta, precision=80)[0]
 assert math.isclose(
     float(eager_precise),
