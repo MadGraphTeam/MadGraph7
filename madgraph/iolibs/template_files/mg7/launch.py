@@ -448,6 +448,12 @@ class MadgraphProcess:
         if PDF_PATH is None:
             raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
         self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
+        # The grid only covers a band in Q. Asking for a density above its
+        # highest Q reads past the end of the interpolation and comes back as a
+        # NaN, so the scale is capped there. A dynamical scale rarely gets near
+        # it, but the madevent MLM scheme, which multiplies four clustering
+        # scales together under a fourth root, can.
+        self.max_scale = max(self.pdf_grid.q)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
@@ -1351,6 +1357,7 @@ class MadgraphSubprocess:
             else None
         )
 
+        max_scale = 0.0 if self.process.leptonic else self.process.max_scale
         if self.process.mlm_clustering:
             mc_data = self.build_multi_channel_data()
             self.scale = ms.EnergyScale(
@@ -1379,11 +1386,13 @@ class MadgraphSubprocess:
                     max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
+                max_scale=max_scale,
             )
         else:
             self.scale = ms.EnergyScale(
                 particle_count=self.particle_count,
                 min_scale=self.process.run_card["beam"]["min_scale"],
+                max_scale=max_scale,
                 **self.process.scale_kwargs,
             )
 

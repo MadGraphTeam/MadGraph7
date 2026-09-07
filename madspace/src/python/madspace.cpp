@@ -1221,6 +1221,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1229,12 +1230,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
-            py::arg("min_scale") = 0.
+            py::arg("min_scale") = 0.,
+            py::arg("max_scale") = 0.
         )
         .def(
-            py::init<const MLMClustering&, double>(),
+            py::init<const MLMClustering&, double, double>(),
             py::arg("clustering"),
-            py::arg("min_scale") = 0.
+            py::arg("min_scale") = 0.,
+            py::arg("max_scale") = 0.
         )
         .def("is_mlm", &EnergyScale::is_mlm);
 
