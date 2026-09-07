@@ -258,8 +258,35 @@ pub(crate) struct CompiledDirectTileSizing {
     pub(crate) physical_scalar_values_per_point: usize,
     pub(crate) persistent_scalar_values_per_point: usize,
     pub(crate) hot_scalar_values_per_point: usize,
+    execution_scalar_values_per_point: usize,
     pub(crate) source_scalar_values_per_point: usize,
     pub(crate) reduction_scalar_values_per_point: usize,
+}
+
+impl CompiledDirectTileSizing {
+    fn reduction_tile_capacity_for_footprint(
+        self,
+        reduction_footprint: CompiledDirectReductionFootprint,
+    ) -> RusticolResult<usize> {
+        let Some(reduction_scalars) = reduction_footprint.hot_scalar_values_per_point() else {
+            return Ok(self.reduction_tile_capacity);
+        };
+        // A selected routed total only touches its selected source/target
+        // components. The all-selector footprint remains the default for
+        // other reducers. Never exceed the already allocated execution tile:
+        // this changes cache locality, not the arena's allocation bound.
+        let capacity = u32::try_from(self.effective_tile_capacity).map_err(|_| {
+            RusticolError::integrity("compiled Direct-Arena tile capacity exceeds u32")
+        })?;
+        Ok(deterministic_point_tile_size_with_cache_footprint(
+            capacity,
+            usize::MAX,
+            compiled_direct_cache_target_bytes(),
+            self.physical_scalar_values_per_point,
+            self.execution_scalar_values_per_point
+                .max(reduction_scalars),
+        )? as usize)
+    }
 }
 
 trait DirectStagePlan {
@@ -391,6 +418,7 @@ fn compiled_direct_tile_sizing(
         physical_scalar_values_per_point,
         persistent_scalar_values_per_point,
         hot_scalar_values_per_point,
+        execution_scalar_values_per_point,
         source_scalar_values_per_point,
         reduction_scalar_values_per_point: authenticated_reduction_scalar_values_per_point
             .unwrap_or(0),
@@ -750,6 +778,14 @@ impl CompiledDirectEnginePrototype {
 
     pub(crate) const fn reduction_tile_capacity(&self) -> usize {
         self.tile_sizing.reduction_tile_capacity
+    }
+
+    pub(crate) fn reduction_tile_capacity_for_footprint(
+        &self,
+        reduction_footprint: CompiledDirectReductionFootprint,
+    ) -> RusticolResult<usize> {
+        self.tile_sizing
+            .reduction_tile_capacity_for_footprint(reduction_footprint)
     }
 
     pub(crate) const fn tile_sizing(&self) -> CompiledDirectTileSizing {
@@ -3212,6 +3248,83 @@ extern "C" int native_direct_leaf_direct_application_v1(
             ),
             1_038,
             "authenticated replay target components can dominate the reducer"
+        );
+    }
+
+    #[test]
+    fn selected_routed_reduction_tile_uses_actual_components_within_allocated_capacity() {
+        let mut leaf = liveness_leaf(&[0], &[1]);
+        leaf.scalar_values_per_point = 4_320;
+        let stages = vec![liveness_stage(vec![leaf])];
+        let amplitude = liveness_stage(vec![liveness_leaf(&[1], &[])]);
+        let layout = CompiledDirectCurrentLayout::identity(100_000).unwrap();
+        let sizing = compiled_direct_tile_sizing(
+            &stages,
+            &amplitude,
+            &layout,
+            &[0, 1, 2, 3],
+            24,
+            32,
+            CompiledDirectReductionFootprint::Authenticated {
+                hot_scalar_values_per_point: 188_167,
+            },
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+        )
+        .unwrap();
+        assert_eq!(sizing.effective_tile_capacity, 32);
+        assert_eq!(sizing.reduction_tile_capacity, 2);
+        let selected_footprint = |source, target| {
+            CompiledDirectReductionFootprint::authenticated(
+                CompiledDirectReducerKind::Coherent,
+                1,
+                0,
+                CompiledDirectRoutedReductionFootprint {
+                    maximum_source_component_count: source,
+                    maximum_target_component_count: target,
+                },
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            sizing
+                .reduction_tile_capacity_for_footprint(selected_footprint(64, 512))
+                .unwrap(),
+            32,
+            "one selected flow must not inherit the full color-axis working set"
+        );
+        assert_eq!(
+            sizing
+                .reduction_tile_capacity_for_footprint(selected_footprint(64, 100_000))
+                .unwrap(),
+            4,
+            "a genuinely large selected target still limits cache locality"
+        );
+        assert_eq!(
+            sizing
+                .reduction_tile_capacity_for_footprint(selected_footprint(100_000, 64))
+                .unwrap(),
+            4,
+            "selected source scratch is included as well as target scratch"
+        );
+        let smaller_allocation = CompiledDirectTileSizing {
+            effective_tile_capacity: 8,
+            ..sizing
+        };
+        assert_eq!(
+            smaller_allocation
+                .reduction_tile_capacity_for_footprint(selected_footprint(1, 1))
+                .unwrap(),
+            8,
+            "selected reduction must not enlarge the already allocated arena"
+        );
+        assert_eq!(
+            sizing
+                .reduction_tile_capacity_for_footprint(
+                    CompiledDirectReductionFootprint::Unauthenticated,
+                )
+                .unwrap(),
+            sizing.reduction_tile_capacity,
+            "unknown reducer shapes retain the existing conservative capacity"
         );
     }
 

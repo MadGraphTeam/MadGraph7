@@ -1283,7 +1283,17 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena routed execution was selected without a complete runtime",
             ));
         };
-        let tile_capacity = direct.reduction_tile_capacity();
+        // This leaf is reached by a single selected LC flow. Size its routed
+        // scratch from the actual selected component axes, not the parent
+        // runtime's worst-case complete helicity/color Cartesian product.
+        let reduction_footprint = amplitude.compiled_direct_reduction_footprint(
+            0,
+            CompiledDirectRoutedReductionFootprint {
+                maximum_source_component_count: source_component_count,
+                maximum_target_component_count: target_component_count,
+            },
+        )?;
+        let tile_capacity = direct.reduction_tile_capacity_for_footprint(reduction_footprint)?;
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
