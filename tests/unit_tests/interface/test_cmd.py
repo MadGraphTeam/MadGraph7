@@ -286,6 +286,69 @@ class TestValidCmd(unittest.TestCase):
         cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
 
     @test_aloha.set_global()
+    def test_polarisation_no_duplicate_helicity(self):
+        """A polarization restriction must name each helicity at most once.
+
+        '{++}' used to be accepted and silently gave a factor two: the
+        helicity matrix is itertools.product over the raw list -- so [1,1]
+        yields ncomb=8 rows for 4 distinct helicity assignments -- while the
+        denominator factor is built from the same restriction as '{+}'.  The
+        overlap can also be hidden behind a multi-valued label: 'T' expands to
+        (+1,-1), so '{+T}', '{RT}', '{-T}' and '{LT}' repeat a helicity too.
+        Both families are refused; the message has to name the repeated
+        helicity and what each label expanded to, since '{+T}' does not look
+        like a duplicate until you know what 'T' covers.
+        """
+        cmd = self.cmd
+        cmd.do_import('sm')
+
+        # accepted: every spelling below names each helicity exactly once
+        for accepted, expected in [('+', [1]), ('-', [-1]), ('0', [0]),
+                                   ('T', [1, -1]), ('L', [-1]), ('R', [1]),
+                                   ('A', [99]), ('S', [9]),
+                                   ('+-', [1, -1]), ('-+', [-1, 1]),
+                                   ('0T', [0, 1, -1]), ('T0', [1, -1, 0]),
+                                   ('LR', [-1, 1]), ('0+', [0, 1]),
+                                   ('0S', [0, 9]), ('GH', [4, 5]),
+                                   ('GQW', [4, 6, 7]), ('0-', [0, -1]),
+                                   # '+0' is the signed spelling of helicity
+                                   # 0, so '{+0+}' is 0 and +1 -- not a
+                                   # duplicate, however it reads
+                                   ('+0', [0]), ('+0+', [0, 1]),
+                                   ('+2', [2])]:
+            procdef = cmd.extract_process('p p > w+{%s}' % accepted)
+            self.assertEqual(procdef['legs'][-1]['polarization'], expected,
+                             'polarization {%s} should be %s' % (accepted,
+                                                                 expected))
+
+        # refused: a helicity named twice, literally or after expansion
+        for refused in ['++', '--', '+-+', 'TT', 'LL', 'RR', '00', 'GG', 'AA',
+                        '+T', 'RT', '-T', 'LT', 'TL', 'TR', 'T+', 'T-',
+                        'R+', 'L-', '0T0']:
+            self.assertRaises(cmd.InvalidCmd, cmd.extract_process,
+                              'p p > w+{%s}' % refused)
+
+        # the message names the repeated helicity and both labels
+        try:
+            cmd.extract_process('p p > w+{+T}')
+        except cmd.InvalidCmd as error:
+            msg = str(error)
+            self.assertIn('+1 (right)', msg)
+            self.assertIn('-1 (left)', msg)
+            self.assertIn('selects', msg)
+            self.assertIn('already selected', msg)
+        else:
+            raise Exception('{+T} repeats helicity +1 and must be refused')
+
+        # the same parse loop serves LO: the double-count is not NLO-specific
+        self.assertRaises(cmd.InvalidCmd, cmd.extract_process,
+                          'p p > w+{++} [real=QCD]')
+        # ... and it reaches every leg of a decay chain, which parses each
+        # piece through the same extract_process
+        self.assertRaises(cmd.InvalidCmd, cmd.extract_decay_chain_process,
+                          'e+ e- > z{T}, z > mu+{++} mu-')
+
+    @test_aloha.set_global()
     def test_check_generate(self):
         """check if generate format are correctly supported"""
     

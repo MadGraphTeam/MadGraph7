@@ -124,6 +124,22 @@ logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # -> stoud for MadLo
 # Central definition of the main interface prompt (bold blue "MG7> ")
 MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
 
+# Human readable name of the internal polarization codes, used when refusing a
+# polarization restriction that names the same state twice.
+_POLARIZATION_STATE_NAMES = {0: '0 (longitudinal)',
+                             1: '+1 (right)',
+                             -1: '-1 (left)',
+                             4: '4 (metric, "G")',
+                             5: '5 (Theta, "H")',
+                             6: '6 (longitudinal - Theta, "Q")',
+                             7: '7 (Ward-protected, "W")',
+                             9: '9 (scalar, "S")',
+                             99: '99 (auxiliary, "A")'}
+
+def polarization_state_name(value):
+    """Name one internal polarization code the way a user typed/reads it."""
+    return _POLARIZATION_STATE_NAMES.get(value, '%+d' % value)
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -810,6 +826,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > Example: generate t{L} > w+{T} b{R}, w+ > ta+ vt",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{T} z{A}, z > e+ e-",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{0} z{T}, z > e+ e-, z > mu+ mu-",'$MG:color:GREEN')
+        logger.info(" > '{X}' is a *set* of helicities, so each helicity may be named at most once.")
+        logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > At LO, users need to set 'group_subprocesses False' and 'me_frame' (run_card).")
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
         logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
@@ -5438,10 +5456,20 @@ This implies that with decay chains:
                 if rest:
                     raise self.InvalidCmd('A space is required after the "}" symbol to separate particles')
                 ignore  =False
+                # A polarization restriction is a *set* of helicities, so the
+                # same state must not be named twice -- neither literally
+                # ("{++}") nor through a multi-valued label ("{+T}").  Keeping
+                # a duplicate would silently double-count: get_helicity_matrix
+                # runs itertools.product over this raw list while
+                # get_denominator_factor ignores the repetition.  Remember
+                # which label introduced each state so the refusal can name
+                # both spellings.
+                pol_origin = {}
                 for i,p in enumerate(pol):
                     if ignore or p==',':
                         ignore= False
                         continue
+                    pol_nb_before = len(polarization)
                     if p.upper() in ['T']:
                         if spin == 3:
                             polarization += [1,-1]
@@ -5518,7 +5546,33 @@ This implies that with decay chains:
                         polarization.append(p)
                     else:
                         raise self.InvalidCmd('Invalid Polarization')
-                    
+
+                    # 'p' may have been overwritten above, so read the label
+                    # back from the string; 'ignore' tells whether this label
+                    # consumed a second character (the "+2"/"-3" spellings).
+                    # The names below are prefixed: 'state' and 'flavor' are
+                    # live variables of the enclosing leg loop.
+                    pol_label = pol[i:i+2] if ignore else pol[i]
+                    pol_new = polarization[pol_nb_before:]
+                    for pol_state in pol_new:
+                        if pol_state in pol_origin:
+                            raise self.InvalidCmd(
+                              'Invalid polarization "{%(pol)s}": helicity '
+                              '%(dup)s is selected more than once. "%(new)s" '
+                              'selects %(newvals)s, but "%(old)s" already '
+                              'selected %(dup)s. Each helicity may be named at '
+                              'most once inside "{}" (e.g. "{T}" on its own '
+                              'already selects both transverse helicities); '
+                              'drop the redundant label.'
+                              % {'pol': pol,
+                                 'dup': polarization_state_name(pol_state),
+                                 'new': pol_label,
+                                 'old': pol_origin[pol_state],
+                                 'newvals': ' and '.join(
+                                    polarization_state_name(v)
+                                    for v in pol_new)})
+                        pol_origin[pol_state] = pol_label
+
 
             duplicate =1
             if part_name[0].isdigit() and len(part_name) > 1 and not part_name[1].isdigit(): 

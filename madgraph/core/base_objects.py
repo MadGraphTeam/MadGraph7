@@ -3715,11 +3715,15 @@ class Process(PhysicsObject):
     def shell_polarization(polarization):
         """Render one leg's polarization for use inside a file/directory name.
 
-        The stored list is the typed order with duplicates, but it means the
-        *set* of allowed helicities -- as get_polarization_key already
-        compares it.  Rendering sorted(set(...)) makes the name identify the
-        restriction and not the spelling, and is injective over subsets of
+        The stored list is the typed order, but it means the *set* of allowed
+        helicities -- as get_polarization_key already compares it.  Rendering
+        sorted(set(...)) makes the name identify the restriction and not the
+        spelling, and is injective over subsets of
         Leg.list_of_allowed_polarizations.  Unpolarized legs return ''.
+
+        The '{}' parser now refuses a repeated helicity outright, so set() is
+        a no-op for anything typed at the prompt; it is kept because a list
+        built directly through the Python API never passes that parser.
         """
         if not polarization:
             return ''
