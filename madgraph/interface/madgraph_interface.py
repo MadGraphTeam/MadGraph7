@@ -1624,16 +1624,10 @@ This will take effect only in a NEW terminal
                 elif arg.startswith('--'):
                     raise self.InvalidCmd('unknow command for \'save options\'')
                 elif arg == 'global':
-                    legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                    if os.path.exists(legacy_config_dir):
-                        config_dir = legacy_config_dir
-                    else:
-                        config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                        if not os.path.exists(config_dir):
-                            os.makedirs(config_dir)
-
-                    config_file = os.path.join(config_dir, 'mg5_configuration.txt')
+                    config_file = misc.user_config_file(create=True)
+                    if not config_file:
+                        raise self.InvalidCmd('no home directory to save the '
+                                              'global configuration into')
                     args.remove('global')
                     args.insert(1, config_file)
 
@@ -6477,7 +6471,27 @@ This implies that with decay chains:
         line = 'all =' + ' '.join(line)
         self.do_define(line)
 
-    def advanced_install(self, tool_to_install, 
+    @staticmethod
+    def heptools_install_target(heptools_install_dir):
+        """Where 'install <tool>' puts a tool, and which configuration file
+        records the resulting path ('' meaning this installation's own).
+
+        A prefix inside this installation is private to it, so its paths belong
+        in its own configuration; only a prefix explicitly pointed at a shared
+        location is recorded per user. Writing installation-specific absolute
+        paths into the shared file is what makes another MadGraph installation
+        pick up this one's HEPTools.
+        """
+
+        prefix = heptools_install_dir or pjoin(MG5DIR, 'HEPTools')
+        if not os.path.isabs(prefix):
+            prefix = pjoin(MG5DIR, prefix)
+        prefix = os.path.realpath(prefix)
+        if os.path.commonpath([prefix, MG5DIR]) == MG5DIR:
+            return prefix, ''
+        return prefix, misc.user_config_file(create=True) or ''
+
+    def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
         """ Uses the HEPToolsInstaller.py script maintened online to install
@@ -6551,21 +6565,8 @@ This implies that with decay chains:
             compiler_options.append('--fortran_compiler=%s'%
                                                self.options['fortran_compiler'])
 
-        if  self.options['heptools_install_dir']:
-            prefix = self.options['heptools_install_dir']
-            legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-            if os.path.exists(legacy_config_dir):
-                config_dir = legacy_config_dir
-            else:
-                config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                if not os.path.exists(config_dir):
-                    os.makedirs(config_dir)
-
-            config_file = os.path.join(config_dir, 'mg5_configuration.txt')
-        else:
-            prefix = pjoin(MG5DIR, 'HEPTools')
-            config_file = ''
+        prefix, config_file = self.heptools_install_target(
+                                       self.options['heptools_install_dir'])
 
         # Add the path of pythia8 if known and the MG5 path
         if tool=='mg5amc_py8_interface':
@@ -7732,18 +7733,9 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             if 'MADGRAPH_BASE' in os.environ:
                 config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path, final=False)
-            if 'HOME' in os.environ:
-                legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                if os.path.exists(legacy_config_dir):
-                    config_dir = legacy_config_dir
-                else:
-                    config_dir = os.getenv('XDG_STATE_HOME', os.path.join(os.environ['HOME'], '.config'))
-
-                config_path = os.path.join(config_dir, "mg5_configuration.txt")
-
-                if os.path.exists(config_path):
-                    self.set_configuration(config_path, final=False)
+            config_path = misc.user_config_file()
+            if config_path and os.path.exists(config_path):
+                self.set_configuration(config_path, final=False)
             config_path = os.path.relpath(misc.install_config_file(MG5DIR))
             return self.set_configuration(config_path, final)
 
@@ -8079,42 +8071,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     heptools_dir = os.path.join(MG5DIR, heptools_dir)
                 gen_env['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
 
-            # Point the run at the LHAPDF data directory where PDF sets live
-            # (and where a missing one can be downloaded on the fly), following:
-            #   1. $LHAPDF_DATA_PATH if the user set it;
-            #   2. the data dir of the configured lhapdf (e.g. lhapdf6 installed
-            #      via 'install lhapdf6', which lives inside HEPTools);
-            #   3. a local writable directory otherwise.
-            # The lhapdf-config executable is forwarded (MADGRAPH_LHAPDF_CONFIG)
-            # so the run can download the requested PDF set (see madevent
-            # init_beam / ensure_pdf_set).
-            lhapdf_exe = None
-            for _opt in ('lhapdf', 'lhapdf_py3'):
-                _val = self.options.get(_opt)
-                if not _val:
-                    continue
-                _exe = _val.split()[0]  # strip any '--python=' suffix
-                try:
-                    _datadir = subprocess.check_output(
-                        [_exe, '--datadir'], text=True,
-                        stderr=subprocess.DEVNULL).strip()
-                except Exception:
-                    continue
-                lhapdf_exe = _exe
-                if 'LHAPDF_DATA_PATH' not in gen_env and _datadir and os.path.isdir(_datadir):
-                    gen_env['LHAPDF_DATA_PATH'] = _datadir
-                break
-            if 'LHAPDF_DATA_PATH' not in gen_env:
-                # local fallback (inside HEPTools if configured, else MG5DIR)
-                local_pdf = os.path.join(
-                    gen_env.get('MADGRAPH_HEPTOOLS_DIR', MG5DIR), 'lhapdf_pdfsets')
-                try:
-                    os.makedirs(local_pdf, exist_ok=True)
-                    gen_env['LHAPDF_DATA_PATH'] = local_pdf
-                except OSError:
-                    pass
-            if lhapdf_exe:
-                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf_exe
+            # Forward the resolved LHAPDF location. bin/generate_events
+            # resolves it the same way on its own (launch.lhapdf_paths), so
+            # this only matters for the real LHAPDF library used by the
+            # post-processing tools, which reads LHAPDF_DATA_PATH natively.
+            lhapdf = misc.resolve_lhapdf(self.options, root=MG5DIR, create=True)
+            search = lhapdf.data_paths or (
+                [lhapdf.download_path] if lhapdf.download_path else [])
+            if search:
+                gen_env['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
+            if lhapdf.config:
+                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
 
             class ext_program:
                 @staticmethod

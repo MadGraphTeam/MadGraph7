@@ -4,9 +4,14 @@ from pathlib import Path
 
 pjoin=os.path.join
 
-# Check the configuration file in ~/.mg5/mg5_configuration.txt
-home = str(Path.home())
-conf_file=pjoin(home,'.mg5','mg5_configuration.txt')
+pythia8_path=None
+
+# Check the per-user configuration file (see misc.user_config_file)
+xdg=os.environ.get('XDG_CONFIG_HOME')
+if xdg:
+    conf_file=pjoin(xdg,'mg7','mg7_configuration.txt')
+else:
+    conf_file=pjoin(str(Path.home()),'.mg7','mg7_configuration.txt')
 try:
     with open(conf_file) as f:
         data=f.readlines()

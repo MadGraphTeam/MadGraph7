@@ -4368,18 +4368,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             if 'MADGRAPH_BASE' in os.environ:
                 config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path=config_path, final=False)
-            if 'HOME' in os.environ:
-                legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                if os.path.exists(legacy_config_dir):
-                    config_dir = legacy_config_dir
-                else:
-                    config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-
-                config_path = os.path.join(config_dir, 'mg5_configuration.txt')
-
-                if os.path.exists(config_path):
-                    self.set_configuration(config_path=config_path,  final=False)
+            config_path = misc.user_config_file()
+            if config_path and os.path.exists(config_path):
+                self.set_configuration(config_path=config_path, final=False)
             if amcatnlo:
                 me5_config = pjoin(self.me_dir, 'Cards', 'amcatnlo_configuration.txt')
             else:

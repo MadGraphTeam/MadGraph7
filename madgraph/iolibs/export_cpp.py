@@ -3259,6 +3259,47 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(madnis_bin, 0o755)
 
+    # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
+    # rediscover on its own. LHAPDF above all -- bin/generate_events may be
+    # driven from a shell that never sourced anything MadGraph-related.
+    _me5_config_keys = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2',
+                        'heptools_install_dir')
+
+    def write_me5_configuration(self):
+        """Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration
+        and by the mg7 launcher (load_mg5_options). Edit it to move the
+        directory to a machine where the tools sit elsewhere."""
+
+        lines = ['# configuration for the mg7 run time and post-processing tools',
+                 '# written at output time; edit if you move this directory',
+                 'mg5_path = %s' % MG5DIR]
+        for key in self._me5_config_keys:
+            value = self.opt.get(key)
+            if not value or str(value).strip().lower() in ('none', 'auto'):
+                continue
+            lines.append('%s = %s' % (key, self._portable_tool_value(value)))
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('\n'.join(lines) + '\n')
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
+    @staticmethod
+    def _portable_tool_value(value):
+        """Make a configuration value usable from another working directory.
+
+        A value relative to MG5DIR ('./HEPTools') becomes absolute; a bare
+        program name ('lhapdf-config', the shipped default) is left alone,
+        since resolving it would freeze this machine's PATH into the output.
+        A trailing '--python=X.Y' filter is preserved -- the readers know it.
+        """
+
+        exe, sep, flags = str(value).strip().partition(' ')
+        if not os.path.isabs(exe) and (os.sep in exe or exe.startswith('.')):
+            exe = os.path.realpath(pjoin(MG5DIR, exe))
+        return exe + sep + flags
+
     def get_merged_info(self):
         merged_subproc_info = []
         for subprocesses in self.merged_subprocesses.values():
@@ -3363,16 +3404,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
-        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
-        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
-        # cluster/run-mode settings resolve from the central configuration.
-        try:
-            with open(pjoin(self.dir_path, 'Cards',
-                            'me5_configuration.txt'), 'w') as fsock:
-                fsock.write('# configuration for the mg7 post-processing tools\n'
-                            'mg5_path = %s\n' % MG5DIR)
-        except Exception as error:
-            logger.warning('could not write me5_configuration.txt: %s', error)
+        self.write_me5_configuration()
 
         # MadAnalysis5 default analysis cards, tailored to this process. This
         # must run *before* history.write() below: writing the proc_card cleans

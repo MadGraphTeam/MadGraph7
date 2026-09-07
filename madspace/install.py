@@ -298,16 +298,17 @@ def _cmake_version_ok(path, minimum=CMAKE_MIN_VERSION) -> bool:
 
 
 def _heptools_dir_from_config() -> str | None:
-    """Read heptools_install_dir from the MG5 configuration files (same
-    locations MG5 itself uses), so the value is available even when the
-    installer is run directly rather than launched from MG5."""
-    home = os.environ.get("HOME") or os.path.expanduser("~")
-    candidates = []
-    if home:
-        candidates.append(os.path.join(home, ".mg5", "mg5_configuration.txt"))
-        xdg = os.environ.get("XDG_CONFIG_HOME", os.path.join(home, ".config"))
-        candidates.append(os.path.join(xdg, "mg5_configuration.txt"))
-    candidates.append(str(SCRIPT_DIR.parent / "input" / "mg7_configuration.txt"))
+    """Read heptools_install_dir from the MadGraph configuration files (same
+    locations MadGraph itself uses -- see misc.user_config_file), so the value
+    is available even when the installer is run directly rather than launched
+    from MadGraph. This installation's own config wins over the per-user one."""
+    candidates = [str(SCRIPT_DIR.parent / "input" / "mg7_configuration.txt")]
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    home = os.environ.get("HOME")
+    if xdg:
+        candidates.append(os.path.join(xdg, "mg7", "mg7_configuration.txt"))
+    elif home:
+        candidates.append(os.path.join(home, ".mg7", "mg7_configuration.txt"))
     for cfg in candidates:
         try:
             with open(cfg) as f:
