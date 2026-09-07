@@ -273,6 +273,55 @@ def test_n3lo_quark_pair_cross_connections_match_explicit_generators():
     assert color_connection_matrix_element(_QQ, right, _QQ, left) == actual.conjugate()
 
 
+@pytest.mark.parametrize(
+    ("prefix", "next_gluon"),
+    (
+        ((EmitGluon(1, 3),), 4),
+        ((EmitGluon(1, 3), EmitGluon(3, 4)), 5),
+        ((EmitGluon(1, 3), SplitGluon(3, 4, 5)), 6),
+    ),
+)
+def test_nnlo_n3lo_colour_coherence_includes_every_active_emitted_parton(
+    prefix, next_gluon
+):
+    intermediate = ColorConnection(_QQ_LEGS, prefix)
+    images = tuple(
+        apply_color_connection(
+            _QQ,
+            ColorConnection(_QQ_LEGS, (*prefix, EmitGluon(leg.label, next_gluon))),
+        )
+        for leg in intermediate.output_legs
+    )
+    # Charge conservation acts on the intermediate state, including auxiliary
+    # gluons and both endpoints of an emitted quark pair. The new operation is
+    # applied last on every branch, with unit sum weights and physical signs
+    # supplied by the quark/antiquark/adjoint charge maps themselves.
+    total = ConnectedColorTensor(
+        images[0].legs,
+        tuple(term for image in images for term in image.terms),
+        len(prefix) + 1,
+    )
+    assert total.terms == ()
+    for bra in images:
+        row_sum = ExactColorCoefficient()
+        for ket in images:
+            row_sum = row_sum + contract_connected_tensors(bra, ket)
+        assert row_sum == ExactColorCoefficient()
+
+    # These examples would fail if a higher-order sum only included Born legs.
+    born_only = ConnectedColorTensor(
+        images[0].legs,
+        tuple(
+            term
+            for leg, image in zip(intermediate.output_legs, images, strict=True)
+            if leg.label in (1, 2)
+            for term in image.terms
+        ),
+        len(prefix) + 1,
+    )
+    assert contract_connected_tensors(born_only, born_only).real > 0
+
+
 def test_splitting_a_trace_keeps_open_plus_closed_trace_intermediates():
     legs = tuple(ColorLeg(label, 8) for label in (1, 2, 3))
     tensor = ColorTensor(traces=((1, 2, 3),))

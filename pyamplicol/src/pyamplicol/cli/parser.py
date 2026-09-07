@@ -106,6 +106,7 @@ class CliInvocation:
     overrides: tuple[str, ...]
     dry_run: bool = False
     full_physics: bool = False
+    correlators: Path | None = None
 
     def __post_init__(self) -> None:
         frozen = _freeze(self.dedicated)
@@ -645,6 +646,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_process_options(generate)
     _add_color_options(generate)
     _add_generation_options(generate)
+    generate.add_argument(
+        "--correlators",
+        dest="_correlators",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="JSON declaration of colour IDs and allowed joint spin-correlation legs",
+    )
     _add_evaluator_options(generate)
 
     evaluate = subparsers.add_parser(
@@ -854,6 +862,7 @@ def _namespace_to_invocation(
     )
     dry_run = bool(raw.pop("_dry_run", False))
     full_physics = bool(raw.pop("_full_physics", False))
+    correlators = raw.pop("_correlators", None)
 
     positional_process = raw.pop("process", None)
     extra_processes = tuple(raw.pop("_extra_processes", ()))
@@ -902,6 +911,7 @@ def _namespace_to_invocation(
         overrides=overrides,
         dry_run=dry_run,
         full_physics=full_physics,
+        correlators=correlators,
     )
 
 

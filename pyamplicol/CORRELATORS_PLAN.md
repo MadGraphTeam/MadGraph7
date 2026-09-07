@@ -87,23 +87,23 @@ components absent from the underlying four-dimensional amplitude engine.
       conventions and any intentional differences.
 - [x] Implement standalone exact colour-connection algebra through three
       unresolved emissions with small independent tests.
-- [ ] Add opt-in generation declarations, exact requested colour matrices and
+- [x] Add opt-in generation declarations, exact requested colour matrices and
       an ID/definition catalogue to correlated process output only.
-- [ ] Prepare phase-complete physical amplitude/source schedules for correlated
+- [x] Prepare phase-complete physical amplitude/source schedules for correlated
       requests. Disable state-specific zero tests, squared-result parity
       aliases, numerical-current identities and permutation shortcuts wherever
       their assumptions are invalid for the declared vector dependence.
-- [ ] Implement runtime vector inputs and ID-selected direct colour reduction,
+- [x] Implement runtime vector inputs and ID-selected direct colour reduction,
       reusing existing compiled/recurrence source and amplitude machinery.
       Extend the other applicable execution and precision paths without
       changing uncorrelated paths; make unsupported combinations explicit
       until they are implemented and tested.
-- [ ] Add user-facing Python/CLI configuration, native interface support where
+- [x] Add user-facing Python/CLI configuration, native interface support where
       applicable, concise documentation and runnable examples. Do not duplicate
       existing CLI generation/profile functionality.
-- [ ] Complete Ward, colour-coherence, ordered-operator and independent
+- [x] Complete Ward, colour-coherence, ordered-operator and independent
       low-multiplicity physics validation through N3LO connections.
-- [ ] Verify the uncorrelated non-regression boundary with focused correctness
+- [x] Verify the uncorrelated non-regression boundary with focused correctness
       and same-settings generation/runtime comparisons using existing profiling
       commands. Investigate reproducible changes rather than hiding them in
       timing noise or loosening expected results.
@@ -115,7 +115,7 @@ components absent from the underlying four-dimensional amplitude engine.
 ### Development record
 
 The initial plan and PDF were pushed in `50d4af46`. The independent colour
-algebra and process-basis adapter pass 52 focused tests. Identity operators
+algebra and process-basis adapter pass 55 focused tests. Identity operators
 agree with every existing full-colour matrix entry in seven process families,
 including three quark pairs plus a gluon. Ordered non-Hermitian examples and
 three-step connections involving an emitted quark pair are tested explicitly.
@@ -126,8 +126,26 @@ four source components, with no physical-helicity pruning, FFT, replay or
 numerical-current reuse. Recurrence/OTF outputs and native correlator calls are
 not part of this first runtime. The ordinary native evaluation paths remain
 unchanged. Public `evaluate_correlated(...)` is explicit; its spin-vector
-setter does not change ordinary `evaluate(...)` calls. Generated-process Ward,
-Born-recovery and coherence checks are the current integration milestone.
+setter does not change ordinary `evaluate(...)` calls. Eleven real generated
+physics tests pass for `g g > g g`, `d d~ > g g`, `d g > d g` and
+`d d~ > u u~ g`: ordinary Born recovery, physical polarization completeness,
+incoming/outgoing and joint Ward identities, colour coherence, fundamental
+and adjoint Casimirs, three ordered emissions, complex vector homogeneity,
+batching and reset. Exact intermediate-state coherence sums additionally
+cover emitted gluons and emitted quark pairs through N3LO. Intrinsic fermion
+chirality zeros remain zeros; unlike physical-vector pruning, they do not
+discard amplitudes that could be restored by an arbitrary vector replacement.
+
+A small uncorrelated CLI A/B check against the base revision used built-in SM
+`g g > g g`, full colour, JIT-O2, one worker, batches of 512 and three seconds
+of warmed profiling per lane. Compiled runtime was 1.481 versus 1.460 microseconds
+per point (base versus branch); recurrence was 7.721 versus 7.747 microseconds,
+with 0.46–0.47% statistical standard error. Median generation times from three
+fresh outputs were 0.558 versus 0.565 seconds (compiled) and 5.240 versus
+5.264 seconds (recurrence). These checks show no meaningful regression; no
+ordinary native execution or kernel code changed. The combined process-tree
+guard peaked at 0.310 GiB, below the 9.3 GiB guard used for all local physics
+and timing checks. The full CI gate remains the final milestone.
 
 MadNkLO was inspected at revision
 `646a3db9c8efd7b4cb00e9d89b9197cd5394c01b`. Its ordered emissions and vector-list

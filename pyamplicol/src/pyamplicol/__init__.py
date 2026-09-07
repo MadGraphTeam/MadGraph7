@@ -59,6 +59,13 @@ if TYPE_CHECKING:
         load,
     )
     from .config import BenchmarkConfig, EvaluationConfig, GenerationConfig, RunConfig
+    from .correlators import (
+        ColorCorrelator,
+        CorrelatedValue,
+        CorrelatorConfig,
+        EmitGluon,
+        SplitGluon,
+    )
 
 __version__ = package_version()
 
@@ -73,6 +80,7 @@ __all__ = [
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
     "ColorComponent",
+    "ColorCorrelator",
     "ColorFlow",
     "CompatibilityError",
     "CompiledModel",
@@ -81,7 +89,10 @@ __all__ = [
     "CompiledModelSource",
     "ConfigurationError",
     "ContractedColorComponent",
+    "CorrelatedValue",
+    "CorrelatorConfig",
     "DependencyError",
+    "EmitGluon",
     "EvaluationConfig",
     "EvaluationError",
     "ExternalParticle",
@@ -106,6 +117,7 @@ __all__ = [
     "ResolvedEvaluation",
     "RunConfig",
     "Runtime",
+    "SplitGluon",
     "WarmUpResult",
     "__version__",
     "benchmark",
@@ -173,6 +185,16 @@ _CONFIG_EXPORTS = (
     "RunConfig",
 )
 _PUBLIC_EXPORTS = {
+    **{
+        name: (".correlators", name)
+        for name in (
+            "ColorCorrelator",
+            "CorrelatedValue",
+            "CorrelatorConfig",
+            "EmitGluon",
+            "SplitGluon",
+        )
+    },
     **{name: (".api.errors", name) for name in _ERROR_EXPORTS},
     **{name: (".api.models", name) for name in _MODEL_EXPORTS},
     **{name: (".api.requests", name) for name in _REQUEST_EXPORTS},

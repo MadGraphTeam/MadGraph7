@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         ArtifactInspection,
         ArtifactProcessInspection,
     )
+    from pyamplicol.correlators import CorrelatorConfig
     from pyamplicol.models.loading import CompiledModel as _CompiledModelPayload
 
 _T = TypeVar("_T")
@@ -233,8 +234,14 @@ def _model_inspection_payload(compiled: _CompiledModelPayload) -> dict[str, obje
 class DefaultCliServices:
     """Thin adapters over the public API; backend imports remain first-use only."""
 
-    def __init__(self, *, resolution: ConfigResolution | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        resolution: ConfigResolution | None = None,
+        correlators: CorrelatorConfig | None = None,
+    ) -> None:
         self._resolution = resolution
+        self._correlators = correlators
 
     def _generation_config(self, config: RunConfig) -> RunConfig | ConfigResolution:
         if self._resolution is None:
@@ -262,6 +269,11 @@ class DefaultCliServices:
             mode=cast(
                 Literal["error", "append", "replace"],
                 str(config.generation.mode),
+            ),
+            **(
+                {"correlators": self._correlators}
+                if self._correlators is not None
+                else {}
             ),
         )
 

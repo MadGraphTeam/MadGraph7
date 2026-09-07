@@ -157,6 +157,21 @@ def run_cli(
         selected_services = (
             DefaultCliServices(resolution=resolution) if services is None else services
         )
+        if invocation.correlators is not None:
+            from pyamplicol.correlators import CorrelatorConfig
+
+            if invocation.dry_run:
+                raise ValueError("--correlators requires generation, not --dry-run")
+            if services is not None:
+                raise ValueError(
+                    "--correlators requires the built-in generation service"
+                )
+            declarations = CorrelatorConfig.from_json_dict(
+                json.loads(invocation.correlators.read_text())
+            )
+            selected_services = DefaultCliServices(
+                resolution=resolution, correlators=declarations
+            )
         result = dispatch(
             config,
             selected_services,

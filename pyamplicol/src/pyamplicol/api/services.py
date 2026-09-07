@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pyamplicol as _pyamplicol
 from pyamplicol.config import (
@@ -51,6 +51,9 @@ from .results import (
 _generator_factory: GeneratorFactory | None = None
 _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
+
+if TYPE_CHECKING:
+    from pyamplicol.runtime.correlations import CorrelatorEvaluator
 
 
 def install_backend_factories(
@@ -293,6 +296,7 @@ class Generator:
         *,
         model: ModelSource | _pyamplicol.CompiledModel | None = None,
         mode: Literal["error", "append", "replace"] = "error",
+        correlators: _pyamplicol.CorrelatorConfig | None = None,
     ) -> GenerationResult:
         """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
 
@@ -309,6 +313,18 @@ class Generator:
         if mode == "append" and not destination.is_dir():
             raise FileNotFoundError(f"cannot append to missing artifact: {destination}")
         self._resolve_generation_resources()
+        if correlators is not None:
+            from pyamplicol.generation.correlated import generate_correlated
+
+            return generate_correlated(
+                process_set,
+                destination,
+                model=model,
+                mode=mode,
+                config=self._config,
+                progress=self._progress,
+                declarations=correlators,
+            )
         result = self._implementation().generate(
             process_set, destination, model=model, mode=mode
         )
@@ -653,6 +669,53 @@ class Runtime:
 
         self._backend.set_model_parameters(dict(mapping))
 
+    def _correlator_evaluator(self) -> CorrelatorEvaluator:
+        evaluator: CorrelatorEvaluator | None = getattr(
+            self, "_correlated_evaluator", None
+        )
+        if evaluator is None:
+            from pyamplicol.runtime.correlations import CorrelatorEvaluator
+
+            evaluator = CorrelatorEvaluator(self._backend)
+            self._correlated_evaluator = evaluator
+        return evaluator
+
+    def set_spin_correlation_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> None:
+        """Replace declared spin-1 sources by literal complex four-vectors.
+
+        Keys are public one-based leg labels. A value is either ``(E,x,y,z)``
+        or one such vector per phase-space point. The set of keys must match a
+        spin class declared at generation. ``None`` or ``{}`` restores ordinary
+        helicity states. Vectors are neither normalized nor projected.
+        This affects :meth:`evaluate_correlated` only, not :meth:`evaluate`.
+        """
+        self._correlator_evaluator().set_spin_correlation_vectors(vectors)
+
+    def evaluate_correlated(
+        self,
+        momenta: Momenta,
+        *,
+        color_correlation: str = "born",
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int = 16,
+    ) -> tuple[_pyamplicol.CorrelatedValue, ...]:
+        """Evaluate a generation-time colour ID with the current spin vectors.
+
+        Returns one complex decimal value per point. ``"born"`` selects the
+        ordinary full-colour metric. All ordinary normalization factors remain
+        in place; a replaced spin leg is counted once in the helicity sum.
+        """
+        return self._correlator_evaluator().evaluate(
+            momenta,
+            color_correlation=color_correlation,
+            helicities=_selector_ids(
+                helicities, expected_type=HelicityConfiguration, name="helicity"
+            ),
+            precision=_validate_precision(precision),
+        )
+
     def clear(self) -> None:
         """Drop warmed execution state while keeping this artifact loaded.
 
@@ -661,6 +724,9 @@ class Runtime:
         """
 
         self._backend.clear()
+        correlated = getattr(self, "_correlated_evaluator", None)
+        if correlated is not None:
+            correlated.clear()
 
     @property
     def representative_process_key(self) -> str:
@@ -789,11 +855,12 @@ def generate(
     mode: Literal["error", "append", "replace"] = "error",
     config: GenerationConfig | RunConfig | ConfigResolution | None = None,
     progress: ProgressSink | None = None,
+    correlators: _pyamplicol.CorrelatorConfig | None = None,
 ) -> GenerationResult:
     """Generate a process artifact using a one-shot convenience function."""
 
     return Generator(config=config, progress=progress).generate(
-        processes, output, model=model, mode=mode
+        processes, output, model=model, mode=mode, correlators=correlators
     )
 
 

@@ -121,6 +121,7 @@ ApiBundleHook = Callable[
     [ArtifactBuilder, Mapping[str, Sequence[Sequence[float]]]],
     Sequence[object],
 ]
+ArtifactPayloadHook = Callable[[ArtifactBuilder], Mapping[str, object]]
 
 _CONFIG_REQUESTED_PATH = "config/requested.toml"
 _CONFIG_EFFECTIVE_PATH = "config/effective.toml"
@@ -816,6 +817,7 @@ def write_schema_v3_artifact(
     timings: Mapping[str, float],
     api_bundle_hook: ApiBundleHook | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    payload_hook: ArtifactPayloadHook | None = None,
 ) -> ArtifactWriteResult:
     if not processes:
         raise ValueError("schema-v3 generation requires at least one concrete process")
@@ -1091,6 +1093,8 @@ def write_schema_v3_artifact(
             evaluator_payload_container=evaluator_payload_container,
             recurrence_schedule_sharing=recurrence_sharing_extension,
         )
+        if payload_hook is not None:
+            extensions.update(payload_hook(builder))
         builder.finalize(
             kind=(
                 "pyamplicol-process"
