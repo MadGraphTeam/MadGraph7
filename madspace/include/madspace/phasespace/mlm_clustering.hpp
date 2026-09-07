@@ -40,6 +40,18 @@ enum class ScaleScheme {
     madevent = 1,
 };
 
+// How the beam parton line is decided to carry on past a vertex. Only read by
+// ScaleScheme::madevent.
+enum class PartonLineScheme {
+    // From the flavour of the object emitted at that vertex alone.
+    flavor = 0,
+    // From goodjet of reweight.f: a line counts as a parton line only while
+    // every clustering it has been through was a jet vertex, so one non-jet
+    // vertex anywhere in its history stops it for good. This is what madevent
+    // does, and it stops beam lines earlier than flavor does.
+    goodjet = 1,
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
     MLMClustering(
@@ -69,7 +81,8 @@ public:
         // pdg ids of the external particles, in leg order. When empty, every
         // clustering is assumed to be a QCD splitting between jets.
         std::vector<int> external_pdg_ids = {},
-        int max_jet_flavor = 4
+        int max_jet_flavor = 4,
+        PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet
     );
 
     // The compiled clustering state machine, in the flat encoding the kernel
@@ -93,6 +106,7 @@ private:
     double _cm_energy;
     JetScaleScheme _jet_scale_scheme;
     ScaleScheme _scale_scheme;
+    PartonLineScheme _parton_line_scheme;
     int _beam_flags;
     int _jet_leg_mask;
     double _xqcut;

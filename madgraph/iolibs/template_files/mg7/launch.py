@@ -1384,6 +1384,10 @@ class MadgraphSubprocess:
                     hadronic=not self.process.leptonic,
                     external_pdg_ids=all_pids,
                     max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
+                    parton_line_scheme=getattr(
+                        ms.MLMClustering.PartonLineScheme,
+                        self.process.run_card["beam"]["parton_line_scheme"],
+                    ),
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
                 max_scale=max_scale,

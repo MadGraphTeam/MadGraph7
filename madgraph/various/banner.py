@@ -6544,6 +6544,17 @@ class RunCardMG7(RunCard):
         # section, unlike jet_scale_scheme.
         self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
             allowed=['clustering_mean', 'madevent'])
+        # How a beam's parton line is decided to carry on past a vertex (only
+        # read when scale_scheme = "madevent"):
+        #   "goodjet": a line stays a parton line only while every clustering
+        #              it has been through was a jet vertex, so one non-jet
+        #              vertex in its history stops it for good. What madevent
+        #              does.
+        #   "flavor":  decided from the flavour of the emitted object alone,
+        #              which keeps lines alive past vertices where madevent
+        #              would have stopped them.
+        self.add_toml_param('beam', 'parton_line_scheme', "goodjet",
+            allowed=['goodjet', 'flavor'])
         # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
         # the lowest Q of a PDF grid the densities are undefined, so an event
         # whose scales fall under this is dropped. madevent applies the same

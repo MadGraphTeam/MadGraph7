@@ -27,6 +27,10 @@ constexpr int SCHEME_PRODUCTION = 1;
 // ScaleScheme in mlm_clustering.hpp.
 constexpr int SCALES_CLUSTERING_MEAN = 0;
 constexpr int SCALES_MADEVENT = 1;
+// How the beam parton line is decided to carry on past a vertex: from each
+// daughter's own flavour, or from the propagated goodjet flag of reweight.f.
+constexpr int LINE_FLAVOR = 0;
+constexpr int LINE_GOODJET = 1;
 // trace_data bits above the 2-bit trace mode: the flavour of the mother.
 constexpr int TRACE_IS_JET_IN = 1 << 2;
 constexpr int TRACE_IS_COLORED_IN = 1 << 3;
@@ -221,6 +225,7 @@ KERNELSPEC void mlm_clustering(
     IIn<T, 0> scale_scheme,
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
+    IIn<T, 0> parton_line_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -393,10 +398,14 @@ KERNELSPEC void mlm_clustering(
     // g -> q qbar splitting, and for none once its line has been absorbed.
     int rep1[N_EXT_MAX], rep2[N_EXT_MAX];
     bool slot_is_jet[N_EXT_MAX];
+    // Colour of the line currently in each slot, tracked the same way. Only
+    // the two beam slots are ever read back, at the 2 -> 1 root.
+    bool slot_is_colored[N_EXT_MAX];
     for (int i = 0; i < n_part; ++i) {
         rep1[i] = i;
         rep2[i] = -1;
         slot_is_jet[i] = (jet_leg_mask >> i) & 1;
+        slot_is_colored[i] = i < 2 ? (((beam_flags >> (2 * i)) & 1) != 0) : true;
     }
 
     bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
@@ -498,6 +507,7 @@ KERNELSPEC void mlm_clustering(
 
         // the merged line takes the mother's flavour
         slot_is_jet[particle1] = (cluster_trace[i] & TRACE_IS_JET_IN) != 0;
+        slot_is_colored[particle1] = (cluster_trace[i] & TRACE_IS_COLORED_IN) != 0;
     }
 
     // Any outgoing leg that no QCD clustering booked a scale onto keeps
@@ -558,17 +568,38 @@ KERNELSPEC void mlm_clustering(
             qcdline[j] = (beam_flags >> (2 * j)) & 1;
             partonline[j] = qcdline[j];
         }
+        // goodjet(i) of reweight.f: "every clustering this line has been
+        // through so far was a jet one". It starts as the flavour of each
+        // external - QCD for a beam, jet for an outgoing leg - and can only
+        // ever be cleared, so a line that once passed through a non-jet vertex
+        // never counts as a parton line again. Reading each daughter's flavour
+        // instead, which is what LINE_FLAVOR does, keeps beam lines alive past
+        // vertices where madevent would have stopped them.
+        bool goodjet[N_EXT_MAX];
+        for (int i = 0; i < n_part; ++i) {
+            goodjet[i] = i < 2 ? ((beam_flags >> (2 * i)) & 1) != 0
+                               : ((jet_leg_mask >> i) & 1) != 0;
+        }
+        bool use_goodjet = parton_line_scheme == LINE_GOODJET;
+
         // One step of the beam-line bookkeeping, for beam j at step i.
-        auto walk_line = [&](int j, int i, bool is_jet2, bool is_jet_in,
+        // is_emitted_jet is goodjet(ida(3-i)), the emitted object; is_jet_in
+        // and is_colored_in are the mother's flavour.
+        auto walk_line = [&](int j, int i, bool is_emitted_jet, bool is_jet_in,
                              bool is_colored_in) {
             if (partonline[j]) {
                 if (jfirst[j] < 0) {
                     jfirst[j] = i;
                 }
                 jlast[j] = i;
-                partonline[j] = is_jet2 && is_jet_in;
-            } else if (jfirst[j] < 0) {
-                jfirst[j] = i;
+                partonline[j] = is_emitted_jet && is_jet_in;
+            } else {
+                if (jfirst[j] < 0) {
+                    jfirst[j] = i;
+                }
+                // the beam line has stopped being a parton line, so whatever
+                // it becomes is not a good jet either
+                goodjet[j] = false;
             }
             if (qcdline[j]) {
                 jcentral[j] = i;
@@ -579,14 +610,24 @@ KERNELSPEC void mlm_clustering(
         int steps = cluster_max + (leftover >= 0 ? 1 : 0);
         for (int i = 0; i < cluster_max; ++i) {
             int data = cluster_history[i];
-            int j = data & 0xFF;
-            if (j >= 2) {
-                continue;  // final-state clustering, no beam line involved
-            }
+            int particle1 = data & 0xFF;
+            int particle2 = (data >> 8) & 0xFF;
             int trace = cluster_trace[i];
+            bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
+            if (particle1 >= 2) {
+                // final-state clustering: no beam line, but the mother's
+                // goodjet has to be worked out for whoever clusters with it
+                // later - including the root, which reads the leftover's.
+                bool is_jet_vertex = (data >> 27) & 1;
+                goodjet[particle1] = is_jet_vertex && is_jet_in &&
+                    goodjet[particle1] && goodjet[particle2];
+                continue;
+            }
+            bool emitted = use_goodjet ? goodjet[particle2]
+                                       : ((data >> 29) & 1) != 0;
             walk_line(
-                j, i, (data >> 29) & 1, trace & TRACE_IS_JET_IN,
-                trace & TRACE_IS_COLORED_IN
+                particle1, i, emitted, is_jet_in,
+                (trace & TRACE_IS_COLORED_IN) != 0
             );
         }
         if (leftover >= 0) {
@@ -595,13 +636,18 @@ KERNELSPEC void mlm_clustering(
             // it twice, once per beam. Seen from beam j the emitted object is
             // that leftover and the mother is the *other* beam's parton, which
             // is what decides whether either line carries on past the root.
+            bool leftover_jet =
+                use_goodjet ? goodjet[leftover] : slot_is_jet[leftover];
             for (int j = 0; j < 2; ++j) {
+                // Seen from beam j the mother is the other beam's line as it
+                // stands at the root, not the external parton it started as -
+                // reweight.f reads ipdgcl(imo) with imo = idacl(n,3-i).
                 walk_line(
                     j,
                     cluster_max,
-                    slot_is_jet[leftover],
-                    (beam_flags >> (2 * (1 - j) + 1)) & 1,
-                    (beam_flags >> (2 * (1 - j))) & 1
+                    leftover_jet,
+                    slot_is_jet[1 - j],
+                    slot_is_colored[1 - j]
                 );
             }
         }
@@ -763,6 +809,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> scale_scheme,
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
+    IIn<T, 0> parton_line_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -785,6 +832,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         scale_scheme,
         beam_flags,
         jet_leg_mask,
+        parton_line_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -811,6 +859,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> scale_scheme,
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
+    IIn<T, 0> parton_line_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -833,6 +882,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         scale_scheme,
         beam_flags,
         jet_leg_mask,
+        parton_line_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,
