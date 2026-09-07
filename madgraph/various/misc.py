@@ -1346,7 +1346,17 @@ def configure_gzip(configuration=None):
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
 
-def gzip(path, stdout=None, error=True, forceexternal=False):
+# Compression level for the in-process branch of gzip() below. The gzip module
+# defaults to 9, which is a poor trade here: on a 172 MB LHE, level 9 takes
+# 18.6 s against 4.5 s at level 6, and buys 4% (38.1 MB against 39.7 MB). Level
+# 6 is also what the external tool this function shells out to for large files
+# uses, so the two branches now agree instead of compressing the same data
+# differently depending on its size.
+GZIP_COMPRESSLEVEL = 6
+
+
+def gzip(path, stdout=None, error=True, forceexternal=False,
+         compresslevel=GZIP_COMPRESSLEVEL):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
@@ -1368,8 +1378,11 @@ def gzip(path, stdout=None, error=True, forceexternal=False):
         stdout = "%s.gz" % stdout
 
     try:
-        with ziplib.open(stdout, 'wb') as f:
-            f.write(open(path).read().encode())
+        # Stream it: reading the whole file in as a str and encoding it made a
+        # 172 MB LHE cost two extra full-size copies in memory.
+        with open(path, 'rb') as fsock, \
+             ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
+            shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
     except OverflowError:
         gzip(path, stdout, error=error, forceexternal=True)
     except Exception:
