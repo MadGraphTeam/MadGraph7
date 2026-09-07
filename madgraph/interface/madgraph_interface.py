@@ -333,7 +333,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("syntax: save %s FILENAME [OPTIONS]" % "|".join(self._save_opts),'$MG:color:BLUE')
         logger.info("-- save information as file FILENAME",'$MG:BOLD')
         logger.info("   FILENAME is optional for saving 'options'.")
-        logger.info('   By default it uses ./input/mg5_configuration.txt')
+        logger.info('   By default it uses ./input/mg7_configuration.txt')
         logger.info('   If you put "global" for FILENAME it will use the global configuration')
         logger.info('   If this files exists, it is uses by all MG5 on the system but continues')
         logger.info('   to read the local options files.')
@@ -483,7 +483,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info('   If FILE belongs to index.html, param_card.dat, run_card.dat')
         logger.info('   the path to the last created/used directory is used')
         logger.info('   The program used to open those files can be chosen in the')
-        logger.info('   configuration file ./input/mg5_configuration.txt')
+        logger.info('   configuration file ./input/mg7_configuration.txt')
 
     def help_customize_model(self):
         logger.info("syntax: customize_model --save=NAME",'$MG:color:BLUE')
@@ -508,7 +508,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - If mode is pythia8, output all files needed to generate")
         logger.info("     the processes using Pythia 8. The files are written in")
         logger.info("     the Pythia 8 directory (default).")
-        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg5_configuration.txt")
+        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg7_configuration.txt")
         logger.info("   - If mode is aloha: Special syntax output:")
         logger.info("     syntax: aloha [ROUTINE] [--options]" )
         logger.info("     valid options for aloha output are:")
@@ -1650,7 +1650,7 @@ This will take effect only in a NEW terminal
                         args.insert(1, arg)
                         has_path = True
             if not has_path:
-                args.insert(1, pjoin(MG5DIR,'input','mg5_configuration.txt'))
+                args.insert(1, misc.install_config_file(MG5DIR))
 
 
     def check_set(self, args, log=True):
@@ -3348,7 +3348,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._nlo_modes_for_completion = ['all','virt','real','LOonly']
         self._second_exporter = None
 
-        # Load the configuration file,i.e.mg5_configuration.txt
+        # Load the configuration file,i.e.mg7_configuration.txt
         self.set_configuration()
 
     def setup(self):
@@ -3397,7 +3397,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # The four gluon merging is wanted while the diagrams are generated,
         # which is below the interface, so it travels on the module. Synced
         # here rather than only in the setter, since the option can also
-        # arrive from mg5_configuration.txt.
+        # arrive from mg7_configuration.txt.
         madgraph.merge_quartic_vertices = \
                              self.options.get('merge_quartic_vertices', False)
         # an added process arrives in the generated order whatever an earlier
@@ -7721,7 +7721,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
     def set_configuration(self, config_path=None, final=True):
         """ assign all configuration variable from file
-            ./input/mg5_configuration.txt. assign to default if not define """
+            ./input/mg7_configuration.txt. assign to default if not define """
 
         if not self.options:
             self.options = dict(self.options_configuration)
@@ -7730,7 +7730,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not config_path:
             if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'],'mg5_configuration.txt')
+                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path, final=False)
             if 'HOME' in os.environ:
                 legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
@@ -7744,12 +7744,11 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
                 if os.path.exists(config_path):
                     self.set_configuration(config_path, final=False)
-            config_path = os.path.relpath(pjoin(MG5DIR,'input',
-                                                       'mg5_configuration.txt'))
+            config_path = os.path.relpath(misc.install_config_file(MG5DIR))
             return self.set_configuration(config_path, final)
 
         if not os.path.exists(config_path):
-            files.cp(pjoin(MG5DIR,'input','.mg5_configuration_default.txt'), config_path)
+            files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
         if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
             files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
             files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
@@ -7766,7 +7765,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             try:
                 name, value = line.split('=',1)
             except ValueError:
-                #misc.sprint('ignore line in mg5_configuration.txt: %s' % line)
+                #misc.sprint('ignore line in mg7_configuration.txt: %s' % line)
                 pass
             else:
                 name = name.strip()
@@ -8354,13 +8353,13 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             if len(args) >1 and not args[1].startswith('--') and args[1] not in self.options:
                 filepath = args[1]
             else:
-                filepath = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
-            
+                filepath = misc.install_config_file(MG5DIR)
+
             basedir = MG5DIR
             if partial_save and os.path.exists(filepath):
                 basefile = filepath
             else:
-                basefile = pjoin(MG5DIR, 'input', '.mg5_configuration_default.txt')
+                basefile = pjoin(MG5DIR, 'input', misc.CONFIG_TEMPLATE_NAME)
                 
             
 

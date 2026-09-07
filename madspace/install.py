@@ -307,7 +307,7 @@ def _heptools_dir_from_config() -> str | None:
         candidates.append(os.path.join(home, ".mg5", "mg5_configuration.txt"))
         xdg = os.environ.get("XDG_CONFIG_HOME", os.path.join(home, ".config"))
         candidates.append(os.path.join(xdg, "mg5_configuration.txt"))
-    candidates.append(str(SCRIPT_DIR.parent / "input" / "mg5_configuration.txt"))
+    candidates.append(str(SCRIPT_DIR.parent / "input" / "mg7_configuration.txt"))
     for cfg in candidates:
         try:
             with open(cfg) as f:

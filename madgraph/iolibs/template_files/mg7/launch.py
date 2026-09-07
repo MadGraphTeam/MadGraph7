@@ -2170,7 +2170,7 @@ def load_mg5_options() -> dict:
         'lhapdf': None, 'timeout': 0,
         'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
     }
-    config_files = [os.path.join(mg5dir, 'input', 'mg5_configuration.txt')]
+    config_files = [misc.install_config_file(mg5dir)]
     home = os.environ.get('HOME')
     if home:
         config_files.append(os.path.join(home, '.mg5', 'mg5_configuration.txt'))

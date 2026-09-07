@@ -4357,7 +4357,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     ############################################################################
     def set_configuration(self, config_path=None, final=True, initdir=None, amcatnlo=False):
         """ assign all configuration variable from file
-            ./Cards/mg5_configuration.txt. assign to default if not define """
+            ./Cards/me5_configuration.txt. assign to default if not define """
 
         if not hasattr(self, 'options') or not self.options:
             self.options = dict(self.options_configuration)
@@ -4366,7 +4366,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         if not config_path:
             if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'],'mg5_configuration.txt')
+                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path=config_path, final=False)
             if 'HOME' in os.environ:
                 legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
@@ -4388,7 +4388,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
             if 'mg5_path' in self.options and self.options['mg5_path']:
                 MG5DIR = self.options['mg5_path']
-                config_file = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
+                config_file = misc.install_config_file(MG5DIR)
                 self.set_configuration(config_path=config_file, final=False,initdir=MG5DIR)
             else:
                 self.options['mg5_path'] = None
@@ -5260,7 +5260,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
         except OSError as error:
             if error.errno == 2:
-                raise Exception( 'lhapdf executable (%s) is not found on your system. Please install it and/or indicate the path to the correct executable in input/mg5_configuration.txt' % lhapdf_config)
+                raise Exception( 'lhapdf executable (%s) is not found on your system. Please install it and/or indicate the path to the correct executable in input/mg7_configuration.txt' % lhapdf_config)
             else:
                 raise
                 

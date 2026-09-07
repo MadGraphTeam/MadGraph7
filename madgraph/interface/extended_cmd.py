@@ -2013,7 +2013,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
                 base = pjoin(self.me_dir, 'Cards', 'me5_configuration.txt')
                 if len(args) == 0 and os.path.exists(base):
                     self.write_configuration(base, base, self.me_dir)
-            base = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
+            base = misc.install_config_file(MG5DIR)
             basedir = MG5DIR
             
         if len(args) == 0:

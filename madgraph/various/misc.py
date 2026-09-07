@@ -51,7 +51,18 @@ logger = logging.getLogger('cmdprint.ext_program')
 logger_stderr = logging.getLogger('madevent.misc')
 pjoin = os.path.join
 misc = locals
-   
+
+#===============================================================================
+# configuration file locations
+#===============================================================================
+CONFIG_NAME = 'mg7_configuration.txt'
+CONFIG_TEMPLATE_NAME = '.mg7_configuration_default.txt'
+
+def install_config_file(root):
+    """The configuration file of the MadGraph installation rooted at *root*."""
+
+    return pjoin(root, 'input', CONFIG_NAME)
+
 #===============================================================================
 # parse_info_str
 #===============================================================================
@@ -1508,11 +1519,11 @@ class open_file(object):
         for p in possibility:
             if which(p):
                 logger.info('Using default %s \"%s\". ' % (program, p) + \
-                             'Set another one in ./input/mg5_configuration.txt')
+                             'Set another one in ./input/mg7_configuration.txt')
                 return p
         
         logger.info('No valid %s found. ' % program + \
-                                   'Please set in ./input/mg5_configuration.txt')
+                                   'Please set in ./input/mg7_configuration.txt')
         return None
         
         
@@ -1534,7 +1545,7 @@ class open_file(object):
                 _thread.start_new_thread(subprocess.call,(arguments,))
         else:
             logger.warning('Not able to open file %s since no program configured.' % file_path + \
-                                'Please set one in ./input/mg5_configuration.txt')
+                                'Please set one in ./input/mg7_configuration.txt')
 
     def open_mac_program(self, program, file_path):
         """ open a text with the text editor """

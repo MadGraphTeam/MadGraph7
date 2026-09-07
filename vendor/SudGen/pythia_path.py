@@ -16,9 +16,9 @@ try:
 except OSError:
     pass
 
-# Check the configuration file in ~/.mg5/mg5_configuration.txt
+# Check the configuration file in input/mg7_configuration.txt
 curr_path=os.getcwd()
-conf_file=pjoin(curr_path,'..','..','input','mg5_configuration.txt')
+conf_file=pjoin(curr_path,'..','..','input','mg7_configuration.txt')
 try:
     with open(conf_file) as f:
         data=f.readlines()
@@ -29,7 +29,7 @@ except OSError:
     pass
 
 if not pythia8_path:
-    print('Pythia8 path not found in input/mg5_configuration.txt file. Cannot compile SudGen.')
+    print('Pythia8 path not found in input/mg7_configuration.txt file. Cannot compile SudGen.')
 else:
     makefile_inc=pjoin(curr_path,'makefile.inc')
     try:
