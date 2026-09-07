@@ -849,28 +849,6 @@ class FKSHelasProcess(object):
             nexternal += 1
         return (nexternal, ninitial)
     
-    @staticmethod
-    def get_polarization_key(amplitude):
-        """Return the polarization content of the external legs of the process
-        behind an amplitude, in the leg order of that process.
-
-        helas_objects.IdentifyMETag (through its link_from_leg) does not carry
-        the polarization of the external legs, so two processes which differ
-        only by the polarization of one of their legs get the very same tag.
-        This key is compared on top of the tag (see __eq__) so that they are
-        not combined into a single matrix element.  Only the polarizations
-        enter it (not the pdg codes), so that matrix elements which differ by
-        the flavour of their legs keep being combined exactly as before; for a
-        process with no polarization restriction every entry is the empty
-        tuple, so this leaves the comparison of unpolarized processes strictly
-        unchanged."""
-        process = amplitude.get('process')
-        # sorted + deduplicated: the polarization list is a set of allowed
-        # helicities, so 'w+{+-}' and 'w+{-+}' must stay one matrix element
-        # (they also share one directory name).
-        return tuple(tuple(sorted(set(leg.get('polarization'))))
-                     for leg in process.get('legs'))
-
     def __eq__(self, other):
         """the equality between two FKSHelasProcesses is defined up to the
         color links"""
@@ -887,14 +865,6 @@ class FKSHelasProcess(object):
             return False
 
         if selftag != othertag:
-            return False
-
-        # the tag above is blind to the polarization of the external legs:
-        # compare it explicitly, otherwise e.g. 'p p > t{+} t~' and
-        # 'p p > t{-} t~' would be merged into a single matrix element and
-        # only the first polarization would ever be written out.
-        if self.get_polarization_key(selfamp) != \
-                                        self.get_polarization_key(otheramp):
             return False
 
         # now the virtuals

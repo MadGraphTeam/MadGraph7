@@ -465,8 +465,14 @@ class FKSRealProcess(object):
         # Sharing there would silently give one born the other's reals.
         # For an unpolarized process the key is the PDG tuple plus a tuple of
         # empty tuples, so nothing changes.
+        # Canonicalised (sorted, deduplicated) like the matrix element tag in
+        # helas_objects.IdentifyMETag.link_from_leg and like the directory
+        # name in Process.shell_polarization: '{+-}' and '{-+}' are one and
+        # the same restriction, so they must share their reals just as they
+        # share their born matrix element.
         self.pdgs_pols = (self.pdgs,
-                          tuple(tuple(leg.get('polarization')) for leg in leglist))
+                          tuple(tuple(sorted(set(leg.get('polarization'))))
+                                for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:
