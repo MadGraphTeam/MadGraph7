@@ -82,10 +82,10 @@ components absent from the underlying four-dimensional amplitude engine.
 ## Implementation stages
 
 - [x] Activate the goal and create the clean `correlators` worktree from main.
-- [ ] Commit/push this plan and the unchanged reference PDF.
-- [ ] Research MadNkLO's colour/spin APIs and original checks; record useful
+- [x] Commit/push this plan and the unchanged reference PDF.
+- [x] Research MadNkLO's colour/spin APIs and original checks; record useful
       conventions and any intentional differences.
-- [ ] Implement standalone exact colour-connection algebra through three
+- [x] Implement standalone exact colour-connection algebra through three
       unresolved emissions with small independent tests.
 - [ ] Add opt-in generation declarations, exact requested colour matrices and
       an ID/definition catalogue to correlated process output only.
@@ -111,6 +111,31 @@ components absent from the underlying four-dimensional amplitude engine.
       finish only when applicable CI is green and the declared scope is met.
 
 ## Isolation and validation
+
+### Development record
+
+The initial plan and PDF were pushed in `50d4af46`. The independent colour
+algebra and process-basis adapter pass 52 focused tests. Identity operators
+agree with every existing full-colour matrix entry in seven process families,
+including three quark pairs plus a gluon. Ordered non-Hermitian examples and
+three-step connections involving an emitted quark pair are tested explicitly.
+
+The first runtime uses the existing generic compiled amplitude and retained
+Symbolica evaluators through an isolated Python executor. It preserves all
+four source components, with no physical-helicity pruning, FFT, replay or
+numerical-current reuse. Recurrence/OTF outputs and native correlator calls are
+not part of this first runtime. The ordinary native evaluation paths remain
+unchanged. Public `evaluate_correlated(...)` is explicit; its spin-vector
+setter does not change ordinary `evaluate(...)` calls. Generated-process Ward,
+Born-recovery and coherence checks are the current integration milestone.
+
+MadNkLO was inspected at revision
+`646a3db9c8efd7b4cb00e9d89b9197cd5394c01b`. Its ordered emissions and vector-list
+semantics inform the design, but the implementation is independent. Its stored
+N3LO examples, symmetry assumptions and diagnostic-only checks are not used
+as an unconditional oracle. This implementation keeps complex directed
+contractions and uses asserting Ward/coherence tests. The original licence is
+permissive Illinois/NCSA; no source routines have been copied.
 
 Keep correlated code behind an opt-in boundary before generation/evaluation
 dispatch. Default configuration serialization, model/native build identities,
