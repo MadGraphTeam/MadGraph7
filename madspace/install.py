@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Install madspace either using pre-compiled binaries or built from source.
 
+The pre-compiled PyPI wheel (--bin) is only offered/defaulted-to in an
+official MadGraph release tarball, where it is guaranteed to match the
+bundled source; a plain git checkout always builds from source.
+
 Interactive usage (no arguments):  python install.py
 Non-interactive examples:
   python install.py --bin
@@ -429,6 +433,26 @@ def install_build_deps(system: bool = False) -> dict:
     return env
 
 
+def _pyproject_version() -> str:
+    with open(SCRIPT_DIR / "pyproject.toml", "rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+
+def _release_version() -> str | None:
+    """Version recorded in input/.release, the marker a MadGraph release
+    tarball carries (written by bin/create_release.py), or None in a plain
+    git checkout. Used to decide whether the PyPI wheel -- built from the
+    exact same release -- may be offered instead of a source build."""
+    marker = SCRIPT_DIR.parent / "input" / ".release"
+    if not marker.is_file():
+        return None
+    for line in marker.read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == "version":
+            return value.strip()
+    return None
+
+
 def load_settings() -> dict:
     try:
         with open(SETTINGS_FILE) as f:
@@ -571,28 +595,42 @@ def main() -> None:
     # Load saved settings when a previous installation is present
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
 
+    # The PyPI wheel is only offered/defaulted-to in an actual release tarball
+    # (input/.release, written by bin/create_release.py), and only when it
+    # still matches this checkout's madspace version -- otherwise pip would
+    # pull in an unrelated madspace release.
+    release_version = _release_version()
+    is_release = release_version is not None and release_version == _pyproject_version()
+
     # Determine install mode. An explicit --bin/--source always wins; --yes
-    # alone reuses the saved mode (built-in default otherwise).
+    # alone reuses the saved mode, defaulting to bin only for a release.
     if args.bin:
         from_source = False
     elif args.source:
         from_source = True
     elif args.yes:
-        from_source = saved.get("mode", "bin") == "source"
+        from_source = saved.get("mode", "bin" if is_release else "source") == "source"
     else:
         print("Welcome to the MadSpace interactive installer")
         print()
-        # commented out the option to use the pre-compiled binaries
-        # TODO: add this again once we build release build
-        # default_is_bin = saved.get("mode", "bin") != "source"
-        # from_source = not ask_yes_no(
-        #     "Install pre-compiled package? (recommended)", default=default_is_bin
-        # )
-        from_source = True
+        if is_release:
+            default_is_bin = saved.get("mode", "bin") != "source"
+            from_source = not ask_yes_no(
+                "Install pre-compiled package? (recommended)", default=default_is_bin
+            )
+        else:
+            from_source = True
 
-    # PyPI installation
+    # PyPI installation, pinned to this checkout's madspace version so the
+    # wheel matches the bundled source (see SOURCE_HASH check in mg7/launch.py).
     if not from_source:
-        pip_cmd = [sys.executable, "-m", "pip", "install", PACKAGE_NAME]
+        pip_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            f"{PACKAGE_NAME}=={_pyproject_version()}",
+        ]
         if not args.system:
             pip_cmd.append(f"--target={INSTALL_DIR}")
         run(pip_cmd)
