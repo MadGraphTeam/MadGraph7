@@ -237,6 +237,71 @@ def test_ordered_emissions_do_not_commute():
     )
 
 
+def test_shared_leg_dipole_products_and_documented_anticommutator():
+    legs = (ColorLeg(1, 3), ColorLeg(2, -3), ColorLeg(3, 3), ColorLeg(4, -3))
+    # Literal tensors: no generated-basis endpoint-pairing phase is attached.
+    basis = (
+        ColorTensor((OpenColorString(1, (), 2), OpenColorString(3, (), 4))),
+        ColorTensor((OpenColorString(1, (), 4), OpenColorString(3, (), 2))),
+    )
+    bra = ColorConnection(legs, (EmitGluon(3, -1), EmitGluon(1, -2)))
+    ket_ab = ColorConnection(legs, (EmitGluon(2, -2), EmitGluon(2, -1)))
+    ket_ba = ColorConnection(legs, (EmitGluon(2, -1), EmitGluon(2, -2)))
+    states = tuple(_explicit_state(tensor, ColorConnection(legs)) for tensor in basis)
+
+    def charge(state, label, adjoint):
+        position = label - 1
+        result = {}
+        for indices in state:
+            value = 0j
+            for old in range(3):
+                source = list(indices)
+                source[position] = old
+                generator = (
+                    _T[adjoint][indices[position]][old]
+                    if legs[position].representation == 3
+                    else -_T[adjoint][old][indices[position]]
+                )
+                value += generator * state[tuple(source)]
+            result[indices] = value
+        return result
+
+    def dipole(state, first, second):
+        result = dict.fromkeys(state, 0j)
+        for adjoint in range(8):
+            branch = charge(charge(state, second, adjoint), first, adjoint)
+            for indices, value in branch.items():
+                result[indices] += value
+        return result
+
+    # A = T2.T3 and B = T1.T2 share leg 2: their order cannot be exchanged.
+    expected_ab = ((Fraction(0), Fraction(-2, 3)), (Fraction(16, 3), Fraction(0)))
+    expected_ba = ((Fraction(0), Fraction(16, 3)), (Fraction(-2, 3), Fraction(0)))
+    expected_anticommutator = (
+        (Fraction(0), Fraction(14, 3)),
+        (Fraction(14, 3), Fraction(0)),
+    )
+    for i, (left, left_state) in enumerate(zip(basis, states, strict=True)):
+        for j, (right, right_state) in enumerate(zip(basis, states, strict=True)):
+            ab = color_connection_matrix_element(left, bra, right, ket_ab)
+            ba = color_connection_matrix_element(left, bra, right, ket_ba)
+            assert ab == ExactColorCoefficient(expected_ab[i][j])
+            assert ba == ExactColorCoefficient(expected_ba[i][j])
+            assert ab + ba == ExactColorCoefficient(expected_anticommutator[i][j])
+            assert ab == ExactColorCoefficient(expected_ba[j][i]).conjugate()
+            # Independent physical generators act directly on Born colour
+            # components; no connected-overlap matrix is multiplied here.
+            for actual, explicit in (
+                (ab, dipole(dipole(right_state, 1, 2), 2, 3)),
+                (ba, dipole(dipole(right_state, 2, 3), 1, 2)),
+            ):
+                expected = sum(
+                    value.conjugate() * explicit[indices]
+                    for indices, value in left_state.items()
+                )
+                assert complex(actual) == pytest.approx(expected, abs=1e-12)
+
+
 @pytest.mark.parametrize(
     ("emissions", "expected"),
     (

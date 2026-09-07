@@ -375,6 +375,12 @@ Rules:
 - ambiguous representative matches fail with candidate stable IDs;
 - stable process and explicit alias IDs take precedence over inferred matching.
 
+The current [Born Correlations](../correlators.md) API is an exception: it
+requires the generated external-leg ordering and rejects nonidentity
+permutations. Declare spin and colour legs using that process's one-based
+labels; a declaration used for a process set must be valid for every generated
+member. Ordinary runtime permutation support is unchanged.
+
 ## Tree-level support and omitted candidates
 
 Multiparticle expansion may find a syntactically valid process with no
@@ -397,6 +403,14 @@ including:
 - trilinear kernels, color-singlet contact trees, and proof-gated colored
   contacts;
 - LC flows and contracted NLC/full SU(3) calculations.
+
+These general model capabilities do not imply LC/NLC or every execution mode
+is available for correlations. The opt-in correlated Born path currently uses
+full SU(3), with singlet, fundamental, antifundamental, and adjoint colour
+representations, and generic compiled amplitudes. Spin replacements apply only
+to four-component vector sources, not fermion or spin-2 sources. Supported
+model preflight remains required; see [Born Correlations](../correlators.md)
+for the narrower execution and API scope.
 
 Preflight rejects Majorana/FNV fermions, spin 3/2, sextets, epsilon color
 tensors, multiple/non-SU(3) color groups, unknown form-factor functions,

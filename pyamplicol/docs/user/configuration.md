@@ -54,7 +54,7 @@ Values are resolved in this order:
 2. TOML card values;
 3. dedicated command-line flags;
 4. repeated `--set section.field=value` overrides, from left to right;
-5. effective license/resource adjustments.
+5. effective generation requirements and license/resource adjustments.
 
 For example:
 
@@ -214,6 +214,19 @@ execution_mode = "recurrence"
 
 ## Execution mode and evaluator backend
 
+The accuracy, contraction, and execution choices on this page describe
+ordinary Born evaluation. [Born Correlations](../correlators.md) are a separate
+opt-in declaration: pass `CorrelatorConfig` as `correlators=` in Python or use
+`generate --correlators declaration.json`. There is no `[correlators]` TOML
+section. The current correlation path is full SU(3) only, not an LC/NLC
+approximation; it records effective full colour, direct contraction, compiled
+execution, and numerical current reuse off. Conflicting requested settings
+are retained in provenance with those explicit adjustments.
+
+Correlated generation rejects partial colour/helicity coverage and append
+mode. Numerical spin vectors are supplied later through the Python runtime,
+not through the generation card or declaration file.
+
 ```toml
 [evaluator]
 execution_mode = "compiled"     # recurrence, compiled, eager, on-the-fly
@@ -239,7 +252,7 @@ compatible prepared `.pyamplicol-model` kernel pack; `built-in-sm` selects the
 packaged JIT O2 pack automatically. Raw JSON/UFO model IR normally uses
 `compiled` unless you first create a prepared bundle.
 
-Recurrence, compiled, and eager may fix
+Ordinary recurrence, compiled, and eager generation may fix
 `process.selected_color_sector_ids`, `process.selected_source_helicities`, or
 both at generation time when a deliberately specialized artifact is useful.
 Omit them to retain reusable runtime selectors. On-the-fly keeps selection at
@@ -305,9 +318,10 @@ structural proofs and may apply independently verified high-precision equal,
 opposite, or zero relations. The artifact records the evidence, tolerances,
 probe derivation, replay identity, and whether a structural proof was present.
 
-This configurable discovery pass applies to recurrence, compiled, and eager
-generation. On-the-fly uses its compact source projection instead and does not
-run relation discovery.
+This configurable discovery pass applies to ordinary recurrence, compiled,
+and eager generation. On-the-fly uses its compact source projection instead
+and does not run relation discovery. Correlated generation always disables
+this pass to preserve arbitrary external vector-source dependence.
 
 `diagnostic` records deterministic candidates and their exact replay without
 changing the generated evaluator. `certified-reuse` may apply a relation only

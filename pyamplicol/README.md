@@ -22,6 +22,12 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 Explore the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/)
 for guided workflows, API examples, technical reference, and release support.
 
+Opt-in [tree-level spin and colour correlations](docs/correlators.md) prepare
+named colour operators at generation and accept spin-contraction vectors at
+runtime. This separate Python path supports full-colour SU(3) connections
+through N3LO colour structures; correlated LC/NLC approximations and native
+correlation calls are not yet implemented.
+
 ## Installation
 
 Install the release from PyPI:

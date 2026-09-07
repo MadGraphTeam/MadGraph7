@@ -7,7 +7,8 @@ has_children: true
 # Python API
 
 The public Python interface offers typed services for model compilation,
-process planning/generation, runtime evaluation, selectors, and profiling.
+process planning/generation, runtime evaluation, Born correlations, selectors,
+and profiling.
 Importing `pyamplicol` is lightweight: Symbolica and model tooling are loaded
 only when the requested operation needs them.
 
@@ -24,6 +25,8 @@ print(pyamplicol.__version__)
 | `ModelSource` | Resolve and compile built-in, JSON, UFO, compiled, or prepared models. |
 | `Generator` | Plan or generate schema-v3 process artifacts. |
 | `Runtime` | Load one concrete process and evaluate totals/resolved components. |
+| `CorrelatorConfig`, `ColorCorrelator` | Declare allowed spin replacements and named colour operators at generation. |
+| `CorrelatedValue` | A correlated result with `Decimal` real and imaginary parts. |
 | `BenchmarkRunner` | Profile an artifact or loaded runtime. |
 | `generate`, `load`, `benchmark` | One-shot convenience functions. |
 
@@ -92,6 +95,8 @@ result = Generator().generate(
 Process names must be unique. For custom aliases and crossing metadata, use
 `ProcessAlias`; runtime expression matching already handles unique
 side-preserving permutations automatically.
+The correlated reference path currently requires identity ordering; these
+permutation facilities apply to ordinary evaluation.
 
 ## Compile and reuse an external model
 
@@ -190,6 +195,8 @@ print(runtime.external_permutation)
 `process` may be a stable process ID, explicit alias ID, exact stored expression,
 or unique permutation-equivalent expression within each side. The loaded
 runtime exposes metadata in the requested public order.
+For correlated evaluation, load the stored process in its generated ordering;
+nonidentity aliases/permutations are not supported by that path yet.
 
 ## Evaluate totals and resolved components
 
@@ -218,6 +225,73 @@ Input shape is:
 
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
 the color dimension has length one because color is contracted.
+
+## Evaluate Born correlations
+
+Correlations require an explicit `Generator.generate(..., correlators=...)`
+declaration. They currently support **full colour only**, through a separate
+Python direct, generic compiled exact executor. LC and NLC correlator
+approximations are not implemented. Supplying `correlators` selects full-colour,
+direct contraction and compiled generation even if the ordinary configuration
+requests LC/NLC or another execution mode. Ordinary LC/NLC/full evaluation
+remains available and unchanged.
+
+```python
+from pyamplicol import (
+    ColorCorrelator, CorrelatorConfig, Generator, ModelSource, Runtime,
+)
+
+declarations = CorrelatorConfig(
+    color_correlations=(ColorCorrelator.dipole("T13", 1, 3),),
+    spin_correlations=((3,), (3, 4)),
+)
+generated = Generator().generate(
+    "g g > g g", "artifacts/gg_correlated",
+    model=ModelSource.built_in_sm(), correlators=declarations,
+)
+correlated_runtime = Runtime.load(generated.output)
+point = (
+    (500, 0, 0, 500), (500, 0, 0, -500),
+    (500, 300, 0, 400), (500, -300, 0, -400),
+)
+colour = correlated_runtime.evaluate_correlated(
+    (point,), color_correlation="T13", precision=40,
+)[0]
+correlated_runtime.set_spin_correlation_vectors({3: (0, 0, 1, 0)})
+spin_colour = correlated_runtime.evaluate_correlated(
+    (point,), color_correlation="T13", precision=40,
+)[0]
+print(spin_colour.real, spin_colour.imag)  # Decimal values, not a forced real part.
+correlated_runtime.set_spin_correlation_vectors(None)
+```
+
+`evaluate_correlated(momenta, *, color_correlation="born", helicities=None,
+precision=16)` returns one `CorrelatedValue` per point. The reserved ID
+`"born"` uses the ordinary full-colour metric; other IDs are the declared
+operators. Optional batch-global helicity selectors accept stable IDs or typed
+`HelicityConfiguration` objects. There is no colour-flow or per-point selector
+argument on this method. Normalization, initial-state averages, and
+identical-particle factors are retained, and runtime model-parameter updates
+also apply to correlations.
+
+The spin-vector mapping uses one-based public leg labels. Each value is a
+literal real or complex `(v0, vx, vy, vz)` vector, broadcast across the batch,
+or one such vector per point. The nonempty key set must exactly match a
+declared spin class: this example permits `{3}` and `{3, 4}`, but not `{4}`.
+Vectors are neither normalized nor projected. They are copied into
+instance-local state; a failed setter preserves the previous state. `None` or
+`{}` resets to ordinary helicity sources; `clear()` releases warmed evaluators
+without resetting vectors. The setter affects only `evaluate_correlated`,
+not `evaluate` or `evaluate_resolved`.
+
+Artifacts without declarations, append generation, partial source coverage,
+FFT, eager/recurrence/OTF correlated execution, replay reductions, and
+nonidentity process permutations are not supported. Ordered `EmitGluon` and
+`SplitGluon` operations support up to three emissions per side; this N3LO
+colour-connection order is distinct from LC/NLC colour approximations and is
+not a complete N3LO subtraction calculation. See [Born Correlations](../correlators.md)
+for the bra-adjoint/ket convention, joint spin contractions, JSON declarations,
+Ward checks, and current limitations.
 
 ## Select helicities and color flows
 
@@ -275,11 +349,17 @@ f64 = runtime.evaluate(points, precision=16)
 high_precision = runtime.evaluate(points, precision=80)
 ```
 
-Precision 16 uses the native Rusticol runtime and does not import Symbolica.
-Other positive precision requests use retained exact evaluator state when the
-artifact supports it and load Symbolica lazily. Decimal input preserves the
-supplied decimal digits; binary64 input cannot gain information merely by
-requesting more arithmetic precision.
+For ordinary `evaluate` and `evaluate_resolved`, precision 16 uses the native
+Rusticol runtime and does not import Symbolica. Other positive precision
+requests use retained exact evaluator state when the artifact supports it and
+load Symbolica lazily. Decimal input preserves the supplied decimal digits;
+binary64 input cannot gain information merely by requesting more arithmetic
+precision.
+
+`evaluate_correlated` always uses retained Symbolica evaluator states through
+the separate Python exact executor, including at its default precision 16.
+Its real and imaginary results remain `Decimal` values; `complex(value)` is an
+explicit conversion to ordinary double precision.
 
 Generated C/C++/Fortran/Rust standalone APIs support f64 (`precision=16`) only.
 
@@ -328,6 +408,8 @@ profile = benchmark(runtime, points=points)
 
 The class-based services are preferable when reusing configuration, progress
 sinks, compiled models, or loaded runtimes.
+The one-shot `generate(...)` function also accepts the same
+`correlators=CorrelatorConfig(...)` keyword as `Generator.generate(...)`.
 
 ## Errors
 
@@ -363,5 +445,7 @@ can handle; catch `PyAmpliColError` at an application boundary.
 - [Configuration](configuration.md)
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
 - [Runtime and Selectors](runtime-and-selectors.md)
+- [Born Correlations](../correlators.md)
+- [Correlation Conventions](../correlator-conventions.md)
 - [Artifacts and Portability](artifacts-and-portability.md)
 - [Native APIs](native-apis.md)

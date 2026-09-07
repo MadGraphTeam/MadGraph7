@@ -41,13 +41,14 @@ compilation, process generation, or retained exact evaluator state.
 | --- | --- | --- |
 | Import `pyamplicol` | No | Public exports are lazy. |
 | Inspect an artifact | No | Reads metadata and indexes only. |
-| Python f64 runtime (`precision=16`) | No | Runs through Rusticol and the artifact's native evaluator. |
+| Ordinary Python f64 evaluation (`precision=16`) | No | Runs through Rusticol and the artifact's native evaluator. |
 | C11/C++17/Fortran 2008/Rust 2021 runtime | No | Native APIs are f64-only. |
 | Direct JIT f64 load | No | Uses the separate MIT-licensed SymJIT runtime. |
 | Compatible C++/ASM evaluator load | No | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
-| Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state. |
+| Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
+| Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
 change the terms governing Symbolica use during generation.
@@ -63,8 +64,8 @@ artifact. Rusticol loads and lowers that application to native code without:
 - linking the arbitrary-precision Symbolica/Rug/Malachite closure into the
   wheel's f64 native SDK.
 
-This is the deployment path shared by Python at precision 16 and the C11,
-C++17, Fortran 2008, and Rust 2021 APIs.
+This is the deployment path shared by ordinary Python evaluation at precision
+16 and the C11, C++17, Fortran 2008, and Rust 2021 APIs.
 
 ```python
 from pyamplicol import Runtime
@@ -190,6 +191,11 @@ kinematics JSON when input precision matters.
 
 Native C, C++, Fortran, and Rust callers reject precision other than 16.
 
+The opt-in [Born Correlations API](../correlators.md) uses the same retained
+Symbolica-state machinery through a separate Python exact executor at **all**
+requested precisions, including 16. Its current full-colour direct compiled
+path is not part of the Symbolica-independent native f64 ABI.
+
 ## SymJIT is a separate dependency
 
 SymJIT is the native JIT runtime used by Symbolica-generated applications. It
@@ -261,9 +267,10 @@ Use JSON when attaching diagnostics to an issue:
 pyamplicol doctor --json
 ```
 
-If f64 evaluation fails, do not assume it is a Symbolica-license problem: first
-run `pyamplicol self-test` and inspect the artifact target. If generation or
-precision-80 evaluation fails, then inspect the Symbolica check. See
+If ordinary f64 evaluation fails, do not assume it is a Symbolica-license
+problem: first run `pyamplicol self-test` and inspect the artifact target. If
+generation, precision-80 evaluation, or correlated evaluation at any precision
+fails, then inspect the Symbolica check. See
 [Troubleshooting](troubleshooting.md).
 
 ## Related pages
@@ -271,4 +278,5 @@ precision-80 evaluation fails, then inspect the Symbolica check. See
 - [Installation](installation.md) — wheel and source requirements.
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md) — where symbolic work occurs.
 - [Artifacts and Portability](artifacts-and-portability.md) — what the resulting f64 artifact carries.
+- [Born Correlations](../correlators.md) — the opt-in Python exact correlation path.
 - [Release and Support](release-and-support.md) — published dependency and validation boundary.

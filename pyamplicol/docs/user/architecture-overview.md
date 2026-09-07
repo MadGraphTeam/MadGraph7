@@ -175,13 +175,18 @@ All five drivers support:
 Python supports precision-controlled exact evaluation when retained expressions
 permit it. Native APIs expose f64 only.
 
+Opt-in [Born Correlations](../correlators.md) use a separate Python exact
+executor over retained Symbolica states, with full-colour direct compiled
+amplitudes. This includes requests at precision 16; the native ABI and generated
+standalone drivers remain ordinary total/resolved evaluation interfaces.
+
 See [Native APIs](native-apis.md).
 
 ## Symbolica and SymJIT boundary
 
 Symbolica is loaded lazily when model compilation, generation, or Python
-higher-precision evaluation requires it. Generation uses the effective license
-state and records resource clamps.
+higher-precision or correlated evaluation requires it. Generation uses the
+effective license state and records resource clamps.
 
 The default JIT artifact embeds a direct SymJIT application. Rusticol loads and
 executes that f64 state without importing Symbolica or applying its generation-
@@ -225,9 +230,9 @@ See [Release and Support](release-and-support.md).
 
 The optional original-AmpliCol Fortran comparison is developer/campaign
 infrastructure, not an installed runtime dependency. It provides an independent
-numerical reference. Agreement among Python and native APIs validates a shared
-ABI and wrapper contract, but those APIs all call Rusticol and are therefore
-not independent physics implementations.
+numerical reference. Agreement among ordinary Python and native f64 APIs
+validates a shared ABI and wrapper contract, but those operations all call
+Rusticol and are therefore not independent physics implementations.
 
 ## Design principles
 

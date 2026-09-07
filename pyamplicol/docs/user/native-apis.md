@@ -8,14 +8,34 @@ parent: "Python API"
 
 Every binary pyAmpliCol wheel includes a target-specific Rusticol SDK and every
 generated process artifact can include a ready-to-build API bundle. Python,
-C11, C++17, Fortran 2008, and Rust 2021 all select and evaluate the same
-artifact through the same Rusticol core. C, C++, Fortran, and the standalone
-Rust interface share the public C ABI v1; Python uses the wheel's PyO3 binding.
+C11, C++17, Fortran 2008, and Rust 2021 select and perform ordinary total/resolved
+evaluation of the same artifact through the same Rusticol core. C, C++,
+Fortran, and the standalone Rust interface share the public C ABI v1; Python
+uses the wheel's PyO3 binding for these native operations.
 
 > **Prerequisites:** install a binary wheel as described in [Installation](installation.md),
 > activate that environment, and generate the primary artifact from
 > [Quick Start](quick-start.md). Native consumers need the corresponding language compiler;
 > they do **not** need a Rust compiler unless the consumer itself is Rust.
+
+## Born-correlation boundary
+
+The native ABI and its C/C++/Fortran/Rust wrappers do **not** expose colour
+correlator IDs, `set_spin_correlation_vectors`, or `evaluate_correlated` yet.
+These are Python-only capabilities, enabled by
+`Generator.generate(..., correlators=CorrelatorConfig(...))`. A declaration
+prepares complete full-colour, direct, generic compiled amplitudes; LC and
+NLC correlator approximations are not currently implemented.
+
+Python's `Runtime.evaluate_correlated(...)` uses retained Symbolica evaluator
+states through a separate exact executor, even at precision 16. Rusticol
+continues to provide ordinary compiled evaluation. Spin-vector state affects
+only the Python correlated method, not native or ordinary Python calls.
+The generated standalone drivers, including the Python driver, demonstrate
+ordinary total/resolved evaluation and do not invoke correlated evaluation.
+See [Born Correlations](../correlators.md) for the declaration, setter, result
+type, conventions, and unsupported correlation execution modes. The native
+LC/NLC/full support described below concerns ordinary squared amplitudes.
 
 ## What the wheel provides
 
@@ -396,6 +416,8 @@ Python is the only standalone driver that can request Symbolica-backed exact
 precision when the artifact retains an exact evaluator. OTF does not retain
 that path and rejects non-f64 precision. See
 [Symbolica and Licensing](symbolica-and-licensing.md).
+The separate Python correlated API is also Symbolica-backed at precision 16;
+it is not an additional entry point in this native ABI.
 
 ## Common setup failures
 
@@ -414,3 +436,4 @@ See [Troubleshooting](troubleshooting.md) for a fuller decision tree.
 - [Examples Gallery](examples-gallery.md) — complete copied examples and generated API commands.
 - [Artifacts and Portability](artifacts-and-portability.md) — target rules and trusted-input boundary.
 - [Runtime and Selectors](runtime-and-selectors.md) — process ordering and selector semantics.
+- [Born Correlations](../correlators.md) — Python-only, opt-in full-colour correlations.

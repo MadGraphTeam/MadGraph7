@@ -6,6 +6,10 @@ nav_order: 4
 <!-- SPDX-License-Identifier: 0BSD -->
 # Tree-level spin and colour correlations
 
+For the mathematical definitions, charge normalization, emission ordering,
+and translation of the original MadNkLO note, see
+[Correlation Conventions](correlator-conventions.md).
+
 Correlations are an explicit generation-time option. Declare the colour
 operators and allowed joint spin replacements once, then select an operator
 by ID and supply numerical spin vectors at runtime. This provides
@@ -14,6 +18,11 @@ colour connections through three unresolved emissions (N3LO colour
 structures). It is **not** a complete N3LO subtraction implementation: no
 loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.
+
+The current correlated path is **full-colour SU(3) only**, through the Python
+runtime. LC and NLC truncations of colour-connected matrix elements are not
+implemented. The ordinary uncorrelated LC, NLC, and full-colour modes remain
+available independently.
 
 ## Generate and evaluate
 
@@ -50,12 +59,19 @@ colour = runtime.evaluate_correlated(
 
 # Replace leg 3's polarization by a literal transverse four-vector.
 runtime.set_spin_correlation_vectors({3: (0, 0, 1, 0)})
+spin = runtime.evaluate_correlated((point,), precision=40)[0]
 spin_colour = runtime.evaluate_correlated(
     (point,), color_correlation="T13", precision=40,
 )[0]
-print(born.real, colour.real, spin_colour.real, spin_colour.imag)
+print(born.real, colour.real, spin.real, spin_colour.real, spin_colour.imag)
 runtime.set_spin_correlation_vectors(None)
 ```
+
+Thus `"born"` with no replacement gives the ordinary helicity-summed Born;
+`"T13"` with no replacement gives a colour correlation; `"born"` with vectors
+gives a spin correlation; and `"T13"` with vectors gives both together.
+`helicities=None` sums all spectator helicities. A global `helicities=` selector
+can instead restrict the physical helicity IDs, as for ordinary evaluation.
 
 The result is a tuple of `CorrelatedValue` objects, one per phase-space point.
 Each has `real` and `imag` fields of type `Decimal`; `precision` specifies
@@ -124,6 +140,30 @@ request = ColorCorrelator("cascade", bra=cascade, ket=cascade)
 # Include request in color_correlations before generating the artifact.
 ```
 
+For example, the following declares two- and three-step gluon connections with
+different emitters on the bra and ket:
+
+```python
+bra = (EmitGluon(1, -1), EmitGluon(2, -2), EmitGluon(-1, -3))
+ket = (EmitGluon(3, -1), EmitGluon(4, -2), EmitGluon(-2, -3))
+declarations = CorrelatorConfig(color_correlations=(
+    ColorCorrelator("double", bra=bra[:2], ket=ket[:2]),
+    ColorCorrelator("triple", bra=bra, ket=ket),
+    request,
+))
+result = Generator().generate(
+    "g g > g g", "artifacts/gg_higher_correlations",
+    model=ModelSource.built_in_sm(), correlators=declarations,
+)
+runtime = Runtime.load(result.output)
+double = runtime.evaluate_correlated((point,), color_correlation="double")[0]
+triple = runtime.evaluate_correlated((point,), color_correlation="triple")[0]
+```
+
+These two- and three-step connections supply NNLO and N3LO **colour
+structures**, respectively; the corresponding subtraction kinematics and
+splitting functions remain the caller's responsibility.
+
 Positive labels identify Born legs; fresh negative labels identify auxiliary
 particles. Both sides must have the same number of steps and finish with the
 same labelled colour representations. These are colour operations only:
@@ -171,7 +211,25 @@ A splitting step uses `{"kind": "split-gluon", "parent": -1,
 "quark": -2, "antiquark": -3}`. The CLI option prepares the artifact;
 numerical vector setting and correlated evaluation currently use Python.
 
-## Execution scope and references
+## Colour accuracy and execution scope
+
+| Requested quantity | Correlated support |
+| --- | --- |
+| Full colour | Exact SU(3) colour matrices, including interference |
+| Leading colour (LC) | Not implemented for correlations |
+| Next-to-leading colour (NLC) | Not implemented for correlations |
+
+Passing `correlators=` selects full colour, direct contraction, and generic
+compiled amplitudes, overriding ordinary LC/NLC or other execution settings;
+these adjustments are recorded in the effective generation configuration.
+In particular, `--color-accuracy lc --correlators ...` does **not** produce an
+LC correlator. There is no runtime colour-accuracy or single-flow selector for
+`evaluate_correlated`.
+
+An LC/NLC extension must retain the powers of the number of colours in the
+connected colour matrix before truncating them consistently. Selecting Born
+flows, dropping off-diagonal entries, or multiplying ordinary LC/NLC Born
+results by colour charges is not a general substitute for that calculation.
 
 Correlated generation selects complete full-colour, direct, generic compiled
 amplitudes and disables helicity-specific zero/parity reductions and current
@@ -187,6 +245,8 @@ mode are not supported by this correlation path. Existing artifacts without
 the explicit declaration cannot be upgraded merely by setting vectors.
 Ordinary generation and `Runtime.evaluate(...)` are unchanged; setting spin
 vectors affects only `evaluate_correlated(...)`.
+
+## References
 
 The [original MadNkLO note](https://github.com/mg5amcnlo/pyamplicol/blob/main/IMPLEMENTATION_DOCS/REFERENCES/ColorCorrelators_MadNkLO.pdf)
 and [MadNkLO source at revision 646a3db](https://github.com/madnklo/madnklo/tree/646a3db9c8efd7b4cb00e9d89b9197cd5394c01b)

@@ -8,8 +8,15 @@ parent: "Python API"
 
 pyAmpliCol process artifacts are designed to be evaluated after generation,
 without rebuilding the model or process DAG. The Python `Runtime` and all
-native APIs use the same Rusticol execution layer, process resolver, selector
-planner, model-parameter state, and numerical conventions.
+native APIs use the same RustiCol execution layer, process resolver, selector
+planner, model-parameter state, and numerical conventions for ordinary
+evaluations.
+
+[Born Correlations](../correlators.md) use an opt-in, separate Python evaluator.
+They accept generation-time colour-operator IDs and runtime spin vectors, not
+the ordinary LC flow selector. This path currently supports full-colour SU(3)
+only, and requires the original generated particle ordering (no nonidentity
+aliases or automatic permutations).
 
 > **Start here:** follow [Quick Start](quick-start.md) to create the example workspace and
 > generate `artifacts/pp_zjj`. See [Generation Modes and Evaluators](generation-modes-and-evaluators.md) for the generation
@@ -464,10 +471,14 @@ stages through a fixed-layout optional callback; see
 
 ## Precision
 
-`precision=16` uses the native f64 Rusticol runtime. Direct JIT artifacts load
+For ordinary evaluation, `precision=16` uses the native f64 RustiCol runtime. Direct JIT artifacts load
 the separate MIT-licensed SymJIT runtime; compatible C++ and ASM artifacts load
 their native evaluator libraries. None of these f64 paths imports Symbolica or
 checks a Symbolica runtime license.
+
+The separate `evaluate_correlated` method uses retained Symbolica evaluator
+states at every requested precision, including 16; see
+[Born Correlations](../correlators.md).
 
 Python may request another positive decimal precision:
 
