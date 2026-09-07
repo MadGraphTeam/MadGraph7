@@ -237,15 +237,25 @@ KERNELSPEC void mlm_clustering(
     int cluster_max = momenta.size() - 3;
     int n_part = momenta.size();
     FourMom<T> momenta_tmp[N_EXT_MAX];
+    // The same clustering tracked in the lab frame, without the boosts and
+    // rotations update_momenta applies. Only the 2 -> 1 root needs it: cluster.f
+    // boosts and rotates back before taking that vertex's scale, so it is a
+    // transverse mass in the lab and not in whatever frame the walk ended up in.
+    FourMom<T> momenta_lab[N_EXT_MAX];
     FVal<T> masses_tmp[N_EXT_MAX];
     int alive = (1 << n_part) - 1;
     int cluster_history[N_EXT_MAX - 3];
     int cluster_trace[N_EXT_MAX - 3];
     FVal<T> cluster_scales[N_EXT_MAX - 3];
+    // mT of the final-state daughter of each initial-state clustering,
+    // zero for a final-state one. This is mt2ij in cluster.f, kept
+    // unsquared like every other scale here.
+    FVal<T> cluster_mt[N_EXT_MAX - 3];
 
     for (int i = 0; i < n_part; ++i) {
         for (int j = 0; j < 4; ++j) {
             momenta_tmp[i][j] = momenta[i][j];
+            momenta_lab[i][j] = momenta[i][j];
         }
         masses_tmp[i] = external_masses[i];
     }
@@ -322,6 +332,21 @@ KERNELSPEC void mlm_clustering(
         if (is_last) {
             int p1_win = win_data & 0xFF;
             int p2_win = (win_data >> 8) & 0xFF;
+            // Read the daughter before update_momenta boosts it away. Only an
+            // initial-state clustering has one, matching the iwin < 3 guard in
+            // cluster.f.
+            cluster_mt[cluster_count] = p1_win < 2
+                ? sqrt(djb_clus<T>(momenta_tmp[p2_win], hadronic))
+                : FVal<T>(0.0);
+            // The mother keeps slot p1_win. A final-state clustering merges the
+            // two daughters; an initial-state one takes the emission back out
+            // of the beam, as pcl(imo) = pcl(ida1) - pcl(ida2) does in
+            // cluster.f.
+            for (int k = 0; k < 4; ++k) {
+                momenta_lab[p1_win][k] = p1_win < 2
+                    ? momenta_lab[p1_win][k] - momenta_lab[p2_win][k]
+                    : momenta_lab[p1_win][k] + momenta_lab[p2_win][k];
+            }
             update_momenta<T>(
                 n_part, momenta_tmp, masses_tmp, alive, p2_win, p1_win, win_resonant
             );
@@ -513,22 +538,9 @@ KERNELSPEC void mlm_clustering(
                 break;
             }
         }
-        int extra_beam = -1;
-        FVal<T> extra_scale = 0.0;
-        if (leftover >= 0) {
-            FVal<T> base = sqrt(djb_clus<T>(momenta_tmp[leftover], hadronic));
-            for (int b = 0; b < 2; ++b) {
-                FVal<T> candidate = base;
-                if ((momenta_tmp[b][3] < 0.0) !=
-                    (momenta_tmp[leftover][3] < 0.0)) {
-                    candidate = candidate * ONE_PLUS_TINY;
-                }
-                if (extra_beam < 0 || candidate < extra_scale) {
-                    extra_beam = b;
-                    extra_scale = candidate;
-                }
-            }
-        }
+        FVal<T> extra_scale = leftover < 0
+            ? FVal<T>(0.0)
+            : sqrt(djb_clus<T>(momenta_lab[leftover], hadronic));
         // Follow each beam's parton line through the clustering, exactly as
         // setclscales does in Template/LO/SubProcesses/reweight.f.
         //
@@ -546,29 +558,9 @@ KERNELSPEC void mlm_clustering(
             qcdline[j] = (beam_flags >> (2 * j)) & 1;
             partonline[j] = qcdline[j];
         }
-        int steps = cluster_max + (extra_beam >= 0 ? 1 : 0);
-        for (int i = 0; i < steps; ++i) {
-            bool is_extra = i == cluster_max;
-            int j, trace;
-            bool is_jet2, is_jet_in, is_colored_in;
-            if (is_extra) {
-                j = extra_beam;
-                is_jet2 = slot_is_jet[leftover];
-                // the 2 -> 1 root turns the beam line into the other beam
-                is_jet_in = (beam_flags >> (2 * (1 - j) + 1)) & 1;
-                is_colored_in = (beam_flags >> (2 * (1 - j))) & 1;
-            } else {
-                int data = cluster_history[i];
-                j = data & 0xFF;
-                if (j >= 2) {
-                    continue;  // final-state clustering, no beam line involved
-                }
-                is_jet2 = (data >> 29) & 1;
-                trace = cluster_trace[i];
-                is_jet_in = trace & TRACE_IS_JET_IN;
-                is_colored_in = trace & TRACE_IS_COLORED_IN;
-            }
-
+        // One step of the beam-line bookkeeping, for beam j at step i.
+        auto walk_line = [&](int j, int i, bool is_jet2, bool is_jet_in,
+                             bool is_colored_in) {
             if (partonline[j]) {
                 if (jfirst[j] < 0) {
                     jfirst[j] = i;
@@ -582,6 +574,36 @@ KERNELSPEC void mlm_clustering(
                 jcentral[j] = i;
                 qcdline[j] = is_colored_in;
             }
+        };
+
+        int steps = cluster_max + (leftover >= 0 ? 1 : 0);
+        for (int i = 0; i < cluster_max; ++i) {
+            int data = cluster_history[i];
+            int j = data & 0xFF;
+            if (j >= 2) {
+                continue;  // final-state clustering, no beam line involved
+            }
+            int trace = cluster_trace[i];
+            walk_line(
+                j, i, (data >> 29) & 1, trace & TRACE_IS_JET_IN,
+                trace & TRACE_IS_COLORED_IN
+            );
+        }
+        if (leftover >= 0) {
+            // The 2 -> 1 root clusters both beams into what is left of the
+            // final state, so it lies on both beam lines and reweight.f walks
+            // it twice, once per beam. Seen from beam j the emitted object is
+            // that leftover and the mother is the *other* beam's parton, which
+            // is what decides whether either line carries on past the root.
+            for (int j = 0; j < 2; ++j) {
+                walk_line(
+                    j,
+                    cluster_max,
+                    slot_is_jet[leftover],
+                    (beam_flags >> (2 * (1 - j) + 1)) & 1,
+                    (beam_flags >> (2 * (1 - j))) & 1
+                );
+            }
         }
         for (int j = 0; j < 2; ++j) {
             if (jfirst[j] < 0) {
@@ -589,26 +611,54 @@ KERNELSPEC void mlm_clustering(
             }
         }
 
-        // index across the recorded history plus the extra 2 -> 1 step
-        auto step_scale = [&](int index) {
-            return index == cluster_max ? extra_scale : cluster_scales[index];
-        };
+        // The scale of each step, across the recorded history plus the extra
+        // 2 -> 1 one, as a mutable table because the central vertices are
+        // overwritten in place below just as pt2ijcl is in reweight.f.
+        FVal<T> pt_step[N_EXT_MAX - 2];
+        for (int i = 0; i < steps; ++i) {
+            pt_step[i] = i == cluster_max ? extra_scale : cluster_scales[i];
+        }
 
-        // "Ensure that last scales are at least as big as first scales"
+        // "Set central scale to mT2": at an initial-state clustering the
+        // relevant scale is not the clustering measure but the transverse mass
+        // of what was emitted there. For Drell-Yan the central vertex is where
+        // the lepton pair attaches, which is why madevent's factorisation
+        // scale comes out as mT(ll) and not a jet scale.
+        for (int j = 0; j < 2; ++j) {
+            if (jcentral[j] < 0) {
+                continue;
+            }
+            // At the root cluster.f takes mt2ij from daughter 2, which there
+            // is the second beam's parton: mT of a beam parton is zero, so
+            // the root vertex never gets overridden.
+            FVal<T> mt = jcentral[j] == cluster_max ? FVal<T>(0.0)
+                                                    : cluster_mt[jcentral[j]];
+            if (mt > 0.0) {
+                pt_step[jcentral[j]] = mt;
+            }
+        }
+
+        // "Ensure that last scales are at least as big as first scales".
+        // reweight.f raises the entry in pt2ijcl itself, so when jlast and
+        // jcentral are the same vertex - which is the usual case, both beam
+        // lines running QCD all the way to the root - the central scale is
+        // raised with it and mu_F comes out as that one scale rather than a
+        // geometric mean of two. Writing into pt_step keeps that.
+        for (int j = 0; j < 2; ++j) {
+            if (jlast[j] >= 0 && jfirst[j] >= 0 &&
+                pt_step[jfirst[j]] > pt_step[jlast[j]]) {
+                pt_step[jlast[j]] = pt_step[jfirst[j]];
+            }
+        }
         FVal<T> s_last[2], s_central[2];
         for (int j = 0; j < 2; ++j) {
-            s_last[j] = jlast[j] < 0 ? 0.0 : step_scale(jlast[j]);
-            if (jlast[j] >= 0 && jfirst[j] >= 0 &&
-                step_scale(jfirst[j]) > s_last[j]) {
-                s_last[j] = step_scale(jfirst[j]);
-            }
-            s_central[j] = jcentral[j] < 0 ? 0.0 : step_scale(jcentral[j]);
+            s_last[j] = jlast[j] < 0 ? 0.0 : pt_step[jlast[j]];
+            s_central[j] = jcentral[j] < 0 ? 0.0 : pt_step[jcentral[j]];
         }
 
         // mu_R: the geometric mean of the four scales. madevent writes it as
         // (pt2 pt2 pt2 pt2)^(1/8) over squared scales, which is the same thing.
-        FVal<T> last_scale = extra_beam >= 0 ? extra_scale
-                                            : cluster_scales[cluster_max - 1];
+        FVal<T> last_scale = pt_step[steps - 1];
         // Take the roots before multiplying. A degenerate clustering leaves a
         // scale at SCALE_MAX, and the product of four of those overflows to
         // infinity, which then reaches alpha_s as a NaN.
@@ -632,14 +682,43 @@ KERNELSPEC void mlm_clustering(
         // mu_F, one per beam. madevent stores q2fact = mu_F^2 as
         // sqrt(pt2[jlast] pt2[jcentral]), i.e. mu_F is the geometric mean of
         // the two scales.
-        fac_scale1 = jlast[0] >= 0 ? sqrt(s_last[0]) * sqrt(s_central[0])
-                                   : ren_scale_val;
-        fac_scale2 = jlast[1] >= 0 ? sqrt(s_last[1]) * sqrt(s_central[1])
-                                   : ren_scale_val;
+        fac_scale1 = jlast[0] >= 0 ? sqrt(s_last[0]) * sqrt(s_central[0]) : 0.0;
+        fac_scale2 = jlast[1] >= 0 ? sqrt(s_last[1]) * sqrt(s_central[1]) : 0.0;
         // "We have a qcd line going through the whole event, use single scale"
         if (jcentral[0] >= 0 && jcentral[0] == jcentral[1]) {
             fac_scale1 = max(fac_scale1, fac_scale2);
             fac_scale2 = fac_scale1;
+        }
+
+        // "Take care of case when jcentral are zero".
+        //
+        // The branch that ends that chain in reweight.f, capping each beam at
+        // min(pt2ijcl(jfirst), q2fact) when pdfwgt is on, is deliberately not
+        // ported. It exists so madevent can evaluate the PDF low on the
+        // clustering ladder and reweight back up; the central scale is kept in
+        // q2bck and restored, which is why turning pdfwgt off moves madevent's
+        // cross section (1113 -> 1093 pb for Z+0,1,2,3j) but leaves SCALUP
+        // unchanged. madspace has no such ladder reweighting, so the central
+        // scale is what both the PDF and the LHE should see.
+        if (jcentral[0] < 0 && jcentral[1] < 0) {
+            if (!(fac_scale1 > 0.0) && !(fac_scale2 > 0.0)) {
+                fac_scale1 = pt_step[steps - 1];
+                fac_scale2 = fac_scale1;
+            }
+        } else if (jcentral[0] < 0) {
+            if (jfirst[0] >= 0) {
+                fac_scale1 = pt_step[jfirst[0]];
+            }
+        } else if (jcentral[1] < 0) {
+            if (jfirst[1] >= 0) {
+                fac_scale2 = pt_step[jfirst[1]];
+            }
+        }
+        if (!(fac_scale1 > 0.0)) {
+            fac_scale1 = ren_scale_val;
+        }
+        if (!(fac_scale2 > 0.0)) {
+            fac_scale2 = ren_scale_val;
         }
         // and keep everything inside the range the rest of the kernel uses
         if (!(ren_scale_val > 0.0) || !(ren_scale_val < SCALE_MAX)) {
