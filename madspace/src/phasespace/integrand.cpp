@@ -131,18 +131,22 @@ Integrand::Integrand(
                 }
                 ret_types.push_back("ren_scale", batch_float);
                 ret_types.push_back("alpha_qcd", batch_float);
-                if (partial_weights) {
-                    if (diff_xs_first.has_pdf(0)) {
-                        ret_types.push_back("x1", batch_float);
-                        ret_types.push_back("fact_scale1", batch_float);
-                    }
-                    if (diff_xs_first.has_pdf(1)) {
-                        ret_types.push_back("x2", batch_float);
-                        ret_types.push_back("fact_scale2", batch_float);
-                    }
-                    if (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1)) {
-                        ret_types.push_back("partial_weight_product", batch_float);
-                    }
+                // The per-beam factorisation scales ride along with x1/x2 in
+                // the event record. They are worth keeping for any hadronic
+                // run, not just a reweighted one: a dynamical scale choice can
+                // give the two beams different scales, and without them the
+                // LHE writer has nothing to report but mu_R.
+                if (diff_xs_first.has_pdf(0)) {
+                    ret_types.push_back("x1", batch_float);
+                    ret_types.push_back("fact_scale1", batch_float);
+                }
+                if (diff_xs_first.has_pdf(1)) {
+                    ret_types.push_back("x2", batch_float);
+                    ret_types.push_back("fact_scale2", batch_float);
+                }
+                if (partial_weights &&
+                    (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1))) {
+                    ret_types.push_back("partial_weight_product", batch_float);
                 }
                 if (energy_scale && energy_scale->is_mlm()) {
                     ret_types.push_back(
@@ -949,32 +953,27 @@ NamedVector<Value> Integrand::build_common_part(
             "ren_scale", scatter_or_drop(zeros_float, args.at("ren_scale"))
         );
         outputs.push_back("alpha_qcd", scatter_or_drop(zeros_float, alpha_qcd_acc));
-        if (_partial_weights) {
-            ValueVec pdf_vals;
-            if (_diff_xs.at(0).has_pdf(0)) {
-                outputs.push_back(
-                    "x1", scatter_or_drop(zeros_float, args.at("x1_acc"))
-                );
-                outputs.push_back(
-                    "fact_scale1", scatter_or_drop(zeros_float, args.at("fact_scale1"))
-                );
-                pdf_vals.push_back(args.at("pdf1"));
-            }
-            if (_diff_xs.at(0).has_pdf(1)) {
-                outputs.push_back(
-                    "x2", scatter_or_drop(zeros_float, args.at("x2_acc"))
-                );
-                outputs.push_back(
-                    "fact_scale2", scatter_or_drop(zeros_float, args.at("fact_scale2"))
-                );
-                pdf_vals.push_back(args.at("pdf2"));
-            }
-            if (_diff_xs.at(0).has_pdf(0) || _diff_xs.at(0).has_pdf(1)) {
-                outputs.push_back(
-                    "partial_weight_product",
-                    scatter_or_drop(zeros_float, fb.product(pdf_vals))
-                );
-            }
+        ValueVec pdf_vals;
+        if (_diff_xs.at(0).has_pdf(0)) {
+            outputs.push_back("x1", scatter_or_drop(zeros_float, args.at("x1_acc")));
+            outputs.push_back(
+                "fact_scale1", scatter_or_drop(zeros_float, args.at("fact_scale1"))
+            );
+            pdf_vals.push_back(args.at("pdf1"));
+        }
+        if (_diff_xs.at(0).has_pdf(1)) {
+            outputs.push_back("x2", scatter_or_drop(zeros_float, args.at("x2_acc")));
+            outputs.push_back(
+                "fact_scale2", scatter_or_drop(zeros_float, args.at("fact_scale2"))
+            );
+            pdf_vals.push_back(args.at("pdf2"));
+        }
+        if (_partial_weights &&
+            (_diff_xs.at(0).has_pdf(0) || _diff_xs.at(0).has_pdf(1))) {
+            outputs.push_back(
+                "partial_weight_product",
+                scatter_or_drop(zeros_float, fb.product(pdf_vals))
+            );
         }
         if (_energy_scale && _energy_scale->is_mlm()) {
             auto outgoing_count = static_cast<me_int_t>(_mapping.particle_count() - 2);
