@@ -265,6 +265,23 @@ print(spin_colour.real, spin_colour.imag)  # Decimal values, not a forced real p
 correlated_runtime.set_spin_correlation_vectors(None)
 ```
 
+Instead of explicit colour requests, use
+`CorrelatorConfig.all_color(through_order=k, spin_correlations=...)` before
+generation to prepare every compatible directed pair of tree-soft connections
+through any positive order `k`. The nonminimal catalogue includes emissions from
+emitted partons and splitting of auxiliary gluons, and grows rapidly with order.
+It adds no kinematic kernels, flavour sums or multiplicity weights. Inspect the
+operators actually stored for a selected process with:
+
+```python
+for entry in correlated_runtime.available_color_correlations():
+    print(entry.id, entry.order, entry.bra, entry.ket)
+```
+
+This includes `"born"` and reads the catalogue without initializing amplitude
+evaluation. See the [automatic catalogue guide](../correlators.md)
+for generation and grouped evaluation.
+
 `evaluate_correlated(momenta, *, color_correlation="born", helicities=None,
 precision=16)` returns one `CorrelatedValue` per point. The reserved ID
 `"born"` uses the Born metric at the requested colour accuracy; other IDs are the declared
@@ -300,9 +317,9 @@ inherited requests in `evaluate_correlated_many`, not `evaluate` or
 Artifacts without declarations, append generation, partial source coverage,
 FFT, eager/recurrence/OTF correlated execution, replay reductions, and
 nonidentity process permutations are not supported. Ordered `EmitGluon` and
-`SplitGluon` operations support up to three emissions per side; this N3LO
-colour-connection order is distinct from LC/NLC colour approximations and is
-not a complete N3LO subtraction calculation. See [Born Correlations](../correlators.md)
+`SplitGluon` operations have no fixed order cap; generic NkLO colour-connection
+order is distinct from LC/NLC colour approximations and does not supply a
+complete higher-order subtraction calculation. See [Born Correlations](../correlators.md)
 for the bra-adjoint/ket convention, joint spin contractions, JSON declarations,
 Ward checks, and current limitations.
 

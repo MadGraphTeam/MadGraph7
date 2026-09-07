@@ -149,6 +149,7 @@ jobs:
             tests/unit/test_dag_model_independence.py \
             tests/unit/test_exact_parameter_precision.py \
             tests/unit/test_exact_color_weight.py \
+            tests/unit/test_color_connection_catalogue.py \
             tests/unit/test_color_connections.py \
             tests/unit/test_color_correlator_matrices.py \
             tests/unit/test_correlat*.py \

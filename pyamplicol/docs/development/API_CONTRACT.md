@@ -102,21 +102,31 @@ generation semantics.
 ### Correlation declarations
 
 `correlators=None` leaves ordinary generation unchanged. Passing
-`CorrelatorConfig(color_correlations=(), spin_correlations=())` opts into
-tree-level correlated Born generation. This declaration is separate from
-`RunConfig` and is not an argument to `Generator.plan()`.
+`CorrelatorConfig(color_correlations=(), spin_correlations=(),
+all_color_through_order=None)` opts into tree-level correlated Born generation.
+This declaration is separate from `RunConfig` and is not an argument to
+`Generator.plan()`.
 
 `ColorCorrelator(id, bra=(), ket=())` names an ordered pair of colour
 connections; `ColorCorrelator.dipole(id, left_leg, right_leg)` requests
 `<M|T_left . T_right|M>`. Connection steps are `EmitGluon(emitter_label,
 emitted_label)` or `SplitGluon(parent_label, quark_label, antiquark_label)`.
-Each side has at most three steps, both sides have the same step count, and
+There is no fixed step-count cap; both sides have the same step count, and
 their final labelled colour representations must agree. Born legs use public
 one-based labels; emitted auxiliary labels must be fresh. Colour IDs must be
 unique; `"born"` is reserved and always supplies the ordinary overlap.
 `spin_correlations` declares the exact nonempty sets of four-component vector
 legs that may be replaced simultaneously. `CorrelatorConfig.to_json_dict()`
 and `from_json_dict()` implement the CLI declaration-file schema.
+
+`CorrelatorConfig.all_color(*, through_order, spin_correlations=())` accepts
+a positive integer order `k` and resolves a complete, nonminimal tree-soft
+catalogue at orders 1 through `k` separately for each process. Every active
+coloured leg can emit; only auxiliary gluons split automatically. All compatible
+directed bra/ket pairs are included, without numerical multiplicity or flavour
+weights. Catalogue size grows rapidly. IDs of the form `N{k}LO/c{i}/c{j}` are
+reserved when automatic generation is enabled; explicit requests may use other
+IDs alongside `all_color_through_order`.
 
 The correlation path applies the requested LC/NLC/full colour accuracy to
 the inserted matrices while generating complete full-colour amplitudes.
@@ -197,6 +207,12 @@ spin class. Inputs are copied; invalid updates leave the old state intact.
 Vectors are neither normalized nor projected nor conjugated on input. `None`
 or `{}` restores ordinary helicity sources. These settings never change
 `evaluate()` or `evaluate_resolved()`.
+
+`Runtime.available_color_correlations() -> tuple[ColorCorrelator, ...]` lists
+the selected process's resolved operators, including `"born"`. Each record
+exposes `id`, `order`, `bra`, and `ket`. Listing reads and validates the stored
+catalogue without initializing the amplitude executor; original leg ordering
+and a correlation-enabled artifact are required.
 
 `Runtime.evaluate_correlated(momenta, *, color_correlation="born",
 helicities=None, precision=16) -> tuple[CorrelatedValue, ...]` selects a declared
