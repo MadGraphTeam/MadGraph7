@@ -1,13 +1,13 @@
 #pragma once
 
 #include <fstream>
-#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -89,7 +89,7 @@ public:
         int color_index,
         int flavor_index,
         int helicity_index,
-        std::mt19937& rand_gen
+        MixMaxRandom& rand_gen
     );
     std::size_t max_particle_count() const { return _max_particle_count; }
     void save(const std::string& file) const;
