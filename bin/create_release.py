@@ -35,7 +35,10 @@ It performs the following actions:
      HEPToolsInstaller bundle into vendor/.
   6. Write input/authors.md (first-contribution date per author, used by the
      anniversary banner) and the input/.release marker read by
-     madspace/install.py to decide whether the PyPI wheel may be offered.
+     madspace/install.py to decide whether the PyPI wheel may be offered --
+     including, when --wheels-dir is given, the filenames of the wheels
+     actually built, so install.py can check platform/Python availability
+     locally instead of querying PyPI.
   7. tar everything up.
 """
 
@@ -227,10 +230,20 @@ def write_authors(filepath):
             f.write(f'{author} {first_contribs[author]}\n')
 
 
-def write_release_marker(filepath, version):
+def write_release_marker(filepath, version, wheels_dir=None):
+    """Write input/.release, read back by madspace/install.py to decide
+    whether the PyPI wheel may be offered. When wheels_dir is given, record
+    the filenames of the wheels actually built for this release, so
+    install.py can check platform/Python availability purely locally
+    (no PyPI query) instead of guessing from the CI build matrix."""
+    wheels = []
+    if wheels_dir:
+        wheels = sorted(path.basename(w) for w in glob.glob(pjoin(wheels_dir, '*.whl')))
+
     with open(pjoin(filepath, 'input', '.release'), 'w') as f:
         f.write(f'version = {version}\n')
         f.write(f'date = {date.today().isoformat()}\n')
+        f.write(f'wheels = {",".join(wheels)}\n')
 
 
 def make_tarball(workdir, filepath, output_dir, version):
@@ -254,6 +267,12 @@ def main():
                          help="Directory to write the tarball into (default: dist/).")
     parser.add_argument('--skip-vendor', action='store_true',
                          help="Skip bundling offline collier/ninja/SMWidth/HEPToolsInstaller.")
+    parser.add_argument('--wheels-dir', default=None,
+                         help="Directory holding the madspace wheels built for this "
+                              "release (e.g. the downloaded cibuildwheel artifacts). "
+                              "Their filenames are recorded in input/.release so "
+                              "install.py can check platform/Python availability "
+                              "without querying PyPI.")
     parser.add_argument('--check-only', action='store_true',
                          help="Only run the version consistency check, then exit.")
     args = parser.parse_args()
@@ -269,7 +288,7 @@ def main():
     if not args.skip_vendor:
         vendor_offline_tools(filepath)
     write_authors(filepath)
-    write_release_marker(filepath, args.version)
+    write_release_marker(filepath, args.version, wheels_dir=args.wheels_dir)
     tarname = make_tarball(workdir, filepath, args.output, args.version)
     shutil.rmtree(workdir)
 

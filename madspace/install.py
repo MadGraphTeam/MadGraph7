@@ -438,19 +438,48 @@ def _pyproject_version() -> str:
         return tomllib.load(f)["project"]["version"]
 
 
-def _release_version() -> str | None:
-    """Version recorded in input/.release, the marker a MadGraph release
-    tarball carries (written by bin/create_release.py), or None in a plain
-    git checkout. Used to decide whether the PyPI wheel -- built from the
-    exact same release -- may be offered instead of a source build."""
+def _release_info() -> dict[str, str]:
+    """Parse input/.release, the marker a MadGraph release tarball carries
+    (written by bin/create_release.py), or {} in a plain git checkout."""
     marker = SCRIPT_DIR.parent / "input" / ".release"
     if not marker.is_file():
-        return None
+        return {}
+    info = {}
     for line in marker.read_text().splitlines():
         name, _, value = line.partition("=")
-        if name.strip() == "version":
-            return value.strip()
-    return None
+        info[name.strip()] = value.strip()
+    return info
+
+
+def _release_version() -> str | None:
+    """Version recorded in input/.release, or None in a plain git checkout.
+    Used to decide whether the PyPI wheel -- built from the exact same
+    release -- may be offered instead of a source build."""
+    return _release_info().get("version")
+
+
+def _release_wheel_available() -> bool:
+    """Whether input/.release lists a wheel matching this exact interpreter
+    and platform. The list is the actual filenames cibuildwheel produced for
+    this release (see bin/create_release.py --wheels-dir), so this is a
+    purely local check -- no PyPI query, no guessing at the CI build matrix."""
+    wheels = _release_info().get("wheels", "")
+    if not wheels:
+        return False
+
+    system, machine = platform.system(), platform.machine()
+    if system == "Linux" and machine in ("x86_64", "AMD64"):
+        platform_tags = ("manylinux", "x86_64")
+    elif system == "Darwin" and machine in ("arm64", "aarch64"):
+        platform_tags = ("macosx", "arm64")
+    else:
+        return False  # release wheels only ever target those two platforms
+
+    python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return any(
+        python_tag in name and all(tag in name for tag in platform_tags)
+        for name in wheels.split(",")
+    )
 
 
 def load_settings() -> dict:
@@ -596,24 +625,34 @@ def main() -> None:
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
 
     # The PyPI wheel is only offered/defaulted-to in an actual release tarball
-    # (input/.release, written by bin/create_release.py), and only when it
-    # still matches this checkout's madspace version -- otherwise pip would
-    # pull in an unrelated madspace release.
+    # (input/.release, written by bin/create_release.py) that still matches
+    # this checkout's madspace version -- otherwise pip would pull in an
+    # unrelated madspace release -- and only when that release actually built
+    # a wheel for this exact platform/Python (checked locally against the
+    # wheel filenames recorded in the marker, no PyPI query).
     release_version = _release_version()
     is_release = release_version is not None and release_version == _pyproject_version()
+    bin_available = is_release and _release_wheel_available()
 
     # Determine install mode. An explicit --bin/--source always wins; --yes
-    # alone reuses the saved mode, defaulting to bin only for a release.
+    # alone reuses the saved mode, defaulting to bin only when available.
     if args.bin:
+        if not bin_available:
+            print(
+                "WARNING: no madspace wheel was published for this platform/Python "
+                "version; --bin will likely fail."
+            )
         from_source = False
     elif args.source:
         from_source = True
     elif args.yes:
-        from_source = saved.get("mode", "bin" if is_release else "source") == "source"
+        from_source = (
+            saved.get("mode", "bin" if bin_available else "source") == "source"
+        )
     else:
         print("Welcome to the MadSpace interactive installer")
         print()
-        if is_release:
+        if bin_available:
             default_is_bin = saved.get("mode", "bin") != "source"
             from_source = not ask_yes_no(
                 "Install pre-compiled package? (recommended)", default=default_is_bin

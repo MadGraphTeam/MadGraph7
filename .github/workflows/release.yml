@@ -92,8 +92,20 @@ jobs:
         with:
           fetch-depth: 0  # full history: create_release.py's authors.md needs it
 
+      # The actual wheel filenames built for this release, so create_release.py
+      # can record them in input/.release and install.py can later check
+      # platform/Python availability locally instead of querying PyPI.
+      - name: Download the madspace wheels built for this release
+        uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-*
+          path: wheels
+          merge-multiple: true
+
       - name: Build the MadGraph tarball
-        run: python3 bin/create_release.py --version "${{ needs.check_version.outputs.version }}" --output dist
+        run: >
+          python3 bin/create_release.py --version "${{ needs.check_version.outputs.version }}"
+          --output dist --wheels-dir wheels
 
       - name: Smoke-test the tarball
         run: |
