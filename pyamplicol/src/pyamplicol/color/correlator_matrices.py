@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from ..processes.ir import CanonicalProcessIR
 from .connections import (
     COLOR_CONNECTION_CONVENTION,
-    MAX_CONNECTION_ORDER,
     ColorConnection,
     ColorEmission,
     ColorLeg,
@@ -86,8 +85,6 @@ class ColorCorrelator:
         object.__setattr__(self, "ket", tuple(self.ket))
         if len(self.bra) != len(self.ket):
             raise ValueError("bra and ket must have the same number of emissions")
-        if len(self.bra) > MAX_CONNECTION_ORDER:
-            raise ValueError("colour correlators support at most three emissions")
         if any(
             not isinstance(op, (EmitGluon, SplitGluon)) for op in (*self.bra, *self.ket)
         ):

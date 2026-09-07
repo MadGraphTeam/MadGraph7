@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.api.protocols import Momenta
@@ -41,6 +41,18 @@ class _Matrix:
     id: str
     sectors: tuple[int, ...]
     entries: tuple[_MatrixEntry, ...]
+
+
+@dataclass(frozen=True)
+class CorrelatorCatalogue:
+    """Validated selected-process metadata, without an amplitude executor."""
+
+    artifact: Path
+    process_id: str
+    native_runtime: Any
+    declarations: CorrelatorConfig
+    matrices: tuple[_Matrix, ...]
+    coherent_groups: Sequence[Mapping[str, object]]
 
 
 def _exact_integer(value: object) -> int:
@@ -192,62 +204,84 @@ def _contract(
     )
 
 
+def load_correlator_catalogue(backend: Any) -> CorrelatorCatalogue:
+    """Read and validate the correlation sidecar once for a runtime selection."""
+    artifact = getattr(backend, "_artifact_path", None)
+    native = getattr(backend, "_runtime", None)
+    if not isinstance(artifact, Path) or native is None:
+        raise CompatibilityError("this runtime does not support Born correlations")
+    manifest = load_manifest(artifact)
+    extension = manifest.extensions.get("correlators")
+    if not isinstance(extension, Mapping):
+        raise CompatibilityError(
+            "correlations must be declared at generation with CorrelatorConfig"
+        )
+    try:
+        if (
+            type(extension["schema_version"]) is not int
+            or extension["schema_version"] != 1
+        ):
+            raise ValueError("unsupported correlator schema version")
+        path = extension["path"]
+        if not isinstance(path, str):
+            raise ValueError("missing correlator catalogue path")
+        payload = json.loads(confined_path(artifact, path).read_text())
+        if (
+            type(payload["schema_version"]) is not int
+            or payload["schema_version"] != 1
+            or payload["complete_source_basis"] is not True
+        ):
+            raise ValueError("correlations require a complete source basis")
+        selection = native_process_selection(native, manifest.processes)
+        if selection.external_permutation != tuple(
+            range(len(selection.external_permutation))
+        ):
+            raise CompatibilityError(
+                "correlated catalogues and evaluation do not support "
+                "non-identity process aliases"
+            )
+        process_id = selection.representative_process_id
+        process = payload["processes"][process_id]
+        declarations = CorrelatorConfig.from_json_dict(process["declarations"])
+        requests = declarations.color_requests
+        if (
+            any(type(leg) is not int for leg in process["spin_legs"])
+            or tuple(process["spin_legs"]) != declarations.spin_legs
+        ):
+            raise ValueError("inconsistent declared spin legs")
+        matrices = tuple(_matrix(item) for item in process["matrices"])
+        identifiers = {matrix.id for matrix in matrices}
+        if len(identifiers) != len(matrices) or identifiers != {
+            request.id for request in requests
+        }:
+            raise ValueError("inconsistent colour correlation IDs")
+        coherent_groups = cast(
+            Sequence[Mapping[str, object]], process["coherent_groups"]
+        )
+    except (KeyError, TypeError, ValueError, OSError) as exc:
+        raise ArtifactError(f"invalid correlator catalogue: {exc}") from exc
+    return CorrelatorCatalogue(
+        artifact, process_id, native, declarations, matrices, coherent_groups
+    )
+
+
 class CorrelatorEvaluator:
     """Small stateful facade; source vectors belong only to this runtime."""
 
-    def __init__(self, backend: Any) -> None:
-        artifact = getattr(backend, "_artifact_path", None)
-        native = getattr(backend, "_runtime", None)
-        if not isinstance(artifact, Path) or native is None:
-            raise CompatibilityError("this runtime does not support Born correlations")
-        manifest = load_manifest(artifact)
-        extension = manifest.extensions.get("correlators")
-        if not isinstance(extension, Mapping):
-            raise CompatibilityError(
-                "correlations must be declared at generation with CorrelatorConfig"
-            )
-        try:
-            if (
-                type(extension["schema_version"]) is not int
-                or extension["schema_version"] != 1
-            ):
-                raise ValueError("unsupported correlator schema version")
-            path = extension["path"]
-            if not isinstance(path, str):
-                raise ValueError("missing correlator catalogue path")
-            payload = json.loads(confined_path(artifact, path).read_text())
-            if (
-                type(payload["schema_version"]) is not int
-                or payload["schema_version"] != 1
-                or payload["complete_source_basis"] is not True
-            ):
-                raise ValueError("correlations require a complete source basis")
-            declarations = CorrelatorConfig.from_json_dict(payload["declarations"])
-            selection = native_process_selection(native, manifest.processes)
-            process_id = selection.representative_process_id
-            process = payload["processes"][process_id]
-            if (
-                any(type(leg) is not int for leg in process["spin_legs"])
-                or tuple(process["spin_legs"]) != declarations.spin_legs
-            ):
-                raise ValueError("inconsistent declared spin legs")
-            matrices = tuple(_matrix(item) for item in process["matrices"])
-            coherent_groups = process["coherent_groups"]
-            self._matrices = {matrix.id: matrix for matrix in matrices}
-            if len(self._matrices) != len(matrices) or set(self._matrices) != {
-                request.id for request in declarations.color_requests
-            }:
-                raise ValueError("inconsistent colour correlation IDs")
-        except (KeyError, TypeError, ValueError, OSError) as exc:
-            raise ArtifactError(f"invalid correlator catalogue: {exc}") from exc
-        self._declarations = declarations
+    def __init__(
+        self, backend: Any, *, catalogue: CorrelatorCatalogue | None = None
+    ) -> None:
+        if catalogue is None:
+            catalogue = load_correlator_catalogue(backend)
+        self._matrices = {matrix.id: matrix for matrix in catalogue.matrices}
+        self._declarations = catalogue.declarations
         self._vectors: dict[int, object] = {}
         self._executor = CorrelatedExactExecutor(
-            artifact,
-            process_id,
-            native,
-            spin_correlated_legs=declarations.spin_legs,
-            coherent_groups=coherent_groups,
+            catalogue.artifact,
+            catalogue.process_id,
+            catalogue.native_runtime,
+            spin_correlated_legs=catalogue.declarations.spin_legs,
+            coherent_groups=catalogue.coherent_groups,
         )
 
     def set_spin_correlation_vectors(

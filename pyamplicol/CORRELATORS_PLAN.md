@@ -342,3 +342,49 @@ Also make sure to use multiple subagents to split the various orthogonal pieces 
 
 The paper will link to the script using the full tested commit hash, not a
 moving branch, and print that same revision alongside the measured study.
+
+## Automatic generic higher-order catalogue (7 September 2026)
+
+The explicit ordered bra/ket engine already supports the note's generic
+emission and splitting histories through three operations; the initial
+implementation did not include the automatic all-order catalogue. Complete
+that missing layer rather than describing dipole helpers as generic coverage:
+
+1. Add `CorrelatorConfig.all_color(through_order=k)`, resolved separately
+   for each generated process. Follow the note's soft-connection scope: every
+   active coloured leg can emit; only auxiliary gluons split into quark pairs.
+   Explicit declarations continue to allow hard Born-gluon splittings.
+   The later generic-order request removes the initial three-operation cap:
+   any positive k is accepted. Completeness concerns leading tree-QCD soft
+   currents, without strongly ordered energies; loop amplitudes and splitting
+   kernels are not supplied. Resolve four-gluon colour factors into products
+   of structure constants to establish coverage of all tree colour forests.
+2. Enumerate causal histories, every final unresolved-label assignment, and
+   all compatible directed bra/ket pairs, including self-contractions. Remove
+   commuting reorderings without changing same-line order or executing a
+   daughter before its creation. Keep sign-related and colour-identity
+   redundancies. Final labels, including quark orientations, must match across
+   histories with different creation order. Do not attach history-counting
+   weights to an individual matrix element.
+3. Assign deterministic per-order connection indices and pair IDs; retain
+   the full ordered typed histories with each ID. Expose
+   `Runtime.available_color_correlations()` from the selected process's
+   stored declarations without initializing amplitude evaluation.
+4. Test NNLO classes A--D, noncommutation, N3LO pair/gluon interferences with
+   different creation order, deterministic IDs and per-process expansion.
+   Add the shortcut, encoding and runtime enumeration to the docs, paper and
+   minimal manual, then rebuild/inspect the PDF and sync `Paper/src`.
+5. Preserve all ordinary paths and existing correlated arithmetic. The NLO
+   precision results retain their actual tested revision, 44897675f509;
+   catalogue-only additions do not require repeating those scans. Commit and
+   push to `correlators`, then validate the new PR head without publishing.
+
+Additional requests (verbatim):
+
+In the paper and in the mini manual you should add description for the short-cut to automatically build all relevant color correlator at NLO, NNLO, N3LO, etc.. (see the PDF I shared earlier for how to systematically generate all of them and the encoding) and then at runtime, an example of how to enumerate all available color correlations. Did you have that covered already in your implementation ? Explain to me in detail how you encoded the generic color correlators?
+
+Because it seems like you're just describing dipoles, but my PDF was showing the generic NkLO construction of correlators!
+
+So yeah do a generic discussion in the paper closer to my generic discussion in the MadNkLO PDF, and also add to pyAmpliCol a shorthand for automatically registering *all* relevant color correlations at NkLO for a given process, following the spirit of the pseudo code I discribed in my PDF. Put subagents on it to research that topic, validate my construction (or correct it) and audit the implementation to make sure it covers all generic NkLO correlators (those typically needed for fixed-order NkLO subtraction, but it does not need to be the usual basis, just a valid one that guarantees to expose all possibly relevant correlators, the user can then do any additional projection/transformation on his results as they want).
+
+(and then insist in the paper (and the introduction too) that the support in pyAmpliCol is therefore fully generic and not restricted to NLO or NNLO)

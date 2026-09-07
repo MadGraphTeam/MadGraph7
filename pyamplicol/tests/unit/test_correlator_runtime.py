@@ -240,7 +240,7 @@ class _Executor:
 @pytest.fixture
 def controller_factory(monkeypatch, tmp_path):
     declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator("ordered"),),
+        color_correlations=(ColorCorrelator.dipole("ordered", 1, 2),),
         spin_correlations=((1,), (1, 2)),
     )
     payload = {
@@ -249,6 +249,7 @@ def controller_factory(monkeypatch, tmp_path):
         "declarations": declarations.to_json_dict(),
         "processes": {
             "p": {
+                "declarations": declarations.to_json_dict(),
                 "spin_legs": [1, 2],
                 "matrices": [_matrix_record("born"), _matrix_record("ordered")],
                 "coherent_groups": [{"group_id": 0}],
@@ -257,16 +258,28 @@ def controller_factory(monkeypatch, tmp_path):
     }
     extension = {"schema_version": 1, "path": "correlators.json"}
     manifest = SimpleNamespace(extensions={"correlators": extension}, processes=[])
-    monkeypatch.setattr(correlations, "load_manifest", lambda path: manifest)
+    reads = []
+
+    def read_manifest(path):
+        reads.append("manifest")
+        return manifest
+
+    def read_sidecar():
+        reads.append("sidecar")
+        return json.dumps(payload)
+
+    monkeypatch.setattr(correlations, "load_manifest", read_manifest)
     monkeypatch.setattr(
         correlations,
         "confined_path",
-        lambda artifact, path: SimpleNamespace(read_text=lambda: json.dumps(payload)),
+        lambda artifact, path: SimpleNamespace(read_text=read_sidecar),
     )
     monkeypatch.setattr(
         correlations,
         "native_process_selection",
-        lambda runtime, processes: SimpleNamespace(representative_process_id="p"),
+        lambda runtime, processes: SimpleNamespace(
+            representative_process_id="p", external_permutation=(0, 1)
+        ),
     )
     monkeypatch.setattr(correlations, "CorrelatedExactExecutor", _Executor)
     backend = SimpleNamespace(_artifact_path=tmp_path, _runtime=object())
@@ -275,7 +288,126 @@ def controller_factory(monkeypatch, tmp_path):
         payload=payload,
         manifest=manifest,
         backend=backend,
+        reads=reads,
     )
+
+
+def test_public_catalogue_is_typed_lazy_and_reused_for_evaluation(
+    controller_factory, monkeypatch
+):
+    factory = controller_factory
+    runtime = object.__new__(Runtime)
+    runtime._backend = factory.backend
+    constructed = []
+    validated = []
+    matrix_reader = correlations._matrix
+
+    def executor(*args, **kwargs):
+        constructed.append(True)
+        return _Executor(*args, **kwargs)
+
+    def matrix(record):
+        validated.append(record["id"])
+        return matrix_reader(record)
+
+    monkeypatch.setattr(correlations, "CorrelatedExactExecutor", executor)
+    monkeypatch.setattr(correlations, "_matrix", matrix)
+    expected = (ColorCorrelator("born"), ColorCorrelator.dipole("ordered", 1, 2))
+    available = runtime.available_color_correlations()
+    assert available == expected
+    assert runtime.available_color_correlations() == expected
+    assert all(isinstance(item, ColorCorrelator) for item in available)
+    assert constructed == []
+    assert not hasattr(runtime, "_correlated_evaluator")
+    assert factory.reads == ["manifest", "sidecar"]
+    assert validated == ["born", "ordered"]
+
+    # Evaluating after discovery consumes the same validated metadata.
+    runtime.evaluate_correlated([[(1, 0, 0, 1)]], color_correlation="ordered")
+    assert constructed == [True]
+    assert factory.reads == ["manifest", "sidecar"]
+    assert validated == ["born", "ordered"]
+    assert runtime.available_color_correlations() == expected
+
+
+def test_public_catalogue_uses_selected_process_not_global_declarations(
+    controller_factory, monkeypatch
+):
+    factory = controller_factory
+    factory.payload["declarations"] = {"all_color_through_order": 3}
+    process = copy.deepcopy(factory.payload["processes"]["p"])
+    declarations = CorrelatorConfig((ColorCorrelator.dipole("selected", 2, 1),))
+    process.update(
+        declarations=declarations.to_json_dict(),
+        spin_legs=[],
+        matrices=[_matrix_record("born"), _matrix_record("selected")],
+    )
+    factory.payload["processes"]["q"] = process
+    monkeypatch.setattr(
+        correlations,
+        "native_process_selection",
+        lambda native, processes: SimpleNamespace(
+            representative_process_id="q", external_permutation=(0, 1)
+        ),
+    )
+    runtime = object.__new__(Runtime)
+    runtime._backend = factory.backend
+    assert runtime.available_color_correlations() == declarations.color_requests
+    assert not hasattr(runtime, "_correlated_evaluator")
+
+
+@pytest.mark.parametrize("defect", ["missing", "unresolved", "matrix_ids"])
+def test_public_catalogue_requires_resolved_consistent_process_declarations(
+    controller_factory, defect
+):
+    process = controller_factory.payload["processes"]["p"]
+    if defect == "missing":
+        del process["declarations"]
+    elif defect == "unresolved":
+        process["declarations"]["all_color_through_order"] = 1
+    else:
+        process["declarations"]["color_correlations"] = []
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    with pytest.raises(ArtifactError):
+        runtime.available_color_correlations()
+    assert not hasattr(runtime, "_correlated_catalogue")
+    assert not hasattr(runtime, "_correlated_evaluator")
+
+
+def test_public_catalogue_requires_generation_opt_in(controller_factory):
+    controller_factory.manifest.extensions = {}
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    with pytest.raises(CompatibilityError, match="declared at generation"):
+        runtime.available_color_correlations()
+
+
+@pytest.mark.parametrize("operation", ["list", "evaluate"])
+def test_public_catalogue_rejects_permuted_alias_before_executor(
+    controller_factory, monkeypatch, operation
+):
+    monkeypatch.setattr(
+        correlations,
+        "native_process_selection",
+        lambda native, processes: SimpleNamespace(
+            representative_process_id="p", external_permutation=(1, 0)
+        ),
+    )
+
+    def unexpected_executor(*args, **kwargs):
+        raise AssertionError("alias rejection must precede amplitude loading")
+
+    monkeypatch.setattr(correlations, "CorrelatedExactExecutor", unexpected_executor)
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    with pytest.raises(CompatibilityError, match="non-identity process aliases"):
+        if operation == "list":
+            runtime.available_color_correlations()
+        else:
+            runtime.evaluate_correlated([[(1, 0, 0, 1)]])
+    assert not hasattr(runtime, "_correlated_catalogue")
+    assert not hasattr(runtime, "_correlated_evaluator")
 
 
 def test_vectors_instance_isolation_copy_failed_setter_atomic_and_reset(

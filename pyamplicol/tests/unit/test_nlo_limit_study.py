@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from contextlib import contextmanager
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -23,6 +24,35 @@ spec.loader.exec_module(study)
 
 def value(real, imag=0):
     return SimpleNamespace(real=Decimal(real), imag=Decimal(imag))
+
+
+@pytest.mark.parametrize("resolved", (False, True))
+def test_cached_born_requires_current_per_process_declarations(tmp_path, resolved):
+    expected = study.declarations().to_json_dict()
+    for name, expression in study.EXPRESSIONS.items():
+        directory = tmp_path / name
+        (directory / "config").mkdir(parents=True)
+        (directory / "artifact.json").write_text(json.dumps({
+            "artifact_id": name, "processes": [{"expression": expression}],
+        }))
+        (directory / "config/effective.toml").write_text(
+            '[color]\naccuracy="full"\ncontraction="direct"\n'
+            '[evaluator]\nexecution_mode="compiled"\n'
+            '[generation.relation_discovery]\n'
+            f'mode="{study.STUDY["relation_discovery"][name]}"\n'
+        )
+        if name == "born":
+            (directory / "correlators.json").write_text(json.dumps({
+                "declarations": expected,
+                "processes": {"born": {"declarations": expected} if resolved else {}},
+            }))
+    if resolved:
+        paths, identities = study.generate_artifacts(tmp_path)
+        assert paths["born"] == tmp_path / "born"
+        assert identities["born"] == "born"
+    else:
+        with pytest.raises(ValueError, match="fresh artifact directory"):
+            study.generate_artifacts(tmp_path)
 
 
 @pytest.mark.parametrize("limit", ("collinear", "soft"))

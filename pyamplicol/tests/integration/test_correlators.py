@@ -13,6 +13,7 @@ from pyamplicol import (
     Generator,
     ModelSource,
     Runtime,
+    SplitGluon,
 )
 from pyamplicol.config import (
     ColorConfig,
@@ -79,6 +80,72 @@ def correlated_gg(tmp_path_factory):
 
 def _value(runtime, **kwargs):
     return runtime.evaluate_correlated((POINT,), precision=32, **kwargs)[0]
+
+
+def test_generated_automatic_nnlo_catalogue_all_operators_in_one_point_batch(tmp_path):
+    pytest.importorskip("pyamplicol._rusticol")
+    output = tmp_path / "automatic-pair"
+    manual = ColorCorrelator.dipole("manual-T34", 3, 4)
+    Generator(_configuration()).generate(
+        "e+ e- > d d~",
+        output,
+        model=ModelSource.built_in_sm(),
+        correlators=CorrelatorConfig(
+            color_correlations=(manual,), all_color_through_order=2
+        ),
+    )
+    runtime = Runtime.load(output)
+    catalogue = runtime.available_color_correlations()
+    # Two coloured hard legs: 4 NLO + 108 NNLO, identity, and one manual alias.
+    assert len(catalogue) == 114
+    assert sum(item.order == 2 for item in catalogue) == 108
+    assert not hasattr(runtime, "_correlated_evaluator")
+    automatic = {
+        (item.bra, item.ket): item for item in catalogue if item.id.startswith("N")
+    }
+    alias = automatic[(manual.bra, manual.ket)]
+    points = (
+        POINT,
+        (POINT[0], POINT[1], (500, 400, 0, 300), (500, -400, 0, -300)),
+    )
+    requests = {item.id: CorrelatedRequest(item.id, {}) for item in catalogue}
+    values = runtime.evaluate_correlated_many(points, requests, precision=40)
+    assert tuple(values) == tuple(requests)
+    assert all(len(batch) == 2 for batch in values.values())
+    assert values[manual.id] == values[alias.id]
+    assert values["born"][0] != values["born"][1]
+    ordinary = runtime.evaluate(points, precision=40)
+    pair = next(
+        item
+        for item in catalogue
+        if item.order == 2
+        and item.bra == item.ket
+        and isinstance(item.bra[0], EmitGluon)
+        and item.bra[0].emitter_label == 3
+        and isinstance(item.bra[1], SplitGluon)
+    )
+    with localcontext() as context:
+        context.prec = 50
+        for point_index, born in enumerate(values["born"]):
+            tolerance = abs(born.real) * Decimal("1e-35")
+            assert born.real > 0
+            assert abs(born.real - ordinary[point_index]) < tolerance
+            # A quark emitter followed by g→q qbar gives C_F T_R = 2/3,
+            # with neither an additional flavour sum nor extra kinematics.
+            assert (
+                abs(values[pair.id][point_index].real - born.real * 2 / 3) < tolerance
+            )
+            assert (
+                abs(values[manual.id][point_index].real + born.real * 4 / 3) < tolerance
+            )
+            for (bra, ket), item in automatic.items():
+                partner = automatic[(ket, bra)]
+                left, right = (
+                    values[item.id][point_index],
+                    values[partner.id][point_index],
+                )
+                assert abs(left.real - right.real) < tolerance
+                assert abs(left.imag + right.imag) < tolerance
 
 
 def test_generated_many_colour_spin_and_point_axes_match_separate_calls(correlated_gg):

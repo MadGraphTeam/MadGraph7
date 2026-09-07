@@ -546,8 +546,19 @@ def generate_artifacts(directory):
             )
         if name == "born":
             catalogue = json.loads((path / "correlators.json").read_text())
-            if catalogue["declarations"] != declarations().to_json_dict():
-                raise ValueError(f"Wrong correlation declarations in {path}")
+            expected = declarations().to_json_dict()
+            if (
+                catalogue["declarations"] != expected
+                or not catalogue.get("processes")
+                or any(
+                    process.get("declarations") != expected
+                    for process in catalogue["processes"].values()
+                )
+            ):
+                raise ValueError(
+                    f"Incompatible correlation declarations in {path}; "
+                    "choose a fresh artifact directory"
+                )
         identities[name] = manifest["artifact_id"]
     return paths, identities
 

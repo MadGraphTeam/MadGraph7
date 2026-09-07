@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Exact, generation-independent colour connections through three emissions.
+"""Exact, generation-independent ordered colour connections.
 
 Tensors are literal products of open strings and traces of generators ``tau``
 with ``tr(tau[a] tau[b]) = delta[a,b]``. Physical charges use
@@ -30,7 +30,6 @@ from typing import TypeAlias
 from .contraction_trace import _simplify_trace_terms_nc_power
 from .contraction_types import NC
 
-MAX_CONNECTION_ORDER = 3
 COLOR_CONNECTION_CONVENTION = "su3-literal-tau-physical-charge-all-outgoing-v1"
 
 
@@ -201,10 +200,6 @@ class ColorConnection:
             self, "initial_legs", _canonical_legs(tuple(self.initial_legs))
         )
         object.__setattr__(self, "emissions", tuple(self.emissions))
-        if len(self.emissions) > MAX_CONNECTION_ORDER:
-            raise ValueError(
-                "colour connections support at most three ordered emissions"
-            )
         _ = self.output_legs  # Validate parents, representations and fresh labels once.
 
     @property
@@ -598,7 +593,6 @@ def color_connection_matrix_element(
 
 __all__ = [
     "COLOR_CONNECTION_CONVENTION",
-    "MAX_CONNECTION_ORDER",
     "ColorConnection",
     "ColorEmission",
     "ColorLeg",

@@ -166,19 +166,103 @@ representations and uses fresh daughter labels; it does not reuse the
 parent label as one daughter. When translating a whole pair of connections,
 relabel their final partons consistently on both sides.
 
-The note canonically sorts some commuting operations and assigns integer
-indices to its connection list. pyAmpliCol instead takes the ordered lists
-as supplied and uses user-chosen **string IDs for the requested pair**.
-It does not sort operations, enumerate a minimal connection basis, or insert
-multiplicities for equivalent lists. In particular, do not apply the note's
+Explicit declarations keep the ordered lists as supplied and use user-chosen
+**string IDs for the requested pair**. The automatic catalogue described below
+instead indexes canonical chronological histories. Neither form attaches
+multiplicities to the result. In particular, do not apply the note's
 descending-label sort to a chain whose next emitter has not yet been created.
 
-Both sides must have the same order, up to three operations per side, and
+Both sides must have the same order, with no fixed upper bound, and
 finish with identical labelled colour representations. A gluon-only final
 colour space cannot be contracted with a quark-pair colour space. Invalid
 pairs are rejected rather than returned as physical zeroes. One-, two-, and
 three-step connections supply NLO, NNLO, and N3LO colour structures; this is
 not a claim to supply the kinematic ingredients of an N3LO calculation.
+
+## Automatic generic catalogue
+
+`CorrelatorConfig.all_color(through_order=k)` registers every compatible
+ordered pair through orders 1,...,k, together with the ordinary Born. This is
+the generic construction of section 2 of the MadNkLO note, not a list of
+dipole products. Its soft scope permits gluon emission from any active
+coloured leg and quark-pair splitting of auxiliary gluons, but not splitting
+hard Born gluons automatically. The latter operation remains available
+explicitly. Colour roles are crossed to the all-outgoing convention by the
+generator, separately for each process.
+
+Let `S_m` be the set of histories with m operations, starting with the identity
+at m=0. From every history, append each allowed operation on every active leg.
+Emitted gluons and the daughters of a quark-pair splitting are also active
+emitters. Each operation increases the number of final auxiliary partons by
+one. At order m, assign their labels in every possible way to `-1,...,-m`.
+Retired intermediate parents receive separate dummy labels below `-m`.
+
+The spanning argument is constructive. A leading tree-level QCD soft current
+is a sum of forests rooted on the hard coloured lines. Its quark-gluon and
+three-gluon colour vertices are precisely the two supported operations;
+four-gluon colour factors are sums of products of two structure constants
+and can be resolved into successive binary operations. A topological traversal
+of any such forest is therefore visited by the recursion, including multiple
+quark pairs and every assignment of the labelled soft partons. It follows that
+
+```text
+J_m^(0) = sum_alpha j_alpha S_alpha^(m)
+N sum_h <M_h | J_m^(0)† J_m^(0) | M_h>
+    = sum_(alpha,beta) conjugate(j_alpha) j_beta B_(alpha,beta)
+```
+
+where `B_(alpha,beta) = R[S_alpha,S_beta]` in the notation above,
+with the unresolved-spin sums included when forming the physical squared
+quantity. `N` is the common Born normalization defined above.
+Chronological colour construction does **not**
+assume strongly ordered soft energies: simultaneous-soft kinematics and
+contact terms belong to the coefficients `j_alpha`. Flavour factors and
+identical-fermion exchange signs also belong to the physical current.
+This proves coverage of tree-soft colour tensors, not provision of loop
+amplitudes or the kinematic ingredients of a complete fixed-order calculation.
+For the factorization of the leading soft current see
+[Catani and Cieri, section 2](https://doi.org/10.1140/epjc/s10052-022-10001-z);
+the appearance of colour quadrupoles beyond dipoles at three soft gluons is
+discussed by [Catani, Colferai and Torrini](https://arxiv.org/abs/1908.01616).
+
+Canonicalization removes only independent chronological interleavings and
+dummy-name choices. It preserves the order on each emitter line and every
+creation-before-use dependency. In contrast to a blind descending-label sort,
+the stored representative is always executable. Colour-conservation, Jacobi
+and sign-related redundancies are retained; a minimal basis is not required.
+Finally, pair **all** canonical histories of the same order with identical
+final labels and representations. Both directed orders and self-pairs remain.
+There are no numerical multiplicity factors on these individual entries.
+
+Final-label assignments are essential even across different creation orders.
+For example, these N3LO histories interfere in the same final space
+`q(-1), qbar(-2), g(-3)`:
+
+```python
+left = (
+    EmitGluon(1, -4), SplitGluon(-4, -1, -2), EmitGluon(-1, -3),
+)
+right = (
+    EmitGluon(1, -3), EmitGluon(1, -4), SplitGluon(-4, -1, -2),
+)
+```
+
+Number the sorted histories independently at each order, starting from zero.
+The pair of history indices `(i,j)` at order r has ID `N{r}LO/c{i}/c{j}`.
+These are local indices for a particular process catalogue, not universal
+operator numbers or hashes. The full typed chronological `bra` and `ket`
+records are stored with the ID; retired-label conventions do not require any
+additional momenta. The available metadata is returned by
+`runtime.available_color_correlations()`, including `"born"` at order zero.
+The caller can inspect, select and combine entries without parsing ID strings.
+
+No perturbative-order cap is imposed. Detailed physics tests cover NLO through
+N3LO, with higher-order Casimir and two-pair checks. Enumeration tests compare
+the NNLO classes A--D, preserve noncommuting histories, and verify N3LO
+cross-order creation histories and N4LO two-pair relabelling. For n coloured
+Born legs the NNLO catalogue has `(n*n + 3*n)**2 + 2*n*n` directed pairs:
+108 for two legs and 816 for four. At N3LO four legs already give 90,720 pairs;
+the full automatic option trades a larger output for not choosing a subset.
 
 ## Translating the note's non-conjugated convention
 

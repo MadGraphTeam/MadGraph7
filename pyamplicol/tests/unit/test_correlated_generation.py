@@ -100,6 +100,47 @@ def test_correlated_configuration_preserves_resources_and_existing_clamps() -> N
     assert correlated.correlated_configuration(resolution).clamps == resolution.clamps
 
 
+def test_automatic_catalogues_expand_for_each_generated_process() -> None:
+    declarations = CorrelatorConfig.all_color(through_order=2)
+    backend = correlated.CorrelatedGenerationBackend(
+        RunConfig(action="generate", color=ColorConfig(accuracy="full")),
+        None,
+        declarations=declarations,
+    )
+    cases = (("annihilation", "d d~ > z"), ("pair", "e+ e- > d d~"))
+    for process_id, specification in cases:
+        process = build_process_ir(specification, color_accuracy="full")
+        plan = build_color_plan(process, color_accuracy="full")
+        groups = [
+            {"helicities": (1,), "color_sector_id": sector.id}
+            for sector in plan.sectors
+        ]
+        metadata = correlated.CorrelatedProcessMetadata(
+            process,
+            plan,
+            SimpleNamespace(
+                to_mapping=lambda groups=groups: {
+                    "amplitude_stage": {"coherent_groups": groups}
+                }
+            ),
+            (),
+        )
+        backend._correlated_processes[process_id] = metadata
+    payload = backend.correlator_payload()
+    assert payload["declarations"]["all_color_through_order"] == 2
+    for process_id, expected_labels in (("annihilation", {1, 2}), ("pair", {3, 4})):
+        process_payload = payload["processes"][process_id]
+        resolved = CorrelatorConfig.from_json_dict(process_payload["declarations"])
+        assert resolved.all_color_through_order is None
+        assert len(resolved.color_requests) == 113
+        assert [matrix["id"] for matrix in process_payload["matrices"]] == [
+            request.id for request in resolved.color_requests
+        ]
+        nlo = [request for request in resolved.color_correlations if request.order == 1]
+        assert {request.bra[0].emitter_label for request in nlo} == expected_labels
+    assert backend.declarations is declarations
+
+
 @pytest.mark.parametrize(
     "selection",
     [
@@ -249,6 +290,7 @@ def test_generic_compiler_keeps_complete_complex_source_basis(
     assert payload["complete_source_basis"] is True
     assert payload["declarations"] == backend.declarations.to_json_dict()
     catalog = payload["processes"]["gggg"]
+    assert catalog["declarations"] == backend.declarations.to_json_dict()
     assert catalog["spin_legs"] == [3, 4]
     assert catalog["coherent_groups"] == groups
     assert [matrix["id"] for matrix in catalog["matrices"]] == ["born", "T1.T3"]

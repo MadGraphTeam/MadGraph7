@@ -392,6 +392,27 @@ def test_three_emissions_include_radiating_emitted_gluons_and_quark_pairs(
     )
 
 
+@pytest.mark.parametrize("order", (4, 5))
+def test_generic_order_same_line_casimir_powers(order):
+    emissions = tuple(EmitGluon(1, -index) for index in range(1, order + 1))
+    image = apply_color_connection(_QQ, ColorConnection(_QQ_LEGS, emissions))
+    assert contract_connected_tensors(image, image) == ExactColorCoefficient(
+        3 * Fraction(4, 3) ** order
+    )
+
+
+def test_four_operations_with_two_quark_pairs():
+    graph = ColorConnection(_QQ_LEGS, (
+        EmitGluon(1, -5), SplitGluon(-5, -1, -2),
+        EmitGluon(1, -6), SplitGluon(-6, -3, -4),
+    ))
+    image = apply_color_connection(_QQ, graph)
+    assert graph.order == 4
+    assert contract_connected_tensors(image, image) == ExactColorCoefficient(
+        3 * (Fraction(4, 3) * Fraction(1, 2)) ** 2
+    )
+
+
 def test_n3lo_quark_pair_cross_connections_match_explicit_generators():
     left = ColorConnection(
         _QQ_LEGS, (EmitGluon(1, 3), SplitGluon(3, 4, 5), EmitGluon(4, 6))
@@ -539,7 +560,6 @@ def test_overlap_retains_complex_coefficients_and_bra_conjugation():
         (EmitGluon(1, 3), SplitGluon(3, 4, 4)),
         (EmitGluon(1, 3), SplitGluon(3, 4, 5), EmitGluon(3, 6)),
         (EmitGluon(1, 3), SplitGluon(3, 4, 5), EmitGluon(1, 3)),
-        (EmitGluon(1, 3), EmitGluon(1, 4), EmitGluon(1, 5), EmitGluon(1, 6)),
     ),
 )
 def test_invalid_ordered_graphs_are_rejected(emissions):

@@ -43,6 +43,56 @@ def test_declarations_json_roundtrip_and_automatic_born():
     assert [item.id for item in declarations.color_requests] == ["born", "T12", "N3LO"]
 
 
+@pytest.mark.parametrize("order", (1, 2, 3, 4, 7))
+def test_automatic_catalogue_declaration_roundtrip(order):
+    config = CorrelatorConfig.all_color(
+        through_order=order, spin_correlations=((3,),)
+    )
+    assert config.all_color_through_order == order
+    assert config.spin_correlations == ((3,),)
+    assert CorrelatorConfig.from_json_dict(config.to_json_dict()) == config
+    with pytest.raises(ValueError, match="resolved for a process"):
+        _ = config.color_requests
+
+
+@pytest.mark.parametrize("order", (0, -1, True, 1.0, "NLO", None))
+def test_automatic_catalogue_rejects_unsupported_orders(order):
+    with pytest.raises(ValueError, match="all_color_through_order"):
+        CorrelatorConfig.all_color(through_order=order)
+
+
+def test_automatic_catalogue_is_resolved_per_process_without_mutating_config():
+    from pyamplicol.color.connections import ColorLeg
+
+    config = CorrelatorConfig.all_color(through_order=1)
+    first = config._resolve_color((ColorLeg(1, 1), ColorLeg(2, 3), ColorLeg(3, -3)))
+    second = config._resolve_color((ColorLeg(1, 8), ColorLeg(2, 8), ColorLeg(3, 8)))
+    assert len(first.color_requests) == 5  # born and four directed dipoles
+    assert len(second.color_requests) == 10
+    assert config.all_color_through_order == 1
+    assert first.all_color_through_order is second.all_color_through_order is None
+    assert {item.bra[0].emitter_label for item in first.color_correlations} == {2, 3}
+    assert first._resolve_color(()) is first
+    assert CorrelatorConfig.from_json_dict(first.to_json_dict()) == first
+
+
+def test_explicit_and_automatic_requests_can_be_combined_but_not_id_collisions():
+    from pyamplicol.color.connections import ColorLeg
+
+    legs = (ColorLeg(1, 8),)
+    config = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("my-Casimir", 1, 1),),
+        all_color_through_order=1,
+    )
+    resolved = config._resolve_color(legs)
+    assert len(resolved.color_requests) == 3
+    with pytest.raises(ValueError, match="catalogue IDs are reserved"):
+        CorrelatorConfig(
+            color_correlations=(resolved.color_correlations[1],),
+            all_color_through_order=1,
+        )
+
+
 @pytest.mark.parametrize(
     "groups", (((),), ((0,),), ((True,),), ((1, 1),), ((1, 2), (2, 1)))
 )

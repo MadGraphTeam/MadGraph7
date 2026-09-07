@@ -21,7 +21,10 @@ from pyamplicol.api.models import CompiledModel
 from pyamplicol.api.requests import ModelSource, ProcessSet
 from pyamplicol.api.results import GenerationResult
 from pyamplicol.artifacts import ArtifactBuilder
-from pyamplicol.color.correlator_matrices import build_color_correlator_matrices
+from pyamplicol.color.correlator_matrices import (
+    build_color_correlator_matrices,
+    process_color_legs,
+)
 from pyamplicol.color.plan import GenericColorPlan, build_color_plan
 from pyamplicol.config import (
     Action,
@@ -387,6 +390,9 @@ class CorrelatedGenerationBackend(GenerationBackend):
 
         processes: dict[str, object] = {}
         for process_id, metadata in self._correlated_processes.items():
+            declarations = self.declarations._resolve_color(
+                process_color_legs(metadata.process)
+            )
             amplitude = cast(
                 Mapping[str, object],
                 metadata.runtime_schema.to_mapping()["amplitude_stage"],
@@ -409,7 +415,7 @@ class CorrelatedGenerationBackend(GenerationBackend):
             # belong to canonical owners.  Never contract those aliases twice.
             matrices = build_color_correlator_matrices(
                 metadata.color_plan,
-                self.declarations.color_requests,
+                declarations.color_requests,
                 sector_ids=sorted(owners),
                 color_accuracy=cast(
                     Literal["lc", "nlc", "full"],
@@ -419,7 +425,8 @@ class CorrelatedGenerationBackend(GenerationBackend):
                 ),
             )
             processes[process_id] = {
-                "spin_legs": list(self.declarations.spin_legs),
+                "declarations": declarations.to_json_dict(),
+                "spin_legs": list(declarations.spin_legs),
                 "matrices": [matrix.to_json_dict() for matrix in matrices],
                 # The native execution schema keeps root group IDs but omits
                 # these compiler descriptors, needed only by this consumer.

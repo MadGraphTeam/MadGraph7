@@ -53,7 +53,7 @@ _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
-    from pyamplicol.runtime.correlations import CorrelatorEvaluator
+    from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
 
 def install_backend_factories(
@@ -669,6 +669,25 @@ class Runtime:
 
         self._backend.set_model_parameters(dict(mapping))
 
+    def _correlator_catalogue(self) -> CorrelatorCatalogue:
+        catalogue: CorrelatorCatalogue | None = getattr(
+            self, "_correlated_catalogue", None
+        )
+        if catalogue is None:
+            from pyamplicol.runtime.correlations import load_correlator_catalogue
+
+            catalogue = load_correlator_catalogue(self._backend)
+            self._correlated_catalogue = catalogue
+        return catalogue
+
+    def available_color_correlations(self) -> tuple[_pyamplicol.ColorCorrelator, ...]:
+        """List this process's resolved operators, including ``"born"``.
+
+        Reads the declared catalogue without loading an amplitude executor.
+        Each returned record contains its runtime ID and ordered bra/ket steps.
+        """
+        return self._correlator_catalogue().declarations.color_requests
+
     def _correlator_evaluator(self) -> CorrelatorEvaluator:
         evaluator: CorrelatorEvaluator | None = getattr(
             self, "_correlated_evaluator", None
@@ -676,7 +695,9 @@ class Runtime:
         if evaluator is None:
             from pyamplicol.runtime.correlations import CorrelatorEvaluator
 
-            evaluator = CorrelatorEvaluator(self._backend)
+            evaluator = CorrelatorEvaluator(
+                self._backend, catalogue=self._correlator_catalogue()
+            )
             self._correlated_evaluator = evaluator
         return evaluator
 

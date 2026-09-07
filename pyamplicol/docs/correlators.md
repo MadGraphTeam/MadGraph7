@@ -13,9 +13,9 @@ and translation of the original MadNkLO note, see
 Correlations are an explicit generation-time option. Declare the colour
 operators and allowed joint spin replacements once, then select an operator
 by ID and supply numerical spin vectors at runtime. This provides
-four-dimensional tree-level correlated Born quantities, including ordered
-colour connections through three unresolved emissions (N3LO colour
-structures). It is **not** a complete N3LO subtraction implementation: no
+four-dimensional tree-level correlated Born quantities, with a generic
+construction of ordered colour connections at any finite perturbative order.
+It is not restricted to NLO or NNLO. This is **not** a complete subtraction implementation: no
 loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.
 
@@ -38,7 +38,8 @@ declarations = CorrelatorConfig(
     color_correlations=(ColorCorrelator.dipole("T13", 1, 3),),
     spin_correlations=((3,), (3, 4)),
 )
-result = Generator(RunConfig(color=ColorConfig(accuracy="full"))).generate(
+config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
+result = Generator(config).generate(
     "g g > g g",
     "artifacts/gg_correlated",
     model=ModelSource.built_in_sm(),
@@ -178,11 +179,82 @@ enforced by the setter. Setting, for example, `{3: point[2]}` supplies a literal
 nonzero momentum vector for a Ward-identity check. Its vanishing is a
 massless gauge-boson statement, not a generic test for massive vectors.
 
+## Automatically register every colour correlation through N^kLO
+
+Use `CorrelatorConfig.all_color(through_order=k)` when the required subset is
+not known in advance. For example, this prepares every compatible pair of
+one- and two-operation tree-soft colour connections, including the Born:
+
+```python
+declarations = CorrelatorConfig.all_color(
+    through_order=2,  # 1: NLO; 2: through NNLO; 3: through N3LO; any k >= 1.
+    spin_correlations=((3,),),
+)
+config = RunConfig(action="generate", color=ColorConfig(accuracy="full"))
+result = Generator(config).generate(
+    "g g > g g", "artifacts/gg_all_correlations",
+    model=ModelSource.built_in_sm(), correlators=declarations,
+)
+runtime = Runtime.load(result.output)
+
+catalogue = runtime.available_color_correlations()
+for entry in catalogue:
+    print(entry.id, entry.order, entry.bra, entry.ket)
+
+# Every NNLO component, at every point, in one grouped call.
+requests = {
+    entry.id: CorrelatedRequest(entry.id, spin_vectors={})
+    for entry in catalogue if entry.order == 2
+}
+values = runtime.evaluate_correlated_many(points, requests, precision=40)
+first_id = next(iter(requests))
+print(values[first_id][0].real, values[first_id][0].imag)
+```
+
+Here `points` is a batch of four-leg phase-space points as above. The catalogue
+is specific to the selected process and includes `"born"` at order zero.
+Listing it loads the stored declarations and matrices but does not initialize
+amplitude evaluation. The ordinary `evaluate` path is unchanged.
+
+This is **not** a factory for products of dipoles. At each step every active
+coloured leg can emit; an emitted gluon can also split into a quark pair, and
+its daughters can radiate later. Every final unresolved-label assignment is
+included. The factory pairs all histories of the same order with identical
+labelled final representations, including both directed orders and self-pairs.
+It follows the note's soft-current construction: hard Born-gluon splitting is
+not included automatically, but remains available in explicit declarations.
+
+The recursion has no fixed order cap. Its complete, nonminimal catalogue grows
+rapidly with order and multiplicity; it can be much larger than a chosen
+subtraction basis. Chronology is the order of colour operations, **not** an
+assumption of strongly ordered soft energies. The kinematic current, flavour
+weights and identical-fermion exchange signs remain the caller's responsibility.
+See the [completeness argument and encoding](correlator-conventions.md#automatic-generic-catalogue).
+
+Automatic IDs have the form `N{r}LO/c{i}/c{j}`, with zero-based connection
+indices `i,j` in the sorted order-`r` catalogue. They are process-local labels,
+not universal operator names: inspect `bra` and `ket` to identify the physics.
+For manually declared operators, IDs remain arbitrary user-chosen strings.
+Both forms can be combined with
+`CorrelatorConfig(color_correlations=(...), all_color_through_order=k)`;
+the `N{r}LO/c{i}/c{j}` ID namespace is reserved when automatic registration
+is enabled, so conflicts are rejected before generation starts.
+
+The equivalent CLI declaration is simply:
+
+```json
+{"all_color_through_order": 3, "spin_correlations": [[3]]}
+```
+
+Pass this file to the existing `generate ... --correlators correlators.json`
+option. Expansion happens separately for each generated process, using its
+actual coloured leg labels and crossed representations.
+
 ## Ordered colour connections
 
 `ColorCorrelator.dipole("T13", 1, 3)` prepares
 `<M | T_1 . T_3 | M>`. More general requests supply ordered `bra` and `ket`
-operations, with zero to three steps on each side:
+operations, with the same number of steps on each side and no fixed order cap:
 
 ```python
 from pyamplicol import EmitGluon, SplitGluon

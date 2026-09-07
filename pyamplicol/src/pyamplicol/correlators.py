@@ -12,12 +12,13 @@ simultaneously. Numerical vectors are supplied to the runtime, not generation.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import cast
 
-from pyamplicol.color.connections import EmitGluon, SplitGluon
+from pyamplicol.color.connections import ColorLeg, EmitGluon, SplitGluon
 from pyamplicol.color.correlator_matrices import ColorCorrelator
 
 __all__ = [
@@ -111,7 +112,7 @@ class CorrelatorConfig:
     """The correlations to prepare alongside a complete tree amplitude.
 
     ``color_correlations`` contains the requested ``bra† ket`` connections,
-    keyed by unique IDs. Each side has at most three ordered emissions.
+    keyed by unique IDs. Each side has the same number of ordered operations.
     ``spin_correlations=((3,), (3, 4))`` permits replacing leg 3 alone or legs
     3 and 4 together. An empty runtime vector map always restores the ordinary
     helicity sum. Each replaced leg contributes one vector state; the usual
@@ -124,8 +125,16 @@ class CorrelatorConfig:
 
     color_correlations: tuple[ColorCorrelator, ...] = ()
     spin_correlations: tuple[tuple[int, ...], ...] = ()
+    all_color_through_order: int | None = None
 
     def __post_init__(self) -> None:
+        order = self.all_color_through_order
+        if order is not None and (
+            type(order) is not int or order < 1
+        ):
+            raise ValueError(
+                "all_color_through_order must be a positive integer"
+            )
         colors = tuple(self.color_correlations)
         if any(not isinstance(item, ColorCorrelator) for item in colors):
             raise TypeError("color_correlations must contain ColorCorrelator records")
@@ -134,6 +143,11 @@ class CorrelatorConfig:
             raise ValueError("the colour correlation ID 'born' is reserved")
         if len(set(ids)) != len(ids):
             raise ValueError("colour correlation IDs must be unique")
+        if order is not None and any(
+            re.fullmatch(r"N[1-9][0-9]*LO/c[0-9]+/c[0-9]+", identifier)
+            for identifier in ids
+        ):
+            raise ValueError("automatic colour catalogue IDs are reserved")
         classes: list[tuple[int, ...]] = []
         for group in self.spin_correlations:
             legs = tuple(group)
@@ -150,6 +164,49 @@ class CorrelatorConfig:
         object.__setattr__(self, "color_correlations", colors)
         object.__setattr__(self, "spin_correlations", tuple(sorted(classes)))
 
+    @classmethod
+    def all_color(
+        cls,
+        *,
+        through_order: int,
+        spin_correlations: tuple[tuple[int, ...], ...] = (),
+    ) -> CorrelatorConfig:
+        """Prepare every tree-soft colour connection through N^kLO.
+
+        Generation resolves the coloured Born legs separately for each process.
+        Histories include emission from emitted partons and splitting of emitted
+        gluons into quark pairs; this is not a catalogue of dipole products.
+        All directed overlaps with matching final colour spaces are retained.
+        No splitting kernels, flavour sums or combinatorial weights are included.
+        ``through_order=k`` includes all orders 1 through k without a fixed cap.
+        The complete catalogue is nonminimal and grows rapidly with k.
+        """
+        if type(through_order) is not int or through_order < 1:
+            raise ValueError("all_color_through_order must be a positive integer")
+        return cls(
+            spin_correlations=spin_correlations,
+            all_color_through_order=through_order,
+        )
+
+    def _resolve_color(self, legs: Sequence[ColorLeg]) -> CorrelatorConfig:
+        """Expand the opt-in declaration once the process representations exist."""
+        if self.all_color_through_order is None:
+            return self
+        from pyamplicol.color.connection_catalogue import (
+            build_color_correlator_catalogue,
+        )
+
+        return replace(
+            self,
+            color_correlations=(
+                *self.color_correlations,
+                *build_color_correlator_catalogue(
+                    legs, through_order=self.all_color_through_order
+                ),
+            ),
+            all_color_through_order=None,
+        )
+
     @property
     def spin_legs(self) -> tuple[int, ...]:
         """All external legs whose source vectors must remain unrestricted."""
@@ -158,21 +215,30 @@ class CorrelatorConfig:
     @property
     def color_requests(self) -> tuple[ColorCorrelator, ...]:
         """Requested operators, including the ordinary Born overlap."""
+        if self.all_color_through_order is not None:
+            raise ValueError(
+                "automatic colour requests must first be resolved for a process"
+            )
         return (ColorCorrelator("born"), *self.color_correlations)
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "color_correlations": [
                 item.to_json_dict() for item in self.color_correlations
             ],
             "spin_correlations": [list(group) for group in self.spin_correlations],
         }
+        if self.all_color_through_order is not None:
+            result["all_color_through_order"] = self.all_color_through_order
+        return result
 
     @classmethod
     def from_json_dict(cls, value: object) -> CorrelatorConfig:
         """Read the same declaration used by Python and ``--correlators``."""
         data = _fields(
-            value, {"color_correlations", "spin_correlations"}, "correlator declaration"
+            value,
+            {"color_correlations", "spin_correlations", "all_color_through_order"},
+            "correlator declaration",
         )
         colors: list[ColorCorrelator] = []
         for record in _sequence(
@@ -200,4 +266,8 @@ class CorrelatorConfig:
                 data.get("spin_correlations", ()), "spin_correlations"
             )
         )
-        return cls(tuple(colors), spins)  # type: ignore[arg-type]
+        return cls(
+            tuple(colors),
+            cast(tuple[tuple[int, ...], ...], spins),
+            cast(int | None, data.get("all_color_through_order")),
+        )
