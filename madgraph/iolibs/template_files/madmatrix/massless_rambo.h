@@ -41,8 +41,8 @@ namespace massless_rambo {
   // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
   template<class M_ACCESS>
   __host__ __device__ void
-  ramboGetMomentaInitial( const fptype energy, // input: energy
-                          fptype* momenta )    // output: momenta for one event or for a set of events
+  ramboGetMomentaInitial( const fptype energy,      // input: energy
+                          fptype_momenta* momenta ) // output: momenta for one event or for a set of events
   {
     const fptype energy1 = energy / 2;
     const fptype energy2 = energy / 2;
@@ -63,10 +63,10 @@ namespace massless_rambo {
   // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
   template<class R_ACCESS, class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
-  ramboGetMomentaFinal( const fptype energy,  // input: energy
-                        const fptype* rndmom, // input: random numbers in [0,1] for one event or for a set of events
-                        fptype* momenta,      // output: momenta for one event or for a set of events
-                        fptype* wgts )        // output: weights for one event or for a set of events
+  ramboGetMomentaFinal( const fptype energy,     // input: energy
+                        const fptype* rndmom,    // input: random numbers in [0,1] for one event or for a set of events
+                        fptype_momenta* momenta, // output: momenta for one event or for a set of events
+                        fptype* wgts )           // output: weights for one event or for a set of events
   {
     /****************************************************************************
      *                       rambo                                              *

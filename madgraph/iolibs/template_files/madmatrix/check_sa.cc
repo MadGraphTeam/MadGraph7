@@ -187,7 +187,7 @@ namespace
   //   AOSOA: aosoa[i_page * npar*4*neppM + ipar*4*neppM + ip4*neppM + i_vector]
   //   UMAMI: soa[ip4 * npar*nevt + ipar*nevt + ievt]
   __host__ __device__ inline void
-  aosoa_to_umami_one( const fptype* aosoa,
+  aosoa_to_umami_one( const fptype_momenta* aosoa,
                       double* soa,
                       std::size_t ievt,
                       std::size_t nevt )
@@ -205,7 +205,7 @@ namespace
 
 #ifdef MGONGPUCPP_GPUIMPL
   __global__ void
-  aosoa_to_umami_kernel( const fptype* aosoa,
+  aosoa_to_umami_kernel( const fptype_momenta* aosoa,
                          double* soa,
                          std::size_t nevt )
   {
@@ -251,9 +251,9 @@ namespace
        << "Random number generation    = COMMON RANDOM HOST" << std::endl;
   }
 
-  void print_momenta_table( std::ostream& os, const fptype* aosoa, unsigned int ievt )
+  void print_momenta_table( std::ostream& os, const fptype_momenta* aosoa, unsigned int ievt )
   {
-    auto constexpr prec = std::numeric_limits<fptype>::digits10;	  
+    auto constexpr prec = std::numeric_limits<fptype_momenta>::digits10;
     constexpr int npar = CPPProcess::npar;
     os << std::string( SEP79, '-' ) << std::endl
        << "   n    E           	 	 px             	  py              	   pz" << std::endl;
@@ -916,7 +916,7 @@ namespace
           const LheEvent& ev = lheEvents[src];
           for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
             for( int ip4 = 0; ip4 < 4; ++ip4 )
-              MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype)ev[ipar][ip4];
+              MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype_momenta)ev[ipar][ip4];
         }
         rambtime += timermap.stop();
 #ifdef MGONGPUCPP_GPUIMPL
