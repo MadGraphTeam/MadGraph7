@@ -20,8 +20,8 @@
     // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
     // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
     // numerators in normalise_output, so the buffer is just [nevt].
-    gpuMemset( ghelAllNumerators, 0, processConfig::ndiagrams * nevt * sizeof( fptype ) );
-    gpuMemset( ghelAllDenominators, 0, nevt * sizeof( fptype ) );
+    gpuMemset( ghelAllNumerators, 0, processConfig::ndiagrams * nevt * sizeof( fptype_amp ) );
+    gpuMemset( ghelAllDenominators, 0, nevt * sizeof( fptype_amp ) );
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
 #else
     // *** PART 0b - C++ ***
@@ -32,15 +32,15 @@
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = fptype_sv{ 0 };
-      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-      fptype_denom* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
-      fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      fptype_denom_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+      fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
+      fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+      fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+      fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
       for( int i = 0; i < processConfig::ndiagrams; ++i )
       {
-        numerators_sv[i] = fptype_sv{ 0 };
+        numerators_sv[i] = fptype_amp_sv{ 0 };
       }
-      denominators_sv = fptype_denom_sv{ 0 };
+      denominators_sv = fptype_amp_sv{ 0 };
     }
 #endif
 
@@ -302,11 +302,11 @@
         // over the helicity loop), so there is no helicity dimension to sum here. The denominator is
         // just the sum of all numerators for this event page: derive it once and store it for the
         // downstream consumers (e.g. the multichannel amp2 output).
-        fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-        fptype_denom* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
-        fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-        fptype_denom_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
-        denominators_sv = fptype_sv{ 0 };
+        fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
+        fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+        fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+        fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+        denominators_sv = fptype_amp_sv{ 0 };
         for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
           denominators_sv += numerators_sv[idiag];
         if( mulChannelWeight && allChannelIds != nullptr )

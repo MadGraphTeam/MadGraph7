@@ -33,8 +33,8 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
     fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
-    fptype* denominators,
+    fptype_amp* numerators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     bool is_good_hel[CPPProcess::ncomb];
@@ -57,8 +57,8 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
     fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
-    fptype* denominators,
+    fptype_amp* numerators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     // static local initialization is called exactly once in a thread-safe way
@@ -122,8 +122,8 @@ namespace
   }
 
   __global__ void copy_outputs(
-    fptype* denominators,
-    fptype* numerators,
+    fptype_amp* denominators,
+    fptype_amp* numerators,
     fptype* matrix_elements,
     unsigned int* diagram_index,
     int* color_index,
@@ -369,8 +369,11 @@ extern "C"
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
     std::size_t rounded_count = n_blocks * n_threads;
 
-    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements;
+    fptype_momenta* momenta;
+    fptype_amp* numerators;
+    fptype_amp* denominators;
+    fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
+    fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
@@ -529,8 +532,8 @@ extern "C"
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
-    HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
-    HostBufferBase<fptype, false> denominators( rounded_count );
+    HostBufferBase<fptype_amp, false> numerators( rounded_count * CPPProcess::ndiagrams );
+    HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
     if ( sort_flavors ) {

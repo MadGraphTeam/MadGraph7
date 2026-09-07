@@ -56,6 +56,13 @@ namespace mg5amcCpu
     return ( ( a < b ) ? a : b );
   }
 
+  // Non-template overloads 
+  inline __host__ __device__ const fptype_amp&
+  fpmax( const fptype_amp& a, const fptype_amp& b ) { return ( ( b < a ) ? a : b ); }
+
+  inline __host__ __device__ const fptype_amp&
+  fpmin( const fptype_amp& a, const fptype_amp& b ) { return ( ( a < b ) ? a : b ); }
+
   template<typename FP>
   inline __host__ __device__ FP
   fpsqrt( FP f )
@@ -95,6 +102,13 @@ namespace mg5amcCpu
   {
     return std::min( a, b );
   }
+
+  // Non-template overloads
+  inline const fptype_amp&
+  fpmax( const fptype_amp& a, const fptype_amp& b ) { return std::max( a, b ); }
+
+  inline const fptype_amp&
+  fpmin( const fptype_amp& a, const fptype_amp& b ) { return std::min( a, b ); }
 
   template<typename FP>
   inline FP
