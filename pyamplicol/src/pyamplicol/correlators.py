@@ -22,11 +22,32 @@ from pyamplicol.color.correlator_matrices import ColorCorrelator
 
 __all__ = [
     "ColorCorrelator",
+    "CorrelatedRequest",
     "CorrelatedValue",
     "CorrelatorConfig",
     "EmitGluon",
     "SplitGluon",
 ]
+
+
+@dataclass(frozen=True)
+class CorrelatedRequest:
+    """One labelled request passed to ``Runtime.evaluate_correlated_many``.
+
+    ``spin_vectors=None`` inherits the runtime setter's state at the start of
+    the call; ``{}`` selects ordinary physical helicities for this request.
+    Explicit maps use the setter's broadcast/per-point vector convention.
+    The runtime validates and copies all requests before numerical work.
+    """
+
+    color_correlation: str = "born"
+    spin_vectors: Mapping[int, object] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.color_correlation, str) or not self.color_correlation:
+            raise ValueError("a correlated request requires a colour correlation ID")
+        if self.spin_vectors is not None and not isinstance(self.spin_vectors, Mapping):
+            raise TypeError("spin vectors must map public leg labels to vectors")
 
 
 @dataclass(frozen=True)

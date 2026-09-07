@@ -8,7 +8,7 @@ accepts only materialized, unreplayed compiled plans with complete source slots.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
@@ -65,6 +65,20 @@ class CoherentAmplitudeBatch:
     normalization_factor: Decimal
     precision: int
     spin_correlated_legs: tuple[int, ...]
+
+
+_StageMemo = dict[int, tuple[tuple[_ComplexDecimal, ...], tuple[_ComplexDecimal, ...]]]
+
+
+def _identical_stage_inputs(
+    left: tuple[_ComplexDecimal, ...], right: tuple[_ComplexDecimal, ...]
+) -> bool:
+    """Conservative exact equality, including signed zero and decimal precision."""
+    return len(left) == len(right) and all(
+        a.as_tuple() == b.as_tuple()
+        for x, y in zip(left, right, strict=True)
+        for a, b in zip(x, y, strict=True)
+    )
 
 
 def _record(value: object, context: str) -> Mapping[str, object]:
@@ -264,8 +278,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             computed = record.get("computed")
             structural_zero = record.get("structural_zero") is True
             if (computed is True and structural_zero) or (
-                computed is not True
-                and not (computed is False and structural_zero)
+                computed is not True and not (computed is False and structural_zero)
             ):
                 raise CompatibilityError(
                     "correlated reference execution cannot use zero-pruned "
@@ -370,9 +383,10 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             physical_roots.setdefault(physical.group_id, []).extend(
                 root_indices[group_id]
             )
-        if seen_groups != set(root_indices) or {
-            group.helicity_id for group in groups
-        } != computed_helicities:
+        if (
+            seen_groups != set(root_indices)
+            or {group.helicity_id for group in groups} != computed_helicities
+        ):
             raise ArtifactError(
                 "correlated coherent groups do not cover "
                 "the retained physical helicities"
@@ -415,6 +429,72 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                         "spin correlation requires a full four-component vector source"
                     )
 
+    def _selected_groups(
+        self, helicities: Sequence[str] | None, active_legs: tuple[int, ...]
+    ) -> tuple[CoherentAmplitudeGroup, ...]:
+        known_helicities = self._known_helicity_ids
+        selected = known_helicities if helicities is None else set(helicities)
+        if not selected <= known_helicities:
+            raise EvaluationError(
+                "unknown correlated helicity selector: "
+                f"{sorted(selected - known_helicities)!r}"
+            )
+        # Keep one placeholder helicity for each replaced leg, consistently
+        # across the color basis. Spectator helicities remain incoherently summed.
+        representatives: dict[tuple[int, ...], tuple[int, ...]] = {}
+        for group in self._coherent_groups:
+            if group.helicity_id in selected:
+                spectator = tuple(
+                    value
+                    for leg, value in enumerate(group.helicities, 1)
+                    if leg not in active_legs
+                )
+                representatives[spectator] = min(
+                    representatives.get(spectator, group.helicities), group.helicities
+                )
+        return tuple(
+            group
+            for group in self._coherent_groups
+            if group.helicity_id in selected
+            and group.helicities
+            == representatives[
+                tuple(
+                    value
+                    for leg, value in enumerate(group.helicities, 1)
+                    if leg not in active_legs
+                )
+            ]
+        )
+
+    def _coherent_values(
+        self,
+        raw: tuple[_ComplexDecimal, ...],
+        groups: tuple[CoherentAmplitudeGroup, ...],
+    ) -> tuple[_ComplexDecimal, ...]:
+        if len(raw) != self._raw_amplitude_count:
+            raise ArtifactError(
+                "correlated evaluator returned the wrong amplitude count"
+            )
+        return tuple(
+            (
+                sum(
+                    (
+                        raw[index][0]
+                        for index in self._coherent_root_indices[group.group_id]
+                    ),
+                    Decimal(0),
+                ),
+                sum(
+                    (
+                        raw[index][1]
+                        for index in self._coherent_root_indices[group.group_id]
+                    ),
+                    Decimal(0),
+                ),
+            )
+            for group in groups
+        )
+
     def coherent_amplitudes(
         self,
         momenta: Momenta,
@@ -438,39 +518,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
             point_count=len(points),
         )
         active_legs = tuple(sorted(vectors[0]))
-        known_helicities = self._known_helicity_ids
-        selected = known_helicities if helicities is None else set(helicities)
-        if not selected <= known_helicities:
-            raise EvaluationError(
-                "unknown correlated helicity selector: "
-                f"{sorted(selected - known_helicities)!r}"
-            )
-        # Keep one placeholder helicity for each replaced leg, consistently
-        # across the color basis. Spectator helicities remain incoherently summed.
-        representatives: dict[tuple[int, ...], tuple[int, ...]] = {}
-        for group in self._coherent_groups:
-            if group.helicity_id in selected:
-                spectator = tuple(
-                    value
-                    for leg, value in enumerate(group.helicities, 1)
-                    if leg not in active_legs
-                )
-                representatives[spectator] = min(
-                    representatives.get(spectator, group.helicities), group.helicities
-                )
-        groups = tuple(
-            group
-            for group in self._coherent_groups
-            if group.helicity_id in selected
-            and group.helicities
-            == representatives[
-                tuple(
-                    value
-                    for leg, value in enumerate(group.helicities, 1)
-                    if leg not in active_legs
-                )
-            ]
-        )
+        groups = self._selected_groups(helicities, active_legs)
         working_precision = _working_precision(precision)
         payload = _runtime_state(self._native_runtime)
         parameters = tuple(
@@ -494,35 +542,7 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
                 raw = self._evaluate_correlated_point(
                     point, parameters, working_precision, overrides
                 )
-                if len(raw) != self._raw_amplitude_count:
-                    raise ArtifactError(
-                        "correlated evaluator returned the wrong amplitude count"
-                    )
-                result.append(
-                    tuple(
-                        (
-                            sum(
-                                (
-                                    raw[index][0]
-                                    for index in self._coherent_root_indices[
-                                        group.group_id
-                                    ]
-                                ),
-                                Decimal(0),
-                            ),
-                            sum(
-                                (
-                                    raw[index][1]
-                                    for index in self._coherent_root_indices[
-                                        group.group_id
-                                    ]
-                                ),
-                                Decimal(0),
-                            ),
-                        )
-                        for group in groups
-                    )
-                )
+                result.append(self._coherent_values(raw, groups))
         with localcontext() as context:
             context.prec = precision
             context.rounding = ROUND_HALF_EVEN
@@ -533,6 +553,111 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
         return CoherentAmplitudeBatch(
             values, groups, normalization, precision, active_legs
         )
+
+    def iter_coherent_amplitudes_many(
+        self,
+        momenta: Momenta,
+        *,
+        spin_vector_sets: Sequence[Mapping[int, object]],
+        precision: int = 40,
+        helicities: Sequence[str] | None = None,
+    ) -> Iterator[tuple[int, int, CoherentAmplitudeBatch]]:
+        """Stream ``(point index, spin-set index, one-point amplitudes)``.
+
+        Common inputs and model parameters are prepared once. A stage retains
+        at most its previous exact input/output for the current point, not an
+        unbounded response tensor or a persistent numerical cache. Decimal
+        contexts never remain active while this iterator yields to its caller.
+        """
+        if type(precision) is not int or precision < 1:
+            raise EvaluationError(
+                "precision must be a positive number of decimal digits"
+            )
+        points = _prepare_points(momenta, self._physics, None)
+        vector_sets = tuple(
+            _prepare_spin_vectors(
+                vectors,
+                allowed_legs=self._spin_correlated_legs,
+                point_count=len(points),
+            )
+            for vectors in spin_vector_sets
+        )
+        active_sets = tuple(tuple(sorted(vectors[0])) for vectors in vector_sets)
+        selected = {
+            legs: self._selected_groups(helicities, legs) for legs in set(active_sets)
+        }
+        working_precision = _working_precision(precision)
+        payload = _runtime_state(self._native_runtime)
+        parameters = tuple(
+            _decimal(value, "runtime model parameter")
+            for value in payload["model_parameter_values"]
+        )
+        self._load_evaluators()
+        with localcontext() as context:
+            context.prec = working_precision
+            context.rounding = ROUND_HALF_EVEN
+            parameters = self._derive_model_parameters(parameters, working_precision)
+            schema = _record(self._execution.get("runtime_schema"), "runtime schema")
+            normalization = exact_normalization(
+                self._physics,
+                parameters,
+                working_precision,
+                cast(Any, schema.get("model_parameters", ())),
+            )
+        with localcontext() as context:
+            context.prec = precision
+            context.rounding = ROUND_HALF_EVEN
+            normalization = +normalization
+        for point_index, point in enumerate(points):
+            memo: _StageMemo = {}
+            for spin_index, (vectors, legs) in enumerate(
+                zip(vector_sets, active_sets, strict=True)
+            ):
+                groups = selected[legs]
+                with localcontext() as context:
+                    context.prec = working_precision
+                    context.rounding = ROUND_HALF_EVEN
+                    raw = self._evaluate_correlated_point(
+                        point,
+                        parameters,
+                        working_precision,
+                        vectors[point_index],
+                        stage_memo=memo,
+                    )
+                    values = self._coherent_values(raw, groups)
+                with localcontext() as context:
+                    context.prec = precision
+                    context.rounding = ROUND_HALF_EVEN
+                    values = tuple((+real, +imag) for real, imag in values)
+                yield (
+                    point_index,
+                    spin_index,
+                    CoherentAmplitudeBatch(
+                        (values,), groups, normalization, precision, legs
+                    ),
+                )
+
+    def _evaluate_stage(
+        self, evaluator: Any, inputs: tuple[_ComplexDecimal, ...], precision: int
+    ) -> tuple[_ComplexDecimal, ...]:
+        """Evaluate one immutable stage; a narrow hook for diagnostic adapters."""
+        return cast(tuple[_ComplexDecimal, ...], evaluator.evaluate(inputs, precision))
+
+    def _evaluate_stage_cached(
+        self,
+        evaluator: Any,
+        inputs: tuple[_ComplexDecimal, ...],
+        precision: int,
+        memo: _StageMemo | None,
+        stage_index: int,
+    ) -> tuple[_ComplexDecimal, ...]:
+        previous = None if memo is None else memo.get(stage_index)
+        if previous is not None and _identical_stage_inputs(previous[0], inputs):
+            return previous[1]
+        outputs = self._evaluate_stage(evaluator, inputs, precision)
+        if memo is not None:
+            memo[stage_index] = (inputs, outputs)
+        return outputs
 
     def clear(self) -> None:
         """Release loaded evaluator states while retaining the source plan."""
@@ -545,6 +670,8 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
         model_parameters: tuple[Decimal, ...],
         precision: int,
         spin_vectors: Mapping[int, tuple[_ComplexDecimal, ...]],
+        *,
+        stage_memo: _StageMemo | None = None,
     ) -> tuple[_ComplexDecimal, ...]:
         schema = _record(self._execution.get("runtime_schema"), "runtime schema")
         layout = _record(schema.get("parameter_layout"), "parameter layout")
@@ -568,14 +695,26 @@ class CorrelatedExactExecutor(SymbolicaExactExecutor):
         stage_set = _record(compiled.get("stage_evaluators"), "stage evaluators")
         stages = _records(stage_set.get("stages"), "stage evaluators")
         assert self._stage_evaluators is not None
-        for stage, evaluator in zip(stages, self._stage_evaluators, strict=True):
-            outputs = evaluator.evaluate(_pack_stage_inputs(state, stage), precision)
+        for stage_index, (stage, evaluator) in enumerate(
+            zip(stages, self._stage_evaluators, strict=True)
+        ):
+            outputs = self._evaluate_stage_cached(
+                evaluator,
+                _pack_stage_inputs(state, stage),
+                precision,
+                stage_memo,
+                stage_index,
+            )
             _assign_stage_outputs(state, outputs, stage)
         amplitude = _record(stage_set.get("amplitude_stage"), "amplitude evaluator")
         assert self._amplitude_evaluator is not None
         return _canonical_amplitude_outputs(
-            self._amplitude_evaluator.evaluate(
-                _pack_stage_inputs(state, amplitude), precision
+            self._evaluate_stage_cached(
+                self._amplitude_evaluator,
+                _pack_stage_inputs(state, amplitude),
+                precision,
+                stage_memo,
+                len(stages),
             ),
             amplitude,
         )

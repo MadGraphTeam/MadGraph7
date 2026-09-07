@@ -17,9 +17,13 @@ from pyamplicol import (
     BenchmarkStageTiming,
     BenchmarkStatistics,
     BenchmarkTimingBreakdown,
+    ColorCorrelator,
     ColorFlow,
     CompiledModel,
     ContractedColorComponent,
+    CorrelatedRequest,
+    CorrelatedValue,
+    CorrelatorConfig,
     EvaluationConfig,
     GenerationConfig,
     GenerationPlan,
@@ -119,6 +123,32 @@ def exercise_runtime(artifact: Path) -> None:
     runtime.clear()
     assert_type(BenchmarkRunner(BenchmarkConfig()).run(runtime), BenchmarkResult)
     assert_type(benchmark(runtime, points=MOMENTA), BenchmarkResult)
+
+
+def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
+    dipole = ColorCorrelator.dipole("T13", 1, 3)
+    assert_type(dipole, ColorCorrelator)
+    declarations = CorrelatorConfig(
+        color_correlations=(dipole,), spin_correlations=((3,),)
+    )
+    assert_type(declarations, CorrelatorConfig)
+    assert_type(
+        Generator().generate("g g > g g", artifact, correlators=declarations),
+        GenerationResult,
+    )
+    runtime = Runtime.load(artifact)
+    runtime.set_spin_correlation_vectors({3: (0, 1, 0, 0)})
+    requests = {
+        "born": CorrelatedRequest("born", spin_vectors={}),
+        "dipole13_spin": CorrelatedRequest("T13"),
+    }
+    assert_type(requests, dict[str, CorrelatedRequest])
+    results = runtime.evaluate_correlated_many(momenta, requests, precision=40)
+    assert_type(results, dict[str, tuple[CorrelatedValue, ...]])
+    assert_type(results["dipole13_spin"][0].real, Decimal)
+    assert_type(results["dipole13_spin"][0].imag, Decimal)
+    assert_type(runtime.evaluate_correlated(momenta), tuple[CorrelatedValue, ...])
+    runtime.set_spin_correlation_vectors(None)
 
 
 def exercise_configuration(card: Path) -> None:

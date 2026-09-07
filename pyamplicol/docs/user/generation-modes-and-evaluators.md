@@ -379,7 +379,7 @@ pyamplicol profile --card otf_pp_zjj.toml
 | --- | --- |
 | First built-in-SM artifact | Recurrence + JIT O2 (defaults) |
 | Raw JSON/UFO model without a prepared pack | Compiled mode, or prepare a pack first |
-| Spin-/colour-correlated Born quantities | Declare correlations; full SU(3), direct compiled generation and Python exact evaluation |
+| Spin-/colour-correlated Born quantities | Declare correlations; LC/NLC/full, complete direct compiled generation and grouped Python exact evaluation |
 | Reuse prepared kernels with process tables | Eager + the pack's backend |
 | Keep a high-multiplicity LC artifact compact and repeatedly run one selected flow | On-the-fly + an explicit one-point warm-up |
 | Cross-architecture release-host movement | Compiled all-JIT O1/O2 artifact, or eager/recurrence with a prepared JIT O2 pack |

@@ -159,17 +159,19 @@ declaration format and complete runtime examples:
 
 ```console
 pyamplicol generate 'g g > g g' artifacts/gg_correlated \
-  --model built-in-sm --correlators correlators.json
+  --model built-in-sm --color-accuracy full --correlators correlators.json
 ```
 
 `--correlators` is a generation option, separate from the ordinary TOML colour
-settings. It selects full-colour SU(3), direct contraction, and generic compiled
-amplitudes; requesting LC or NLC alongside it still produces full-colour
-correlations, with the change recorded in the effective configuration. Partial
+settings. `--color-accuracy lc|nlc|full` selects the correlated approximation
+(the ordinary default is LC). Complete amplitudes are generated in all cases;
+direct contraction and generic compiled execution are selected, with those
+adjustments recorded in the effective configuration. Partial
 helicity/colour generation, append, and `--dry-run` are not supported on this
 path. Numerical spin-vector setting and correlated evaluation use
 `Runtime.set_spin_correlation_vectors(...)` and
-`Runtime.evaluate_correlated(...)` in Python, not the CLI `evaluate` command.
+`Runtime.evaluate_correlated(...)` or `Runtime.evaluate_correlated_many(...)`
+in Python, not the CLI `evaluate` command.
 
 ## Inspect and select a process
 

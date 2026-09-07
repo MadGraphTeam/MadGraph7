@@ -15,11 +15,17 @@ from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationE
 from pyamplicol.api.results import HelicityConfiguration
 from pyamplicol.api.services import Runtime
 from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
-from pyamplicol.correlators import ColorCorrelator, CorrelatedValue, CorrelatorConfig
+from pyamplicol.correlators import (
+    ColorCorrelator,
+    CorrelatedRequest,
+    CorrelatedValue,
+    CorrelatorConfig,
+)
 from pyamplicol.runtime import correlations
 from pyamplicol.runtime.correlated_exact import (
     CoherentAmplitudeBatch,
     CoherentAmplitudeGroup,
+    _prepare_spin_vectors,
 )
 from pyamplicol.runtime.correlations import CorrelatorEvaluator, _contract, _matrix
 
@@ -195,6 +201,7 @@ class _Executor:
         self.legs = spin_correlated_legs
         self.groups = coherent_groups
         self.calls = []
+        self.many_calls = []
 
     def coherent_amplitudes(self, momenta, **kwargs):
         self.calls.append((momenta, copy.deepcopy(kwargs)))
@@ -202,6 +209,32 @@ class _Executor:
             [(point[0][0], complex(0, point[0][0])) for point in momenta],
             normalization="1.5",
         )
+
+    def iter_coherent_amplitudes_many(self, momenta, **kwargs):
+        self.many_calls.append((momenta, copy.deepcopy(kwargs)))
+        assignments = tuple(
+            _prepare_spin_vectors(
+                vectors, allowed_legs=self.legs, point_count=len(momenta)
+            )
+            for vectors in kwargs["spin_vector_sets"]
+        )
+        for point_index, point in enumerate(momenta):
+            for assignment, vectors in enumerate(assignments):
+                vector = vectors[point_index].get(1, ((Decimal(0), Decimal(0)),) * 4)
+                energy = Decimal(str(point[0][0]))
+                x, y = energy + vector[0][0], energy + vector[1][0]
+                batch = _batch([(0, 0)], normalization="1.5")
+                yield (
+                    point_index,
+                    assignment,
+                    CoherentAmplitudeBatch(
+                        (((x, Decimal(0)), (Decimal(0), y)),),
+                        batch.groups,
+                        batch.normalization_factor,
+                        60,
+                        tuple(sorted(vectors[point_index])),
+                    ),
+                )
 
 
 @pytest.fixture
@@ -306,6 +339,144 @@ def test_explicit_generation_opt_in_required(controller_factory):
         controller_factory.create()
     with pytest.raises(CompatibilityError, match="does not support"):
         CorrelatorEvaluator(object())
+
+
+def test_many_keeps_distinct_request_and_point_axes(controller_factory):
+    evaluator = controller_factory.create()
+    requests = {
+        "spin-a": CorrelatedRequest("ordered", {1: ((1, 0, 0, 0), (2, 1, 0, 0))}),
+        "spin-b": CorrelatedRequest("ordered", {1: (4, 2, 0, 0)}),
+    }
+    result = evaluator.evaluate_many(
+        [[(1, 0, 0, 1)], [(3, 0, 0, 3)]], requests, precision=40
+    )
+    assert tuple(result) == ("spin-a", "spin-b")
+    assert result == {
+        "spin-a": (
+            CorrelatedValue(Decimal(-31), Decimal(-36)),
+            CorrelatedValue(Decimal(-184), Decimal(-360)),
+        ),
+        "spin-b": (
+            CorrelatedValue(Decimal(-191), Decimal(-270)),
+            CorrelatedValue(Decimal(-367), Decimal(-630)),
+        ),
+    }
+    assert {label: values[1] for label, values in result.items()} == {
+        "spin-a": CorrelatedValue(Decimal(-184), Decimal(-360)),
+        "spin-b": CorrelatedValue(Decimal(-367), Decimal(-630)),
+    }
+    assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 2
+
+
+def test_many_groups_inherited_explicit_and_broadcast_vectors(
+    controller_factory, monkeypatch
+):
+    evaluator = controller_factory.create()
+    evaluator.set_spin_correlation_vectors({1: (1, 2, 3, 4)})
+    requests = {
+        "inherited": CorrelatedRequest("born"),
+        "another-colour": CorrelatedRequest("ordered", {1: ((1, 2, 3, 4),) * 2}),
+        "same-again": CorrelatedRequest("born", {1: (1, 2, 3, 4)}),
+        "physical": CorrelatedRequest("born", {}),
+    }
+    prepared = []
+    original = correlations._prepare_contraction
+
+    def count_plan(*args, **kwargs):
+        prepared.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(correlations, "_prepare_contraction", count_plan)
+    result = evaluator.evaluate_many([[(1, 0, 0, 1)], [(2, 0, 0, 2)]], requests)
+    assert result["inherited"] == result["another-colour"] == result["same-again"]
+    assert result["physical"] != result["inherited"]
+    assert len(evaluator._executor.many_calls) == 1
+    assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 2
+    assert len(prepared) == 3  # Two colour IDs for one spin state; one for physical.
+    assert evaluator._vectors == {1: (1, 2, 3, 4)}
+
+
+def test_many_scalar_batch_equivalence_and_exact_vector_grouping(controller_factory):
+    evaluator = controller_factory.create()
+    tiny = Decimal("1e-60")
+    requests = {
+        "one": CorrelatedRequest("born", {1: (tiny, 2, 3, 4)}),
+        "two": CorrelatedRequest("born", {1: (2 * tiny, 2, 3, 4)}),
+    }
+    points = [[(1, 0, 0, 1)], [(2, 0, 0, 2)]]
+    with localcontext() as context:
+        context.prec = 90
+        batch = evaluator.evaluate_many(points, requests, precision=70)
+        scalar = [
+            evaluator.evaluate_many([point], requests, precision=70) for point in points
+        ]
+    assert batch == {
+        label: tuple(point[label][0] for point in scalar) for label in requests
+    }
+    assert batch["one"] != batch["two"]
+    assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 2
+
+
+@pytest.mark.parametrize("defect", ("id", "class", "shape", "label", "type"))
+def test_many_validates_all_requests_before_evaluation_without_setter_mutation(
+    controller_factory, defect
+):
+    evaluator = controller_factory.create()
+    evaluator.set_spin_correlation_vectors({1: (1, 2, 3, 4)})
+    requests = {"good": CorrelatedRequest(), "bad": CorrelatedRequest()}
+    if defect == "id":
+        requests["bad"] = CorrelatedRequest("missing")
+    elif defect == "class":
+        requests["bad"] = CorrelatedRequest(spin_vectors={2: (1, 2, 3, 4)})
+    elif defect == "shape":
+        requests["bad"] = CorrelatedRequest(spin_vectors={1: ((1, 2, 3, 4),)})
+    elif defect == "label":
+        requests[None] = requests.pop("bad")
+    else:
+        requests["bad"] = {}
+    with pytest.raises(EvaluationError):
+        evaluator.evaluate_many([[(1, 0, 0, 1)], [(2, 0, 0, 2)]], requests)
+    assert evaluator._executor.many_calls == []
+    assert evaluator._vectors == {1: (1, 2, 3, 4)}
+
+
+def test_many_empty_requests_and_signed_zero_assignments(controller_factory):
+    evaluator = controller_factory.create()
+    assert evaluator.evaluate_many([[(1, 0, 0, 1)]], {}) == {}
+    assert evaluator._executor.many_calls == []
+    evaluator.evaluate_many(
+        [[(1, 0, 0, 1)]],
+        {
+            "positive": CorrelatedRequest(spin_vectors={1: (Decimal("0"), 0, 0, 0)}),
+            "negative": CorrelatedRequest(spin_vectors={1: (Decimal("-0"), 0, 0, 0)}),
+        },
+    )
+    assert len(evaluator._executor.many_calls[0][1]["spin_vector_sets"]) == 2
+
+
+def test_many_public_typed_selectors_and_result_shape(controller_factory):
+    runtime = object.__new__(Runtime)
+    runtime._backend = controller_factory.backend
+    result = runtime.evaluate_correlated_many(
+        [[(1, 0, 0, 1)], [(2, 0, 0, 2)]],
+        {"dipole": CorrelatedRequest("ordered")},
+        helicities=[HelicityConfiguration("h:1", 0, (1,), True, False, "h:1", 1)],
+        precision=50,
+    )
+    assert result["dipole"] == (
+        CorrelatedValue(Decimal(-7), Decimal(-18)),
+        CorrelatedValue(Decimal(-28), Decimal(-72)),
+    )
+    assert runtime._correlated_evaluator._executor.many_calls[0][1]["helicities"] == (
+        "h:1",
+    )
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
+def test_matrix_reader_accepts_declared_colour_accuracy(accuracy):
+    record = _matrix_record()
+    record["color_accuracy"] = accuracy
+    assert _matrix(record).id == "born"
 
 
 @pytest.mark.parametrize(

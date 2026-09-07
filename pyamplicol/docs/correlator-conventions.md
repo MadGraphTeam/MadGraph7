@@ -13,10 +13,9 @@ bra/ket convention explicit: pyAmpliCol contracts the **adjoint of the bra
 connection with the ket connection**, rather than adopting the note's
 oriented, non-conjugated product unchanged.
 
-The implementation currently gives full-colour SU(3) tree-level quantities.
-The order of a colour connection (NLO, NNLO, N3LO) is independent of the
-colour approximation (LC, NLC, full); correlated LC/NLC approximations are
-not yet implemented.
+The implementation gives LC, NLC and full-colour tree-level quantities,
+evaluated at physical `N_c=3`. The order of a colour connection (NLO, NNLO,
+N3LO) is independent of this colour approximation.
 
 ## Amplitudes, basis tensors, and correlated matrices
 
@@ -58,9 +57,41 @@ K[K,B] = K[B,K]†
 R[K,B] = conj(R[B,K])
 ```
 
-For identical connections, the overlap is a squared norm. This distinction
+At full colour, identical connections give a squared norm. This distinction
 also explains why an ordered connection should not be interpreted as a
 positive squared matrix element in every case.
+
+## Colour accuracy
+
+The selected `color.accuracy` applies to the correlated contraction, while the
+complete generated amplitude basis is retained. Empty connections use the
+existing ordinary colour-accuracy convention. The inserted matrix is built
+with symbolic powers of `N_c` before its selected coefficients are evaluated
+at three colours. Amplitude coefficients and incoming averages remain at
+physical `N_c=3`: this is the inherited colour-matrix approximation, not a
+new strict expansion of every part of the matrix element.
+
+For a Born basis with `n_g` adjoints and `n_qbarq` fundamental pairs, and a
+connection containing `r` operations of which `s` are gluon-to-quark-pair
+splittings on either side, the common reference power is
+
+```text
+P = n_g + n_qbarq + r - s.
+```
+
+LC keeps powers at least `P`. For purely adjoint final colour space, NLC
+keeps powers at least `P-2`. With fundamental lines, NLC retains the exact
+coefficient of an entry if its highest nonzero power is at least `P-2`, as
+in the ordinary open-line approximation. Intervening odd powers are included.
+Full colour retains all terms. The threshold is common to related connections,
+not reset to each entry's leading nonzero term. Born-metric zeros are not used
+to discard connected entries, and intermediate splitting terms are not pruned.
+
+Coherence and Casimir tests at approximate colour accuracy compare terms
+through the retained order. Keeping exact admitted NLC coefficients can leave
+residuals below that order; it does not imply exact finite-`N_c` cancellation
+of those extra terms. Full-colour identities hold without that truncation.
+LC/NLC matrices are approximations and are not generally positive operators.
 
 ## Colour charges, indices, and crossing
 
@@ -167,8 +198,8 @@ pair = (EmitGluon(1, -1), SplitGluon(-1, -2, -3))
 request = ColorCorrelator("pair-self", bra=pair, ket=pair)
 ```
 
-The API's self-overlap is nonzero in general. Conjugation pairs a fundamental
-index with its antifundamental partner and gives
+The API's self-overlap is nonzero in general. At full colour, conjugation
+pairs a fundamental index with its antifundamental partner and gives
 
 ```text
 sum_(q,qbar) conj(t^a[q,qbar]) t^b[q,qbar] = T_R delta(a,b)
@@ -176,7 +207,9 @@ R[pair,pair] = T_R B_11
 ```
 
 For a quark emitter this is `(1/2)(4/3) B = (2/3) B`; for a gluon emitter
-it is `(1/2)(3) B = (3/2) B`, where `B` is the ordinary Born result.
+it is `(1/2)(3) B = (3/2) B`, where `B` is the full-colour Born result.
+For LC/NLC these identities apply through the retained colour order, rather
+than as exact finite-`N_c` equalities between differently truncated matrices.
 This is not the zero of the note's oriented `(D.1,D.1)` pairing: that pairing
 does not represent the same adjointed contraction. With the generator
 normalization above, the closed pair trace is `T_R delta(a,b)`, not
@@ -215,11 +248,15 @@ ket operations gives `BA`, without commuting the charges on leg 2.
 After generating and loading a runtime containing these IDs:
 
 ```python
-r_ab = runtime.evaluate_correlated(points, color_correlation="AB")
-r_ba = runtime.evaluate_correlated(points, color_correlation="BA")
+from pyamplicol import CorrelatedRequest
+
+values = runtime.evaluate_correlated_many(points, {
+    "AB": CorrelatedRequest(color_correlation="AB"),
+    "BA": CorrelatedRequest(color_correlation="BA"),
+})
 anticommutator = tuple(
     (x.real + y.real, x.imag + y.imag)
-    for x, y in zip(r_ab, r_ba, strict=True)
+    for x, y in zip(values["AB"], values["BA"], strict=True)
 )
 ```
 
@@ -232,7 +269,7 @@ basis need not remain closed under an insertion.
 
 ## Colour-coherence checks
 
-For a colour-conserving Born amplitude, the standard checks are
+For a full-colour, colour-conserving Born amplitude, the standard checks are
 
 ```text
 sum_j B_ij = 0                       (sum includes j = i)

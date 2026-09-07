@@ -689,7 +689,7 @@ class Runtime:
         or one such vector per phase-space point. The set of keys must match a
         spin class declared at generation. ``None`` or ``{}`` restores ordinary
         helicity states. Vectors are neither normalized nor projected.
-        This affects :meth:`evaluate_correlated` only, not :meth:`evaluate`.
+        This affects the correlated evaluation methods, not :meth:`evaluate`.
         """
         self._correlator_evaluator().set_spin_correlation_vectors(vectors)
 
@@ -704,12 +704,38 @@ class Runtime:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
         Returns one complex decimal value per point. ``"born"`` selects the
-        ordinary full-colour metric. All ordinary normalization factors remain
-        in place; a replaced spin leg is counted once in the helicity sum.
+        Born metric at the declared colour accuracy. All ordinary normalization
+        factors remain in place; a replaced spin leg is counted once in the
+        helicity sum.
         """
         return self._correlator_evaluator().evaluate(
             momenta,
             color_correlation=color_correlation,
+            helicities=_selector_ids(
+                helicities, expected_type=HelicityConfiguration, name="helicity"
+            ),
+            precision=_validate_precision(precision),
+        )
+
+    def evaluate_correlated_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, _pyamplicol.CorrelatedRequest],
+        *,
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int = 16,
+    ) -> dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]:
+        """Evaluate labelled colour/spin combinations over a point batch.
+
+        Equal spin assignments share amplitudes across colour IDs. Different
+        assignments may reuse stages with identical exact inputs. Numerical
+        reuse is local to this call; requests never change the spin setter.
+        ``None`` vectors inherit its initial state and ``{}`` selects physical
+        helicities. Each result tuple follows the input point order.
+        """
+        return self._correlator_evaluator().evaluate_many(
+            momenta,
+            requests,
             helicities=_selector_ids(
                 helicities, expected_type=HelicityConfiguration, name="helicity"
             ),

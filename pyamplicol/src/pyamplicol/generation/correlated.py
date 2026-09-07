@@ -25,7 +25,6 @@ from pyamplicol.color.correlator_matrices import build_color_correlator_matrices
 from pyamplicol.color.plan import GenericColorPlan, build_color_plan
 from pyamplicol.config import (
     Action,
-    ColorAccuracy,
     ColorContraction,
     ConfigClamp,
     ConfigResolution,
@@ -64,7 +63,7 @@ CORRELATOR_PAYLOAD_PATH = "correlators.json"
 def correlated_configuration(
     config: GenerationConfig | RunConfig | ConfigResolution | None,
 ) -> ConfigResolution:
-    """Record explicit full/direct/compiled settings without changing defaults."""
+    """Retain requested colour accuracy with direct/compiled source execution."""
 
     if isinstance(config, ConfigResolution):
         requested, effective, clamps = config.requested, config.effective, config.clamps
@@ -83,7 +82,6 @@ def correlated_configuration(
         effective,
         color=replace(
             effective.color,
-            accuracy=ColorAccuracy.FULL,
             contraction=ColorContraction.DIRECT,
             lc_flow_layout=LCFlowLayout.TOPOLOGY_REPLAY,
         ),
@@ -98,7 +96,6 @@ def correlated_configuration(
         ),
     )
     paths = (
-        "color.accuracy",
         "color.contraction",
         "color.lc_flow_layout",
         "evaluator.execution_mode",
@@ -172,6 +169,12 @@ class CorrelatedGenerationBackend(GenerationBackend):
                 "correlated generation requires complete colour and helicity coverage; "
                 "remove " + ", ".join(f"process.{name}" for name in partial)
             )
+
+    @property
+    def _color_accuracy(self) -> str:
+        # The inherited setting selects the correlated metric, not the source
+        # basis or native ordinary consumer. All amplitudes remain full colour.
+        return "full"
 
     @property
     def process_metadata(self) -> Mapping[str, CorrelatedProcessMetadata]:
@@ -408,6 +411,12 @@ class CorrelatedGenerationBackend(GenerationBackend):
                 metadata.color_plan,
                 self.declarations.color_requests,
                 sector_ids=sorted(owners),
+                color_accuracy=cast(
+                    Literal["lc", "nlc", "full"],
+                    self._run_config.color.accuracy
+                    if self._run_config is not None
+                    else "lc",
+                ),
             )
             processes[process_id] = {
                 "spin_legs": list(self.declarations.spin_legs),

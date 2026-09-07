@@ -24,8 +24,8 @@ The native ABI and its C/C++/Fortran/Rust wrappers do **not** expose colour
 correlator IDs, `set_spin_correlation_vectors`, or `evaluate_correlated` yet.
 These are Python-only capabilities, enabled by
 `Generator.generate(..., correlators=CorrelatorConfig(...))`. A declaration
-prepares complete full-colour, direct, generic compiled amplitudes; LC and
-NLC correlator approximations are not currently implemented.
+prepares complete full-colour, direct, generic compiled amplitudes, with LC,
+NLC or full colour selected for the Python correlated contraction.
 
 Python's `Runtime.evaluate_correlated(...)` uses retained Symbolica evaluator
 states through a separate exact executor, even at precision 16. Rusticol
@@ -436,4 +436,4 @@ See [Troubleshooting](troubleshooting.md) for a fuller decision tree.
 - [Examples Gallery](examples-gallery.md) — complete copied examples and generated API commands.
 - [Artifacts and Portability](artifacts-and-portability.md) — target rules and trusted-input boundary.
 - [Runtime and Selectors](runtime-and-selectors.md) — process ordering and selector semantics.
-- [Born Correlations](../correlators.md) — Python-only, opt-in full-colour correlations.
+- [Born Correlations](../correlators.md) — Python-only, opt-in LC/NLC/full-colour correlations.

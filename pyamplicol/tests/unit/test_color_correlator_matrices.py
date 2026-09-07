@@ -9,10 +9,14 @@ import pytest
 
 from pyamplicol.color import correlator_matrices
 from pyamplicol.color.connections import (
+    ColorConnection,
     ColorLeg,
     EmitGluon,
     ExactColorCoefficient,
     SplitGluon,
+    apply_color_connection,
+    contract_connected_tensor_nc_terms,
+    evaluate_color_nc_terms,
 )
 from pyamplicol.color.contraction_factors import exact_color_contraction_factor
 from pyamplicol.color.correlator_matrices import (
@@ -40,6 +44,7 @@ def _entries(matrix):
     }
 
 
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
 @pytest.mark.parametrize(
     "expression",
     (
@@ -52,16 +57,19 @@ def _entries(matrix):
         "d d~ > u u~ s s~ g",
     ),
 )
-def test_identity_matches_every_existing_full_metric_entry(expression):
+def test_identity_matches_every_existing_metric_entry(expression, accuracy):
     plan = _plan(expression)
-    matrix = build_color_correlator_matrix(plan, ColorCorrelator("born"))
+    matrix = build_color_correlator_matrix(
+        plan, ColorCorrelator("born"), color_accuracy=accuracy
+    )
     entries = _entries(matrix)
     assert matrix.order == 0
     assert matrix.sector_ids == tuple(sector.id for sector in plan.sectors)
+    assert matrix.to_json_dict()["color_accuracy"] == accuracy
     for left in plan.sectors:
         for right in plan.sectors:
             expected = exact_color_contraction_factor(
-                plan, left, right, accuracy="full"
+                plan, left, right, accuracy=accuracy
             )
             assert entries.get(
                 (left.id, right.id), ExactColorCoefficient()
@@ -135,7 +143,10 @@ def test_dipole_convenience_and_n3lo_emitted_pair_normalization():
     }
 
 
-def test_ordered_connections_store_both_triangles_without_hermiticity_assumptions():
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_ordered_connections_store_both_triangles_without_hermiticity_assumptions(
+    accuracy,
+):
     plan = _plan("d d~ > g g")
     request = ColorCorrelator(
         "ordered",
@@ -148,14 +159,17 @@ def test_ordered_connections_store_both_triangles_without_hermiticity_assumption
             request,
             ColorCorrelator("adjoint", request.ket, request.bra),
         ),
+        color_accuracy=accuracy,
     )
     entries = _entries(matrix)
-    assert entries == {
+    expected = {
         (0, 0): ExactColorCoefficient(Fraction(-16, 3)),
         (0, 1): ExactColorCoefficient(Fraction(-16, 3)),
         (1, 0): ExactColorCoefficient(Fraction(20, 3)),
-        (1, 1): ExactColorCoefficient(Fraction(2, 3)),
     }
+    if accuracy == "full":
+        expected[1, 1] = ExactColorCoefficient(Fraction(2, 3))
+    assert entries == expected
     assert _entries(adjoint) == {
         (j, i): value.conjugate() for (i, j), value in entries.items()
     }
@@ -168,10 +182,14 @@ def test_ordered_connections_store_both_triangles_without_hermiticity_assumption
             * entry.weight
             * amplitudes[entry.right_sector_id]
         )
-    assert value == ExactColorCoefficient(Fraction(-14, 3), -12)
+    assert value == ExactColorCoefficient(
+        Fraction(-14 if accuracy == "full" else -16, 3), -12
+    )
+    assert not build_color_correlator_matrix(plan, request, color_accuracy="lc").entries
 
 
-def test_insertions_can_revive_zero_ordinary_metric_entries():
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_insertions_can_revive_zero_ordinary_metric_entries(accuracy):
     plan = _plan("d d~ > u u~ g")
     born, inserted = build_color_correlator_matrices(
         plan,
@@ -179,6 +197,7 @@ def test_insertions_can_revive_zero_ordinary_metric_entries():
             ColorCorrelator("born"),
             ColorCorrelator.dipole("B13", 1, 3),
         ),
+        color_accuracy=accuracy,
     )
     assert (0, 2) not in _entries(born)
     assert _entries(inserted)[0, 2] == ExactColorCoefficient(-4)
@@ -213,7 +232,132 @@ def test_graph_images_are_reused_across_requested_matrices(monkeypatch):
             ColorCorrelator.dipole("B31", 3, 1),
         ),
     )
-    assert len(calls) == 3 * len(plan.sectors)
+    # The identity reuses the inherited metric without constructing images.
+    assert len(calls) == 2 * len(plan.sectors)
+
+
+@pytest.mark.parametrize(
+    ("operations", "lc", "full"),
+    (
+        ((EmitGluon(2, -1),), Fraction(9, 2), Fraction(4)),
+        ((EmitGluon(2, -1), EmitGluon(2, -2)), Fraction(27, 4), Fraction(16, 3)),
+        ((EmitGluon(2, -1), SplitGluon(-1, -2, -3)), Fraction(9, 4), Fraction(2)),
+        (
+            (EmitGluon(2, -1), EmitGluon(2, -2), EmitGluon(2, -3)),
+            Fraction(81, 8),
+            Fraction(64, 9),
+        ),
+        (
+            (EmitGluon(2, -1), SplitGluon(-1, -2, -3), EmitGluon(-2, -4)),
+            Fraction(27, 8),
+            Fraction(8, 3),
+        ),
+    ),
+)
+def test_connected_family_power_counting_includes_splitting(operations, lc, full):
+    plan = _plan("d d~ > z")
+    request = ColorCorrelator("self", operations, operations)
+    for accuracy, expected in (("lc", lc), ("nlc", full), ("full", full)):
+        matrix = build_color_correlator_matrix(plan, request, color_accuracy=accuracy)
+        assert _entries(matrix) == {(0, 0): ExactColorCoefficient(expected)}
+
+
+def test_pure_adjoint_nlc_truncates_but_split_output_keeps_admitted_exact_entry():
+    plan = _plan("g g > g")
+    emission = (EmitGluon(1, -1),)
+    pair = (*emission, SplitGluon(-1, -2, -3))
+    for operations, expected in ((emission, 54), (pair, 28)):
+        matrix = build_color_correlator_matrix(
+            plan, ColorCorrelator("self", operations, operations), color_accuracy="nlc"
+        )
+        assert _entries(matrix)[0, 0] == ExactColorCoefficient(expected)
+
+
+def test_nlc_selection_includes_odd_powers_and_does_not_promote_suppressed_entries():
+    polynomial = {
+        3: ExactColorCoefficient(-1),
+        1: ExactColorCoefficient(2),
+        -1: ExactColorCoefficient(-1),
+    }
+    select = correlator_matrices._select_color_nc_terms
+    assert (
+        select(
+            polynomial, color_accuracy="lc", leading_power=4, fundamental_output=True
+        )
+        == {}
+    )
+    assert (
+        select(
+            polynomial, color_accuracy="nlc", leading_power=4, fundamental_output=True
+        )
+        == polynomial
+    )
+    assert select(
+        polynomial, color_accuracy="nlc", leading_power=4, fundamental_output=False
+    ) == {3: ExactColorCoefficient(-1)}
+    assert (
+        select(
+            {1: ExactColorCoefficient(1)},
+            color_accuracy="nlc",
+            leading_power=4,
+            fundamental_output=True,
+        )
+        == {}
+    )
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+@pytest.mark.parametrize(
+    ("prefix", "emitted"),
+    (
+        ((EmitGluon(2, -1),), -2),
+        ((EmitGluon(2, -1), EmitGluon(-1, -2)), -3),
+        ((EmitGluon(2, -1), SplitGluon(-1, -2, -3)), -4),
+    ),
+)
+def test_connected_nnlo_n3lo_coherence_holds_through_retained_order(
+    accuracy, prefix, emitted
+):
+    plan = _plan("d d~ > z")
+    tensor = sector_color_tensor(plan.sectors[0], plan.process)
+    legs = process_color_legs(plan.process)
+    intermediate = ColorConnection(legs, prefix)
+    images = tuple(
+        apply_color_connection(
+            tensor.tensor,
+            ColorConnection(legs, (*prefix, EmitGluon(leg.label, emitted))),
+            coefficient=tensor.coefficient,
+        )
+        for leg in intermediate.output_legs
+        if leg.representation != 1
+    )
+    leading = 1 + len(prefix) + 1 - sum(isinstance(step, SplitGluon) for step in prefix)
+    threshold = leading - (2 if accuracy == "nlc" else 0)
+    for bra in images:
+        summed = {}
+        for ket in images:
+            selected = correlator_matrices._select_color_nc_terms(
+                contract_connected_tensor_nc_terms(bra, ket),
+                color_accuracy=accuracy,
+                leading_power=leading,
+                fundamental_output=True,
+            )
+            for power, coefficient in selected.items():
+                summed[power] = summed.get(power, ExactColorCoefficient()) + coefficient
+        assert not {
+            power: value
+            for power, value in summed.items()
+            if value and power >= threshold
+        }
+        if accuracy == "lc":
+            assert evaluate_color_nc_terms(summed) == ExactColorCoefficient()
+
+
+def test_invalid_output_accuracy_is_rejected():
+    with pytest.raises(ValueError, match="accuracy"):
+        build_color_correlator_matrix(
+            _plan("d d~ > z"), ColorCorrelator("born"), color_accuracy="unknown"
+        )
 
 
 def test_json_is_exact_primitive_data_and_preserves_imaginary_weights():

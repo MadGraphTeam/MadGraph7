@@ -1,5 +1,19 @@
 # Tree-level colour and spin correlators
 
+## Active continuation: LC/NLC, grouped evaluations and the paper
+
+The original full-colour milestone was completed at `dc56d0f14ae9`: PR #4
+is mergeable and its applicable CI passed. The newly approved continuation
+extends this work with inherited LC/NLC colour-connected MEs, batched labelled
+colour/spin requests and shared amplitude/unchanged-stage evaluation. It also
+updates the documentation and local paper and adds the standalone local NLO
+collinear/soft stability study. Version remains 0.4.1. The new instruction to
+update the paper supersedes the original phase's paper exclusion below.
+
+The full active plan and new verbatim requests are recorded at the end of this
+document. The temporary execution copy is `.artifacts/CORRELATORS_IMPLEMENTATION_PLAN.md`
+in the main development checkout. No merge or publication is authorized.
+
 ## Goal and ownership
 
 Implement opt-in tree-level colour and spin correlations in pyAmpliCol, with
@@ -250,3 +264,81 @@ b) Colour coherence when summing multiple colour-correlators.
 
 c) Not too important here, but there is an old implementation of similar ideas in my old code [https://github.com/madnklo/madnklo](https://github.com/madnklo/madnklo). Have a subagent go through it to fetch any relevant part that may be useful in your implementation (in particular regarding the chosen API conventions, and the nature of the checks I had implemented there on the spin- and colour-correlated MEs). Of course focusing on tree-level MEs only.
 ```
+
+
+---
+
+# Correlator extension, paper and local NLO studies
+
+## Goal
+
+Implement the approved correlators extension on the correlators branch: inherited LC/NLC/full-colour connected tree MEs through N3LO; additive batched multi-colour/multi-spin API with amplitude and exact unchanged-stage reuse; docs and paper including a concise physics appendix; standalone batched genuinely local collinear and wide-angle soft subtraction stability example with genuine binary64/DD/Arb1000 and higher-precision oracle. Preserve uncorrelated correctness/performance, retain version0.4.1, commit/push code/docs/examples and finish PR #4 mergeable with applicable CI green; update local paper/PDF and Prism source mirror without publishing/merging. Save the approved plan temporarily. User choices: match existing LC/NLC modes; keep genuine double/DD; colour plus spin-stage reuse, no full spin-response tensors.
+
+## Approved implementation plan
+
+1. Retain v0.4.1, update CORRELATORS_PLAN.md, and work in the correlators worktree. No merge or publication. Keep the untracked Paper local and refresh its source-only Prism mirror.
+2. LC/NLC: keep complete coherent amplitudes at physical Nc=3. Preserve symbolic Nc powers in inserted colour tensors. Empty connections use inherited contraction/grouping. For connected families use P=n_g+n_qqbar+r-s, with r operations and s gluon-to-quark-pair splits on either side. LC retains powers >=P. NLC in purely adjoint output retains powers >=P-2; fundamental-line output retains exact entries whose leading degree >=P-2. Include odd intervening powers. Full stays exact. No per-entry degree promotion, Born-zero mask, FFT or colour optimization. Test inherited Born agreement and coherence through retained order, not unsupported strict full-amplitude expansion claims.
+3. Add CorrelatedRequest(color_correlation="born", spin_vectors=None) and Runtime.evaluate_correlated_many(points, requests, helicities=None, precision=16), returning labels to tuples of CorrelatedValue. None inherits setter snapshot, {} resets for that request. Validate/copy before work and do not mutate setter. Group identical assignments, compute amplitudes once per group, reuse reductions/bilinears where exact. Across groups use exact packed stage-input/output reuse, preserving signed zero. Stream point then spin groups; bounded call-local memo, no persistent numerical caches. Same public defaults/uncorrelated path unchanged.
+4. Add examples/NLO_limits/nlo_limit_stability_tests.py independent of Paper. Use full-colour gg->gggg real and gg->ggg Born, Q=1000GeV, alpha_s=1/8, ordinary real optimizations, correlated parent spin class plus ten off-diagonal dipoles. Remove final-state symmetry factors consistently, preserve initial averages. Reuse inverse final-final CS map. Single-collinear at z=3/5, kT=delta Q, one generic azimuth: C=(8pi alpha_s/sij)2CA[(z/(1-z)+(1-z)/z)B+2z(1-z)B(e)], e=kperp/sqrt(-kperp^2). Soft q=delta r fixed wide angle with mapped Born fixed: C=-8pi alpha_s sum_(a<b) Pa.Pb/[(Pa.q)(Pb.q)] Bab. No extra incoming signs. Separate isolated limits, no global subtraction scheme.
+5. Showcase both grouping axes: request all dipoles together per PS point and send all approach PS points in one batched call per format/limit. Do not hide scalar calls inside the demo loop. Fixed Born quantities may be shared/cached transparently, but the example demonstrates the public batch API. Validate batch/scalar equivalence.
+6. Genuine binary64, DoubleFloat (actual31 retained digits), Arb1000, and1200-digit oracle on same unrounded trajectories; isolated study-only arithmetic adapters cover sources, stages, normalization, correlations and subtraction, without changing public defaults. Never label rounded MP as double/DD. Measure F=C-R, stable-digit fraction; two panels, every integer -log10delta1..15, no inset. Recompute any remote half-accuracy thresholds. Checkpoint raw R,C,F, factorisation, timings/settings/revision; output selection, --render, formats/limits/exponents, resumption; default1 worker, configurable10GiB guard. Generated output not tracked. No duplicate generations solely for precision.
+7. Docs: API/conventions/CLI/examples, actual limitations and optimization losses. Paper: short design subsection, remove future-only claims, update intro/release text, concise new physics appendix with notation/signs/normalization/ordered connections/spin and checks, not pseudocode. Preserve key correct equations from supplied PDF; fix identified TR/conjugation/ordering issues. Replace infrared appendix with truly local collinear plus soft studies, no claim fixed-angle C-R finite. Link example and tested branch revision. PDF render/visual QA and Prism source refresh.
+8. Validate focused LC/NLC Born/grouping cases including identical/multi-quark, N3LO ordering/splits/Casimirs/coherence, spin Ward/completeness/mixed/batching/reset. Many API numerical equivalence and amplitude/stage call-count tests, cached slot restoration/signed-zero misses/setter isolation/no cross-call cache. Map constraints, factorisation C/R->1 and real spin effect before full scan; true arithmetic/oracle convergence/checkpoint/render completeness. Focused ordinary regression checks plus one authoritative applicable CI cycle, no redundant native rebuilds or broad campaigns. Finish green mergeable PR and updated paper without merging/publishing.
+
+## Original request (verbatim)
+
+Update the docs (if you haven't not done so already).
+Also update the version to 0.4.1 and make sure it's merge-ready.
+
+Then update the paper as well, by adding subsection in the design section of the main text to shortly describe the support for correlated tree MEs (and also mention which optimizations are lost then, but still showing support for LC, NLC and full colour).
+Then a new appendix that goes in more details, and mirror a bit the PDF I shared with you, however you should make it more concise, more professional, without the technical pseudo code, and focussing on the physics and precise definition of the correlators as well as the tests implemented. But key equations must survive (and of course the spin-correlations, which are easier, should be covered too, in a similar language.
+
+Update the appendix on stability when approaching the collinear limits by this time using the truly local CT, with the spin-correlated part of the gluon splitting included, and using our new support for spin-correlation in the factorized Born. Also add now a similar study for the single-soft wide angle limit, using the usual eikonal approximation and the colour connected dipoles, again using now our new ability for the colour connected factorized Born. Make the whole standalone python script for this study part of the repo as well (in ./examples/NLO_limits/nlo_limit_stability_tests.py, the script should do it all, use pyAmpliCol to generate all relevant MEs, organise the subtraction and do the approach and finally render the same plot as will be used in the paper).
+
+Set this as your new goal (with your version of it and my query verbatim), and ask question if anything is unclear
+
+## Subsequent requests (verbatim)
+
+Ok then setup the plan now, and add that you will include support for LC and NLC colour-connected MEs. (again don't focus on the colour optimizations for now, to keep things simple).
+
+Yes implement this plan, and also write it down temporarily as md file.
+
+One more thing for the plan, how is it currently if a user wants to compute multiple combinations of colour- and spin- correlator at once? Can this be done, and can it be done optimally by recycling what's common between these different correlators requested?
+
+And of course make sure in the "demo NLO subtraction script" that you call for all dipoles at once (per PS point), and batching the different PS points for the approach in one call; to clearly showcase the benefits of both grouping the correlators needed per PS point, but also batching multiple PS points.
+
+## Confirmed planning choices
+
+Additional user request (verbatim):
+
+And you have to also plan well the API to clearly show how to access all the individual components when multiple correlators are requested and the PS points are batched.
+
+Result layout is an insertion-ordered mapping from user request labels to tuples
+of CorrelatedValue, each tuple in original phase-space point order and of the
+same length as the input. Access result[name][point_index].real or .imag;
+point-centric access is {name: values[point_index] for name, values in result.items()}.
+Test distinct two-by-two values to detect axis transposition. Spectator helicities
+are still summed or globally selected, not implicitly returned as another axis.
+
+- Match existing modes (LC/NLC), not strict full-amplitude large-Nc expansion.
+- Keep genuine double and DD curves.
+- Colour + unchanged spin-stage reuse; no full spin-response tensors.
+
+## Parallel execution and independent review
+
+Separate agents implement and test the colour matrices, multi-request runtime,
+and NLO study. Cross-reviews cover arithmetic dispatch, physics conventions,
+API documentation and generated numerical checks. The coordinating agent
+integrates the changes, updates and visually audits the paper, runs the final
+study, and completes the existing PR's validation.
+
+Additional requests (verbatim):
+
+(Continue as planned, but make sure you wrote the plan as I asked earlier when you were in plan mode).
+
+Also make sure to use multiple subagents to split the various orthogonal pieces of work to be done in this plan, and to audit/research and test your work.
+
+(continue as planned, but of course mention the reproducibility of the NLO study with a link to the script pointing to the repo (of the revision used) there).
+
+The paper will link to the script using the full tested commit hash, not a
+moving branch, and print that same revision alongside the measured study.

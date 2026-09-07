@@ -218,9 +218,10 @@ The accuracy, contraction, and execution choices on this page describe
 ordinary Born evaluation. [Born Correlations](../correlators.md) are a separate
 opt-in declaration: pass `CorrelatorConfig` as `correlators=` in Python or use
 `generate --correlators declaration.json`. There is no `[correlators]` TOML
-section. The current correlation path is full SU(3) only, not an LC/NLC
-approximation; it records effective full colour, direct contraction, compiled
-execution, and numerical current reuse off. Conflicting requested settings
+section. `color.accuracy` selects LC, NLC or full colour for the correlated
+matrix contraction; all three retain complete underlying amplitudes. The
+path records direct contraction, compiled execution, and numerical current
+reuse off. Conflicting requested settings
 are retained in provenance with those explicit adjustments.
 
 Correlated generation rejects partial colour/helicity coverage and append

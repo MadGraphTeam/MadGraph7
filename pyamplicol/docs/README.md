@@ -31,7 +31,7 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 | generate and evaluate my first process | [Quick Start](user/quick-start.md) |
 | choose a model, process, color approximation, or evaluator | [Configuration](user/configuration.md) and [Models and Processes](user/models-and-processes.md), including the packaged scalar HEFT workflow |
 | call pyAmpliCol from Python | [Python API](user/python-api.md) |
-| prepare and evaluate tree-level spin and colour correlations | [Born Correlations](correlators.md) and [Correlation Conventions](correlator-conventions.md), currently full-colour SU(3) and Python-only |
+| prepare and evaluate tree-level spin and colour correlations | [Born Correlations](correlators.md) and [Correlation Conventions](correlator-conventions.md), LC/NLC/full colour and grouped Python evaluation |
 | use C, C++, Fortran, Rust, or generated Python drivers | [Native APIs](user/native-apis.md) |
 | benchmark, reproduce, or view performance reports | [Profiling and Benchmarking](user/profiling-and-benchmarking.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md), and [published performance reports](performance_reports/README.md) |
 | diagnose an error | [Troubleshooting](user/troubleshooting.md) |

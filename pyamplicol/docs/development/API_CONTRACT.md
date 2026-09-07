@@ -118,10 +118,10 @@ unique; `"born"` is reserved and always supplies the ordinary overlap.
 legs that may be replaced simultaneously. `CorrelatorConfig.to_json_dict()`
 and `from_json_dict()` implement the CLI declaration-file schema.
 
-The current correlation path uses full SU(3) colour only, not LC/NLC
-approximations. It records effective `full` colour, `direct` contraction,
-`compiled` execution, and disabled numerical current reuse as configuration
-adjustments where needed. It preserves arbitrary vector-source dependence
+The correlation path applies the requested LC/NLC/full colour accuracy to
+the inserted matrices while generating complete full-colour amplitudes.
+It records `direct` contraction, `compiled` execution, and disabled numerical
+current reuse as configuration adjustments where needed. It preserves arbitrary vector-source dependence
 without helicity-specific parity/zero reductions or replay. Partial
 colour/helicity generation, nonidentity process permutations, and append mode
 are unsupported. A previously generated ordinary artifact cannot acquire this
@@ -189,7 +189,8 @@ physical_helicity, physical_color_flow)` and NLC/full values with shape
 `evaluate()`.
 
 `Runtime.set_spin_correlation_vectors(vectors)` sets the numerical vectors for
-`evaluate_correlated()` only. `vectors` maps public one-based leg labels to
+`evaluate_correlated()` and inherited requests in `evaluate_correlated_many()`.
+`vectors` maps public one-based leg labels to
 literal real or complex contravariant `(v0, vx, vy, vz)` vectors, or one such
 vector per evaluated point. Its nonempty key set must exactly match a declared
 spin class. Inputs are copied; invalid updates leave the old state intact.
@@ -207,6 +208,25 @@ precision; `complex(value)` converts to binary64. The full directed
 bra-adjoint/ket contraction may be complex. Each replaced spin leg counts
 once, spectator helicities are summed incoherently, and ordinary initial-state
 averages and identical-particle factors remain in place.
+
+`Runtime.evaluate_correlated_many(momenta, requests, *, helicities=None,
+precision=16) -> dict[str, tuple[CorrelatedValue, ...]]` accepts an ordered
+mapping of user result labels to `CorrelatedRequest` records. Each record has
+`color_correlation="born"` and `spin_vectors=None` defaults. `None` inherits a
+snapshot of the setter; `{}` explicitly selects physical helicities. Request
+vectors are copied and validated without changing setter state. Request labels
+are distinct from generated colour IDs, allowing several spin projections of
+one colour operator. The output preserves label order and input point order;
+`values[label][point_index].real` and `.imag` select a single component.
+Every series has `len(momenta)` entries. Spectator helicities are summed or
+selected globally, not an additional output axis.
+
+Identical spin assignments share coherent amplitudes across colour IDs;
+unchanged complete stage inputs can share stage outputs across assignments.
+Numerical sharing is exact, signed-zero preserving, call-local and streamed
+point by point. There is no persistent numerical cache or full spin-response
+tensor. The underlying ordinary `evaluate()` remains full-colour; the
+correlated `"born"` request uses the chosen correlated accuracy.
 
 Correlated evaluation currently uses the Python Symbolica-backed exact
 executor even at `precision=16`; it is not a native f64 correlator API. It

@@ -7,7 +7,10 @@ to otherwise literal colour tensors. Every stored entry is directed and means
 doubling or assumption of Hermiticity is implicit. Runtime contraction therefore
 uses ``conjugate(a[left]) * entry * a[right]``.
 
-Only complete full-colour plans are accepted. The ordinary matrix's zero pattern
+Only complete full-colour amplitude plans are accepted, even for LC/NLC output.
+The approximation acts on the inserted metric at fixed physical amplitudes;
+it is not a strict expansion of their hidden colour weights. The Born matrix
+uses the inherited ordinary factors. The ordinary matrix's zero pattern
 is deliberately not consulted: a connection can turn a zero overlap into a
 nonzero one. Planning is direct and quadratic in the selected basis size, with
 each connected tensor reused across all requested matrix entries.
@@ -15,7 +18,7 @@ each connected tensor reused across all requested matrix entries.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..processes.ir import CanonicalProcessIR
@@ -34,9 +37,11 @@ from .connections import (
     TensorTerm,
     _validate_tensor_legs,
     apply_color_connection,
-    contract_connected_tensors,
+    contract_connected_tensor_nc_terms,
+    evaluate_color_nc_terms,
 )
-from .plan_types import GenericColorPlan, LCColorSector
+from .contraction_factors import exact_color_contraction_factor
+from .plan_types import ColorAccuracy, GenericColorPlan, LCColorSector
 
 _COLOR_ROLE_REPRESENTATIONS = {
     "singlet": 1,
@@ -206,6 +211,7 @@ class ColorCorrelatorMatrix:
     entries: tuple[ColorCorrelatorMatrixEntry, ...]
     bra: tuple[ColorEmission, ...] = ()
     ket: tuple[ColorEmission, ...] = ()
+    color_accuracy: ColorAccuracy = "full"
 
     def to_json_dict(self) -> dict[str, object]:
         request = ColorCorrelator(self.id, self.bra, self.ket)
@@ -213,7 +219,7 @@ class ColorCorrelatorMatrix:
             "id": self.id,
             "order": self.order,
             "convention": COLOR_CONNECTION_CONVENTION,
-            "color_accuracy": "full",
+            "color_accuracy": self.color_accuracy,
             "storage": "sparse-directed",
             "includes_color_factor": True,
             "sector_ids": list(self.sector_ids),
@@ -253,22 +259,59 @@ def _selected_sectors(
     return tuple(by_id[index] for index in requested)
 
 
+def _select_color_nc_terms(
+    terms: Mapping[int, ExactColorCoefficient],
+    *,
+    color_accuracy: ColorAccuracy,
+    leading_power: int,
+    fundamental_output: bool,
+) -> dict[int, ExactColorCoefficient]:
+    """Apply the inherited matrix-level accuracy style to a complete entry.
+
+    The threshold is shared by the whole connected family, never inferred from
+    this entry. Open-line NLC retains the exact coefficient of an admitted
+    entry, including its lower powers. Thus its coherence is a retained-order
+    statement, not an exact finite-Nc identity.
+    """
+
+    nonzero = {
+        power: coefficient for power, coefficient in terms.items() if coefficient
+    }
+    if color_accuracy == "full":
+        return nonzero
+    if color_accuracy not in ("lc", "nlc"):
+        raise ValueError("colour correlator accuracy must be lc, nlc or full")
+    threshold = leading_power - (2 if color_accuracy == "nlc" else 0)
+    if color_accuracy == "nlc" and fundamental_output:
+        return nonzero if nonzero and max(nonzero) >= threshold else {}
+    return {
+        power: coefficient
+        for power, coefficient in nonzero.items()
+        if power >= threshold
+    }
+
+
 def build_color_correlator_matrices(
     color_plan: GenericColorPlan,
     correlators: Sequence[ColorCorrelator],
     *,
     sector_ids: Sequence[int] | None = None,
+    color_accuracy: ColorAccuracy = "full",
 ) -> tuple[ColorCorrelatorMatrix, ...]:
     """Build exact directed matrices, sharing graph images within this request.
 
     ``sector_ids`` may select canonical owners from a complete generated plan;
     it does not reinterpret a truncated colour plan as a complete amplitude.
     An empty request is a no-op and leaves the ordinary colour path untouched.
+    ``color_accuracy`` selects inherited LC/NLC/full matrix rules; the supplied
+    plan and physical partial amplitudes always remain complete full colour.
     """
 
     requests = tuple(correlators)
     if not requests:
         return ()
+    if color_accuracy not in ("lc", "nlc", "full"):
+        raise ValueError("colour correlator accuracy must be lc, nlc or full")
     if any(not isinstance(request, ColorCorrelator) for request in requests):
         raise TypeError("colour correlators must be ColorCorrelator requests")
     if len({request.id for request in requests}) != len(requests):
@@ -290,7 +333,7 @@ def build_color_correlator_matrices(
             )
     result = []
     for request in requests:
-        for emissions in (request.bra, request.ket):
+        for emissions in (request.bra, request.ket) if request.order else ():
             if emissions not in images:
                 images[emissions] = tuple(
                     apply_color_connection(
@@ -300,23 +343,55 @@ def build_color_correlator_matrices(
                     )
                     for term in terms
                 )
+        output_legs = connections[request.bra].output_legs
+        leading_power = (
+            len(color_plan.process.adjoint_labels)
+            + color_plan.process.color_endpoints.pair_count
+            + request.order
+            - sum(isinstance(step, SplitGluon) for step in request.bra)
+        )
+        fundamental_output = any(abs(leg.representation) == 3 for leg in output_legs)
         entries = []
-        for left_id, left in zip(ids, images[request.bra], strict=True):
-            for right_id, right in zip(ids, images[request.ket], strict=True):
-                weight = contract_connected_tensors(left, right)
+        for left_index, left_sector in enumerate(sectors):
+            for right_index, right_sector in enumerate(sectors):
+                if not request.order:
+                    weight = ExactColorCoefficient(
+                        exact_color_contraction_factor(
+                            color_plan,
+                            left_sector,
+                            right_sector,
+                            accuracy=color_accuracy,
+                        )
+                    )
+                else:
+                    terms_nc = contract_connected_tensor_nc_terms(
+                        images[request.bra][left_index],
+                        images[request.ket][right_index],
+                    )
+                    weight = evaluate_color_nc_terms(
+                        _select_color_nc_terms(
+                            terms_nc,
+                            color_accuracy=color_accuracy,
+                            leading_power=leading_power,
+                            fundamental_output=fundamental_output,
+                        )
+                    )
                 if weight:
                     entries.append(
-                        ColorCorrelatorMatrixEntry(left_id, right_id, weight)
+                        ColorCorrelatorMatrixEntry(
+                            left_sector.id, right_sector.id, weight
+                        )
                     )
         result.append(
             ColorCorrelatorMatrix(
                 request.id,
                 request.order,
                 ids,
-                connections[request.bra].output_legs,
+                output_legs,
                 tuple(entries),
                 request.bra,
                 request.ket,
+                color_accuracy,
             )
         )
     return tuple(result)
@@ -327,9 +402,10 @@ def build_color_correlator_matrix(
     correlator: ColorCorrelator,
     *,
     sector_ids: Sequence[int] | None = None,
+    color_accuracy: ColorAccuracy = "full",
 ) -> ColorCorrelatorMatrix:
     return build_color_correlator_matrices(
-        color_plan, (correlator,), sector_ids=sector_ids
+        color_plan, (correlator,), sector_ids=sector_ids, color_accuracy=color_accuracy
     )[0]
 
 

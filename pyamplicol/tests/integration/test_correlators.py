@@ -7,6 +7,7 @@ import pytest
 
 from pyamplicol import (
     ColorCorrelator,
+    CorrelatedRequest,
     CorrelatorConfig,
     EmitGluon,
     Generator,
@@ -14,6 +15,7 @@ from pyamplicol import (
     Runtime,
 )
 from pyamplicol.config import (
+    ColorConfig,
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
@@ -40,6 +42,7 @@ THREE_BODY_POINT = (
 def _configuration():
     return RunConfig(
         action="generate",
+        color=ColorConfig(accuracy="full"),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
@@ -76,6 +79,39 @@ def correlated_gg(tmp_path_factory):
 
 def _value(runtime, **kwargs):
     return runtime.evaluate_correlated((POINT,), precision=32, **kwargs)[0]
+
+
+def test_generated_many_colour_spin_and_point_axes_match_separate_calls(correlated_gg):
+    runtime = Runtime.load(correlated_gg)
+    runtime.set_spin_correlation_vectors({1: (0, 1, 0, 0)})
+    points = (
+        POINT,
+        (POINT[0], POINT[1], (500, 400, 0, 300), (500, -400, 0, -300)),
+    )
+    vectors = {3: ((0, 0, 1, 0), (0, 0, 2, 0))}
+    requests = {
+        "born": CorrelatedRequest("born", {}),
+        **{f"dipole1{leg}": CorrelatedRequest(f"T1{leg}", {}) for leg in range(1, 5)},
+        "spin-born": CorrelatedRequest("born", vectors),
+        "spin-dipole13": CorrelatedRequest("T13", vectors),
+        "inherited-spin": CorrelatedRequest("born"),
+    }
+    combined = runtime.evaluate_correlated_many(points, requests, precision=40)
+    reference = Runtime.load(correlated_gg)
+    for label, request in requests.items():
+        reference.set_spin_correlation_vectors(
+            {1: (0, 1, 0, 0)} if request.spin_vectors is None else request.spin_vectors
+        )
+        expected = reference.evaluate_correlated(
+            points, color_correlation=request.color_correlation, precision=40
+        )
+        assert combined[label] == expected
+        assert len(combined[label]) == 2
+    assert tuple(combined) == tuple(requests)
+    assert combined["spin-dipole13"][0] != combined["spin-dipole13"][1]
+    assert (
+        runtime.evaluate_correlated(points, precision=40) == combined["inherited-spin"]
+    )
 
 
 def test_generated_born_recovery_and_n3lo_colour_coherence(correlated_gg):

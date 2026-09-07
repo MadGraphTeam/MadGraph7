@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from .config import BenchmarkConfig, EvaluationConfig, GenerationConfig, RunConfig
     from .correlators import (
         ColorCorrelator,
+        CorrelatedRequest,
         CorrelatedValue,
         CorrelatorConfig,
         EmitGluon,
@@ -89,6 +90,7 @@ __all__ = [
     "CompiledModelSource",
     "ConfigurationError",
     "ContractedColorComponent",
+    "CorrelatedRequest",
     "CorrelatedValue",
     "CorrelatorConfig",
     "DependencyError",
@@ -189,6 +191,7 @@ _PUBLIC_EXPORTS = {
         name: (".correlators", name)
         for name in (
             "ColorCorrelator",
+            "CorrelatedRequest",
             "CorrelatedValue",
             "CorrelatorConfig",
             "EmitGluon",

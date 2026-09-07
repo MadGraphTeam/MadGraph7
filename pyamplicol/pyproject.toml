@@ -111,6 +111,8 @@ include = [
   { path = "build_backend/**/*", format = ["sdist"] },
   { path = "dependencies/release-lock.toml", format = ["sdist"] },
   { path = "docs/README.md", format = ["sdist"] },
+  { path = "docs/correlators.md", format = ["sdist"] },
+  { path = "docs/correlator-conventions.md", format = ["sdist"] },
   { path = "docs/user/**/*", format = ["sdist"] },
   { path = "examples/**/*", format = ["sdist"] },
   { path = "rust/**/*", format = ["sdist"] },

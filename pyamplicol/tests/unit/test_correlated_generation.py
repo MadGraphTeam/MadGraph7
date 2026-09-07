@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from itertools import product
+from types import SimpleNamespace
 
 import pytest
 
@@ -12,6 +13,7 @@ import pyamplicol.generation.service as service
 from pyamplicol.api import ProcessAlias, ProcessRequest, ProcessSet
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.artifacts import ArtifactBuilder, load_manifest
+from pyamplicol.color.plan import build_color_plan
 from pyamplicol.config import (
     Action,
     ColorConfig,
@@ -34,13 +36,45 @@ def test_correlated_settings_are_explicit_and_do_not_change_default_factory() ->
     assert ordinary._color_accuracy == "lc"
     settings = correlated.correlated_configuration(None)
     assert settings.requested.color.accuracy == "lc"
-    assert settings.effective.color.accuracy == "full"
+    assert settings.effective.color.accuracy == "lc"
     assert settings.effective.color.contraction == "direct"
     assert settings.effective.evaluator.execution_mode == "compiled"
     assert settings.effective.generation.relation_discovery.mode == "off"
-    assert "color.accuracy" in {change.path for change in settings.clamps}
+    assert "color.accuracy" not in {change.path for change in settings.clamps}
     assert "evaluator.execution_mode" in {change.path for change in settings.clamps}
     assert not hasattr(ordinary, "declarations")
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
+def test_output_accuracy_is_retained_but_underlying_generation_stays_full(accuracy):
+    config = RunConfig(action=Action.GENERATE, color=ColorConfig(accuracy=accuracy))
+    settings = correlated.correlated_configuration(config)
+    assert (
+        settings.requested.color.accuracy
+        == settings.effective.color.accuracy
+        == accuracy
+    )
+    backend = correlated.CorrelatedGenerationBackend(
+        config, None, declarations=CorrelatorConfig()
+    )
+    assert backend._run_config.color.accuracy == accuracy
+    assert backend._color_accuracy == "full"
+    process = build_process_ir("d d~ > z", color_accuracy="full")
+    plan = build_color_plan(process, color_accuracy="full")
+    groups = [
+        {"helicities": (1, -1, 0), "color_sector_id": sector.id}
+        for sector in plan.sectors
+    ]
+    backend._correlated_processes["process"] = correlated.CorrelatedProcessMetadata(
+        process,
+        plan,
+        SimpleNamespace(
+            to_mapping=lambda: {"amplitude_stage": {"coherent_groups": groups}}
+        ),
+        (),
+    )
+    matrices = backend.correlator_payload()["processes"]["process"]["matrices"]
+    assert matrices[0]["color_accuracy"] == accuracy
 
 
 def test_correlated_configuration_preserves_resources_and_existing_clamps() -> None:
@@ -123,7 +157,7 @@ def test_nonidentity_alias_is_rejected_before_entering_generation(
 @pytest.fixture
 def complete_gggg():
     backend = correlated.CorrelatedGenerationBackend(
-        None,
+        RunConfig(action=Action.GENERATE, color=ColorConfig(accuracy="full")),
         None,
         declarations=CorrelatorConfig(
             color_correlations=(ColorCorrelator.dipole("T1.T3", 1, 3),),

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Exact, generation-independent SU(3) colour connections through three emissions.
+"""Exact, generation-independent colour connections through three emissions.
 
 Tensors are literal products of open strings and traces of generators ``tau``
 with ``tr(tau[a] tau[b]) = delta[a,b]``. Physical charges use
@@ -21,12 +21,13 @@ be multiplied to construct higher connections.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
 from typing import TypeAlias
 
-from .contraction_trace import _eval_nc_terms_exact, _simplify_trace_terms_nc_power
+from .contraction_trace import _simplify_trace_terms_nc_power
 from .contraction_types import NC
 
 MAX_CONNECTION_ORDER = 3
@@ -245,12 +246,14 @@ class ColorConnection:
 class TensorTerm:
     coefficient: ExactColorCoefficient
     tensor: ColorTensor
+    nc_power: int = 0
 
     def __post_init__(self) -> None:
         if not isinstance(self.coefficient, ExactColorCoefficient):
             raise TypeError("tensor coefficients must be ExactColorCoefficient records")
         if not isinstance(self.tensor, ColorTensor):
             raise TypeError("tensor terms must contain ColorTensor records")
+        _integer(self.nc_power, "tensor Nc power")
 
 
 def _validate_tensor_legs(tensor: ColorTensor, legs: tuple[ColorLeg, ...]) -> None:
@@ -271,7 +274,7 @@ def _validate_tensor_legs(tensor: ColorTensor, legs: tuple[ColorLeg, ...]) -> No
 
 
 def _combine_terms(terms: tuple[TensorTerm, ...]) -> tuple[TensorTerm, ...]:
-    combined: dict[ColorTensor, ExactColorCoefficient] = {}
+    combined: dict[tuple[ColorTensor, int], ExactColorCoefficient] = {}
     for term in terms:
         if not isinstance(term, TensorTerm):
             raise TypeError("connected tensors require TensorTerm records")
@@ -281,10 +284,12 @@ def _combine_terms(terms: tuple[TensorTerm, ...]) -> tuple[TensorTerm, ...]:
         tensor = ColorTensor(
             term.tensor.open_strings, tuple(t for t in term.tensor.traces if t)
         )
-        coefficient = term.coefficient.scaled(NC**empty_traces)
-        combined[tensor] = combined.get(tensor, ExactColorCoefficient()) + coefficient
+        key = (tensor, term.nc_power + empty_traces)
+        combined[key] = combined.get(key, ExactColorCoefficient()) + term.coefficient
     return tuple(
-        TensorTerm(value, tensor) for tensor, value in sorted(combined.items()) if value
+        TensorTerm(value, tensor, power)
+        for (tensor, power), value in sorted(combined.items())
+        if value
     )
 
 
@@ -384,7 +389,7 @@ def _emit(
 
 def _split(
     tensor: ColorTensor, emission: SplitGluon
-) -> tuple[tuple[Fraction, ColorTensor], ...]:
+) -> tuple[tuple[Fraction, int, ColorTensor], ...]:
     parent, q, qbar = (
         emission.parent_label,
         emission.quark_label,
@@ -401,6 +406,7 @@ def _split(
         return (
             (
                 Fraction(1),
+                0,
                 _replace_string(
                     tensor,
                     index,
@@ -411,7 +417,8 @@ def _split(
                 ),
             ),
             (
-                Fraction(-1, NC),
+                Fraction(-1),
+                -1,
                 _replace_string(
                     tensor,
                     index,
@@ -435,13 +442,15 @@ def _split(
         return (
             (
                 Fraction(1),
+                0,
                 ColorTensor(
                     (*tensor.open_strings, OpenColorString(q, after + before, qbar)),
                     remaining,
                 ),
             ),
             (
-                Fraction(-1, NC),
+                Fraction(-1),
+                -1,
                 ColorTensor(
                     (*tensor.open_strings, OpenColorString(q, (), qbar)),
                     (*remaining, before + after),
@@ -466,18 +475,28 @@ def apply_color_connection(
     _validate_tensor_legs(tensor, connection.initial_legs)
     terms = (TensorTerm(coefficient, tensor),)
     for emission in connection.emissions:
-        transform = _emit if isinstance(emission, EmitGluon) else _split
-        terms = _combine_terms(
-            tuple(
-                TensorTerm(term.coefficient.scaled(factor), new_tensor)
-                for term in terms
-                for factor, new_tensor in transform(term.tensor, emission)
+        transformed = []
+        for term in terms:
+            changes = (
+                tuple(
+                    (factor, 0, image) for factor, image in _emit(term.tensor, emission)
+                )
+                if isinstance(emission, EmitGluon)
+                else _split(term.tensor, emission)
             )
-        )
+            for factor, power, image in changes:
+                transformed.append(
+                    TensorTerm(
+                        term.coefficient.scaled(factor), image, term.nc_power + power
+                    )
+                )
+        terms = _combine_terms(tuple(transformed))
     return ConnectedColorTensor(connection.output_legs, terms, connection.order)
 
 
-def _literal_tensor_overlap(left: ColorTensor, right: ColorTensor) -> Fraction:
+def _literal_tensor_overlap_nc_terms(
+    left: ColorTensor, right: ColorTensor
+) -> Mapping[int, Fraction]:
     traces = list(right.traces) + [tuple(reversed(trace)) for trace in left.traces]
     right_by_q = {string.fundamental_label: string for string in right.open_strings}
     left_by_qbar = {
@@ -497,14 +516,13 @@ def _literal_tensor_overlap(left: ColorTensor, right: ColorTensor) -> Fraction:
             trace.extend(reversed(left_string.adjoint_labels))
             current = left_string.fundamental_label
         traces.append(tuple(trace))
-    terms = _simplify_trace_terms_nc_power(((Fraction(1), 0, tuple(traces)),))
-    return _eval_nc_terms_exact(terms)
+    return _simplify_trace_terms_nc_power(((Fraction(1), 0, tuple(traces)),))
 
 
-def contract_connected_tensors(
+def contract_connected_tensor_nc_terms(
     left: ConnectedColorTensor, right: ConnectedColorTensor
-) -> ExactColorCoefficient:
-    """Sum all final colour indices in ``left.conjugate() * right`` exactly.
+) -> dict[int, ExactColorCoefficient]:
+    """Return the exact Laurent coefficients of ``left.conjugate() * right``.
 
     The scalar overlap is sesquilinear, not forcibly real or positive. Matching
     physical bra/ket connection orders have even combined normalization power.
@@ -519,14 +537,40 @@ def contract_connected_tensors(
     power = left.normalization_power + right.normalization_power
     if power % 2:
         raise ValueError("bra/ket normalization has an odd inverse sqrt(2) power")
-    result = ExactColorCoefficient()
+    result: dict[int, ExactColorCoefficient] = {}
+    normalization = Fraction(1, 2 ** (power // 2))
     for left_term in left.terms:
         for right_term in right.terms:
-            factor = _literal_tensor_overlap(left_term.tensor, right_term.tensor)
-            result = result + (
+            coefficient = (
                 left_term.coefficient.conjugate() * right_term.coefficient
-            ).scaled(factor)
-    return result.scaled(Fraction(1, 2 ** (power // 2)))
+            ).scaled(normalization)
+            for nc_power, factor in _literal_tensor_overlap_nc_terms(
+                left_term.tensor, right_term.tensor
+            ).items():
+                exponent = nc_power + left_term.nc_power + right_term.nc_power
+                result[exponent] = result.get(
+                    exponent, ExactColorCoefficient()
+                ) + coefficient.scaled(factor)
+    return {power: coefficient for power, coefficient in result.items() if coefficient}
+
+
+def evaluate_color_nc_terms(
+    terms: Mapping[int, ExactColorCoefficient],
+) -> ExactColorCoefficient:
+    """Evaluate retained colour Laurent coefficients at physical ``Nc = 3``."""
+
+    result = ExactColorCoefficient()
+    for power, coefficient in terms.items():
+        result = result + coefficient.scaled(Fraction(NC) ** power)
+    return result
+
+
+def contract_connected_tensors(
+    left: ConnectedColorTensor, right: ConnectedColorTensor
+) -> ExactColorCoefficient:
+    """Sum the full connected colour overlap exactly at physical ``Nc = 3``."""
+
+    return evaluate_color_nc_terms(contract_connected_tensor_nc_terms(left, right))
 
 
 def color_connection_matrix_element(
@@ -568,5 +612,7 @@ __all__ = [
     "all_outgoing_color_leg",
     "apply_color_connection",
     "color_connection_matrix_element",
+    "contract_connected_tensor_nc_terms",
     "contract_connected_tensors",
+    "evaluate_color_nc_terms",
 ]

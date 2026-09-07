@@ -3,8 +3,31 @@ import json
 
 import pytest
 
-from pyamplicol import ColorCorrelator, CorrelatorConfig, EmitGluon, SplitGluon
+from pyamplicol import (
+    ColorCorrelator,
+    CorrelatedRequest,
+    CorrelatorConfig,
+    EmitGluon,
+    SplitGluon,
+)
 from pyamplicol.cli.parser import parse_cli
+
+
+def test_correlated_request_defaults_and_physical_override():
+    assert CorrelatedRequest().color_correlation == "born"
+    assert CorrelatedRequest().spin_vectors is None
+    assert CorrelatedRequest("T12", {}).spin_vectors == {}
+
+
+@pytest.mark.parametrize("identifier", ("", None, 3))
+def test_correlated_request_requires_colour_id(identifier):
+    with pytest.raises(ValueError, match="correlation ID"):
+        CorrelatedRequest(identifier)
+
+
+def test_correlated_request_requires_vector_mapping():
+    with pytest.raises(TypeError, match="must map"):
+        CorrelatedRequest(spin_vectors=[(0, 1, 0, 0)])
 
 
 def test_declarations_json_roundtrip_and_automatic_born():

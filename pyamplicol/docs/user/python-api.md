@@ -229,23 +229,23 @@ the color dimension has length one because color is contracted.
 ## Evaluate Born correlations
 
 Correlations require an explicit `Generator.generate(..., correlators=...)`
-declaration. They currently support **full colour only**, through a separate
-Python direct, generic compiled exact executor. LC and NLC correlator
-approximations are not implemented. Supplying `correlators` selects full-colour,
-direct contraction and compiled generation even if the ordinary configuration
-requests LC/NLC or another execution mode. Ordinary LC/NLC/full evaluation
-remains available and unchanged.
+declaration. They support **LC, NLC and full colour**, through a separate Python
+direct, generic compiled exact executor. `color.accuracy` selects the correlated
+approximation. Supplying `correlators` retains complete underlying amplitudes
+and selects direct contraction and compiled generation. Ordinary generation
+and evaluation remain unchanged.
 
 ```python
 from pyamplicol import (
     ColorCorrelator, CorrelatorConfig, Generator, ModelSource, Runtime,
 )
+from pyamplicol.config import ColorConfig, RunConfig
 
 declarations = CorrelatorConfig(
     color_correlations=(ColorCorrelator.dipole("T13", 1, 3),),
     spin_correlations=((3,), (3, 4)),
 )
-generated = Generator().generate(
+generated = Generator(RunConfig(color=ColorConfig(accuracy="full"))).generate(
     "g g > g g", "artifacts/gg_correlated",
     model=ModelSource.built_in_sm(), correlators=declarations,
 )
@@ -267,12 +267,24 @@ correlated_runtime.set_spin_correlation_vectors(None)
 
 `evaluate_correlated(momenta, *, color_correlation="born", helicities=None,
 precision=16)` returns one `CorrelatedValue` per point. The reserved ID
-`"born"` uses the ordinary full-colour metric; other IDs are the declared
+`"born"` uses the Born metric at the requested colour accuracy; other IDs are the declared
 operators. Optional batch-global helicity selectors accept stable IDs or typed
 `HelicityConfiguration` objects. There is no colour-flow or per-point selector
 argument on this method. Normalization, initial-state averages, and
 identical-particle factors are retained, and runtime model-parameter updates
 also apply to correlations.
+
+For multiple combinations, `evaluate_correlated_many(points, requests)` takes
+a mapping from your result labels to `CorrelatedRequest(color_correlation=...,
+spin_vectors=...)`. Its result is a dictionary of tuples:
+`result[request_label][point_index].real` or `.imag` selects one contraction
+at one phase-space point. Label and point order are preserved. Identical spin
+assignments share their amplitudes across colour operators, and unchanged
+stages can be reused across different assignments. See the
+[two-axis example](../correlators.md#several-requests-and-several-phase-space-points)
+for request-centric and point-centric access. Ordinary `evaluate()` on the
+underlying correlated output remains full-colour; use the correlated `"born"`
+request when comparing its selected LC/NLC approximation.
 
 The spin-vector mapping uses one-based public leg labels. Each value is a
 literal real or complex `(v0, vx, vy, vz)` vector, broadcast across the batch,
@@ -281,8 +293,9 @@ declared spin class: this example permits `{3}` and `{3, 4}`, but not `{4}`.
 Vectors are neither normalized nor projected. They are copied into
 instance-local state; a failed setter preserves the previous state. `None` or
 `{}` resets to ordinary helicity sources; `clear()` releases warmed evaluators
-without resetting vectors. The setter affects only `evaluate_correlated`,
-not `evaluate` or `evaluate_resolved`.
+without resetting vectors. The setter affects `evaluate_correlated` and
+inherited requests in `evaluate_correlated_many`, not `evaluate` or
+`evaluate_resolved`.
 
 Artifacts without declarations, append generation, partial source coverage,
 FFT, eager/recurrence/OTF correlated execution, replay reductions, and

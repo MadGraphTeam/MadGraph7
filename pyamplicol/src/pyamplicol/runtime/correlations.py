@@ -17,10 +17,11 @@ from pyamplicol.api.protocols import Momenta
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
 from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
-from pyamplicol.correlators import CorrelatedValue, CorrelatorConfig
+from pyamplicol.correlators import CorrelatedRequest, CorrelatedValue, CorrelatorConfig
 from pyamplicol.runtime._native_selection import native_process_selection
 from pyamplicol.runtime.correlated_exact import (
     CoherentAmplitudeBatch,
+    CoherentAmplitudeGroup,
     CorrelatedExactExecutor,
     _prepare_spin_vectors,
 )
@@ -57,7 +58,7 @@ def _matrix(record: object) -> _Matrix:
             raise ValueError("matrix is not an object")
         if (
             record["convention"] != COLOR_CONNECTION_CONVENTION
-            or record["color_accuracy"] != "full"
+            or record["color_accuracy"] not in {"lc", "nlc", "full"}
             or record["storage"] != "sparse-directed"
             or record["includes_color_factor"] is not True
         ):
@@ -106,12 +107,51 @@ def _matrix(record: object) -> _Matrix:
         raise ArtifactError(f"invalid correlated colour matrix: {exc}") from exc
 
 
-def _contract(
-    batch: CoherentAmplitudeBatch, matrix: _Matrix, *, precision: int
-) -> tuple[CorrelatedValue, ...]:
-    """Sum spectator helicities incoherently, but retain all colour phases."""
+@dataclass(frozen=True)
+class _ContractionPlan:
+    group_count: int
+    terms: tuple[tuple[int, int, tuple[Decimal, Decimal]], ...]
+
+    def evaluate(
+        self, batch: CoherentAmplitudeBatch, *, precision: int
+    ) -> tuple[CorrelatedValue, ...]:
+        results = []
+        with localcontext() as context:
+            context.prec = _working_precision(precision)
+            context.rounding = ROUND_HALF_EVEN
+            for point in batch.values:
+                if len(point) != self.group_count:
+                    raise ArtifactError(
+                        "correlated amplitude point has an invalid group count"
+                    )
+                real, imag = Decimal(0), Decimal(0)
+                for left, right, weight in self.terms:
+                    a, b = point[left], point[right]
+                    # Keep the single-ID multiplication/accumulation order.
+                    term = _complex_mul(_complex_mul((a[0], -a[1]), weight), b)
+                    real += term[0]
+                    imag += term[1]
+                results.append(
+                    (
+                        real * batch.normalization_factor,
+                        imag * batch.normalization_factor,
+                    )
+                )
+        with localcontext() as context:
+            context.prec = precision
+            context.rounding = ROUND_HALF_EVEN
+            return tuple(CorrelatedValue(+real, +imag) for real, imag in results)
+
+
+def _prepare_contraction(
+    amplitude_groups: tuple[CoherentAmplitudeGroup, ...],
+    matrix: _Matrix,
+    *,
+    precision: int,
+) -> _ContractionPlan:
+    """Prepare exact weights and indices once, without numerical amplitude state."""
     groups: dict[str, dict[int, int]] = {}
-    for index, group in enumerate(batch.groups):
+    for index, group in enumerate(amplitude_groups):
         sectors = groups.setdefault(group.helicity_id, {})
         if group.color_sector_id in sectors:
             raise ArtifactError("repeated coherent helicity/colour group")
@@ -119,7 +159,6 @@ def _contract(
     expected = set(matrix.sectors)
     if any(set(indices) != expected for indices in groups.values()):
         raise ArtifactError("correlated amplitudes do not cover the colour matrix")
-    results = []
     with localcontext() as context:
         context.prec = _working_precision(precision)
         context.rounding = ROUND_HALF_EVEN
@@ -134,25 +173,23 @@ def _contract(
             )
             for entry in matrix.entries
         )
-        for point in batch.values:
-            if len(point) != len(batch.groups):
-                raise ArtifactError(
-                    "correlated amplitude point has an invalid group count"
-                )
-            real, imag = Decimal(0), Decimal(0)
-            for indices in groups.values():
-                for left, right, weight in entries:
-                    a, b = point[indices[left]], point[indices[right]]
-                    term = _complex_mul(_complex_mul((a[0], -a[1]), weight), b)
-                    real += term[0]
-                    imag += term[1]
-            results.append(
-                (real * batch.normalization_factor, imag * batch.normalization_factor)
-            )
-    with localcontext() as context:
-        context.prec = precision
-        context.rounding = ROUND_HALF_EVEN
-        return tuple(CorrelatedValue(+real, +imag) for real, imag in results)
+    return _ContractionPlan(
+        len(amplitude_groups),
+        tuple(
+            (indices[left], indices[right], weight)
+            for indices in groups.values()
+            for left, right, weight in entries
+        ),
+    )
+
+
+def _contract(
+    batch: CoherentAmplitudeBatch, matrix: _Matrix, *, precision: int
+) -> tuple[CorrelatedValue, ...]:
+    """Sum spectator helicities incoherently, but retain all colour phases."""
+    return _prepare_contraction(batch.groups, matrix, precision=precision).evaluate(
+        batch, precision=precision
+    )
 
 
 class CorrelatorEvaluator:
@@ -216,6 +253,11 @@ class CorrelatorEvaluator:
     def set_spin_correlation_vectors(
         self, vectors: Mapping[int, object] | None
     ) -> None:
+        self._vectors = self._copy_spin_vectors(vectors)
+
+    def _copy_spin_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> dict[int, object]:
         if vectors is None:
             vectors = {}
         if not isinstance(vectors, Mapping):
@@ -249,7 +291,7 @@ class CorrelatorEvaluator:
                 point_count=1 if broadcast else len(vector),
             )
             frozen[leg] = vector
-        self._vectors = frozen
+        return frozen
 
     def clear(self) -> None:
         """Release warmed evaluators, preserving current numerical spin inputs."""
@@ -285,3 +327,100 @@ class CorrelatorEvaluator:
             precision=_working_precision(precision),
         )
         return _contract(batch, self._matrices[color_correlation], precision=precision)
+
+    def evaluate_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, CorrelatedRequest],
+        *,
+        helicities: Sequence[str] | None = None,
+        precision: int = 16,
+    ) -> dict[str, tuple[CorrelatedValue, ...]]:
+        """Share amplitudes and exact unchanged stages within one labelled batch."""
+        if type(precision) is not int or precision < 1:
+            raise EvaluationError(
+                "precision must be a positive number of decimal digits"
+            )
+        if not isinstance(requests, Mapping):
+            raise EvaluationError(
+                "correlated requests must map labels to CorrelatedRequest"
+            )
+        snapshot = dict(self._vectors)
+        assignments: list[dict[int, object]] = []
+        assignment_ids: dict[tuple[object, ...], int] = {}
+        routes: list[tuple[str, str, int]] = []
+        for label, request in requests.items():
+            if not isinstance(label, str) or not label:
+                raise EvaluationError(
+                    "correlated request labels must be nonempty strings"
+                )
+            if not isinstance(request, CorrelatedRequest):
+                raise EvaluationError(
+                    "correlated requests must contain CorrelatedRequest records"
+                )
+            identifier = request.color_correlation
+            if identifier not in self._matrices:
+                raise EvaluationError(f"unknown colour correlation ID {identifier!r}")
+            vectors = self._copy_spin_vectors(
+                snapshot if request.spin_vectors is None else request.spin_vectors
+            )
+            prepared = _prepare_spin_vectors(
+                vectors,
+                allowed_legs=self._declarations.spin_legs,
+                point_count=len(momenta),
+            )
+            # Normalize broadcast/per-point shapes, without a float conversion.
+            # Decimal tuples conservatively preserve signed zero and precision.
+            key: tuple[object, ...] = tuple(
+                tuple(
+                    (
+                        leg,
+                        tuple(
+                            (real.as_tuple(), imag.as_tuple()) for real, imag in wave
+                        ),
+                    )
+                    for leg, wave in sorted(point.items())
+                )
+                for point in prepared
+            )
+            if key not in assignment_ids:
+                assignment_ids[key] = len(assignments)
+                assignments.append(vectors)
+            routes.append((label, identifier, assignment_ids[key]))
+        if not routes:
+            return {}
+        by_assignment: dict[int, dict[str, list[str]]] = {}
+        for label, identifier, assignment in routes:
+            by_assignment.setdefault(assignment, {}).setdefault(identifier, []).append(
+                label
+            )
+        results: dict[str, list[CorrelatedValue]] = {
+            label: [] for label, _, _ in routes
+        }
+        plans: dict[tuple[int, str], _ContractionPlan] = {}
+        for (
+            point_index,
+            assignment,
+            batch,
+        ) in self._executor.iter_coherent_amplitudes_many(
+            momenta,
+            spin_vector_sets=assignments,
+            helicities=helicities,
+            precision=_working_precision(precision),
+        ):
+            for identifier, labels in by_assignment[assignment].items():
+                plan_key = (assignment, identifier)
+                if plan_key not in plans:
+                    plans[plan_key] = _prepare_contraction(
+                        batch.groups, self._matrices[identifier], precision=precision
+                    )
+                value = plans[plan_key].evaluate(batch, precision=precision)[0]
+                for label in labels:
+                    if len(results[label]) != point_index:
+                        raise ArtifactError(
+                            "correlated batch returned inconsistent point ordering"
+                        )
+                    results[label].append(value)
+        if any(len(values) != len(momenta) for values in results.values()):
+            raise ArtifactError("correlated batch did not cover all requested points")
+        return {label: tuple(values) for label, values in results.items()}

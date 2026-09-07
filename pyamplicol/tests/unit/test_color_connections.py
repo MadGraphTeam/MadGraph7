@@ -20,7 +20,9 @@ from pyamplicol.color.connections import (
     all_outgoing_color_leg,
     apply_color_connection,
     color_connection_matrix_element,
+    contract_connected_tensor_nc_terms,
     contract_connected_tensors,
+    evaluate_color_nc_terms,
 )
 
 _QQ_LEGS = (ColorLeg(1, 3), ColorLeg(2, -3))
@@ -178,6 +180,72 @@ def test_physical_dipole_normalization_and_signed_offdiagonal():
     assert color_connection_matrix_element(
         _QQ, quark, _QQ, anti
     ) == ExactColorCoefficient(-4)
+
+
+@pytest.mark.parametrize(
+    ("emissions", "expected"),
+    (
+        ((EmitGluon(1, 3),), {2: Fraction(1, 2), 0: Fraction(-1, 2)}),
+        (
+            (EmitGluon(1, 3), EmitGluon(1, 4)),
+            {3: Fraction(1, 4), 1: Fraction(-1, 2), -1: Fraction(1, 4)},
+        ),
+        (
+            (EmitGluon(1, 3), SplitGluon(3, 4, 5)),
+            {2: Fraction(1, 4), 0: Fraction(-1, 4)},
+        ),
+        (
+            (EmitGluon(1, 3), EmitGluon(1, 4), EmitGluon(1, 5)),
+            {
+                4: Fraction(1, 8),
+                2: Fraction(-3, 8),
+                0: Fraction(3, 8),
+                -2: Fraction(-1, 8),
+            },
+        ),
+        (
+            (EmitGluon(1, 3), SplitGluon(3, 4, 5), EmitGluon(4, 6)),
+            {3: Fraction(1, 8), 1: Fraction(-1, 4), -1: Fraction(1, 8)},
+        ),
+    ),
+)
+def test_laurent_coefficients_preserve_casimirs_and_splitting_through_n3lo(
+    emissions, expected
+):
+    image = apply_color_connection(_QQ, ColorConnection(_QQ_LEGS, emissions))
+    terms = contract_connected_tensor_nc_terms(image, image)
+    assert terms == {
+        power: ExactColorCoefficient(value) for power, value in expected.items()
+    }
+    assert evaluate_color_nc_terms(terms) == contract_connected_tensors(image, image)
+
+
+def test_laurent_terms_are_not_cancelled_only_because_nc_is_three():
+    # (Nc - 3) delta_ij is zero at Nc=3, but not the zero Laurent tensor.
+    image = ConnectedColorTensor(
+        _QQ_LEGS,
+        (
+            TensorTerm(ExactColorCoefficient(1), _QQ, 1),
+            TensorTerm(ExactColorCoefficient(-3), _QQ),
+        ),
+    )
+    assert len(image.terms) == 2
+    terms = contract_connected_tensor_nc_terms(image, image)
+    assert terms == {
+        3: ExactColorCoefficient(1),
+        2: ExactColorCoefficient(-6),
+        1: ExactColorCoefficient(9),
+    }
+    assert evaluate_color_nc_terms(terms) == ExactColorCoefficient()
+
+
+def test_empty_trace_retains_its_symbolic_nc_power():
+    tensor = ColorTensor(_QQ.open_strings, ((),))
+    image = apply_color_connection(tensor, ColorConnection(_QQ_LEGS))
+    assert image.terms == (TensorTerm(ExactColorCoefficient(1), _QQ, 1),)
+    assert contract_connected_tensor_nc_terms(image, image) == {
+        3: ExactColorCoefficient(1)
+    }
 
 
 def test_all_outgoing_crossing_is_separate_and_dualizes_only_fundamentals():

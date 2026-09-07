@@ -19,10 +19,10 @@ structures). It is **not** a complete N3LO subtraction implementation: no
 loop amplitudes, kinematic splitting kernels, integrated counterterms, or
 extra-dimensional spin components are supplied.
 
-The current correlated path is **full-colour SU(3) only**, through the Python
-runtime. LC and NLC truncations of colour-connected matrix elements are not
-implemented. The ordinary uncorrelated LC, NLC, and full-colour modes remain
-available independently.
+The correlated path supports **LC, NLC and full colour** through the Python
+runtime, with the approximation selected at generation. It retains the
+complete colour basis and uses direct contraction. Ordinary uncorrelated
+generation and evaluation are unchanged.
 
 ## Generate and evaluate
 
@@ -32,12 +32,13 @@ This small example uses the built-in Standard Model and a new output directory:
 from pyamplicol import (
     ColorCorrelator, CorrelatorConfig, Generator, ModelSource, Runtime,
 )
+from pyamplicol.config import ColorConfig, RunConfig
 
 declarations = CorrelatorConfig(
     color_correlations=(ColorCorrelator.dipole("T13", 1, 3),),
     spin_correlations=((3,), (3, 4)),
 )
-result = Generator().generate(
+result = Generator(RunConfig(color=ColorConfig(accuracy="full"))).generate(
     "g g > g g",
     "artifacts/gg_correlated",
     model=ModelSource.built_in_sm(),
@@ -80,6 +81,61 @@ to ordinary double precision. An ordered colour correlation can be complex:
 do not discard its imaginary part before forming the intended physical
 combination. All calls use the runtime's current model parameters and
 normalization settings.
+
+## Several requests and several phase-space points
+
+Use `evaluate_correlated_many` to share amplitudes between requested operators,
+instead of calling `evaluate_correlated` in a loop. Requests are named by the
+caller; several names can select the same generated colour ID with different
+spin vectors. For the generated example above:
+
+```python
+from pyamplicol import CorrelatedRequest
+
+points = (point, point)  # Replace with any batch of distinct physical points.
+requests = {
+    "born": CorrelatedRequest(color_correlation="born", spin_vectors={}),
+    "dipole_13": CorrelatedRequest(color_correlation="T13", spin_vectors={}),
+    "spin_3": CorrelatedRequest(
+        color_correlation="born", spin_vectors={3: (0, 0, 1, 0)}
+    ),
+    "dipole_13_spin_3": CorrelatedRequest(
+        color_correlation="T13", spin_vectors={3: (0, 0, 1, 0)}
+    ),
+}
+values = runtime.evaluate_correlated_many(points, requests, precision=40)
+
+# Axis 1 is the request name; axis 2 is the original phase-space point index.
+entry = values["dipole_13_spin_3"][1]  # Second point, this specific contraction.
+print(entry.real, entry.imag)          # Decimal, preserving complex correlations.
+all_points_for_dipole = values["dipole_13"]
+all_requests_at_second_point = {name: series[1] for name, series in values.items()}
+assert all(len(series) == len(points) for series in values.values())
+```
+
+The returned dictionary preserves request order and each tuple preserves input
+point order. No result axis is flattened or summed over the requested IDs.
+Spectator helicities are still summed, or restricted by the batch-global
+`helicities` selector; they are not a third returned axis. Per-point spin
+vectors use the same vector-batch notation as the setter below.
+
+`spin_vectors=None` (the default) inherits a snapshot of the current setter
+state. An explicit `{}` instead requests physical helicities, even when the
+setter holds vectors. Request-local vectors do not change that state. All
+requests are validated before evaluation; an unknown colour ID or invalid spin
+class does not partially update the runtime.
+
+For each distinct spin assignment the amplitudes are calculated once and
+shared by all its colour requests. Across assignments, existing evaluation
+stages with exactly unchanged inputs can also be reused. This is stage-level
+sharing, not construction of a full spin-density tensor. Its benefit depends
+on which stages depend on the changed vectors. Numerical caches are local to
+the call and streamed point by point; parameter or precision changes on later
+calls cannot reuse an earlier numerical result.
+
+The standalone [local NLO limit example](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/NLO_limits/nlo_limit_stability_tests.py)
+uses both axes: all required dipoles are requested together, with the whole
+approach to an unresolved limit supplied as a phase-space batch.
 
 ## Spin vectors and joint classes
 
@@ -203,7 +259,7 @@ The equivalent declaration file `correlators.json` is:
 
 ```console
 pyamplicol generate 'g g > g g' artifacts/gg_correlated_cli \
-  --model built-in-sm --correlators correlators.json
+  --model built-in-sm --color-accuracy full --correlators correlators.json
 ```
 
 `CorrelatorConfig.to_json_dict()` and `from_json_dict()` use this same schema.
@@ -216,20 +272,23 @@ numerical vector setting and correlated evaluation currently use Python.
 | Requested quantity | Correlated support |
 | --- | --- |
 | Full colour | Exact SU(3) colour matrices, including interference |
-| Leading colour (LC) | Not implemented for correlations |
-| Next-to-leading colour (NLC) | Not implemented for correlations |
+| Leading colour (LC) | Leading powers of the inserted colour matrix |
+| Next-to-leading colour (NLC) | Inherited first-subleading colour-matrix approximation |
 
-Passing `correlators=` selects full colour, direct contraction, and generic
-compiled amplitudes, overriding ordinary LC/NLC or other execution settings;
-these adjustments are recorded in the effective generation configuration.
-In particular, `--color-accuracy lc --correlators ...` does **not** produce an
-LC correlator. There is no runtime colour-accuracy or single-flow selector for
-`evaluate_correlated`.
+`color.accuracy` (CLI `--color-accuracy lc|nlc|full`) selects the correlated
+answer at generation. The ordinary default is LC; specify `full` explicitly
+for exact SU(3) contractions, as above. Passing `correlators=` still selects
+direct contraction and generic compiled amplitudes and disables unsupported
+reductions, recording those adjustments in the effective configuration.
+There is no runtime colour-accuracy or single-flow selector for either
+correlated method. Generate separate outputs to compare accuracies.
 
-An LC/NLC extension must retain the powers of the number of colours in the
-connected colour matrix before truncating them consistently. Selecting Born
-flows, dropping off-diagonal entries, or multiplying ordinary LC/NLC Born
-results by colour charges is not a general substitute for that calculation.
+The underlying amplitude output remains complete and full-colour. Ordinary
+`Runtime.evaluate` on it therefore evaluates that underlying full-colour
+process; use `evaluate_correlated(..., color_correlation="born")` for the
+Born result at the requested correlated accuracy. See
+[the colour-accuracy convention](correlator-conventions.md#colour-accuracy)
+for the inherited LC/NLC prescription and its retained-order checks.
 
 Correlated generation selects complete full-colour, direct, generic compiled
 amplitudes and disables helicity-specific zero/parity reductions and current
@@ -244,7 +303,8 @@ process aliases/permutations, partial helicity/colour generation, and append
 mode are not supported by this correlation path. Existing artifacts without
 the explicit declaration cannot be upgraded merely by setting vectors.
 Ordinary generation and `Runtime.evaluate(...)` are unchanged; setting spin
-vectors affects only `evaluate_correlated(...)`.
+vectors affects only `evaluate_correlated(...)` and inherited requests in
+`evaluate_correlated_many(...)`.
 
 ## References
 

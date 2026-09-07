@@ -24,9 +24,10 @@ for guided workflows, API examples, technical reference, and release support.
 
 Opt-in [tree-level spin and colour correlations](docs/correlators.md) prepare
 named colour operators at generation and accept spin-contraction vectors at
-runtime. This separate Python path supports full-colour SU(3) connections
-through N3LO colour structures; correlated LC/NLC approximations and native
-correlation calls are not yet implemented.
+runtime. This separate Python path supports LC, NLC and full-colour connections
+through N3LO colour structures. Multiple requests share amplitudes and accept
+batches of phase-space points. Native-language correlation calls are not yet
+implemented.
 
 ## Installation
 
