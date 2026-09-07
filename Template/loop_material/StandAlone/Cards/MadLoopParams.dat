@@ -84,6 +84,9 @@
 !     You can add other evaluation method to check for the stability in DP and QP.
 !     Below you can chose if you want to use zero, one or two rotations of the PS point 
 !     in QP.
+!     WARNING:: do not use rotations for polarised matrix elements with an
+!     external particle at rest: the spin axis is tied to the frame axes, so
+!     a rotated evaluation legitimately differs and looks 'unstable'.
 #NRotations_DP
 !0
 ! Default :: 0

@@ -40,10 +40,12 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
+import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.various.banner as banner_mod
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 from madgraph.iolibs.files import cp, ln, mv
 
+import madgraph.iolibs.export_v4 as export_v4
 from madgraph.iolibs.export_v4 import VirtualExporter, ProcessExporterFortran
 import madgraph.various.misc as misc
 
@@ -3349,14 +3351,17 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with open(merged_file_name, 'w') as f:
             json.dump(self.get_merged_info(), f)
 
-        # Generate Cards/run_card.toml from the template, filling in
-        # process-dependent defaults (mirrors the LO run_card.dat logic).
-        self.create_run_card(matrix_elements, history)
-
         # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
         # post-processing driver (get_characteristics) so that the madevent
         # tool interface can run on this directory.
+        # NB: this must come *before* create_run_card: it is what fills in
+        # self.proc_characteristic, and the run_card defaults are derived from
+        # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
         self.create_proc_characteristics(matrix_elements)
+
+        # Generate Cards/run_card.toml from the template, filling in
+        # process-dependent defaults (mirrors the LO run_card.dat logic).
+        self.create_run_card(matrix_elements, history)
 
         # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
         # Point it at the MG5 install so tool paths (pythia8, etc.) and the
@@ -3549,7 +3554,14 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
     cformat = cmd._export_format
-    
+
+    # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
+    # loop legs: it builds its edge names from the external legs alone).
+    if cformat not in export_v4.LOOP_INDUCED_FORMATS and cmd._curr_amps and \
+       isinstance(cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+        raise InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                                     cformat, cmd._curr_amps[0].get('process')))
+
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':

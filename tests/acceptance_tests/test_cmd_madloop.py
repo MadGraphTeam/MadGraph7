@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import glob
 import subprocess
 import unittest
 import os
@@ -33,6 +34,7 @@ import madgraph.interface.master_interface as MGCmd
 import madgraph.interface.amcatnlo_run_interface as NLOCmd
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
+import madgraph.core.color_amp as color_amp
 import tests.IOTests as IOTests
 import madgraph.various.lhe_parser as lhe_parser
 
@@ -186,6 +188,76 @@ class TestCmdLoop(unittest.TestCase):
             raise
         self.setup_logFile_for_logger('madgraph.check_cmd',restore=True)
 
+    def test_improve_ps_keeps_a_leg_at_rest(self):
+        """IMPROVE_PS_POINT_PRECISION must not destroy an exactly-zero
+        three-momentum.
+
+        A polarised matrix element is evaluated in a frame where the selected
+        leg is at rest, and boost_to_frame puts its three-momentum at exactly
+        zero on purpose: HELAS reads the spin quantisation axis of a massive
+        vector off 'pp.eq.rZero'. The PSMC branch of improve_ps used to
+        restore momentum conservation by dumping the residual into leg
+        NEXTERNAL unconditionally, so whenever the at-rest leg was the last
+        one its exact zero came back as a ~1e-14 vector and the longitudinal
+        polarisation vector was built along rounding noise. On g g > z{0}
+        z{0} [noborn=QCD] that split me_frame=[3] from me_frame=[4] by 26%%.
+
+        This drives the routine directly, so the check is exact rather than
+        statistical, and it covers both entry points: the double precision
+        wrapper and the quad routine reached through SET_MP_PS on the
+        stability-escalation path.
+        """
+        out_dir = pjoin(self.tmpdir, 'ML_improve_ps')
+        self.do('import model loop_sm')
+        self.do('generate g g > z z [sqrvirt=QCD]')
+        self.do('output standalone %s -f' % out_dir)
+
+        proc_dir = pjoin(out_dir, 'SubProcesses', 'P0_gg_zz')
+        prefix = open(pjoin(proc_dir, 'proc_prefix.txt')).read().strip()
+
+        # SET_MP_PS is the second entry point; it improves the raw momenta in
+        # quad, so it has to reach the same routine the driver calls.
+        loop_matrix = open(pjoin(proc_dir, 'loop_matrix.f')).read()
+        set_mp_ps = loop_matrix.split('SUBROUTINE %sSET_MP_PS(P)' % prefix)[1]
+        set_mp_ps = set_mp_ps.split('\n      END\n')[0]
+        self.assertIn('CALL %sMP_IMPROVE_PS_POINT_PRECISION' % prefix,
+                      set_mp_ps)
+
+        driver = open(pjoin(_pickle_path,
+                            'improve_ps_at_rest_driver.f')).read()
+        driver = driver.replace('__PFX__', prefix)
+        driver_path = pjoin(proc_dir, 'improve_ps_at_rest_driver.f')
+        open(driver_path, 'w').write(driver)
+
+        exe = pjoin(proc_dir, 'improve_ps_at_rest')
+        compile = subprocess.Popen(
+            ['gfortran', '-ffixed-line-length-132',
+             '-I%s' % proc_dir, '-I%s' % pjoin(out_dir, 'SubProcesses'),
+             driver_path, pjoin(proc_dir, 'improve_ps.f'), '-o', exe],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=proc_dir)
+        (out, _) = compile.communicate()
+        self.assertEqual(compile.returncode, 0,
+                         'could not build the improve_ps driver:\n%s'
+                         % out.decode())
+
+        run = subprocess.Popen([exe], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, cwd=proc_dir)
+        (out, _) = run.communicate()
+        out = out.decode()
+        self.assertEqual(run.returncode, 0, out)
+
+        results = [l.split() for l in out.split('\n')
+                   if l.startswith('RESULT ')]
+        # 2 at-rest legs x 2 ImprovePSPoint settings x 2 entry points
+        self.assertEqual(len(results), 8, out)
+        for _, entry, leg, mode, px, py, pz in results:
+            for label, value in (('px', px), ('py', py), ('pz', pz)):
+                self.assertEqual(
+                    float(value), 0.0,
+                    'improve_ps moved leg %s off rest (%s, entry %s, '
+                    'ImprovePSPoint=%s): %s = %s'
+                    % (leg, label, entry, mode, label, value))
+
     def test_generate_output_semicolon_preserves_loop_process(self):
         """Regression test for combined generate/output in one command line."""
 
@@ -199,6 +271,33 @@ class TestCmdLoop(unittest.TestCase):
         self.assertIn('not allowed in the output path', str(ctx.exception))
         self.assertNotIn('No processes generated', str(ctx.exception))
         self.assertTrue(self.interface._curr_amps)
+
+    def test_loop_nc_memo_not_poisoned_across_generations(self):
+        """Two loop generations in one process. The first one runs with
+        compute_loop_nc=False; it must not pin loop_Nc_power in the
+        process-wide color memo for the loop-induced generation that follows,
+        which needs the real value to write coloramps.inc.
+
+        Value-level discrimination lives in the unit test
+        (test_color_amp.LoopNcMemoTest); this one guards the reported crash."""
+
+        # The poisoning generation must be the one that fills the memo: if a
+        # good value lands first the poisoning is inert and this test would
+        # pass on a broken tree.
+        color_amp.ColorBasis._canonical_dict.clear()
+
+        self.do('import model loop_sm')
+        self.do('generate g g > h [sqrvirt=QCD]')
+        self.do('output standalone_fortran %s -f' % pjoin(self.tmpdir, 'sqrvirt'))
+
+        self.do('generate g g > h [noborn=QCD]')
+        self.do('output madevent %s -f' % pjoin(self.tmpdir, 'noborn'))
+
+        coloramps = glob.glob(pjoin(self.tmpdir, 'noborn', 'SubProcesses',
+                                    'P*', 'coloramps.inc'))
+        self.assertTrue(coloramps)
+        for f in coloramps:
+            self.assertIn('ICOLAMP', open(f).read())
 
     def test_ML_check_full_epem_ttx(self):
         """ Test that check full e+ e- > t t~ works fine """
@@ -1254,6 +1353,28 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         IOTests.IOTest.remove_f77_function_from_file(
                     pjoin(self.IOpath,'ggttx_IOTest', 'SubProcesses','MadLoopCommons.f'),
                     'PRINT_MADLOOP_BANNER')
+
+    @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
+    def testIO_loop_induced_standalone_output(self):
+        r""" target: gghLI_IOTest/SubProcesses/P0_gg_h/[(check_sa|loop_matrix)\.f]
+        """
+        # A loop-induced ([noborn=]) process is exported from the MadGraph
+        # interface, which used to hand the loop matrix element to the
+        # tree-level standalone exporter and crash.
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+
+        # Select the Tensor Integral to include in the test
+        misc.deactivate_dependence('pjfry', cmd = interface, log='stdout')
+        misc.deactivate_dependence('samurai', cmd = interface, log='stdout')
+        misc.deactivate_dependence('golem', cmd = interface, log='stdout')
+        misc.activate_dependence('ninja', cmd = interface, log='stdout',MG5dir=MG5DIR)
+
+        # no 'import model': validate_model must bootstrap sm -> loop_sm itself
+        interface.exec_cmd('generate g g > h [noborn=QCD]', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.onecmd('output standalone %s -f' %
+                                    str(pjoin(self.IOpath,'gghLI_IOTest')))
         
 
 

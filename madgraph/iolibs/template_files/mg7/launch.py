@@ -115,6 +115,14 @@ def resolve_verbosity(verbosity: str) -> str:
     return verbosity
 
 
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
+
+
 def device_type_of(device_name: str) -> str:
     """The device type of one 'device' run_card entry (the optional ':<index>'
     suffix is stripped)."""
@@ -247,6 +255,10 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        # Resolved once so every generator built during this run shares the same
+        # seed; the concrete value (even if randomly drawn) is recorded in each
+        # generator's info.json.
+        self.run_seed = resolve_seed(self.run_card["run"]["seed"])
         self.param_card_path = os.path.join("Cards", "param_card.dat")
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
@@ -257,6 +269,85 @@ class MadgraphProcess:
         else:
             self.merged_subprocess_data = None
 
+        self.init_decay_mode()
+
+    def init_decay_mode(self) -> None:
+        """Decide whether this directory is a decay (1 -> n) or a collision.
+
+        Read off the exported process rather than the run card: the two cannot
+        then disagree. MadSpin generates its decay matrix elements this way.
+        """
+        incoming_counts = {
+            len(clean_pids(meta["incoming"])) for meta in self.subprocess_data
+        }
+        if incoming_counts - {1, 2}:
+            raise ValueError(
+                f"processes with {sorted(incoming_counts)} incoming particles "
+                "are not supported"
+            )
+        if len(incoming_counts) > 1:
+            raise ValueError(
+                "cannot mix decays and collisions in one output directory"
+            )
+        self.is_decay = incoming_counts == {1}
+        if not self.is_decay:
+            self.decaying_mass = None
+            return
+
+        masses = {
+            self.get_mass(clean_pids(meta["incoming"])[0])
+            for meta in self.subprocess_data
+        }
+        if len(masses) > 1:
+            raise ValueError(
+                f"decaying particles have different masses: {sorted(masses)}"
+            )
+        self.decaying_mass = masses.pop()
+        if self.decaying_mass <= 0.0:
+            raise ValueError("the decaying particle must have a non-zero mass")
+        self.drop_closed_channels()
+
+    def drop_closed_channels(self) -> None:
+        """Remove subprocesses the decaying particle is too light to produce.
+
+        A multiparticle decay definition enumerates every vertex the model
+        allows, closed ones included: "t > b w+, w+ > all all" yields
+        t > b t b~ (and b W+ Z, b W+ h, ...), which need more mass than the top
+        has. Their partial width is exactly zero, but the phase-space mapping
+        has no physical point to hand back -- the invariant's lower bound ends
+        up above its upper bound -- so it produces NaN momenta and poisons the
+        whole integral. Drop them here instead.
+        """
+        kept, dropped = [], []
+        for meta in self.subprocess_data:
+            total = sum(
+                self.get_mass(pid) for pid in clean_pids(meta["outgoing"])
+            )
+            if total < self.decaying_mass:
+                kept.append(meta)
+            else:
+                dropped.append((meta["outgoing"], total))
+        if dropped and self.merged_subprocess_data is not None:
+            # merged_subprocesses.json indexes the *unfiltered* subprocess
+            # list, so dropping entries here would silently shift every index
+            # it holds. Refuse rather than mis-map.
+            raise ValueError(
+                "merge_subprocesses is not supported for a decay directory "
+                "with kinematically closed channels"
+            )
+        if dropped:
+            for outgoing, total in dropped:
+                logger.info(
+                    "skipping closed decay channel -> %s (needs %.4g GeV, "
+                    "the decaying particle has %.4g GeV)",
+                    outgoing, total, self.decaying_mass,
+                )
+        if not kept:
+            raise ValueError(
+                "every decay channel is kinematically closed: the decaying "
+                f"particle's mass is {self.decaying_mass} GeV"
+            )
+        self.subprocess_data = kept
 
     def init_backend(self) -> None:
         ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
@@ -286,7 +377,7 @@ class MadgraphProcess:
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
-        for i, device_name in enumerate(device_names):
+        for device_name in device_names:
             if ":" in device_name:
                 device_type, device_index_str = device_name.split(":")
                 device_index = int(device_index_str)
@@ -413,8 +504,14 @@ class MadgraphProcess:
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
 
-        self.e_cm = beam_args["e_cm"]
-        self.leptonic = beam_args["leptonic"]
+        if self.is_decay:
+            # No beams: the total energy is the decaying particle's mass, and
+            # "leptonic" is what the mappings call "no parton luminosity".
+            self.e_cm = self.decaying_mass
+            self.leptonic = True
+        else:
+            self.e_cm = beam_args["e_cm"]
+            self.leptonic = beam_args["leptonic"]
 
         dynamical_scales = {
             "transverse_energy": ms.EnergyScale.transverse_energy,
@@ -434,6 +531,22 @@ class MadgraphProcess:
             fact_scale1=beam_args["fact_scale1"],
             fact_scale2=beam_args["fact_scale2"],
         )
+        if self.is_decay:
+            # One scale is available for a decay -- the decaying mass -- so use
+            # it, fixed, whatever the card asks for.
+            self.scale_kwargs.update(
+                ren_scale_fixed=True,
+                fact_scale_fixed=True,
+                ren_scale=self.decaying_mass,
+                fact_scale1=self.decaying_mass,
+                fact_scale2=self.decaying_mass,
+            )
+            self.pdf_grid = None
+            self.alphas_grid = ms.AlphaSGrid(self.write_fixed_alphas_info())
+            for context in self.contexts:
+                self.alphas_grid.initialize_globals(context)
+            self.running_coupling = ms.RunningCoupling(self.alphas_grid)
+            return
 
         pdf_set = beam_args["pdf"]
         self.ensure_pdf_set(pdf_set)
@@ -778,6 +891,35 @@ class MadgraphProcess:
             for label, value in rows:
                 logger.info("systematics, %s %s", label, value)
 
+    def write_fixed_alphas_info(self) -> str:
+        """Write a minimal LHAPDF ``.info`` holding a constant alpha_s.
+
+        A decay has no beams, so there is no PDF set to take alpha_s from --
+        and demanding one (possibly downloading it) just to evaluate a coupling
+        would be absurd. The renormalisation scale of a decay is fixed at the
+        decaying mass anyway, so a constant alpha_s is the right answer, not an
+        approximation: take it from the param card, exactly as the Fortran
+        decay matrix elements do.
+        """
+        # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
+        # parameter setup feeds to G.
+        alpha_s = float(self.param_card.get_value("sminputs", 3))
+        path = os.path.join(self.run_path, "fixed_alphas.info")
+        # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
+        # comfortable number of nodes rather than the bare minimum of three.
+        q_values = [10 ** (i / 4.0) for i in range(-4, 21)]
+        with open(path, "w") as f:
+            f.write("SetDesc: constant alpha_s for a decay (no beams)\n")
+            f.write("AlphaS_Qs: [%s]\n" % ", ".join(f"{q:g}" for q in q_values))
+            f.write(
+                "AlphaS_Vals: [%s]\n"
+                % ", ".join(f"{alpha_s:g}" for _ in q_values)
+            )
+        logger.info(
+            "decay mode: fixed alpha_s = %g at mu = %g GeV", alpha_s, self.e_cm
+        )
+        return path
+
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
@@ -921,6 +1063,7 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=self.status_file,
             config=self.event_generator_config,
+            seed=self.run_seed,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -931,29 +1074,45 @@ class MadgraphProcess:
         return event_generator
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace | None]
+        self, phasespaces: list[PhaseSpace | None], survey_pass: int = 0
     ) -> ms.EventGenerator | None:
         ps_filtered = [ps for ps in phasespaces if ps is not None]
         if len(ps_filtered) == 0:
             return None
         event_generator = self.build_event_generator(ps_filtered)
-        event_generator.survey()
+        event_generator.survey(survey_pass)
         return event_generator
 
     def survey(self) -> None:
+        # survey_pass distinguishes the survey() calls below: "both" mode can
+        # re-survey a channel carried over unchanged from the multichannel pass
+        # into the final (simplified) pass, and both passes schedule jobs on the
+        # same underlying ChannelEventGenerator. The explicit pass index keeps each
+        # pass's job seeds independent of the other passes' job counts, rather than
+        # depending on call history.
         phasespace_mode = self.run_card["phasespace"]["mode"]
+        if self.is_decay and phasespace_mode != "multichannel":
+            # The flat mapping is built from a synthetic two-incoming diagram,
+            # which a decay has no counterpart for -- and 'both'/'auto' end up
+            # simplifying towards it. Decays have few channels, so the
+            # multichannel phase space is the right one regardless.
+            logger.info(
+                "decay mode: using the multichannel phase space instead of "
+                "'%s'", phasespace_mode
+            )
+            phasespace_mode = "multichannel"
         if phasespace_mode in ["multichannel", "both", "auto"]:
             self.phasespaces = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         elif phasespace_mode == "flat":
             self.phasespaces = [
                 subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -965,8 +1124,8 @@ class MadgraphProcess:
             variance = 0.
             count_opt = 0
             for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
-                mean += status.mean
-                variance += status.error**2
+                mean += status.mean_abs
+                variance += status.error_abs**2
                 count_opt += status.count_opt
             rsd = (variance * count_opt)**0.5 / mean
             subproc.set_madnis_auto_settings(rsd)
@@ -999,7 +1158,10 @@ class MadgraphProcess:
             ps_multi is not ps_both
             for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
         ):
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            # distinct survey_pass: a channel carried over unchanged from the
+            # multichannel pass (pass 0) into this resurvey must not share its
+            # seed stream with that earlier pass.
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 1)
 
     def train_madnis(self) -> None:
         madnis_args = self.run_card["madnis"]
@@ -1039,7 +1201,8 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps = madnis_args["buffered_steps"]
+            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
@@ -1070,6 +1233,11 @@ class MadgraphProcess:
             training_args=training_args,
             verbosity=verbosity,
             status_file=self.status_file,
+            # Reuses the run's resolved seed (also used by build_event_generator()).
+            # Only the single-channel CPU sample-generation path is currently seeded
+            # -- buffered training and GPU multi-channel batches are still
+            # non-deterministic.
+            seed=self.run_seed,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -1267,6 +1435,12 @@ class MadgraphProcess:
         beam particle, so hadronic beams are protons (2212); leptonic beams are
         the incoming leptons themselves."""
         half_e = float(self.e_cm) / 2.
+        if self.is_decay:
+            # No beams. LHE has no way to say that, so report the decaying
+            # particle at rest as a single "beam"; the second slot is empty.
+            data = self.subprocess_data[0]
+            pdg = clean_pids(data["incoming"])[0]
+            return [pdg, 0], [float(self.e_cm), 0.0]
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], [half_e, half_e]
@@ -1314,6 +1488,9 @@ class MadgraphProcess:
                 headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
         headers.append(ms.LHEHeader(name="slha", content=param_text))
         headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        # The resolved seed (even when the run_card requested a random one via
+        # seed = -1), so the run can be reproduced from the LHE file alone.
+        headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -1467,16 +1644,29 @@ class MadgraphProcess:
         return self.param_card.get_value("width", pid)
 
 
+# Flavor-merged legs carry a group id instead of a pdg. Every member of a group
+# shares the same mass -- that is what makes them mergeable -- so any member is
+# a valid representative for the kinematics.
+_MERGED_PID_REPRESENTATIVE = {
+    81: 1,   # light quarks   d u s c
+    82: 11,  # charged leptons e mu
+    83: 12,  # neutrinos      ve vm vt
+}
+
+
 def clean_pids(pids: list[int]) -> list[int]:
     pids_out = []
     for pid in pids:
         pid = abs(pid)
-        if pid == 81:
-            pid = 1
-        elif pid == 82:
-            pid = 11
-        elif pid == 83:
-            pid = 12
+        if pid in _MERGED_PID_REPRESENTATIVE:
+            pid = _MERGED_PID_REPRESENTATIVE[pid]
+        elif 81 <= pid <= 99:
+            # Reserved for flavor merging. Anything outside this window is a
+            # real pdg (BSM models use codes in the millions), so let it pass.
+            raise ValueError(
+                f"unknown flavor-merged particle id {pid}; add its "
+                "representative to _MERGED_PID_REPRESENTATIVE"
+            )
         pids_out.append(pid)
     return pids_out
 
@@ -2096,6 +2286,9 @@ class MadgraphSubprocess:
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
+        # Shared across all networks below: initialize_globals() derives an
+        # independent, non-colliding stream per tensor from this one base seed.
+        seed = self.process.run_seed
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -2113,10 +2306,11 @@ class MadgraphSubprocess:
                 invert_spline=madnis_args["flow_invert_spline"],
             )
             if channel.adaptive_mapping is None:
-                flow.initialize_globals(self.process.contexts[0])
+                flow.initialize_globals(self.process.contexts[0], seed)
             else:
                 flow.initialize_from_vegas(
-                    self.process.contexts[0], channel.adaptive_mapping.grid_name()
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name(),
+                    seed
                 )
             cond_dim += flow_dim
 
@@ -2133,7 +2327,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_sym.initialize_globals(self.process.contexts[0])
+                discrete_sym.initialize_globals(self.process.contexts[0], seed)
                 cond_dim += perm_count
 
             discrete_flavor = channel.discrete_flavor
@@ -2147,7 +2341,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_flavor.initialize_globals(self.process.contexts[0])
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
@@ -2221,7 +2415,9 @@ class MadgraphSubprocess:
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        cwnet.initialize_globals(self.process.contexts[0])
+        cwnet.initialize_globals(
+            self.process.contexts[0], self.process.run_seed
+        )
         return cwnet
 
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
@@ -2301,6 +2497,9 @@ class MadgraphSubprocess:
             cross_sections.append(
                 ms.DifferentialCrossSection(
                     matrix_element=mat,
+                    # For a decay this is the decaying particle's mass, and the
+                    # flux becomes 1/(2M): the result is a partial width in
+                    # GeV, not a cross section in pb.
                     cm_energy=self.process.e_cm,
                     running_coupling=None,
                     energy_scale=ms.CachedScale(),
@@ -2308,6 +2507,7 @@ class MadgraphSubprocess:
                     pdf1=pdf_arg,
                     pdf2=pdf_arg,
                     input_momentum_fraction=True,
+                    decay=self.process.is_decay,
                 )
             )
         partial_weights = self.process.systematics_enabled()
@@ -2907,7 +3107,12 @@ def run_lhe_postprocessing(process) -> None:
         return
     log = logging.getLogger('madevent')
 
-    if cfg.get('systematics'):
+    if cfg.get('systematics') and getattr(process, 'is_decay', False):
+        # Scale and PDF variations are a beam quantity. A decay has neither, so
+        # systematics can only fail here ("not supported for pdlabel=none") --
+        # and it is not free: MadSpin reruns the launcher for every pool refill.
+        log.info("decay mode: skipping systematics (no beams to vary)")
+    elif cfg.get('systematics'):
         native = getattr(process, 'systematics', None)
         if native is not None and native.weight_count > 0:
             log.warning("[postprocessing] systematics is ignored: the scale/PDF "

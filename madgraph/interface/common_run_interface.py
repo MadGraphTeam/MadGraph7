@@ -6004,9 +6004,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             print("no help available") 
           
         if banner:                      
-            logger.info('*** END HELP ***', '$MG:BOLD')    
-        #six.moves.input('press enter to quit the help')
-        return card       
+            logger.info('*** END HELP ***', '$MG:BOLD')
+        return card
 #     except Exception, error:
 #         if __debug__:
 #             import traceback
