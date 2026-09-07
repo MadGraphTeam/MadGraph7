@@ -577,6 +577,11 @@ NamedVector<Value> Integrand::build_channel_part(
         // event below xqcut ends up with weight zero and is never unweighted.
         weights_after_cuts.push_back(scales.at("xqcut_weight"));
     }
+    if (_energy_scale && _energy_scale->has_min_scale()) {
+        // Same for the floor on the scales themselves, which applies to every
+        // dynamical scale choice rather than only to the merging one.
+        weights_after_cuts.push_back(scales.at("scale_weight"));
+    }
 
     Value weight_after_cuts = weights_after_cuts.empty()
         ? fb.full({1., batch_size_acc})

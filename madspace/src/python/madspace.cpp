@@ -1220,6 +1220,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1227,9 +1228,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale_fixed"),
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
-            py::arg("fact_scale2")
+            py::arg("fact_scale2"),
+            py::arg("min_scale") = 0.
         )
-        .def(py::init<const MLMClustering&>(), py::arg("clustering"))
+        .def(
+            py::init<const MLMClustering&, double>(),
+            py::arg("clustering"),
+            py::arg("min_scale") = 0.
+        )
         .def("is_mlm", &EnergyScale::is_mlm);
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());

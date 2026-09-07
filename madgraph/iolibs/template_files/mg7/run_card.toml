@@ -47,6 +47,9 @@ jet_scale_scheme = %(beam.jet_scale_scheme)s
 # options: clustering_mean (geometric mean of every clustering scale),
 #          madevent (follow each beam's parton line, as madevent does)
 scale_scheme = %(beam.scale_scheme)s
+# floor on mu_R and mu_F: an event whose scales fall below this is dropped,
+# since a PDF grid has no densities there (0 disables it)
+min_scale = %(beam.min_scale)s
 
 [generation]
 events = %(generation.events)s

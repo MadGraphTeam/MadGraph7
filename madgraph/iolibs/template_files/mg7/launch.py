@@ -1377,11 +1377,14 @@ class MadgraphSubprocess:
                     hadronic=not self.process.leptonic,
                     external_pdg_ids=all_pids,
                     max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
-                )
+                ),
+                min_scale=self.process.run_card["beam"]["min_scale"],
             )
         else:
             self.scale = ms.EnergyScale(
-                particle_count=self.particle_count, **self.process.scale_kwargs
+                particle_count=self.particle_count,
+                min_scale=self.process.run_card["beam"]["min_scale"],
+                **self.process.scale_kwargs,
             )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:

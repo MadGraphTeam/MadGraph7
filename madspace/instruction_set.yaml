@@ -2232,6 +2232,9 @@ mlm_clustering_hadronic:
     - name: beam_flags
       type: [int, single]
       desc:
+    - name: jet_leg_mask
+      type: [int, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2292,6 +2295,9 @@ mlm_clustering_leptonic:
       type: [int, single]
       desc:
     - name: beam_flags
+      type: [int, single]
+      desc:
+    - name: jet_leg_mask
       type: [int, single]
       desc:
   outputs:

@@ -396,6 +396,7 @@ MLMClustering::MLMClustering(
     _jet_scale_scheme(jet_scale_scheme),
     _scale_scheme(scale_scheme),
     _beam_flags(0),
+    _jet_leg_mask(0),
     _xqcut(xqcut),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
@@ -425,6 +426,13 @@ MLMClustering::MLMClustering(
         }
         if (is_jet_pdg(pdg, max_jet_flavor)) {
             _beam_flags |= 1 << (2 * beam + 1);
+        }
+    }
+
+    for (std::size_t leg = 0; leg < n_ext; ++leg) {
+        int pdg = have_pdg_ids ? external_pdg_ids.at(leg) : 21;
+        if (is_jet_pdg(pdg, max_jet_flavor)) {
+            _jet_leg_mask |= 1 << leg;
         }
     }
 
@@ -652,7 +660,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_jet_scale_scheme),
             _xqcut,
             static_cast<me_int_t>(_scale_scheme),
-            static_cast<me_int_t>(_beam_flags)
+            static_cast<me_int_t>(_beam_flags),
+            static_cast<me_int_t>(_jet_leg_mask)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -668,7 +677,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_jet_scale_scheme),
             _xqcut,
             static_cast<me_int_t>(_scale_scheme),
-            static_cast<me_int_t>(_beam_flags)
+            static_cast<me_int_t>(_beam_flags),
+            static_cast<me_int_t>(_jet_leg_mask)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

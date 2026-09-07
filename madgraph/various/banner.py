@@ -6544,6 +6544,11 @@ class RunCardMG7(RunCard):
         # section, unlike jet_scale_scheme.
         self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
             allowed=['clustering_mean', 'madevent'])
+        # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
+        # the lowest Q of a PDF grid the densities are undefined, so an event
+        # whose scales fall under this is dropped. madevent applies the same
+        # floor to mu_F. 0 disables it.
+        self.add_toml_param('beam', 'min_scale', 2.0)
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)

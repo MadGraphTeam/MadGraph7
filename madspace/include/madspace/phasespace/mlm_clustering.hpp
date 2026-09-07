@@ -94,6 +94,7 @@ private:
     JetScaleScheme _jet_scale_scheme;
     ScaleScheme _scale_scheme;
     int _beam_flags;
+    int _jet_leg_mask;
     double _xqcut;
     double _bw_cutoff;
     double _jet_radius;
