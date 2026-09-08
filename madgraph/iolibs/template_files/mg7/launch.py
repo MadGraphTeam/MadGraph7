@@ -49,20 +49,6 @@ if not (_INSTALL_DIR / "madspace").is_dir():
 if str(_INSTALL_DIR) not in sys.path:
     sys.path.insert(0, str(_INSTALL_DIR))
 
-if "LHAPDF_DATA_PATH" in os.environ:
-    PDF_PATH = os.environ["LHAPDF_DATA_PATH"]
-else:
-    try:
-        import lhapdf
-        lhapdf.setVerbosity(0)
-        PDF_PATH = lhapdf.paths()[0]
-    except ImportError:
-        # Do not abort at import time: lhapdf is only needed when a PDF grid is
-        # actually loaded (see PdfGrid/AlphaSGrid below). Leave PDF_PATH unset
-        # so that code paths which do not require an external PDF still work;
-        # the missing-lhapdf error is raised lazily at the point of use.
-        PDF_PATH = None
-
 import madspace as ms
 from models.check_param_card import ParamCard
 from madgraph.various.banner import RunCardMG7
@@ -113,6 +99,14 @@ def resolve_verbosity(verbosity: str) -> str:
     if verbosity == "auto":
         return "pretty" if sys.stdout.isatty() else "log"
     return verbosity
+
+
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
 
 
 def device_type_of(device_name: str) -> str:
@@ -247,6 +241,10 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        # Resolved once so every generator built during this run shares the same
+        # seed; the concrete value (even if randomly drawn) is recorded in each
+        # generator's info.json.
+        self.run_seed = resolve_seed(self.run_card["run"]["seed"])
         self.param_card_path = os.path.join("Cards", "param_card.dat")
         self.param_card = ParamCard(self.param_card_path)
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
@@ -365,7 +363,7 @@ class MadgraphProcess:
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
-        for i, device_name in enumerate(device_names):
+        for device_name in device_names:
             if ":" in device_name:
                 device_type, device_index_str = device_name.split(":")
                 device_index = int(device_index_str)
@@ -463,31 +461,59 @@ class MadgraphProcess:
             if key != "order_by"
         ]
 
-    def ensure_pdf_set(self, pdf_set: str) -> None:
-        """Make sure the requested LHAPDF set is available, downloading it if
-        needed. The destination follows LHAPDF_DATA_PATH, otherwise the data
-        dir of the configured lhapdf (e.g. lhapdf6 in HEPTools), otherwise a
-        local directory -- and PDF_PATH is pointed at it so madspace uses it.
-        Both LHAPDF_DATA_PATH and MADGRAPH_LHAPDF_CONFIG are provided by
-        do_launch; nothing is downloaded when the set is already present."""
-        global PDF_PATH
-        data_path = os.environ.get("LHAPDF_DATA_PATH") or PDF_PATH
-        if data_path and os.path.isdir(os.path.join(data_path, pdf_set)):
-            PDF_PATH = data_path
-            return
-        lhapdf_config = os.environ.get("MADGRAPH_LHAPDF_CONFIG")
-        if not lhapdf_config:
-            return  # can't download; the missing-PDF error is raised below
-        if not data_path:
-            data_path = os.path.join(os.getcwd(), "lhapdf_pdfsets")
+    def ensure_pdf_set(self, pdf_set: str) -> misc.LhapdfPaths:
+        """Make sure the requested LHAPDF set is available, downloading it into
+        the first writable PDF directory if needed, and return the (possibly
+        updated) LHAPDF resolution. Nothing is downloaded when the set is
+        already present."""
+        paths = lhapdf_paths()
+        if paths.find_set(pdf_set):
+            return paths
+        if not paths.config:
+            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
+            return paths
+        if not paths.download_path:
+            logger.debug("no writable PDF directory: cannot download %s", pdf_set)
+            return paths
         try:
             from madgraph.interface.common_run_interface import CommonRunCmd
-            os.makedirs(data_path, exist_ok=True)
-            logger.info("PDF set %s not found; downloading into %s", pdf_set, data_path)
-            CommonRunCmd.install_lhapdf_pdfset_static(lhapdf_config, data_path, pdf_set)
-            PDF_PATH = data_path
+            os.makedirs(paths.download_path, exist_ok=True)
+            logger.info("PDF set %s not found; downloading into %s",
+                        pdf_set, paths.download_path)
+            CommonRunCmd.install_lhapdf_pdfset_static(
+                paths.config, paths.download_path, pdf_set)
         except Exception as err:
             logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+            return paths
+        global _LHAPDF
+        _LHAPDF = paths.with_data_path(paths.download_path)
+        return _LHAPDF
+
+    def _no_pdf_message(self, pdf_set: str) -> str:
+        """Explain a missing PDF set in terms of the settings that fix it."""
+        searched = os.pathsep.join(self.lhapdf.data_paths) or \
+            "(no PDF set directory could be located)"
+        if self.lhapdf.config:
+            found = "using lhapdf-config: %s" % self.lhapdf.config
+        else:
+            found = ("no usable lhapdf-config was found, so the set could not "
+                     "be downloaded automatically")
+        return (
+            "LHAPDF set %r, requested by [beam] pdf in Cards/run_card.toml, "
+            "was not found.\n"
+            "  searched: %s\n"
+            "  %s\n"
+            "Fix this in one of the following ways:\n"
+            "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
+            "  * point MadGraph at an existing one:\n"
+            "        MG7> set lhapdf /path/to/lhapdf-config\n"
+            "        MG7> save options\n"
+            "  * or set it for this directory only, by adding\n"
+            "        lhapdf = /path/to/lhapdf-config\n"
+            "    to %s\n"
+            "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
+            % (pdf_set, searched, found,
+               os.path.join("Cards", "me5_configuration.txt"), pdf_set))
 
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
@@ -530,6 +556,8 @@ class MadgraphProcess:
                 fact_scale2=self.decaying_mass,
             )
             self.pdf_grid = None
+            self.lhapdf = None
+            self.pdf_dir = None
             self.alphas_grid = ms.AlphaSGrid(self.write_fixed_alphas_info())
             for context in self.contexts:
                 self.alphas_grid.initialize_globals(context)
@@ -537,11 +565,12 @@ class MadgraphProcess:
             return
 
         pdf_set = beam_args["pdf"]
-        self.ensure_pdf_set(pdf_set)
-        if PDF_PATH is None:
-            raise RuntimeError("Can't load lhapdf module. Please set LHAPDF_DATA_PATH manually")
-        self.pdf_grid = ms.PdfGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}_0000.dat"))
-        self.alphas_grid = ms.AlphaSGrid(os.path.join(PDF_PATH, pdf_set, f"{pdf_set}.info"))
+        self.lhapdf = self.ensure_pdf_set(pdf_set)
+        self.pdf_dir = self.lhapdf.find_set(pdf_set)
+        if self.pdf_dir is None:
+            raise RuntimeError(self._no_pdf_message(pdf_set))
+        self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
+        self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
             self.alphas_grid.initialize_globals(context)
@@ -719,6 +748,7 @@ class MadgraphProcess:
             channels=channel_generators,
             status_file=self.status_file,
             config=self.event_generator_config,
+            seed=self.run_seed,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -729,16 +759,22 @@ class MadgraphProcess:
         return event_generator
 
     def survey_phasespaces(
-        self, phasespaces: list[PhaseSpace | None]
+        self, phasespaces: list[PhaseSpace | None], survey_pass: int = 0
     ) -> ms.EventGenerator | None:
         ps_filtered = [ps for ps in phasespaces if ps is not None]
         if len(ps_filtered) == 0:
             return None
         event_generator = self.build_event_generator(ps_filtered)
-        event_generator.survey()
+        event_generator.survey(survey_pass)
         return event_generator
 
     def survey(self) -> None:
+        # survey_pass distinguishes the survey() calls below: "both" mode can
+        # re-survey a channel carried over unchanged from the multichannel pass
+        # into the final (simplified) pass, and both passes schedule jobs on the
+        # same underlying ChannelEventGenerator. The explicit pass index keeps each
+        # pass's job seeds independent of the other passes' job counts, rather than
+        # depending on call history.
         phasespace_mode = self.run_card["phasespace"]["mode"]
         if self.is_decay and phasespace_mode != "multichannel":
             # The flat mapping is built from a synthetic two-incoming diagram,
@@ -755,13 +791,13 @@ class MadgraphProcess:
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         elif phasespace_mode == "flat":
             self.phasespaces = [
                 subproc.build_flat_phasespace()
                 for subproc in self.subprocesses
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -773,8 +809,8 @@ class MadgraphProcess:
             variance = 0.
             count_opt = 0
             for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
-                mean += status.mean
-                variance += status.error**2
+                mean += status.mean_abs
+                variance += status.error_abs**2
                 count_opt += status.count_opt
             rsd = (variance * count_opt)**0.5 / mean
             subproc.set_madnis_auto_settings(rsd)
@@ -807,7 +843,10 @@ class MadgraphProcess:
             ps_multi is not ps_both
             for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
         ):
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            # distinct survey_pass: a channel carried over unchanged from the
+            # multichannel pass (pass 0) into this resurvey must not share its
+            # seed stream with that earlier pass.
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 1)
 
     def train_madnis(self) -> None:
         madnis_args = self.run_card["madnis"]
@@ -847,7 +886,8 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps = madnis_args["buffered_steps"]
+            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
@@ -878,6 +918,11 @@ class MadgraphProcess:
             training_args=training_args,
             verbosity=verbosity,
             status_file=self.status_file,
+            # Reuses the run's resolved seed (also used by build_event_generator()).
+            # Only the single-channel CPU sample-generation path is currently seeded
+            # -- buffered training and GPU multi-channel batches are still
+            # non-deterministic.
+            seed=self.run_seed,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -1062,10 +1107,10 @@ class MadgraphProcess:
     def _lhapdf_id(self):
         """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
         or -1 for a leptonic beam (no PDF)."""
-        if self.leptonic:
+        if self.leptonic or not self.pdf_dir:
             return -1
         pdf_set = self.run_card["beam"]["pdf"]
-        info = os.path.join(PDF_PATH or "", pdf_set, "%s.info" % pdf_set)
+        info = os.path.join(self.pdf_dir, pdf_set, "%s.info" % pdf_set)
         try:
             for line in open(info):
                 if line.strip().startswith("SetIndex:"):
@@ -1095,6 +1140,9 @@ class MadgraphProcess:
                 headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
         headers.append(ms.LHEHeader(name="slha", content=param_text))
         headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        # The resolved seed (even when the run_card requested a random one via
+        # seed = -1), so the run can be reproduced from the LHE file alone.
+        headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -1887,6 +1935,9 @@ class MadgraphSubprocess:
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
+        # Shared across all networks below: initialize_globals() derives an
+        # independent, non-colliding stream per tensor from this one base seed.
+        seed = self.process.run_seed
         channels = []
         for channel_id, channel in enumerate(phasespace.channels):
             prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -1904,10 +1955,11 @@ class MadgraphSubprocess:
                 invert_spline=madnis_args["flow_invert_spline"],
             )
             if channel.adaptive_mapping is None:
-                flow.initialize_globals(self.process.contexts[0])
+                flow.initialize_globals(self.process.contexts[0], seed)
             else:
                 flow.initialize_from_vegas(
-                    self.process.contexts[0], channel.adaptive_mapping.grid_name()
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name(),
+                    seed
                 )
             cond_dim += flow_dim
 
@@ -1924,7 +1976,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_sym.initialize_globals(self.process.contexts[0])
+                discrete_sym.initialize_globals(self.process.contexts[0], seed)
                 cond_dim += perm_count
 
             discrete_flavor = channel.discrete_flavor
@@ -1938,7 +1990,7 @@ class MadgraphSubprocess:
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
-                discrete_flavor.initialize_globals(self.process.contexts[0])
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
 
             channels.append(Channel(
                 phasespace_mapping = channel.phasespace_mapping,
@@ -2012,7 +2064,9 @@ class MadgraphSubprocess:
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",
         )
-        cwnet.initialize_globals(self.process.contexts[0])
+        cwnet.initialize_globals(
+            self.process.contexts[0], self.process.run_seed
+        )
         return cwnet
 
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
@@ -2155,29 +2209,42 @@ class MadgraphSubprocess:
         )
 
 
+_ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
+
 def load_mg5_options() -> dict:
-    """Read the tool paths from the MG5aMC configuration so the launcher knows
-    which optional programs (Pythia8/Delphes/MadSpin/reweight/analysis) are
-    available.  Relative *_path entries are resolved against the MG5aMC root."""
+    """Read the tool paths from the MadGraph configuration, so the launcher
+    knows where LHAPDF and the optional programs (Pythia8/Delphes/MadSpin/
+    reweight/analysis) live.
+
+    Files are read least- to most-specific, each overriding the previous, which
+    is the same layering CommonRunCmd.set_configuration uses: the card inside
+    this process directory has the last word, then this installation, then the
+    per-user file. Relative values are resolved against the root of the file
+    they came from.
+    """
 
     import madgraph
     mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+    me_dir = os.getcwd()
 
     options = {
         'pythia-pgs_path': None, 'pythia8_path': None, 'madanalysis_path': None,
         'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
-        'lhapdf': None, 'timeout': 0,
+        'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
         'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
     }
-    config_files = [os.path.join(mg5dir, 'input', 'mg5_configuration.txt')]
-    home = os.environ.get('HOME')
-    if home:
-        config_files.append(os.path.join(home, '.mg5', 'mg5_configuration.txt'))
-        config_files.append(os.path.join(
-            os.environ.get('XDG_CONFIG_HOME', os.path.join(home, '.config')),
-            'mg5_configuration.txt'))
-    for cfg in config_files:
+    config_files = []
+    if os.environ.get('MADGRAPH_BASE'):
+        config_files.append((os.path.join(os.environ['MADGRAPH_BASE'],
+                                          misc.CONFIG_NAME), mg5dir))
+    user_config = misc.user_config_file()
+    if user_config:
+        config_files.append((user_config, mg5dir))
+    config_files.append((misc.install_config_file(mg5dir), mg5dir))
+    config_files.append((os.path.join(me_dir, 'Cards', 'me5_configuration.txt'),
+                         me_dir))
+    for cfg, root in config_files:
         if not os.path.exists(cfg):
             continue
         with open(cfg) as fsock:
@@ -2188,11 +2255,35 @@ def load_mg5_options() -> dict:
                 name, value = (x.strip() for x in line.split('=', 1))
                 if name not in options or value in ('', 'None'):
                     continue
-                if name.endswith('_path') and value.startswith('.'):
-                    value = os.path.join(mg5dir, value)
+                if (name.endswith('_path') or name in _ROOTED_OPTIONS) and \
+                        not os.path.isabs(value) and \
+                        (os.sep in value or value.startswith('.')):
+                    value = os.path.normpath(os.path.join(root, value))
                 options[name] = value
     options['mg5_path'] = mg5dir  # enables MadSpin/reweight
     return options
+
+
+_LHAPDF = None
+
+def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
+    """The LHAPDF installation this run should use, resolved once.
+
+    Uses the same helper as the 'launch' command, so driving a process
+    directory straight through bin/generate_events behaves identically to
+    launching it from MadGraph.
+    """
+
+    global _LHAPDF
+    if _LHAPDF is None or refresh:
+        _LHAPDF = misc.resolve_lhapdf(load_mg5_options())
+        # Export what we found: the real LHAPDF library, systematics and the
+        # MadSpin/reweight subprocesses read these from the environment.
+        if _LHAPDF.data_paths:
+            os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
+        if _LHAPDF.config:
+            os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
+    return _LHAPDF
 
 
 def build_selector_cmd():
@@ -2623,19 +2714,9 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
 
 
 def _lhapdf_config_path():
-    """Best-effort path to lhapdf-config so systematics can import the python
-    lhapdf module (required to compute PDF/scale variations)."""
-    cfg = os.environ.get("MADGRAPH_LHAPDF_CONFIG")
-    if cfg and os.path.exists(cfg):
-        return cfg
-    if PDF_PATH:
-        # PDF_PATH is <prefix>/share/LHAPDF -> <prefix>/bin/lhapdf-config
-        cand = os.path.join(os.path.dirname(os.path.dirname(PDF_PATH)),
-                            "bin", "lhapdf-config")
-        if os.path.exists(cand):
-            return cand
-    import shutil
-    return shutil.which("lhapdf-config")
+    """Path to lhapdf-config so systematics can import the python lhapdf
+    module (required to compute PDF/scale variations)."""
+    return lhapdf_paths().config
 
 
 def _run_systematics(lhe_path, cfg, log):

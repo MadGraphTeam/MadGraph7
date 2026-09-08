@@ -361,10 +361,15 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         }
     }
 
+    // random instructions share one GPU RNG stream, so they always run on the
+    // main stream (0) and are never CSE'd (see Instruction::is_random)
+    bool is_random = instruction->is_random();
+    std::size_t call_stream = is_random ? 0 : _current_stream;
+
     // create local variables for constants
     std::vector<std::size_t> cache_key;
     cache_key.push_back(opcode);
-    cache_key.push_back(_current_stream);
+    cache_key.push_back(call_stream);
     for (auto& arg : params) {
         register_local(arg);
         cache_key.push_back(arg.local_index);
@@ -381,8 +386,8 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         }
     }
 
-    // check for cached result (for deterministic instructions)
-    if (opcode != opcodes::random && opcode != opcodes::unweight) {
+    // check for cached result
+    if (!is_random) {
         auto find_instr = _instruction_cache.find(cache_key);
         if (find_instr != _instruction_cache.end()) {
             ValueVec call_outputs;
@@ -405,10 +410,12 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         output_locals.push_back(value.local_index);
     }
     _instructions.push_back(
-        InstructionCall{instruction, params, call_outputs, _current_stream}
+        InstructionCall{instruction, params, call_outputs, call_stream}
     );
     _instruction_use_count.push_back(0);
-    _instruction_cache[cache_key] = output_locals;
+    if (!is_random) {
+        _instruction_cache[cache_key] = output_locals;
+    }
     for (auto& param : params) {
         int param_source = _local_sources.at(param.local_index);
         if (param_source != -1) {

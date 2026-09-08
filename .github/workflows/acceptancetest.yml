@@ -450,8 +450,8 @@ jobs:
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
 
   acceptancetest_69:
@@ -470,8 +470,8 @@ jobs:
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
 
@@ -1029,7 +1029,7 @@ jobs:
       - name: test one of the test test_polarization_top_decay
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             ./tests/test_manager.py test_polarization_top_decay -pA -t0 -l INFO
   
   acceptancetest_ewsudakov:
@@ -1164,7 +1164,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             sudo pip install numpy
             which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
 
   acceptancetest_density_decay2:

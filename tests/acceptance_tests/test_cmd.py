@@ -163,7 +163,7 @@ class TestCmdShell1(unittest.TestCase):
         """check that configuration file is at default value"""
         self.maxDiff=None
         self.cmd.options = {} #reset to None
-        config = self.cmd.set_configuration(MG5DIR+'/input/.mg5_configuration_default.txt', final=False)
+        config = self.cmd.set_configuration(MG5DIR+'/input/.mg7_configuration_default.txt', final=False)
         config =dict(config)
         del config['stdout_level']
 #        for key in config.keys():

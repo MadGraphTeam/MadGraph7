@@ -179,8 +179,8 @@ def prune_bin(filepath):
 
 def materialize_config(filepath):
     input_dir = pjoin(filepath, 'input')
-    shutil.copy(pjoin(input_dir, '.mg5_configuration_default.txt'),
-                pjoin(input_dir, 'mg5_configuration.txt'))
+    shutil.copy(pjoin(input_dir, '.mg7_configuration_default.txt'),
+                pjoin(input_dir, 'mg7_configuration.txt'))
     for card in ('default_run_card_lo.dat', 'default_run_card_nlo.dat',
                  'default_run_card_mg7.toml'):
         src = pjoin(input_dir, f'.{card}')

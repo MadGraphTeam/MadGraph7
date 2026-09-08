@@ -1,6 +1,6 @@
 #pragma once
 
-#include <random>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +13,7 @@
 #include "madspace/driver/discrete_optimizer.hpp"
 #include "madspace/driver/generator_data.hpp"
 #include "madspace/driver/io.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/vegas_optimizer.hpp"
 #include "madspace/phasespace.hpp"
 
@@ -45,6 +46,7 @@ public:
 
     const GeneratorStatus& status() const { return _status; }
     const RunningIntegral& cross_section() const { return _cross_section; }
+    const RunningIntegral& abs_cross_section() const { return _abs_cross_section; }
     const std::vector<Histogram>& histograms() const { return _histograms; }
     EventFile& event_file() { return _event_file; }
     EventFile& weight_file() { return _weight_file; }
@@ -53,7 +55,9 @@ public:
     bool needs_optimization() const {
         return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
     }
-    void set_target_count(double target_count) { _status.count_target = target_count; }
+    void set_target_count(std::size_t target_count) {
+        _status.count_target = target_count;
+    }
     const std::unordered_set<std::string>& used_globals() const {
         return _used_globals;
     }
@@ -61,11 +65,24 @@ public:
     int particle_layout_extra_flags() const { return _particle_layout_extra_flags; }
     const DataLayout& event_file_layout() const { return _event_file_layout; }
 
-    void unweight_file(std::mt19937& rand_gen);
+    void unweight_file(MixMaxRandom& rand_gen);
     void integrate(const GeneratorBatchJob& job);
     void optimize_vegas(const GeneratorBatchJob& job);
     double channel_weight_sum(std::size_t event_count);
-    void start_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    void start_job(
+        GeneratorBatchJob& job,
+        ResultQueue& result_queue,
+        std::optional<std::uint64_t> seed,
+        bool is_survey,
+        std::size_t survey_pass
+    );
+    // Snapshots max_weight into job.max_weight, at a fixed point independent of
+    // when submit_unweight_job() actually dispatches it.
+    void prepare_unweight_job(GeneratorBatchJob& job) const;
+    // Submits job's unweighting to the thread pool of its own generation context
+    // (required on GPU: unweighting does a device-to-host copy).
+    void submit_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
+    // prepare_unweight_job() + submit_unweight_job() combined.
     void start_unweight_job(GeneratorBatchJob& job, ResultQueue& result_queue);
     std::size_t next_vegas_batch_size();
     void clear_events();
@@ -131,8 +148,19 @@ private:
     Function _unweighter_function;
     std::optional<Function> _histogram_function;
     RunningIntegral _cross_section;
+    RunningIntegral _abs_cross_section;
     double _max_weight = 0.;
+    // Monotonic per-job counters keying each job's deterministic random stream;
+    // never reset. Separate for survey/generate so neither depends on the other.
+    std::size_t _survey_rng_seq = 0;
+    std::size_t _generate_rng_seq = 0;
+    // Progress of unweight_file()'s final pass over _weight_file: _unweighted_count
+    // is the index up to which it's been scanned under the *current* _max_weight,
+    // and _unweighted_accept_count the number of those accepted. Both reset to 0
+    // whenever _max_weight changes (forcing a full rescan), since a changed
+    // max_weight invalidates every prior accept/reject decision.
     std::size_t _unweighted_count = 0;
+    std::size_t _unweighted_accept_count = 0;
     std::size_t _iters_without_improvement = 0;
     double _best_rsd = std::numeric_limits<double>::max();
     std::vector<double> _large_weights;

@@ -104,7 +104,7 @@ template_one_cicd="""
         run: |
             cd $GITHUB_WORKSPACE
             cd MG5aMC/mg5amcnlo/
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             if [ -f tests/cudacpp_acceptance_tests ]; then echo 'ERROR! tests/cudacpp_acceptance_tests already exists'; exit 1; fi # should never happen
             ln -sf ../../MG5aMC_PLUGIN/CUDACPP_OUTPUT/acceptance_tests tests/cudacpp_acceptance_tests # workaround for 'relative position not supported'

@@ -45,7 +45,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -67,7 +67,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -88,7 +88,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -109,7 +109,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -131,7 +131,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -153,7 +153,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -175,7 +175,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -196,7 +196,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -215,7 +215,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_gauge
@@ -233,7 +233,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_gauge
@@ -251,7 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_gauge_loop
@@ -277,7 +277,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_sm
@@ -294,7 +294,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_sqso
@@ -311,7 +311,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_polarization
@@ -329,7 +329,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -348,7 +348,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -367,7 +367,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_sm2
@@ -385,7 +385,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_sm3
@@ -403,7 +403,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 

@@ -1,5 +1,11 @@
 [run]
 run_name = %(run.run_name)s
+# every run is reproducible: the same seed reproduces the run bit-identically,
+# and distinct seeds are statistically independent. -1 draws a fresh random
+# seed each run instead of fixing one here; the seed actually used is still
+# recorded (the MG7Seed tag in the LHE file, or the info.json status file), so
+# the run can be reproduced later.
+seed = %(run.seed)s
 # list of devices; options: cpu, cuda, hip (an optional device index can be added, e.g. "cuda:1")
 device = %(run.device)s
 # SIMD width used by the 'cpu' devices (ignored by cuda/hip)
@@ -132,7 +138,8 @@ grad_clip_threshold = %(madnis.grad_clip_threshold)s
 train_mcw = %(madnis.train_mcw)s
 buffer_capacity = %(madnis.buffer_capacity)s
 minimum_buffer_size = %(madnis.minimum_buffer_size)s
-buffered_steps = %(madnis.buffered_steps)s
+buffered_steps_fraction = %(madnis.buffered_steps_fraction)s
+buffer_skip_batches = %(madnis.buffer_skip_batches)s
 buffer_unweighting_quantile = %(madnis.buffer_unweighting_quantile)s
 uniform_channel_ratio = %(madnis.uniform_channel_ratio)s
 integration_history_length = %(madnis.integration_history_length)s
