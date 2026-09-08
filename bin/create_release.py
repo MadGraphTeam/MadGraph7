@@ -31,8 +31,8 @@ It performs the following actions:
      working-tree files).
   3. Prune bin/ to the release-facing scripts only.
   4. Materialize the default config/run-card files.
-  5. Best-effort: vendor offline copies of collier/ninja/SMWidth/the
-     HEPToolsInstaller bundle into vendor/.
+  5. Vendor offline copies of collier/ninja/SMWidth/the HEPToolsInstaller
+     bundle into vendor/ (unless --skip-vendor; any failure aborts the release).
   6. Write input/authors.md (first-contribution date per author, used by the
      anniversary banner) and the input/.release marker read by
      madspace/install.py to decide whether the PyPI wheel may be offered --
@@ -191,36 +191,32 @@ def materialize_config(filepath):
 
 
 def vendor_offline_tools(filepath):
-    """Best-effort: bundle offline copies of collier/ninja/SMWidth and the
+    """Bundle offline copies of collier/ninja/SMWidth and the
     HEPToolsInstaller scripts, so a release tarball can be used without
-    network access to the HEPTools installer's usual sources. Vendoring is a
-    convenience, not a release requirement, so failures only warn."""
+    network access to the HEPTools installer's usual sources. Required for a
+    release: any failure here aborts it rather than shipping a tarball
+    silently missing the offline installers."""
     vendor_dir = pjoin(filepath, 'vendor')
     os.makedirs(vendor_dir, exist_ok=True)
 
-    try:
-        clone_dir = pjoin(filepath, '..', 'HEPToolsInstallers')
-        subprocess.run(
-            ['git', 'clone', '--depth', '1',
-             'https://github.com/mg5amcnlo/HEPToolsInstallers.git', clone_dir],
-            check=True)
-        shutil.rmtree(pjoin(clone_dir, '.git'))
-        with tarfile.open(pjoin(vendor_dir, 'OfflineHEPToolsInstaller.tar.gz'), 'w:gz') as tf:
-            tf.add(clone_dir, arcname='HEPToolsInstallers')
+    clone_dir = pjoin(filepath, '..', 'HEPToolsInstallers')
+    subprocess.run(
+        ['git', 'clone', '--depth', '1',
+         'https://github.com/mg5amcnlo/HEPToolsInstallers.git', clone_dir],
+        check=True)
+    shutil.rmtree(pjoin(clone_dir, '.git'))
+    with tarfile.open(pjoin(vendor_dir, 'OfflineHEPToolsInstaller.tar.gz'), 'w:gz') as tf:
+        tf.add(clone_dir, arcname='HEPToolsInstallers')
 
-        sys.path.insert(0, path.dirname(clone_dir))
-        from HEPToolsInstallers.HEPToolInstaller import _HepTools
-        collier_link = _HepTools['collier']['tarball'][1] % _HepTools['collier']
-        ninja_link = _HepTools['ninja']['tarball'][1] % _HepTools['ninja']
-        urllib.request.urlretrieve(collier_link, pjoin(vendor_dir, 'collier.tar.gz'))
-        urllib.request.urlretrieve(ninja_link, pjoin(vendor_dir, 'ninja.tar.gz'))
-        urllib.request.urlretrieve(
-            'http://madgraph.phys.ucl.ac.be/Downloads/SMWidth.tgz',
-            pjoin(vendor_dir, 'SMWidth.tar.gz'))
-    except Exception as error:
-        print(f"WARNING: failed to vendor offline HEPTools ({error}); "
-              "the release tarball will need network access to install them.",
-              file=sys.stderr)
+    sys.path.insert(0, path.dirname(clone_dir))
+    from HEPToolsInstallers.HEPToolInstaller import _HepTools
+    collier_link = _HepTools['collier']['tarball'][1] % _HepTools['collier']
+    ninja_link = _HepTools['ninja']['tarball'][1] % _HepTools['ninja']
+    urllib.request.urlretrieve(collier_link, pjoin(vendor_dir, 'collier.tar.gz'))
+    urllib.request.urlretrieve(ninja_link, pjoin(vendor_dir, 'ninja.tar.gz'))
+    urllib.request.urlretrieve(
+        'http://madgraph.phys.ucl.ac.be/Downloads/SMWidth.tgz',
+        pjoin(vendor_dir, 'SMWidth.tar.gz'))
 
 
 def write_authors(filepath):
