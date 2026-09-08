@@ -198,7 +198,12 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // and throwing away nearly everything generated. The floors are collected
     // here and applied as the decay chain is walked below.
     constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
-    auto m_inv_min = _cuts.m_inv_min();
+    // Cuts indexes its per-particle tables by outgoing position, counting two
+    // incoming particles. A decay topology has one, so the tables cannot be
+    // read against it at all - and a decay has no cuts to apply anyway.
+    auto m_inv_min = _topology.incoming_masses().size() == 2
+        ? _cuts.m_inv_min()
+        : std::vector<std::vector<double>>{};
     std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
     {
         std::vector<std::size_t> decay_to_outgoing(
@@ -233,7 +238,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!m_inv_min.empty()) {
             for (std::size_t d = 0; d < node_leaves.size(); ++d) {
                 const auto& leaves = node_leaves.at(d);
-                if (leaves.size() != 2) {
+                if (leaves.size() != 2 || leaves.at(1) >= m_inv_min.size()) {
                     continue;
                 }
                 double cut = m_inv_min.at(leaves.at(0)).at(leaves.at(1));
