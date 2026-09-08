@@ -68,6 +68,16 @@ endif
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
 MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
 
+# Name recorded in the library itself, and hence in whatever links against it.
+# Without it the linker bakes in the absolute build path (LIBDIR), so the process
+# libraries stop resolving the common library once the process dir is moved.
+ifeq ($(UNAME_S),Darwin)
+  override CXXLIBFLAGSNAME = -Wl,-install_name,@rpath/lib$(MADMATRIX_COMMONLIB).so
+else
+  override CXXLIBFLAGSNAME = -Wl,-soname,lib$(MADMATRIX_COMMONLIB).so
+endif
+override GPULIBFLAGSNAME = -Xlinker -soname -Xlinker lib$(MADMATRIX_COMMONLIB).so
+
 # Explicitly define the default goal (this is not necessary as it is the first target, which is implicitly the default goal)
 .DEFAULT_GOAL := all.$(TAG)
 
@@ -106,11 +116,11 @@ objects=$(addprefix $(BUILDDIR)/, read_slha.o Parameters.o)
 ifeq ($(GPUCC),)
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so : $(objects)
 	@if [ ! -d $(LIBDIR) ]; then echo "mkdir -p $(LIBDIR)"; mkdir -p $(LIBDIR); fi
-	$(CXX) -shared -o $@ $(objects) $(LDFLAGS)
+	$(CXX) -shared -o $@ $(objects) $(CXXLIBFLAGSNAME) $(LDFLAGS)
 else
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so : $(objects)
 	@if [ ! -d $(LIBDIR) ]; then echo "mkdir -p $(LIBDIR)"; mkdir -p $(LIBDIR); fi
-	$(GPUCC) -shared -o $@ $(objects) $(LDFLAGS)
+	$(GPUCC) -shared -o $@ $(objects) $(GPULIBFLAGSNAME) $(LDFLAGS)
 endif
 
 #-------------------------------------------------------------------------------
