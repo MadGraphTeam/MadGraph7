@@ -105,25 +105,17 @@ else:
         
     # charge history file
     try:
-        legacy_state_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-        if os.path.exists(legacy_state_dir):
-            state_dir = legacy_state_dir
+        # MG7 keeps its state to itself: nothing is read from or written into
+        # MG5_aMC's ~/.mg5.
+        state_dir = os.getenv('XDG_STATE_HOME')
+        if state_dir:
+            state_dir = os.path.join(state_dir, 'mg7')
         else:
-            state_dir = os.getenv('XDG_STATE_HOME', os.path.join(os.environ['HOME'], '.local', 'state'))
+            state_dir = os.path.join(os.environ['HOME'], '.mg7')
 
-        # MG7 keeps its own history file. An MG5_aMC install writes mg5history
-        # into this same shared state directory, so sharing the name would
-        # interleave the two command sets. Read mg5history as a one-time
-        # fallback so an existing MG5 user does not start from an empty
-        # history; writes always go to mg7history.
         history_file = os.path.join(state_dir, "mg7history")
         if os.path.exists(history_file):
             readline.read_history_file(history_file)
-        else:
-            legacy_history_file = os.path.join(state_dir, "mg5history")
-            if os.path.exists(legacy_history_file):
-                readline.read_history_file(legacy_history_file)
     except:
         pass
 
@@ -231,8 +223,7 @@ except KeyboardInterrupt:
 try:
     cmd_line.exec_cmd('quit all', printcmd=False)
     readline.set_history_length(100)
-    if not os.path.exists(state_dir):
-        os.mkdir(state_dir)
+    os.makedirs(state_dir, exist_ok=True)
     readline.write_history_file(history_file)
 except Exception as error:
     pass

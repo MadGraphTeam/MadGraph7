@@ -3788,7 +3788,7 @@ set draw_rivet_plots True
         """Return the configured delphes_path from the MG5 configuration, or
         None when Delphes is not configured (used to skip the parallel-Delphes
         acceptance test on setups without Delphes/ROOT)."""
-        config = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
+        config = pjoin(MG5DIR, 'input', 'mg7_configuration.txt')
         if not os.path.exists(config):
             return None
         for line in open(config):

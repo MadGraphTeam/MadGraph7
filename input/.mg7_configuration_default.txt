@@ -21,8 +21,8 @@
 # Current value for all options can seen by typing "display options"
 #    after either ./bin/madgraph or ./bin/madevent 
 #
-# You can place this files in ~/.mg5/mg5_configuration.txt if you have more than
-#    one version of MG5. 
+# You can place this files in ~/.mg7/mg7_configuration.txt if you have more than
+#    one version of MG7. 
 #
 ################################################################################
 
