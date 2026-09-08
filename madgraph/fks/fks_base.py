@@ -101,7 +101,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         for born in self['born_processes']:
             # the copy.copy is needed as duplicate configurations will be removed on the fly
             for real in copy.copy(born.real_amps):
-                pdgs = ' '.join([ '%d' % pdg for pdg in real.pdgs])
+                # keyed on the polarizations too, for the same reason as
+                # FKSRealProcess.pdgs_pols: same flavours, different helicity
+                # is a different real. (This method has no caller today.)
+                pdgs = '%s' % (real.pdgs_pols,)
                 for info in copy.copy(real.fks_infos):
                     ij = [info['i'], info['j']]
                     try:
@@ -456,15 +459,13 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
-        # Key used to decide whether two real processes can share one
-        # amplitude / matrix element.  The PDGs alone are not enough once a
-        # polarization restriction is in play: two reals can have the same
-        # flavours and fix a different helicity (e.g. p p > t{+} t~ [QCD] and
-        # p p > t{-} t~ [QCD] added to the same run), and the PDG-only key
-        # would put them in the same bucket.
-        # Sharing there would silently give one born the other's reals.
-        # For an unpolarized process the key is the PDG tuple plus a tuple of
-        # empty tuples, so nothing changes.
+        # Key deciding whether two real processes may share one amplitude /
+        # matrix element. The PDGs alone are not enough under a polarization
+        # restriction: two reals can carry the same flavours but fix a
+        # different helicity (p p > t{+} t~ [QCD] and p p > t{-} t~ [QCD] in
+        # one run), and a PDG-only key would bucket them together, silently
+        # giving one born the other's reals. An unpolarized process gets the
+        # PDG tuple plus a tuple of empty tuples, so nothing changes.
         self.pdgs_pols = (self.pdgs,
                           tuple(tuple(leg.get('polarization')) for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
@@ -709,10 +710,10 @@ class FKSProcess(object):
         old_real_amps = copy.copy(self.real_amps)
         for amp in old_real_amps:
             try:
-                real_amps[pdgs.index(amp.pdgs)].fks_infos.extend(amp.fks_infos)
+                real_amps[pdgs.index(amp.pdgs_pols)].fks_infos.extend(amp.fks_infos)
             except ValueError:
                 real_amps.append(amp)
-                pdgs.append(amp.pdgs)
+                pdgs.append(amp.pdgs_pols)
 
         self.real_amps = real_amps
 
