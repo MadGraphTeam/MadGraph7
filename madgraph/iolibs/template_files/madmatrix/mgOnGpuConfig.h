@@ -270,6 +270,11 @@ using mgOnGpu::fptype_colour;
 #undef MGONGPU_CPPSIMD
 #endif
 
+// macro for computing denom twice to fill rest of SIMD lane for rest
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_FLOAT and defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+#define MGONGPU_SIMD_DENOM64 1
+#endif
+
 /* clang-format off */
 // CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation [NB: CURRENTLY NO LONGER SUPPORTED!]
 // Arguments (not used so far): text is __FUNCTION__, code is 0 (start) or 1 (end)

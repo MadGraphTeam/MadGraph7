@@ -73,6 +73,53 @@ namespace mg5amcCpu
   typedef fptype_v fptype2_v;
 #endif
 
+  // type to hold 2x the SIMD lane, operators work on both halfs (autovector) + narrow/widen operators defs
+#ifdef MGONGPU_SIMD_DENOM64
+  constexpr int neppVD = neppV / 2;
+  static_assert( neppV % 2 == 0, "neppV must be even for SIMD denom64" );
+#ifdef __clang__
+  typedef fptype_momenta fptype_denom_hv __attribute__( ( ext_vector_type( neppVD ) ) ); // one native FP64 register
+#else
+  typedef fptype_momenta fptype_denom_hv __attribute__( ( vector_size( neppVD * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
+#endif
+
+  struct fptype_denom_sv // 2x FP64 half (v[0], v[1])
+  {
+    fptype_denom_hv v[2];
+    fptype_denom_sv() : v{ fptype_denom_hv{}, fptype_denom_hv{} } {}
+    fptype_denom_sv( const fptype_denom_hv& lo, const fptype_denom_hv& hi ) : v{ lo, hi } {}
+    fptype_denom_sv( fptype_momenta s ) : v{ fptype_denom_hv{} + s, fptype_denom_hv{} + s } {} // broadcast (M, W, Ccoeff, {0})
+  };
+  static_assert( sizeof( fptype_denom_sv ) == 2 * sizeof( fptype_denom_hv ), "fptype_denom_sv must be exactly two FP64 halves" );
+  inline fptype_denom_sv operator+( const fptype_denom_sv& a ) { return a; }
+  inline fptype_denom_sv operator-( const fptype_denom_sv& a ) { return { -a.v[0], -a.v[1] }; }
+  inline fptype_denom_sv operator+( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] + b.v[0], a.v[1] + b.v[1] }; }
+  inline fptype_denom_sv operator-( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] - b.v[0], a.v[1] - b.v[1] }; }
+  inline fptype_denom_sv operator*( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] * b.v[0], a.v[1] * b.v[1] }; }
+  inline fptype_denom_sv operator/( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] / b.v[0], a.v[1] / b.v[1] }; }
+  inline fptype_denom_sv operator*( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] * s, a.v[1] * s }; }
+  inline fptype_denom_sv operator*( fptype_momenta s, const fptype_denom_sv& a ) { return a * s; }
+  inline fptype_denom_sv operator/( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] / s, a.v[1] / s }; }
+  inline fptype_denom_sv operator/( fptype_momenta s, const fptype_denom_sv& a ) { return { s / a.v[0], s / a.v[1] }; }
+  inline fptype_denom_sv operator+( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] + s, a.v[1] + s }; }
+  inline fptype_denom_sv operator+( fptype_momenta s, const fptype_denom_sv& a ) { return a + s; }
+  inline fptype_denom_sv operator-( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] - s, a.v[1] - s }; }
+  inline fptype_denom_sv operator-( fptype_momenta s, const fptype_denom_sv& a ) { return { s - a.v[0], s - a.v[1] }; }
+
+  inline fptype_v fpdenom_narrow( const fptype_denom_sv& p )
+  {
+    fptype_v out = {};
+    for( int l = 0; l < neppVD; l++ ) { out[l] = (fptype)p.v[0][l]; out[neppVD + l] = (fptype)p.v[1][l]; }
+    return out;
+  }
+  inline fptype_denom_sv fpdenom_widen( const fptype_v& f )
+  {
+    fptype_denom_hv lo = {}, hi = {};
+    for( int l = 0; l < neppVD; l++ ) { lo[l] = (fptype_momenta)f[l]; hi[l] = (fptype_momenta)f[neppVD + l]; }
+    return { lo, hi };
+  }
+#endif
+
   // --- Type definition (using vector compiler extensions: need -march=...)
   class cxtype_v // no need for "class alignas(2*sizeof(fptype_v)) cxtype_v"
   {
@@ -121,6 +168,50 @@ namespace mg5amcCpu
   private:
     fptype_v m_real, m_imag; // RRRRIIII
   };
+
+#ifdef MGONGPU_SIMD_DENOM64
+  // complex type to hold 2x the SIMD lane, operators work on both halfs (autovector) narrow to cxtype
+  class cxtype_denom_sv
+  {
+  public:
+    cxtype_denom_sv() {}
+    cxtype_denom_sv( const fptype_denom_sv& r, const fptype_denom_sv& i ) : m_real( r ), m_imag( i ) {}
+    cxtype_denom_sv( fptype_momenta r, fptype_momenta i ) : m_real( r ), m_imag( i ) {}          // cId( 0., 1. )
+    cxtype_denom_sv( const cxtype_v& c ) : m_real( fpdenom_widen( c.real() ) ), m_imag( fpdenom_widen( c.imag() ) ) {} // COUP (FP32 complex)
+    template<typename FP2>
+    cxtype_denom_sv( const mgOnGpu::cxsmpl<FP2>& c ) : m_real( fptype_momenta( c.real() ) ), m_imag( fptype_momenta( c.imag() ) ) {} // scalar complex
+    const fptype_denom_sv& real() const { return m_real; }
+    const fptype_denom_sv& imag() const { return m_imag; }
+    explicit operator cxtype_v() const { return cxtype_v( fpdenom_narrow( m_real ), fpdenom_narrow( m_imag ) ); }
+  private:
+    fptype_denom_sv m_real, m_imag;
+  };
+  inline cxtype_denom_sv operator+( const cxtype_denom_sv& a ) { return a; }
+  inline cxtype_denom_sv operator-( const cxtype_denom_sv& a ) { return { -a.real(), -a.imag() }; }
+  inline cxtype_denom_sv operator+( const cxtype_denom_sv& a, const cxtype_denom_sv& b ) { return { a.real() + b.real(), a.imag() + b.imag() }; }
+  inline cxtype_denom_sv operator-( const cxtype_denom_sv& a, const cxtype_denom_sv& b ) { return { a.real() - b.real(), a.imag() - b.imag() }; }
+  inline cxtype_denom_sv operator+( const fptype_denom_sv& a, const cxtype_denom_sv& b ) { return { a + b.real(), b.imag() }; }
+  inline cxtype_denom_sv operator+( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() + b, a.imag() }; }
+  inline cxtype_denom_sv operator-( const fptype_denom_sv& a, const cxtype_denom_sv& b ) { return { a - b.real(), -b.imag() }; }
+  inline cxtype_denom_sv operator-( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() - b, a.imag() }; }
+  inline cxtype_denom_sv operator*( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() * b, a.imag() * b }; }
+  inline cxtype_denom_sv operator*( const fptype_denom_sv& a, const cxtype_denom_sv& b ) { return b * a; }
+  inline cxtype_denom_sv operator*( const cxtype_denom_sv& a, const cxtype_denom_sv& b )
+  {
+    return { a.real() * b.real() - a.imag() * b.imag(), a.real() * b.imag() + a.imag() * b.real() };
+  }
+  inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const cxtype_denom_sv& b )
+  {
+    const fptype_denom_sv n = b.real() * b.real() + b.imag() * b.imag();
+    return { ( a.real() * b.real() + a.imag() * b.imag() ) / n, ( a.imag() * b.real() - a.real() * b.imag() ) / n };
+  }
+  inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() / b, a.imag() / b }; }
+  inline cxtype_denom_sv operator/( const fptype_denom_sv& a, const cxtype_denom_sv& b )
+  {
+    const fptype_denom_sv n = b.real() * b.real() + b.imag() * b.imag();
+    return { a * b.real() / n, -a * b.imag() / n };
+  }
+#endif
 
   // --- Type definition (using vector compiler extensions: need -march=...)
 #ifdef __clang__ // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors
@@ -927,12 +1018,19 @@ namespace mg5amcCpu
   typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
   typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
   typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
-  // On SIMD, momenta/denom == amp width (FPTYPE=v falls back to m here; a real FP64
-  // denom buffer for SIMD is deferred to after the backend-separation PR).
+#ifdef MGONGPU_SIMD_DENOM64
+  // FPTYPE=v: momenta computed 2x to fill for rest
+  typedef fptype_denom_sv fptype_momenta_v;     typedef fptype_denom_sv fptype_momenta_sv;
+  typedef fptype_denom_sv fptype_denom_v;       // fptype_denom_sv is the struct defined above
+  typedef cxtype_denom_sv cxtype_momenta_v;     typedef cxtype_denom_sv cxtype_momenta_sv;
+  typedef cxtype_denom_sv cxtype_denom_v;       // cxtype_denom_sv is the class defined above
+#else
+  // Other SIMD modes: momenta/denom == amp width.
   typedef fptype_v fptype_momenta_v;          typedef fptype_v fptype_momenta_sv;
   typedef fptype_v fptype_denom_v;            typedef fptype_v fptype_denom_sv;
   typedef cxtype_v cxtype_momenta_v;          typedef cxtype_v cxtype_momenta_sv;
   typedef cxtype_v cxtype_denom_v;            typedef cxtype_v cxtype_denom_sv;
+#endif
 #else
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -948,6 +1046,15 @@ namespace mg5amcCpu
   typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
   typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
   typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
+#endif
+
+  // narrowing/casting operators for unification
+#ifdef MGONGPU_SIMD_DENOM64
+  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); } // narrow FP64 pair -> FP32
+  #define fpamp_scalar( X ) ( (fptype_amp)( X ) )
+#else
+  #define fpamp_of_mom( P ) static_cast<fptype_amp_sv>( P )
+  #define fpamp_scalar( X ) static_cast<fptype_momenta_sv>( X )
 #endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++

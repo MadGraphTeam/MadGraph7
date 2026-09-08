@@ -412,7 +412,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # the 5th component is -i * m: built from broadcast reals, since a
         # scalar complex has no conversion to the vector type (cxtype_sv)
         out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
-                  (', '.join('cxmake( -%s.pvec[%d], 0. )' % (wf, i) for i in range(4)),
+                  (', '.join('cxmake( fpamp_of_mom( -%s.pvec[%d] ), 0. )' % (wf, i) for i in range(4)),
                    self.outgoing))
         out.write('    fptype_sv FDN[5];\n')
         out.write('    define_gauge_dir( FDQ, FDN );\n')
@@ -448,11 +448,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         templateval ='%(sign)s%(type)s%(i)d.pvec[%(j)d]'
         if self.nodeclare:
             if ptype == 'double_v':
-                # P array in vertex precision with static_cast from momenta
+                # narrow momenta
                 strfile.write('    const fptype_amp_sv P%d[4] = { ' % i )
                 for j in range(4):
                     sign = self.get_P_sign(i) if self.get_P_sign(i) else '+'
-                    element = 'static_cast<fptype_amp_sv>(%(sign)s%(type)s%(i)d.pvec[%(j)d])' % {'j':j,'type': type, 'i': i, 'sign': sign}
+                    element = 'fpamp_of_mom(%(sign)s%(type)s%(i)d.pvec[%(j)d])' % {'j':j,'type': type, 'i': i, 'sign': sign}
                     strfile.write(element + (', ' if j<3 else ''))
                 strfile.write(' };\n')
                 # dP array in denom precision for the outgoing particle only
@@ -726,6 +726,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['cId'] = 'cId%s' % denomsuffix
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
+                        # same formula for all the FPTYPE confs
                         out.write('    const cxtype_denom_sv %(cId)s( 0., 1. );\n' % mydict) # AV
                         out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom_sv>(M%(i)s) * ( static_cast<fptype_denom_sv>(M%(i)s) - %(cId)s * static_cast<fptype_denom_sv>(W%(i)s) ) );\n' % mydict) # AV
                         if arith_doubleexpansion:

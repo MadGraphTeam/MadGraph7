@@ -186,10 +186,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec0_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = -pvec1_ * static_cast<fptype_momenta>(nsf);
@@ -326,27 +326,27 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec3_ * static_cast<fptype_momenta>(nsf);
-    fi.pvec[1] = fptype_sv{ 0 };
-    fi.pvec[2] = fptype_sv{ 0 };
+    fi.pvec[1] = fptype_momenta_sv{ 0 };
+    fi.pvec[2] = fptype_momenta_sv{ 0 };
     fi.pvec[3] = -pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.flv_index = flv;
     const int nh = nhel * nsf;
     const cxtype_amp_sv sqp0p3 = cxmake( fpsqrt( (fptype_amp)2. * pvec3 ) * (fptype_amp)nsf, 0. );
-    w[0] = cxmake( fi.pvec[1], fi.pvec[2] );
+    w[0] = cxmake( fpamp_of_mom( fi.pvec[1] ), fpamp_of_mom( fi.pvec[2] ) );
     if( nh == 1 )
     {
-      w[1] = cxmake( fi.pvec[1], fi.pvec[2] );
+      w[1] = cxmake( fpamp_of_mom( fi.pvec[1] ), fpamp_of_mom( fi.pvec[2] ) );
       w[2] = sqp0p3;
     }
     else
     {
       w[1] = sqp0p3;
-      w[2] = cxmake( fi.pvec[1], fi.pvec[2] );
+      w[2] = cxmake( fpamp_of_mom( fi.pvec[1] ), fpamp_of_mom( fi.pvec[2] ) );
     }
-    w[3] = cxmake( fi.pvec[1], fi.pvec[2] );
+    w[3] = cxmake( fpamp_of_mom( fi.pvec[1] ), fpamp_of_mom( fi.pvec[2] ) );
     mgDebug( 1, __FUNCTION__ );
     return;
   }
@@ -367,7 +367,7 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] =  pvec3_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = fptype_momenta_sv{ 0 };
@@ -411,10 +411,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fi.w );
     fi.pvec[0] = -pvec0_ * static_cast<fptype_momenta>(nsf);
     fi.pvec[1] = -pvec1_ * static_cast<fptype_momenta>(nsf);
@@ -467,10 +467,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( vc.w );
     vc.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsv);
     vc.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nsv);
@@ -534,11 +534,11 @@
       // Branch B1: pp != 0. and pt != 0.
       volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                                                     // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
       const fptype_amp_v pzpt = pvec3 / ( ppDENOM * ptDENOM ) * sqh * hel;                                              // hack: dummy[ieppV] is not used if pp[ieppV]==0
-      const cxtype_amp_v vcB1_3 = cxmake( hel0 * pvec1 * emp - pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsvahl) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_amp_v vcB1_4 = cxmake( hel0 * pvec2 * emp - pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsvahl) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcB1_3 = cxmake( hel0 * pvec1 * emp - pvec1 * pzpt, -fpamp_scalar(nsvahl) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcB1_4 = cxmake( hel0 * pvec2 * emp - pvec2 * pzpt, fpamp_scalar(nsvahl) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
       // Branch B2: pp != 0. and pt == 0.
       const cxtype_amp vcB2_3 = cxmake( -hel * sqh, 0. );
-      const cxtype_amp_v vcB2_4 = cxmake( 0., static_cast<fptype_momenta_sv>(nsvahl) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
+      const cxtype_amp_v vcB2_4 = cxmake( 0., fpamp_scalar(nsvahl) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
       // Choose between the results from branch A and branch B (and from branch B1 and branch B2)
       const bool_v mask = ( pp == 0. );
       const bool_v maskB = ( pt != 0. );
@@ -577,11 +577,11 @@
       // Branch A: pt != 0.
       volatile fptype_amp_v ptDENOM = fpternary( pt != 0, pt, 1. );                             // hack: ptDENOM[ieppV]=1 if pt[ieppV]==0
       const fptype_amp_v pzpt = pvec3 / ( pp * ptDENOM ) * sqh * hel;                           // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_amp_v vcA_3 = cxmake( -pvec1 * pzpt, -static_cast<fptype_momenta_sv>(nsv) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
-      const cxtype_amp_v vcA_4 = cxmake( -pvec2 * pzpt, static_cast<fptype_momenta_sv>(nsv) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcA_3 = cxmake( -pvec1 * pzpt, -fpamp_scalar(nsv) * pvec2 / ptDENOM * sqh ); // hack: dummy[ieppV] is not used if pt[ieppV]==0
+      const cxtype_amp_v vcA_4 = cxmake( -pvec2 * pzpt, fpamp_scalar(nsv) * pvec1 / ptDENOM * sqh );  // hack: dummy[ieppV] is not used if pt[ieppV]==0
       // Branch B: pt == 0.
       const cxtype_amp vcB_3 = cxmake( -(fptype_amp)hel * sqh, 0 );
-      const cxtype_amp_v vcB_4 = cxmake( 0, static_cast<fptype_momenta_sv>(nsv) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
+      const cxtype_amp_v vcB_4 = cxmake( 0, fpamp_scalar(nsv) * fpternary( ( pvec3 < 0 ), -sqh, sqh ) ); // AV: removed an abs here
       // Choose between the results from branch A and branch B
       const bool_v mask = ( pt != 0. );
       w[1] = cxternary( mask, vcA_3, vcB_3 );
@@ -610,10 +610,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( sc.w );
     sc.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nss);
     sc.pvec[1] = pvec1_ * static_cast<fptype_momenta>(nss);
@@ -647,10 +647,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
 
     fo.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsf);
@@ -789,7 +789,7 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
     fo.pvec[0] = pvec3_ * static_cast<fptype_momenta>(nsf);
     fo.pvec[1] = fptype_momenta_sv{ 0 };
@@ -830,7 +830,7 @@
   {
     mgDebug( 0, __FUNCTION__ );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
     fo.pvec[0] = -pvec3_ * static_cast<fptype_momenta_sv>(nsf);
     fo.pvec[1] = fptype_momenta_sv{ 0 };
@@ -877,10 +877,10 @@
     const fptype_momenta_sv& pvec1_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
     const fptype_momenta_sv& pvec2_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    const fptype_amp_sv pvec0 = static_cast<fptype_amp_sv>(pvec0_);
-    const fptype_amp_sv pvec1 = static_cast<fptype_amp_sv>(pvec1_);
-    const fptype_amp_sv pvec2 = static_cast<fptype_amp_sv>(pvec2_);
-    const fptype_amp_sv pvec3 = static_cast<fptype_amp_sv>(pvec3_);
+    const fptype_amp_sv pvec0 = fpamp_of_mom(pvec0_);
+    const fptype_amp_sv pvec1 = fpamp_of_mom(pvec1_);
+    const fptype_amp_sv pvec2 = fpamp_of_mom(pvec2_);
+    const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
 
     fo.pvec[0] = pvec0_ * static_cast<fptype_momenta>(nsf);

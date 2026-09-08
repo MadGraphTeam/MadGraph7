@@ -210,6 +210,10 @@ namespace mg5amcCpu
       const fptype_momenta& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
 #ifndef MGONGPU_CPPSIMD
       return out;
+#elif defined MGONGPU_SIMD_DENOM64
+      // assume load from one page return high and low
+      static_assert( MemoryAccessMomentaBase::neppM == neppV, "SIMD denom64 (FPTYPE=v) assumes neppM == neppV" );
+      return mg5amcCpu::momvFromContiguousArray( out );
 #else
       constexpr int neppM = MemoryAccessMomentaBase::neppM;
       constexpr bool useContiguousEventsIfPossible = true; // DEFAULT
