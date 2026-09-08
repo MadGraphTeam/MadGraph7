@@ -114,7 +114,7 @@ def async_generate_born(args):
         # if the pdg_list is not there, it has been removed
         # because there are no diagrams
         try:
-            idx = pdg_list.index(amp.pdgs)
+            idx = pdg_list.index(amp.pdgs_pols)
             infilename = realmapout[idx]
             infile = open(infilename,'rb')
             realdata = cPickle.load(infile)
@@ -304,8 +304,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             real_amp_list = []
             for born in born_procs:
                 for amp in born.real_amps:
-                    if not pdg_list.count(amp.pdgs):
-                        pdg_list.append(amp.pdgs)
+                    if not pdg_list.count(amp.pdgs_pols):
+                        pdg_list.append(amp.pdgs_pols)
                         real_amp_list.append(amp)
                         
             #generating and store in tmp files all output corresponding to each real_amplitude

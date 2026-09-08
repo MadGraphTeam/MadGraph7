@@ -251,7 +251,20 @@ class TestValidCmd(unittest.TestCase):
             nothing NLO-specific applies;
           - the subtracted modes thread the frame through Born, real, FKS
             counterterms, virtual and the MC-counterterm azimuth by hand, and
-            only the QCD path is validated.
+            only the QCD path is validated. Colour is restricted there by two
+            separate rules:
+              * FINAL state: only MASSLESS coloured particles are refused. A
+                massive coloured emitter was measured (see the p p > t t~
+                [QCD] closure study), a massless one has not been -- and for a
+                massless one the real emission could not carry the born's
+                polarization onto the FKS emitter anyway (g -> q q~ changes
+                the identity of leg j).
+              * INITIAL state: ANY coloured particle is refused, whatever its
+                mass. The initial-state splitting runs backwards,
+                g -> q(-> born) q~, so the polarized quark is an internal line
+                of the real and no external leg can carry the projection.
+                A 1 -> N decay is exempt: fks_base.find_reals never splits the
+                initial state of a decay process.
 
         The two gates used to disagree: the first admitted noborn/sqrvirt and
         the second refused them again for being massive, so the first clause
@@ -276,14 +289,96 @@ class TestValidCmd(unittest.TestCase):
         # no frame at all in this mode
         self.assertRaises(cmd.InvalidCmd,
                           cmd.check_process_format, 'p p > z{0} j [tree=QCD]')
-        # a coloured polarised particle is also an FKS emitter: untested, and
-        # refused by both parents (upstream through its blanket NLO gate, this
-        # branch through a colour check), so it must not become allowed just
-        # because each of those was relaxed for its own reason.
+        # A coloured polarised particle is also an FKS emitter. For a MASSIVE
+        # one that was measured -- p p > t t~ [QCD], all four top-helicity
+        # combinations, closure at +0.03 sigma, check_poles 20/20 and test_ME
+        # clean on the FKS configurations whose emitter IS the polarised top
+        # (docs/nlo_polarisation_massive_colour.md) -- so it is allowed.
+        cmd.check_process_format('u u~ > t{L} t~ [QCD]')
+        cmd.check_process_format('p p > t{+} t~{-} [QCD]')
+        cmd.check_process_format('p p > t{-} t~{+} [QCD]')
+        cmd.check_process_format('g g > t{+} t~{+} [real=QCD]')
+        cmd.check_process_format('u u~ > t{R} t~{L} [LOonly=QCD]')
+        # ... a MASSLESS coloured one is not: still untested, so still refused.
         self.assertRaises(cmd.InvalidCmd,
-                          cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+                          cmd.check_process_format, 'g{+} g > t t~ [QCD]')
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'u{+} u~ > t t~ [QCD]')
+
+        # A coloured particle in the INITIAL state is refused whatever its
+        # mass: the initial-state splitting is read backwards,
+        # g -> q(-> born) q~, so the polarized quark is an internal line of the
+        # real emission and there is no external leg to carry the projection.
+        # The massless-only rule above does not catch this, which is why it is
+        # a rule of its own: b and t are massive in the default sm, and
+        # b{+} b~ > h [QCD] used to reach generation and die there with a raw
+        # fks_common.FKSProcessError traceback.
+        for proc in ['b{+} b~ > h [QCD]',
+                     't{+} t~ > z [QCD]',
+                     'b~{+} b > h [real=QCD]',
+                     'g{+} g > t t~ [LOonly=QCD]']:
+            self.assertRaises(cmd.InvalidCmd, cmd.check_process_format, proc)
+        # control: the same colliders, with the polarization on a colourless
+        # leg or on a coloured FINAL-state one -- accepted
+        cmd.check_process_format('b b~ > h{0} [QCD]')
+        cmd.check_process_format('b b~ > t{+} t~ [QCD]')
+        # the two colour rules give distinguishable messages
+        try:
+            cmd.check_process_format('t{+} t~ > z [QCD]')
+            self.fail('an initial-state coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('INITIAL', str(error))
+        try:
+            cmd.check_process_format('p p > u{+} u~ [QCD]')
+            self.fail('a massless coloured polarized leg must be refused')
+        except cmd.InvalidCmd as error:
+            self.assertIn('massless color charged', str(error))
+            self.assertNotIn('INITIAL', str(error))
+
+        # A 1 -> N DECAY is exempt. Its "initial state" is the decaying
+        # particle, and fks_base.find_reals skips initial-state splittings for
+        # decay processes ("no splittings for initial states in decay
+        # processes"), so that leg is a spectator and keeps its polarization.
+        cmd.check_process_format('t{+} > w+ b QED=1 [QCD]')
+        cmd.check_process_format('h > b{+} b~ QED=1 [QCD]')
+        cmd.check_process_format('t{+} > w+ b{-} QED=1 [QCD]')
+
+        # The multiparticle case is what proves the constituent expansion
+        # works: p and j are refused through their gluon / massless quarks.
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p{+} p > t t~ [QCD]')
+        self.assertRaises(cmd.InvalidCmd,
+                          cmd.check_process_format, 'p p > j{+} j [QCD]')
+        # ... and the refusal is not keyed on the gluon: a multiparticle with
+        # no gluon in it is refused too, through its massless quarks.
+        # (This does NOT show the walk reaches every constituent. MG5 orders
+        # multiparticle members gluon first, then by |pdg| ascending, so
+        # 'qlight = u u~ d d~' is stored as [2, 1, -2, -1] and the refusal
+        # fires on the FIRST member. In the SM one cannot build a
+        # multiparticle whose first member is massive-coloured and a later one
+        # massless-coloured, so "reaches every constituent" is untestable
+        # here.)
+        # do_define mutates the interface, and self.cmd is a class attribute
+        # shared by every test in this class, so use a private instance.
+        own = self.cmd.__class__()
+        own.no_notification()
+        own.do_import('sm')
+        own.do_define('qlight = u u~ d d~')
+        self.assertRaises(own.InvalidCmd,
+                          own.check_process_format,
+                          'p p > qlight{+} qlight [QCD]')
+        # An UPPERCASE multiparticle label: do_define lowercases the key it
+        # stores, so the walk has to look it up lowercased. It used to fall
+        # through to get_particle('qq') -> None and crash with an
+        # AttributeError instead of accepting the (massive, coloured) members.
+        own.do_define('QQ = t t~')
+        own.check_process_format('p p > QQ{+} QQ [QCD]')
+        # An unknown particle name is not this check's business: it must not
+        # crash here, the process parser reports it.
+        own.check_process_format('p p > nosuchparticle{+} t~ [QCD]')
         # ... but colour is no restriction where there is no subtraction
         cmd.check_process_format('g g > t{L} t~ [noborn=QCD]')
+        cmd.check_process_format('g{+} g > t t~ [noborn=QCD]')
 
     @test_aloha.set_global()
     def test_check_generate(self):
@@ -313,7 +408,12 @@ class TestValidCmd(unittest.TestCase):
         # theirs and the perturbation orders do not matter
         cmd.check_process_format('u u~ > z{0} g [virt=QCD]')
         cmd.check_process_format('u u~ > z{0} g [virt=QED QCD]')
-        
+        # a MASSIVE coloured particle may be polarised in the subtracted
+        # regime: measured on p p > t t~ [QCD], see
+        # docs/nlo_polarisation_massive_colour.md
+        cmd.check_process_format('u u~ > t{L} t~ [QCD]')
+        cmd.check_process_format('p p > t{+} t~{-} [QCD]')
+
         # unvalid syntax
         self.wrong(cmd.check_process_format, ' e+ e-')
         self.wrong(cmd.check_process_format, ' e+ e- > e+ e-,')
@@ -328,7 +428,12 @@ class TestValidCmd(unittest.TestCase):
         self.wrong(cmd.check_process_format, 'e+ e- > Z{L} > mu+ mu-')
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- / W+{L}')
         self.wrong(cmd.check_process_format, 'e+ e- > Z > mu+ mu- $ W+{L}')
-        self.wrong(cmd.check_process_format, 'u u~ > t{L} t~ [QCD]')
+        # a MASSLESS coloured particle stays refused in the subtracted regime,
+        # multiparticles included -- p and j carry a gluon
+        self.wrong(cmd.check_process_format, 'g{+} g > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'u{+} u~ > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'p{+} p > t t~ [QCD]')
+        self.wrong(cmd.check_process_format, 'p p > j{+} j [QCD]')
         # massive colourless polarization at NLO QCD is supported since the
         # me_frame boost reaches the virtual; mixed and pure QED are not
         self.wrong(cmd.check_process_format, 'u u~ > W+{L} vl [ QED QCD]')

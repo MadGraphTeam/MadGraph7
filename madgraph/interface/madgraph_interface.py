@@ -824,7 +824,29 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     - [virt=QCD] and standalone MadLoop take the frame from the momenta the")
         logger.info("       caller supplies, so any perturbation order is allowed.")
         logger.info("   A polarized massless particle needs no frame and was always allowed.")
+        logger.info(" > Colour, in [QCD]/[real=QCD]/[LOonly=QCD] only: a polarized coloured")
+        logger.info("   particle must be in the FINAL state and must be massive.")
+        logger.info("     - final state, massive: allowed. p p > t{+} t~{-} [QCD] -- the closure")
+        logger.info("       and the FKS soft limit off the polarized top were measured.")
+        logger.info("     - final state, massless: untested and refused, so a polarized gluon or")
+        logger.info("       massless quark, and 'p'/'j', which contain one. Note this depends on")
+        logger.info("       the model: b is massive in a 4-flavour scheme and massless in a")
+        logger.info("       5-flavour one. The check reads the symbolic mass at generation time,")
+        logger.info("       so setting a mass to zero in the param card afterwards is NOT")
+        logger.info("       re-checked.")
+        logger.info("     - INITIAL state: refused whatever the mass, so b{+} b~ > h [QCD] and")
+        logger.info("       t{+} t~ > z [QCD] are both rejected. The initial-state splitting runs")
+        logger.info("       backwards, g -> q(-> Born) q~, so the polarized parton is an internal")
+        logger.info("       line of the real emission and no external leg can carry the")
+        logger.info("       projection. A 1 -> N decay is exempt: its initial leg is never split,")
+        logger.info("       so t{+} > w+ b [QCD] and h > b{+} b~ [QCD] are fine.")
+        logger.info(" > Caveat, coloured polarized particle + single-leg 'me_frame': what was")
+        logger.info("   measured is a two-leg frame, me_frame = [3,4]. A frame made of ONE leg")
+        logger.info("   puts that leg exactly at rest, which is where HELAS picks the spin")
+        logger.info("   quantisation axis by convention rather than from the momentum. That")
+        logger.info("   combination is accepted but untested; prefer a frame of two or more legs.")
         logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Example: generate p p > t{+} t~{-} [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
         logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")
         logger.info("   (generate_events, i.e. MC@NLO matching) are supported: the MC")
         logger.info("   counterterms and the weights written to the LHE use the same frame as")
@@ -1312,43 +1334,68 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be '
                                       'used for NLO processes')
 
-            # The mass of the polarised particle needs no check of its own:
-            # everything reaching here either never needed a frame or has the
-            # boost threaded through it. (Upstream's mass check only ever bit
-            # loop-induced, since its blanket NLO refusal caught everything
-            # else first -- which is precisely the restriction that should not
-            # apply there.)
-            #
-            # Colour, in the subtracted regime only. The threading is
-            # validated on colourless massive bosons, p p > z{0} j [QCD] and
-            # z{0} z{0} j; a coloured polarised particle is also an FKS
-            # emitter, so its polarisation axis and the subtraction's singular
-            # regions meet in a way nothing here has tested. Neither branch
-            # allowed it -- upstream refused u u~ > t{L} t~ [QCD] through the
-            # blanket NLO gate and this branch through a colour check -- so it
-            # stays refused rather than being opened as a side effect of
-            # dropping either one.
+            # Colour, in the subtracted regime only: a coloured polarised
+            # particle is an FKS emitter. Two rules, two messages.
+            # (a) INITIAL state coloured: refused whatever the mass -- the
+            #     splitting reads backwards, so the polarised parton is an
+            #     internal line of the real. A 1 -> N decay is exempt, its
+            #     initial leg being a spectator find_reals never splits.
+            # (b) FINAL state coloured: refused if MASSLESS (untested, and no
+            #     daughter carries the mother's identity); massive is measured.
+            # Evidence and caveats: docs/nlo_polarisation_massive_colour.md.
             if subtracted_boost_ok:
-                def check(p):
-                    if p.get('color') != 1:
-                        raise self.InvalidCmd('Polarization restriction can '
-                                              'not be used for color charged '
-                                              'particles')
+                # A 1 -> N decay: the single particle before the '>' is the
+                # decaying one, never an FKS initial-state splitter.
+                is_decay = len(particles_parts[0].split()) == 1
 
-                for p in particles_parts[0].split() + particles_parts[-1].split():
-                    if '{' not in p:
-                        continue
-                    part = p.split('{')[0]
+                def check(p, initial):
+                    # get_particle returns None for a name the model does not
+                    # know; leave the real diagnostic to the process parser
+                    if p is None:
+                        return
+                    if p.get('color') == 1:
+                        return
+                    if initial and not is_decay:
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'color charged particles (%s) in the INITIAL '
+                            'state of a subtracted NLO computation, whatever '
+                            'their mass: the initial-state splitting makes '
+                            'the polarized particle an internal line of the '
+                            'real emission, so no external leg can carry the '
+                            'polarization. Only final-state coloured '
+                            'particles may be polarized.' % p.get('name'))
+                    if p.get('mass').lower() == 'zero':
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'massless color charged particles (%s) in a '
+                            'subtracted NLO computation. Only massive '
+                            'coloured particles may be polarized here.'
+                            % p.get('name'))
+
+                def walk(particles, initial):
+                    # no model loaded -> nothing to look a colour up in, so
+                    # the whole check is skipped rather than passing per token
                     if not self._curr_model:
-                        continue
-                    particle = self._curr_model.get_particle(part)
-                    if particle:
-                        check(particle)
-                    elif part in self._multiparticles:
-                        for part2 in self._multiparticles[part]:
-                            check(self._curr_model.get_particle(part2))
-                    else:
-                        check(self._curr_model.get_particle(part.lower()))
+                        return
+                    for p in particles.split():
+                        if '{' not in p:
+                            continue
+                        part = p.split('{')[0]
+                        particle = self._curr_model.get_particle(part)
+                        if particle:
+                            check(particle, initial)
+                        elif part.lower() in self._multiparticles:
+                            # do_define lowercases the label it stores
+                            for part2 in self._multiparticles[part.lower()]:
+                                check(self._curr_model.get_particle(part2),
+                                      initial)
+                        else:
+                            check(self._curr_model.get_particle(part.lower()),
+                                  initial)
+
+                walk(particles_parts[0], True)
+                walk(particles_parts[-1], False)
 
 
     def check_tutorial(self, args):
