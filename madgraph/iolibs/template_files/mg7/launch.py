@@ -355,9 +355,48 @@ class MadgraphProcess:
             name=name,
         )
 
+    def apply_auto_ptj_mjj(self, cuts: dict) -> None:
+        """madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f.
+
+        A merging cut already bounds every matrix-element jet from below, so
+        raising the jet pt cut to xqcut removes no phase space that survives
+        the merging anyway while making the integration much more efficient.
+        The jet dR cuts go the other way and are dropped:
+        xqcut supersedes them, and a dR cut would carve a hole out of exactly
+        the region the parton shower is supposed to fill, leaving a gap in the
+        jet rates at the merging scale.
+
+        With the option off, madevent still drops the dR cuts, and only zeroes
+        a pt cut that sits above xqcut - it never tightens.
+        """
+        if self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+            return
+        xqcut = self.run_card["phasespace"]["xqcut"]
+        if xqcut <= 0:
+            return
+        for key in ("jet-delta_r", "jet-lepton-delta_r"):
+            if cuts.get(key, {}).get("min", 0.0) > 0.0:
+                cuts[key]["min"] = 0.0
+        auto = self.run_card["phasespace"]["auto_ptj_mjj"]
+        # Only the ptj half of madevent's rule is applied. Its mjj half has no
+        # counterpart here: "mass" is a single-particle observable in madspace,
+        # so a jet-mass cut would ask each massless parton to be heavier than
+        # xqcut and reject everything. mjj is an efficiency device in madevent,
+        # not a physics cut, so nothing is lost beyond some sampling speed.
+        if auto:
+            cuts.setdefault("jet-pt", {})["min"] = xqcut
+        elif cuts.get("jet-pt", {}).get("min", 0.0) > xqcut:
+            cuts["jet-pt"]["min"] = 0.0
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
+        cuts = {
+            key: dict(values)
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        }
+        self.apply_auto_ptj_mjj(cuts)
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -365,8 +404,7 @@ class MadgraphProcess:
                 max=values.get("max", inf),
                 mode=values.get("mode", "all"),
             )
-            for key, values in self.run_card["cuts"].items()
-            if key != "order_by"
+            for key, values in cuts.items()
         ]
 
     def init_histograms(self) -> None:

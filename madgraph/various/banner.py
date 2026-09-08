@@ -6624,6 +6624,14 @@ class RunCardMG7(RunCard):
         # the parton shower, so the event is dropped. Only used with
         # dynamical_scale_choice = "mlm"; 0 disables it.
         self.add_toml_param('phasespace', 'xqcut', 0.0)
+        # Counterpart of madevent's auto_ptj_mjj. With a merging cut in place
+        # the matrix-element jets are already bounded from below by xqcut, so
+        # the jet pt and pair-mass cuts are raised to it - free physically, and
+        # a large gain in integration efficiency - and the jet dR cuts are
+        # dropped, since xqcut supersedes them and a dR cut would otherwise
+        # carve a hole out of the region the shower is meant to fill.
+        # Only read when dynamical_scale_choice = "mlm" and xqcut > 0.
+        self.add_toml_param('phasespace', 'auto_ptj_mjj', True)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------
