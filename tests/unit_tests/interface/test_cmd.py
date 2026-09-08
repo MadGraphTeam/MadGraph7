@@ -28,6 +28,9 @@ import tests.parallel_tests.test_aloha as test_aloha
 
 import tempfile
 pjoin = os.path.join
+MG5DIR = madgraph.MG5DIR
+
+
 class TestValidCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
     
@@ -360,6 +363,31 @@ class TestExtendedCmd(unittest.TestCase):
         self.assertEqual(main.child, None)
         #ret = main.do_quit('')
         #self.assertEqual(ret, True)        
+
+class TestHepToolsInstallTarget(unittest.TestCase):
+    """'install <tool>' must record its paths in this installation's own
+    configuration, unless HEPTools genuinely lives somewhere shared. Writing
+    installation-specific absolute paths into the per-user file is what made
+    one MadGraph download PDF sets into another one's HEPTools (issue #94)."""
+
+    def target(self, heptools_install_dir):
+        import madgraph.interface.madgraph_interface as mg_cmd
+        return mg_cmd.MadGraphCmd.heptools_install_target(heptools_install_dir)
+
+    def test_default_stays_in_the_installation(self):
+        """The default './HEPTools' is inside MG5DIR, so its paths are private
+        to this installation -- this is the branch that used to be dead."""
+        for value in ['./HEPTools', None, '', os.path.join(MG5DIR, 'HEPTools')]:
+            prefix, config_file = self.target(value)
+            self.assertEqual(prefix, os.path.join(MG5DIR, 'HEPTools'))
+            self.assertEqual(config_file, '')
+
+    def test_external_prefix_uses_the_user_config(self):
+        prefix, config_file = self.target(tempfile.gettempdir())
+        self.assertEqual(prefix, os.path.realpath(tempfile.gettempdir()))
+        self.assertEqual(config_file, misc.user_config_file())
+        self.assertNotIn('.mg5', config_file)
+
 
 class TestMadSpinFCT_in_interface(unittest.TestCase):
     """ check if the ValidCmd works correctly """

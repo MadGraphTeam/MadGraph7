@@ -169,7 +169,7 @@ jobs:
          run: |
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install lhapdf6" > cmd
                ./bin/madgraph cmd
@@ -228,7 +228,7 @@ jobs:
          run: |
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install pythia8" > cmd
                ./bin/madgraph cmd
@@ -278,7 +278,7 @@ jobs:
          run: |
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install eMELA" > cmd
                ./bin/madgraph cmd
@@ -344,7 +344,7 @@ jobs:
                python3 -m pip install Cython
                mkdir -p /home/runner/.cache/HEPtools
                cd $GITHUB_WORKSPACE
-               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+               echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
                cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
                echo "install rivet" > cmd
                echo "install contur" >> cmd
@@ -395,7 +395,7 @@ jobs:
              mkdir -p /home/runner/.cache/HEPtools/CutTools/lib
              mkdir -p /home/runner/.cache/HEPtools/IREGI/src
              cd $GITHUB_WORKSPACE
-             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
              cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
              cd vendor/IREGI/src
              make
@@ -411,7 +411,7 @@ jobs:
        run: |
              mkdir -p ~/.cache/HEPtools
              cd $GITHUB_WORKSPACE
-             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
+             echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
              cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
              echo "install collier " > cmd
              echo "install ninja " >> cmd

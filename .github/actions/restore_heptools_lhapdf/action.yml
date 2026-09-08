@@ -21,9 +21,9 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg5_configuration.txt
-        echo "lhapdf = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg5_configuration.txt
-        echo "lhapdf_py3 = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg5_configuration.txt
+        echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
+        echo "lhapdf = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
+        echo "lhapdf_py3 = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
         echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3//lib" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lib" >> $GITHUB_ENV
       shell: bash

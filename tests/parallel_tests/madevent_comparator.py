@@ -581,6 +581,11 @@ class MG5Runner(MadEventRunner):
         return output
 
 
+# Default PDF of the mg7 run_card.toml, pinned into the MG5 side too (see
+# _patch_run_card_toml / the 'set lhaid' below); both runners need it on disk.
+_MG7_REFERENCE_PDF = 'NNPDF40MC_lo_as_01180'
+
+
 class MG7Runner(MG5Runner):
     """Runner object for the MadGraph7 default ('mg7') exporter.
 
@@ -602,31 +607,13 @@ class MG7Runner(MG5Runner):
 
     @staticmethod
     def resolve_lhapdf_data_path(lhapdf_config=None):
-        """Return a usable LHAPDF data dir, or None.
+        """A PDF-set directory holding the reference set, or None.
 
-        Tries, in order: the ``LHAPDF_DATA_PATH`` env var, the explicitly given
-        ``lhapdf-config`` (e.g. the one MG5 is configured with), and finally a
-        ``lhapdf-config`` found on PATH. A candidate is only accepted if the
-        directory exists and is non-empty (the PATH lhapdf-config sometimes
-        points at an empty share dir).
+        Only used to decide whether this runner can run: bin/generate_events
+        resolves LHAPDF from the configuration itself (see misc.resolve_lhapdf).
         """
-        if os.environ.get('LHAPDF_DATA_PATH'):
-            return os.environ['LHAPDF_DATA_PATH']
-        candidates = []
-        if lhapdf_config and lhapdf_config not in ('lhapdf-config', None):
-            candidates.append(lhapdf_config)
-        on_path = misc.which('lhapdf-config')
-        if on_path:
-            candidates.append(on_path)
-        for lc in candidates:
-            try:
-                datadir = subprocess.check_output(
-                    [lc, '--datadir']).decode().strip()
-            except Exception:
-                continue
-            if datadir and os.path.isdir(datadir) and os.listdir(datadir):
-                return datadir
-        return None
+        options = {'lhapdf': lhapdf_config} if lhapdf_config else {}
+        return misc.resolve_lhapdf(options).find_set(_MG7_REFERENCE_PDF)
 
     @classmethod
     def is_available(cls):
@@ -684,18 +671,9 @@ class MG7Runner(MG5Runner):
         # but ships with fixed_(ren|fact)_scale=true, so flip those off.
         self._patch_run_card_toml(os.path.join(dir_name, 'Cards', 'run_card.toml'))
 
-        # Drive the mg7 survey directly (bin/generate_events), with a resolved
-        # LHAPDF data path so hadronic PDFs load without the python lhapdf
-        # module. Prefer the lhapdf-config MG5 is configured with.
-        env = dict(os.environ)
-        mg5_lhapdf = None
-        try:
-            mg5_lhapdf = cmd.options.get('lhapdf')
-        except Exception:
-            mg5_lhapdf = None
-        datadir = self.resolve_lhapdf_data_path(mg5_lhapdf)
-        if datadir:
-            env['LHAPDF_DATA_PATH'] = datadir
+        # Drive the mg7 survey directly (bin/generate_events). It resolves
+        # LHAPDF from Cards/me5_configuration.txt on its own, so no LHAPDF
+        # environment is handed down here.
         # Run the full pipeline (survey + integration): the aggregated,
         # converged cross-section ends up in process.mean of info.json. The
         # survey-only estimate is far too biased to use here.
@@ -703,7 +681,7 @@ class MG7Runner(MG5Runner):
         log_path = os.path.join(dir_name, 'mg7_survey.log')
         with open(log_path, 'w') as logf:
             ret = subprocess.call([sys.executable, gen, '-f'],
-                                  cwd=dir_name, env=env,
+                                  cwd=dir_name,
                                   stdout=logf, stderr=subprocess.STDOUT)
         if ret != 0:
             raise self.MERunnerException(
