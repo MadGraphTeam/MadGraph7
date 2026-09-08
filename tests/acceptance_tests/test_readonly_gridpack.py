@@ -90,7 +90,7 @@ class TestReadOnlyGridpack(unittest.TestCase):
         mlog = pjoin(self.tmpdir, 'mg5.log')
         with open(mlog, 'w') as logf:
             ret = subprocess.call(
-                [sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), '-f', script],
+                [sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), '-f', script],
                 stdout=logf, stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'mg5_aMC output failed (see %s)' % mlog)
         self.assertTrue(os.path.isdir(medir), 'process directory not created')

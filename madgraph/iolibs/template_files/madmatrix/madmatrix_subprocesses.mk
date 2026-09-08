@@ -48,7 +48,7 @@ endif
 #
 # The common library is built *through* one representative subprocess directory
 # rather than directly: madmatrix.mk already resolves BACKEND (including the
-# 'cppauto' detection), FPTYPE, the compiler flags and the paths of src/ and
+# 'cpu' detection), FPTYPE, the compiler flags and the paths of src/ and
 # lib/, and none of that has to be duplicated here.
 COMMONDIR := $(firstword $(SUBDIRS))
 

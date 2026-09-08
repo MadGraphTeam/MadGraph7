@@ -504,7 +504,8 @@ class Switcher(object):
         # if there is a path, find what output has been done
             if path:
                 type = self.cmd.find_output_type(self, path) 
-                if type in ['standalone', 'standalone_cpp', 'pythia8', 'madevent']:
+                if type in ['standalone_fortran', 'standalone_cpp_family',
+                            'pythia8', 'madevent']:
                     self.change_principal_cmd('MadGraph')
                 elif type == 'aMC@NLO':
                     self.change_principal_cmd('aMC@NLO')
@@ -783,7 +784,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], 'mg5_configuration.txt')
+        config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):
@@ -800,7 +801,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
             # put default options since 
             # in the web the local file is not used
             # in download the default file is more usefull
-            files.cp(pjoin(MG5DIR,'input','mg5_configuration.txt'), args[1])
+            files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):
         """block all install"""

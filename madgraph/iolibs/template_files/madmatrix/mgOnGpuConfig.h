@@ -228,7 +228,7 @@ using mgOnGpu::fptype_denom;
 using mgOnGpu::fptype_amp;
 using mgOnGpu::fptype_colour;
 
-// Undefine ARM_NEON (hack for cppnone on Apple silicon ARM)
+// Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
 #undef __ARM_NEON
 #endif

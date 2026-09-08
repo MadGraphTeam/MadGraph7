@@ -237,11 +237,13 @@ Diagram::Diagram(
     _outgoing_masses(outgoing_masses),
     _propagators(propagators),
     _vertices(vertices),
-    _incoming_vertices{-1, -1},
+    _incoming_vertices(incoming_masses.size(), -1),
     _outgoing_vertices(outgoing_masses.size(), -1),
     _propagator_vertices(propagators.size()) {
-    if (incoming_masses.size() != 2) {
-        throw std::invalid_argument("Diagram must have two incoming particles");
+    if (incoming_masses.size() != 1 && incoming_masses.size() != 2) {
+        throw std::invalid_argument(
+            "Diagram must have one incoming particle (a decay) or two (a collision)"
+        );
     }
     if (outgoing_masses.size() < 2) {
         throw std::invalid_argument(
@@ -298,38 +300,56 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
     std::vector<std::size_t> t_vertices;
     std::vector<Diagram::LineRef> lines_after_t;
     std::vector<int> integration_order;
-    find_t_vertices(
-        diagram,
-        visited,
-        t_vertices,
-        lines_after_t,
-        integration_order,
-        topo._t_propagator_masses,
-        topo._t_propagator_widths,
-        diagram.incoming_vertices().at(1),
-        -1
-    );
-
-    // sort by integration order and propagator mass, while preventing
-    // impossible integration orders
-    bool choose_low = false;
-    std::size_t index_low = 0, index_high = integration_order.size() - 1;
-    while (index_low != index_high) {
-        int order_low = integration_order.at(index_low);
-        int order_high = integration_order.at(index_high - 1);
-        double mass_low = topo._t_propagator_masses.at(index_low);
-        double mass_high = topo._t_propagator_masses.at(index_high - 1);
-        if (order_low != order_high) {
-            choose_low = order_low < order_high;
-        } else if (mass_low != mass_high) { // TODO: maybe smarter heuristic here?
-            choose_low = mass_low < mass_high;
+    if (diagram.incoming_masses().size() == 1) {
+        // Decay: there is no t-channel chain to find. find_t_vertices walks in
+        // from the *second* incoming particle and marks the vertices between
+        // the two beams; with a single incoming particle the vertex it attaches
+        // to is simply the root of a pure s-channel cascade, and every other
+        // line at that vertex is a child of the root decay. Hand those to the
+        // shared decay builder below and leave _t_integration_order empty, so
+        // t_propagator_count() == 0 and consumers take their no-t-channel path.
+        std::size_t root_vertex = diagram.incoming_vertices().at(0);
+        for (auto& line_ref : diagram.vertices().at(root_vertex)) {
+            if (line_ref.type() == Diagram::incoming) {
+                continue;
+            }
+            t_vertices.push_back(root_vertex);
+            lines_after_t.push_back(line_ref);
         }
-        if (choose_low) {
-            topo._t_integration_order.push_back(index_low);
-            ++index_low;
-        } else {
-            topo._t_integration_order.push_back(index_high - 1);
-            --index_high;
+    } else {
+        find_t_vertices(
+            diagram,
+            visited,
+            t_vertices,
+            lines_after_t,
+            integration_order,
+            topo._t_propagator_masses,
+            topo._t_propagator_widths,
+            diagram.incoming_vertices().at(1),
+            -1
+        );
+
+        // sort by integration order and propagator mass, while preventing
+        // impossible integration orders
+        bool choose_low = false;
+        std::size_t index_low = 0, index_high = integration_order.size() - 1;
+        while (index_low != index_high) {
+            int order_low = integration_order.at(index_low);
+            int order_high = integration_order.at(index_high - 1);
+            double mass_low = topo._t_propagator_masses.at(index_low);
+            double mass_high = topo._t_propagator_masses.at(index_high - 1);
+            if (order_low != order_high) {
+                choose_low = order_low < order_high;
+            } else if (mass_low != mass_high) { // TODO: maybe smarter heuristic here?
+                choose_low = mass_low < mass_high;
+            }
+            if (choose_low) {
+                topo._t_integration_order.push_back(index_low);
+                ++index_low;
+            } else {
+                topo._t_integration_order.push_back(index_high - 1);
+                --index_high;
+            }
         }
     }
 
@@ -459,8 +479,11 @@ std::vector<std::tuple<std::vector<int>, double, double>>
 Topology::propagator_momentum_terms(bool only_decays) const {
     std::vector<std::tuple<std::vector<int>, double, double>> ret;
     std::vector<std::vector<std::size_t>> decay_indices(_decays.size());
-    std::size_t n_ext = _outgoing_masses.size() + 2;
-    std::size_t ext_index = 2;
+    // The external momenta are laid out incoming-first, so the outgoing ones
+    // start at n_in (2 for a collision, 1 for a decay).
+    std::size_t n_in = _incoming_masses.size();
+    std::size_t n_ext = _outgoing_masses.size() + n_in;
+    std::size_t ext_index = n_in;
     for (std::size_t index : _outgoing_indices) {
         decay_indices.at(index).push_back(ext_index);
         ++ext_index;
@@ -469,8 +492,9 @@ Topology::propagator_momentum_terms(bool only_decays) const {
         if (decay.index == 0) {
             if (_t_integration_order.size() == 0) {
                 std::vector<int> factors(n_ext);
-                factors.at(0) = 1;
-                factors.at(1) = 1;
+                for (std::size_t i = 0; i < n_in; ++i) {
+                    factors.at(i) = 1;
+                }
                 ret.push_back({factors, decay.mass, decay.width});
             }
         } else if (decay.child_indices.size() != 0) {

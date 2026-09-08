@@ -3394,7 +3394,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             self.format = opts['format']
             del opts['format']
         else:
-            self.format = 'standalone'
+            self.format = 'standalone_fortran'
 
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
@@ -3968,7 +3968,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fsock.close()
 
         #important to put that first
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             filename2 = pjoin(dirpath, 'check_sa.f')
             self.write_check_sa(writers.FortranWriter(filename2), matrix_element, proc_prefix)
 
@@ -4042,7 +4042,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             plot.draw()
 
         linkfiles = ['check_sa.f', 'coupl.inc']
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             linkfiles = ['coupl.inc']
 
 
@@ -4458,7 +4458,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     #===========================================================================
     def write_check_sa(self, writer, matrix_element, proc_prefix=''):
 
-        if self.format != 'standalone':
+        if self.format != 'standalone_fortran':
             return
 
         # Density-mode defaults (overridden if 'density' is in cmd_options).
@@ -8726,7 +8726,7 @@ class UFO_model_to_mg4(object):
                 text = open(path).read()
                 text = text.replace('madevent','aMCatNLO').replace('../vector.inc', '')
                 open(path, 'w').writelines(text)
-        elif self.opt['export_format'] in ['standalone', 'standalone_msP','standalone_msF',
+        elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
             cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
@@ -11529,7 +11529,23 @@ c         segments from -DABS(tiny*Ga) to Ga
                                       rule_card_path=rule_card, 
                                       mssm_convert=True,
                                       write_special=write_special)
-        
+
+# Output formats with a loop backend for a loop-induced ([noborn=]) process
+# coming through the tree-level do_output. Test membership EXACTLY: 'standalone'
+# is a prefix of standalone_cpp / _mg7 / _msP / _msF / _rw, which have none.
+LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone']
+
+def loop_induced_not_supported_msg(format, process=None):
+    """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
+
+    orders = (' '.join(process.get('perturbation_couplings')) if process
+              else '') or 'QCD'
+
+    return """The '%(format)s' output format does not support loop-induced processes.
+Generate the process with [sqrvirt=%(orders)s] rather than [noborn=%(orders)s] to obtain the
+same matrix element as a standalone MadLoop output, or use 'output madevent'
+to integrate it.""" % {'format': format, 'orders': orders}
+
 def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True, cmd_options={}):
     """ Determine which Export_v4 class is required. cmd is the command 
         interface containing all potential usefull information.
@@ -11678,9 +11694,34 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         if format in ['madevent']:
             opt['madanalysis5'] = cmd.options['madanalysis5_path']
             
+        # Every standalone_* format that reaches the *v4* factory is
+        # Fortran-family (standalone_fortran, standalone_msP/msF/rw). The plain
+        # `standalone` (MadMatrix) is declared with exporter 'cpp' in
+        # MadGraphCmd.do_output and goes to ExportCPPFactory instead, so it
+        # never gets here despite matching the prefix.
         if format == 'matrix' or format.startswith('standalone'):
+            if cmd._curr_amps and isinstance(
+                    cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+                # of the formats sharing this branch only 'standalone' has a
+                # MadLoop backend; ProcessExporterFortranSA has none
+                if format not in LOOP_INDUCED_FORMATS:
+                    raise InvalidCmd(
+                        loop_induced_not_supported_msg(format, curr_proc))
+                import madgraph.loop.loop_exporters as loop_exporters
+                if not os.path.isdir(os.path.join(cmd._mgme_dir,
+                                                  'Template/loop_material')):
+                    raise MadGraph5Error(
+                        'MG5_aMC cannot find the \'loop_material\' directory'
+                        ' in %s' % str(cmd._mgme_dir))
+                if cmd.options['loop_optimized_output']:
+                    MadLoop_SA_options['export_format'] = 'madloop_optimized'
+                    ExporterClass = \
+                        loop_exporters.LoopProcessOptimizedExporterFortranSA
+                else:
+                    ExporterClass = loop_exporters.LoopProcessExporterFortranSA
+                return ExporterClass(cmd._export_dir, MadLoop_SA_options)
             return ProcessExporterFortranSA(cmd._export_dir, opt, format=format)
-        
+
         elif format in ['madevent'] and group_subprocesses:
             if isinstance(cmd._curr_amps[0], 
                                          loop_diagram_generation.LoopAmplitude):
@@ -11700,6 +11741,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             else:
                 return  ProcessExporterFortranME(cmd._export_dir,opt)
         elif format in ['matchbox']:
+            # no loop-induced backstop needed: do_output refuses 'matchbox'
+            # before any factory runs, and loop_interface never comes here
             return ProcessExporterFortranMatchBox(cmd._export_dir,opt)
         elif cmd._export_format in ['madweight'] and group_subprocesses:
 

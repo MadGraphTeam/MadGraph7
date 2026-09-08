@@ -1680,7 +1680,6 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return None
         
         pdg_out = self.get('pdg_code')
-        misc.sprint(pdg_out, self[tag_name], [p.get_pdg_code() for p in vertex.get('particles')])
         if abs(pdg_out) in model.get('merged_particles'):
             pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
             index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]
@@ -5487,8 +5486,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         pdgs = []
         pdg_signs = []
+        # L-cut wavefunctions of a loop ME are also motherless, but they are not
+        # external legs of the process (same filter as get_nexternal_ninitial).
         external_wfs = sorted([wf for wf in self.get_all_wavefunctions()
-                               if len(wf.get('mothers')) == 0],
+                               if len(wf.get('mothers')) == 0
+                               and not wf.get('is_loop')],
                               key=lambda w: w['number_external'])
         external_number = 1
         id_to_wf = collections.defaultdict(list)

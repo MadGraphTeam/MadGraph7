@@ -803,7 +803,7 @@ class ProcCard(list):
         '#*                                                          *\n' + \
         '#*               Command File for MadGraph5_aMC@NLO         *\n' + \
         '#*                                                          *\n' + \
-        '#*     run as ./bin/mg5_aMC  filename                       *\n' + \
+        '#*     run as ./bin/madgraph  filename                      *\n' + \
         '#*                                                          *\n' + \
         '#************************************************************\n'
     
@@ -3502,17 +3502,24 @@ class RunCard(ConfigFile):
                     fsock = file_writers.FortranWriter(tmp,'w')
                     function_text = fsock.remove_routine(text, fct)
                     fsock.close()
-                    test = open(tmp,'r').read()                        
-                    if fct not in self.dummy_fct_file:
-                        if fct.startswith('user_'):
-                            self.dummy_fct_file[fct] = self.dummy_fct_file['user_']
+                    test = open(tmp,'r').read()
+                    # fortran is case insensitive (and upper case is idiomatic),
+                    # while dummy_fct_file --and the routines of the template
+                    # files-- are written in lower case. So normalise the name
+                    # extracted from the user file before any comparison.
+                    # (the removal above has to use the original case since it
+                    #  operates on the user file itself)
+                    lfct = fct.lower()
+                    if lfct not in self.dummy_fct_file:
+                        if lfct.startswith('user_'):
+                            self.dummy_fct_file[lfct] = self.dummy_fct_file['user_']
                         else:
-                            raise InvalidRunCard("function %s is not designed for overwritting")
-                    writein = self.dummy_fct_file[fct]
+                            raise InvalidRunCard("function %s is not designed for overwriting" % fct)
+                    writein = self.dummy_fct_file[lfct]
                     if writein not in to_mod:
-                        to_mod[writein]=[[fct], [function_text]]
+                        to_mod[writein]=[[lfct], [function_text]]
                     else:
-                        to_mod[writein][0].append(fct)
+                        to_mod[writein][0].append(lfct)
                         to_mod[writein][1].append(function_text)
 
         # step 2: write the new files
@@ -6473,8 +6480,18 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
-        self.add_toml_param('run', 'devices', ["cppnone"], typelist=str, gridpack=True,
-            comment="options: cuda, hip, cpp, cppnone, cppsse4, cppavx2, cpp512y, cpp512z, cppauto")
+        self.add_toml_param('run', 'seed', -1, gridpack=True,
+            comment="every run is reproducible: the same seed reproduces the run "
+                    "bit-identically. -1 draws a fresh random seed each run instead "
+                    "of fixing one here; the seed actually used is still recorded "
+                    "(the MG7Seed tag in the LHE file, or the info.json status "
+                    "file), so the run can be reproduced later")
+        self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
+            allowed=['cpu', 'cuda', 'hip', '*'],
+            comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
+        self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
+            allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
+            comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
@@ -6496,9 +6513,18 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
-        self.add_toml_param('beam', 'pdf', "NNPDF23_lo_as_0130_qed")
-        self.add_toml_param('beam', 'fixed_ren_scale', True)
-        self.add_toml_param('beam', 'fixed_fact_scale', True)
+        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118. This is the
+        # MC-generator-oriented variant of the NNPDF4.0 LO set: a single member
+        # and ~0.7 MB, versus ~54 MB for NNPDF40_lo_as_01180. NNPDF4.0 has no
+        # 4-flavour LO counterpart, so there is no scheme-dependent choice to
+        # make here: this one set is used whatever the b-quark treatment.
+        self.add_toml_param('beam', 'pdf', "NNPDF40MC_lo_as_01180")
+        # Default to the dynamical scale set by dynamical_scale_choice below
+        # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
+        # / fact_scale values. Those fixed values are kept as the fallback used
+        # when a user turns either of these back on.
+        self.add_toml_param('beam', 'fixed_ren_scale', False)
+        self.add_toml_param('beam', 'fixed_fact_scale', False)
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)
@@ -6601,10 +6627,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
         self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
         self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 100000)
+        self.add_toml_param('madnis', 'buffer_capacity', 60000)
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
-        self.add_toml_param('madnis', 'buffered_steps', 5)
-        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8)
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
+        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95)
         self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)
         self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
@@ -6654,6 +6681,24 @@ class RunCardMG7(RunCard):
 
     get = __getitem__
 
+    def __setitem__(self, name, value, *args, **opts):
+        """Refuse an unsupported cpu_mode instead of silently falling back.
+
+        The generic ConfigFile machinery reacts to a value outside an 'allowed'
+        list by logging a warning and keeping the previous value. For cpu_mode
+        that would mean building and running with a SIMD width the user never
+        asked for, so make it a hard error here. This matters in particular for
+        run cards written before the backend renaming, which still carry a
+        removed value such as 'cpu_128b'.
+        """
+        if isinstance(name, str) and name.strip().lower() in ('cpu_mode', 'run.cpu_mode'):
+            allowed = self.allowed_value.get('run.cpu_mode', [])
+            if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
+                raise InvalidRunCard(
+                    "Invalid cpu_mode='%s': supported values are [ '%s' ]"
+                    % (str(value).strip(), "', '".join(str(v) for v in allowed)))
+        return super(RunCardMG7, self).__setitem__(name, value, *args, **opts)
+
     # ------------------------------------------------------------------
     # legacy run_card compatibility
     # ------------------------------------------------------------------
@@ -6672,14 +6717,18 @@ class RunCardMG7(RunCard):
         'dparameter', 'lhaid', 'iseed', 'python_seed',
     }
 
-    # mg7 dynamical_scale_choice name -> legacy integer code
-    # NOTE: mapping to confirm; only relevant for a dynamical-scale run (fixed
-    # scales, the mg7 default, are handled through the event scale directly).
+    # mg7 dynamical_scale_choice name -> legacy integer code. This is the
+    # inverse of _LO_DYNSCALE_MAP below and must stay consistent with it, and
+    # with the legacy codes documented on the LO run_card's
+    # dynamical_scale_choice: 1 = sum of transverse energy, 2 = HT (sum of
+    # transverse mass), 3 = HT/2, 4 = partonic centre-of-mass energy.
+    # Only consulted for a dynamical-scale run; a fixed-scale run returns -1
+    # before reaching here and is handled through the event scale directly.
     _dyn_scale_legacy = {
         'partonic_energy': 4,
         'transverse_mass': 2,
         'half_transverse_mass': 3,
-        'transverse_energy': 3,
+        'transverse_energy': 1,
     }
 
     def _legacy_compat(self, key):
@@ -6999,10 +7048,31 @@ class RunCardMG7(RunCard):
         self.set('beam.fact_scale2', val, user=True)
         return val
 
+    # The device types accepted by the 'device' entry of [run]. Each entry may
+    # carry an optional device index, e.g. "cuda:1".
+    allowed_device_types = ['cpu', 'cuda', 'hip']
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
+
+        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
+        # generic 'allowed' machinery cannot check it on its own.
+        devices = self['run']['device']
+        if not devices:
+            raise InvalidRunCard("device can not be an empty list")
+        for entry in devices:
+            device_type, _, index = str(entry).partition(':')
+            if device_type not in self.allowed_device_types:
+                raise InvalidRunCard(
+                    "Invalid device '%s': each entry of 'device' must be one of %s, "
+                    "optionally followed by a device index (e.g. \"cuda:1\")"
+                    % (entry, ', '.join(self.allowed_device_types)))
+            if index and not index.isdigit():
+                raise InvalidRunCard(
+                    "Invalid device '%s': the device index must be a non-negative integer"
+                    % entry)
 
     # ------------------------------------------------------------------
     # writing TOML
@@ -7143,9 +7213,13 @@ class RunCardMG7(RunCard):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
 
-        # 1 -> N decay: no cuts at all
+        # 1 -> N decay: no cuts at all. A partial width is an inclusive
+        # quantity, so any kinematic cut biases it low (the collider defaults
+        # cost ~3% on t > b w+, w+ > e+ ve). The Breit-Wigner cutoff in
+        # [phasespace] is deliberately left alone: it is a sampling range for
+        # the off-shell propagators, not a cut on the final state.
         if proc_characteristic and proc_characteristic['ninitial'] == 1:
-            self.dynamic_sections['cuts'] = collections.OrderedDict()
+            self.remove_all_cut()
 
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):

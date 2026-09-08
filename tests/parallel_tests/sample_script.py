@@ -71,10 +71,6 @@ if '__main__' == __name__:
     my_mg5_ufo = me_comparator.MG5_UFO_Runner()
     my_mg5_ufo.setup(mg5_path, mg4_path)
 
-    # Create a MERunner object for C++
-    my_mg5_cpp = me_comparator.MG5_CPP_Runner()
-    my_mg5_cpp.setup(mg5_path, mg4_path)
-
     # Create and setup a comparator
     my_comp = me_comparator.MEComparator()
     my_comp.set_me_runners(my_mg5, my_mg5_ufo)

@@ -346,7 +346,7 @@ class TestModelCreation(unit_tests.TestCase, CheckFileCreate):
         #    model = save_load_object.load_from_file(picklefile)
             
         misc.sprint(self.output_path, os.path.exists(self.output_path))
-        export_v4.UFO_model_to_mg4(model, self.output_path,opt = {'export_format': 'standalone', 'mp':False}).build()
+        export_v4.UFO_model_to_mg4(model, self.output_path,opt = {'export_format': 'standalone_fortran', 'mp':False}).build()
         
 #    tearDown = CheckFileCreate.clean_files
 

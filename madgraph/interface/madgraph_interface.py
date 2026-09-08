@@ -333,7 +333,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("syntax: save %s FILENAME [OPTIONS]" % "|".join(self._save_opts),'$MG:color:BLUE')
         logger.info("-- save information as file FILENAME",'$MG:BOLD')
         logger.info("   FILENAME is optional for saving 'options'.")
-        logger.info('   By default it uses ./input/mg5_configuration.txt')
+        logger.info('   By default it uses ./input/mg7_configuration.txt')
         logger.info('   If you put "global" for FILENAME it will use the global configuration')
         logger.info('   If this files exists, it is uses by all MG5 on the system but continues')
         logger.info('   to read the local options files.')
@@ -483,7 +483,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info('   If FILE belongs to index.html, param_card.dat, run_card.dat')
         logger.info('   the path to the last created/used directory is used')
         logger.info('   The program used to open those files can be chosen in the')
-        logger.info('   configuration file ./input/mg5_configuration.txt')
+        logger.info('   configuration file ./input/mg7_configuration.txt')
 
     def help_customize_model(self):
         logger.info("syntax: customize_model --save=NAME",'$MG:color:BLUE')
@@ -501,14 +501,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     it is set by default.")
         logger.info("   - If mode is madevent, create a MadEvent process directory.")
         logger.info("   - If mode is standalone, create a Standalone directory")
+        logger.info("     using the MadMatrix (C++/CUDA) matrix elements.")
+        logger.info("   - If mode is standalone_fortran, create a Fortran Standalone directory")
         logger.info("   - If mode is matrix, output the matrix.f files for all")
         logger.info("     generated processes in directory \"path\".")
-        logger.info("   - If mode is standalone_cpp, create a standalone C++")
-        logger.info("     directory in \"path\".")
         logger.info("   - If mode is pythia8, output all files needed to generate")
         logger.info("     the processes using Pythia 8. The files are written in")
         logger.info("     the Pythia 8 directory (default).")
-        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg5_configuration.txt")
+        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg7_configuration.txt")
         logger.info("   - If mode is aloha: Special syntax output:")
         logger.info("     syntax: aloha [ROUTINE] [--options]" )
         logger.info("     valid options for aloha output are:")
@@ -524,14 +524,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      -nojpeg: no jpeg diagrams will be generated.")
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
         logger.info("      -name: the postfix of the main file in pythia8 mode.")
-        logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone(default:False)] allows a more efficient code computing the color-factor.")
+        logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
-        logger.info("      --mask=False: [madevent|standalone] disable flavor-mask optimization for grouped/merged flavors (default:True).")
-        logger.info("      --prefix=int|proc: [standalone] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
+        logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
+        logger.info("      --prefix=int|proc: [standalone_fortran] prefix matrix-element routine names (int: M<n>_, proc: process name); generates f2py python-linkable routines.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
-        logger.info("       output standalone MYRUN -f",'$MG:color:GREEN')
+        logger.info("       output standalone_fortran MYRUN -f",'$MG:color:GREEN')
         logger.info("       output pythia8 ../pythia8/ -name qcdprocs",'$MG:color:GREEN')
 
     def help_check(self):
@@ -1453,6 +1453,13 @@ This will take effect only in a NEW terminal
                 elif self._done_export[1].startswith(mode):
                     args.append(self._done_export[1])
                     args.append(self._done_export[0])
+                elif mode == 'standalone_fortran' and self._done_export[1] in \
+                        ('standalone_msP', 'standalone_msF', 'standalone_rw'):
+                    # find_output_type cannot tell the Fortran standalone
+                    # variants apart on disk: they all report
+                    # 'standalone_fortran'. Accept the recorded format.
+                    args.append(self._done_export[1])
+                    args.append(self._done_export[0])
                 else:
                     raise self.InvalidCmd('%s not valid directory for launch' % self._done_export[0])
                 return
@@ -1522,7 +1529,7 @@ This will take effect only in a NEW terminal
 
     def find_output_type(self, path):
         """ identify the type of output of a given directory:
-        valid output: madevent/standalone/standalone_cpp"""
+        valid output: madevent/standalone/standalone_fortran/mg7/..."""
 
         card_path = pjoin(path,'Cards')
         bin_path = pjoin(path,'bin')
@@ -1539,19 +1546,26 @@ This will take effect only in a NEW terminal
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isfile(pjoin(subproc_path, 'madmatrix_standalone.mk')):
-            # standalone_mg7 writes SubProcesses/madmatrix_standalone.mk
-            # (the regular mg7 export only writes madmatrix.mk).
-            return 'standalone_mg7'
+            # the `standalone` (madmatrix) export writes
+            # SubProcesses/madmatrix_standalone.mk (the regular mg7 export only
+            # writes madmatrix.mk, so testing for that would match it too).
+            return 'standalone'
         elif os.path.isfile(pjoin(card_path, 'run_card.toml')):
             return 'mg7'
         elif os.path.isdir(src_path):
-            return 'standalone_cpp'
+            # Catch-all for the C++-family standalone trees, i.e. anything
+            # written by a ProcessExporterCPP descendant that ships a src/
+            # directory and is not one of the more specific cases above --
+            # today that is `matchbox_cpp` and `mg7_v5`.  This is not a
+            # user-facing `output` format name; it only has to start with
+            # 'standalone' so that do_launch routes it to the SALauncher.
+            return 'standalone_cpp_family'
         elif os.path.isdir(mw_path):
             return 'madweight'
         elif os.path.isfile(pjoin(bin_path,'aMCatNLO')):
             return 'aMC@NLO'
         elif os.path.isdir(card_path):
-            return 'standalone'
+            return 'standalone_fortran'
 
         raise self.InvalidCmd('%s : Not a valid directory' % path)
 
@@ -1610,16 +1624,10 @@ This will take effect only in a NEW terminal
                 elif arg.startswith('--'):
                     raise self.InvalidCmd('unknow command for \'save options\'')
                 elif arg == 'global':
-                    legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                    if os.path.exists(legacy_config_dir):
-                        config_dir = legacy_config_dir
-                    else:
-                        config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                        if not os.path.exists(config_dir):
-                            os.makedirs(config_dir)
-
-                    config_file = os.path.join(config_dir, 'mg5_configuration.txt')
+                    config_file = misc.user_config_file(create=True)
+                    if not config_file:
+                        raise self.InvalidCmd('no home directory to save the '
+                                              'global configuration into')
                     args.remove('global')
                     args.insert(1, config_file)
 
@@ -1636,7 +1644,7 @@ This will take effect only in a NEW terminal
                         args.insert(1, arg)
                         has_path = True
             if not has_path:
-                args.insert(1, pjoin(MG5DIR,'input','mg5_configuration.txt'))
+                args.insert(1, misc.install_config_file(MG5DIR))
 
 
     def check_set(self, args, log=True):
@@ -1775,6 +1783,12 @@ This will take effect only in a NEW terminal
         if args and args[0] == 'pythia8':
             raise self.InvalidCmd('output pythia8 is no longer supported; please use a different output mode')
 
+        if args and args[0] == 'standalone_cpp':
+            raise self.InvalidCmd('output standalone_cpp is no longer supported; '
+                                  'use \'standalone\' for the MadMatrix (C++/CUDA) '
+                                  'standalone or \'standalone_fortran\' for the '
+                                  'Fortran one')
+
         if args and args[0] in self._export_formats:
             self._export_format = args.pop(0)
         elif args:
@@ -1823,8 +1837,8 @@ This will take effect only in a NEW terminal
                     raise self.InvalidCmd('%s is not allowed in the output path' % char)
             # Check for special directory treatment
             if path == 'auto' and self._export_format in \
-                     ['madevent', 'standalone', 'standalone_cpp', 'matchbox_cpp',
-                      'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone_mg7']:
+                     ['madevent', 'standalone_fortran', 'matchbox_cpp',
+                      'matchbox', 'plugin', 'me7', 'mg7', 'mg7_v5', 'standalone']:
                 self.get_default_path()
                 if '-noclean' not in args and os.path.exists(self._export_dir):
                     args.append('-noclean')
@@ -1947,7 +1961,7 @@ This will take effect only in a NEW terminal
     def get_default_path(self):
         """Set self._export_dir to the default (\'auto\') path"""
 
-        if self._export_format in ['madevent', 'standalone']:
+        if self._export_format in ['madevent', 'standalone_fortran']:
             # Detect if this script is launched from a valid copy of the Template,
             # if so store this position as standard output directory
             if 'TemplateVersion.txt' in os.listdir('.'):
@@ -1974,7 +1988,11 @@ This will take effect only in a NEW terminal
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
         elif self._export_format in ['mg7', 'mg7_v5']:
-            name_dir = lambda i: 'PROCMG7_%s_%s' % \
+            # mg7 is the default output format, so it takes the plain PROC_
+            # prefix.  This deliberately shares a namespace with madevent
+            # below: auto_path() picks the first free index, so the two never
+            # collide on disk, they just interleave.
+            name_dir = lambda i: 'PROC_%s_%s' % \
                                     (self._curr_model['name'], i)
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
@@ -1984,21 +2002,13 @@ This will take effect only in a NEW terminal
             auto_path = lambda i: pjoin(self.writing_dir,
                                                name_dir(i))
         elif self._export_format.startswith('standalone'):
-            if self._export_format == 'standalone_cpp':
-                name_dir = lambda i: 'PROC_SA_CPP_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))
-            elif self._export_format == 'standalone_mg7':
-                name_dir = lambda i: 'PROCMG7_SA_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))
-            else:
-                name_dir = lambda i: 'PROC_SA_%s_%s' % \
-                                    (self._curr_model['name'], i)
-                auto_path = lambda i: pjoin(self.writing_dir,
-                                               name_dir(i))                
+            # The madmatrix standalone is the default standalone, so it takes
+            # the plain PROC_SA_ prefix and shares the auto-name namespace with
+            # the Fortran standalone (and its msP/msF/rw variants).
+            name_dir = lambda i: 'PROC_SA_%s_%s' % \
+                                (self._curr_model['name'], i)
+            auto_path = lambda i: pjoin(self.writing_dir,
+                                           name_dir(i))
         elif self._export_format in ['matchbox_cpp', 'matchbox']:
             name_dir = lambda i: 'PROC_MATCHBOX_%s_%s' % \
                                     (self._curr_model['name'], i)
@@ -2605,8 +2615,12 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         mode = self.find_launch_mode(args)
 
-        if mode and mode.startswith('standalone') and mode != 'standalone_mg7':
-            # standalone outputs are run through SALauncher/MadLoopLauncher:
+        if mode and mode.startswith('standalone') and mode != 'standalone':
+            # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
+            # `standalone` (madmatrix) output, which is launched through its own
+            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
+            # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
             out['Options'] = self.list_completion(text, opt, line)
@@ -2726,7 +2740,7 @@ class CompleteForCmd(cmd.CompleteCmd):
                     return self.aloha_complete_output(text, line, begidx, endidx)
                 except Exception as error:
                     print(error)
-            if 'standalone' in args:
+            if 'standalone_fortran' in args:
                 possible_options_full = list(possible_options_full) + ['--prefix=int', '--prefix=proc', '--density=']
 
             # Directory continuation
@@ -3143,11 +3157,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     _install_opts.extend(_advanced_install_opts)
 
-    _v4_export_formats = ['madevent', 'standalone', 'standalone_msP','standalone_msF',
+    _v4_export_formats = ['madevent', 'standalone_fortran', 'standalone_msP','standalone_msF',
                           'matrix', 'standalone_rw']
-    _export_formats = _v4_export_formats + ['standalone_cpp', 'aloha',
+    _export_formats = _v4_export_formats + ['aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
-                                            'standalone_mg7']
+                                            'standalone']
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -3328,7 +3342,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._nlo_modes_for_completion = ['all','virt','real','LOonly']
         self._second_exporter = None
 
-        # Load the configuration file,i.e.mg5_configuration.txt
+        # Load the configuration file,i.e.mg7_configuration.txt
         self.set_configuration()
 
     def setup(self):
@@ -3346,9 +3360,9 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._curr_proc_defs = base_objects.ProcessDefinitionList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
 
-        self._v4_export_formats = ['madevent', 'standalone','standalone_msP','standalone_msF',
+        self._v4_export_formats = ['madevent', 'standalone_fortran','standalone_msP','standalone_msF',
                                    'matrix', 'standalone_rw']
-        self._export_formats = self._v4_export_formats + ['standalone_cpp', 'mg7_v5', 'mg7', 'standalone_mg7']
+        self._export_formats = self._v4_export_formats + ['mg7_v5', 'mg7', 'standalone']
         self._nlo_modes_for_completion = ['all','virt','real']
 
     def do_quit(self, line):
@@ -3377,7 +3391,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # The four gluon merging is wanted while the diagrams are generated,
         # which is below the interface, so it travels on the module. Synced
         # here rather than only in the setter, since the option can also
-        # arrive from mg5_configuration.txt.
+        # arrive from mg7_configuration.txt.
         madgraph.merge_quartic_vertices = \
                              self.options.get('merge_quartic_vertices', False)
         # an added process arrives in the generated order whatever an earlier
@@ -6457,7 +6471,27 @@ This implies that with decay chains:
         line = 'all =' + ' '.join(line)
         self.do_define(line)
 
-    def advanced_install(self, tool_to_install, 
+    @staticmethod
+    def heptools_install_target(heptools_install_dir):
+        """Where 'install <tool>' puts a tool, and which configuration file
+        records the resulting path ('' meaning this installation's own).
+
+        A prefix inside this installation is private to it, so its paths belong
+        in its own configuration; only a prefix explicitly pointed at a shared
+        location is recorded per user. Writing installation-specific absolute
+        paths into the shared file is what makes another MadGraph installation
+        pick up this one's HEPTools.
+        """
+
+        prefix = heptools_install_dir or pjoin(MG5DIR, 'HEPTools')
+        if not os.path.isabs(prefix):
+            prefix = pjoin(MG5DIR, prefix)
+        prefix = os.path.realpath(prefix)
+        if os.path.commonpath([prefix, MG5DIR]) == MG5DIR:
+            return prefix, ''
+        return prefix, misc.user_config_file(create=True) or ''
+
+    def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
         """ Uses the HEPToolsInstaller.py script maintened online to install
@@ -6531,21 +6565,8 @@ This implies that with decay chains:
             compiler_options.append('--fortran_compiler=%s'%
                                                self.options['fortran_compiler'])
 
-        if  self.options['heptools_install_dir']:
-            prefix = self.options['heptools_install_dir']
-            legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-            if os.path.exists(legacy_config_dir):
-                config_dir = legacy_config_dir
-            else:
-                config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                if not os.path.exists(config_dir):
-                    os.makedirs(config_dir)
-
-            config_file = os.path.join(config_dir, 'mg5_configuration.txt')
-        else:
-            prefix = pjoin(MG5DIR, 'HEPTools')
-            config_file = ''
+        prefix, config_file = self.heptools_install_target(
+                                       self.options['heptools_install_dir'])
 
         # Add the path of pythia8 if known and the MG5 path
         if tool=='mg5amc_py8_interface':
@@ -6682,7 +6703,7 @@ This implies that with decay chains:
                     logger.warning('Default installation of Madanalys5 failed.')
                     logger.warning("MG5aMC will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
                     logger.warning("This will however limit MA5 applicability for hadron-level analysis.")
-                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/mg5_aMC --debug'.")
+                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/madgraph --debug'.")
                     for option in ['--no_MA5_further_install', '--no_root_in_MA5', '--force']:
                         if option not in add_options:
                             add_options.append(option)
@@ -7187,7 +7208,7 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
 import os
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-exe_path = os.path.join(root_path,'bin','mg5_aMC')
+exe_path = os.path.join(root_path,'bin','madgraph')
 sys.argv.pop(0)
 os.system('%s  -tt %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(sys.argv) ))
 '''.format(name,'' if pyvers == 2 else pyvers)                    
@@ -7196,7 +7217,7 @@ os.system('%s  -tt %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(
 import os
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-exe_path = os.path.join(root_path,'bin','mg5_aMC')
+exe_path = os.path.join(root_path,'bin','madgraph')
 sys.argv.pop(0)
 os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executable, str(exe_path) , ' '.join(sys.argv) ))
 '''.format(name,'' if pyvers == 2 else pyvers)                     
@@ -7701,7 +7722,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
     def set_configuration(self, config_path=None, final=True):
         """ assign all configuration variable from file
-            ./input/mg5_configuration.txt. assign to default if not define """
+            ./input/mg7_configuration.txt. assign to default if not define """
 
         if not self.options:
             self.options = dict(self.options_configuration)
@@ -7710,26 +7731,16 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not config_path:
             if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'],'mg5_configuration.txt')
+                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path, final=False)
-            if 'HOME' in os.environ:
-                legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                if os.path.exists(legacy_config_dir):
-                    config_dir = legacy_config_dir
-                else:
-                    config_dir = os.getenv('XDG_STATE_HOME', os.path.join(os.environ['HOME'], '.config'))
-
-                config_path = os.path.join(config_dir, "mg5_configuration.txt")
-
-                if os.path.exists(config_path):
-                    self.set_configuration(config_path, final=False)
-            config_path = os.path.relpath(pjoin(MG5DIR,'input',
-                                                       'mg5_configuration.txt'))
+            config_path = misc.user_config_file()
+            if config_path and os.path.exists(config_path):
+                self.set_configuration(config_path, final=False)
+            config_path = os.path.relpath(misc.install_config_file(MG5DIR))
             return self.set_configuration(config_path, final)
 
         if not os.path.exists(config_path):
-            files.cp(pjoin(MG5DIR,'input','.mg5_configuration_default.txt'), config_path)
+            files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
         if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
             files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
             files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
@@ -7746,7 +7757,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             try:
                 name, value = line.split('=',1)
             except ValueError:
-                #misc.sprint('ignore line in mg5_configuration.txt: %s' % line)
+                #misc.sprint('ignore line in mg7_configuration.txt: %s' % line)
                 pass
             else:
                 name = name.strip()
@@ -7931,7 +7942,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         options = options.__dict__
         # args is now MODE PATH
 
-        if args[0] == 'standalone_mg7':
+        if args[0] == 'standalone':
             class ext_program:
                 @staticmethod
                 def run():
@@ -8060,42 +8071,17 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     heptools_dir = os.path.join(MG5DIR, heptools_dir)
                 gen_env['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
 
-            # Point the run at the LHAPDF data directory where PDF sets live
-            # (and where a missing one can be downloaded on the fly), following:
-            #   1. $LHAPDF_DATA_PATH if the user set it;
-            #   2. the data dir of the configured lhapdf (e.g. lhapdf6 installed
-            #      via 'install lhapdf6', which lives inside HEPTools);
-            #   3. a local writable directory otherwise.
-            # The lhapdf-config executable is forwarded (MADGRAPH_LHAPDF_CONFIG)
-            # so the run can download the requested PDF set (see madevent
-            # init_beam / ensure_pdf_set).
-            lhapdf_exe = None
-            for _opt in ('lhapdf', 'lhapdf_py3'):
-                _val = self.options.get(_opt)
-                if not _val:
-                    continue
-                _exe = _val.split()[0]  # strip any '--python=' suffix
-                try:
-                    _datadir = subprocess.check_output(
-                        [_exe, '--datadir'], text=True,
-                        stderr=subprocess.DEVNULL).strip()
-                except Exception:
-                    continue
-                lhapdf_exe = _exe
-                if 'LHAPDF_DATA_PATH' not in gen_env and _datadir and os.path.isdir(_datadir):
-                    gen_env['LHAPDF_DATA_PATH'] = _datadir
-                break
-            if 'LHAPDF_DATA_PATH' not in gen_env:
-                # local fallback (inside HEPTools if configured, else MG5DIR)
-                local_pdf = os.path.join(
-                    gen_env.get('MADGRAPH_HEPTOOLS_DIR', MG5DIR), 'lhapdf_pdfsets')
-                try:
-                    os.makedirs(local_pdf, exist_ok=True)
-                    gen_env['LHAPDF_DATA_PATH'] = local_pdf
-                except OSError:
-                    pass
-            if lhapdf_exe:
-                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf_exe
+            # Forward the resolved LHAPDF location. bin/generate_events
+            # resolves it the same way on its own (launch.lhapdf_paths), so
+            # this only matters for the real LHAPDF library used by the
+            # post-processing tools, which reads LHAPDF_DATA_PATH natively.
+            lhapdf = misc.resolve_lhapdf(self.options, root=MG5DIR, create=True)
+            search = lhapdf.data_paths or (
+                [lhapdf.download_path] if lhapdf.download_path else [])
+            if search:
+                gen_env['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
+            if lhapdf.config:
+                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
 
             class ext_program:
                 @staticmethod
@@ -8334,13 +8320,13 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             if len(args) >1 and not args[1].startswith('--') and args[1] not in self.options:
                 filepath = args[1]
             else:
-                filepath = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
-            
+                filepath = misc.install_config_file(MG5DIR)
+
             basedir = MG5DIR
             if partial_save and os.path.exists(filepath):
                 basefile = filepath
             else:
-                basefile = pjoin(MG5DIR, 'input', '.mg5_configuration_default.txt')
+                basefile = pjoin(MG5DIR, 'input', misc.CONFIG_TEMPLATE_NAME)
                 
             
 
@@ -9638,7 +9624,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     # Output formats whose matrix elements can run on a gpu, where the
     # wavefunction store is per thread. See set2_merge_quartic_vertices.
-    _gpu_me_formats = ['mg7', 'mg7_v5', 'standalone_mg7']
+    _gpu_me_formats = ['mg7', 'mg7_v5', 'standalone']
     # Diagram order currently materialised in _curr_amps, and the diagrams as
     # they came out of the generation. Both only used for 'auto'.
     _quartic_order = None
@@ -9791,17 +9777,16 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         config = {}
         config['madevent'] =       {'check': True,  'exporter': 'v4',  'output':'Template'}
         config['matrix'] =         {'check': False, 'exporter': 'v4',  'output':'dir'}
-        config['standalone'] =     {'check': True, 'exporter': 'v4',  'output':'Template'}
+        config['standalone_fortran'] = {'check': True, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msF'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_msP'] = {'check': False, 'exporter': 'v4',  'output':'Template'}
         config['standalone_rw'] =  {'check': False, 'exporter': 'v4',  'output':'Template'}
-        config['standalone_cpp'] = {'check': False, 'exporter': 'cpp', 'output': 'Template'}
         config['pythia8'] =        {'check': False, 'exporter': 'cpp', 'output':'dir'}
         config['matchbox_cpp'] =   {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['matchbox'] =       {'check': True, 'exporter': 'v4',  'output': 'Template'}
         config['mg7_v5'] =         {'check': True, 'exporter': 'cpp', 'output': 'Template'}
         config['mg7'] =            {'check': True, 'exporter': 'cpp', 'output': 'Template'}
-        config['standalone_mg7'] = {'check': True, 'exporter': 'cpp', 'output': 'Template'}
+        config['standalone'] =     {'check': True, 'exporter': 'cpp', 'output': 'Template'}
 
         if self._export_format == 'plugin':
             options = {'check': self._export_plugin.check, 'exporter':self._export_plugin.exporter, 'output':self._export_plugin.output}
@@ -9824,6 +9809,23 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # now that the backend getting the matrix elements is known, an 'auto'
         # merge_quartic_vertices can be resolved -- before anything is built
         self.apply_quartic_diagram_order(options)
+
+        # A loop-induced process is exported by this tree-level do_output (see
+        # create_loop_induced), but only the formats in LOOP_INDUCED_FORMATS
+        # have a loop backend to route it to. Refuse the others here, ahead of
+        # the directory cleaning just below, so that a guaranteed refusal never
+        # deletes an existing output directory first. The factories carry the
+        # same check, but they run after that cleaning.
+        if self._curr_amps and isinstance(self._curr_amps[0],
+                                    loop_diagram_generation.LoopAmplitude):
+            # --me_exporter= writes into the same directory, so it has to be
+            # checked here too
+            for format in [self._export_format,
+                           options['me_exporter'].get('name')]:
+                if format and format not in export_v4.LOOP_INDUCED_FORMATS:
+                    raise self.InvalidCmd(
+                        export_v4.loop_induced_not_supported_msg(
+                            format, self._curr_amps[0].get('process')))
 
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
@@ -10393,7 +10395,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # into its final citations.bib.
         self.write_generation_citations()
 
-        if self._export_format in ['madevent', 'standalone', 'standalone_cpp', 'matchbox', 'mg7']:
+        if self._export_format in ['madevent', 'standalone_fortran', 'matchbox', 'mg7']:
             logger.info('Output to directory ' + self._export_dir + ' done.')
 
         if self._export_format in ['madevent', 'NLO']:
@@ -10408,8 +10410,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         routines.  Writes citations.log (machine-readable, collected by every
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
-        runnable = ['madevent', 'standalone', 'standalone_cpp', 'NLO',
-                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone_mg7']
+        runnable = ['madevent', 'standalone_fortran', 'NLO',
+                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
         try:
@@ -10435,13 +10437,13 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             polarization=getattr(self, '_uses_polarization', False),
             taudecay=getattr(self, '_uses_taudecay', False))
 
-        # MadSpace + MadNIS: used by the mg7 / standalone_mg7 integration engine
-        if self._export_format in ('mg7', 'mg7_v5', 'standalone_mg7'):
+        # MadSpace + MadNIS: used by the mg7 / standalone integration engine
+        if self._export_format in ('mg7', 'mg7_v5', 'standalone'):
             pairs += [('Heimel:2026hgp',
                        'phase-space integration with MadSpace'),
                       ('Heimel:2023ngj',
                        'normalising flows for integration (MadNIS)')]
-            if self._export_format == 'standalone_mg7':
+            if self._export_format == 'standalone':
                 pairs.append(('Hagebock:2025jyk',
                                'data-parallel matrix-element evaluation (MadMatrix)'))
 
@@ -10982,7 +10984,7 @@ _draw_parser.add_option("", "--generate_only", default=False, action='store_true
                           help="forbid to display the generate file and only generate the eps file")
 # LAUNCH PROGRAM
 _launch_usage = "launch [DIRPATH] [options]\n" + \
-         "-- execute the madevent/standalone/standalone_cpp/pythia8/NLO output present in DIRPATH\n" + \
+         "-- execute the madevent/standalone/standalone_fortran/pythia8/NLO output present in DIRPATH\n" + \
          "   By default DIRPATH is the latest created directory \n" + \
          "   (for pythia8, it should be the Pythia 8 main directory) \n" + \
          "   Example: launch PROC_sm_1 --name=run2 \n" + \
@@ -11006,9 +11008,9 @@ _launch_parser.add_option("-R", "--reweight", default=False, action='store_true'
 _launch_parser.add_option("-M", "--madspin", default=False, action='store_true',
                             help="Run the madspin package")
 _launch_parser.add_option("", "--timings", default=0, type='int',
-                            help="[standalone] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
+                            help="[standalone_fortran] Number of SMATRIX calls per flavor per run for timing analysis (0=disabled)")
 _launch_parser.add_option("", "--nb_run", default=1, type='int',
-                            help="[standalone] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
+                            help="[standalone_fortran] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
 
 #===============================================================================
 # Interface for customize question.

@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
+import gzip
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +33,6 @@ import json
 import tomllib
 import argparse
 
-
 def resolve_verbosity(verbosity: str) -> str:
     """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
     whether stdout is attached to a terminal; other values pass through
@@ -39,6 +40,14 @@ def resolve_verbosity(verbosity: str) -> str:
     if verbosity == "auto":
         return "pretty" if sys.stdout.isatty() else "log"
     return verbosity
+
+
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
 
 
 def main() -> None:
@@ -69,6 +78,12 @@ def main() -> None:
     # parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_name", type=str, default=run_args["run_name"])
+    parser.add_argument(
+        "--seed", type=int, default=run_args.get("seed", -1),
+        help="every run is reproducible from its seed; -1 draws a fresh random "
+             "seed each run instead of fixing one here (still recorded in the "
+             "run's info.json)"
+    )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
         "--cpu_thread_pool_size", type=int, default=run_args["cpu_thread_pool_size"]
@@ -94,6 +109,7 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+    seed = resolve_seed(args.seed)
 
     # initialize event directory
     run_name = args.run_name
@@ -114,9 +130,10 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["devices"]
+    device_names = args.device if args.device else run_args["device"]
+    cpu_mode = run_args["cpu_mode"]
     contexts = []
-    device_types = []
+    backends = []
     for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
@@ -124,7 +141,9 @@ def main() -> None:
         else:
             device_type = device_name
             device_index = 0
-        device_types.append(device_type)
+        # cpu_mode names the SIMD width of the CPU code, so it applies to the
+        # 'cpu' devices only: cuda/hip build the backend named after the device.
+        backends.append(cpu_mode if device_type == "cpu" else device_type)
         if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
@@ -150,11 +169,11 @@ def main() -> None:
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context, device_type in zip(contexts, device_types):
+    for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=device_type), param_card_path
+                me_path.format(device=backend), param_card_path
             )
 
     # set up generators
@@ -173,6 +192,7 @@ def main() -> None:
         channels=channel_generators,
         status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
+        seed=seed,
     )
 
     # run generation
@@ -189,9 +209,18 @@ def main() -> None:
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
-        event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
-        )
+        lhe_path = os.path.join(run_path, "events.lhe")
+        event_generator.combine_to_lhe(lhe_path, lhe_completer)
+        # Ship the LHE compressed, as the launcher that produced this gridpack
+        # does: the file is large and very compressible, and the consumers of
+        # an mg7 event file accept either form. The stdlib is used rather than
+        # madgraph.various.misc.gzip because a gridpack is meant to run without
+        # a madgraph installation, and copyfileobj streams the file instead of
+        # holding it in memory.
+        with open(lhe_path, "rb") as fin, \
+                gzip.open(lhe_path + ".gz", "wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        os.remove(lhe_path)
     else:
         raise ValueError("Unknown output format")
 
