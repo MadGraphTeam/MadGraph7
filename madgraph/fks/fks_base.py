@@ -459,20 +459,13 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
-        # Key used to decide whether two real processes can share one
-        # amplitude / matrix element.  The PDGs alone are not enough once a
-        # polarization restriction is in play: two reals can have the same
-        # flavours and fix a different helicity (e.g. p p > t{+} t~ [QCD] and
-        # p p > t{-} t~ [QCD] added to the same run), and the PDG-only key
-        # would put them in the same bucket.
-        # This is DEFENSIVE: today those two borns never get that far, because
-        # FKSHelasProcess.__eq__ compares them through
-        # helas_objects.IdentifyMETag.create_tag, whose link_from_leg ignores
-        # 'polarization', so add_process merges one away and only the first
-        # polarization is written out at all. That is a separate pre-existing
-        # bug, tracked elsewhere; this key becomes load-bearing the moment it
-        # is fixed. For an unpolarized process the key is the PDG tuple plus a
-        # tuple of empty tuples, so nothing changes.
+        # Key deciding whether two real processes may share one amplitude /
+        # matrix element. The PDGs alone are not enough under a polarization
+        # restriction: two reals can carry the same flavours but fix a
+        # different helicity (p p > t{+} t~ [QCD] and p p > t{-} t~ [QCD] in
+        # one run), and a PDG-only key would bucket them together, silently
+        # giving one born the other's reals. An unpolarized process gets the
+        # PDG tuple plus a tuple of empty tuples, so nothing changes.
         self.pdgs_pols = (self.pdgs,
                           tuple(tuple(leg.get('polarization')) for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
