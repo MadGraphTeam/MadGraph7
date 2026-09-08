@@ -56,6 +56,7 @@ using ::sin;
 using ::sinh;
 using ::sqrt;
 using ::tan;
+using ::tanh;
 
 using ::isnan;
 

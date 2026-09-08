@@ -77,7 +77,8 @@ void CpuDevice::adam_step(
     double beta1,
     double beta2,
     double eps,
-    double bias_corr2_sqrt
+    double bias_corr2_sqrt,
+    double weight_decay
 ) const {
     tensor_foreach_dynamic<
         kernel_adam_step<CpuTypes>,
@@ -92,7 +93,8 @@ void CpuDevice::adam_step(
         beta1,
         beta2,
         eps,
-        bias_corr2_sqrt
+        bias_corr2_sqrt,
+        weight_decay
     );
 }
 

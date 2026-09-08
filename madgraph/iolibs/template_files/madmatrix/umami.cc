@@ -386,8 +386,10 @@ extern "C"
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
+        // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
+        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},

@@ -127,6 +127,66 @@ KERNELSPEC void kernel_apply_subchannel_weights(
 }
 
 template <typename T>
+KERNELSPEC void kernel_compress_channel_weights(
+    IIn<T, 0> channel_index,
+    FIn<T, 1> channel_weights,
+    IIn<T, 0> keep_count,
+    FOut<T, 1> chan_weight_values,
+    IOut<T, 1> chan_weight_indices
+) {
+    IVal<T> keep_index = channel_index;
+    std::size_t n_keep = chan_weight_values.size();
+    for (std::size_t i = 0; i < n_keep - 1; i++) {
+        chan_weight_values[i] = 0.0;
+        chan_weight_indices[i] = -1;
+    }
+    chan_weight_values[n_keep - 1] = channel_weights.gather(keep_index);
+    chan_weight_indices[n_keep - 1] = keep_index;
+    if (n_keep == 1) {
+        return;
+    }
+    for (std::size_t i = 0; i < channel_weights.size(); i++) {
+        FVal<T> value = where(i == keep_index, -1.0, channel_weights[i]);
+        BVal<T> low_mask = value > chan_weight_values[0];
+        chan_weight_values[0] = where(low_mask, value, chan_weight_values[0]);
+        chan_weight_indices[0] = where(low_mask, i, chan_weight_indices[0]);
+
+        for (std::size_t j = 0; j < n_keep - 2; j++) {
+            FVal<T> val1 = chan_weight_values[j], val2 = chan_weight_values[j + 1];
+            IVal<T> idx1 = chan_weight_indices[j], idx2 = chan_weight_indices[j + 1];
+            BVal<T> mask = val1 > val2;
+            chan_weight_values[j] = where(mask, val2, val1);
+            chan_weight_indices[j] = where(mask, idx2, idx1);
+            chan_weight_values[j + 1] = where(mask, val1, val2);
+            chan_weight_indices[j + 1] = where(mask, idx1, idx2);
+        }
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_restore_channel_weights(
+    FIn<T, 1> chan_weight_values,
+    IIn<T, 1> chan_weight_indices,
+    IIn<T, 0> full_count,
+    FOut<T, 1> channel_weights
+) {
+    FVal<T> epsilon = 1e-12;
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        channel_weights[i] = epsilon;
+    }
+    FVal<T> sum = channel_weights.size() * epsilon;
+    for (std::size_t i = 0; i < chan_weight_values.size(); ++i) {
+        FVal<T> value = chan_weight_values[i];
+        IVal<T> index = chan_weight_indices[i];
+        channel_weights.scatter_add(where(index == -1, 0, index), value);
+        sum += value;
+    }
+    for (std::size_t i = 0; i < channel_weights.size(); ++i) {
+        channel_weights[i] = channel_weights[i] / sum;
+    }
+}
+
+template <typename T>
 KERNELSPEC void kernel_permute_momenta(
     FIn<T, 2> momenta, IIn<T, 2> permutations, IIn<T, 0> index, FOut<T, 2> output
 ) {

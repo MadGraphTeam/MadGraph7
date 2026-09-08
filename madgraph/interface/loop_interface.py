@@ -90,10 +90,19 @@ class CheckLoop(mg_interface.CheckValidForCmd):
         
         mg_interface.MadGraphCmd.check_add(self,args)
     
-    def check_output(self, args, default='standalone'):
+    def check_output(self, args, default='standalone_fortran'):
         """ Check the arguments of the output command in the context
         of the Loop interface."""
-       
+
+        # Elsewhere `standalone` names the MadMatrix (C++/CUDA) export, which
+        # MadLoop does not support. Here it is accepted as an alias for
+        # `standalone_fortran`, the MadLoop standalone output, so that
+        # `output standalone` keeps working in the ML5 interface. Without this
+        # the generic check_output would not recognise it as a format and would
+        # silently use it as the output *path*.
+        if args and args[0] == 'standalone':
+            args[0] = 'standalone_fortran'
+
         mg_interface.MadGraphCmd.check_output(self,args, default=default)
 
         if self._export_format not in self.supported_ML_format:
@@ -298,10 +307,17 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
     def validate_model(self, loop_type='virtual',coupling_type=['QCD'], stop=True):
         """ Upgrade the model sm to loop_sm if needed """
 
-        # Allow to call this function with a string instead of a list of 
+        # Allow to call this function with a string instead of a list of
         # perturbation orders.
         if isinstance(coupling_type,str):
             coupling_type = [coupling_type,]
+
+        # Everything below assumes a model. [virt=]/[real=] get one from
+        # check_generate before we are called, but master_interface calls us
+        # directly for [noborn=], ahead of create_loop_induced's check_add.
+        if not self._curr_model:
+            logger.info("No model currently active, so we import the Standard Model")
+            self.do_import('model sm')
 
         active_interface = getattr(self, 'current_interface', None)
 
@@ -389,7 +405,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 
 class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
           
-    supported_ML_format = ['standalone', 'standalone_rw', 'matchbox'] 
+    supported_ML_format = ['standalone_fortran', 'standalone_rw', 'matchbox'] 
     
     def __init__(self, mgme_dir = '', *completekey, **stdin):
         """ Special init tasks for the Loop Interface """
@@ -412,7 +428,7 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         self._curr_amps = diagram_generation.AmplitudeList()
         self._curr_matrix_elements = helas_objects.HelasMultiProcess()
         self._v4_export_formats = []
-        self._export_formats = [ 'matrix', 'standalone' ]
+        self._export_formats = [ 'matrix', 'standalone_fortran' ]
         self._nlo_modes_for_completion = ['virt']
         self.validate_model()
         # Set where to look for CutTools installation.
@@ -502,11 +518,11 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
                      noclean, output_type=output_type, group_subprocesses=False,
                      cmd_options=line_options)
 
-        if self._export_format in ['standalone', 'matchbox']:
+        if self._export_format in ['standalone_fortran', 'matchbox']:
             self._curr_exporter.copy_template(self._curr_model)
 
         if self._export_format == "standalone_rw":
-            self._export_format = "standalone"
+            self._export_format = "standalone_fortran"
             self._curr_exporter.copy_template(self._curr_model)
             self._export_format = "standalone_rw"
 

@@ -28,6 +28,7 @@ import madgraph.core.diagram_generation as diagram_generation
 
 import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color
+import madgraph.loop.loop_color_amp as loop_color_amp
 
 import tests.unit_tests as unittest
 class ColorAmpTest(unittest.TestCase):
@@ -1134,3 +1135,46 @@ class DDMColorBasisTest(unittest.TestCase):
         self.assertRaises(color_amp.ColorBasis.ColorBasisError,
                           col_basis.color_flow_decomposition,
                           {1: 8, 2: 8, 3: 8, 4: 8}, 2)
+
+
+class LoopNcMemoTest(unittest.TestCase):
+    """The process-wide canonical color memo must not leak loop_Nc_power."""
+
+    def setUp(self):
+        self.saved = dict(color_amp.ColorBasis._canonical_dict)
+        color_amp.ColorBasis._canonical_dict.clear()
+
+    def tearDown(self):
+        color_amp.ColorBasis._canonical_dict.clear()
+        color_amp.ColorBasis._canonical_dict.update(self.saved)
+
+    @staticmethod
+    def _fill(compute_loop_nc, loop_Nc_power):
+        """Feed one T(-1,1,2)T(-1,3,4) chain through a fresh LoopColorBasis."""
+        basis = loop_color_amp.LoopColorBasis(compute_loop_nc=compute_loop_nc)
+        col_str = color.ColorString([color.T(-1, 1, 2), color.T(-1, 3, 4)])
+        col_str.loop_Nc_power = loop_Nc_power
+        basis.update_color_basis({(0,): col_str}, 0)
+        return basis
+
+    def test_loop_Nc_power_survives_a_poisoned_memo(self):
+        """A compute_loop_nc=False basis must not pin loop_Nc_power for the
+        next basis: the memo is keyed on the canonical color string only."""
+
+        # A [sqrvirt=]/standalone-style generation: loop_Nc_power is None.
+        self._fill(False, None)
+        # A later loop-induced madevent generation asks for the real value.
+        basis = self._fill(True, 1)
+
+        powers = [entry[5] for entries in basis.values() for entry in entries]
+        self.assertTrue(powers)
+        self.assertEqual(powers, [1] * len(powers))
+
+    def test_memo_is_shared_across_loop_bases(self):
+        """The memo must stay process-wide: that sharing is what makes
+        multi-subprocess loop generation tractable."""
+
+        self._fill(True, 1)
+        self.assertTrue(color_amp.ColorBasis._canonical_dict)
+        self.assertTrue(self._fill(True, 1)._canonical_dict is
+                        color_amp.ColorBasis._canonical_dict)

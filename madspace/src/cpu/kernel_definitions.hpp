@@ -53,6 +53,7 @@ using std::sin;
 using std::sinh;
 using std::sqrt;
 using std::tan;
+using std::tanh;
 
 using std::isnan;
 

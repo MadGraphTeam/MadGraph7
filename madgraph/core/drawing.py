@@ -48,6 +48,25 @@ import math
 import madgraph.core.base_objects as base_objects
 import madgraph.loop.loop_base_objects as loop_objects
 import madgraph.various.misc as misc
+
+#===============================================================================
+# Display labels for the merged-flavor particles
+#===============================================================================
+# The merged-flavor particles created by Model.define_merge_particle_for carry
+# internal model names ('_quark', '_anti_quark', '_lepton', ...). Those names
+# are what the user types on the interface (multiparticle definitions, process
+# generation) and what model['name2pdg'] resolves, so they must NOT be renamed.
+# In a *drawn* diagram those underscore-prefixed names are however unreadable,
+# so the labels below are substituted at drawing time only.
+# The sign convention follows the model: the merged '_lepton' is built from the
+# electron (PDG 11, charge -1), hence the particle is 'L-' and its antiparticle
+# 'L+'. The generic '_merged%d' particles (PDG 90+n) have no canonical short
+# label -- their content depends on which PDGs were merged -- so they keep
+# their model name.
+MERGED_PARTICLE_DRAW_NAME = {81: 'Q', -81: 'Qx',
+                             82: 'L-', -82: 'L+',
+                             83: 'v', -83: 'vx'}
+
 #===============================================================================
 # FeynmanLine
 #===============================================================================
@@ -198,7 +217,12 @@ class FeynmanLine(object):
                 name += '_pol'
             return name
 
-        
+        # merged-flavor particles are drawn with a short readable label
+        # (the model name '_quark', ... stays untouched: the interface needs it)
+        # ('name' already means 'antiname' for a negative pid, see below)
+        if name == 'name' and pid in MERGED_PARTICLE_DRAW_NAME:
+            return MERGED_PARTICLE_DRAW_NAME[pid]
+
         if pid > 0:
             return model_info.get(name)
         elif model_info:

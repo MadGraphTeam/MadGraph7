@@ -51,7 +51,52 @@ logger = logging.getLogger('cmdprint.ext_program')
 logger_stderr = logging.getLogger('madevent.misc')
 pjoin = os.path.join
 misc = locals
-   
+
+#===============================================================================
+# configuration file locations
+#===============================================================================
+CONFIG_NAME = 'mg7_configuration.txt'
+CONFIG_TEMPLATE_NAME = '.mg7_configuration_default.txt'
+
+def install_config_file(root):
+    """The configuration file of the MadGraph installation rooted at *root*."""
+
+    return pjoin(root, 'input', CONFIG_NAME)
+
+def user_config_dir(create=False):
+    """MadGraph7's per-user configuration directory.
+
+    MG5aMC's ~/.mg5 is deliberately never consulted: a config file shared
+    between installations is what makes one of them write absolute paths into
+    another one's HEPTools folder. Returns None without HOME or XDG_CONFIG_HOME.
+    """
+
+    xdg = os.environ.get('XDG_CONFIG_HOME')
+    if xdg:
+        path = pjoin(xdg, 'mg7')
+    elif os.environ.get('HOME'):
+        path = pjoin(os.environ['HOME'], '.mg7')
+    else:
+        return None
+    if create:
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as error:
+            logger.warning('could not create %s: %s', path, error)
+            return None
+    return path
+
+def user_config_file(create=False):
+    """MadGraph7's per-user configuration file, or None if it has no home."""
+
+    config_dir = user_config_dir(create=create)
+    return pjoin(config_dir, CONFIG_NAME) if config_dir else None
+
+def mg_root():
+    """The root of this MadGraph installation, deduced from this file."""
+
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 #===============================================================================
 # parse_info_str
 #===============================================================================
@@ -1285,7 +1330,11 @@ def gunzip(path, keep=False, stdout=None):
         if stdout:
             os.system('gunzip  %s -c %s > %s' % (options, path, stdout))
         else:
-            os.system('gunzip %s %s' % (options, path)) 
+            # -f: without it gunzip asks "already exists -- do you wish to
+            # overwrite (y or n)?" as soon as the uncompressed file is already
+            # there. Nothing answers that prompt here, so gunzip would silently
+            # decompress nothing and leave a stale file behind.
+            os.system('gunzip -f %s %s' % (options, path))
         return 0
     
     if not stdout:
@@ -1342,7 +1391,17 @@ def configure_gzip(configuration=None):
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
 
-def gzip(path, stdout=None, error=True, forceexternal=False):
+# Compression level for the in-process branch of gzip() below. The gzip module
+# defaults to 9, which is a poor trade here: on a 172 MB LHE, level 9 takes
+# 18.6 s against 4.5 s at level 6, and buys 4% (38.1 MB against 39.7 MB). Level
+# 6 is also what the external tool this function shells out to for large files
+# uses, so the two branches now agree instead of compressing the same data
+# differently depending on its size.
+GZIP_COMPRESSLEVEL = 6
+
+
+def gzip(path, stdout=None, error=True, forceexternal=False,
+         compresslevel=GZIP_COMPRESSLEVEL):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
@@ -1364,8 +1423,11 @@ def gzip(path, stdout=None, error=True, forceexternal=False):
         stdout = "%s.gz" % stdout
 
     try:
-        with ziplib.open(stdout, 'wb') as f:
-            f.write(open(path).read().encode())
+        # Stream it: reading the whole file in as a str and encoding it made a
+        # 172 MB LHE cost two extra full-size copies in memory.
+        with open(path, 'rb') as fsock, \
+             ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
+            shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
     except OverflowError:
         gzip(path, stdout, error=error, forceexternal=True)
     except Exception:
@@ -1491,11 +1553,11 @@ class open_file(object):
         for p in possibility:
             if which(p):
                 logger.info('Using default %s \"%s\". ' % (program, p) + \
-                             'Set another one in ./input/mg5_configuration.txt')
+                             'Set another one in ./input/mg7_configuration.txt')
                 return p
         
         logger.info('No valid %s found. ' % program + \
-                                   'Please set in ./input/mg5_configuration.txt')
+                                   'Please set in ./input/mg7_configuration.txt')
         return None
         
         
@@ -1517,7 +1579,7 @@ class open_file(object):
                 _thread.start_new_thread(subprocess.call,(arguments,))
         else:
             logger.warning('Not able to open file %s since no program configured.' % file_path + \
-                                'Please set one in ./input/mg5_configuration.txt')
+                                'Please set one in ./input/mg7_configuration.txt')
 
     def open_mac_program(self, program, file_path):
         """ open a text with the text editor """
@@ -2367,6 +2429,148 @@ def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
     
     
     
+
+#===============================================================================
+# LHAPDF locations
+#===============================================================================
+class LhapdfPaths(collections.namedtuple('LhapdfPaths',
+                                    ['config', 'data_paths', 'download_path'])):
+    """Where LHAPDF lives for one run: the lhapdf-config executable, the
+    directories to search for PDF sets, and the one a missing set may be
+    downloaded into. Any field may be None or empty."""
+
+    def find_set(self, pdf_set):
+        """The first data path holding <pdf_set>/, or None."""
+
+        for base in self.data_paths:
+            if os.path.isdir(pjoin(base, pdf_set)):
+                return base
+        return None
+
+    def with_data_path(self, path):
+        """A copy with *path* first in the search list (used after a download)."""
+
+        return self._replace(
+            data_paths=[path] + [p for p in self.data_paths if p != path])
+
+
+def _tool_executable(value, root):
+    """Turn a configuration value into a usable executable path, or None.
+
+    Accepts an absolute path, a path relative to the MadGraph root
+    ('./HEPTools/...'), and a bare program name looked up on PATH
+    ('lhapdf-config', the shipped default). A trailing '--python=X.Y' is a
+    filter for the 'set' command, not part of the path, so it is dropped.
+    """
+
+    if not value:
+        return None
+    exe = str(value).split()[0].strip('"\'')
+    if exe.lower() in ('none', 'auto'):
+        return None
+    if not os.path.isabs(exe) and (os.sep in exe or exe.startswith('.')):
+        return which(os.path.normpath(pjoin(root, exe))) or which(exe)
+    return which(exe)
+
+
+_lhapdf_datadirs_cache = {}
+def _lhapdf_datadirs(exe):
+    """The PDF-set directories a lhapdf-config reports, in its own order.
+    '--datadir' is the LHAPDF 6 spelling, '--pdfsets-path' the LHAPDF 5 one."""
+
+    if exe not in _lhapdf_datadirs_cache:
+        dirs = []
+        for flag in ('--datadir', '--pdfsets-path'):
+            try:
+                out = subprocess.check_output([exe, flag],
+                                              stderr=subprocess.DEVNULL)
+            except (OSError, subprocess.CalledProcessError):
+                continue
+            out = out.decode(errors='ignore').strip()
+            if out:
+                dirs = [p for p in out.split(os.pathsep) if p]
+                break
+        _lhapdf_datadirs_cache[exe] = dirs
+    return _lhapdf_datadirs_cache[exe]
+
+
+def _writable_dir(path):
+    """True if *path* is a writable directory or can be created as one."""
+
+    probe = path
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            return False
+        probe = parent
+    return os.access(probe, os.W_OK)
+
+
+def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
+    """Locate LHAPDF for a run and return a LhapdfPaths.
+
+    Both the 'launch' command and a standalone bin/generate_events resolve
+    through here, so they cannot disagree about where the PDF sets live.
+    Never raises: a missing or broken LHAPDF just yields empty fields.
+
+    ``options``  an MG5aMC option mapping; 'lhapdf', 'lhapdf_py3',
+                 'lhapdf_py2', 'heptools_install_dir' and 'mg5_path' are read
+    ``root``     what a relative option value is resolved against
+    ``use_env``  honour $MADGRAPH_LHAPDF_CONFIG and $LHAPDF_DATA_PATH
+    ``create``   create the download directory (only needed before a download)
+    """
+
+    options = options or {}
+    root = root or options.get('mg5_path') or mg_root()
+
+    candidates = []
+    if use_env:
+        candidates.append(os.environ.get('MADGRAPH_LHAPDF_CONFIG'))
+    candidates += [options.get(key)
+                   for key in ('lhapdf', 'lhapdf_py3', 'lhapdf_py2')]
+    candidates.append('lhapdf-config')
+
+    # Accept the first candidate that actually answers a data-directory query;
+    # remember the first one that merely exists in case none of them answers.
+    config, data_dirs, fallback, seen = None, [], None, set()
+    for value in candidates:
+        exe = _tool_executable(value, root)
+        if not exe or exe in seen:
+            continue
+        seen.add(exe)
+        fallback = fallback or exe
+        dirs = _lhapdf_datadirs(exe)
+        if dirs:
+            config, data_dirs = exe, dirs
+            break
+    config = config or fallback
+
+    heptools = options.get('heptools_install_dir') or pjoin('.', 'HEPTools')
+    if not os.path.isabs(heptools):
+        heptools = pjoin(root, heptools)
+
+    search = []
+    if use_env and os.environ.get('LHAPDF_DATA_PATH'):
+        search += os.environ['LHAPDF_DATA_PATH'].split(os.pathsep)
+    search += data_dirs
+    search.append(pjoin(heptools, 'lhapdf_pdfsets'))
+    search.append(pjoin(root, 'lhapdf_pdfsets'))
+    search = [os.path.abspath(p) for p in search]
+
+    data_paths = []
+    for path in search:
+        if path not in data_paths and os.path.isdir(path):
+            data_paths.append(path)
+
+    download_path = next((p for p in search if _writable_dir(p)), None)
+    if download_path and create:
+        try:
+            os.makedirs(download_path, exist_ok=True)
+        except OSError:
+            download_path = None
+
+    return LhapdfPaths(config, data_paths, download_path)
+
 
 python_lhapdf=None
 def import_python_lhapdf(lhapdfconfig):

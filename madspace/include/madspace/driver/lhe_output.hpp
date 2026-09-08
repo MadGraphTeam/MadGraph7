@@ -1,13 +1,13 @@
 #pragma once
 
 #include <fstream>
-#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -76,6 +76,9 @@ public:
         std::unordered_map<int, int> pdg_color_types;
         nested_vector2<double> helicities;
         nested_vector3<int> pdg_ids;
+        // Per-diagram pdg override, indexed like diagram_color_indices then by
+        // Decay::flat_propagator_index. Falls back to Decay::pdg_id if empty.
+        nested_vector3<int> diagram_propagator_pdgs;
     };
 
     LHECompleter(const std::vector<SubprocArgs>& subproc_args, double bw_cutoff);
@@ -86,7 +89,7 @@ public:
         int color_index,
         int flavor_index,
         int helicity_index,
-        std::mt19937& rand_gen
+        MixMaxRandom& rand_gen
     );
     std::size_t max_particle_count() const { return _max_particle_count; }
     void save(const std::string& file) const;
@@ -98,6 +101,9 @@ private:
         std::size_t color_offset, pdg_id_offset, helicity_offset, mass_offset;
         std::size_t particle_count, color_count, flavor_count;
         std::size_t diagram_count, helicity_count;
+        // 2 for a collision, 1 for a decay. Decides which leading particles are
+        // written as initial state and what the outgoing ones point at.
+        std::size_t incoming_count;
     };
     struct PropagatorData {
         int pdg_id;
@@ -139,6 +145,7 @@ private:
         const Topology& topo,
         const SubprocArgs& args,
         const std::vector<std::size_t>& colors,
+        const std::vector<int>& propagator_pdgs,
         std::size_t prop_offset,
         std::vector<double>& e_min,
         std::vector<int>& momentum_masks,

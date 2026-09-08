@@ -118,6 +118,9 @@ const Type batch_four_vec{DataType::dt_float, batch_size, {4}};
 inline Type batch_float_array(int count) {
     return {DataType::dt_float, batch_size, {count}};
 }
+inline Type batch_int_array(int count) {
+    return {DataType::dt_int, batch_size, {count}};
+}
 inline Type batch_four_vec_array(int count) {
     return {DataType::dt_float, batch_size, {count, 4}};
 }

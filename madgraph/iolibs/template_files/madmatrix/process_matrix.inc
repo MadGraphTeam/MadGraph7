@@ -48,3 +48,4 @@
     mgDebug( 1, __FUNCTION__ );
     return;
   }
+#undef NUM_ATOMIC_ADD

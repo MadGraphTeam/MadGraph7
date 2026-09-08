@@ -131,8 +131,8 @@ def get_first_contributions(repo_path):
 
 
 import sys
-if sys.version_info < (3, 7):
-    sys.exit('MadGraph5_aMC@NLO works only with python 3.7 or later.\n\
+if sys.version_info < (3, 12):
+    sys.exit('MadGraph5_aMC@NLO works only with python 3.12 or later.\n\
                Please upgrate your version of python.')
 
 import glob
@@ -351,7 +351,7 @@ except:
     pass
 shutil.rmtree(path.join(filepath, '.git'))
 for data in glob.glob(path.join(filepath, 'bin', '*')):
-    if not data.endswith('mg5') and not data.endswith('mg5_aMC'):
+    if not data.endswith('mg5') and not data.endswith('madgraph'):
         if 'compile.py' not in data:
             os.remove(data)
         else:
@@ -381,9 +381,9 @@ if (rev_nb and auto_update) or MG_branch == "LTS_2":
         p = subprocess.call("git push", shell=True)
         p = subprocess.call("git push --tags", shell=True)
 
-# 1. Copy the .mg5_configuration_default.txt to it's default path
-shutil.copy(path.join(filepath, 'input','.mg5_configuration_default.txt'), 
-            path.join(filepath, 'input','mg5_configuration.txt'))
+# 1. Copy the .mg7_configuration_default.txt to it's default path
+shutil.copy(path.join(filepath, 'input','.mg7_configuration_default.txt'), 
+            path.join(filepath, 'input','mg7_configuration.txt'))
 if os.path.exists(path.join(filepath, 'input','.default_run_card_lo.dat')):
     shutil.copy(path.join(filepath, 'input','.default_run_card_lo.dat'),
             path.join(filepath, 'input','default_run_card_lo.dat'))

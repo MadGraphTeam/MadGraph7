@@ -860,7 +860,7 @@ class TestMultiLanguageComparison(unittest.TestCase):
         parent = tempfile.mkdtemp(prefix='mg5_test_f_')
         sa_dir = os.path.join(parent, 'sa_f')
         try:
-            opt = {'sa_symmetry': False, 'export_format': 'standalone',
+            opt = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                    'mp': False, 'v5_model': True,
                    'output_options': {'noeps': 'True'}}
             exporter = ev4.ProcessExporterFortranSA(sa_dir, opt)

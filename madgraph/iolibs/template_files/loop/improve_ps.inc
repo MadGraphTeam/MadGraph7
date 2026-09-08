@@ -1,4 +1,4 @@
-      SUBROUTINE %(proc_prefix)sIMPROVE_PS_POINT_PRECISION(P)
+      SUBROUTINE %(proc_prefix)sIMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, P)
 	  IMPLICIT NONE
 C
 C CONSTANTS
@@ -9,7 +9,8 @@ C
 C ARGUMENTS 
 C
       DOUBLE PRECISION P(0:3,NEXTERNAL) 
-      %(real_format)s QP_P(0:3,NEXTERNAL) 
+      %(real_format)s QP_P(0:3,NEXTERNAL)
+	  LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)
 C
 C LOCAL VARIABLES 
 C
@@ -25,7 +26,7 @@ C ----------
 		ENDDO
 	  ENDDO
 
-	  CALL %(proc_prefix)s%(mp_prefix)sIMPROVE_PS_POINT_PRECISION(QP_P)
+	  CALL %(proc_prefix)s%(mp_prefix)sIMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, QP_P)
 
 	  DO I=1,NEXTERNAL
 	    DO J=0,3
@@ -36,7 +37,7 @@ C ----------
 	  END
 
 
-      SUBROUTINE %(proc_prefix)s%(mp_prefix)sIMPROVE_PS_POINT_PRECISION(P)
+      SUBROUTINE %(proc_prefix)s%(mp_prefix)sIMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, P)
 	  IMPLICIT NONE
 C
 C CONSTANTS
@@ -47,6 +48,7 @@ C
 C ARGUMENTS 
 C
       %(real_format)s P(0:3,NEXTERNAL)
+	  LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)
 C
 C LOCAL VARIABLES 
 C
@@ -97,7 +99,7 @@ C Check the sanity of the original PS point
 
 C Now restore the precision
       IF (ImprovePSPoint.eq.1) THEN
-        CALL %(proc_prefix)s%(mp_prefix)sPSMC_IMPROVE_PS_POINT_PRECISION(NEWP,ERRCODE,WARNED)	    
+        CALL %(proc_prefix)s%(mp_prefix)sPSMC_IMPROVE_PS_POINT_PRECISION(NEWP,ERRCODE,WARNED)
 	  ELSEIF((ImprovePSPoint.eq.2).or.(ImprovePSPoint.le.0)) THEN
 	    CALL %(proc_prefix)s%(mp_prefix)sORIG_IMPROVE_PS_POINT_PRECISION(NEWP,ERRCODE,WARNED)
 	  ENDIF
@@ -379,6 +381,11 @@ C stores the result in P and for the quadruple precision
 c version , it also modifies the global variables
 C PS and MP_DONE accordingly.
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -424,6 +431,11 @@ C rotation=2 => (xp=-z,yp=y,zp=x)
 	  END
 
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)s%(mp_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -664,7 +676,7 @@ C
 C
 C LOCAL VARIABLES 
 C
-      INTEGER I,J, P1, P2 
+      INTEGER I,J, P1, P2, IABSORB
       %(real_format)s NEWP(0:3,NEXTERNAL), PBUFF(0:3)
 	  %(real_format)s BUFF, BUFF2, XSCALE, APPROX_ZEROS(NAPPROXZEROS)
 	  %(real_format)s MASSES(NEXTERNAL)
@@ -704,13 +716,30 @@ C     First make sur that the space like momentum is exactly conserved
 		  PBUFF(J)=PBUFF(J)+NEWP(J,I)
 		ENDDO
       ENDDO
-	  DO I=NINITIAL+1,NEXTERNAL-1
-	    DO J=1,3
-		  PBUFF(J)=PBUFF(J)-NEWP(J,I)
-		ENDDO
+C     Absorb the residual in the final-state leg with the largest
+C     |p|, not in leg NEXTERNAL: that leg is never at rest, so an
+C     exactly vanishing three-momentum survives. HELAS reads the
+C     spin axis of a polarised leg off 'pp.eq.0', so a 1e-14
+C     residual there builds the longitudinal vector along noise.
+C     Largest |p| is also the smallest relative distortion.
+      IABSORB=NEXTERNAL
+	  BUFF=ZERO
+      DO I=NINITIAL+1,NEXTERNAL
+	    BUFF2=NEWP(1,I)**2+NEWP(2,I)**2+NEWP(3,I)**2
+		IF (BUFF2.GT.BUFF) THEN
+		  BUFF=BUFF2
+		  IABSORB=I
+		ENDIF
+	  ENDDO
+	  DO I=NINITIAL+1,NEXTERNAL
+	    IF (I.NE.IABSORB) THEN
+		  DO J=1,3
+		    PBUFF(J)=PBUFF(J)-NEWP(J,I)
+		  ENDDO
+		ENDIF
       ENDDO
       DO J=1,3
-        NEWP(J,NEXTERNAL)=PBUFF(J)
+        NEWP(J,IABSORB)=PBUFF(J)
       ENDDO
 
 C     Now find the 'x' rescaling factor
@@ -824,10 +853,19 @@ C
       INTEGER I,J,ERR
       %(real_format)s PVECSQ(NEXTERNAL)
 	  %(real_format)s XN, XNP1,FVAL,DVAL
+	  %(real_format)s MASSES(NEXTERNAL)
+C
+C GLOBAL VARIABLES
+C 
+      %(include_vector)s
+      include '%(coupl_inc_name)s'
 
 C ----------
 C BEGIN CODE
 C ----------
+C	  To manage off-shell momenta, we need to transmit MASSES(I) to the subroutine FUNCT (that does not have P)
+	  %(masses_def)s
+
 
       ERROR = 0
       XSCALE = SEED
@@ -839,12 +877,12 @@ C ----------
 	  ENDDO
 
 	  DO I=1,MAXITERATIONS
-	    CALL %(proc_prefix)sFUNCT(PVECSQ(1),XN,.FALSE.,ERR, FVAL)
+	    CALL %(proc_prefix)sFUNCT(MASSES,PVECSQ(1),XN,.FALSE.,ERR, FVAL)
 		IF (ERR.NE.0) THEN
 		  ERROR=ERR
 		  GOTO 710
 		ENDIF
-	    CALL %(proc_prefix)sFUNCT(PVECSQ(1),XN,.TRUE.,ERR, DVAL)
+	    CALL %(proc_prefix)sFUNCT(MASSES,PVECSQ(1),XN,.TRUE.,ERR, DVAL)
 		IF (ERR.NE.0) THEN
 		  ERROR=ERR
 		  GOTO 710
@@ -861,12 +899,12 @@ C ----------
 
   700 CONTINUE
 C     For good measure, we iterate one last time
-	  CALL %(proc_prefix)sFUNCT(PVECSQ(1),XN,.FALSE.,ERR, FVAL)
+	  CALL %(proc_prefix)sFUNCT(MASSES,PVECSQ(1),XN,.FALSE.,ERR, FVAL)
 	  IF (ERR.NE.0) THEN
 		ERROR=ERR
 		GOTO 710
       ENDIF
-	  CALL %(proc_prefix)sFUNCT(PVECSQ(1),XN,.TRUE.,ERR, DVAL)
+	  CALL %(proc_prefix)sFUNCT(MASSES,PVECSQ(1),XN,.TRUE.,ERR, DVAL)
 	  IF (ERR.NE.0) THEN
 	    ERROR=ERR
 		GOTO 710
@@ -878,7 +916,7 @@ C     For good measure, we iterate one last time
 
 	  END
 
-	  SUBROUTINE %(proc_prefix)sFUNCT(PVECSQ,X,DERIVATIVE,ERROR,RES)
+	  SUBROUTINE %(proc_prefix)sFUNCT(MASSES,PVECSQ,X,DERIVATIVE,ERROR,RES)
 	  IMPLICIT NONE
 C  
 C CONSTANTS 
@@ -901,12 +939,12 @@ C
       %(real_format)s PVECSQ(NEXTERNAL),X,RES
 	  INTEGER ERROR
 	  LOGICAL DERIVATIVE
+	  %(real_format)s MASSES(NEXTERNAL)
 C
 C LOCAL VARIABLES 
 C
       INTEGER I,J 
 	  %(real_format)s BUFF,FACTOR
-	  %(real_format)s MASSES(NEXTERNAL)
 C
 C GLOBAL VARIABLES
 C 
@@ -917,7 +955,7 @@ C ----------
 C BEGIN CODE
 C ----------
 
-	  %(masses_def)s
+c	MASSES is now an argument of the function to deal with off-shell particles
 
       ERROR=0
 	  RES=ZERO

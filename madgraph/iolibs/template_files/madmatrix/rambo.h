@@ -1,7 +1,7 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
 //==========================================================================
-// RAMBO phase-space generator for the standalone_mg7 driver.
+// RAMBO phase-space generator for the standalone (madmatrix) driver.
 // Ported verbatim from the MG5aMC standalone_cpp output (rambo.cc/rambo.h), so
 // that check_sa generates the SAME phase-space point as the Fortran/C++ 'check'
 // drivers, INCLUDING the particle masses. The only changes are:

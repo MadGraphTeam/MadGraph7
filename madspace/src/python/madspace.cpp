@@ -842,7 +842,12 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def("input_dim", &MLP::input_dim)
         .def("output_dim", &MLP::output_dim)
-        .def("initialize_globals", &MLP::initialize_globals, py::arg("context"));
+        .def(
+            "initialize_globals",
+            &MLP::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
+        );
 
     py::classh<Flow, Mapping>(m, "Flow")
         .def(
@@ -866,12 +871,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("input_dim", &Flow::input_dim)
         .def("condition_dim", &Flow::condition_dim)
-        .def("initialize_globals", &Flow::initialize_globals, py::arg("context"))
+        .def(
+            "initialize_globals",
+            &Flow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
+        )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
-            py::arg("grid_name")
+            py::arg("grid_name"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
@@ -927,7 +938,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
@@ -972,7 +984,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("option_counts", &DiscreteFlow::option_counts)
         .def("condition_dim", &DiscreteFlow::condition_dim)
         .def(
-            "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
+            "initialize_globals",
+            &DiscreteFlow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
@@ -1035,6 +1050,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 double,
                 double,
+                double,
+                double,
                 double>(),
             py::arg("function"),
             py::arg("context"),
@@ -1043,7 +1060,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("step_count") = 0,
             py::arg("beta1") = 0.9,
             py::arg("beta2") = 0.999,
-            py::arg("eps") = 1e-8
+            py::arg("eps") = 1e-8,
+            py::arg("grad_clip_threshold") = 0.0,
+            py::arg("weight_decay") = 0.0
     )
         .def(
             "step",
@@ -1196,6 +1215,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     std::monostate,
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -1204,7 +1224,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
-            py::arg("input_momentum_fraction") = true
+            py::arg("input_momentum_fraction") = true,
+            py::arg("decay") = false
         )
         .def("pid_options", &DifferentialCrossSection::pid_options)
         .def("matrix_element", &DifferentialCrossSection::matrix_element);
@@ -1215,16 +1236,19 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const PhaseSpaceMapping&,
-                const DifferentialCrossSection&,
+                const std::vector<DifferentialCrossSection>&,
                 const Integrand::AdaptiveMapping&,
                 const Integrand::AdaptiveDiscrete&,
                 const Integrand::AdaptiveDiscrete&,
+                const nested_vector2<me_int_t>&,
                 const std::optional<PdfGrid>&,
                 const std::optional<RunningCoupling>&,
                 const std::optional<EnergyScale>&,
                 const std::optional<PropagatorChannelWeights>&,
                 const std::optional<SubchannelWeights>&,
                 const std::optional<ChannelWeightNetwork>&,
+                const nested_vector2<me_int_t>&,
+                std::size_t,
                 const std::vector<me_int_t>&,
                 std::size_t,
                 bool,
@@ -1234,20 +1258,27 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<double>&,
-                const std::vector<bool>&>(),
+                const std::vector<bool>&,
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                const std::vector<std::size_t>&,
+                std::size_t>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
-            py::arg("discrete_before") = std::monostate{},
-            py::arg("discrete_after") = std::monostate{},
+            py::arg("discrete_sym") = std::monostate{},
+            py::arg("discrete_flavor") = std::monostate{},
+            py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf_grid") = std::nullopt,
             py::arg("running_coupling") = std::nullopt,
             py::arg("energy_scale") = std::nullopt,
             py::arg("prop_chan_weights") = std::nullopt,
             py::arg("subchan_weights") = std::nullopt,
             py::arg("chan_weight_net") = std::nullopt,
-            py::arg("chan_weight_remap") = std::vector<me_int_t>{},
-            py::arg("remapped_chan_count") = 0,
+            py::arg("first_chan_weight_remap") = nested_vector2<me_int_t>{},
+            py::arg("first_remapped_chan_count") = 0,
+            py::arg("second_chan_weight_remap") = std::vector<me_int_t>{},
+            py::arg("second_remapped_chan_count") = 0,
             py::arg("madnis_training") = false,
             py::arg("drop_cuts_and_rescale") = false,
             py::arg("partial_weights") = false,
@@ -1255,7 +1286,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("active_flavors") = nested_vector2<std::size_t>{},
             py::arg("flavor_remap") = std::vector<std::size_t>{},
             py::arg("flavor_factors") = std::vector<double>{},
-            py::arg("flavor_mirror") = std::vector<bool>{}
+            py::arg("flavor_mirror") = std::vector<bool>{},
+            py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
+            py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
+            py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
+            py::arg("compressed_channel_weight_count") = 50
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)
@@ -1263,8 +1298,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("mapping", &Integrand::mapping)
         .def("diff_xs", &Integrand::diff_xs)
         .def("adaptive_map", &Integrand::adaptive_map)
-        .def("discrete_before", &Integrand::discrete_before)
-        .def("discrete_after", &Integrand::discrete_after)
+        .def("discrete_sym", &Integrand::discrete_sym)
+        .def("discrete_flavor", &Integrand::discrete_flavor)
         .def("energy_scale", &Integrand::energy_scale)
         .def("prop_chan_weights", &Integrand::prop_chan_weights)
         .def("chan_weight_net", &Integrand::chan_weight_net)
@@ -1288,10 +1323,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<std::shared_ptr<FunctionGenerator>>&,
                 const std::optional<ChannelWeightNetwork>&,
-                double>(),
+                double,
+                std::size_t>(),
             py::arg("functions"),
             py::arg("cwnet"),
-            py::arg("softclip_threshold") = 0.0
+            py::arg("softclip_threshold") = 0.0,
+            py::arg("compressed_channel_weight_count") = 50
         );
 
     add_enum<Verbosity>(
@@ -1306,7 +1343,6 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<MadnisTraining::Config>(m, "MadnisConfig")
         .def(py::init<>())
-        .def_readwrite("verbosity", &MadnisTraining::Config::verbosity)
         .def_readwrite("learning_rate", &MadnisTraining::Config::learning_rate)
         .def_readwrite("batches", &MadnisTraining::Config::batches)
         .def_readwrite("log_interval", &MadnisTraining::Config::log_interval)
@@ -1349,11 +1385,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("adam_beta1", &MadnisTraining::Config::adam_beta1)
         .def_readwrite("adam_beta2", &MadnisTraining::Config::adam_beta2)
         .def_readwrite("adam_eps", &MadnisTraining::Config::adam_eps)
+        .def_readwrite("adam_weight_decay", &MadnisTraining::Config::adam_weight_decay)
+        .def_readwrite(
+            "grad_clip_threshold", &MadnisTraining::Config::grad_clip_threshold
+        )
         .def_readwrite("buffer_capacity", &MadnisTraining::Config::buffer_capacity)
         .def_readwrite(
             "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
         )
-        .def_readwrite("buffered_steps", &MadnisTraining::Config::buffered_steps)
+        .def_readwrite(
+            "buffered_steps_fraction",
+            &MadnisTraining::Config::buffered_steps_fraction
+        )
+        .def_readwrite(
+            "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
+        )
         .def_readwrite(
             "buffer_unweighting_quantile",
             &MadnisTraining::Config::buffer_unweighting_quantile
@@ -1363,6 +1409,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "softclip_threshold", &MadnisTraining::Config::softclip_threshold
+        )
+        .def_readwrite(
+            "compressed_channel_weight_count",
+            &MadnisTraining::Config::compressed_channel_weight_count
         );
 
     py::classh<MadnisTraining>(m, "MadnisTraining")
@@ -1372,30 +1422,52 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
-                const std::optional<ChannelWeightNetwork>&>(),
+                const std::optional<ChannelWeightNetwork>&,
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnet")
+            py::arg("cwnet"),
+            py::arg("seed") = std::nullopt
         )
         .def("train_step", &MadnisTraining::train_step, py::arg("batch_index"))
         .def("active_channels", &MadnisTraining::active_channels)
         .def("active_channel_count", &MadnisTraining::active_channel_count);
+
+    py::classh<StatusFile>(m, "StatusFile")
+        .def(
+            py::init<const std::string&, double>(),
+            py::arg("file_name"),
+            py::arg("min_interval_sec") = 10.0
+        );
+
+    py::classh<MultiMadnisTraining::TrainingArgs>(m, "TrainingArgs")
+        .def(
+            py::init<
+                const MadnisTraining::Config&,
+                const std::vector<std::shared_ptr<Integrand>>&,
+                const std::optional<ChannelWeightNetwork>&>(),
+            py::arg("config"),
+            py::arg("integrands"),
+            py::arg("cwnet")
+        );
 
     py::classh<MultiMadnisTraining>(m, "MultiMadnisTraining")
         .def(
             py::init<
                 ContextPtr,
                 ContextPtr,
-                const MadnisTraining::Config&,
-                const nested_vector2<std::shared_ptr<Integrand>>&,
-                const std::vector<std::optional<ChannelWeightNetwork>>&>(),
+                const std::vector<MultiMadnisTraining::TrainingArgs>&,
+                Verbosity,
+                std::shared_ptr<StatusFile>,
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
-            py::arg("config"),
-            py::arg("integrands"),
-            py::arg("cwnets")
+            py::arg("training_args"),
+            py::arg("verbosity"),
+            py::arg("status_file") = std::shared_ptr<StatusFile>(),
+            py::arg("seed") = std::nullopt
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);
@@ -1429,7 +1501,25 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "cut_efficiency_threshold", &GeneratorConfig::cut_efficiency_threshold
         )
-        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions);
+        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions)
+        .def_readwrite(
+            "finish_remaining_fraction", &GeneratorConfig::finish_remaining_fraction
+        )
+        .def_readwrite("max_batch_fraction", &GeneratorConfig::max_batch_fraction)
+        .def_readwrite(
+            "batch_overshoot_sigma", &GeneratorConfig::batch_overshoot_sigma
+        );
+
+    m.def(
+        "compute_generation_batch_event_count",
+        &compute_generation_batch_event_count,
+        py::arg("count_target"),
+        py::arg("count_unweighted"),
+        py::arg("count_opt"),
+        py::arg("abs_cross_section_count"),
+        py::arg("abs_cross_section_rel_error"),
+        py::arg("config")
+    );
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
@@ -1437,6 +1527,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("name", &GeneratorStatus::name)
         .def_readwrite("mean", &GeneratorStatus::mean)
         .def_readwrite("error", &GeneratorStatus::error)
+        .def_readwrite("mean_abs", &GeneratorStatus::mean_abs)
+        .def_readwrite("error_abs", &GeneratorStatus::error_abs)
         .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
         .def_readwrite("count", &GeneratorStatus::count)
         .def_readwrite("count_opt", &GeneratorStatus::count_opt)
@@ -1536,9 +1628,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mother2") = 0,
             py::arg("color") = 0,
             py::arg("anti_color") = 0,
-            py::arg("p_x") = 0.,
-            py::arg("p_y") = 0.,
-            py::arg("p_z") = 0.,
+            py::arg("px") = 0.,
+            py::arg("py") = 0.,
+            py::arg("pz") = 0.,
             py::arg("energy") = 0.,
             py::arg("mass") = 0.,
             py::arg("lifetime") = 0.,
@@ -1576,7 +1668,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("weight", &LHEEvent::weight)
         .def_readwrite("scale", &LHEEvent::scale)
         .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
-        .def_readwrite("alpha_qcd", &LHEEvent::process_id)
+        .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
         .def_readwrite("particles", &LHEEvent::particles);
     py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
         .def(
@@ -1589,6 +1681,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector2<std::tuple<int, int>>,
                 std::unordered_map<int, int>,
                 nested_vector2<double>,
+                nested_vector3<int>,
                 nested_vector3<int>>(),
             py::arg("process_id") = 0,
             py::arg("topologies") = std::vector<Topology>{},
@@ -1598,7 +1691,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("color_flows") = nested_vector2<std::tuple<int, int>>{},
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("helicities") = nested_vector2<double>{},
-            py::arg("pdg_ids") = nested_vector3<int>{}
+            py::arg("pdg_ids") = nested_vector3<int>{},
+            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{}
         )
         .def_readwrite("process_id", &LHECompleter::SubprocArgs::process_id)
         .def_readwrite("topologies", &LHECompleter::SubprocArgs::topologies)
@@ -1610,10 +1704,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("color_flows", &LHECompleter::SubprocArgs::color_flows)
         .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
         .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
-        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids);
-    py::classh<std::mt19937>(m, "RandGen")
+        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids)
+        .def_readwrite(
+            "diagram_propagator_pdgs",
+            &LHECompleter::SubprocArgs::diagram_propagator_pdgs
+        );
+    py::classh<MixMaxRandom>(m, "MixMaxRandom")
         .def(py::init<>())
-        .def(py::init<std::mt19937::result_type>(), py::arg("seed"));
+        .def(py::init<std::uint64_t>(), py::arg("seed"));
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
@@ -1711,18 +1809,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
-                const std::string&,
+                std::uint64_t,
+                std::shared_ptr<StatusFile>,
                 const GeneratorConfig&>(),
             py::arg("contexts"),
             py::arg("channels"),
-            py::arg("status_file") = "",
+            py::arg("seed"),
+            py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg_v(
                 "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
             )
         )
-        .def("survey", &EventGenerator::survey)
+        .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
         .def("generate", &EventGenerator::generate)
         .def(
             "combine_to_compact_npy",

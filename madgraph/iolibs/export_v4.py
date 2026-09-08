@@ -2858,6 +2858,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     return "%id0/%id0" % (frac.numerator, frac.denominator)
             elif frac.real == frac:
                 #misc.sprint(frac.real, frac)
+                # +0.0 drops the sign of negative zeros, which depends on the python version
                 return ('%.15e' % (frac.real + 0.0)).replace('e','d')
                 #str(float(frac.real)).replace('e','d')
             else:
@@ -4305,7 +4306,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             self.format = opts['format']
             del opts['format']
         else:
-            self.format = 'standalone'
+            self.format = 'standalone_fortran'
 
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
@@ -4445,9 +4446,28 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         logger.info("Running make for Source directory")
         try:
             misc.compile(cwd=source_dir, mode='fortran')
-        except:
-            misc.compile(arg=['../lib/libdhelas.a'], cwd=source_dir, mode='fortran')
-            misc.compile(arg=['../lib/libmodel.a'], cwd=source_dir, mode='fortran')
+        except Exception as error:
+            logger.warning(
+                "Running 'make' in %s failed; falling back to building "
+                "libdhelas and libmodel individually. This normally indicates "
+                "a problem in Source/makefile and should be reported. The "
+                "failure was:\n%s", source_dir, error)
+            # Build through the libext-agnostic phony targets that both
+            # Source/makefile templates provide, not '../lib/libXXX.a':
+            # the latter is only a real target when the makefile was
+            # configured with the default static libext. With 'dynamic' set
+            # (make_opts) libext is 'so'/'dylib', the makefile then only
+            # knows '../lib/libdhelas.$(libext)', and make stops with
+            #     No rule to make target `../lib/libdhelas.a'
+            # -- which is what ends up reported to the user instead of the
+            # real failure logged just above.
+            try:
+                misc.compile(arg=['libdhelas'], cwd=source_dir, mode='fortran')
+                misc.compile(arg=['libmodel'], cwd=source_dir, mode='fortran')
+            except Exception:
+                # The per-library build is only a work-around; the useful
+                # diagnostic is why the plain 'make' failed, so report that.
+                raise error
 
     #===========================================================================
     # Create proc_card_mg5.dat for Standalone directory
@@ -4860,7 +4880,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fsock.close()
 
         #important to put that first
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             filename2 = pjoin(dirpath, 'check_sa.f')
             self.write_check_sa(writers.FortranWriter(filename2), matrix_element, proc_prefix)
 
@@ -4934,7 +4954,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             plot.draw()
 
         linkfiles = ['check_sa.f', 'coupl.inc']
-        if self.format == 'standalone':
+        if self.format == 'standalone_fortran':
             linkfiles = ['coupl.inc']
 
 
@@ -5249,20 +5269,26 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             sqamp_so = self.get_split_orders_lines(squared_orders,'SQSPLITORDERS')
             replace_dict['ampsplitorders']='\n'.join(amp_so)
             replace_dict['sqsplitorders']='\n'.join(sqamp_so)           
-            jamp_lines, nb_tmp_jamp = self.get_JAMP_lines_split_order(\
-                       matrix_element,amp_orders,split_order_names=split_orders)
+            # standalone_msP/msF templates declare JAMP as a 1D array and cannot
+            # handle split-order JAMP; fall back to the non-split-order generator.
+            if self.opt['export_format'] in ['standalone_msP', 'standalone_msF']:
+                jamp_lines, nb_tmp_jamp = self.get_JAMP_lines(matrix_element)
+            else:
+                jamp_lines, nb_tmp_jamp = self.get_JAMP_lines_split_order(\
+                           matrix_element,amp_orders,split_order_names=split_orders)
             replace_dict['nb_temp_jamp'] = nb_tmp_jamp
             # Now setup the array specifying what squared split order is chosen
             replace_dict['chosen_so_configs']=self.set_chosen_SO_index(
                               matrix_element.get('processes')[0],squared_orders)
-            
+
             # For convenience we also write the driver check_sa_splitOrders.f
             # that explicitely writes out the contribution from each squared order.
             # The original driver still works and is compiled with 'make' while
             # the splitOrders one is compiled with 'make check_sa_born_splitOrders'
-            check_sa_writer=writers.FortranWriter('check_sa_born_splitOrders.f')
-            self.write_check_sa_splitOrders(squared_orders,split_orders,
-              nexternal,ninitial,proc_prefix,check_sa_writer)
+            if self.opt['export_format'] not in ['standalone_msP', 'standalone_msF']:
+                check_sa_writer=writers.FortranWriter('check_sa_born_splitOrders.f')
+                self.write_check_sa_splitOrders(squared_orders,split_orders,
+                  nexternal,ninitial,proc_prefix,check_sa_writer)
 
         if write:
             writers.FortranWriter('nsqso_born.inc').writelines(
@@ -5380,7 +5406,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     #===========================================================================
     def write_check_sa(self, writer, matrix_element, proc_prefix=''):
 
-        if self.format != 'standalone':
+        if self.format != 'standalone_fortran':
             return
 
         # Density-mode defaults (overridden if 'density' is in cmd_options).
@@ -6109,6 +6135,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
         replace_dict['nexternal'] = nexternal
+        replace_dict['nincoming'] = ninitial
 
         # Extract ncomb
         ncomb = matrix_element.get_helicity_combinations()
@@ -9701,7 +9728,7 @@ class UFO_model_to_mg4(object):
                 text = open(path).read()
                 text = text.replace('madevent','aMCatNLO').replace('../vector.inc', '')
                 open(path, 'w').writelines(text)
-        elif self.opt['export_format'] in ['standalone', 'standalone_msP','standalone_msF',
+        elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
             cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
@@ -12504,7 +12531,23 @@ c         segments from -DABS(tiny*Ga) to Ga
                                       rule_card_path=rule_card, 
                                       mssm_convert=True,
                                       write_special=write_special)
-        
+
+# Output formats with a loop backend for a loop-induced ([noborn=]) process
+# coming through the tree-level do_output. Test membership EXACTLY: 'standalone'
+# is a prefix of standalone_cpp / _mg7 / _msP / _msF / _rw, which have none.
+LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone']
+
+def loop_induced_not_supported_msg(format, process=None):
+    """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
+
+    orders = (' '.join(process.get('perturbation_couplings')) if process
+              else '') or 'QCD'
+
+    return """The '%(format)s' output format does not support loop-induced processes.
+Generate the process with [sqrvirt=%(orders)s] rather than [noborn=%(orders)s] to obtain the
+same matrix element as a standalone MadLoop output, or use 'output madevent'
+to integrate it.""" % {'format': format, 'orders': orders}
+
 def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True, cmd_options={}):
     """ Determine which Export_v4 class is required. cmd is the command 
         interface containing all potential usefull information.
@@ -12653,9 +12696,34 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         if format in ['madevent']:
             opt['madanalysis5'] = cmd.options['madanalysis5_path']
             
+        # Every standalone_* format that reaches the *v4* factory is
+        # Fortran-family (standalone_fortran, standalone_msP/msF/rw). The plain
+        # `standalone` (MadMatrix) is declared with exporter 'cpp' in
+        # MadGraphCmd.do_output and goes to ExportCPPFactory instead, so it
+        # never gets here despite matching the prefix.
         if format == 'matrix' or format.startswith('standalone'):
+            if cmd._curr_amps and isinstance(
+                    cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+                # of the formats sharing this branch only 'standalone' has a
+                # MadLoop backend; ProcessExporterFortranSA has none
+                if format not in LOOP_INDUCED_FORMATS:
+                    raise InvalidCmd(
+                        loop_induced_not_supported_msg(format, curr_proc))
+                import madgraph.loop.loop_exporters as loop_exporters
+                if not os.path.isdir(os.path.join(cmd._mgme_dir,
+                                                  'Template/loop_material')):
+                    raise MadGraph5Error(
+                        'MG5_aMC cannot find the \'loop_material\' directory'
+                        ' in %s' % str(cmd._mgme_dir))
+                if cmd.options['loop_optimized_output']:
+                    MadLoop_SA_options['export_format'] = 'madloop_optimized'
+                    ExporterClass = \
+                        loop_exporters.LoopProcessOptimizedExporterFortranSA
+                else:
+                    ExporterClass = loop_exporters.LoopProcessExporterFortranSA
+                return ExporterClass(cmd._export_dir, MadLoop_SA_options)
             return ProcessExporterFortranSA(cmd._export_dir, opt, format=format)
-        
+
         elif format in ['madevent'] and group_subprocesses:
             if isinstance(cmd._curr_amps[0], 
                                          loop_diagram_generation.LoopAmplitude):
@@ -12675,6 +12743,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             else:
                 return  ProcessExporterFortranME(cmd._export_dir,opt)
         elif format in ['matchbox']:
+            # no loop-induced backstop needed: do_output refuses 'matchbox'
+            # before any factory runs, and loop_interface never comes here
             return ProcessExporterFortranMatchBox(cmd._export_dir,opt)
         elif cmd._export_format in ['madweight'] and group_subprocesses:
 

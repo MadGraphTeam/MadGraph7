@@ -28,6 +28,9 @@ public:
     const std::string& name() const { return _name; }
     int opcode() const { return _opcode; }
     bool differentiable() const { return _differentiable; }
+    // draws from a shared RNG stream: never CSE'd, always scheduled on the main
+    // GPU stream (see FunctionBuilder::instruction)
+    virtual bool is_random() const { return false; }
 
 protected:
     void check_arg_count(const ValueVec& args, std::size_t count) const;
@@ -115,6 +118,20 @@ public:
     TypeVec signature(const ValueVec& args) const override;
 };
 
+class BatchSplitByIndexInstruction : public Instruction {
+public:
+    BatchSplitByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_split_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
+class BatchMergeByIndexInstruction : public Instruction {
+public:
+    BatchMergeByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_merge_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
 class CatInstruction : public Instruction {
 public:
     CatInstruction(int opcode, bool differentiable) :
@@ -197,6 +214,7 @@ public:
     RandomInstruction(int opcode, bool differentiable) :
         Instruction("random", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class RandomIntInstruction : public Instruction {
@@ -204,6 +222,7 @@ public:
     RandomIntInstruction(int opcode, bool differentiable) :
         Instruction("random_int", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class UnweightInstruction : public Instruction {
@@ -211,6 +230,7 @@ public:
     UnweightInstruction(int opcode, bool differentiable) :
         Instruction("unweight", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class MatrixElementInstruction : public Instruction {
