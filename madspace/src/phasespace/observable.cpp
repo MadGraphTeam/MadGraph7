@@ -26,6 +26,7 @@ int observable_type(Observable::ObservableOption observable) {
     case Observable::obs_delta_eta:
     case Observable::obs_delta_phi:
     case Observable::obs_delta_r:
+    case Observable::obs_m_inv:
         return 2;
     case Observable::obs_sqrt_s:
         return 0;
@@ -70,6 +71,8 @@ Value build_observable(
         return fb.obs_delta_phi(momenta.at(0), momenta.at(1));
     case Observable::obs_delta_r:
         return fb.obs_delta_r(momenta.at(0), momenta.at(1));
+    case Observable::obs_m_inv:
+        return fb.obs_m_inv(momenta.at(0), momenta.at(1));
     case Observable::obs_sqrt_s:
         return fb.obs_sqrt_s(momenta.at(0));
     }

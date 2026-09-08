@@ -33,6 +33,7 @@ public:
         obs_delta_eta,
         obs_delta_phi,
         obs_delta_r,
+        obs_m_inv,
         obs_sqrt_s
     };
 

@@ -90,8 +90,14 @@ $multiparticles
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
-# possible observables: pt, eta, dR, mass, sqrt_s
-#     (mass is for pairs of particles from the same group, sqrt_s is for all outgoing particles)
+# possible observables: pt, eta, dR, mass, m_inv, sqrt_s
+#     (mass is the mass of one particle, or of the summed momenta with "-sum-";
+#      m_inv is the invariant mass of a pair, applied to every pair the group
+#      can form; sqrt_s is for all outgoing particles)
+# An m_inv minimum is also used to bound the integration: where the pair is
+# what a propagator decays into, the cut becomes that propagator's minimum
+# invariant mass, so the forbidden region is never generated rather than
+# generated and thrown away.
 # for all cuts, min or max can be specified
 $cuts
 
