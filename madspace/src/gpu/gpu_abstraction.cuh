@@ -5,7 +5,6 @@
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
-#include <curand.h>
 
 #define gpuGetDeviceCount cudaGetDeviceCount
 #define gpuSetDevice cudaSetDevice
@@ -46,16 +45,6 @@
 #define GPUBLAS_OP_N CUBLAS_OP_N
 #define GPUBLAS_OP_T CUBLAS_OP_T
 
-#define gpurandStatus_t curandStatus_t
-#define gpurandGenerator_t curandGenerator_t
-#define gpurandCreateGenerator curandCreateGenerator
-#define gpurandDestroyGenerator curandDestroyGenerator
-#define gpurandSetPseudoRandomGeneratorSeed curandSetPseudoRandomGeneratorSeed
-#define gpurandSetStream curandSetStream
-#define gpurandGenerateUniformDouble curandGenerateUniformDouble
-#define GPURAND_STATUS_SUCCESS CURAND_STATUS_SUCCESS
-#define GPURAND_RNG_PSEUDO_DEFAULT CURAND_RNG_PSEUDO_DEFAULT
-
 #define thrust_par thrust::cuda::par
 
 #elif defined __HIPCC__
@@ -63,7 +52,6 @@
 #include <hip/hip_runtime_api.h>
 #include <hipcub/hipcub.hpp>
 #include <rocblas/rocblas.h>
-#include <rocrand/rocrand.h>
 
 #define gpuGetDeviceCount hipGetDeviceCount
 #define gpuSetDevice hipSetDevice
@@ -103,16 +91,6 @@
 #define gpublasDgemv rocblas_dgemv
 #define GPUBLAS_OP_N rocblas_operation_none
 #define GPUBLAS_OP_T rocblas_operation_transpose
-
-#define gpurandStatus_t rocrand_status
-#define gpurandGenerator_t rocrand_generator
-#define gpurandCreateGenerator rocrand_create_generator
-#define gpurandDestroyGenerator rocrand_destroy_generator
-#define gpurandSetPseudoRandomGeneratorSeed rocrand_set_seed
-#define gpurandSetStream rocrand_set_stream
-#define gpurandGenerateUniformDouble rocrand_generate_uniform_double
-#define GPURAND_STATUS_SUCCESS ROCRAND_STATUS_SUCCESS
-#define GPURAND_RNG_PSEUDO_DEFAULT ROCRAND_RNG_PSEUDO_DEFAULT
 
 #define thrust_par thrust::hip_rocprim::par
 namespace cub = hipcub;

@@ -3502,17 +3502,24 @@ class RunCard(ConfigFile):
                     fsock = file_writers.FortranWriter(tmp,'w')
                     function_text = fsock.remove_routine(text, fct)
                     fsock.close()
-                    test = open(tmp,'r').read()                        
-                    if fct not in self.dummy_fct_file:
-                        if fct.startswith('user_'):
-                            self.dummy_fct_file[fct] = self.dummy_fct_file['user_']
+                    test = open(tmp,'r').read()
+                    # fortran is case insensitive (and upper case is idiomatic),
+                    # while dummy_fct_file --and the routines of the template
+                    # files-- are written in lower case. So normalise the name
+                    # extracted from the user file before any comparison.
+                    # (the removal above has to use the original case since it
+                    #  operates on the user file itself)
+                    lfct = fct.lower()
+                    if lfct not in self.dummy_fct_file:
+                        if lfct.startswith('user_'):
+                            self.dummy_fct_file[lfct] = self.dummy_fct_file['user_']
                         else:
-                            raise InvalidRunCard("function %s is not designed for overwritting")
-                    writein = self.dummy_fct_file[fct]
+                            raise InvalidRunCard("function %s is not designed for overwriting" % fct)
+                    writein = self.dummy_fct_file[lfct]
                     if writein not in to_mod:
-                        to_mod[writein]=[[fct], [function_text]]
+                        to_mod[writein]=[[lfct], [function_text]]
                     else:
-                        to_mod[writein][0].append(fct)
+                        to_mod[writein][0].append(lfct)
                         to_mod[writein][1].append(function_text)
 
         # step 2: write the new files
@@ -6473,6 +6480,12 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
+        self.add_toml_param('run', 'seed', -1, gridpack=True,
+            comment="every run is reproducible: the same seed reproduces the run "
+                    "bit-identically. -1 draws a fresh random seed each run instead "
+                    "of fixing one here; the seed actually used is still recorded "
+                    "(the MG7Seed tag in the LHE file, or the info.json status "
+                    "file), so the run can be reproduced later")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
             comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
@@ -6669,10 +6682,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
         self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
         self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 100000)
+        self.add_toml_param('madnis', 'buffer_capacity', 60000)
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
-        self.add_toml_param('madnis', 'buffered_steps', 5)
-        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8)
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
+        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95)
         self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)
         self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
@@ -7254,9 +7268,13 @@ class RunCardMG7(RunCard):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
 
-        # 1 -> N decay: no cuts at all
+        # 1 -> N decay: no cuts at all. A partial width is an inclusive
+        # quantity, so any kinematic cut biases it low (the collider defaults
+        # cost ~3% on t > b w+, w+ > e+ ve). The Breit-Wigner cutoff in
+        # [phasespace] is deliberately left alone: it is a sampling range for
+        # the off-shell propagators, not a cut on the final state.
         if proc_characteristic and proc_characteristic['ninitial'] == 1:
-            self.dynamic_sections['cuts'] = collections.OrderedDict()
+            self.remove_all_cut()
 
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):

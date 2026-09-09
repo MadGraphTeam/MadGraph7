@@ -358,7 +358,7 @@ class HelpToCmd(object):
         logger.info('   If FILE belongs to index.html, param_card.dat, run_card.dat')
         logger.info('   the path to the last created/used directory is used')
         logger.info('   The program used to open those files can be chosen in the')
-        logger.info('   configuration file ./input/mg5_configuration.txt')   
+        logger.info('   configuration file ./input/mg7_configuration.txt')   
         
         
     def run_options_help(self, data):
@@ -1116,7 +1116,7 @@ class CheckValidForCmd(object):
                         has_path = True
             if not has_path:
                 if '--auto' in arg and self.options['mg5_path']:
-                    args.insert(1, pjoin(self.options['mg5_path'],'input','mg5_configuration.txt'))  
+                    args.insert(1, misc.install_config_file(self.options['mg5_path']))  
                 else:
                     args.insert(1, pjoin(self.me_dir,'Cards','me5_configuration.txt'))  
 

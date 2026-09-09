@@ -134,7 +134,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             NamedVector<Type> in{
                 {"random",
                  batch_float_array(
-                     3 * topology.outgoing_masses().size() - (leptonic ? 4 : 2)
+                     PhaseSpaceMapping::random_dim_for(topology, leptonic)
                  )}
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
@@ -148,7 +148,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta", batch_four_vec_array(topology.outgoing_masses().size() + 2)},
+        {{"momenta",
+          batch_four_vec_array(
+              topology.outgoing_masses().size() + topology.incoming_masses().size()
+          )},
          {"x1", batch_float},
          {"x2", batch_float}},
         permutations.size() > 1
@@ -156,14 +159,19 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             : NamedVector<Type>{}
     ),
     _topology(topology),
-    _cuts(cuts.value_or(Cuts(topology.outgoing_masses().size() + 2))),
+    _cuts(cuts.value_or(Cuts(
+        topology.outgoing_masses().size() + topology.incoming_masses().size()
+    ))),
     _pi_factors(
         std::pow(2 * PI, 4 - 3 * static_cast<int>(topology.outgoing_masses().size()))
     ),
     _sqrt_s_lab(cm_energy),
     _leptonic(leptonic),
+    // A decay has no beams to sample momentum fractions for: the root
+    // virtuality is fixed at the decaying particle's mass (passed as
+    // cm_energy) and there is no boost into a lab frame.
     _map_luminosity(
-        !leptonic &&
+        !leptonic && !topology.is_decay() &&
         (_topology.t_propagator_count() == 0 ||
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
@@ -180,6 +188,65 @@ PhaseSpaceMapping::PhaseSpaceMapping(
              _cuts.pt_min(),
              _cuts.eta_max())) {
         decay_info.at(index) = {m_min, pt_min, eta_max, std::nullopt};
+    }
+
+    // A cut on the invariant mass of a pair is also a statement about the
+    // phase space, not only about which events to keep afterwards. Where the
+    // pair is exactly what a propagator decays into, the cut is a floor on
+    // that propagator's invariant and can be handed straight to the sampler,
+    // which is the difference between generating the region the cut allows
+    // and throwing away nearly everything generated. The floors are collected
+    // here and applied as the decay chain is walked below.
+    constexpr std::size_t no_leaf = static_cast<std::size_t>(-1);
+    // Cuts indexes its per-particle tables by outgoing position, counting two
+    // incoming particles. A decay topology has one, so the tables cannot be
+    // read against it at all - and a decay has no cuts to apply anyway.
+    auto m_inv_min = _topology.incoming_masses().size() == 2
+        ? _cuts.m_inv_min()
+        : std::vector<std::vector<double>>{};
+    std::vector<std::vector<std::size_t>> node_leaves(_topology.decays().size());
+    {
+        std::vector<std::size_t> decay_to_outgoing(
+            _topology.decays().size(), no_leaf
+        );
+        for (std::size_t out_pos = 0;
+             out_pos < _topology.outgoing_indices().size();
+             ++out_pos) {
+            decay_to_outgoing.at(_topology.outgoing_indices().at(out_pos)) = out_pos;
+        }
+        // children always sit at a higher index than their parent, so one
+        // backwards pass builds every leaf set
+        for (std::size_t d = _topology.decays().size(); d-- > 0;) {
+            const auto& decay = _topology.decays().at(d);
+            auto& leaves = node_leaves.at(d);
+            if (decay.child_indices.empty()) {
+                if (decay_to_outgoing.at(d) != no_leaf) {
+                    leaves.push_back(decay_to_outgoing.at(d));
+                }
+                continue;
+            }
+            for (std::size_t child : decay.child_indices) {
+                const auto& child_leaves = node_leaves.at(child);
+                leaves.insert(leaves.end(), child_leaves.begin(), child_leaves.end());
+            }
+            std::sort(leaves.begin(), leaves.end());
+        }
+        // e_min is the propagator's own floor on its invariant mass, and
+        // update_mass_min_max already carries it into every s_min the sampler
+        // uses and into what the parents subtract, so raising it here is all
+        // that is needed for the cut to shape the integration.
+        if (!m_inv_min.empty()) {
+            for (std::size_t d = 0; d < node_leaves.size(); ++d) {
+                const auto& leaves = node_leaves.at(d);
+                if (leaves.size() != 2 || leaves.at(1) >= m_inv_min.size()) {
+                    continue;
+                }
+                double cut = m_inv_min.at(leaves.at(0)).at(leaves.at(1));
+                if (cut > 0.) {
+                    _topology.raise_decay_e_min(d, cut);
+                }
+            }
+        }
     }
     for (auto [decay, info] :
          zip(std::views::reverse(_topology.decays()),
@@ -227,6 +294,33 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         total_mass += decay_info.at(index).m_min;
     }
     double sqrt_s_hat_min = _cuts.sqrt_s_min();
+    // Even when no single propagator carries the pair, the cut still bounds
+    // the total invariant mass: the pair contributes at least the cut and
+    // everything else at least its mass. The smallest such bound over the
+    // pairs the cut names is the one that holds whether the cut has to be
+    // satisfied by all of them or by only one, so it is the safe choice.
+    {
+        const auto& masses = _topology.outgoing_masses();
+        double pair_floor = 0.;
+        for (std::size_t i = 0; i < m_inv_min.size(); ++i) {
+            for (std::size_t j = i + 1; j < m_inv_min.at(i).size(); ++j) {
+                double cut = m_inv_min.at(i).at(j);
+                if (cut <= 0.) {
+                    continue;
+                }
+                double floor = cut;
+                for (std::size_t k = 0; k < masses.size(); ++k) {
+                    if (k != i && k != j) {
+                        floor += masses.at(k);
+                    }
+                }
+                if (pair_floor == 0. || floor < pair_floor) {
+                    pair_floor = floor;
+                }
+            }
+        }
+        sqrt_s_hat_min = std::max(sqrt_s_hat_min, pair_floor);
+    }
     double s_hat_min =
         std::max(total_mass * total_mass, sqrt_s_hat_min * sqrt_s_hat_min);
     if (has_t_channel) {
@@ -479,7 +573,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             },
             [&](std::monostate) {
                 auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
-                p_ext = {p1, p2};
+                if (_topology.is_decay()) {
+                    // Single incoming particle, at rest in the frame the decay
+                    // products are generated in: p_in = (M, 0, 0, 0), which is
+                    // exactly the sum of the two back-to-back beam momenta
+                    // com_p_in builds for sqrt(s_hat) = M.
+                    p_ext = {fb.add(p1, p2)};
+                } else {
+                    p_ext = {p1, p2};
+                }
             }
         },
         _t_mapping
@@ -570,7 +672,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     for (auto [decay_index, mass, momentum] :
          zip(_topology.outgoing_indices(),
              _topology.outgoing_masses(),
-             std::span(p_ext.begin() + 2, p_ext.end()))) {
+             std::span(
+                 p_ext.begin() + _topology.incoming_masses().size(), p_ext.end()
+             ))) {
         auto& data = decay_data.at(decay_index);
         data.mass = mass;
         data.mass2 = mass * mass;

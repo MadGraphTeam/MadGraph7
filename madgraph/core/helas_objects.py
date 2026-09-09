@@ -5486,8 +5486,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         pdgs = []
         pdg_signs = []
+        # L-cut wavefunctions of a loop ME are also motherless, but they are not
+        # external legs of the process (same filter as get_nexternal_ninitial).
         external_wfs = sorted([wf for wf in self.get_all_wavefunctions()
-                               if len(wf.get('mothers')) == 0],
+                               if len(wf.get('mothers')) == 0
+                               and not wf.get('is_loop')],
                               key=lambda w: w['number_external'])
         external_number = 1
         id_to_wf = collections.defaultdict(list)

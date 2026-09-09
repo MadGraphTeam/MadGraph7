@@ -447,8 +447,8 @@ jobs:
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
 
   acceptancetest_69:
@@ -467,8 +467,8 @@ jobs:
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
 
@@ -491,6 +491,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_brs_gd_gd -pA -t0 -l INFO
             ./tests/test_manager.py test_generate_output_semicolon_preserves_loop_process -pA -t0 -l INFO
+            ./tests/test_manager.py test_loop_nc_memo_not_poisoned_across_generations -pA -t0 -l INFO
 
 
 
@@ -1025,7 +1026,7 @@ jobs:
       - name: test one of the test test_polarization_top_decay
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             ./tests/test_manager.py test_polarization_top_decay -pA -t0 -l INFO
   
   acceptancetest_ewsudakov:
@@ -1160,7 +1161,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             sudo pip install numpy
             which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
 
   acceptancetest_density_decay2:

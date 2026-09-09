@@ -38,12 +38,17 @@ public:
         const std::optional<std::vector<std::size_t>>& color_order = std::nullopt
     );
 
-    std::size_t random_dim() const {
-        return 3 * _topology.outgoing_masses().size() - (_leptonic ? 4 : 2);
+    // A 1 -> n decay and a leptonic (fixed-s) 2 -> n collision both have 3n-4
+    // degrees of freedom; a hadronic 2 -> n adds the beam momentum fractions,
+    // i.e. one further sampled invariant on top of s_hat -> 3n-2.
+    static std::size_t random_dim_for(const Topology& topology, bool leptonic) {
+        return 3 * topology.outgoing_masses().size() -
+            ((leptonic || topology.is_decay()) ? 4 : 2);
     }
+    std::size_t random_dim() const { return random_dim_for(_topology, _leptonic); }
     std::size_t discrete_dim() const override { return _n_discrete; }
     std::size_t particle_count() const {
-        return _topology.outgoing_masses().size() + 2;
+        return _topology.outgoing_masses().size() + _topology.incoming_masses().size();
     }
     std::size_t channel_count() const { return _permutations.size(); }
 
