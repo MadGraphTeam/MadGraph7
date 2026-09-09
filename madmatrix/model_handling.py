@@ -192,7 +192,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     point = self.type2def['pointer_coup']
                 args.append('%s %s%s%s'% (type, point, argname, list_arg))
                 coeff_n = re.search(r"\d*$", argname).group()
-                args.append('double Ccoeff%s'% coeff_n) # OM for 'unary minus' #628
+                args.append('fptype Ccoeff%s'% coeff_n) # OM for 'unary minus' #628
             else:
                 args.append('%s %s%s'% (type, argname, list_arg))
 
@@ -335,7 +335,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
             else:
                 continue # AV no need to declare the variable
             if fullname.startswith('OM') :
-                codedict[fullname] = 'fptype_amp_sv %s' % fullname # AV use vertex precision for OM
+                codedict[fullname] = 'fptype_amp %s' % fullname # multiple of scalars 
             else:
                 codedict[fullname] = '%s %s' % (self.type2def[type+'_v'], fullname) # AV vectorize, add to codedict
             ###print(fullname, codedict[fullname]) # FOR DEBUGGING

@@ -1052,10 +1052,10 @@ namespace mg5amcCpu
 #ifdef MGONGPU_SIMD_DENOM64
   inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); } 
 #else
-  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 
+  inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 
 #endif
   template<typename T>
-  inline fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
+  inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
   // Template version for multi-precision (explicit template parameter required)
