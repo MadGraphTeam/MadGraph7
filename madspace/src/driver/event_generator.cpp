@@ -889,7 +889,15 @@ void EventGenerator::read_and_combine(
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
 
+    std::size_t empty_draws = 0;
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
+        // Retiring a starved channel below takes its share out of the draw
+        // distribution, so the number of events still available can fall short
+        // of the batch we set out to fill. Stop rather than draw from nothing.
+        if (channel_data.back().cum_count == 0) {
+            buffer.resize(event_index);
+            return;
+        }
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
         auto sampled_chan = std::lower_bound(
             channel_data.begin(),
@@ -897,16 +905,43 @@ void EventGenerator::read_and_combine(
             random_index,
             [](auto& chan, std::size_t val) { return chan.cum_count < val; }
         );
+        // A channel retired below has zero width in the cumulative
+        // distribution, but random_index == 0 still resolves to the first
+        // entry, so it can be picked; decrementing it would wrap the unsigned
+        // count. Redraw instead, and give up once nothing is left to draw.
+        std::size_t previous = sampled_chan == channel_data.begin()
+            ? 0
+            : (sampled_chan - 1)->cum_count;
+        if (sampled_chan->cum_count == previous) {
+            if (++empty_draws > channel_data.size()) {
+                buffer.resize(event_index);
+                return;
+            }
+            --event_index;  // unsigned wrap is fine: the loop's ++ undoes it
+            continue;
+        }
+        empty_draws = 0;
         std::for_each(sampled_chan, channel_data.end(), [](auto& chan) {
             --chan.cum_count;
         });
         auto& channel = _channels.at(sampled_chan - channel_data.begin());
 
         double weight = 0.;
+        // A channel's share of the sample comes from its apportioned target,
+        // not from how many events it actually managed to write, so a channel
+        // whose acceptance collapsed can run out. EventFile::read then returns
+        // false and leaves the buffer alone; resetting the read position anyway
+        // would hand back the previous buffer and emit its events a second
+        // time. Retire the channel instead and draw again.
+        bool exhausted = false;
         while (true) {
             if (sampled_chan->buffer_index ==
                 sampled_chan->event_buffer.event_count()) {
-                channel->event_file().read(sampled_chan->event_buffer, batch_size);
+                if (!channel->event_file().read(sampled_chan->event_buffer, batch_size)
+                ) {
+                    exhausted = true;
+                    break;
+                }
                 channel->weight_file().read(sampled_chan->weight_buffer, batch_size);
                 sampled_chan->buffer_index = 0;
             }
@@ -916,6 +951,22 @@ void EventGenerator::read_and_combine(
                 break;
             }
             ++sampled_chan->buffer_index;
+        }
+        if (exhausted) {
+            // Drop whatever this channel still owed from the draw distribution.
+            // The event it could not supply is redrawn from the others; if none
+            // are left the sample is simply shorter than asked for, which is
+            // the honest outcome - the events do not exist.
+            std::size_t owed = sampled_chan->cum_count - previous;
+            std::for_each(sampled_chan, channel_data.end(), [owed](auto& chan) {
+                chan.cum_count -= owed;
+            });
+            if (channel_data.back().cum_count == 0) {
+                buffer.resize(event_index);
+                return;
+            }
+            --event_index;  // unsigned wrap is fine: the loop's ++ undoes it
+            continue;
         }
 
         auto event_in = sampled_chan->event_buffer.event(sampled_chan->buffer_index);
