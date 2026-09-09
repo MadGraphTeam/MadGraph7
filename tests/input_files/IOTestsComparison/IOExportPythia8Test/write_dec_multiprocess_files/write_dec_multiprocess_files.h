@@ -1,7 +1,7 @@
 //==========================================================================
 // This file has been automatically generated for Pythia 8
-// MadGraph5_aMC@NLO v. %(version)s, %(date)s
-// By the MadGraph5_aMC@NLO Development Team
+// MadGraph7 v. %(version)s, %(date)s
+// By the MadGraph7 Development Team
 // Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
 //==========================================================================
 
