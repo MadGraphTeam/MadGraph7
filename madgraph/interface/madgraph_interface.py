@@ -4211,7 +4211,14 @@ This implies that with decay chains:
         available = tutorials.all_tutorials()
         if default is None:
             default = available[0].name
-        if self.force or not self.use_rawinput or not sys.stdin.isatty():
+        # 'force' is set opportunistically (by `import command -f`, say) and is
+        # not an attribute every interface carries, so it has to be read
+        # defensively; isatty() can itself raise on a detached stdin
+        try:
+            interactive = self.use_rawinput and sys.stdin.isatty()
+        except Exception:
+            interactive = False
+        if getattr(self, 'force', False) or not interactive:
             return default
 
         logger.info("Which tutorial would you like?", '$MG:BOLD')

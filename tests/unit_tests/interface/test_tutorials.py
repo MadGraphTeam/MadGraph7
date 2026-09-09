@@ -27,6 +27,7 @@ import logging
 import re
 import unittest
 
+import madgraph
 import madgraph.interface.madgraph_interface as mg_interface
 import madgraph.interface.tutorials as tutorials
 import madgraph.interface.tutorials.mixin as tutorial_mixin
@@ -447,3 +448,117 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
             session.index = len(tutorial.steps) - 1
             self.assertTrue(session.finished)
             self.assertIsNone(session.next_step)
+
+
+#===============================================================================
+# the `tutorial` command itself
+#===============================================================================
+
+class _BareMadGraphCmd(mg_interface.MadGraphCmd):
+    """A MadGraphCmd without the real (expensive) __init__.
+
+    Carries only what check_tutorial / ask_tutorial touch -- and deliberately
+    *not* `force`, which is set opportunistically elsewhere (by
+    `import command -f`) and is not an attribute every interface has.  Assuming
+    it existed crashed a bare `tutorial` on the real MasterCmd.
+    """
+
+    def __init__(self, use_rawinput=False):
+        self.use_rawinput = use_rawinput
+        self.asked = None
+
+    def ask(self, question, default, choices=(), **opts):
+        self.asked = (question, default, list(choices))
+        return self._answer
+
+
+class TestTutorialCommand(unittest.TestCase):
+
+    def test_bare_tutorial_does_not_need_a_force_attribute(self):
+        """The regression: `tutorial` with no argument on a fresh interface."""
+
+        interface = _BareMadGraphCmd()
+        self.assertFalse(hasattr(interface, 'force'))
+        args = []
+        interface.check_tutorial(args)          # must not raise
+        self.assertEqual(args, [tutorials.all_tutorials()[0].name])
+
+    def test_bare_tutorial_never_blocks_without_a_terminal(self):
+        """In a command file or a pipe it keeps its historical meaning."""
+
+        interface = _BareMadGraphCmd(use_rawinput=False)
+        interface._answer = 'should not be asked'
+        self.assertEqual(interface.ask_tutorial(), 'lo')
+        self.assertIsNone(interface.asked, 'the menu blocked on a non-tty')
+
+    def test_force_skips_the_menu(self):
+        interface = _BareMadGraphCmd(use_rawinput=True)
+        interface.force = True
+        interface._answer = 'should not be asked'
+        self.assertEqual(interface.ask_tutorial(), 'lo')
+        self.assertIsNone(interface.asked)
+
+    def test_a_number_picks_that_tutorial(self):
+        for index, tutorial in enumerate(tutorials.all_tutorials()):
+            interface = _BareMadGraphCmd()
+            interface._answer = str(index + 1)
+            self.assertEqual(self._ask_interactively(interface), tutorial.name)
+
+    def _ask_interactively(self, interface):
+        """Run ask_tutorial as though stdin were a terminal."""
+
+        import sys as _sys
+
+        class _Tty(object):
+            def __getattr__(self, name):
+                return getattr(_sys.__stdin__, name)
+
+            def isatty(self):
+                return True
+
+        interface.use_rawinput = True
+        saved = _sys.stdin
+        _sys.stdin = _Tty()
+        try:
+            return interface.ask_tutorial()
+        finally:
+            _sys.stdin = saved
+
+    def test_a_name_is_accepted_too(self):
+        interface = _BareMadGraphCmd()
+        interface._answer = 'syntax'
+        self.assertEqual(self._ask_interactively(interface), 'syntax')
+
+    def test_the_menu_offers_names_numbers_and_stop(self):
+        interface = _BareMadGraphCmd()
+        interface._answer = 'lo'
+        self._ask_interactively(interface)
+        _question, default, choices = interface.asked
+        self.assertEqual(default, 'lo')
+        for name in tutorials.names():
+            self.assertIn(name, choices)
+        self.assertIn('1', choices)
+        self.assertIn('stop', choices)
+
+    def test_aliases_are_normalised_to_the_primary_name(self):
+        for old, new in (('MadGraph5', 'lo'), ('aMCatNLO', 'nlo'),
+                         ('MadLoop', 'madloop')):
+            args = [old]
+            _BareMadGraphCmd().check_tutorial(args)
+            self.assertEqual(args, [new])
+
+    def test_subcommands_pass_through(self):
+        for name in ('stop', 'list', 'status'):
+            args = [name]
+            _BareMadGraphCmd().check_tutorial(args)
+            self.assertEqual(args, [name])
+
+    def test_an_unknown_name_is_refused(self):
+        interface = _BareMadGraphCmd()
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_tutorial, ['not-a-tutorial'])
+
+    def test_too_many_arguments_is_refused(self):
+        interface = _BareMadGraphCmd()
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_tutorial, ['lo', 'syntax'])
