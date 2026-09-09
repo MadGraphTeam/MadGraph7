@@ -1834,8 +1834,11 @@ class TestReopenDecayPoolFallback(unittest.TestCase):
 
     class _Stub(object):
         """Only what _reopen_decay_pool touches; the own-file branch asks for
-        the channel owner, the fallback branch asks for nothing."""
+        the channel owner and for the size of the slice it just opened, the
+        fallback branch asks for nothing."""
         _owner_undersize = 0.0
+        _count_pool_events = staticmethod(
+            interface_madspin.MadSpinInterface._count_pool_events)
         def _channel_owner(self, pdg, file_nb):
             return -1          # never this shard: skip the undersize trimming
 
@@ -10964,7 +10967,7 @@ class TestMaxWeightScanForksEveryWorkerAnOwnerCanName(unittest.TestCase):
                 self._publish_gen(self._decay_dir(tmpdir, pdg, decay_file_nb),
                                   target_gen)
 
-            def _open_refill_slice(self, decay_dir, gen, owner):
+            def _open_refill_slice(self, decay_dir, gen, owner, cross=None):
                 return ('slice', decay_dir, gen)
 
         def build(shard_id, nb_core):
