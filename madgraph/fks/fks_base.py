@@ -466,8 +466,12 @@ class FKSRealProcess(object):
         # one run), and a PDG-only key would bucket them together, silently
         # giving one born the other's reals. An unpolarized process gets the
         # PDG tuple plus a tuple of empty tuples, so nothing changes.
+        # Sorted and deduplicated to match IdentifyMETag.link_from_leg and
+        # Process.shell_polarization: '{+-}' and '{-+}' are one restriction,
+        # so they must share their reals just as they share their born.
         self.pdgs_pols = (self.pdgs,
-                          tuple(tuple(leg.get('polarization')) for leg in leglist))
+                          tuple(tuple(sorted(set(leg.get('polarization'))))
+                                for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:

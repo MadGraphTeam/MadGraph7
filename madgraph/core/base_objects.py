@@ -3711,6 +3711,31 @@ class Process(PhysicsObject):
         
         return False
 
+    @staticmethod
+    def shell_polarization(polarization):
+        """Render one leg's polarization for use inside a file/directory name.
+
+        The stored list is the typed order, but it means the *set* of allowed
+        helicities -- as get_polarization_key already compares it.  Rendering
+        sorted(set(...)) makes the name identify the restriction and not the
+        spelling, and is injective over subsets of
+        Leg.list_of_allowed_polarizations.  Unpolarized legs return ''.
+
+        The '{}' parser now refuses a repeated helicity outright, so set() is
+        a no-op for anything typed at the prompt; it is kept because a list
+        built directly through the Python API never passes that parser.
+        """
+        if not polarization:
+            return ''
+        pol = sorted(set(polarization))
+        if pol == [-1, 1]:
+            return 'T'
+        elif pol == [-1]:
+            return 'L'
+        elif pol == [1]:
+            return 'R'
+        return ''.join(str(p).replace('-', 'm') for p in pol)
+
     def set(self, name, value):
         """Special set for forbidden particles - set to abs value."""
 
@@ -4109,15 +4134,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 
@@ -4171,15 +4188,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 

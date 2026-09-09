@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import string
 import copy
+import errno
 import platform
 
 import madgraph
@@ -467,6 +468,45 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         
     #===============================================================================
+    # mkdir_born_dir
+    #===============================================================================
+    def mkdir_born_dir(self, borndir, process):
+        """Create the P<shell_string> directory of one born matrix element.
+
+        shell_string() concatenates particle names and polarization labels
+        with no separator, and every FKS born process carries id 0, so two
+        distinct matrix elements can ask for the same name: 'p p > w+ L{-}'
+        and 'p p > w+{-} L' both give 0_uu_wpLL.  Defence in depth -- replace
+        the opaque FileExistsError with one naming both processes.
+        """
+        # lazy rather than in __init__: this class defines none of its own.
+        if not hasattr(self, 'born_dirs'):
+            # directory name -> the process which claimed it
+            self.born_dirs = {}
+        try:
+            os.mkdir(borndir)
+        except OSError as error:
+            if error.errno != errno.EEXIST:
+                raise
+            # low_mem_multicore_nlo_generation forks: each worker has its own
+            # born_dirs copy, so the previous owner may be unknown here.
+            previous = self.born_dirs.get(borndir)
+            msg = ["Cannot create the subprocess directory '%s' in %s: it already exists." \
+                       % (borndir, os.getcwd()),
+                   "Two different matrix elements are asking for the same directory name.",
+                   "  wants it now : %s" % process.nice_string(prefix=False).strip()]
+            if previous is not None:
+                msg.append("  already there: %s" % previous)
+            else:
+                msg.append("  already there: another matrix element of this output "
+                           "(written by a parallel worker; rerun with "
+                           "'set low_mem_multicore_nlo_generation False' to see which one)")
+            msg.append("This is a name clash, not a duplicated process: "
+                       "Process.shell_string() gave both of them the name '%s'." % borndir)
+            raise MadGraph5Error('\n'.join(msg))
+        self.born_dirs[borndir] = process.nice_string(prefix=False).strip()
+
+    #===============================================================================
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
@@ -494,7 +534,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
@@ -5157,7 +5197,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
