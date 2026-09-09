@@ -518,6 +518,13 @@ class MadgraphProcess:
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
 
+        # built lazily by build_systematics (needs the subprocess data)
+        self.systematics = None
+        self.systematics_data = None
+        self.systematics_context = None
+        self.event_histograms = None
+        self.event_histograms_context = None
+
         if self.is_decay:
             # No beams: the total energy is the decaying particle's mass, and
             # "leptonic" is what the mappings call "no parton luminosity".
@@ -576,12 +583,6 @@ class MadgraphProcess:
             self.pdf_grid.initialize_globals(context)
             self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
-        # built lazily by build_systematics (needs the subprocess data)
-        self.systematics = None
-        self.systematics_data = None
-        self.systematics_context = None
-        self.event_histograms = None
-        self.event_histograms_context = None
 
     # ------------------------------------------------------------------
     # scale / PDF systematics
@@ -740,13 +741,22 @@ class MadgraphProcess:
         config.dyn_scales = self.resolve_dynamical_scales()
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
-        info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
-        info = self.pdf_set_info(info_path)
-        config.nominal_set_name = self.pdf_set
-        config.nominal_lhaid = info["SetIndex"]
-        config.nominal_error_type = info["ErrorType"]
-        config.nominal_description = info["SetDesc"]
-        config.pdf_members = self.resolve_pdf_variations() if not self.leptonic else []
+        # Without parton luminosity -- a decay, or leptonic beams -- there is no
+        # nominal PDF set to describe: init_beam() returns before self.pdf_set
+        # is assigned and leaves self.pdf_dir None, so this has to be skipped
+        # rather than just left unused. Only the scale variations remain, and
+        # SystematicsCalculator asks for a nominal PDF grid only when has_pdf.
+        info_path = None
+        if config.has_pdf:
+            info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
+            info = self.pdf_set_info(info_path)
+            config.nominal_set_name = self.pdf_set
+            config.nominal_lhaid = info["SetIndex"]
+            config.nominal_error_type = info["ErrorType"]
+            config.nominal_description = info["SetDesc"]
+            config.pdf_members = self.resolve_pdf_variations()
+        else:
+            config.pdf_members = []
         args = self.build_systematics_args()
         # the PDFs, alpha_s and (for mixed-order subprocesses) the matrix
         # elements are evaluated with the batched madspace functions on this
@@ -762,7 +772,9 @@ class MadgraphProcess:
         self.systematics_data = {
             "config": json.loads(config.to_json()),
             "subproc_args": [json.loads(a.to_json()) for a in args],
-            "nominal_grid_file": os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat"),
+            "nominal_grid_file": os.path.join(
+                self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat")
+                if config.has_pdf else None,
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
