@@ -42,6 +42,18 @@ std::size_t madspace::compute_generation_batch_event_count(
     return static_cast<std::size_t>(std::max(1., std::ceil(capped / efficiency)));
 }
 
+std::size_t madspace::select_combine_channel_index(
+    const std::vector<std::size_t>& cum_counts, std::size_t random_index
+) {
+    return select_combine_channel(
+               cum_counts.begin(),
+               cum_counts.end(),
+               random_index,
+               [](std::size_t cum_count) { return cum_count; }
+           ) -
+        cum_counts.begin();
+}
+
 void madspace::to_json(nlohmann::json& j, const GeneratorStatus& status) {
     j = nlohmann::json{
         {"subprocess", status.subprocess},

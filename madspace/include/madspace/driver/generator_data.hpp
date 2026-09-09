@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <optional>
@@ -80,6 +81,28 @@ std::size_t compute_generation_batch_event_count(
     std::size_t abs_cross_section_count,
     double abs_cross_section_rel_error,
     const GeneratorConfig& config
+);
+
+// Picks the channel owning `random_index` from per-channel cumulative event counts:
+// the first whose cumulative count is strictly greater. Lower-bound (`>=`) semantics
+// would hand random_index == 0 to the first channel even with its share spent, and
+// the caller's decrement of a zero share wraps.
+template <typename It, typename Proj>
+It select_combine_channel(It first, It last, std::size_t random_index, Proj cum_count) {
+    return std::upper_bound(
+        first,
+        last,
+        random_index,
+        [&cum_count](std::size_t index, const auto& channel) {
+            return index < cum_count(channel);
+        }
+    );
+}
+
+// select_combine_channel() over a plain cumulative-count vector, for testing. Returns
+// cum_counts.size() if random_index is out of range, i.e. not below the total.
+std::size_t select_combine_channel_index(
+    const std::vector<std::size_t>& cum_counts, std::size_t random_index
 );
 
 struct GeneratorStatus {
