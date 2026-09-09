@@ -832,10 +832,10 @@
     const fptype_momenta_sv& pvec3_ = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
     const fptype_amp_sv pvec3 = fpamp_of_mom(pvec3_);
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( fo.w );
-    fo.pvec[0] = -pvec3_ * static_cast<fptype_momenta_sv>(nsf);
+    fo.pvec[0] = -pvec3_ * static_cast<fptype_momenta>(nsf);
     fo.pvec[1] = fptype_momenta_sv{ 0 };
     fo.pvec[2] = fptype_momenta_sv{ 0 };
-    fo.pvec[3] = pvec3_ * static_cast<fptype_momenta_sv>(nsf);
+    fo.pvec[3] = pvec3_ * static_cast<fptype_momenta>(nsf);
     fo.flv_index = flv;
     const int nh = nhel * nsf;
     const cxtype_amp_sv chi1 = cxmake( -nhel, 0. ) * fpsqrt( -(fptype_amp)2. * pvec3 );

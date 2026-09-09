@@ -1050,12 +1050,12 @@ namespace mg5amcCpu
 
   // narrowing/casting operators for unification
 #ifdef MGONGPU_SIMD_DENOM64
-  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); } // narrow FP64 pair -> FP32
-  #define fpamp_scalar( X ) ( (fptype_amp)( X ) )
+  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); } 
 #else
-  #define fpamp_of_mom( P ) static_cast<fptype_amp_sv>( P )
-  #define fpamp_scalar( X ) static_cast<fptype_momenta_sv>( X )
+  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 
 #endif
+  template<typename T>
+  inline fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
   // Template version for multi-precision (explicit template parameter required)
@@ -1065,10 +1065,10 @@ namespace mg5amcCpu
 #elif defined MGONGPU_CPPSIMD
   inline cxtype_v cxzero_sv() { return cxtype_v(); } // RRRR=0000 IIII=0000
   template<typename CX>
-  inline CX cxzero_sv() { return CX( 0, 0 ); }
+  inline CX cxzero_sv() { return CX{}; }
 #else
   template<typename CX = cxtype>
-  inline CX cxzero_sv() { return CX( 0, 0 ); }
+  inline CX cxzero_sv() { return CX{}; }
 #endif /* clang-format on */
 
   //==========================================================================

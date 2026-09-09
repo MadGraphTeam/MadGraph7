@@ -709,10 +709,10 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # pre_coup/post_coup wrap %(coup)s, so open the cast in pre_coup and
                 # close it in post_coup (the Ccoeff sign carrier multiplies from outside).
                 if has_coup: # but in case where the coupling is not used (one)
-                    mydict['pre_coup'] = 'static_cast<fptype_denom_sv>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
+                    mydict['pre_coup'] = 'static_cast<fptype_denom>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
                 else:
-                    mydict['pre_coup'] = 'static_cast<fptype_denom_sv>(%s' % mydict['pre_coup']
+                    mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
@@ -727,14 +727,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                         # same formula for all the FPTYPE confs
-                        out.write('    const cxtype_denom_sv %(cId)s( 0., 1. );\n' % mydict) # AV
-                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom_sv>(M%(i)s) * ( static_cast<fptype_denom_sv>(M%(i)s) - %(cId)s * static_cast<fptype_denom_sv>(W%(i)s) ) );\n' % mydict) # AV
+                        out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
+                        out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) );\n' % mydict) # AV
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
                             wtype = self.particles[self.outgoing - 1]
                             coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                            coeff_vertex = coeff_vertex.replace('fptype_denom_sv', 'fptype_amp_sv')
+                            coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
                             out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
                             out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
                             out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
@@ -754,7 +754,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')
                         wtype = self.particles[self.outgoing - 1]
                         coeff_vertex = '%(pre_coup)s%(coup)s%(post_coup)s' % mydict
-                        coeff_vertex = coeff_vertex.replace('fptype_denom_sv', 'fptype_amp_sv')
+                        coeff_vertex = coeff_vertex.replace('fptype_denom', 'fptype_amp')
                         out.write('    const MG_ARITHM::Double<fptype_amp> P{0}d{2}[4] = {{ static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[0]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[1]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[2]), static_cast<MG_ARITHM::Double<fptype_amp>>(-{1}{0}.pvec[3]) }};\n'.format(self.outgoing, wtype, denomsuffix))
                         out.write('    const MG_ARITHM::Double<fptype_amp> Md{0}{1} = static_cast<MG_ARITHM::Double<fptype_amp>>(M{0});\n'.format(self.outgoing, denomsuffix))
                         out.write('    const fptype_amp_sv PmM2{1} = static_cast<fptype_amp_sv>(( P{0}d{1}[0] * P{0}d{1}[0] ) - ( P{0}d{1}[1] * P{0}d{1}[1] ) - ( P{0}d{1}[2] * P{0}d{1}[2] ) - ( P{0}d{1}[3] * P{0}d{1}[3] ) - ( Md{0}{1} * Md{0}{1} ) );\n'.format(self.outgoing, denomsuffix))
