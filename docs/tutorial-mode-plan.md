@@ -709,50 +709,47 @@ the VEGAS run).
 
 ## 4. Milestones
 
-**Status: M0-M3b implemented.** M0, M1, M2, M3 and M3b are done and tested;
-M3c onward are not started. What landed:
+**Status: M0-M9 implemented, bar three tutorials.** Twelve tutorials ship and
+walk end to end; `run`, `performance` and `install` are not written. What
+landed:
 
 | | |
 |---|---|
-| `madgraph/interface/tutorials/session.py` | `Step`, `Tutorial`, `TutorialSession`, the two ordering policies |
-| `madgraph/interface/tutorials/mixin.py` | `TutorialMixin`, `attach`/`detach` |
-| `madgraph/interface/tutorials/__init__.py` | the registry |
-| `.../nlo.py`, `.../madloop.py` | ported, text unchanged but for the prompt |
-| `.../_port.py` | the one substitution the port is allowed to make |
-| `.../syntax.py` | the new sequenced tutorial, 10 steps |
-| `.../lo.py` | rewritten, 7 sequenced steps on madspace |
-| `tests/unit_tests/interface/test_tutorials.py` | 30 tests |
+| `madgraph/interface/tutorials/session.py` | `Step`, `Exercise`, `Tutorial`, `TutorialSession` |
+| `.../mixin.py` | the interface layer, `attach`/`detach`, exercise marking |
+| `.../__init__.py` | the registry, `see_also_block`, plugin `new_tutorial` |
+| `.../_port.py` | the one substitution the ported text is allowed |
+| `.../lo.py` `.../syntax.py` `.../mg7.py` `.../madevent.py` | |
+| `.../model.py` `.../bsm.py` `.../standalone.py` `.../decays.py` | |
+| `.../checks.py` `.../exercises.py` `.../nlo.py` `.../madloop.py` | |
+| `tests/unit_tests/interface/test_tutorials.py` | 44 tests |
 
-Verified: the ported tutorials emit byte-identical text to HEAD for every
-command line that could trigger them (and the end-to-end duplicate-block count
-matched HEAD exactly, 6 vs 6, before §2.10 deliberately fixed it); `syntax`
-walks all ten lessons in order in a real run, straight through the automatic
-LO -> NLO interface switch; `lo` walks all seven, and skips the
-`install madspace` step by itself when madspace is already built.
+**The method that made this work**, and the thing to keep doing for the
+remaining three: run every command before writing about it. Nothing here was
+written from memory of how MG5 behaves, and that caught, among others:
 
-Three things the implementation had to correct in the `lo` content, each found
-by actually running it:
+ * MG5 does not add `QED=0` when you give no orders -- it searches for the
+   lowest `WEIGHTED = QCD + 2*QED` that yields a diagram;
+ * `[madnis] enable` is `"auto"`, not off, and auto also sizes the networks and
+   picks the learning rate; there is no `train_madnis` driver, training is a
+   phase inside `bin/generate_events`;
+ * `run_card.toml` lives in `Cards/`, not at the top of the output;
+ * `check` does not load a model for you, unlike `generate`;
+ * `add model taudecay` -- the example MG5 itself prints -- fails against the
+   shipped models, which are named `taudecay_UFO`;
+ * a step must never ask for a command that blocks (`open Cards/...` hands the
+   file to an editor and waits).
 
- * `run_card.toml` lives in `Cards/`, not at the top of the output directory.
- * A step must not ask for a command that blocks. `open Cards/run_card.toml`
-   hands the file to an editor and waits, which strands anyone following the
-   tutorial from a command file. The post-run step asks for
-   `history my_first_run.dat` instead -- non-blocking, and it leaves the user
-   with a file that replays the whole session, which is a better lesson anyway.
- * Whether an mg7 run writes an `index.html` was not verifiable without a full
-   run, so the text mentions the HTML summary without making `open index.html`
-   the step's required command.
+**Why `run` is not written.** Its distinctive value was showing each setting in
+both card formats, and that is exactly the part that keeps turning out wrong:
+`ickkw` and `xqcut` are not in the current `Template/LO/Cards/run_card.dat` at
+all, and MG7's `[cuts]` is a group/observable scheme
+(jet/bottom/lepton/missing/photon x pt/eta/dR/mass/sqrt_s) rather than a list of
+named keys. Writing it means verifying both card formats key by key first.
+`madevent` and `mg7` each cover their own card in the meantime, and
+`see_also_block` drops the dead `run` link on its own.
 
-**Testing note.** The engine invariant "a step is keyed by the command that
-*triggers* it, and its text asks for the next one" is easy to get backwards --
-it was got backwards once in `syntax` and twice in `lo`. All three were caught
-by `test_every_sequenced_step_makes_progress`, which walks each sequenced
-tutorial by typing its own solutions. Worth keeping in mind when writing the
-remaining tutorials: write the steps, then let that test tell you the keys.
-
-
-
-**M0 — engine, no new content.**
+**M0 — engine, no new content. [DONE]**
 `madgraph/interface/tutorials/` with `Tutorial`/`Step`/`TutorialSession`, the
 `TutorialMixin`, the `change_principal_cmd` wrap hook (both `MasterCmd` and
 `MasterCmdWeb`), and the three existing tutorials ported to steps as `lo`,
@@ -762,44 +759,45 @@ exactly the same points** as before — capture the current output first and dif
 it. Keep this commit content-free so that diff is meaningful; the prompt fix
 and the `lo` rewrite are separate commits.
 
-**M1 — command and menu.**
+**M1 — command and menu. [DONE]**
 `tutorial` with no argument opens the menu; `list` / `status` / `stop`;
 aliases kept; non-interactive fallback verified in `--` script mode; help and
 completion updated in both `madgraph_interface.py` and `master_interface.py`.
 
-**M2 — tutorial-only commands.** `next`, `back`, `repeat`, `hint`, `solution`,
+**M2 — tutorial-only commands. [DONE]** `next`, `back`, `repeat`, `hint`, `solution`,
 `skip`, plus the progress prompt. These only exist while wrapped. Per decision
 4, none of them execute anything — `next` and `solution` print the command and
 the user types it.
 
-**M3 — `syntax`.** The engine's real acceptance test: repeated `generate`
+**M3 — `syntax`. [DONE]** The engine's real acceptance test: repeated `generate`
 steps and a step that crosses the LO->NLO interface switch.
 
-**M3b — rewrite `lo` on madspace.** Seven steps, the `install madspace`
+**M3b — rewrite `lo` on madspace. [DONE]** Seven steps, the `install madspace`
 prerequisite step with detect-and-skip, the pre-announce treatment of the
 `launch` subprocess boundary (§2.8), signposts, the `MG5_aMC>` -> live-prompt
 fix, and the relocation table from §3.1 honoured. Lands after `syntax` so its
 first signpost points somewhere real; each later tutorial adds its own signpost
 to `lo` as it lands, which keeps `lo` the front door rather than a dead end.
 
-**M3c — `madevent`.** The MG5-compatible path, split out of the old `lo`. No
+**M3c — `madevent`. [DONE]** The MG5-compatible path, split out of the old `lo`. No
 new engine work needed: `launch` without `--interactive` behaves like any other
 command.
 
-**M4 — `model` and `bsm`.** Share a helper for the `check`/validation steps.
+**M4 — `model` and `bsm`. [DONE]** Share a helper for the `check`/validation steps.
 
-**M5 — `standalone`.** Content lifted from `docs/standalone_flavor_python.md`;
+**M5 — `standalone`. [DONE]** Content lifted from `docs/standalone_flavor_python.md`;
 add a runnable example script under the tutorial package.
 
-**M6 — `mg7`.** Tuning and MadNIS. Needs no new engine work either — see
+**M6 — `mg7`. [DONE]** Tuning and MadNIS. Needs no new engine work either — see
 §2.8: the mg7 `launch` is a subprocess, so this tutorial is written around that
 boundary rather than through it.
 
-**M7 — child-interface propagation**, then **`run`** and **`decays`**, which
-are the tutorials that actually benefit from teaching inside an interactive
-`MadEventCmd`.
+**M7 — child-interface propagation [NOT DONE]**, which would let a tutorial
+teach inside an interactive `MadEventCmd`. `decays` was written without it
+(the MadSpin card is described rather than edited under guidance) and `run`
+still wants it.
 
-**M8 — `exercises`.** The `Exercise` step type, the check-the-state
+**M8 — `exercises`. [DONE]** The `Exercise` step type, the check-the-state
 convention, the mistake tables, and the first nine exercises (§3.8). Exercises
 1-8 depend on `syntax` and `standalone` for their material and on nothing else;
 the capstone (9) additionally needs the `madevent` tutorial's scan material and
@@ -807,8 +805,8 @@ is the only one that runs anything, so it can land separately if the runtime
 turns out to be awkward. The `--exercise` variant of existing tutorials is
 deliberately *not* in this milestone.
 
-**M9 — the remaining tutorials** (`checks`, `performance`, `install`) and
-plugin registration (`new_tutorial`).
+**M9 — `checks` and `decays` [DONE], plugin registration [DONE]**;
+`run`, `performance` and `install` [NOT DONE].
 
 ## 5. Testing
 
