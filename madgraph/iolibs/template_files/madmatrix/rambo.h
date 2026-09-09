@@ -2,7 +2,7 @@
 // Licensed under the GNU Lesser General Public License (version 3 or later).
 //==========================================================================
 // RAMBO phase-space generator for the standalone (madmatrix) driver.
-// Ported verbatim from the MG5aMC standalone_cpp output (rambo.cc/rambo.h), so
+// Ported verbatim from the MadGraph7 standalone_cpp output (rambo.cc/rambo.h), so
 // that check_sa generates the SAME phase-space point as the Fortran/C++ 'check'
 // drivers, INCLUDING the particle masses. The only changes are:
 //   - wrapped in namespace rambo and made header-only (inline);
@@ -278,7 +278,7 @@ namespace rambo
   }
 
   // Build the full external momenta (initial + final), changing convention between
-  // MadGraph5_aMC@NLO and rambo. `masses` has one entry per external particle.
+  // MadGraph7 and rambo. `masses` has one entry per external particle.
   inline std::vector<std::vector<double>> get_momenta( int ninitial, double energy,
                                                        std::vector<double> masses, double& wgt )
   {

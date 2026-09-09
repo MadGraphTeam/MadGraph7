@@ -1,12 +1,12 @@
 #############################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -510,7 +510,7 @@ def import_full_model(model_path, decay=False, prefix='', options={}):
             return model
         
     if (model_path, aloha.unitary_gauge, prefix, decay) in _import_once and not allow_reload:
-        raise MadGraph5Error('This model %s is modified on disk. To reload it you need to quit/relaunch MG5_aMC ' % model_path)
+        raise MadGraph5Error('This model %s is modified on disk. To reload it you need to quit/relaunch MadGraph7 ' % model_path)
      
     # Load basic information
     ufo_model = ufomodels.load_model(model_path, decay)
@@ -744,7 +744,7 @@ class UFOMG5Converter(object):
 
     
         if self.non_qcd_gluon_emission:
-            logger.critical("Model with non QCD emission of gluon (found %i of those).\n  This type of model is not fully supported within MG5aMC.\n"+\
+            logger.critical("Model with non QCD emission of gluon (found %i of those).\n  This type of model is not fully supported within MadGraph7.\n"+\
             "  Restriction on LO dynamical scale and MLM matching/merging can occur for some processes.\n"+\
             "  Use such features with care.", self.non_qcd_gluon_emission)
 

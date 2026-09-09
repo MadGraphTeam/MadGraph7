@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -28,7 +28,7 @@ pjoin = os.path.join
 
 class TestUserConfigLocation(unittest.TestCase):
     """MadGraph7 must keep its per-user configuration to itself: a file shared
-    with an MG5aMC installation is what issue #94 is about."""
+    with an MadGraph7 installation is what issue #94 is about."""
 
     def setUp(self):
         self.saved = {key: os.environ.get(key)
@@ -56,7 +56,7 @@ class TestUserConfigLocation(unittest.TestCase):
                          pjoin('/home/someone', '.mg7', 'mg7_configuration.txt'))
 
     def test_never_mg5(self):
-        """No location MadGraph7 uses may live under MG5aMC's ~/.mg5."""
+        """No location MadGraph7 uses may live under MadGraph7's ~/.mg5."""
         os.environ['HOME'] = '/home/someone'
         os.environ.pop('XDG_CONFIG_HOME', None)
         self.assertNotIn('.mg5', misc.user_config_file())

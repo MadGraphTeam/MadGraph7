@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access all MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access all MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 
@@ -288,7 +288,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
         logger.debug('Process difficulty estimation: %d'%proc_diff)
         if proc_diff >= difficulty_threshold:
             msg = """
-  The %s you attempt to generate appears to be of challenging difficulty, but it will be tried anyway. If you have successfully studied it with MadGraph5_aMC@NLO, please report it.
+  The %s you attempt to generate appears to be of challenging difficulty, but it will be tried anyway. If you have successfully studied it with MadGraph7, please report it.
 """
             logger.warning(msg%proc.nice_string().replace('Process:','process'))
 
@@ -323,7 +323,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 
 ##        if coupling_type!= ['QCD'] and loop_type not in ['virtual','noborn']:
 ##            c = ' '.join(coupling_type)
-##            raise self.InvalidCmd('MG5aMC can only handle QCD at NLO accuracy.\n We can however compute loop with [virt=%s].\n We can also compute cross-section for loop-induced processes with [noborn=%s]' % (c,c))
+##            raise self.InvalidCmd('MadGraph7 can only handle QCD at NLO accuracy.\n We can however compute loop with [virt=%s].\n We can also compute cross-section for loop-induced processes with [noborn=%s]' % (c,c))
         if self._curr_model.merged_particles:
             logger.debug('Unmerge particles for loop computations')
             self.exec_cmd('set apply_flavor_grouping False', precmd=False)
@@ -378,7 +378,7 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
                           "The pertubation coupling cannot be '%s'"\
                                     %str(coupling_type)+" in SM loop processes")
 
-                    logger.info("MG5_aMC now loads 'loop_%s%s'."%(add_on,model_name))
+                    logger.info("MadGraph7 now loads 'loop_%s%s'."%(add_on,model_name))
 
                     #import model with correct treatment of the history
                     #self.history.move_to_last('generate')
@@ -605,7 +605,7 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
             elif value == 'local':
                 ## LOCAL INSTALLATION OF NINJA/COLLIER
                     logger.info(
-"""MG5aMC will now install the loop reduction tool '%(p)s' from the local offline installer.
+"""MadGraph7 will now install the loop reduction tool '%(p)s' from the local offline installer.
 Use the command 'install $(p)s' if you want to update to the latest online version.
 This installation can take some time but only needs to be performed once.""" %{'p': key},'$MG:color:GREEN')
                     additional_options = ['--ninja_tarball=%s'%pjoin(MG5DIR,'vendor','%s.tar.gz' % key)]
@@ -618,10 +618,10 @@ This installation can take some time but only needs to be performed once.""" %{'
                         additional_options=additional_options)
                     except (self.InvalidCmd, FileNotFoundError):
                             logger.warning(
-"""The offline installation of %(p)s was unsuccessful, and MG5aMC disabled it.
+"""The offline installation of %(p)s was unsuccessful, and MadGraph7 disabled it.
 In the future, if you want to reactivate Ninja, you can do so by re-attempting
 its online installation with the command 'install %(p)s' or install it on your
-own and set the path to its library in the MG5aMC option '%(p)s'.""" % {'p': key})
+own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': key})
                             self.exec_cmd("set %s ''" % key)
                             self.exec_cmd('save options %s' % key)
             
@@ -697,7 +697,7 @@ own and set the path to its library in the MG5aMC option '%(p)s'.""" % {'p': key
         matrix_elements = \
                         self._curr_matrix_elements.get_matrix_elements()
         
-        # Fortran MadGraph5_aMC@NLO Standalone
+        # Fortran MadGraph7 Standalone
         if self._export_format in self.supported_ML_format:
             for unique_id, me in enumerate(matrix_elements):
                 calls = calls + \

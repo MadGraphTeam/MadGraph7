@@ -1,7 +1,7 @@
 //==========================================================================
 // Copyright (C) 2023-2026 CERN
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Written originally by: Z. Wettersten (June 2024) for the MG5aMC CUDACPP plugin.
+// Written originally by: Z. Wettersten (June 2024) for the MadGraph7 CUDACPP plugin.
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
 //==========================================================================

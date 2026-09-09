@@ -11,7 +11,7 @@
 // MLM-style matching and flavour treatment for Madgraph input)
 // and Stefan Prestel (FxFx NLO jet matching with aMC@NLO.)
 // This file provides the classes to perform MLM matching of
-// Alpgen or MadGraph 5 input.
+// Alpgen or MadGraph7 input.
 // Example usage is shown in main32.cc, and further details
 // can be found in the 'Jet Matching Style' manual page.
 

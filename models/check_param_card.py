@@ -847,7 +847,7 @@ class ParamCard(dict):
         elif default:
             pname2block, restricted = default.analyze_param_card()
             if (block, lhacode) in restricted:
-                logger.warning("This parameter will not be consider by MG5_aMC")
+                logger.warning("This parameter will not be consider by MadGraph7")
                 print( "    MadGraph will use the following formula:")
                 print(restricted[(block, lhacode)])
                 print( "     Note that some code (MadSpin/Pythia/...) will read directly the value")  

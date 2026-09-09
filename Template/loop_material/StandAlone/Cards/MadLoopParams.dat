@@ -238,13 +238,13 @@
 !     =================================================================================
 
 !     Decide if COLLIER must be computed multiple times to evaluate the UV pole residues
-!     (Withing a Monte-Carlo performed in MG5aMC, this is automatically disabled internally)
+!     (Withing a Monte-Carlo performed in MadGraph7, this is automatically disabled internally)
 #COLLIERComputeUVpoles
 !.TRUE.
 ! Default :: .TRUE.
 
 !     Decide if COLLIER must be computed multiple times to evaluate the IR pole residues
-!     (Withing a Monte-Carlo performed in MG5aMC, this is automatically disabled internally)
+!     (Withing a Monte-Carlo performed in MadGraph7, this is automatically disabled internally)
 #COLLIERComputeIRpoles
 !.TRUE.
 ! Default :: .TRUE.

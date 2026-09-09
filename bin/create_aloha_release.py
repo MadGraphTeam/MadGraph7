@@ -4,11 +4,11 @@
 #
 # Copyright (c) 2011 The ALOHA Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -22,7 +22,7 @@ following actions:
 1. bzr branch the present directory to a new directory
    ALOHA_vVERSION
 
-3. Copy all MadGraph5_aMC@NLO files needed by ALOHA to the present directory
+3. Copy all MadGraph7 files needed by ALOHA to the present directory
 
 4. Create the automatic documentation in the apidoc directory
 

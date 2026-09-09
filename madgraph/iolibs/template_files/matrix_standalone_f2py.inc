@@ -45,7 +45,7 @@ CF2PY INTENT(IN) :: FLAV_IDX
       SUBROUTINE PY_%(proc_prefix)sSMATRIX(P,FLAVOR,ANS)
 C
 C
-C MadGraph5_aMC@NLO StandAlone Version
+C MadGraph7 StandAlone Version
 C
 C Returns amplitude squared summed/avg over colors
 c and helicities

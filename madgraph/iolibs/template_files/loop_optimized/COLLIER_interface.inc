@@ -190,7 +190,7 @@ C     Number of coefficients for the current rank
 
       IF (CTMODE.ne.1.and.CTMODE.ne.2) THEN
         WRITE(*,*) 'ERROR: COLLIER only support the computational mode CTMODE equal to 1 or 2, not',CTMODE
-        stop 'Incorrect computational mode specified to the COLLIER MG5aMC interface.'
+        stop 'Incorrect computational mode specified to the COLLIER MadGraph7 interface.'
       ENDIF
 
       DO I=0,CURR_MAXCOEF-1

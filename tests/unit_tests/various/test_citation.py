@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2026 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2026 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -137,7 +137,7 @@ class TestCitation(unittest.TestCase):
         self.assertIsNotNone(result)
         md = open(result[1]).read()
         self.assertIn('UFO model format (model: sm)', md)
-        self.assertIn('MadGraph5_aMC@NLO framework', md)
+        self.assertIn('MadGraph7 framework', md)
 
     def test_generation_log_seeds_a_run(self):
         # generation log copied into the run dir is collected by the run

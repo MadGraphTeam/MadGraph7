@@ -1,7 +1,7 @@
 //==========================================================================
 // Copyright (C) 2023-2026 CERN
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Written originally by: Z. Wettersten (Jan 2024) for the MG5aMC CUDACPP plugin.
+// Written originally by: Z. Wettersten (Jan 2024) for the MadGraph7 CUDACPP plugin.
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
 //==========================================================================
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
         "#    \\_|  |_/\\__,_|\\__,_|\\__\\_| \\_\\___/_/\\_\\    #\n"
         "#                                               #\n"
         "#        Data-parallel event reweighting        #\n"
-        "#             in MadGraph5_aMC@NLO              #\n"
+        "#             in MadGraph7              #\n"
         "#                                               #\n"
         "#################################################\n";
 

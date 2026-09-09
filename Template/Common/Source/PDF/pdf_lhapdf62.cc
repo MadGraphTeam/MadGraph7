@@ -737,7 +737,7 @@ extern "C" {
   void evolvepartm_(const int& nset, const int& ipart, const double& x, const double& q, double& fxq) {
     if (ACTIVESETS.find(nset) == ACTIVESETS.end())
     throw LHAPDF::UserError("Trying to use LHAGLUE set #" + LHAPDF::to_str(nset) + " but it is not initialised");
-    int ipart_copy; // this is to deal with photons, which are labeled 7 in MG5aMC
+    int ipart_copy; // this is to deal with photons, which are labeled 7 in MadGraph7
     ipart_copy = ipart;
     if (ipart==7) ipart_copy = 22;
     try {

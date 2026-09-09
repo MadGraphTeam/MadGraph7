@@ -2,7 +2,7 @@
 ! MINT Integrator Package
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 ! Original version by Paolo Nason (for POWHEG (BOX))
-! Modified by Rikkert Frederix (for MadGraph5_aMC@NLO)
+! Modified by Rikkert Frederix (for MadGraph7)
 !cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 !      subroutine mint(fun,ndim,ncalls0,itmax,imode,
 ! ndim=number of dimensions
