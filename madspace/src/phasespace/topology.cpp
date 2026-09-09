@@ -17,6 +17,7 @@ bool find_t_vertices(
     std::vector<int>& integration_order,
     std::vector<double>& _t_propagator_masses,
     std::vector<double>& _t_propagator_widths,
+    std::vector<int>& _t_propagator_pdg_ids,
     std::size_t current_index,
     int source_propagator
 ) {
@@ -49,6 +50,7 @@ bool find_t_vertices(
                         integration_order,
                         _t_propagator_masses,
                         _t_propagator_widths,
+                        _t_propagator_pdg_ids,
                         vertices.at(0) == current_index
                             ? vertices.at(1)
                             : vertices.at(0),
@@ -60,6 +62,7 @@ bool find_t_vertices(
                     auto& propagator = diagram.propagators().at(line_ref.index());
                     _t_propagator_masses.push_back(propagator.mass);
                     _t_propagator_widths.push_back(propagator.width);
+                    _t_propagator_pdg_ids.push_back(propagator.pdg_id);
                 } else {
                     out_lines.push_back(line_ref);
                 }
@@ -306,6 +309,7 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
         integration_order,
         topo._t_propagator_masses,
         topo._t_propagator_widths,
+        topo._t_propagator_pdg_ids,
         diagram.incoming_vertices().at(1),
         -1
     );

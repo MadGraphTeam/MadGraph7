@@ -57,6 +57,7 @@ def main():
             "--enum-class-locations=Activation:MLP.Activation",
             "--enum-class-locations=CutMode:Cuts.CutMode",
             "--enum-class-locations=LRSchedule:AdamOptimizer.LRSchedule",
+            "--enum-class-locations=JetScaleScheme:MLMClustering.JetScaleScheme",
             # Fail the build on unresolvable names/expressions (e.g. an enum
             # default value needing its own --enum-class-locations entry)
             # instead of silently emitting a stub with holes in it.
