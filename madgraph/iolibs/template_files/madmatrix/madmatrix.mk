@@ -116,6 +116,9 @@ override SRC := ../../src
 # Can be overridden on the command line (e.g. make LIBDIR=/abs/path); defaults to ../../lib.
 # NB: LIBDIR is resolved to an absolute path so it can be passed unchanged to sub-makes via export.
 LIBDIR ?= ../../lib
+# Keep LIBDIR as given (usually relative to this P* directory): it is used below to
+# build loader-relative rpaths, which survive a move of the process directory.
+override LIBDIR_AS_GIVEN := $(LIBDIR)
 override LIBDIR := $(abspath $(LIBDIR))
 
 $(info Building objects in BUILDDIR=$(BUILDDIR), libraries in LIBDIR=$(LIBDIR))
@@ -688,22 +691,36 @@ override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
 ###override INCDIR = ../../include
 
-# On Linux, embed the absolute LIBDIR as rpath so LD_LIBRARY_PATH is not needed.
-# Since LIBDIR is absolute, the same rpath works regardless of where the executable lives.
-# On Darwin, libraries use absolute install_name so rpath is not needed.
+# Embed rpaths so that LD_LIBRARY_PATH/DYLD_LIBRARY_PATH is not needed. They are
+# expressed relative to the loading binary ($ORIGIN on Linux, @loader_path on
+# Darwin) so that the whole process directory can be moved after the build.
 ifeq ($(UNAME_S),Darwin)
-  override CXXLIBFLAGSRPATH =
-  override GPULIBFLAGSRPATH =
-  override CXXLIBFLAGSRPATH2 =
-  override GPULIBFLAGSRPATH2 =
+  override RPATHORIGIN := @loader_path
 else
-  # RPATH for executables: find the process lib (and its common-lib dependency) in LIBDIR
-  override CXXLIBFLAGSRPATH = -Wl,-rpath=$(LIBDIR)
-  override GPULIBFLAGSRPATH = -Xlinker -rpath=$(LIBDIR)
-  # RPATH for the process shared lib itself: find the common lib in the same LIBDIR
-  override CXXLIBFLAGSRPATH2 = -Wl,-rpath=$(LIBDIR)
-  override GPULIBFLAGSRPATH2 = -Xlinker -rpath=$(LIBDIR)
+  override RPATHORIGIN := $$ORIGIN
 endif
+
+# RPATH for executables (built in this P* directory): find the process lib and its
+# common-lib dependency in LIBDIR. Only an absolute LIBDIR forces an absolute rpath.
+ifeq ($(filter /%%,$(LIBDIR_AS_GIVEN)),)
+  override RPATHLIBDIR := '$(RPATHORIGIN)/$(LIBDIR_AS_GIVEN)'
+else
+  override RPATHLIBDIR := $(LIBDIR)
+endif
+override CXXLIBFLAGSRPATH = -Wl,-rpath,$(RPATHLIBDIR)
+override GPULIBFLAGSRPATH = -Xlinker -rpath -Xlinker $(RPATHLIBDIR)
+# RPATH for the process shared lib itself: the common lib sits next to it in LIBDIR
+override CXXLIBFLAGSRPATH2 = -Wl,-rpath,'$(RPATHORIGIN)'
+override GPULIBFLAGSRPATH2 = -Xlinker -rpath -Xlinker '$(RPATHORIGIN)'
+
+# Name recorded in the process lib itself, and hence in whatever links against it.
+# Without it the linker bakes in the absolute build path of the library.
+ifeq ($(UNAME_S),Darwin)
+  override CXXLIBFLAGSNAME = -Wl,-install_name,@rpath/lib$(MADMATRIX_LIB).so
+else
+  override CXXLIBFLAGSNAME = -Wl,-soname,lib$(MADMATRIX_LIB).so
+endif
+override GPULIBFLAGSNAME = -Xlinker -soname -Xlinker lib$(MADMATRIX_LIB).so
 
 # Setting LD_LIBRARY_PATH or DYLD_LIBRARY_PATH in the RUNTIME is no longer necessary (neither on Linux nor on Mac)
 override RUNTIME =
@@ -794,10 +811,10 @@ endif
 # Target (and build rules): process shared library (C++ or CUDA/HIP, selected by GPUCC)
 ifeq ($(GPUCC),)
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
+	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSNAME) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
 else
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
+	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSNAME) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
 endif
 
 #-------------------------------------------------------------------------------
@@ -806,7 +823,9 @@ endif
 # Split the bldall target into separate targets to allow parallel 'make -j bldall' builds.
 # Pass LIBDIR explicitly so 'make bldall LIBDIR=/path' works end-to-end.
 # (GNU make auto-forwards command-line vars via MAKEFLAGS, but being explicit is safer and self-documenting.)
-_BLDFLAGS = USEBUILDDIR=1 LIBDIR=$(LIBDIR)
+# (LIBDIR is forwarded as given, not resolved, to keep the rpaths loader-relative:
+# the sub-make runs in this same directory, so the relative form still resolves.)
+_BLDFLAGS = USEBUILDDIR=1 LIBDIR=$(LIBDIR_AS_GIVEN)
 
 bldcuda:
 	@echo

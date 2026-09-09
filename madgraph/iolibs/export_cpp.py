@@ -3231,7 +3231,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
             plot.draw()
 
         me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
-        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path)
+        # Store the path relative to the process directory (like me_path): an
+        # absolute path would break as soon as the process directory is moved.
+        rel_dirpath = pjoin('SubProcesses', proc_dir_name)
+        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(rel_dirpath, me_lib_path)
         self.merged_subprocesses[subproc_class].append(
             (len(self.process_info), diagram_tags)
         )
