@@ -11949,6 +11949,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             # flavour ordering alone and can be reused for every later event
             # and every later accept/reject trial with the same ordering.
             memo[memo_key] = resolved[0][1]
+            logger.debug('MadSpin density: leg ordering %s of %s is not a '
+                         'FLAV_TABLE column; relabelling to %s',
+                         memo_key[1], memo_key[0],
+                         tuple(memo_key[1][i] for i in resolved[0][1])
+                         if resolved[0][1] else memo_key[1])
         if len(resolved) == 1:
             return resolved[0][0]
 
