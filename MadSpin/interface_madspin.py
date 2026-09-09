@@ -941,14 +941,6 @@ class MadSpinInterface(extended_cmd.Cmd):
             'seconds': {k: round(v, 4) for k, v in sorted(self._phase_times.items())},
             'counts': {k: v for k, v in sorted(self._phase_counts.items())},
         }
-        # the flavour-grouped leg re-ordering fallback (see
-        # _merged_flavor_groups): how many matrix-element/density calls reached
-        # an ME that *could* need a re-ordering, how many actually had one
-        # applied, and how many distinct orderings had to be searched for.
-        if getattr(self, '_flavor_calls_armed', 0):
-            payload['counts']['flavor_reorder_calls_armed'] = self._flavor_calls_armed
-            payload['counts']['flavor_reorder_applied'] = self._flavor_relabel_applied
-            payload['counts']['flavor_reorder_searched'] = self._flavor_reorder_fired
         logger.critical('MadSpin phase timings: %s', json.dumps(payload, sort_keys=True))
 
     def _finish_run(self):
@@ -11750,251 +11742,6 @@ class MadSpinInterface(extended_cmd.Cmd):
             out[rest_leg - 1] = (out[rest_leg - 1][0], 0., 0., 0.)
         return out
 
-    # ------------------------------------------------------------------
-    # leg re-ordering for the flavour-grouped density
-    # ------------------------------------------------------------------
-    # The generated flavour-grouped matrix.f deliberately tabulates ONE leg
-    # ordering per flavour combination: FLAV_TABLE holds the unordered flavour
-    # tuples only (for `q q' > Z Z q q'`: (1,2) is a column, (2,1) is not), and
-    # GET_FLAVOR_INDEX answers 0 -- the "could not resolve" sentinel -- for
-    # every other ordering, whereupon GET_DENSITY short-circuits to an
-    # identically zero density.  That is by design; absorbing the re-ordering
-    # is the caller's job.
-    #
-    # Relabelling two external legs that carry the same MERGED pdg inside the
-    # same block (both incoming, or both outgoing) -- moving their momentum and
-    # their raw pdg together -- is a pure renaming of external lines: |M|^2, and
-    # with it every entry of the density, is unchanged (the fermionic sign of
-    # the exchange is a phase on M and cancels in M M*).  So a failed ordering
-    # can be repaired by trying those relabellings until GET_FLAVOR_INDEX
-    # resolves; any resolving one gives the same density.
-    #
-    # Legs whose helicity is an open index of the density (``position``) are
-    # NEVER relabelled here: permuting those would permute the rows/columns of
-    # rho, which is a genuine ambiguity ruled by
-    # ``identical_particle_in_prod_and_decay`` and handled through
-    # ``get_all_momenta`` instead.
-    def _merged_flavor_groups(self, tag, orig_order):
-        """Slot groups (0-based) that may be relabelled for this ME.
-
-        A group is the set of leg slots inside one block (initial / final) that
-        share a merged pdg.  Returns [] -- and so disarms the whole fallback,
-        keeping the fast path exactly as it was -- whenever the ME cannot have a
-        flavour ordering problem at all: no flavour grouping, or no merged pdg
-        repeated inside a block.  Cached per tag; a run sees a handful of tags.
-        """
-        try:
-            cache = self._merged_flavor_groups_cache
-        except AttributeError:
-            cache = self._merged_flavor_groups_cache = {}
-        try:
-            return cache[tag]
-        except KeyError:
-            pass
-        groups = []
-        if self._revert_merged:
-            merged_particles = self.model.get('merged_particles') or {}
-            nin = len(orig_order[0])
-            for offset, block in ((0, orig_order[0]), (nin, orig_order[1])):
-                seen = {}
-                for i, pid in enumerate(block):
-                    if abs(pid) in merged_particles:
-                        seen.setdefault(pid, []).append(offset + i)
-                groups.extend(v for v in seen.values() if len(v) > 1)
-        cache[tag] = groups
-        return groups
-
-    #: never build more than this many relabelled candidates for one ordering.
-    _FLAVOR_RELABEL_MAX = 64
-
-    def _flavor_relabelings(self, groups, pdgs, position):
-        """Yield the slot permutations worth trying, as tuples ``perm`` with
-        ``perm[i]`` = the slot the i-th leg takes its momentum/pdg from.
-
-        The identity is NOT yielded (the caller has already tried it).  Only
-        permutations that actually change the raw-pdg sequence are yielded --
-        permuting two legs of the *same* raw flavour cannot change what
-        GET_FLAVOR_INDEX answers -- and duplicates are dropped, so `q q' > Z Z q
-        q'` costs at most three extra trials and a same-flavour `q q > Z Z q q`
-        costs none.
-        """
-        frozen = set(position)          # ``position`` is 1-based, like POS(:)
-        movable = [g for g in groups
-                   if not any((s + 1) in frozen for s in g)]
-        if not movable:
-            return
-        n = len(pdgs)
-        seen = {tuple(pdgs)}
-        count = 0
-        for choice in itertools.product(*[itertools.permutations(g)
-                                          for g in movable]):
-            perm = list(range(n))
-            for g, target in zip(movable, choice):
-                for slot, src in zip(g, target):
-                    perm[slot] = src
-            key = tuple(pdgs[i] for i in perm)
-            if key in seen:
-                continue
-            seen.add(key)
-            count += 1
-            if count > self._FLAVOR_RELABEL_MAX:
-                return
-            yield tuple(perm)
-
-    def _py_get_density(self, tag, pdgs, P, position, allow_hel, event):
-        """The bare PY_GET_DENSITY call, split out so the re-ordering fallback
-        can repeat it without duplicating the module dispatch."""
-        # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
-        kind = self.all_me[tag]['type']
-        if kind == 'production':
-            module = self.f2py_module[0]
-        elif kind == 'decay':
-            module = self.f2py_module[1]
-        else:
-            raise ValueError("The key 'type' of sel.all_me can only take as values 'production' or 'decay'.")
-        return module.py_get_density(pdgs=pdgs,
-                                     procid=-1,
-                                     p=P,
-                                     pos=position,
-                                     allow_hel=allow_hel,
-                                     alphas=event.aqcd,
-                                     scale2=event.scale**2)
-
-    @staticmethod
-    def _density_resolved(density_array):
-        """The GET_FLAVOR_INDEX=0 sentinel shows up as an identically zero
-        INTER vector.  Tested on the RAW fortran array rather than on
-        ``DensityMatrix.trace()`` so that a helicity restriction which
-        legitimately zeroes the restricted trace (a polarisation projection with
-        no weight at this point) is not mistaken for an unresolved flavour.
-
-        Entry 0 is the (0,0) diagonal, |M|^2 for the first allowed helicity
-        combination, and it is non-zero for essentially every resolved point --
-        so testing it first turns the usual answer into one item lookup (0.04
-        us) instead of a whole-array reduction (0.47 us).  ``any()`` still has
-        the last word, so a resolved density whose first entry happens to
-        vanish is not mistaken for the sentinel."""
-        return bool(density_array.item(0)) or bool(density_array.any())
-
-    @property
-    def _flavor_relabel_memo(self):
-        """Run-level memo of the repair found for one (tag, raw-pdg ordering).
-
-        The permutation depends on the flavour sequence alone, so the search
-        runs once per distinct ordering per run rather than once per
-        accept/reject trial.  Value is a permutation tuple, or None for
-        'the primary ordering is the one that works'.  ``_flavor_reorder_fired``
-        counts the searches, for the run summary.
-        """
-        try:
-            return self.__flavor_relabel_memo
-        except AttributeError:
-            self.__flavor_relabel_memo = {}
-            self._flavor_reorder_fired = 0
-            self._flavor_calls_armed = 0
-            self._flavor_relabel_applied = 0
-            return self.__flavor_relabel_memo
-
-    def _resolve_density_ordering(self, event, tag, orig_order, p, pdgs,
-                                  position, allow_hel, dimension, frame_boost,
-                                  frame_rest_leg, need_raw_pdg, pdg_template,
-                                  memo_key, density_array):
-        """The slow half of ``get_density``: the primary leg ordering did not
-        resolve, so look for one that does.
-
-        Two independent sources of alternative orderings, and they are not the
-        same kind of thing:
-
-        * ``get_all_momenta`` -- identical particles shared between production
-          and decay.  These permute the OPEN indices of rho, so which one is
-          taken is a physics choice, and it stays under
-          ``identical_particle_in_prod_and_decay`` exactly as in
-          ``calculate_matrix_element`` (this is what replaces the old
-          ``assert len(all_p) == 1``).
-        * ``_flavor_relabelings`` -- merged-flavour leg relabellings.  These
-          are a pure renaming: every one of them that resolves gives the same
-          density, so the first is taken and nothing is reported.
-
-        Returns the density array to use; the unresolved original if nothing
-        resolved, which leaves the caller exactly where it was before.
-        """
-        all_p = event.get_all_momenta(orig_order,
-                                      merged_map=self._revert_merged or None)
-        if self.options['identical_particle_in_prod_and_decay'] == "crash" and \
-                len(all_p) > 1:
-            raise Exception("Ambiguous particle in production and decay. crash as requested by 'identical_particle_in_prod_and_decay'")
-
-        policy = self.options['identical_particle_in_prod_and_decay']
-        groups = self._merged_flavor_groups(tag, orig_order)
-        # The memo below records a permutation of the slots as get_all_momenta
-        # hands them over, so it is only reusable when that base agrees with the
-        # ordering the caller started from. It does whenever get_all_momenta
-        # produced a single (identity) permutation, which is the whole of the
-        # flavour-ordering case; the check keeps a surprise from silently
-        # poisoning later events.
-        memoisable = (memo_key is not None and len(all_p) == 1)
-        resolved = []                   # (array, perm or None) per all_p entry
-        for k, q in enumerate(all_p):
-            q_pdgs = event.get_pdg(q) if need_raw_pdg else list(pdg_template)
-            if k == 0 and list(q_pdgs) != list(pdgs):
-                memoisable = False
-            trials = [(None, q, q_pdgs)]
-            trials.extend((perm, [q[i] for i in perm], [q_pdgs[i] for i in perm])
-                          for perm in self._flavor_relabelings(groups, q_pdgs,
-                                                                position))
-            for perm, r, r_pdgs in trials:
-                boosted = (r if frame_boost is None
-                           else self._boost_momenta(r, frame_boost,
-                                                    rest_leg=frame_rest_leg))
-                arr = self._py_get_density(
-                    tag, r_pdgs,
-                    rwgt_interface.ReweightInterface.invert_momenta(boosted),
-                    position, allow_hel, event)
-                if self._density_resolved(arr):
-                    resolved.append((arr, perm))
-                    break               # relabellings of one q are equivalent
-
-        memo = self._flavor_relabel_memo   # also creates the counter
-        self._flavor_reorder_fired += 1
-        if not resolved:
-            if memoisable:
-                memo[memo_key] = None
-            return density_array
-
-        if memoisable:
-            # No production/decay ambiguity: the repair is a property of the
-            # flavour ordering alone and can be reused for every later event
-            # and every later accept/reject trial with the same ordering.
-            memo[memo_key] = resolved[0][1]
-            logger.debug('MadSpin density: leg ordering %s of %s is not a '
-                         'FLAV_TABLE column; relabelling to %s',
-                         memo_key[1], memo_key[0],
-                         tuple(memo_key[1][i] for i in resolved[0][1])
-                         if resolved[0][1] else memo_key[1])
-        if len(resolved) == 1:
-            return resolved[0][0]
-
-        # More than one get_all_momenta permutation resolved: a genuine
-        # production/decay ambiguity, ruled by the option.
-        if policy == 'first':
-            return resolved[0][0]
-        if policy == 'average':
-            out = resolved[0][0].copy()
-            for arr, _ in resolved[1:]:
-                out += arr
-            return out / len(resolved)
-        # 'max' (and any future default): a density is a matrix, so
-        # calculate_matrix_element's abs(|M|^2) comparison becomes the modulus
-        # of the UNRESTRICTED trace -- the same quantity, summed over the open
-        # helicities, and not something a helicity restriction can zero.
-        best, best_w = resolved[0][0], None
-        for arr, _ in resolved:
-            w = abs(complex(madspin.DensityMatrix(arr, len(position), allow_hel,
-                                                  dimension).trace()))
-            if best_w is None or w > best_w:
-                best, best_w = arr, w
-        return best
-
     def get_density(self, event, position, allow_hel, ncomb, dimension,
                     frame_boost=None, frame_rest_leg=-1, hel_restriction=None,
                     hel_restriction_trace=None):
@@ -12029,23 +11776,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         try:
             p = event.get_momenta(orig_order, merged_map=self._revert_merged or None)
         except Exception:
-            # Safety fallback for unusual event structures. Whether the several
-            # orderings this can return are a genuine ambiguity is decided
-            # below, under 'identical_particle_in_prod_and_decay'; taking the
-            # first one here only fixes what the *primary* attempt evaluates.
+            # Safety fallback for unusual event structures.
             all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
+            assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
             p = all_p[0]
+        if frame_boost is not None:
+            p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
+        P = rwgt_interface.ReweightInterface.invert_momenta(p)
         # f77_density runs `flavormapping` on the pdgs we pass: when the ME
         # legs use merged-particle IDs, we must pass the concrete raw PDGs
         # from the event for this permutation so the flavormapping picks
         # the right per-particle flavor index for GET_DENSITY. Same logic
         # as calculate_matrix_element's pdg_for_call handling.
-        #
-        # Read off the LAB momenta, before the frame boost: get_pdg identifies
-        # each particle by exact momentum equality against the event record,
-        # which a boost destroys -- and the re-ordering fallback below has to
-        # move momentum and pdg together, which it can only do while the two
-        # still describe the same, unboosted, list.
         pdg_template = list(orig_order[0]) + list(orig_order[1])
         merged_particles = self.model.get('merged_particles') or {}
         need_raw_pdg = (self._revert_merged and
@@ -12059,38 +11801,32 @@ class MadSpinInterface(extended_cmd.Cmd):
             raise ValueError("Error in get_density: 'position' must contain at least one position index")
         if len(allow_hel) % n_changing != 0:
             raise ValueError("Error in get_density: inconsistent 'allow_hel' and 'position' lengths")
+        
+        # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
+        if self.all_me[tag]['type'] == 'production':
+            # misc.sprint("Computation of the production density matrix")
+            density_array = self.f2py_module[0].py_get_density(pdgs=pdgs, 
+                                                                procid=-1, 
+                                                                p=P, 
+                                                                pos=position, 
+                                                                allow_hel=allow_hel, 
+                                                                alphas=event.aqcd,
+                                                                scale2=event.scale**2)
 
-        # A repair already found for this flavour ordering: apply it straight
-        # away, so an event class that needs one costs a dict lookup and not a
-        # search. groups == [] (no flavour grouping, or no merged pdg repeated
-        # inside a block) disarms all of this and leaves the path below
-        # byte-for-byte what it was.
-        groups = self._merged_flavor_groups(tag, orig_order)
-        memo_key = None
-        if groups:
-            memo_key = (tag, tuple(pdgs))
-            perm = self._flavor_relabel_memo.get(memo_key, False)
-            self._flavor_calls_armed += 1
-            if perm:
-                self._flavor_relabel_applied += 1
-                p = [p[i] for i in perm]
-                pdgs = [pdgs[i] for i in perm]
+        elif self.all_me[tag]['type'] == 'decay':
+            # misc.sprint("Computation of the decay density matrix")
+            density_array = self.f2py_module[1].py_get_density(pdgs=pdgs, 
+                                                                procid=-1, 
+                                                                p=P, 
+                                                                pos=position, 
+                                                                allow_hel=allow_hel, 
+                                                                alphas=event.aqcd,
+                                                                scale2=event.scale**2)
+        else:
+            raise ValueError("The key 'type' of sel.all_me can only take as values 'production' or 'decay'.")
 
-        density_array = self._py_get_density(
-            tag, pdgs,
-            rwgt_interface.ReweightInterface.invert_momenta(
-                p if frame_boost is None
-                else self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)),
-            position, allow_hel, event)
 
-        if groups and memo_key not in self._flavor_relabel_memo \
-                and not self._density_resolved(density_array):
-            density_array = self._resolve_density_ordering(
-                event, tag, orig_order, p, pdgs, position, allow_hel,
-                dimension, frame_boost, frame_rest_leg, need_raw_pdg,
-                pdg_template, memo_key, density_array)
-
-        #print(f"density_array = {density_array}")
+        #print(f"density_array = {density_array}") 
         density_matrix = madspin.DensityMatrix(density_array,
                                                n_changing,
                                                allow_hel,
@@ -12143,7 +11879,6 @@ class MadSpinInterface(extended_cmd.Cmd):
         # decay pool can hold 1 -> 2 and 1 -> 3 channels for the same parent.
         momenta = [None] * len(events)
         pdgs = [None] * len(events)
-        armed = [None] * len(events)
         groups = {}
         for k, event in enumerate(events):
             orig_order = getattr(event, '_ms_orig_order_for_density', None)
@@ -12163,31 +11898,15 @@ class MadSpinInterface(extended_cmd.Cmd):
             try:
                 p = event.get_momenta(orig_order, merged_map=merged_map)
             except Exception:
-                # Safety fallback for unusual event structures. As in
-                # get_density, a second ordering is not an error here: the
-                # per-event repair below re-enters the single-point path, which
-                # owns the 'identical_particle_in_prod_and_decay' policy.
+                # Safety fallback for unusual event structures.
                 all_p = event.get_all_momenta(orig_order, merged_map=merged_map)
+                assert len(all_p) == 1, "Error: get_density_batch can only be called for single phase-space points"
                 p = all_p[0]
             pdg_template = list(orig_order[0]) + list(orig_order[1])
             need_raw_pdg = (self._revert_merged and
                             any(abs(pid) in merged_particles for pid in pdg_template))
-            this_pdgs = event.get_pdg(p) if need_raw_pdg else pdg_template
-            # Same leg re-ordering as get_density (see _merged_flavor_groups):
-            # apply a repair already known for this flavour ordering before the
-            # batch is packed, and remember the tag so an entry that still comes
-            # back unresolved can be redone through the single-point path.
-            reorder = self._merged_flavor_groups(tag, orig_order)
-            armed[k] = tag if reorder else None
-            if reorder:
-                perm = self._flavor_relabel_memo.get((tag, tuple(this_pdgs)))
-                self._flavor_calls_armed += 1
-                if perm:
-                    self._flavor_relabel_applied += 1
-                    p = [p[i] for i in perm]
-                    this_pdgs = [this_pdgs[i] for i in perm]
             momenta[k] = p
-            pdgs[k] = this_pdgs
+            pdgs[k] = event.get_pdg(p) if need_raw_pdg else pdg_template
             groups.setdefault((len(p), len(pdgs[k]), module_index), []).append(k)
 
         out = [None] * len(events)
@@ -12218,17 +11937,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                nbatch=nbatch,
                                                next=next_)
             for c, k in enumerate(idx):
-                if armed[k] is not None and not self._density_resolved(inter[:, c]):
-                    # GET_FLAVOR_INDEX did not resolve this leg ordering. The
-                    # search for one that does needs a per-point fortran call
-                    # per candidate anyway, so it is left to get_density, which
-                    # is the single owner of that logic (and of the ambiguity
-                    # policy). It writes the repair into the shared memo, so the
-                    # next batch carrying the same flavour ordering is packed
-                    # already fixed.
-                    out[k] = self.get_density(events[k], position, allow_hel,
-                                              ncomb, dimension)
-                    continue
                 out[k] = madspin.DensityMatrix(inter[:, c],
                                                n_changing,
                                                allow_hel,
@@ -12351,55 +12059,17 @@ class MadSpinInterface(extended_cmd.Cmd):
             need_raw_pdg = (self._revert_merged and
                             any(abs(p) in merged_particles
                                 for p in pdg_template))
-            # Exactly the flavour-grouped leg re-ordering get_density has to
-            # absorb (see _merged_flavor_groups): smatrixhel resolves the flavour
-            # through the same GET_FLAVOR_INDEX, and answers 0 for an ordering
-            # FLAV_TABLE does not tabulate -- `u d > z z u d` on a table that
-            # only holds `d u > z z d u`. get_all_momenta cannot repair it: it
-            # permutes final-state legs only, and only ones with *different*
-            # mothers, which in an aMC@NLO production event never happens. So a
-            # real-emission `q q' > Z Z q q'` event came back with |M|^2 = 0
-            # here too, and that zero is a denominator in the density modes.
-            # groups == [] for everything else, leaving the loop untouched.
-            groups = self._merged_flavor_groups(tag, orig_order)
-            memo = self._flavor_relabel_memo if groups else None
-
-            def evaluate(momenta, pdgs_for_call):
-                p_inv = rwgt_interface.ReweightInterface.invert_momenta(momenta)
-                if event[0].color1 == 599 and event.aqcd==0:
-                    value = self.all_f2py[pdir](pdgs_for_call, p_inv, 0.113, 0)
-                else:
-                    value = self.all_f2py[pdir](pdgs_for_call, p_inv, event.aqcd, event.scale, -1)
-                #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
-                if isinstance(value, tuple):
-                    value = value[0]
-                return value
-
             out = 0
             for p in all_p:
                 pdg_for_call = event.get_pdg(p) if need_raw_pdg else pdg_template
-                memo_key = None
-                if groups:
-                    memo_key = (tag, tuple(pdg_for_call))
-                    perm = memo.get(memo_key, False)
-                    self._flavor_calls_armed += 1
-                    if perm:
-                        self._flavor_relabel_applied += 1
-                        p = [p[i] for i in perm]
-                        pdg_for_call = [pdg_for_call[i] for i in perm]
-                new_value = evaluate(p, pdg_for_call)
-                if groups and not new_value and memo_key not in memo:
-                    # a relabelling is a renaming of external lines, so any one
-                    # that resolves gives the same |M|^2: take the first.
-                    found = None
-                    for perm in self._flavor_relabelings(groups, pdg_for_call, ()):
-                        value = evaluate([p[i] for i in perm],
-                                         [pdg_for_call[i] for i in perm])
-                        if value:
-                            found, new_value = perm, value
-                            break
-                    memo[memo_key] = found
-                    self._flavor_reorder_fired += 1
+                p_inv = rwgt_interface.ReweightInterface.invert_momenta(p)
+                if event[0].color1 == 599 and event.aqcd==0:
+                    new_value = self.all_f2py[pdir](pdg_for_call, p_inv, 0.113, 0)
+                else:
+                    new_value = self.all_f2py[pdir](pdg_for_call, p_inv, event.aqcd, event.scale, -1)
+                #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
+                if isinstance(new_value, tuple):
+                    new_value = new_value[0]
                 if self.options['identical_particle_in_prod_and_decay'] == "average":
                     out += new_value
                 else:
