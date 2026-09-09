@@ -124,7 +124,7 @@ std::vector<std::vector<double>> Cuts::pairwise_min(
 std::vector<std::vector<double>> Cuts::m_inv_min() const {
     // Two ways of asking for the same thing. "mass" with summed momenta is
     // the mass of the whole selection, which happens to be a pair only when
-    // the selection holds exactly two particles; obs_m_inv is the genuine
+    // the selection holds exactly two particles; obs_pair_mass is the genuine
     // pairwise cut and covers every pair a group can form.
     auto summed = pairwise_min(Observable::obs_mass, [](const Observable& o) {
         std::vector<std::pair<std::size_t, std::size_t>> pairs;
@@ -134,7 +134,7 @@ std::vector<std::vector<double>> Cuts::m_inv_min() const {
         }
         return pairs;
     });
-    auto pairwise = pairwise_min(Observable::obs_m_inv, [](const Observable& o) {
+    auto pairwise = pairwise_min(Observable::obs_pair_mass, [](const Observable& o) {
         std::vector<std::pair<std::size_t, std::size_t>> pairs;
         const auto& idx = o.indices();
         if (idx.size() == 2) {

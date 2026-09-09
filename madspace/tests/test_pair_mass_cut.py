@@ -12,7 +12,7 @@ on one node of the decay tree.
 
 Three things are pinned down:
 
-  * obs_m_inv computes the invariant mass of the pair,
+  * obs_pair_mass computes the invariant mass of the pair,
   * with the cut handed to the mapping, no sampled point falls below it,
   * doing so does not change the volume of the cut region, i.e. the boundary
     is a consequence of the cut and not an extra cut of its own.
@@ -39,7 +39,7 @@ PIDS = [21, 21, 6, -6, 21, 21]
 TOP_PIDS = [6, -6]
 # well above threshold, so the cut removes a real part of both the points
 # and the volume rather than shaving off a tail
-M_INV_CUT = 2500.0
+PAIR_MASS_CUT = 2500.0
 
 
 def load_topology():
@@ -59,9 +59,9 @@ def load_topology():
     )
 
 
-def m_inv_cuts(minimum):
+def pair_mass_cuts(minimum):
     O = ms.Observable
-    return ms.Cuts([ms.CutItem(O(PIDS, O.obs_m_inv, [TOP_PIDS]), min=minimum)])
+    return ms.Cuts([ms.CutItem(O(PIDS, O.obs_pair_mass, [TOP_PIDS]), min=minimum)])
 
 
 def mapping(cuts=None):
@@ -85,22 +85,22 @@ def invariant_mass(p, i, j):
 # --------------------------------------------------------------------------
 
 
-def test_obs_m_inv_is_the_invariant_mass_of_the_pair():
+def test_obs_pair_mass_is_the_invariant_mass_of_the_pair():
     p_ext, _ = sample(mapping())
     O = ms.Observable
-    observable = O(PIDS, O.obs_m_inv, [TOP_PIDS])
+    observable = O(PIDS, O.obs_pair_mass, [TOP_PIDS])
     computed = np.asarray(observable(p_ext)).reshape(p_ext.shape[0], -1)
     # the two tops are the only pair the selection can form
     assert computed.shape[1] == 1
     assert computed[:, 0] == pytest.approx(invariant_mass(p_ext, 2, 3), rel=1e-9)
 
 
-def test_obs_m_inv_is_not_the_single_particle_mass():
-    """Guards against obs_m_inv quietly resolving to obs_mass, which would
+def test_obs_pair_mass_is_not_the_single_particle_mass():
+    """Guards against obs_pair_mass quietly resolving to obs_mass, which would
     return the top mass for every event and make the cut meaningless."""
     p_ext, _ = sample(mapping())
     O = ms.Observable
-    pair = np.asarray(O(PIDS, O.obs_m_inv, [TOP_PIDS])(p_ext)).reshape(-1)
+    pair = np.asarray(O(PIDS, O.obs_pair_mass, [TOP_PIDS])(p_ext)).reshape(-1)
     single = np.asarray(O(PIDS, O.obs_mass, [TOP_PIDS])(p_ext)).reshape(
         p_ext.shape[0], -1
     )
@@ -116,11 +116,11 @@ def test_obs_m_inv_is_not_the_single_particle_mass():
 
 def test_cut_bounds_the_sampled_invariant():
     """With the cut handed to the mapping nothing below it is generated."""
-    p_ext, _ = sample(mapping(cuts=m_inv_cuts(M_INV_CUT)))
+    p_ext, _ = sample(mapping(cuts=pair_mass_cuts(PAIR_MASS_CUT)))
     pair = invariant_mass(p_ext, 2, 3)
-    assert pair.min() >= M_INV_CUT - 1e-6
+    assert pair.min() >= PAIR_MASS_CUT - 1e-6
     # and the cut has not collapsed the region onto its own boundary
-    assert pair.max() > 1.5 * M_INV_CUT
+    assert pair.max() > 1.5 * PAIR_MASS_CUT
 
 
 def test_without_the_cut_the_same_region_is_mostly_wasted():
@@ -130,7 +130,7 @@ def test_without_the_cut_the_same_region_is_mostly_wasted():
     above has stopped proving anything."""
     p_ext, _ = sample(mapping())
     pair = invariant_mass(p_ext, 2, 3)
-    assert np.mean(pair < M_INV_CUT) > 0.5
+    assert np.mean(pair < PAIR_MASS_CUT) > 0.5
 
 
 def test_cut_volume_is_unchanged_by_the_boundary():
@@ -138,11 +138,11 @@ def test_cut_volume_is_unchanged_by_the_boundary():
     cut region has to give the same answer whether the mapping knows about the
     cut or only the filtering does."""
     p_free, det_free = sample(mapping(), seed=SEED)
-    passes = invariant_mass(p_free, 2, 3) >= M_INV_CUT
+    passes = invariant_mass(p_free, 2, 3) >= PAIR_MASS_CUT
     finite = np.isfinite(det_free) & np.all(np.isfinite(p_free), axis=(1, 2))
     external = np.where(passes & finite, det_free, 0.0)
 
-    p_cut, det_cut = sample(mapping(cuts=m_inv_cuts(M_INV_CUT)), seed=SEED + 1)
+    p_cut, det_cut = sample(mapping(cuts=pair_mass_cuts(PAIR_MASS_CUT)), seed=SEED + 1)
     finite_cut = np.isfinite(det_cut) & np.all(np.isfinite(p_cut), axis=(1, 2))
     piped = np.where(finite_cut, det_cut, 0.0)
 
@@ -160,7 +160,7 @@ def test_cut_volume_is_a_real_fraction_of_the_total():
     volumes would agree for uninteresting reasons."""
     _, det_free = sample(mapping())
     p_free, det_full = sample(mapping())
-    passes = invariant_mass(p_free, 2, 3) >= M_INV_CUT
+    passes = invariant_mass(p_free, 2, 3) >= PAIR_MASS_CUT
     kept = np.where(passes & np.isfinite(det_full), det_full, 0.0).mean()
     total = np.where(np.isfinite(det_full), det_full, 0.0).mean()
     assert 0.01 < kept / total < 0.95

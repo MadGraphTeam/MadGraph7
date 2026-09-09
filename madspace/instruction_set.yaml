@@ -583,7 +583,7 @@ obs_delta_r:
       desc:
   dims: 0
 
-obs_m_inv:
+obs_pair_mass:
   inputs:
     - name: p1
       type: [float, ..., 4]
