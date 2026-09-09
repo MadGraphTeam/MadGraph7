@@ -941,6 +941,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             'seconds': {k: round(v, 4) for k, v in sorted(self._phase_times.items())},
             'counts': {k: v for k, v in sorted(self._phase_counts.items())},
         }
+        # the flavour-grouped leg re-ordering fallback (see
+        # _merged_flavor_groups): how many matrix-element/density calls reached
+        # an ME that *could* need a re-ordering, how many actually had one
+        # applied, and how many distinct orderings had to be searched for.
+        if getattr(self, '_flavor_calls_armed', 0):
+            payload['counts']['flavor_reorder_calls_armed'] = self._flavor_calls_armed
+            payload['counts']['flavor_reorder_applied'] = self._flavor_relabel_applied
+            payload['counts']['flavor_reorder_searched'] = self._flavor_reorder_fired
         logger.critical('MadSpin phase timings: %s', json.dumps(payload, sort_keys=True))
 
     def _finish_run(self):
@@ -11876,6 +11884,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         except AttributeError:
             self.__flavor_relabel_memo = {}
             self._flavor_reorder_fired = 0
+            self._flavor_calls_armed = 0
+            self._flavor_relabel_applied = 0
             return self.__flavor_relabel_memo
 
     def _resolve_density_ordering(self, event, tag, orig_order, p, pdgs,
@@ -12053,7 +12063,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         if groups:
             memo_key = (tag, tuple(pdgs))
             perm = self._flavor_relabel_memo.get(memo_key, False)
+            self._flavor_calls_armed += 1
             if perm:
+                self._flavor_relabel_applied += 1
                 p = [p[i] for i in perm]
                 pdgs = [pdgs[i] for i in perm]
 
@@ -12162,7 +12174,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             armed[k] = tag if reorder else None
             if reorder:
                 perm = self._flavor_relabel_memo.get((tag, tuple(this_pdgs)))
+                self._flavor_calls_armed += 1
                 if perm:
+                    self._flavor_relabel_applied += 1
                     p = [p[i] for i in perm]
                     this_pdgs = [this_pdgs[i] for i in perm]
             momenta[k] = p
@@ -12361,7 +12375,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if groups:
                     memo_key = (tag, tuple(pdg_for_call))
                     perm = memo.get(memo_key, False)
+                    self._flavor_calls_armed += 1
                     if perm:
+                        self._flavor_relabel_applied += 1
                         p = [p[i] for i in perm]
                         pdg_for_call = [pdg_for_call[i] for i in perm]
                 new_value = evaluate(p, pdg_for_call)
