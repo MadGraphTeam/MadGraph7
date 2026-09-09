@@ -1022,6 +1022,12 @@ class TestMasslessProjectionFinalState(unittest.TestCase):
         # no massless leg at all
         self.assertEqual(self.final(base, [2, -2, 23, 23, 5]),
                          [tuple(q) for q in base])
+        # a model-massless leg at rest in the final-state frame: E := x|p|
+        # would annihilate it, so the whole event is left alone
+        rest = [(91.2, 0., 0., 91.2), (91.2, 0., 0., -91.2),
+                (91.2, 0., 0., 0.), (91.2, 0., 0., 0.)]
+        self.assertEqual(self.final(rest, [2, -2, 23, 21]),
+                         [tuple(q) for q in rest])
 
     # -- the point of the whole exercise -----------------------------------
     def test_the_input_is_never_mutated(self):

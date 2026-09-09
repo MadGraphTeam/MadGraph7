@@ -2106,6 +2106,10 @@ def project_massless_final_state(momenta, pdgs, model, n_initial=2,
     esum = sum(p[0] for p in rest)
     if sumlight <= 0. or esum <= summass:
         return out
+    if min(qlight) <= 0.:
+        # a leg the model calls massless, at rest in the final-state frame:
+        # E := x|p| would annihilate it.  Unphysical input, leave it alone.
+        return out
 
     def g(x):
         return (x * sumlight
