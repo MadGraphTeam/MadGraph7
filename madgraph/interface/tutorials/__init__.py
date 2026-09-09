@@ -30,7 +30,7 @@ logger = logging.getLogger('madgraph')
 
 # modules of this package holding a module-level `tutorial`, in menu order
 _MODULES = ['lo', 'syntax', 'mg7', 'madevent', 'model', 'bsm',
-            'standalone', 'nlo', 'madloop', 'checks', 'exercises']
+            'standalone', 'decays', 'nlo', 'madloop', 'checks', 'exercises']
 
 _REGISTRY = []          # list of Tutorial, in menu order
 _BY_NAME = {}           # name or alias (lowercased) -> Tutorial
@@ -53,6 +53,34 @@ def register(tutorial, override=False):
     for name in tutorial.names:
         _BY_NAME[name.lower()] = tutorial
     return tutorial
+
+
+def load_plugin_tutorials(plugin_path):
+    """Register tutorials a plugin exposes as `new_tutorial`.
+
+    Sits beside the plugin API's `new_output` / `new_cluster` / `new_interface`
+    hooks: a plugin declares
+
+        new_tutorial = {'mytool': mytool_tutorial.tutorial}
+
+    and `tutorial mytool` works, with no edit to MG7.  Called from the
+    interface, which is what knows the plugin path.
+    """
+
+    import madgraph.various.misc as misc
+
+    _load()
+    names = misc.from_plugin_import(plugin_path, 'new_tutorial', keyname=None,
+                                    warning=True) or []
+    for name in names:
+        if get(name) is not None:
+            logger.debug('plugin tutorial %s shadowed by a built-in', name)
+            continue
+        tutorial = misc.from_plugin_import(
+            plugin_path, 'new_tutorial', keyname=name, warning=True,
+            info='Using tutorial %(key)s from plugin %(plug)s')
+        if tutorial is not None:
+            register(tutorial, override=True)
 
 
 def _load():

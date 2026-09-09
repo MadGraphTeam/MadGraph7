@@ -4139,6 +4139,7 @@ This implies that with decay chains:
     def do_tutorial(self, line):
         """Activate/deactivate the tutorial mode."""
 
+        self.load_plugin_tutorials()
         args = self.split_arg(line)
         self.check_tutorial(args)
         name = args[0]
@@ -4177,6 +4178,17 @@ This implies that with decay chains:
                        "\n\tWarning: To use all features in this tutorial, " + \
                        "please run from a" + \
                        "\n\t         valid MG_ME directory.")
+
+    def load_plugin_tutorials(self):
+        """Let plugins add tutorials, once per session."""
+
+        if getattr(self, '_tutorial_plugins_loaded', False):
+            return
+        self._tutorial_plugins_loaded = True
+        try:
+            tutorials.load_plugin_tutorials(self.plugin_path)
+        except Exception as error:
+            logger.debug('could not load plugin tutorials: %s', error)
 
     def print_tutorial_list(self):
         """Show the available tutorials."""
