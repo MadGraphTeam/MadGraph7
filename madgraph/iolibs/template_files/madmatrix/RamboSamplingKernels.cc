@@ -147,7 +147,7 @@ namespace mg5amcCpu
         rambo::get_momenta( m_ninitial, (double)m_energy, m_masses, wgt );
       for( int ipar = 0; ipar < npar; ++ipar )
         for( int ip4 = 0; ip4 < 4; ++ip4 )
-          MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype)point[ipar][ip4];
+          MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype_momenta)point[ipar][ip4];
       MemoryAccessWeights::ieventAccess( m_weights.data(), ievt ) = (fptype)wgt;
     }
     // ** END LOOP ON IEVT **
