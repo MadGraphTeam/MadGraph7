@@ -135,12 +135,11 @@ c#endif
 
       else
 
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsf
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsf
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -265,12 +264,11 @@ c$$$      fi(2) = dcmplx(p(1),p(2))*nsf*-1
 
       else
 
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsf
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsf
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -409,12 +407,11 @@ c#endif
 
       else
 
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsf
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsf
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -540,12 +537,11 @@ c$$$      fo(2) = dcmplx(p(1),p(2))*nsf
 
       else
 
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsf
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsf
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -1594,12 +1590,11 @@ c constract spinor+
               fip(4) = sfomeg(2)*chi(ip)
          endif
        else
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsr
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsr
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -1660,12 +1655,11 @@ c constract spinor-
               fim(4) = sfomeg(2)*chi(ip)
          endif
        else
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsr
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsr
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -1951,12 +1945,11 @@ c constract spinor+
          
       else
          
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsr
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsr
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else
@@ -2030,12 +2023,11 @@ c constract spinor+
          
       else
          
-         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)
-     &   .and.(p(0)-p(3)).gt.rZero) then
+         if(p(3).lt.0d0.and.(p(1).ne.0d0.or.p(2).ne.0d0)) then
 c  p(0)+p(3) is a cancelling difference of two ~|p| numbers for a
 c  backward-moving massless fermion, and everything below divides by
 c  it. Take it from the light-cone identity p+ p- = pT^2 instead.
-            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(p(0)-p(3)))*nsr
+            sqp0p3 = dsqrt((p(1)**2+p(2)**2)/(dabs(p(0))-p(3)))*nsr
          elseif(p(1).eq.0d0.and.p(2).eq.0d0.and.p(3).lt.0d0) then
             sqp0p3 = 0d0
          else

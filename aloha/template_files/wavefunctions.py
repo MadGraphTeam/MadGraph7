@@ -159,8 +159,8 @@ def ixxxxx(p, fmass, nhel, nsf, flavor=-1):
         # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
         # backward-moving massless fermion, and everything below divides by
         # it. Take it from the light-cone identity p+ p- = pT^2 instead.
-        if p[3] < 0. and (p[1] != 0. or p[2] != 0.) and p[0] - p[3] > 0.:
-            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3]))*nsf
+        if p[3] < 0. and (p[1] != 0. or p[2] != 0.):
+            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsf
         elif p[1] == 0. and p[2] == 0. and p[3] < 0.:
             sqp0p3 = 0.
         else:
@@ -228,8 +228,8 @@ def oxxxxx(p, fmass, nhel, nsf, flavor=-1):
         # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
         # backward-moving massless fermion, and everything below divides by
         # it. Take it from the light-cone identity p+ p- = pT^2 instead.
-        if p[3] < 0. and (p[1] != 0. or p[2] != 0.) and p[0] - p[3] > 0.:
-            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3]))*nsf
+        if p[3] < 0. and (p[1] != 0. or p[2] != 0.):
+            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsf
         elif p[1] == 0. and p[2] == 0. and p[3] < 0.:
             sqp0p3 = 0.
         else:
@@ -717,8 +717,8 @@ def irxxxx(p, mass, nhel, nsr):
             # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
             # backward-moving massless fermion, and everything below divides
             # by it. Take it from the light-cone identity p+ p- = pT^2.
-            if p[3] < 0 and (p[1] != 0 or p[2] != 0) and p[0] - p[3] > 0:
-                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3])) * nsr
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3])) * nsr
             elif p[1] == 0 and p[2] == 0 and p[3] < 0:
                 sqp0p3 = 0
             else:
@@ -778,8 +778,8 @@ def irxxxx(p, mass, nhel, nsr):
             # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
             # backward-moving massless fermion, and everything below divides
             # by it. Take it from the light-cone identity p+ p- = pT^2.
-            if p[3] < 0 and (p[1] != 0 or p[2] != 0) and p[0] - p[3] > 0:
-                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3])) * nsr
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3])) * nsr
             elif p[1] == 0 and p[2] == 0 and p[3] < 0:
                 sqp0p3 = 0
             else:
@@ -983,8 +983,8 @@ def orxxxx(p, mass, nhel, nsr):
             # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
             # backward-moving massless fermion, and everything below divides
             # by it. Take it from the light-cone identity p+ p- = pT^2.
-            if p[3] < 0 and (p[1] != 0 or p[2] != 0) and p[0] - p[3] > 0:
-                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3]))*nsr
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsr
             elif(p[1] == 0 and p[2] == 0 and p[3] < 0):
                 sqp0p3 = 0
             else:
@@ -1054,8 +1054,8 @@ def orxxxx(p, mass, nhel, nsr):
             # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
             # backward-moving massless fermion, and everything below divides
             # by it. Take it from the light-cone identity p+ p- = pT^2.
-            if p[3] < 0 and (p[1] != 0 or p[2] != 0) and p[0] - p[3] > 0:
-                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(p[0] - p[3]))*nsr
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsr
             elif(p[1] == 0 == p[2] and p[3] < 0):
                 sqp0p3 = 0
             else:
