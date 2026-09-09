@@ -941,6 +941,22 @@ class MadgraphProcess:
         )
         return path
 
+    def needs_systematics_matrix_elements(self) -> bool:
+        """The systematics will re-evaluate a matrix element per scale point.
+
+        True when the native weights are on and some subprocess mixes alpha_s
+        powers (qcd_power < 0), i.e. when build_systematics_matrix_elements()
+        loads a matrix element. Conservative: it does not check that a CPU
+        backend exists, so it can be True where that call ends up loading
+        nothing.
+        """
+        if not self.systematics_enabled():
+            return False
+        if self.run_card["run"]["dummy_matrix_element"]:
+            return False
+        return any(int(meta.get("qcd_power", -1)) < 0
+                   for meta in self.subprocess_data)
+
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
@@ -961,6 +977,21 @@ class MadgraphProcess:
         cfg.gpu_batch_size = gen_args["gpu_batch_size"]
         cfg.verbosity = resolve_verbosity(run_args["verbosity"])
         cfg.combine_thread_count = run_args["combine_thread_pool_size"]
+        if self.needs_systematics_matrix_elements() and cfg.combine_thread_count != 1:
+            # SystematicsCalculator::compute() runs inside the combine workers,
+            # and a matrix element's per-thread process instances live in a
+            # ThreadResource indexed by ThreadPool::thread_index() -- the
+            # *calling* thread's index. A parallel combine pool would therefore
+            # need one process instance per worker; building N of them to index
+            # them safely is not worth it, the more so as
+            # SystematicsCalculator::matrix_elements() already serialises every
+            # evaluation on its own mutex, so that parallelism was not being
+            # used anyway. Run the combine stage single-threaded instead.
+            logger.info(
+                "systematics: the combine stage runs single-threaded because a "
+                "subprocess needs its matrix element re-evaluated for the "
+                "renormalisation scale variations")
+            cfg.combine_thread_count = 1
         cfg.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
         cfg.max_cut_repetitions = gen_args["max_cut_repetitions"]
         self.event_generator_config = cfg
