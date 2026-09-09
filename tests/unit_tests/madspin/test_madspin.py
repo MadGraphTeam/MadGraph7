@@ -11980,3 +11980,240 @@ class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):
         options = interface_madspin.MadSpinOptions()
         self.assertEqual(sorted(options.allowed_value['decay_generator']),
                          ['madevent', 'mg7'])
+
+
+class TestDensityLegReordering(unittest.TestCase):
+    """``get_density`` has to absorb the leg ordering the generated
+    flavour-grouped ``matrix.f`` does not tabulate.
+
+    FLAV_TABLE holds one column per *unordered* flavour combination -- for
+    ``q q' > Z Z q q'`` it has ``(1,2)`` and not ``(2,1)`` -- and
+    GET_FLAVOR_INDEX answers the sentinel 0 for every other ordering, at which
+    point GET_DENSITY returns an identically zero density and MadSpin dies with
+    ``Tr(rho_prod) = 0``.  The fortran is behaving as designed; the wrapper is
+    what has to try the other orderings.
+
+    The fake module below reproduces exactly that contract: it accepts a leg
+    ordering only when the two incoming quark flavours are in ascending order
+    and each outgoing quark sits opposite its own incoming line, and returns a
+    zero vector for everything else.
+    """
+
+    MERGED = {81: [1, 2, 3, 4]}
+    # d=1 u=2 s=3 c=4, as F77_DENSITY's flavormapping assigns them
+    GROUP_POS = {1: 1, 2: 2, 3: 3, 4: 4}
+
+    class _FakeModule(object):
+        """Stands in for the compiled f2py production module."""
+
+        def __init__(self, accept):
+            self.accept = accept
+            self.calls = []
+
+        def py_get_density(self, pdgs, procid, p, pos, allow_hel, alphas,
+                           scale2):
+            import numpy as np
+            self.calls.append(tuple(pdgs))
+            n = len(allow_hel) // len(pos)
+            out = np.zeros(n * (n + 1) // 2, dtype=complex)
+            if self.accept(tuple(pdgs)):
+                # something reproducible and ordering independent: the density
+                # of a relabelled ordering must be the same object
+                out[:] = 1.0
+                out[0] = 3.5
+            return out
+
+    class _FakeEvent(object):
+        """Only what get_density touches: momenta, pdgs, alphas, scale."""
+
+        def __init__(self, pdgs, all_momenta=None):
+            self.pdgs = list(pdgs)
+            self.aqcd = 0.118
+            self.scale = 91.188
+            # a distinct, recognisable momentum per slot
+            self.momenta = [(100. + i, 1. + i, 2. + i, 3. + i)
+                            for i in range(len(pdgs))]
+            self._all = all_momenta
+
+        def get_tag_and_order(self, merged_particle=None):
+            return ('qqzzqq', None)
+
+        def get_momenta(self, get_order, merged_map=None):
+            return list(self.momenta)
+
+        def get_all_momenta(self, get_order, merged_map=None):
+            return self._all if self._all is not None else [list(self.momenta)]
+
+        def get_pdg(self, momenta):
+            index = dict((m, i) for i, m in enumerate(self.momenta))
+            return [self.pdgs[index[tuple(m)]] for m in momenta]
+
+    def _interface(self, accept, all_me_type='production',
+                   policy='average'):
+        cmd = object.__new__(interface_madspin.MadSpinInterface)
+        cmd._revert_merged = {}
+        for merged, members in self.MERGED.items():
+            for pdg in members:
+                cmd._revert_merged[pdg] = merged
+                cmd._revert_merged[-pdg] = -merged
+        cmd.model = {'merged_particles': self.MERGED}
+        cmd.options = {'identical_particle_in_prod_and_decay': policy}
+        cmd.all_me = collections.defaultdict(lambda: {'type': all_me_type})
+        module = self._FakeModule(accept)
+        cmd.f2py_module = [module, module]
+        return cmd, module
+
+    ORIG_ORDER = ((81, 81), (23, 23, 81, 81))
+
+    def _accept_sorted(self, pdgs):
+        """the FLAV_TABLE contract of P2_QQ_z0z0QQ"""
+        if len(pdgs) != 6:
+            return False
+        a, b, z1, z2, c, d = pdgs
+        if (z1, z2) != (23, 23):
+            return False
+        pos = self.GROUP_POS
+        try:
+            return (pos[a] <= pos[b]) and a == c and b == d
+        except KeyError:
+            return False
+
+    # ------------------------------------------------------------------
+    # the arming test: nothing happens for an ME that cannot be ambiguous
+    # ------------------------------------------------------------------
+    def test_groups_empty_without_flavor_grouping(self):
+        cmd, _ = self._interface(self._accept_sorted)
+        cmd._revert_merged = {}
+        self.assertEqual(cmd._density_reorder_groups('t', self.ORIG_ORDER), [])
+
+    def test_groups_empty_when_no_merged_pdg_repeats(self):
+        cmd, _ = self._interface(self._accept_sorted)
+        # q q~ > z z q q~ : 81 and -81 are different labels
+        order = ((81, -81), (23, 23, 81, -81))
+        self.assertEqual(cmd._density_reorder_groups('t', order), [])
+
+    def test_groups_for_qq_zz_qq(self):
+        cmd, _ = self._interface(self._accept_sorted)
+        self.assertEqual(sorted(cmd._density_reorder_groups('t',
+                                                            self.ORIG_ORDER)),
+                         [[0, 1], [4, 5]])
+
+    # ------------------------------------------------------------------
+    # the relabelling generator
+    # ------------------------------------------------------------------
+    def test_relabelings_leave_the_open_indices_alone(self):
+        """a group covering a leg whose helicity is an open index of rho is
+        never permuted: that would permute the rows of the density"""
+        cmd, _ = self._interface(self._accept_sorted)
+        groups = [[2, 3]]          # the two Z legs, 1-based 3 and 4
+        perms = list(cmd._density_relabelings(groups, [1, 2, 23, 23, 1, 2],
+                                              position=[3, 4]))
+        self.assertEqual(perms, [])
+
+    def test_relabelings_skip_same_flavor_swaps(self):
+        """permuting two legs of the same raw flavour cannot change what
+        GET_FLAVOR_INDEX answers, so it is not worth a fortran call"""
+        cmd, _ = self._interface(self._accept_sorted)
+        perms = list(cmd._density_relabelings([[0, 1], [4, 5]],
+                                              [2, 2, 23, 23, 2, 2],
+                                              position=[3, 4]))
+        self.assertEqual(perms, [])
+
+    def test_relabelings_for_two_flavors(self):
+        cmd, _ = self._interface(self._accept_sorted)
+        perms = list(cmd._density_relabelings([[0, 1], [4, 5]],
+                                              [1, 2, 23, 23, 2, 1],
+                                              position=[3, 4]))
+        # identity excluded, and the three others all change the pdg sequence
+        self.assertEqual(len(perms), 3)
+        seen = set(tuple([1, 2, 23, 23, 2, 1][i] for i in p) for p in perms)
+        self.assertEqual(len(seen), 3)
+        self.assertNotIn((1, 2, 23, 23, 2, 1), seen)
+
+    # ------------------------------------------------------------------
+    # end to end through get_density
+    # ------------------------------------------------------------------
+    def _get_density(self, cmd, event):
+        return cmd.get_density(event, position=[3, 4],
+                               allow_hel=[-1, -1, -1, 0, -1, 1,
+                                          0, -1, 0, 0, 0, 1,
+                                          1, -1, 1, 0, 1, 1],
+                               ncomb=9, dimension=9)
+
+    def test_ordering_that_the_table_holds_costs_one_call(self):
+        cmd, module = self._interface(self._accept_sorted)
+        event = self._FakeEvent([1, 2, 23, 23, 1, 2])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        rho = self._get_density(cmd, event)
+        self.assertEqual(len(module.calls), 1)
+        self.assertNotEqual(complex(rho.trace()), 0)
+
+    def test_swapped_final_state_is_recovered(self):
+        """`d u > z z u d`: the table holds (1,2,*,*,1,2), not (1,2,*,*,2,1)"""
+        cmd, module = self._interface(self._accept_sorted)
+        event = self._FakeEvent([1, 2, 23, 23, 2, 1])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        rho = self._get_density(cmd, event)
+        self.assertTrue(len(module.calls) > 1)
+        self.assertTrue(any(self._accept_sorted(c) for c in module.calls))
+        self.assertNotEqual(complex(rho.trace()), 0)
+
+    def test_descending_initial_state_is_recovered(self):
+        """`u d > z z u d`: needs the INITIAL pair swapped, which
+        get_all_momenta -- final state only -- can never produce"""
+        cmd, module = self._interface(self._accept_sorted)
+        event = self._FakeEvent([2, 1, 23, 23, 2, 1])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        rho = self._get_density(cmd, event)
+        self.assertTrue(any(self._accept_sorted(c) for c in module.calls))
+        self.assertNotEqual(complex(rho.trace()), 0)
+
+    def test_recovered_density_equals_the_tabulated_one(self):
+        """a relabelling is a renaming of external lines: same density"""
+        cmd, _ = self._interface(self._accept_sorted)
+        good = self._FakeEvent([1, 2, 23, 23, 1, 2])
+        good._ms_orig_order_for_density = self.ORIG_ORDER
+        bad = self._FakeEvent([2, 1, 23, 23, 1, 2])
+        bad._ms_orig_order_for_density = self.ORIG_ORDER
+        self.assertEqual(complex(self._get_density(cmd, good).trace()),
+                         complex(self._get_density(cmd, bad).trace()))
+
+    def test_the_repair_is_remembered(self):
+        """the search runs once per flavour ordering, not once per trial"""
+        cmd, module = self._interface(self._accept_sorted)
+        event = self._FakeEvent([2, 1, 23, 23, 2, 1])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        self._get_density(cmd, event)
+        first = len(module.calls)
+        self.assertTrue(first > 1)
+        self._get_density(cmd, event)
+        self.assertEqual(len(module.calls), first + 1)
+        self.assertEqual(cmd._density_reorder_fired, 1)
+
+    def test_nothing_resolves_still_returns_the_zero_density(self):
+        """an ME that genuinely has no column for this event is left exactly
+        where it was: a zero density, and the caller's own error"""
+        cmd, _ = self._interface(lambda pdgs: False)
+        event = self._FakeEvent([2, 1, 23, 23, 2, 1])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        rho = self._get_density(cmd, event)
+        self.assertEqual(complex(rho.trace()), 0)
+
+    def test_prod_and_decay_ambiguity_obeys_crash(self):
+        """the old `assert len(all_p) == 1` is replaced by the policy that
+        calculate_matrix_element already applies"""
+        cmd, _ = self._interface(self._accept_sorted, policy='crash')
+        event = self._FakeEvent([2, 1, 23, 23, 2, 1])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        event._all = [list(event.momenta),
+                      [event.momenta[i] for i in (0, 1, 3, 2, 4, 5)]]
+        self.assertRaises(Exception, self._get_density, cmd, event)
+
+    def test_prod_and_decay_ambiguity_does_not_crash_the_resolved_case(self):
+        """policy 'crash' only bites when the fallback is actually entered"""
+        cmd, _ = self._interface(self._accept_sorted, policy='crash')
+        event = self._FakeEvent([1, 2, 23, 23, 1, 2])
+        event._ms_orig_order_for_density = self.ORIG_ORDER
+        event._all = [list(event.momenta),
+                      [event.momenta[i] for i in (0, 1, 3, 2, 4, 5)]]
+        self.assertNotEqual(complex(self._get_density(cmd, event).trace()), 0)

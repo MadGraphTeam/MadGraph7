@@ -11909,25 +11909,30 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         policy = self.options['identical_particle_in_prod_and_decay']
         groups = self._density_reorder_groups(tag, orig_order)
+        # The memo below records a permutation of the slots as get_all_momenta
+        # hands them over, so it is only reusable when that base agrees with the
+        # ordering the caller started from. It does whenever get_all_momenta
+        # produced a single (identity) permutation, which is the whole of the
+        # flavour-ordering case; the check keeps a surprise from silently
+        # poisoning later events.
+        memoisable = (memo_key is not None and len(all_p) == 1)
         resolved = []                   # (array, perm or None) per all_p entry
         for k, q in enumerate(all_p):
             q_pdgs = event.get_pdg(q) if need_raw_pdg else list(pdg_template)
+            if k == 0 and list(q_pdgs) != list(pdgs):
+                memoisable = False
             trials = [(None, q, q_pdgs)]
             trials.extend((perm, [q[i] for i in perm], [q_pdgs[i] for i in perm])
                           for perm in self._density_relabelings(groups, q_pdgs,
                                                                 position))
             for perm, r, r_pdgs in trials:
-                if k == 0 and perm is None:
-                    # already evaluated by the caller
-                    arr = density_array
-                else:
-                    boosted = (r if frame_boost is None
-                               else self._boost_momenta(r, frame_boost,
-                                                        rest_leg=frame_rest_leg))
-                    arr = self._py_get_density(
-                        tag, r_pdgs,
-                        rwgt_interface.ReweightInterface.invert_momenta(boosted),
-                        position, allow_hel, event)
+                boosted = (r if frame_boost is None
+                           else self._boost_momenta(r, frame_boost,
+                                                    rest_leg=frame_rest_leg))
+                arr = self._py_get_density(
+                    tag, r_pdgs,
+                    rwgt_interface.ReweightInterface.invert_momenta(boosted),
+                    position, allow_hel, event)
                 if self._density_resolved(arr):
                     resolved.append((arr, perm))
                     break               # relabellings of one q are equivalent
@@ -11935,11 +11940,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         memo = self._density_relabel_memo   # also creates the counter
         self._density_reorder_fired += 1
         if not resolved:
-            if memo_key is not None and len(all_p) == 1:
+            if memoisable:
                 memo[memo_key] = None
             return density_array
 
-        if len(all_p) == 1 and memo_key is not None:
+        if memoisable:
             # No production/decay ambiguity: the repair is a property of the
             # flavour ordering alone and can be reused for every later event
             # and every later accept/reject trial with the same ordering.
