@@ -11866,8 +11866,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         INTER vector.  Tested on the RAW fortran array rather than on
         ``DensityMatrix.trace()`` so that a helicity restriction which
         legitimately zeroes the restricted trace (a polarisation projection with
-        no weight at this point) is not mistaken for an unresolved flavour."""
-        return bool(density_array.any())
+        no weight at this point) is not mistaken for an unresolved flavour.
+
+        Entry 0 is the (0,0) diagonal, |M|^2 for the first allowed helicity
+        combination, and it is non-zero for essentially every resolved point --
+        so testing it first turns the usual answer into one item lookup (0.04
+        us) instead of a whole-array reduction (0.47 us).  ``any()`` still has
+        the last word, so a resolved density whose first entry happens to
+        vanish is not mistaken for the sentinel."""
+        return bool(density_array.item(0)) or bool(density_array.any())
 
     @property
     def _flavor_relabel_memo(self):
