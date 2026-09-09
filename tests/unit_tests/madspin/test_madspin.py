@@ -12084,17 +12084,17 @@ class TestDensityLegReordering(unittest.TestCase):
     def test_groups_empty_without_flavor_grouping(self):
         cmd, _ = self._interface(self._accept_sorted)
         cmd._revert_merged = {}
-        self.assertEqual(cmd._density_reorder_groups('t', self.ORIG_ORDER), [])
+        self.assertEqual(cmd._merged_flavor_groups('t', self.ORIG_ORDER), [])
 
     def test_groups_empty_when_no_merged_pdg_repeats(self):
         cmd, _ = self._interface(self._accept_sorted)
         # q q~ > z z q q~ : 81 and -81 are different labels
         order = ((81, -81), (23, 23, 81, -81))
-        self.assertEqual(cmd._density_reorder_groups('t', order), [])
+        self.assertEqual(cmd._merged_flavor_groups('t', order), [])
 
     def test_groups_for_qq_zz_qq(self):
         cmd, _ = self._interface(self._accept_sorted)
-        self.assertEqual(sorted(cmd._density_reorder_groups('t',
+        self.assertEqual(sorted(cmd._merged_flavor_groups('t',
                                                             self.ORIG_ORDER)),
                          [[0, 1], [4, 5]])
 
@@ -12106,7 +12106,7 @@ class TestDensityLegReordering(unittest.TestCase):
         never permuted: that would permute the rows of the density"""
         cmd, _ = self._interface(self._accept_sorted)
         groups = [[2, 3]]          # the two Z legs, 1-based 3 and 4
-        perms = list(cmd._density_relabelings(groups, [1, 2, 23, 23, 1, 2],
+        perms = list(cmd._flavor_relabelings(groups, [1, 2, 23, 23, 1, 2],
                                               position=[3, 4]))
         self.assertEqual(perms, [])
 
@@ -12114,14 +12114,14 @@ class TestDensityLegReordering(unittest.TestCase):
         """permuting two legs of the same raw flavour cannot change what
         GET_FLAVOR_INDEX answers, so it is not worth a fortran call"""
         cmd, _ = self._interface(self._accept_sorted)
-        perms = list(cmd._density_relabelings([[0, 1], [4, 5]],
+        perms = list(cmd._flavor_relabelings([[0, 1], [4, 5]],
                                               [2, 2, 23, 23, 2, 2],
                                               position=[3, 4]))
         self.assertEqual(perms, [])
 
     def test_relabelings_for_two_flavors(self):
         cmd, _ = self._interface(self._accept_sorted)
-        perms = list(cmd._density_relabelings([[0, 1], [4, 5]],
+        perms = list(cmd._flavor_relabelings([[0, 1], [4, 5]],
                                               [1, 2, 23, 23, 2, 1],
                                               position=[3, 4]))
         # identity excluded, and the three others all change the pdg sequence
@@ -12188,7 +12188,7 @@ class TestDensityLegReordering(unittest.TestCase):
         self.assertTrue(first > 1)
         self._get_density(cmd, event)
         self.assertEqual(len(module.calls), first + 1)
-        self.assertEqual(cmd._density_reorder_fired, 1)
+        self.assertEqual(cmd._flavor_reorder_fired, 1)
 
     def test_nothing_resolves_still_returns_the_zero_density(self):
         """an ME that genuinely has no column for this event is left exactly
@@ -12217,3 +12217,82 @@ class TestDensityLegReordering(unittest.TestCase):
         event._all = [list(event.momenta),
                       [event.momenta[i] for i in (0, 1, 3, 2, 4, 5)]]
         self.assertNotEqual(complex(self._get_density(cmd, event).trace()), 0)
+
+
+class TestMatrixElementLegReordering(unittest.TestCase):
+    """``calculate_matrix_element`` reaches GET_FLAVOR_INDEX through
+    ``smatrixhel`` and has exactly the hole ``get_density`` has: a leg ordering
+    FLAV_TABLE does not tabulate comes back as |M|^2 = 0.
+
+    That zero is not harmless -- it is the *denominator* of the density modes'
+    accept/reject weight, so on a `p p > z z j [QCD]` sample it turned the
+    maximum-weight scan into 'no usable bound' even once the density itself was
+    repaired. ``get_all_momenta`` cannot fix it either: it permutes final-state
+    legs only, and only ones with different mothers.
+    """
+
+    MERGED = {81: [1, 2, 3, 4]}
+    GROUP_POS = {1: 1, 2: 2, 3: 3, 4: 4}
+    ORIG_ORDER = ((81, 81), (23, 23, 81, 81))
+
+    def _accept_sorted(self, pdgs):
+        a, b, z1, z2, c, d = pdgs
+        if (z1, z2) != (23, 23):
+            return False
+        pos = self.GROUP_POS
+        try:
+            return (pos[a] <= pos[b]) and a == c and b == d
+        except KeyError:
+            return False
+
+    def _interface(self, pdgs):
+        cmd = object.__new__(interface_madspin.MadSpinInterface)
+        cmd._revert_merged = {}
+        for merged, members in self.MERGED.items():
+            for pdg in members:
+                cmd._revert_merged[pdg] = merged
+                cmd._revert_merged[-pdg] = -merged
+        cmd.model = {'merged_particles': self.MERGED}
+        cmd.options = {'identical_particle_in_prod_and_decay': 'average'}
+        cmd.all_me = {('tag',): {'order': self.ORIG_ORDER, 'pdir': 'P',
+                                 'type': 'production'}}
+        calls = []
+
+        def smatrixhel(pdgs_for_call, p, alphas, scale, flag=None):
+            calls.append(tuple(pdgs_for_call))
+            return 42.0 if self._accept_sorted(tuple(pdgs_for_call)) else 0.0
+        cmd.all_f2py = {'P': smatrixhel}
+        class _Ev(TestDensityLegReordering._FakeEvent):
+            # calculate_matrix_element peeks at event[0].color1
+            def __getitem__(self, i):
+                return type('P', (), {'color1': 0})()
+
+            def get_tag_and_order(self, merged_particle=None):
+                return (('tag',), None)
+        return cmd, _Ev(pdgs), calls
+
+    def test_tabulated_ordering_is_unchanged(self):
+        cmd, event, calls = self._interface([1, 2, 23, 23, 1, 2])
+        self.assertEqual(cmd.calculate_matrix_element(event), 42.0)
+        self.assertEqual(len(calls), 1)
+
+    def test_untabulated_ordering_is_repaired(self):
+        for pdgs in ([1, 2, 23, 23, 2, 1],      # final pair swapped
+                     [2, 1, 23, 23, 2, 1],      # initial pair swapped
+                     [2, 1, 23, 23, 1, 2]):
+            cmd, event, calls = self._interface(pdgs)
+            self.assertEqual(cmd.calculate_matrix_element(event), 42.0,
+                             'ordering %s not repaired' % (pdgs,))
+            self.assertTrue(any(self._accept_sorted(c) for c in calls))
+
+    def test_repair_is_remembered(self):
+        cmd, event, calls = self._interface([2, 1, 23, 23, 1, 2])
+        cmd.calculate_matrix_element(event)
+        first = len(calls)
+        cmd.calculate_matrix_element(event)
+        self.assertEqual(len(calls), first + 1)
+
+    def test_a_genuinely_vanishing_me_stays_zero(self):
+        cmd, event, _ = self._interface([1, 2, 23, 23, 1, 2])
+        cmd.all_f2py = {'P': lambda *a, **k: 0.0}
+        self.assertEqual(cmd.calculate_matrix_element(event), 0)
