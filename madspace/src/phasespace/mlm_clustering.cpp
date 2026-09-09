@@ -363,6 +363,7 @@ MLMClustering::MLMClustering(
     double cm_energy,
     JetScaleScheme jet_scale_scheme,
     std::unordered_map<int, int> pdg_color_types,
+    double xqcut,
     double bw_cutoff,
     double jet_radius,
     bool hadronic,
@@ -378,10 +379,12 @@ MLMClustering::MLMClustering(
          {"fact_scale2", batch_float},
          {"outgoing_scales",
           batch_float_array(topologies.at(0).outgoing_masses().size())},
-         {"diagram_index", batch_int}}
+         {"diagram_index", batch_int},
+         {"xqcut_weight", batch_float}}
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
+    _xqcut(xqcut),
     _bw_cutoff(bw_cutoff),
     _jet_radius(jet_radius),
     _hadronic(hadronic) {
@@ -605,7 +608,7 @@ MLMClustering::MLMClustering(
 NamedVector<Value> MLMClustering::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    std::array<Value, 5> mlm_out;
+    std::array<Value, 6> mlm_out;
     Value random = fb.squeeze(fb.random(fb.batch_size(args.values()), 1));
     if (_hadronic) {
         mlm_out = fb.mlm_clustering_hadronic(
@@ -618,7 +621,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_cutoff,
             _jet_radius,
             _cm_energy,
-            static_cast<me_int_t>(_jet_scale_scheme)
+            static_cast<me_int_t>(_jet_scale_scheme),
+            _xqcut
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -631,7 +635,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             _bw_cutoff,
             _jet_radius,
             _cm_energy,
-            static_cast<me_int_t>(_jet_scale_scheme)
+            static_cast<me_int_t>(_jet_scale_scheme),
+            _xqcut
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

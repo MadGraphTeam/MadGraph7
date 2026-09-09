@@ -6593,6 +6593,11 @@ class RunCardMG7(RunCard):
                     "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        # Generation-level merging cut, the counterpart of xqcut in the legacy
+        # run_card: a matrix-element jet emission below this scale is left to
+        # the parton shower, so the event is dropped. Only used with
+        # dynamical_scale_choice = "mlm"; 0 disables it.
+        self.add_toml_param('phasespace', 'xqcut', 0.0)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------

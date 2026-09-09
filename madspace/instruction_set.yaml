@@ -2223,6 +2223,9 @@ mlm_clustering_hadronic:
     - name: jet_scale_scheme
       type: [int, single]
       desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2238,6 +2241,9 @@ mlm_clustering_hadronic:
       desc:
     - name: diagram_index
       type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
       desc:
   vectorized: False
 
@@ -2273,6 +2279,9 @@ mlm_clustering_leptonic:
     - name: jet_scale_scheme
       type: [int, single]
       desc:
+    - name: xqcut
+      type: [float, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2288,6 +2297,9 @@ mlm_clustering_leptonic:
       desc:
     - name: diagram_index
       type: [int]
+      desc:
+    - name: xqcut_weight
+      type: [float]
       desc:
   vectorized: False
 

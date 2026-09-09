@@ -570,6 +570,14 @@ NamedVector<Value> Integrand::build_channel_part(
         weights_after_cuts.push_back(mirror_det);
     }
 
+    if (_energy_scale && _energy_scale->is_mlm()) {
+        // The merging cut comes out of the clustering, which only runs for
+        // events that already passed the phase-space cuts, so it enters as a
+        // factor on the weight rather than as one of the cuts themselves. An
+        // event below xqcut ends up with weight zero and is never unweighted.
+        weights_after_cuts.push_back(scales.at("xqcut_weight"));
+    }
+
     Value weight_after_cuts = weights_after_cuts.empty()
         ? fb.full({1., batch_size_acc})
         : fb.product(weights_after_cuts);

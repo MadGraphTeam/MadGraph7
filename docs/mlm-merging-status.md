@@ -141,6 +141,36 @@ comparison against the validated madevent MLM disagree.
 
 * **No Sudakov reweighting**, which is the other half of what the NLO code does.
 
+## The generation-level merging cut: `phasespace.xqcut`
+
+MLM merging needs the matrix element to stop describing radiation the shower is
+meant to produce, which madevent enforces with `xqcut`. madspace had no
+equivalent, so its samples reached down to whatever the jet cuts allowed and
+Pythia's matching veto had to throw the difference away.
+
+The rule is madevent's, from the "Check xqcut for vertices with jet daughters
+only" block of `Template/LO/SubProcesses/reweight.f`: walking the clustering
+history that was just selected, any step whose daughter is still a bare
+final-state jet has to be at or above `xqcut`, or the event is dropped. The
+test does not ask whether the vertex was a QCD one, and it reuses the same
+"still a bare external leg" bookkeeping the emission scheme already needs.
+
+The clustering only runs for events that already passed the phase-space cuts,
+so the veto comes back as a weight (1 or 0) that multiplies the event weight,
+rather than as one of the cuts. An event below `xqcut` ends up at weight zero
+and is never unweighted.
+
+`p p > t t~` + `t t~ j` at 13 TeV, everything else held fixed:
+
+| `xqcut` | cross section (pb) |
+|--------:|-------------------:|
+|       0 |          1462 ± 20 |
+|      30 |          1181 ± 17 |
+|      60 |           815 ± 13 |
+
+It is off by default (`xqcut = 0`), so turning it on is the only thing that can
+change an existing result.
+
 ## Validating the merging
 
 Differential jet rates reconstructed from a showered event record are what say

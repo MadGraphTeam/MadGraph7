@@ -85,6 +85,10 @@ combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+# minimum kt separation required of a matrix-element jet emission, the
+# counterpart of xqcut in the legacy run_card (0 disables it; only used
+# with dynamical_scale_choice = "mlm")
+xqcut = %(phasespace.xqcut)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]

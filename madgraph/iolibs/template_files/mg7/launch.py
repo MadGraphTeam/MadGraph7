@@ -1367,6 +1367,7 @@ class MadgraphSubprocess:
                         int(key): value
                         for key, value in self.meta["pdg_color_types"].items()
                     },
+                    xqcut=self.process.run_card["phasespace"]["xqcut"],
                     bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
                     jet_radius=self.process.run_card["beam"]["jet_radius"],
                     hadronic=not self.process.leptonic,
