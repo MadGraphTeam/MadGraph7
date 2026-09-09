@@ -53,11 +53,18 @@ stand for.
      solution='generate p p > t t~'),
 
 Step('generate', """
-Note the line MG5 printed back: it added `QED=0` on its own.
+Read the lines MG5 printed back:
 
-When you give no coupling orders, MG5 picks the combination with the most QCD
-vertices, because that is almost always the dominant one. That is a *guess*,
-and it is the first thing to make explicit when your result surprises you.
+  Checking for minimal orders which gives processes.
+  Please specify coupling orders to bypass this step.
+  Trying coupling order WEIGHTED<=2: WEIGTHED IS QCD+2*QED
+
+With no coupling orders given, MG5 does not guess `QED=0`. It searches: it
+counts `WEIGHTED = QCD + 2*QED` and takes the lowest value that produces any
+diagram at all. For `p p > t t~` that lands on the QCD diagrams -- which is
+almost always what you wanted -- but it is a search, not a statement of
+physics, and it is the first thing to make explicit when a result surprises
+you.
 
 Coupling orders are constraints on the *amplitude*:
   QED=0    at most 0 QED vertices     ('=' means '<=' -- this trips people up)

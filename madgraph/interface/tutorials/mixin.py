@@ -36,6 +36,8 @@ from __future__ import absolute_import
 
 import logging
 
+from madgraph.interface.tutorials.session import Exercise
+
 logger_tuto = logging.getLogger('tutorial')
 logger = logging.getLogger('madgraph')
 
@@ -83,9 +85,39 @@ class TutorialMixin(object):
         index, step = found
         if step.setup:
             step.setup(self)
+
+        if isinstance(step, Exercise):
+            passed, message = step.evaluate(self, line)
+            if not passed:
+                # never blocks and never advances: the command has already run,
+                # so the user can simply try again
+                emit(message)
+                return stop
+            session.advance(index)
+            emit(self._tutorial_join(message, session))
+            return stop
+
         session.advance(index)
         emit(step.render(self))
         return stop
+
+    def _tutorial_join(self, message, session):
+        """A passed exercise's verdict, followed by whatever comes next.
+
+        An exercise is triggered by the user's answer, so the *next* question
+        has to be printed here rather than waiting for a command that would
+        trigger it.
+        """
+
+        following = session.next_step
+        if following is None:
+            return '%s\n\nThat was the last one.' % message
+        if isinstance(following, Exercise):
+            return '%s\n\n%s' % (message, following.question)
+        # a plain step after the exercises: the closing text.  Nothing will
+        # ever trigger it, so show it now and mark the tutorial finished.
+        session.advance(session.index + 1)
+        return '%s\n%s' % (message, following.render(self))
 
     # -- tutorial-only commands ----------------------------------------------
     #

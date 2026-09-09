@@ -414,22 +414,30 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
         intro jumps past `install madspace` when madspace is already there --
         so it cannot use the strict rule above."""
 
+        from madgraph.interface.tutorials.session import Exercise
+
         for tutorial in tutorials.all_tutorials(include_hidden=True):
             if tutorial.order != 'sequence':
                 continue
             session = TutorialSession(tutorial)
             for index, step in enumerate(tutorial.steps[:-1]):
+                if isinstance(tutorial.steps[index + 1], Exercise):
+                    # an exercise is triggered by its own answer, so the step
+                    # before it only has to reach it; the exercise itself is
+                    # covered by TestExercises
+                    pass
                 self.assertTrue(
                     step.solution,
                     '%s step %d (%s) asks for no command'
                     % (tutorial.name, index, step.title))
-                session.index = index
+                session.index = index - 1 if isinstance(step, Exercise) else index
                 found = session.step_for(step.solution)
                 self.assertIsNotNone(
                     found, '%s step %d (%s) asks for %r, which triggers nothing'
                     % (tutorial.name, index, step.title, step.solution))
-                self.assertGreater(
-                    found[0], index,
+                expected = index if isinstance(step, Exercise) else index + 1
+                self.assertGreaterEqual(
+                    found[0], expected,
                     '%s step %d (%s) asks for %r, which does not move forward'
                     % (tutorial.name, index, step.title, step.solution))
 
@@ -562,3 +570,105 @@ class TestTutorialCommand(unittest.TestCase):
         interface = _BareMadGraphCmd()
         self.assertRaises(madgraph.InvalidCmd,
                           interface.check_tutorial, ['lo', 'syntax'])
+
+
+#===============================================================================
+# exercises: every solution passes, every diagnosis fires
+#===============================================================================
+
+class TestExercises(unittest.TestCase):
+    """Drive the exercises through a real interface.
+
+    This is the point of the exercise design: an exercise that stops working --
+    because the syntax moved, or a check got too strict -- fails here rather
+    than in front of a user.
+    """
+
+    def setUp(self):
+        # a fresh interface per test: the NLO exercise switches the interface
+        # to aMC@NLO and leaves _fks_multi_proc set, which a shared instance
+        # would carry into the next test
+        import madgraph.interface.master_interface as master
+        self.interface = master.MasterCmd()
+        self.interface.exec_cmd('import model sm', printcmd=False)
+
+    def run_line(self, line):
+        """Run a command and hand back the interface it left behind."""
+
+        self.interface.exec_cmd(line, printcmd=False, precmd=True)
+        return self.interface
+
+    def exercises(self):
+        from madgraph.interface.tutorials.session import Exercise
+        return [step for step in tutorials.get('exercises').steps
+                if isinstance(step, Exercise)]
+
+    def test_every_solution_passes_its_own_check(self):
+        for exercise in self.exercises():
+            interface = self.run_line(exercise.solution)
+            passed, message = exercise.evaluate(interface, exercise.solution)
+            self.assertTrue(passed,
+                            'exercise %r rejects its own solution %r: %s'
+                            % (exercise.title, exercise.solution, message))
+
+    def test_every_exercise_has_a_hint_and_a_solution(self):
+        for exercise in self.exercises():
+            self.assertTrue(exercise.hint,
+                            'exercise %r has no hint' % exercise.title)
+            self.assertTrue(exercise.solution,
+                            'exercise %r has no solution' % exercise.title)
+
+    def test_the_named_mistakes_are_reachable(self):
+        """Feed each exercise the wrong answer it names, and check the right
+        diagnosis comes back.
+
+        A mistake entry that can no longer be triggered means the syntax moved
+        under us, and this says so.
+        """
+
+        # (exercise title, the wrong command, a phrase the diagnosis must carry)
+        wrong_answers = [
+            ('letting the EW diagrams in', 'generate p p > t t~ QED=0',
+             'goes the wrong way'),
+            ('interference only', 'generate p p > j j QED=2 QCD=2',
+             'constrains the *amplitude*'),
+            ('interference only', 'generate p p > j j QCD^2=2 QED^2=2',
+             'a bare `=` means `<=`'),
+            ('decay chains', 'generate p p > t t~ > w+ b w- b~',
+             'The separator is a **comma**'),
+            ('forbidding a particle', 'generate p p > e+ e- $ a',
+             'To forbid the photon *anywhere*'),
+            ('excluding a resonance', 'generate p p > e+ e- / z',
+             'forbids the Z everywhere'),
+            ('going to NLO', 'generate p p > t t~',
+             'still a leading-order process'),
+        ]
+        by_title = dict((exercise.title, exercise)
+                        for exercise in self.exercises())
+
+        for title, wrong, expected in wrong_answers:
+            exercise = by_title[title]
+            interface = self.run_line(wrong)
+            passed, message = exercise.evaluate(interface, wrong)
+            self.assertFalse(
+                passed, 'exercise %r accepted the wrong answer %r'
+                % (title, wrong))
+            self.assertIn(
+                expected, message,
+                'exercise %r did not diagnose %r -- it said:\n%s'
+                % (title, wrong, message))
+
+    def test_the_fallback_says_what_the_command_produced(self):
+        """An unanticipated wrong answer still gets told what it did."""
+
+        by_title = dict((exercise.title, exercise)
+                        for exercise in self.exercises())
+        # a 2 -> 2 process that is not t t~: neither named mistake matches
+        # (`p p > z` would, since it is not 2 -> 2), so this reaches the
+        # fallback, which is what needs to be readable
+        exercise = by_title['top pair production']
+        interface = self.run_line('generate p p > z z')
+        passed, message = exercise.evaluate(interface, 'generate p p > z z')
+        self.assertFalse(passed)
+        self.assertIn('What your command produced', message)
+        self.assertIn('diagrams', message)

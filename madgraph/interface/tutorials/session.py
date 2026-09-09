@@ -80,6 +80,135 @@ class Step(object):
         return '<Step %s>' % (self.title or self.key)
 
 
+class Exercise(Step):
+    """A step that asks the user to do something and checks whether they did.
+
+    question  what the user is asked to do.  Printed when the exercise becomes
+              current, which is when the *previous* step is completed.
+    check     callable(interface, line) -> True to pass, False to fail, or a
+              string to fail with that message.  It must inspect the state the
+              command produced -- interface._curr_amps and friends -- never the
+              text of the line: `p p > t t~ QED=0` and `p p > t t~ QCD=2 QED=0`
+              are both right, and string matching would fail whoever typed the
+              second one.
+    mistakes  [(predicate(interface, line), explanation)], tried in order when
+              the check fails.  These are the wrong answers worth naming; each
+              one is a teaching moment.
+    report    optional callable(interface) -> str appended to the pass message,
+              for saying what the user's command actually produced.
+
+    A failed attempt never blocks and never advances: the command has already
+    run, the user sees what it did, and they can try again, ask for a `hint`,
+    or `skip`.
+    """
+
+    def __init__(self, key, question, check, mistakes=(), hint=None,
+                 solution=None, title=None, praise=None, report=None):
+        Step.__init__(self, key, question, hint=hint, solution=solution,
+                      title=title)
+        self.question = question
+        self.check = check
+        self.mistakes = list(mistakes)
+        self.praise = praise
+        self.report = report
+
+    def evaluate(self, interface, line):
+        """Mark an attempt.  Returns (passed, message)."""
+
+        try:
+            verdict = self.check(interface, line)
+        except Exception as error:
+            return False, ("That command did not leave anything to check "
+                           "(%s). Try again, or `skip`." % error)
+
+        if verdict is True:
+            message = self.praise or 'That is it.'
+            if self.report:
+                try:
+                    message = '%s\n\n%s' % (message, self.report(interface))
+                except Exception:
+                    pass
+            return True, message
+
+        if isinstance(verdict, str):
+            return False, verdict
+
+        for predicate, explanation in self.mistakes:
+            try:
+                if predicate(interface, line):
+                    return False, explanation
+            except Exception:
+                continue
+        return False, self.fallback(interface, line)
+
+    def fallback(self, interface, line):
+        """What an answer we did not anticipate gets told.
+
+        This has to be good: it is the only thing standing between an unusual
+        wrong answer and a bare "no".
+        """
+
+        return ('Not quite -- and not a mistake this exercise knows by name.\n'
+                '\nWhat was asked:\n  %s\n'
+                '\nWhat your command produced:\n%s\n'
+                '\nTry again, or `hint`, or `solution` to see one right '
+                'answer, or `skip`.'
+                % (self.solution or self.title or 'see the question above',
+                   describe_state(interface)))
+
+
+def describe_state(interface, indent='  '):
+    """A short readable summary of what the interface currently holds.
+
+    Used by Exercise.fallback, so an unanticipated answer still gets told what
+    it actually did rather than just that it was wrong.
+    """
+
+    amps = getattr(interface, '_curr_amps', None)
+    if not amps:
+        return indent + 'no process is defined'
+
+    lines = []
+    for amp in amps[:4]:
+        try:
+            process = core_process(amp)
+            bits = [process.base_string()]
+            orders = dict(process.get('orders'))
+            squared = dict(process.get('squared_orders'))
+            if orders:
+                bits.append('orders %s' % _fmt_orders(orders))
+            if squared:
+                types = dict(process.get('sqorders_types'))
+                bits.append('squared orders %s'
+                            % _fmt_orders(squared, types))
+            bits.append('%d diagrams' % amp.get_number_of_diagrams())
+            lines.append(indent + ', '.join(bits))
+        except Exception:
+            continue
+    if len(amps) > 4:
+        lines.append(indent + '... and %d more' % (len(amps) - 4))
+    return '\n'.join(lines) or (indent + 'nothing that could be summarised')
+
+
+def _fmt_orders(orders, types=None):
+    types = types or {}
+    return ' '.join('%s%s%s' % (name, types.get(name, '='), value)
+                    for name, value in sorted(orders.items()))
+
+
+def core_process(amplitude):
+    """The production process of an amplitude, decay chain or not.
+
+    A DecayChainAmplitude has no 'process' of its own -- asking for one raises
+    KeyError -- so the core process has to be dug out of its first amplitude.
+    """
+
+    try:
+        return amplitude.get('process')
+    except Exception:
+        return amplitude.get('amplitudes')[0].get('process')
+
+
 class Tutorial(object):
     """An ordered list of steps, addressable by name.
 
