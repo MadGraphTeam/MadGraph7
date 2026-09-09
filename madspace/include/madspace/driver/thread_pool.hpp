@@ -2,6 +2,7 @@
 
 #include <condition_variable>
 #include <deque>
+#include <exception>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -34,6 +35,9 @@ private:
 
     void thread_loop(std::size_t index);
     bool fill_done_cache();
+    // Called with *lock* held and _exception set: cancels the queue, waits for
+    // the running jobs and rethrows on the caller's thread.
+    [[noreturn]] void rethrow_job_exception(std::unique_lock<std::mutex>& lock);
 
     std::mutex _mutex;
     std::condition_variable _cv_run, _cv_done;
@@ -43,6 +47,10 @@ private:
     std::deque<std::size_t> _done_queue;
     std::vector<std::size_t> _done_buffer;
     std::size_t _busy_threads = 0;
+    // The first exception thrown by a job, rethrown by wait()/wait_multiple().
+    // Without it an exception escaping a job would leave std::thread with no
+    // handler, i.e. terminate the process.
+    std::exception_ptr _exception;
     std::size_t _listener_id = 0;
     std::unordered_map<std::size_t, std::function<void(std::size_t)>> _listeners;
 };

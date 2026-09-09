@@ -518,6 +518,13 @@ class MadgraphProcess:
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
 
+        # built lazily by build_systematics (needs the subprocess data)
+        self.systematics = None
+        self.systematics_data = None
+        self.systematics_context = None
+        self.event_histograms = None
+        self.event_histograms_context = None
+
         if self.is_decay:
             # No beams: the total energy is the decaying particle's mass, and
             # "leptonic" is what the mappings call "no parton luminosity".
@@ -576,12 +583,6 @@ class MadgraphProcess:
             self.pdf_grid.initialize_globals(context)
             self.alphas_grid.initialize_globals(context)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
-        # built lazily by build_systematics (needs the subprocess data)
-        self.systematics = None
-        self.systematics_data = None
-        self.systematics_context = None
-        self.event_histograms = None
-        self.event_histograms_context = None
 
     # ------------------------------------------------------------------
     # scale / PDF systematics
@@ -740,13 +741,22 @@ class MadgraphProcess:
         config.dyn_scales = self.resolve_dynamical_scales()
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
-        info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
-        info = self.pdf_set_info(info_path)
-        config.nominal_set_name = self.pdf_set
-        config.nominal_lhaid = info["SetIndex"]
-        config.nominal_error_type = info["ErrorType"]
-        config.nominal_description = info["SetDesc"]
-        config.pdf_members = self.resolve_pdf_variations() if not self.leptonic else []
+        # Without parton luminosity -- a decay, or leptonic beams -- there is no
+        # nominal PDF set to describe: init_beam() returns before self.pdf_set
+        # is assigned and leaves self.pdf_dir None, so this has to be skipped
+        # rather than just left unused. Only the scale variations remain, and
+        # SystematicsCalculator asks for a nominal PDF grid only when has_pdf.
+        info_path = None
+        if config.has_pdf:
+            info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
+            info = self.pdf_set_info(info_path)
+            config.nominal_set_name = self.pdf_set
+            config.nominal_lhaid = info["SetIndex"]
+            config.nominal_error_type = info["ErrorType"]
+            config.nominal_description = info["SetDesc"]
+            config.pdf_members = self.resolve_pdf_variations()
+        else:
+            config.pdf_members = []
         args = self.build_systematics_args()
         # the PDFs, alpha_s and (for mixed-order subprocesses) the matrix
         # elements are evaluated with the batched madspace functions on this
@@ -762,7 +772,9 @@ class MadgraphProcess:
         self.systematics_data = {
             "config": json.loads(config.to_json()),
             "subproc_args": [json.loads(a.to_json()) for a in args],
-            "nominal_grid_file": os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat"),
+            "nominal_grid_file": os.path.join(
+                self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat")
+                if config.has_pdf else None,
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
@@ -941,6 +953,22 @@ class MadgraphProcess:
         )
         return path
 
+    def needs_systematics_matrix_elements(self) -> bool:
+        """The systematics will re-evaluate a matrix element per scale point.
+
+        True when the native weights are on and some subprocess mixes alpha_s
+        powers (qcd_power < 0), i.e. when build_systematics_matrix_elements()
+        loads a matrix element. Conservative: it does not check that a CPU
+        backend exists, so it can be True where that call ends up loading
+        nothing.
+        """
+        if not self.systematics_enabled():
+            return False
+        if self.run_card["run"]["dummy_matrix_element"]:
+            return False
+        return any(int(meta.get("qcd_power", -1)) < 0
+                   for meta in self.subprocess_data)
+
     def init_generator_config(self) -> None:
         run_args = self.run_card["run"]
         gen_args = self.run_card["generation"]
@@ -961,6 +989,21 @@ class MadgraphProcess:
         cfg.gpu_batch_size = gen_args["gpu_batch_size"]
         cfg.verbosity = resolve_verbosity(run_args["verbosity"])
         cfg.combine_thread_count = run_args["combine_thread_pool_size"]
+        if self.needs_systematics_matrix_elements() and cfg.combine_thread_count != 1:
+            # SystematicsCalculator::compute() runs inside the combine workers,
+            # and a matrix element's per-thread process instances live in a
+            # ThreadResource indexed by ThreadPool::thread_index() -- the
+            # *calling* thread's index. A parallel combine pool would therefore
+            # need one process instance per worker; building N of them to index
+            # them safely is not worth it, the more so as
+            # SystematicsCalculator::matrix_elements() already serialises every
+            # evaluation on its own mutex, so that parallelism was not being
+            # used anyway. Run the combine stage single-threaded instead.
+            logger.info(
+                "systematics: the combine stage runs single-threaded because a "
+                "subprocess needs its matrix element re-evaluated for the "
+                "renormalisation scale variations")
+            cfg.combine_thread_count = 1
         cfg.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
         cfg.max_cut_repetitions = gen_args["max_cut_repetitions"]
         self.event_generator_config = cfg
