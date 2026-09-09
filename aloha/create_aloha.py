@@ -26,7 +26,6 @@ import re
 import shutil
 import sys
 import time
-from madgraph.interface.tutorial_text import output
 
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(root_path)
