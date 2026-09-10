@@ -245,11 +245,11 @@ Now run it:
 
 It asks one question before it starts -- which programs to run and which cards
 to edit. **Just press Enter**: the defaults are a reasonable LHC run, and we
-will go through what the question was offering once you are back.
+will go through what the question was offering once you are back. (The tutorial
+is still with you at that prompt, so `help` works there too.)
 
 Then it runs. If madspace was not built earlier this is where it gets built, so
-the first run takes longer than the ones after it. `launch` hands over to a
-separate program, so the tutorial goes quiet until it returns.
+the first run takes longer than the ones after it.
 
 (To stop a long run and carry on with the tutorial, press Ctrl-C.)
 """ % {'p': P, 'run': output_name(interface, RUN)},

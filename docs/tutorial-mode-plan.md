@@ -214,37 +214,31 @@ logger, this needs no `.mg5_logging.conf` change — but it does mean the M0
 "identical output" regression diff will show the added frame on `nlo` and
 `madloop`. Land the unification as its own commit so that diff stays readable.
 
-### 2.8 What happens at `launch` — two different boundaries
+### 2.8 What happens at `launch`
 
-`launch` does **not** behave the same way for the two outputs, and the tutorials
-have to be designed around the difference. This is worth stating up front
-because it constrains `lo`, which is now the madspace one.
+*Rewritten after PR #131.* This section used to describe two different
+boundaries, because `launch` on an mg7 output shelled out to
+`bin/generate_events` while a madevent output got an in-process child. That
+split is gone: both now hand control to a child cmd interface via
+`define_child_cmd_interface` (`extended_cmd.py`), in MG5's own process.
 
-* **madevent output, `--interactive`**: hands control to a child cmd interface
-  via `define_child_cmd_interface` (`extended_cmd.py:1061`) — a
-  `MadEventCmd` in the same process. Its `postcmd`
-  (`madevent_interface.py:221`) has no tutorial hook today, but adding one is
-  straightforward: propagate `self.tutorial` to the child and wrap the child
-  class the same way §2.2 wraps `self.cmd`.
-* **mg7 output**: `launch` spawns `bin/generate_events` as a **subprocess**
-  (`madgraph_interface.py:8037`). There is no child cmd object, no `postcmd`,
-  no shared logger. `MG7RunCmd` lives inside that other process. The tutorial
-  mixin simply cannot follow the user in, and resumes only when the subprocess
-  exits.
+What that means for tutorials:
 
-Consequences:
+* The tutorial logger reaches the card question. The
+  "Need help here? type 'help'" block that `extended_cmd.py:2295` emits at any
+  question now appears for an mg7 `launch` exactly as it always did for NLO —
+  verified by driving `tutorial lo` to the question under a pty.
+* The `MG_TUTORIAL=lo:5` environment-variable handoff this section used to
+  propose is unnecessary. There is no process to hand anything to.
+* M7 — following a tutorial *into* the run, so a step can react to what the
+  user does at the card question — is now a matter of propagating the session
+  to the child interface, which is ordinary work rather than a boundary
+  problem. It is still not done.
 
-1. `lo` step 4 must **pre-announce** the card questions before calling `launch`
-   and pick the thread back up afterwards. That is a content constraint, not a
-   limitation to engineer around, and it should be written that way.
-2. The child-interface hook is worth building, but it buys `madevent`, `run`
-   and `decays` — **not** `lo` or `mg7`. It is no longer a prerequisite for the
-   front-door tutorial.
-3. If we later want a tutorial that really does teach inside an mg7 run, the
-   mechanism is an environment variable (say `MG_TUTORIAL=mg7:4`) forwarded
-   into the `bin/generate_events` subprocess, which `MG7RunCmd` reads to resume
-   the same tutorial on the other side. Worth recording as the known path;
-   not worth building yet.
+The one thing that has not changed is the pedagogy: `lo` explains the question
+*after* the user has answered it, because before the fact it is a wall of text
+about a screen they have not seen. That was originally a workaround for the
+boundary and turned out to be the better shape anyway.
 
 ### 2.9 Exercise mode: ask, check, and diagnose the mistake
 
@@ -384,11 +378,11 @@ Target: seven steps.
    `tutorial standalone` if you want the matrix element rather than events;
    `tutorial model` / `tutorial bsm` if the physics you want isn't in the
    default SM.
-4. **`launch MY_FIRST_LO_RUN`** — this spawns `bin/generate_events` as a
-   **subprocess** (`madgraph_interface.py:8037`), so the tutorial cannot follow
-   the user inside. It must therefore *pre-announce* what is about to appear —
-   the card questions, what to change on a first run (nothing), and how to get
-   back — and pick up again when the subprocess exits. See §2.8.
+4. **`launch %(run)s`** — since PR #131 this runs in MG5's own process, so
+   the tutorial stays with the user throughout and `help` works at the card
+   question. The step still says only "press Enter" up front and explains what
+   the question held afterwards: before the fact it is a wall of text about a
+   screen the reader has not seen. See §2.8.
    *Signposts:* `tutorial mg7` for tuning the integrator and turning on MadNIS;
    `tutorial run` for cuts, scales, PDFs, systematics and showering;
    `tutorial decays` for MadSpin.
@@ -507,15 +501,14 @@ saying so, and assume an mg7 output directory already exists.
    time, VEGAS vs MadNIS vs MadEvent on the same process.
 8. `gridpack.py`; `[postprocessing]`; and `RunCardLO_to_MG7_mapping.md` as the
    translation table for users arriving from a LO run card.
-9. Rough edges the tutorial should say out loud rather than let users discover:
-   `set iseed` is inert for `output mg7`, and the default PDF choice.
+9. The rough edge the tutorial should say out loud rather than let users
+   discover: the default PDF choice. (`set iseed` being inert for `output mg7`
+   was the other one; PR #131 fixed it.)
 
 ### 3.3b `madevent` — the MG5-compatible path  *(new)*
 
 For everyone with existing MG5 workflows, and for the features that have not
-moved to MG7 yet. This is also the tutorial where the child-interface hook
-(§2.8) actually pays off, since `launch --interactive` on a madevent output
-*does* enter a child cmd interface rather than a subprocess.
+moved to MG7 yet.
 
 1. `output madevent MY_MADEVENT_RUN` — and why you would ask for it explicitly
    now that `mg7` is the default.
@@ -699,9 +692,9 @@ fails. A first set, deliberately ordered so each one has exactly one new idea:
 
    *Practical constraint.* This is the only exercise that requires two full
    runs, so keep it to four or five scan points at low statistics and state the
-   expected wall time up front. It is also easier to instrument on the
-   `madevent` path than the mg7 one, because the mg7 scan runs behind the
-   subprocess boundary of §2.8 — worth deciding when it gets written.
+   expected wall time up front. (Before PR #131 it was also easier to
+   instrument on the `madevent` path, because the mg7 scan ran behind a process
+   boundary; both now run in process, so that no longer decides it.)
 
 Later sets can follow the same shape for `model` / `bsm` (import a model,
 restrict it, validate it with `check`) and for `mg7` (turn on MadNIS and beat
@@ -772,10 +765,10 @@ the user types it.
 **M3 — `syntax`. [DONE]** The engine's real acceptance test: repeated `generate`
 steps and a step that crosses the LO->NLO interface switch.
 
-**M3b — rewrite `lo` on madspace. [DONE]** Seven steps, the `install madspace`
-prerequisite step with detect-and-skip, the pre-announce treatment of the
-`launch` subprocess boundary (§2.8), signposts, the `MG5_aMC>` -> live-prompt
-fix, and the relocation table from §3.1 honoured. Lands after `syntax` so its
+**M3b — rewrite `lo` on madspace. [DONE]** Seven steps (eight with the optional
+detour), the `install madspace` prerequisite step with detect-and-skip, the
+card question explained after the user has answered it (§2.8), signposts, the
+`MG5_aMC>` -> live-prompt fix, and the relocation table from §3.1 honoured. Lands after `syntax` so its
 first signpost points somewhere real; each later tutorial adds its own signpost
 to `lo` as it lands, which keeps `lo` the front door rather than a dead end.
 
@@ -793,9 +786,11 @@ add a runnable example script under the tutorial package.
 boundary rather than through it.
 
 **M7 — child-interface propagation [NOT DONE]**, which would let a tutorial
-teach inside an interactive `MadEventCmd`. `decays` was written without it
-(the MadSpin card is described rather than edited under guidance) and `run`
-still wants it.
+teach inside the run rather than around it. Since PR #131 both madevent and
+mg7 outputs hand control to an in-process child cmd interface, so this is now
+a matter of propagating the session to that child — ordinary work, not a
+boundary problem. `decays` was written without it (the MadSpin card is
+described rather than edited under guidance) and `run` still wants it.
 
 **M8 — `exercises`. [DONE]** The `Exercise` step type, the check-the-state
 convention, the mistake tables, and the first nine exercises (§3.8). Exercises

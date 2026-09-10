@@ -1103,11 +1103,13 @@ class TestLoDetour(_TutorialTestCase):
 #===============================================================================
 
 class TestLaunchQuestion(unittest.TestCase):
-    """`launch` on an mg7 output runs bin/generate_events as a subprocess,
-    which never configures the `tutorial` logger -- so the tutorial cannot
-    speak while the card question is on screen. It says the minimum before
-    (press Enter) and explains what the question held afterwards, once the
-    reader has actually seen it."""
+    """The card question is explained after the fact, not before.
+
+    An mg7 `launch` now runs in process (PR #131), so the tutorial logger does
+    reach the question -- the "Need help here? type \'help\'" block appears
+    there as it does for NLO. The explanation still belongs afterwards though:
+    before the fact it is a wall of text about a screen the reader has not
+    seen."""
 
     class _Interface(object):
         _done_export = ['/tmp/x/MYPROC', 'mg7']
@@ -1150,8 +1152,15 @@ class TestLaunchQuestion(unittest.TestCase):
         for row in ('1   shower=', '6. param', 'The following switches'):
             self.assertNotIn(row, text)
 
-    def test_it_warns_that_the_tutorial_goes_quiet(self):
-        self.assertIn('goes quiet', self.before())
+    def test_it_does_not_claim_the_tutorial_stops(self):
+        """It used to say launch handed over to a separate program. Since
+        PR #131 that is false: the run is in this process and `help` works at
+        the question."""
+
+        text = self.before()
+        self.assertNotIn('goes quiet', text)
+        self.assertNotIn('separate program', text)
+        self.assertIn('help', text)
 
 
 #===============================================================================

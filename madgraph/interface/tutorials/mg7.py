@@ -151,11 +151,11 @@ errors), unweighting efficiency, and total wall time *including* training. A
 flow that wins on efficiency and loses on wall time has not helped you, and
 that is the trade auto mode is trying to call for you.
 
-**Two rough edges**, so you meet them here rather than mid-study:
-  * `set iseed` is silently inert for the MG7 output. Set the seed in
-    `[run] seed` in the run card instead.
-  * check which PDF you are getting; the default is not the one a MadEvent run
-    would have used.
+**One rough edge**, so you meet it here rather than mid-study: check which PDF
+you are getting; the default is not the one a MadEvent run would have used.
+
+Seeding works the way you would expect -- `set iseed 42` at the launch question
+sets `[run] seed`, and so does editing the run card directly.
 
 **Coming from a LO run card?** `madgraph/various/RunCardLO_to_MG7_mapping.md`
 maps the old names onto the new sections.
