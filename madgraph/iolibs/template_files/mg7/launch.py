@@ -3202,6 +3202,15 @@ def run_selected_tools(switch, process) -> None:
         ("MadAnalysis5 (hadron level)", ma5 and showered),
         ("Rivet", switch.get("analysis") == "Rivet"),
     ) if on]
+    if not tools:
+        # `active` above counts any switch that is not off, which is not the
+        # same question: "Not Avail." is not off, and a shower switch set to
+        # something other than Pythia8 selects no driver here either. Without
+        # this a plain generate/output/launch announced a post-processing step
+        # with nothing after the colon, and paid for building the run
+        # interface to do nothing.
+        return
+
     log.info("")
     log.info("Post-processing the generated events with: %s", ", ".join(tools))
 

@@ -28,6 +28,7 @@ madspace is not installed.
 
 from __future__ import absolute_import
 
+import logging
 import os
 import subprocess
 import sys
@@ -487,3 +488,124 @@ class MG7CmdTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPostProcessingIsQuiet(unittest.TestCase):
+    """MG7RunCmd is an internal adapter, not an interface someone started.
+
+    MadEventCmd.__init__ prints the MADEVENT welcome banner and a run of
+    "load configuration from ..." lines, which is right for ./bin/madevent and
+    wrong in the middle of a run that has already introduced itself.
+    """
+
+    def setUp(self):
+        import io
+
+        self.captured = io.StringIO()
+        self.handler = logging.StreamHandler(self.captured)
+        self.logger = logging.getLogger('madevent.stdout')
+        self.saved = self.logger.level
+        self.logger.addHandler(self.handler)
+        self.logger.setLevel(logging.INFO)
+
+    def tearDown(self):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.saved)
+
+    def test_info_is_dropped_during_setup(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            self.logger.info('W E L C O M E to')
+            self.logger.info('load configuration from somewhere')
+        self.assertNotIn('W E L C O M E', self.captured.getvalue())
+        self.assertNotIn('load configuration', self.captured.getvalue())
+
+    def test_warnings_still_get_through(self):
+        """Quiet is not silent: anything that needs saying still says it."""
+
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            self.logger.warning('something worth knowing')
+        self.assertIn('something worth knowing', self.captured.getvalue())
+
+    def test_the_level_is_restored_afterwards(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            pass
+        self.logger.info('back to normal')
+        self.assertIn('back to normal', self.captured.getvalue())
+
+    def test_it_restores_the_level_after_a_failure(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        try:
+            with _quiet_setup():
+                raise RuntimeError('setup blew up')
+        except RuntimeError:
+            pass
+        self.logger.info('back to normal')
+        self.assertIn('back to normal', self.captured.getvalue())
+
+
+class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
+    """A plain generate/output/launch announced a post-processing step with
+    nothing after the colon, and built the run interface to do nothing.
+
+    The guard that was there counted any switch that is not "off", which is a
+    different question from whether any driver will run: "Not Avail." is not
+    off, and a shower switch set to anything but Pythia8 selects nothing here.
+    """
+
+    def tools_for(self, switch):
+        """The tool list run_selected_tools builds, without running it."""
+
+        from madgraph.iolibs.template_files.mg7 import launch
+
+        off = launch._off
+        ma5 = switch.get('analysis') == 'MadAnalysis5'
+        showered = not off(switch.get('shower'))
+        return [t for t, on in (
+            ("reweighting", not off(switch.get("reweight"))),
+            ("MadSpin", not off(switch.get("madspin"))),
+            ("MadAnalysis5 (parton level)", ma5),
+            ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+            ("Delphes", switch.get("detector") == "Delphes"),
+            ("MadAnalysis5 (hadron level)", ma5 and showered),
+            ("Rivet", switch.get("analysis") == "Rivet"),
+        ) if on]
+
+    def test_a_not_available_switch_selects_no_tool(self):
+        """The case from a real run: Delphes is not installed, so the detector
+        switch reads "Not Avail." -- which is not "off"."""
+
+        switch = {'shower': 'OFF', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_everything_off_selects_no_tool(self):
+        switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'OFF',
+                  'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_a_real_selection_still_selects(self):
+        switch = {'shower': 'Pythia8', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'ON', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), ['MadSpin', 'Pythia8 shower'])
+
+    def test_run_selected_tools_returns_before_building_anything(self):
+        """With no tool selected it must not construct MG7RunCmd -- that is
+        what printed the MADEVENT banner and the configuration lines."""
+
+        from madgraph.iolibs.template_files.mg7 import launch
+
+        class _Process(object):
+            run_path = '/nonexistent/run_01'
+
+        switch = {'shower': 'OFF', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'OFF', 'reweight': 'OFF'}
+        # _find_event_file would fail on the fake path, and MG7RunCmd would
+        # fail harder: returning early means neither is reached
+        launch.run_selected_tools(switch, _Process())
