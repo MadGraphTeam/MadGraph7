@@ -482,7 +482,13 @@ KERNELSPEC void mlm_clustering(
         bool is_qcd = (data >> 27) & 1;
         bool is_jet1 = (data >> 28) & 1;
         bool is_jet2 = (data >> 29) & 1;
-        if (FVal<T>(xqcut) > 0.0 && scale < FVal<T>(xqcut) &&
+        // The vertex has to be a QCD one. madevent gates this on iqjets, which
+        // is only ever set for a leg emitted at a jet vertex, and a leg it does
+        // not set is exempt from the merging cut. Without that test a jet can be
+        // rejected at a vertex that produced no radiation at all - a quark
+        // pairing into the W, say, whose measure is a lepton-side kt with
+        // nothing to do with the jet's own transverse momentum.
+        if (FVal<T>(xqcut) > 0.0 && is_qcd && scale < FVal<T>(xqcut) &&
             ((is_jet1 && (is_last_cluster & (1 << particle1))) ||
              (is_jet2 && (is_last_cluster & (1 << particle2))))) {
             passes_xqcut = false;

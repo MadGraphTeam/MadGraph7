@@ -1562,3 +1562,112 @@ def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
     assert np.all(out["pdf_rw_active"] == 0.0)
     assert out["pdf_scale1"] == pytest.approx(fact1)
     assert out["pdf_scale2"] == pytest.approx(fact2)
+
+
+# --------------------------------------------------------------------------
+# the merging cut must not fire at a vertex that produced no radiation
+# --------------------------------------------------------------------------
+
+
+def w_plus_jet_diagram():
+    """g u > e+ ve d, the diagram in which the jet pairs into the W.
+
+    Vertices as mg7 builds them: the two beams give the t-channel quark p0, the
+    leptons give the W p1, and then p0 and the jet give the W again - so once
+    the W exists, (W, jet) is a valid clustering. Its measure is a kt between
+    the W and the jet and has nothing to do with the jet's own transverse
+    momentum, so a jet well above the merging cut can be clustered there at a
+    scale well below it.
+
+    That vertex is not a QCD splitting - the W carries no color - and madevent
+    never applies the merging cut to a leg that was not emitted at a jet vertex
+    (its iqjets gate). Reading the cut off any vertex instead removed 19% of
+    this process at xqcut = 60, all of it jets that were already above the cut.
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            # p0 = t-channel quark, p1 = W
+            "propagators": [(0.0, 0.0, 1), (M_W, W_W, 24)],
+            "vertices": [
+                ["i1", "i0", "p0"],
+                ["o0", "o1", "p1"],
+                ["p0", "o2", "p1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+M_W, W_W = 80.419002, 2.0476
+W_PLUS_JET_PDGS = [21, 2, -11, 12, 1]
+
+
+def w_plus_jet_clustering(xqcut):
+    diagrams = w_plus_jet_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=W_PLUS_JET_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        xqcut=xqcut,
+    )
+
+
+def test_a_jet_above_the_merging_cut_is_never_vetoed():
+    """The property the whole merging rests on: an event whose only jet is
+    already above xqcut belongs to the matrix element, and the merging cut must
+    leave it alone whatever the clustering history turns out to be."""
+    xqcut = 60.0
+    diagrams = w_plus_jet_diagram()
+    momenta = sample_momenta(diagrams, batch_size=4000)
+    clustering = w_plus_jet_clustering(xqcut)
+    weight = run_all(clustering, momenta)[5]
+
+    # mT of the one final-state parton, which is its pt here since it is
+    # massless, and which is the measure of every clustering that can take it
+    # back into a beam
+    jet = momenta[:, 4, :]
+    mt = np.sqrt(np.maximum(jet[:, 0] ** 2 - jet[:, 3] ** 2, 0.0))
+    above = mt > xqcut * (1.0 + 1e-9)
+
+    assert above.sum() > 200, "too few jets above the cut to prove anything"
+    assert np.all(weight[above] == 1.0), (
+        "%d of %d events with the jet above the merging cut were vetoed"
+        % (int((weight[above] != 1.0).sum()), int(above.sum()))
+    )
+
+
+def test_a_jet_emitted_at_the_w_vertex_is_not_a_merging_jet():
+    """The other half of the same rule, and the reason the test above is not
+    vacuous: in this one diagram the jet is produced at the W vertex, so it is
+    an electroweak emission and not radiation the shower would have made. Nothing
+    is vetoed here at any merging cut - which is madevent's behaviour, since its
+    iqjets is only ever set for a leg emitted at a jet vertex.
+
+    That the cut does still remove soft QCD emissions is covered by
+    test_xqcut_rejects_exactly_the_soft_jet_emissions and its neighbours, which
+    run on a process whose jets do sit on QCD vertices.
+    """
+    diagrams = w_plus_jet_diagram()
+    momenta = sample_momenta(diagrams, batch_size=4000)
+    for xqcut in (60.0, 500.0):
+        weight = run_all(w_plus_jet_clustering(xqcut), momenta)[5]
+        assert np.all(weight == 1.0), (
+            "xqcut = %g vetoed %d events whose jet is not a QCD emission"
+            % (xqcut, int((weight != 1.0).sum()))
+        )
