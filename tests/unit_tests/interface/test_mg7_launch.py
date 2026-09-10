@@ -29,17 +29,20 @@ madspace is not installed.
 from __future__ import absolute_import
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.master_interface as mgcmd
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
 
 LAUNCH_MODULE = 'madgraph.iolibs.template_files.mg7.launch'
+_MG_ROOT = str(mg7_bootstrap.MG_ROOT)
 
 
 def make_mg7_dir(root):
@@ -466,6 +469,107 @@ class MG7CmdTest(unittest.TestCase):
             ms.StatusFile = saved
         self.assertEqual(len(recorded), 1)
         self.assertTrue(os.path.isabs(recorded[0]), recorded[0])
+
+    # ------------------------------------------------------------------
+    # the model of the process (SubProcesses/model.txt)
+    # ------------------------------------------------------------------
+    def write_model_txt(self, reference, model_hash=''):
+        with open(os.path.join(self.me_dir, 'SubProcesses', 'model.txt'),
+                  'w') as stream:
+            stream.write('%s\n%s\n' % (reference, model_hash))
+
+    def test_get_model_returns_the_model_of_the_process(self):
+        """The hook 'update dependent' and the auto-width handler go through.
+
+        Without it the card question could only warn that it had failed to
+        update the dependent parameters of the param_card.
+        """
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
+        cmd = self.make_cmd()
+        model = cmd.get_model()
+        self.assertTrue(model)
+        self.assertEqual(model.get('name'), 'sm')
+        # imported once: the question asks again at every 'update dependent'
+        self.assertIs(cmd.get_model(), model)
+
+    def test_get_model_keeps_the_restriction(self):
+        """'sm-no_b_mass' is not 'sm': the restriction is part of the model the
+        process was generated with, so the reference recorded at output time
+        carries it and reloading has to honour it."""
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm-no_b_mass'))
+        model = self.make_cmd().get_model()
+        self.assertTrue(model)
+        self.assertEqual(model.get('name'), 'sm-no_b_mass')
+
+    def test_get_model_reads_the_process_characteristics(self):
+        """The complex-mass scheme is a property of the process, not of the
+        card, so it comes from SubProcesses/proc_characteristics -- which is a
+        ConfigFile, whose get() is the parameter accessor and takes no
+        default."""
+        with open(os.path.join(self.me_dir, 'SubProcesses',
+                               'proc_characteristics'), 'w') as stream:
+            stream.write('complex_mass_scheme = False\nnexternal = 4\n')
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
+        self.assertIs(self.launch._proc_characteristic(
+            self.me_dir)['complex_mass_scheme'], False)
+        self.assertEqual(self.make_cmd().get_model().get('name'), 'sm')
+
+    def test_get_model_is_none_without_a_recorded_model(self):
+        """An output written before SubProcesses/model.txt existed: the caller
+        warns, nothing raises."""
+        self.assertIsNone(self.make_cmd().get_model())
+
+    def test_update_dependent_uses_the_model(self):
+        """End to end: the dependent parameters of the param_card are the ones
+        the model computes from the free ones (here M_W from G_F/M_Z/alpha)."""
+        from madgraph.interface.common_run_interface import AskforEditCard
+        from models.check_param_card import ParamCard
+
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
+        path = os.path.join(self.me_dir, 'Cards', 'param_card.dat')
+        shutil.copyfile(os.path.join(_MG_ROOT, 'tests', 'input_files',
+                                     'param_card_sm.dat'), path)
+        card = ParamCard(path)
+        self.assertRaises(KeyError, card['mass'].get, (24,))
+
+        modified = AskforEditCard.update_dependent(
+            self.make_cmd(), self.me_dir, card, path, timer=0)
+
+        self.assertTrue(modified)
+        self.assertAlmostEqual(ParamCard(path)['mass'].get((24,)).value,
+                               80.419, places=2)
+
+    def test_a_slow_model_stays_a_timeout(self):
+        """'update dependent' loads the model under an alarm whose handler
+        raises a TimeOutError defined inside the caller. Swallowing it would
+        report a model that does not import instead of one that is slow (which
+        the caller knows how to explain, and how to force)."""
+        class TimeOutError(Exception):
+            pass
+
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
+        self.launch._model_cache.clear()
+        with mock.patch('models.import_ufo.import_model',
+                        side_effect=TimeOutError):
+            self.assertRaises(TimeOutError, self.launch.load_process_model,
+                              self.me_dir)
+        # ... and it is not remembered as a model that cannot be imported
+        self.assertFalse(self.launch._model_cache)
+
+    def test_a_changed_model_is_reported(self):
+        """The hash on the second line is what tells a model that moved on from
+        the one the matrix element was written for."""
+        self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'),
+                             'not-the-hash-of-that-model')
+        self.launch._model_hash_warned.clear()
+        with mock.patch.object(self.launch.logger, 'warning') as warning:
+            self.assertEqual(self.launch.read_stored_model(self.me_dir),
+                             os.path.join(_MG_ROOT, 'models', 'sm'))
+            self.assertEqual(warning.call_count, 1)
+            self.assertIn('has changed', warning.call_args[0][0])
+            # only once per directory: this runs on every card question
+            self.launch.read_stored_model(self.me_dir)
+            self.assertEqual(warning.call_count, 1)
 
     def test_setup_logging_defers_to_an_existing_handler(self):
         """In process MG5 owns the loggers; adding a second handler would print
