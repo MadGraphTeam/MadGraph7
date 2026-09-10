@@ -1373,7 +1373,7 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         # no 'import model': validate_model must bootstrap sm -> loop_sm itself
         interface.exec_cmd('generate g g > h [noborn=QCD]', errorhandling=False,
                            printcmd=False, precmd=True, postcmd=True)
-        interface.onecmd('output standalone %s -f' %
+        interface.onecmd('output standalone_fortran %s -f' %
                                     str(pjoin(self.IOpath,'gghLI_IOTest')))
         
 

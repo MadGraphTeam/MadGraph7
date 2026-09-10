@@ -5134,7 +5134,7 @@ class IOTestFDGauge(IOTests.IOTestManager):
         #    different spins (VVV1_VVS1_VSV2_VSS1_0 and
         #    VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), which only exist because a
         #    massive vector and its Goldstone are the same wavefunction here.
-        self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
+        self.generate_fd('standalone_fortran', pjoin(self.IOpath, 'FD_fortran'))
 
     @IOTests.createIOTest()
     def testIO_FDgauge_madmatrix(self):
