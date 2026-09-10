@@ -27,7 +27,8 @@ import os
 
 import madgraph
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  describe_applied_orders)
 
 P = 'MG7>'
 RUN = 'MY_FIRST_LO_RUN'
@@ -108,18 +109,21 @@ between particle names is mandatory.
      title='install madspace',
      solution='generate p p > t t~'),
 
-Step('generate', """
-Look at what MG5 printed back: it added `QED=0` on its own. With no coupling
-orders given, it picks the combination with the most QCD vertices, because that
-is nearly always the dominant one -- a sensible guess, but a guess.
+Step('generate', lambda interface: """
+Look at what MG5 printed back. You gave it no coupling orders, so it chose
+some for you.
 
-That is one line of a much larger grammar. Coupling orders, interference-only
-selections, required and forbidden s-channels, decay chains, polarisation and
-NLO all go in the same process line; `tutorial syntax` walks through the lot.
+%(orders)s
+
+That matters because it is the first thing to make explicit when a result
+surprises you -- and it is one line of a much larger grammar. Coupling orders,
+interference-only selections, required and forbidden s-channels, decay chains,
+polarisation and NLO all go in the same process line; `tutorial syntax` walks
+through the lot.
 
 Before generating anything, it is worth a look at the diagrams:
 %(p)s display diagrams
-""" % {'p': P},
+""" % {'p': P, 'orders': describe_applied_orders(interface)},
      title='generate a process',
      hint="A space between every particle name, and `>` separates initial from final state.",
      solution='display diagrams'),

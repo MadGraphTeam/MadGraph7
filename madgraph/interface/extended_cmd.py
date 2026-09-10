@@ -1597,9 +1597,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         if precmd:
             line = current_interface.precmd(line)
         # How deep we are in exec_cmd.  A command MG5 runs for itself (the
-        # 'define p = ...' issued while importing a model, say) is nested
-        # inside the command the user asked for, so depth tells the two apart.
-        # The tutorial mode uses this to react to the user's commands only.
+        # 'define p = ...' issued while importing a model, or the 'open' that
+        # 'display diagrams' does) is nested inside the command the user asked
+        # for, so depth tells the two apart.  A user command sits at depth 0 --
+        # typed interactively it never enters exec_cmd at all, and
+        # import_command_file arranges the same for a command file -- so
+        # anything above 0 is MG5 talking to itself.  The tutorial mode uses
+        # this to react to the user's commands only.
         current_interface.exec_cmd_depth = \
             getattr(current_interface, 'exec_cmd_depth', 0) + 1
         try:
@@ -1723,17 +1727,19 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         # Note using "for line in open(filepath)" is not safe since the file
         # filepath can be overwritten during the run (leading to weird results)
         # Note also that we need a generator and not a list.
-        # The lines of a command file are the user's own commands, so they run
-        # at the outermost level however deep the `import` that reached them
-        # was.  exec_cmd_depth is what tells a user command from one MG5 issues
-        # for itself; see exec_cmd.
+        # The lines of a command file are the user's own commands, so they must
+        # run at the same depth an interactively typed one does, however deep
+        # the `import` that reached them was.  Interactively there is no
+        # exec_cmd at all -- cmdloop calls postcmd directly -- so a typed
+        # command sits at depth 0; exec_cmd increments on entry, hence -1 here.
+        # See exec_cmd, and the guard in tutorials/mixin.py.
         outer_depth = getattr(self, 'exec_cmd_depth', 0)
         for line in self.inputfile:
             
             #remove pointless spaces and \n
             line = line.replace('\n', '').strip()
             # execute the line
-            self.exec_cmd_depth = 0
+            self.exec_cmd_depth = -1
             try:
                 if line:
                     self.exec_cmd(line, precmd=True)

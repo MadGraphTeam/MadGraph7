@@ -190,9 +190,56 @@ def describe_state(interface, indent='  '):
     return '\n'.join(lines) or (indent + 'nothing that could be summarised')
 
 
-def _fmt_orders(orders, types=None):
+def applied_orders(interface):
+    """The coupling orders MG5 actually put on the current process(es).
+
+    Returns a list of the distinct order dicts, so a tutorial can describe what
+    really happened rather than assert what usually happens.  MG5 has more than
+    one way of settling this -- a minimal-WEIGHTED search, or an explicit order
+    -- and which one you get depends on the process.
+    """
+
+    seen = []
+    for amplitude in getattr(interface, '_curr_amps', None) or []:
+        try:
+            orders = dict(core_process(amplitude).get('orders'))
+        except Exception:
+            continue
+        if orders not in seen:
+            seen.append(orders)
+    return seen
+
+
+def describe_applied_orders(interface, indent=''):
+    """Prose for what MG5 chose, matched to what it actually chose."""
+
+    found = [orders for orders in applied_orders(interface) if orders]
+    if not found:
+        return (indent + 'MG5 put no coupling-order constraint on the process '
+                'at all, so every diagram the model allows is included.')
+
+    # an amplitude order means '<=' -- MG5 warns "Interpreting 'QED=2' as
+    # 'QED<=2'" and prints WEIGHTED<=2 -- so quote it the way the user just
+    # saw it
+    shown = ' and '.join(_fmt_orders(orders, default='<=') or 'no constraint'
+                         for orders in found[:3])
+
+    if any('WEIGHTED' in orders for orders in found):
+        return (indent + 'MG5 settled on **%s**.\n\n'
+                % shown +
+                indent + 'WEIGHTED counts QCD + 2*QED, and with no orders given '
+                'MG5 searches:\nit takes the lowest WEIGHTED that produces any '
+                'diagram at all. Here that\nlands on the QCD diagrams. It is a '
+                'search, not a statement of physics.')
+    return (indent + 'MG5 settled on **%s**.\n\n' % shown +
+            indent + 'With no orders given MG5 works out a constraint for you '
+            'and applies it\ndirectly. It is a choice made on your behalf, not '
+            'a statement of physics.')
+
+
+def _fmt_orders(orders, types=None, default='='):
     types = types or {}
-    return ' '.join('%s%s%s' % (name, types.get(name, '='), value)
+    return ' '.join('%s%s%s' % (name, types.get(name, default), value)
                     for name, value in sorted(orders.items()))
 
 

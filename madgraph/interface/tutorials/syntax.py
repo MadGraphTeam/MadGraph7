@@ -21,7 +21,8 @@ command-name -> text lookup could not express.
 
 from __future__ import absolute_import
 
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  describe_applied_orders)
 
 P = 'MG7>'
 
@@ -52,19 +53,13 @@ stand for.
      title='welcome',
      solution='generate p p > t t~'),
 
-Step('generate', """
-Read the lines MG5 printed back:
+Step('generate', lambda interface: """
+Read what MG5 printed back. You gave it no coupling orders, so it chose some
+for you.
 
-  Checking for minimal orders which gives processes.
-  Please specify coupling orders to bypass this step.
-  Trying coupling order WEIGHTED<=2: WEIGTHED IS QCD+2*QED
+%(orders)s
 
-With no coupling orders given, MG5 does not guess `QED=0`. It searches: it
-counts `WEIGHTED = QCD + 2*QED` and takes the lowest value that produces any
-diagram at all. For `p p > t t~` that lands on the QCD diagrams -- which is
-almost always what you wanted -- but it is a search, not a statement of
-physics, and it is the first thing to make explicit when a result surprises
-you.
+Either way it is the first thing to make explicit when a result surprises you.
 
 Coupling orders are constraints on the *amplitude*:
   QED=0    at most 0 QED vertices     ('=' means '<=' -- this trips people up)
@@ -76,7 +71,7 @@ Ask for the electroweak diagrams back:
 %(p)s generate p p > t t~ QED=2
 
 Compare the diagram count with what you got a moment ago.
-""" % {'p': P},
+""" % {'p': P, 'orders': describe_applied_orders(interface)},
      title='coupling orders',
      hint="Orders go at the end of the process line, after the final state.",
      solution='generate p p > t t~ QED=2'),

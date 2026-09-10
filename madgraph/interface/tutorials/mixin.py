@@ -66,12 +66,14 @@ class TutorialMixin(object):
             return stop
 
         # Only react to what the user actually typed.  MG5 runs plenty of
-        # commands for itself -- importing a model alone issues half a dozen
-        # 'define' commands -- and those used to fire tutorial steps, printing
-        # the same block six times over and, in a sequenced tutorial, skipping
-        # the user several lessons ahead.  exec_cmd tracks the nesting depth;
-        # anything past the first level is MG5 talking to itself.
-        if getattr(self, 'exec_cmd_depth', 0) > 1:
+        # commands for itself -- importing a model issues half a dozen 'define'
+        # commands, `display diagrams` issues an `open` -- and those used to
+        # fire tutorial steps, printing the same block six times over and, in a
+        # sequenced tutorial, skipping the user several lessons ahead.
+        # exec_cmd tracks the nesting depth and a user command sits at 0, both
+        # interactively and from a command file; anything deeper is MG5 talking
+        # to itself.
+        if getattr(self, 'exec_cmd_depth', 0) > 0:
             return stop
 
         if session.suppress_next:

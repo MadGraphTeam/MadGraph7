@@ -689,3 +689,120 @@ class TestExercises(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn('What your command produced', message)
         self.assertIn('diagrams', message)
+
+
+#===============================================================================
+# only the user's own commands drive a tutorial
+#===============================================================================
+
+class TestOnlyUserCommandsCount(_TutorialTestCase):
+    """MG5 runs commands for itself, and those must not move a tutorial.
+
+    `display diagrams` issues an `open`, importing a model issues half a dozen
+    `define`s. Before the depth guard those fired tutorial steps -- and in a
+    sequenced tutorial an internal `open` matching a later step skipped the
+    user to the end.
+    """
+
+    def _fire(self, depth, line='display diagrams'):
+        interface = _BareInterface()
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        interface.exec_cmd_depth = depth
+        self.capture.messages = []
+        interface.postcmd(True, line)
+        return self.capture.messages
+
+    def test_a_user_command_fires(self):
+        """Depth 0 is where a user command sits, typed or from a file."""
+
+        self.assertTrue(self._fire(0, 'generate p p > t t~'),
+                        'a user command did not reach the tutorial')
+
+    def test_a_command_mg5_issued_does_not(self):
+        """Depth 1 is MG5 talking to itself -- the interactive case, which the
+        first version of the guard let through."""
+
+        self.assertEqual(self._fire(1, 'generate p p > t t~'), [])
+        self.assertEqual(self._fire(2, 'generate p p > t t~'), [])
+
+    def test_display_diagrams_does_not_skip_to_the_end(self):
+        """The reported bug: `display diagrams` runs `open` underneath, and
+        `open` matches the last step of `lo`."""
+
+        interface = _BareInterface()
+        session = tutorials.start('lo')
+        tutorial_mixin.attach(interface, session)
+
+        interface.exec_cmd_depth = 0
+        interface.postcmd(True, 'generate p p > t t~')
+        reached = session.index
+
+        # the `open` display issues for the .eps, one level down
+        interface.exec_cmd_depth = 1
+        interface.postcmd(True, 'open /tmp/whatever.eps')
+        self.assertEqual(session.index, reached,
+                         'an internal `open` moved the tutorial')
+
+        interface.exec_cmd_depth = 0
+        interface.postcmd(True, 'display diagrams')
+        self.assertLess(session.index, len(session.tutorial.steps) - 1,
+                        '`display diagrams` skipped to the last step')
+        self.assertEqual(session.current.title, 'look at the diagrams')
+
+
+#===============================================================================
+# lessons describe what actually happened
+#===============================================================================
+
+class TestAppliedOrders(unittest.TestCase):
+    """The coupling-order lesson must report the orders MG5 really applied.
+
+    MG5 has more than one way of settling this, so the tutorial reads the
+    process back rather than asserting what usually happens.
+    """
+
+    def _fake(self, orders):
+        from madgraph.core import base_objects, diagram_generation
+
+        process = base_objects.Process()
+        process.set('orders', dict(orders))
+        amplitude = diagram_generation.Amplitude()
+        amplitude.set('process', process)
+
+        class _Interface(object):
+            _curr_amps = [amplitude]
+
+        return _Interface()
+
+    def test_reports_a_weighted_search(self):
+        from madgraph.interface.tutorials.session import describe_applied_orders
+
+        text = describe_applied_orders(self._fake({'WEIGHTED': 2}))
+        # quoted the way MG5 prints it: an amplitude order means '<='
+        self.assertIn('WEIGHTED<=2', text)
+        self.assertIn('QCD + 2*QED', text)
+
+    def test_reports_an_explicit_order(self):
+        from madgraph.interface.tutorials.session import describe_applied_orders
+
+        text = describe_applied_orders(self._fake({'QED': 0}))
+        self.assertIn('QED<=0', text)
+        self.assertNotIn('WEIGHTED', text)
+
+    def test_reports_no_constraint(self):
+        from madgraph.interface.tutorials.session import describe_applied_orders
+
+        self.assertIn('no coupling-order constraint',
+                      describe_applied_orders(self._fake({})))
+
+    def test_no_tutorial_hardcodes_the_choice(self):
+        """Neither lesson may assert which mechanism MG5 used."""
+
+        class _Empty(object):
+            _curr_amps = []
+
+        for name in ('lo', 'syntax'):
+            for step in tutorials.get(name).steps:
+                text = step.render(_Empty())
+                self.assertNotIn('it added `QED=0` on its own', text)
+                self.assertNotIn('Trying coupling order WEIGHTED', text)
