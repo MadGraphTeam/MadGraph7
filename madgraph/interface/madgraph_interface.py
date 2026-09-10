@@ -3119,12 +3119,17 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'modellist']
     _add_opts = ['process', 'model']
     _save_opts = ['model', 'processes', 'options']
+    # commands the running tutorial provides, also accepted as `tutorial X`:
+    # people reach for `tutorial hint` as readily as `hint`
+    _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
+
     @property
     def _tutorial_opts(self):
         """Names 'tutorial' accepts: every tutorial, its aliases, and the
         housekeeping sub-commands."""
         return (tutorials.names(include_aliases=True) +
-                ['stop', 'list', 'status', 'help'])
+                ['stop', 'list', 'status', 'help'] +
+                list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
@@ -4152,6 +4157,16 @@ This implies that with decay chains:
                 logger.info("Thanks for using the %s tutorial!"
                             % session.tutorial.name)
             return
+
+        if name in self._tutorial_step_cmds:
+            # `tutorial hint` is the same as `hint`
+            session = getattr(self, '_tutorial_session', None)
+            if session is None:
+                logger.info("No tutorial is running. Type 'tutorial' to start "
+                            "one, or 'tutorial help'.")
+                return
+            session.suppress_next = True
+            return getattr(self, 'do_%s' % name)('')
 
         if name in ('list', 'status', 'help'):
             # informational: never (re)start anything, and never let the

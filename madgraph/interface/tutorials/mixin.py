@@ -36,6 +36,7 @@ from __future__ import absolute_import
 
 import logging
 
+import madgraph.various.misc as misc
 from madgraph.interface.tutorials.session import Exercise
 
 logger_tuto = logging.getLogger('tutorial')
@@ -240,6 +241,7 @@ def attach(interface, session):
     if not is_attached(interface):
         interface._tutorial_base_class = interface.__class__
         interface.__class__ = _wrap(interface.__class__)
+        _suspend_crash_on_error(interface)
     interface._tutorial_session = session
     return session
 
@@ -254,7 +256,39 @@ def detach(interface):
         if base is not None:
             interface.__class__ = base
         interface._tutorial_base_class = None
+        _restore_crash_on_error(interface)
     return session
+
+
+def _suspend_crash_on_error(interface):
+    """Turn crash_on_error off for the life of the tutorial.
+
+    A tutorial is a place to make mistakes -- that is what the exercises are
+    for -- and with crash_on_error set, a mistyped command does not just fail,
+    it tears down the whole session. Suspend it while a tutorial runs and put
+    the user's setting back on `tutorial stop`.
+
+    TMP_variable installs the new value on construction and restores it in
+    __exit__, so it can span the tutorial rather than a single block; it
+    addresses `options` by key, leaving any other option the user changes
+    meanwhile alone.
+    """
+
+    interface._tutorial_crash_guard = None
+    options = getattr(interface, 'options', None)
+    if not isinstance(options, dict) or 'crash_on_error' not in options:
+        return
+    if not options['crash_on_error']:
+        return          # already off; nothing to suspend or restore
+    interface._tutorial_crash_guard = misc.TMP_variable(
+        options, 'crash_on_error', False)
+
+
+def _restore_crash_on_error(interface):
+    guard = getattr(interface, '_tutorial_crash_guard', None)
+    if guard is not None:
+        guard.__exit__(None, None, None)
+    interface._tutorial_crash_guard = None
 
 
 def mixin_command_names():

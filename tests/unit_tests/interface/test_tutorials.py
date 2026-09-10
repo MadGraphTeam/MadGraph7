@@ -932,3 +932,75 @@ class TestUncertaintyLesson(unittest.TestCase):
 
         self.assertTrue(lhapdf_configured(self._WithLhapdf()))
         self.assertFalse(lhapdf_configured(self._WithoutLhapdf()))
+
+
+#===============================================================================
+# a tutorial is a place to make mistakes
+#===============================================================================
+
+class TestCrashOnErrorSuspended(unittest.TestCase):
+    """crash_on_error tears the session down on a mistyped command, which is
+    exactly wrong while someone is learning. It is suspended for the life of
+    the tutorial and put back on stop."""
+
+    class _Interface(mg_interface.CmdExtended):
+        def __init__(self, **options):
+            self.options = dict(options)
+
+    def test_it_is_off_while_a_tutorial_runs(self):
+        interface = self._Interface(crash_on_error=True)
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        self.assertFalse(interface.options['crash_on_error'])
+
+    def test_the_users_setting_comes_back(self):
+        interface = self._Interface(crash_on_error=True)
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        tutorial_mixin.detach(interface)
+        self.assertTrue(interface.options['crash_on_error'])
+
+    def test_other_options_changed_meanwhile_are_kept(self):
+        """The guard addresses one key, so a `set` during the tutorial sticks."""
+
+        interface = self._Interface(crash_on_error=True, stdout_level='INFO')
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        interface.options['stdout_level'] = 'DEBUG'
+        tutorial_mixin.detach(interface)
+        self.assertEqual(interface.options['stdout_level'], 'DEBUG')
+        self.assertTrue(interface.options['crash_on_error'])
+
+    def test_switching_tutorial_does_not_lose_the_setting(self):
+        interface = self._Interface(crash_on_error=True)
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        tutorial_mixin.attach(interface, tutorials.start('syntax'))
+        self.assertFalse(interface.options['crash_on_error'])
+        tutorial_mixin.detach(interface)
+        self.assertTrue(interface.options['crash_on_error'])
+
+    def test_an_interface_without_the_option_is_fine(self):
+        interface = self._Interface()
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        tutorial_mixin.detach(interface)          # must not raise
+
+    def test_already_off_stays_off(self):
+        interface = self._Interface(crash_on_error=False)
+        tutorial_mixin.attach(interface, tutorials.start('lo'))
+        tutorial_mixin.detach(interface)
+        self.assertFalse(interface.options['crash_on_error'])
+
+
+class TestTutorialStepCommandAliases(unittest.TestCase):
+    """`tutorial hint` is as natural to type as `hint`, and used to be an
+    InvalidCmd -- which, with crash_on_error set, killed the session."""
+
+    def test_they_are_accepted_arguments(self):
+        for name in ('hint', 'solution', 'next', 'repeat', 'back', 'skip'):
+            args = [name]
+            _BareMadGraphCmd().check_tutorial(args)
+            self.assertEqual(args, [name])
+
+    def test_each_alias_has_a_command_behind_it(self):
+        provided = set(tutorial_mixin.mixin_command_names())
+        for name in mg_interface.MadGraphCmd._tutorial_step_cmds:
+            self.assertIn('do_%s' % name, provided,
+                          '`tutorial %s` is accepted but nothing implements it'
+                          % name)
