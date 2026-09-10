@@ -2067,8 +2067,6 @@ class EasterEgg(object):
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
         "*       Type 'tutorial' to learn how MadGraph7 works       *\n" + \
-        "*    Type 'tutorial aMCatNLO' to learn how aMC@NLO works   *\n" + \
-        "*    Type 'tutorial MadLoop' to learn how MadLoop works    *\n" + \
         "*                                                          *\n" + \
         "************************************************************"
 
