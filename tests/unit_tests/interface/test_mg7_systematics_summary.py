@@ -29,6 +29,7 @@ import tempfile
 import unittest
 
 import madgraph.iolibs.template_files.mg7.run_interface as run_interface
+import madgraph.iolibs.template_files.mg7.systematics_summary as systematics_summary
 
 pjoin = os.path.join
 
@@ -120,12 +121,17 @@ class TestNativeSystematicsSummary(unittest.TestCase):
         self.assertAlmostEqual(float(pdf[0]), printed_up, places=2)
         self.assertAlmostEqual(float(pdf[1]), -printed_down, places=2)
 
-    def test_it_falls_back_to_the_nominal_without_a_central(self):
+    def test_an_entry_without_a_central_is_skipped(self):
+        """summary() omits "central" when it could not be computed, and both
+        readers skip such an entry rather than measuring it against something
+        else. One rule, shared -- see systematics_summary.pdf_percentages."""
+
         summary = self.full_summary()
         summary['pdf'][0].pop('central')
         self.write_info(summary)
-        _scale, pdf = self.parse()
-        self.assertEqual(pdf, ['+2', '-2'])
+        scale, pdf = self.parse()
+        self.assertEqual(scale, ['+29.6', '-21.5'])
+        self.assertEqual(pdf, [])
 
     def test_it_matches_what_the_legacy_log_would_have_given(self):
         """Same numbers, either path -- the scan column must not shift.
@@ -218,3 +224,80 @@ class TestLegacyFallback(TestNativeSystematicsSummary):
         scale, pdf = self.parse()
         self.assertEqual(scale, ['+29.6', '-21.5'])
         self.assertEqual(pdf, ['+2', '-2'])
+
+
+class TestOneImplementation(unittest.TestCase):
+    """The run's Systematics box and the scan column must not drift apart.
+
+    They used to be two copies of the same arithmetic kept in step by a test.
+    Now systematics_summary owns it and both callers format what it returns --
+    these check that neither has quietly grown its own copy back.
+    """
+
+    def summary(self, nominal=500.0):
+        return {
+            'nominal': {'cross_section': nominal},
+            'event_count': 1000,
+            'scale': {'min': 0.785 * nominal, 'max': 1.296 * nominal},
+            'pdf': [{'pdf_set': 'NNPDF23_lo', 'error_type': 'replicas',
+                     'central': 0.9 * nominal,
+                     'uncertainty_up': 0.02 * nominal,
+                     'uncertainty_down': 0.03 * nominal}],
+        }
+
+    def test_the_box_and_the_scan_column_agree(self):
+        summary = self.summary()
+
+        # what the scan column reports
+        scale = systematics_summary.scale_percentages(summary)
+        pdf = systematics_summary.pdf_percentages(summary)
+        column = (run_interface.MG7RunCmd._signed(scale),
+                  run_interface.MG7RunCmd._signed(pdf[0][1:]))
+
+        # what the box prints, through launch.py's own formatter
+        def format_variation(up, down):
+            return "%s%%   %s%%" % ('+%.3g' % up, '-%.3g' % down)
+
+        box_scale = format_variation(*scale)
+        box_pdf = format_variation(pdf[0][1], pdf[0][2])
+
+        self.assertEqual(box_scale, '%s%%   %s%%' % (column[0][0], column[0][1]))
+        self.assertEqual(box_pdf, '%s%%   %s%%' % (column[1][0], column[1][1]))
+
+    def test_neither_caller_does_the_arithmetic_itself(self):
+        """A grep-level guard: the divisions used to live in both files."""
+
+        import inspect
+
+        import madgraph.iolibs.template_files.mg7.launch as launch
+
+        box = inspect.getsource(launch.MadgraphProcess.log_systematics_summary)
+        column = inspect.getsource(run_interface.MG7RunCmd.getSysSummaryFromLog)
+        for name, source in (('the Systematics box', box),
+                             ('the scan column', column)):
+            self.assertNotIn('* 100', source,
+                             '%s computes percentages itself again' % name)
+            self.assertIn('systematics_summary', source,
+                          '%s no longer uses the shared helper' % name)
+
+    def test_the_helper_needs_nothing_heavy(self):
+        """It sits between two modules that must not import each other."""
+
+        import ast
+
+        tree = ast.parse(inspect_source())
+        imported = [n for n in ast.walk(tree)
+                    if isinstance(n, (ast.Import, ast.ImportFrom))]
+        names = []
+        for node in imported:
+            if isinstance(node, ast.ImportFrom):
+                names.append(node.module)
+            else:
+                names.extend(alias.name for alias in node.names)
+        self.assertEqual([n for n in names if n and n != '__future__'], [])
+
+
+def inspect_source():
+    import inspect
+
+    return inspect.getsource(systematics_summary)

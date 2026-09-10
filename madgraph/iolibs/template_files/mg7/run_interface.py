@@ -23,6 +23,7 @@ import os
 import shutil
 
 import madgraph.interface.madevent_interface as madevent_interface
+from madgraph.iolibs.template_files.mg7 import systematics_summary
 import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
 import madgraph.various.banner as banner_mod
 import madgraph.various.lhe_parser as lhe_parser
@@ -56,9 +57,10 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         ([postprocessing] systematics) was used, so fall back to the base
         parser for that case.
 
-        The strings match what the base parser returns for a madevent run --
-        signed percentages like "+29.6" / "-21.5" -- so the scan summary column
-        is the same whichever path produced them.
+        The percentages come from :mod:`systematics_summary`, which the run's
+        own Systematics box reads too, so the two cannot disagree. The strings
+        match what the base parser returns for a madevent run -- "+29.6",
+        "-21.5" -- so the scan column is the same whichever path produced them.
         """
 
         summary = self._read_native_systematics(kpath, knext_name)
@@ -66,32 +68,12 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
             return madevent_interface.MadEventCmd.getSysSummaryFromLog(
                 self, kpath=kpath, knext_name=knext_name)
 
-        nominal = summary.get('nominal', {}).get('cross_section')
-        if not nominal:
-            return [], []
+        scale = systematics_summary.scale_percentages(summary)
+        scale = self._signed(scale) if scale else []
 
-        scale = []
-        band = summary.get('scale')
-        if band and band.get('max') is not None and band.get('min') is not None:
-            # systematics.py reports +(max-nom)/nom and -(nom-min)/nom, both as
-            # positive magnitudes carrying an explicit sign
-            scale = [self._as_percent(band['max'] - nominal, nominal),
-                     self._as_percent(nominal - band['min'], nominal,
-                                      negative=True)]
-
-        pdf = []
-        for entry in summary.get('pdf') or []:
-            up, down = entry.get('uncertainty_up'), entry.get('uncertainty_down')
-            if up is None or down is None:
-                continue
-            # the uncertainties are absolute. Divide by the set's own central
-            # value, which is what log_systematics_summary prints in the same
-            # run -- for a replicas set that is the replica mean, not the
-            # nominal member, and the two numbers should not disagree.
-            reference = entry.get('central') or nominal
-            pdf = [self._as_percent(up, reference),
-                   self._as_percent(down, reference, negative=True)]
-            break          # the nominal set's entry comes first
+        # the nominal set's entry comes first; the scan summary has one column
+        pdf_entries = systematics_summary.pdf_percentages(summary)
+        pdf = self._signed(pdf_entries[0][1:]) if pdf_entries else []
 
         return scale, pdf
 
@@ -120,20 +102,19 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         return summary
 
     @staticmethod
-    def _as_percent(value, nominal, negative=False):
-        """A cross-section difference as a signed percentage of the nominal.
+    def _signed(percentages):
+        """An (up, down) pair as the scan summary wants it.
 
         Same shape as the strings the base parser pulls out of
-        parton_systematics.log ("+29.6", "-21.5"): a magnitude with an explicit
-        sign, three significant digits.
+        parton_systematics.log -- "+29.6", "-21.5": a magnitude with an
+        explicit sign, three significant digits.
         """
 
-        if value is None or nominal in (None, 0):
-            return ''
-        if isinstance(value, float) and math.isnan(value):
-            return ''
-        return '%s%.3g' % ('-' if negative else '+',
-                           abs(value) / abs(nominal) * 100)
+        up, down = percentages
+        if any(v is None or (isinstance(v, float) and math.isnan(v))
+               for v in (up, down)):
+            return []
+        return ['+%.3g' % abs(up), '-%.3g' % abs(down)]
 
     def __init__(self, me_dir, options, run_name, lhe_path):
         self._mg7_run_name = run_name
