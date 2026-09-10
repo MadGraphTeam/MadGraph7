@@ -282,7 +282,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 # so that when running `make` in a P* folder, it builds check_sa.exe as well as the process library (predicatable behaviour)
 class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
-    format_name = 'standalone_mg7'
+    format_name = 'standalone'
 
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/

@@ -1334,17 +1334,17 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
-    def test_standalone_mg7_split_orders_interference(self):
-        """standalone_mg7 must return the squared-order contribution asked for.
+    def test_standalone_split_orders_interference(self):
+        """standalone (madmatrix) must return the squared-order contribution asked for.
 
         The madmatrix jamps carry an amplitude-order index and the color sum
         pairs them, so a '^2' constraint that keeps only some of the squared
         orders gets that contribution and not the total. The case that matters
         is an interference term, which cannot be reached by dropping diagrams
         at generation: ``u u~ > u u~ QED^2==2`` keeps every diagram and wants
-        the QCD-EW cross term alone, -5.5828747824035893e-02 from the Fortran
+        the QCD-EW cross term alone, -5.5828746494657265e-02 from the Fortran
         split-order driver, where a backend with no mask returns the whole
-        +2.7756451181144683.
+        +2.7756451199752394.
 
         The three components are checked to sum back to the unconstrained
         total *as computed by this same backend*. That comparison is the one
@@ -1363,7 +1363,7 @@ class TestCmdShell2(unittest.TestCase,
             if os.path.isdir(self.out_dir):
                 shutil.rmtree(self.out_dir)
             self.do('generate u u~ > u u~ %s' % constraint)
-            self.do('output standalone_mg7 %s -f' % self.out_dir)
+            self.do('output standalone %s -f' % self.out_dir)
             proc_root = pjoin(self.out_dir, 'SubProcesses')
             dirs = [d for d in os.listdir(proc_root)
                     if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
@@ -1373,7 +1373,7 @@ class TestCmdShell2(unittest.TestCase,
             self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'],
                                                 stdout=devnull, stderr=devnull,
                                                 cwd=proc_dir),
-                             'standalone_mg7 %s did not build' % constraint)
+                             'standalone %s did not build' % constraint)
             log = pjoin(proc_dir, 'check.log')
             subprocess.call('./check_sa.exe 1000', shell=True, cwd=proc_dir,
                             stdout=open(log, 'w'), stderr=subprocess.STDOUT)
@@ -1385,7 +1385,7 @@ class TestCmdShell2(unittest.TestCase,
         interference = value('QED^2==2')
         # The Fortran split-order component, to the tolerance this backend is
         # compared at elsewhere (the EW couplings differ in the last digits)
-        self.assertAlmostEqual(interference, -5.5828747824035893e-02, delta=1e-7)
+        self.assertAlmostEqual(interference, -5.5828746494657265e-02, delta=1e-7)
         # ... and emphatically not the unmasked total
         self.assertLess(abs(interference), 1.0)
 
