@@ -126,6 +126,24 @@ class MECmdShell(IOTests.IOTestManager):
         combine = os.path.join(*path)
         return combine.replace(' ',r'\ ')        
     
+    def set_parton_shower(self, shower):
+        """Pin parton_shower in the run card.
+
+        Rewriting a literal 'HERWIG6' only worked while that was the default;
+        the moment it changed, the rewrite became a no-op and the test quietly
+        showered with something other than the one it is named for.
+        """
+
+        path = '%s/Cards/run_card.dat' % self.path
+        with open(path) as handle:
+            card = handle.read()
+        card, count = re.subn(r'^(\s*)\S+(\s*=\s*parton_shower)',
+                              r'\g<1>%s\g<2>' % shower, card, flags=re.M)
+        self.assertEqual(count, 1,
+                         'could not set parton_shower in %s' % path)
+        with open(path, 'w') as handle:
+            handle.write(card)
+
     def do(self, line):
         """ exec a line in the cmd under test """        
         self.cmd_line.exec_cmd(line, errorhandling=False,precmd=True)
@@ -155,6 +173,8 @@ class MECmdShell(IOTests.IOTestManager):
         card = card.replace('EXTRALIBS    = stdhep Fmcfio', 'EXTRALIBS   = fastjet')
         open('%s/Cards/shower_card_default.dat' % self.path, 'w').write(card)
         os.system('cp  %s/Cards/shower_card_default.dat %s/Cards/shower_card.dat'% (self.path, self.path))
+
+        self.set_parton_shower('HERWIG6')
 
         os.system('rm -rf %s/RunWeb' % self.path)
         os.system('rm -rf %s/Events/run_*' % self.path)
@@ -638,6 +658,7 @@ class MECmdShell(IOTests.IOTestManager):
         """test the param_card created is correct"""
         
         self.generate_production()
+        self.set_parton_shower('HERWIG6')
         cmd = """generate_events aMC@LO
                  set nevents 100
                  """
@@ -671,8 +692,7 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate_production()
 
         #change to py6
-        card = open('%s/Cards/run_card.dat' % self.path).read()
-        open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace('HERWIG6', 'PYTHIA6Q'))       
+        self.set_parton_shower('PYTHIA6Q')
         self.do('generate_events aMC@LO -f')        
         
         # test the lhe event file exists
