@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -1570,7 +1570,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         parser = misc.OptionParser(usage=usage)
         parser.add_option("-n", "--name",
                   default="",
-                  help="When NOT run in standalone instruct MG5aMC where to store the events file")
+                  help="When NOT run in standalone instruct MadGraph7 where to store the events file")
         return parser
     
     def parse_launch(self, line):
@@ -2177,7 +2177,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             lhe_parser.reset_lhe_timers()
 
         if options.name:
-            self.me_run_name = options.name # Only use by MG5aMC
+            self.me_run_name = options.name # Only use by MadGraph7
         else:
             self.me_run_name = ''
 

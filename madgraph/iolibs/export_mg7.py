@@ -77,6 +77,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
+        # The basis a color flow is picked among: always the trace one, which
+        # is the color basis itself unless the color sum runs on the DDM basis.
+        # Everything indexing a color flow -- the color_flows table, the
+        # active_colors masks, icolamp -- has to use this one and not the
+        # (smaller) basis of the color sum.
+        self.color_flow_basis = self.color_basis.get_flow_basis() \
+                                if self.color_basis else self.color_basis
         self.set_subprocess_class()
         self.set_topology()
         self.set_flavor_indices()
@@ -248,16 +255,19 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
     def set_channels_colors_map(self):
         if self.color_basis:
+            # active_colors ends up in the icolamp mask, which is walked over
+            # the color flows, so it must be indexed on the flow basis
+            flow_basis = self.color_flow_basis
             diag_jamps = defaultdict(list)
             # Only leading-Nc jamps are planar-compatible with a diagram's own
             # topology; like export_v4's get_icolamp_lines, drop the rest.
             max_Nc = max(
                 v[4] - v[5]
-                for val in self.color_basis.values()
+                for val in flow_basis.values()
                 for v in val
             )
-            for ijamp, col_basis_elem in enumerate(sorted(self.color_basis.keys())):
-                for diag_tuple in self.color_basis[col_basis_elem]:
+            for ijamp, col_basis_elem in enumerate(sorted(flow_basis.keys())):
+                for diag_tuple in flow_basis[col_basis_elem]:
                     if diag_tuple[4] - diag_tuple[5] == max_Nc:
                         diag_jamps[diag_tuple[0]].append(ijamp)
 
@@ -369,8 +379,11 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 repr_dict[leg.get("number")] = self.model.get_particle(
                     leg.get("id")
                 ).get_color() * (-1) ** (1 + leg.get("state"))
-            # Get the list of color flows
-            color_flow_dicts = self.color_basis.color_flow_decomposition(repr_dict, n_initial)
+            # Get the list of color flows. This is about color flows, so
+            # always the trace basis, even when the color sum runs on the DDM
+            # one.
+            color_flow_dicts = self.color_flow_basis.\
+                               color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
             color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]

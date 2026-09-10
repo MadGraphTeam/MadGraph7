@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -2080,7 +2080,7 @@ class Model(PhysicsObject):
                 '%s particles with pdg code %s is in conflict with MG ' + \
                 'convention name for particle %s.\n Use -modelname in order ' + \
                 'to use the particles name defined in the model and not the ' + \
-                'MadGraph5_aMC@NLO convention'
+                'MadGraph7 convention'
                 
                 raise MadGraph5Error(error_text % \
                                      (part.get_name(), part.get_pdg_code(), pdg))                
@@ -4487,7 +4487,7 @@ class Process(PhysicsObject):
                         logger.warning(
 '''The process with the squared coupling order (%s^2%s%s) specified can potentially 
 recieve contributions with powers of the coupling %s larger than the maximal 
-value allowed by the model builder (%s). Hence, MG5_aMC sets the amplitude order
+value allowed by the model builder (%s). Hence, MadGraph7 sets the amplitude order
 for that coupling to be this maximal one. '''%(k,self.get('sqorders_types')[k],
                                              self.get('squared_orders')[k],k,v))
                     else:

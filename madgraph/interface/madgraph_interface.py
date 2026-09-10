@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features at LO.
+"""A user friendly command line interface to access MadGraph7 features at LO.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -60,6 +60,7 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error
 
 
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_base_objects as loop_base_objects
@@ -164,26 +165,32 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*              M A D G R A P H 5 _ a M C @ N L O           *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*              http://madgraph.phys.ucl.ac.be/             *\n" + \
         "*                            and                           *\n" + \
         "*            http://amcatnlo.web.cern.ch/amcatnlo/         *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
-        "*           Type 'tutorial' to learn how MG5 works         *\n" + \
-        "*    Type 'tutorial aMCatNLO' to learn how aMC@NLO works   *\n" + \
-        "*    Type 'tutorial MadLoop' to learn how MadLoop works    *\n" + \
+        "*       Type 'tutorial' to learn how MadGraph7 works       *\n" + \
         "*                                                          *\n" + \
         "************************************************************"
     
@@ -380,7 +387,7 @@ class HelpToCmd(cmd.HelpCmd):
     def help_install(self):
         logger.info("syntax: install " + "|".join(self._install_opts),'$MG:color:BLUE')
         logger.info("-- Download the last version of the program and install it")
-        logger.info("   locally in the current MadGraph5_aMC@NLO version. In order to have")
+        logger.info("   locally in the current MadGraph7 version. In order to have")
         logger.info("   a successful installation, you will need to have an up-to-date")
         logger.info("   F77 and/or C and Root compiler.")
         logger.info(" ")
@@ -388,7 +395,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     %s"%(', '.join(self._advanced_install_opts)))
         logger.info("   The following options are available:")
         logger.info("     --force        Overwrite without asking any existing installation.")
-        logger.info("     --keep_source  Keep a local copy of the sources of the tools MG5_aMC installed from.")
+        logger.info("     --keep_source  Keep a local copy of the sources of the tools MadGraph7 installed from.")
         logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
@@ -532,6 +539,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
         logger.info("      -name: the postfix of the main file in pythia8 mode.")
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
+        logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
@@ -1302,7 +1310,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Invalid argument for tutorial')
         elif len(args) == 0:
             #this means mg5 tutorial
-            args.append('MadGraph5')
+            args.append('MadGraph7')
         else:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
@@ -2723,7 +2731,7 @@ class CompleteForCmd(cmd.CompleteCmd):
     def complete_output(self, text, line, begidx, endidx,
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
-                                                 '--jamp_optim=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
+                                                 '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
                                                  '--mask=False', '--prefix=']):
         "Complete the output command"
 
@@ -3149,7 +3157,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'modellist']
     _add_opts = ['process', 'model']
     _save_opts = ['model', 'processes', 'options']
-    _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph5']
+    _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph7']
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
@@ -3186,9 +3194,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'zerowidth_tchannel',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
+                    'color_basis',
                     'merge_same_topologies',
                     'merge_quartic_vertices'
                     ]
+    _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
     _valid_sqso_types = ['==','<=','=','>']
     _valid_amp_so_types = ['=','<=', '==', '>']
@@ -3243,6 +3253,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'cluster_temp_path':None,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
+                       'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
@@ -3271,6 +3282,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
+                          'color_basis': 'auto',
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False
                         }
@@ -3329,7 +3341,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                 self._mgme_dir = MG4DIR
 
         # check that make_opts exists
-        # This file is shared by every MG5aMC process running from this
+        # This file is shared by every MadGraph7 process running from this
         # installation: it is copied verbatim into each new output directory and
         # rewritten in place by set_fortran_compiler/set_cpp_compiler. Replacing
         # it by rename (atomic_copy) rather than by shutil.copy is what keeps a
@@ -4041,7 +4053,7 @@ This implies that with decay chains:
             else:
                 to_print = lambda name: any(poss in name for poss in args[1:])
 
-            outstr = "                          MadGraph5_aMC@NLO Options    \n"
+            outstr = "                          MadGraph7 Options    \n"
             outstr += "                          ----------------    \n"
             keys = list(self.options_madgraph.keys())
             keys.sort()
@@ -4142,7 +4154,7 @@ This implies that with decay chains:
                 if model_name in already_done:
                     continue
                 restrict = [tag for tag in self._online_model[model_name]]
-                comment = 'automatic download from MG5aMC server'
+                comment = 'automatic download from MadGraph7 server'
                 outstr.append(template % (model_name, ','.join(restrict), comment))
                 already_done.append(model_name)
                 
@@ -4160,7 +4172,7 @@ This implies that with decay chains:
                 if 'feynrules' in path:
                     comment = 'automatic download from FeynRules website'
                 elif 'madgraph.phys' in path:
-                     comment = 'automatic download from MG5aMC server'
+                     comment = 'automatic download from MadGraph7 server'
                 else:
                     comment = 'automatic download.'
                 restrict = 'unknown'
@@ -4188,7 +4200,7 @@ This implies that with decay chains:
 
         args = self.split_arg(line)
         self.check_tutorial(args)
-        tutorials = {'MadGraph5': logger_tuto,
+        tutorials = {'MadGraph7': logger_tuto,
                      'aMCatNLO': logger_tuto_nlo,
                      'MadLoop': logger_tuto_madloop}
         try:
@@ -4395,6 +4407,9 @@ This implies that with decay chains:
             return lCMS_values
         
         ###### BEGIN do_check
+
+        # No exporter here, so 'auto' means the safe trace basis
+        self.set_color_basis_mode()
 
         args = self.split_arg(line)
         # Check args validity
@@ -5808,7 +5823,7 @@ This implies that with decay chains:
                 required_schannel_ids = \
                                self.extract_particle_ids(required_schannels, crash_on_duplication=True)
             except self.InvalidCmd:
-                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MG5aMC, this was allowed but incorectly intrepreted as \"> A >\".")
+                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MadGraph7, this was allowed but incorectly intrepreted as \"> A >\".")
 
             if required_schannel_ids and not \
                    isinstance(required_schannel_ids[0], list):
@@ -6279,7 +6294,7 @@ This implies that with decay chains:
             self.clean_process()
             # Import model
             if args[0].endswith('_v4'):
-                logger.critical("Support for V4 model is deprecated and known to not be fully working in this version of MG5aMC. Please consider to use an older (Long Term Stable) version if you can not use UFO model")
+                logger.critical("Support for V4 model is deprecated and known to not be fully working in this version of MadGraph7. Please consider to use an older (Long Term Stable) version if you can not use UFO model")
                 self._curr_model, self._model_v4_path = \
                                  import_v4.import_model(args[1], self._mgme_dir)
             else:
@@ -6888,9 +6903,9 @@ This implies that with decay chains:
                                  ('--no_MA5_further_install' not in add_options):
                 if not __debug__:
                     logger.warning('Default installation of Madanalys5 failed.')
-                    logger.warning("MG5aMC will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
+                    logger.warning("MadGraph7 will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
                     logger.warning("This will however limit MA5 applicability for hadron-level analysis.")
-                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/madgraph --debug'.")
+                    logger.warning("If you would like to prevent MadGraph7 to re-attempt MA5 installation, start MadGraph7 with './bin/madgraph --debug'.")
                     for option in ['--no_MA5_further_install', '--no_root_in_MA5', '--force']:
                         if option not in add_options:
                             add_options.append(option)
@@ -6939,9 +6954,9 @@ This implies that with decay chains:
 """Successful installation of Ninja, but without support for quadruple precision
 arithmetics. If you want to enable this (hence improving the treatment of numerically
 unstable points in the loop matrix elements) you can try to reinstall Ninja with:
-  MG5aMC>install ninja
+  MadGraph7>install ninja
 After having made sure to have selected a C++ compiler in the 'cpp' option of
-MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
+MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""")
             self.options['ninja'] = pjoin(prefix,'lib')
             self.exec_cmd('save options %s ninja' % config_file, printcmd=False, log=False)
         elif tool == 'contur':
@@ -7014,18 +7029,18 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
         if len(path_to_be_set)>0:
             shell_type = misc.get_shell_type()
             if shell_type in ['bash',None]:
-                modification_line = r"printf '\n# MG5aMC paths:\n%s\n' >> ~/.bashrc"%\
+                modification_line = r"printf '\n# MadGraph7 paths:\n%s\n' >> ~/.bashrc"%\
                 (r'\n'.join('export %s=%s%s'%
                 (var,path,'%s$%s'%(os.pathsep,var)) for var,path in path_to_be_set))
             elif shell_type=='tcsh':
-                modification_line = r"printf '\n# MG5aMC paths:\n%s\n' >> ~/.cshrc"%\
+                modification_line = r"printf '\n# MadGraph7 paths:\n%s\n' >> ~/.cshrc"%\
                 (r'\n'.join('setenv %s %s%s'%
                 (var,path,'%s$%s'%(os.pathsep,var)) for var,path in path_to_be_set))
 
             logger.debug("==========")
             logger.debug("We recommend that you add to the following paths"+\
              " to your environment variables, so that you are guaranteed that"+\
-             " at runtime, MG5_aMC will use the tools you have just installed"+\
+             " at runtime, MadGraph7 will use the tools you have just installed"+\
              " and not some other versions installed elsewhere on your system.\n"+\
              "You can do so by running the following command in your terminal:"
              "\n   %s"%modification_line) 
@@ -7387,7 +7402,7 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
                 maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
-            logger.info('Plugin %s correctly interfaced. Latest official validition for MG5aMC version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
+            logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
             if new_interface:
                 ff = open(pjoin(MG5DIR, 'bin', '%s.py' % name) , 'w') 
                 if __debug__:
@@ -7412,7 +7427,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 ff.close()
                 import stat
                 os.chmod(pjoin(MG5DIR, 'bin', '%s.py' % name), stat.S_IRWXU)
-                logger.info('To use this module, you need to quit MG5aMC and run the executable bin/%s.py' % name)
+                logger.info('To use this module, you need to quit MadGraph7 and run the executable bin/%s.py' % name)
             status=0
                 
         elif logger.level <= logging.INFO:
@@ -7522,7 +7537,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                      pjoin(MG5DIR,'Template', 'Common', 'Cards', 'delphes_card_ATLAS.dat'))
             
             if not self.options['pythia-pgs_path'] and not self.options['pythia8_path']:
-                logger.warning("We noticed that no parton-shower module are installed/linked. \n In order to use Delphes from MG5aMC please install/link pythia8.")
+                logger.warning("We noticed that no parton-shower module are installed/linked. \n In order to use Delphes from MadGraph7 please install/link pythia8.")
 
         #reset the position of the executable
         options_name = {'Delphes': 'delphes_path',
@@ -8044,10 +8059,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                                 logger.info('--------')
                                 logger.info(
 """The version of 'samurai' automatically detected seems too old to be compatible
-with MG5aMC and it will be turned off. Ask the authors for the latest version if
+with MadGraph7 and it will be turned off. Ask the authors for the latest version if
 you want to use samurai. 
 If you want to enforce its use as-it-is, then specify directly its library folder
-in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto').""")
+in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').""")
                                 logger.info('--------')
 
             elif key.endswith('path'):
@@ -8956,7 +8971,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
                 'executable.\n Please set the \'fastjet\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
-                    '\n MG5_aMC> set eMELA /PATH/TO/eMELA-config\n')
+                    '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
             if self.history and 'eMELA' in self.history[-1]:
                 self.history.pop()
@@ -8985,7 +9000,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             logger.info('%s does not seem to correspond to a valid fastjet-config ' % args[1] + \
                 'executable (v3+). We will use fjcore instead.\n Please set the \'fastjet\'' + \
                 'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).' +
-                    '\n MG5_aMC> set fastjet /PATH/TO/fastjet-config\n')
+                    '\n MadGraph7> set fastjet /PATH/TO/fastjet-config\n')
             self.options[args[0]] = None
             if self.history and 'fastjet' in self.history[-1]:
                 self.history.pop()
@@ -9071,7 +9086,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
                         'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
-                        ' MG5_aMC> set lhapdf /PATH/TO/lhapdf-config\n')
+                        ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
     set2_lhapdf_py3 = set2_lhapdf
@@ -9151,6 +9166,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.check_set(args)
         self.options[args[0]] = int(args[1])
 
+    def set2_cvmfs_lhapdf_path(self, args, log=True):
+        """default=/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+        Directory of the LHAPDF sets mirrored via CVMFS. When that directory is
+        mounted, a PDF set found there is read directly from it: it is neither
+        downloaded nor copied into lib/PDFsets, and therefore not transferred to
+        the cluster nodes (which mount the same read-only filesystem).
+        A path that is not mounted is simply ignored; set the option to None to
+        switch the fallback off.
+        """
+        args = ['cvmfs_lhapdf_path'] + args
+        self.check_set(args)
+        value = args[1].strip()
+        self.options[args[0]] = None if value in ['None', 'none', ''] else value
+
     def set2_cluster_local_path(self, args, log=True):
         """default=None 
         This parameter avoids either to transfer PDF sets to the cluster nodes or 
@@ -9215,7 +9244,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
 
     def set2_OLP(self, args, log=True):
-        """Select the One-Loop Provider (OLP) for NLO computations in MG5_aMC. 
+        """Select the One-Loop Provider (OLP) for NLO computations in MadGraph7. 
         By default, MG5 uses its internal engine MadLoop. 
         This option allows switching to an external OLP via the BLHA interface (e.g., GoSam, OpenLoops).
         Example: set OLP Gosam
@@ -9311,7 +9340,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def set2_auto_convert_model(self, args, log=True):
         """Set whether the code should automatically convert UFO models from
-        python2 format to python3 format when imported in a python3 MG5_aMC session.
+        python2 format to python3 format when imported in a python3 MadGraph7 session.
         Example: set auto_convert_model True [Default]
         Note that the UFO model will be overwritten which might be problematic.
         However, the syntax conversion is usually straightforward and is still python2 compatible.
@@ -9323,7 +9352,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
     def set2_acknowledged_v3_1_syntax(self, args, log=True):
         """Set whether the user acknowledge that he is aware of the new v3.1 UFO syntax.
         This is required to use some specific generate syntax at NLO.
-        Default is set to True since MG5_aMC v3.6.7
+        Default is set to True since MG5aMC v3.6.7
         """
         args = ['acknowledged_v3.1_syntax'] + args
         self.check_set(args)
@@ -9499,7 +9528,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         return self.set_default('cluster_type', args, log=log)
     
     def set2_text_editor(self, args, log=True):
-        """Set the text editor to be used to open files from the MG5_aMC interface.
+        """Set the text editor to be used to open files from the MadGraph7 interface.
         Example: set text_editor emacs
         Example: set text_editor code
         Example: set text_editor gedit 
@@ -9510,7 +9539,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def set2_run_mode(self, args, log=True):
         """Syntax: set run_mode <mode>
-        Control how MG5_aMC runs the various steps of event generation.
+        Control how MadGraph7 runs the various steps of event generation.
         Modes:
            - 0: sequential execution of all steps
            - 1: use a job scheduler for cluster execution (set via the cluster_type parameter)
@@ -9526,7 +9555,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         return self.set_default('automatic_html_opening', args, log=log)
     
     def set2_web_browser(self, args, log=True):
-        """Set the web browser to be used to open html pages from the MG5_aMC interface.
+        """Set the web browser to be used to open html pages from the MadGraph7 interface.
         Example: set web_browser firefox
         Default is to use the system default browser.
         """
@@ -9553,7 +9582,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
          Implementation for SLURM and HTCondor is provided. 
          Checkpointing is possible only for NLO calculations (any calculation step). 
          Periodic checkpointing is supported, period is set to 24 hours.  
-         This options requires DMTCP to be installed on the cluster. ("install DMTCP" command is available in MG5_aMC).
+         This options requires DMTCP to be installed on the cluster. ("install DMTCP" command is available in MadGraph7).
          Related options: 
            -  cluster_requirement
            -  cluster_vacatetime
@@ -9608,6 +9637,28 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         Default: True
         """
         self.options['apply_flavor_grouping'] = banner_module.ConfigFile.format_variable(args[0], bool, 'apply_flavor_grouping')
+
+    def help_set2_color_basis(self):
+        logger.info("color_basis <value>",'$MG:color:GREEN')
+        logger.info(" > (default: auto) select the color basis used for processes")
+        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
+        logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
+        logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
+        logger.info(" > auto:  ddm for the output formats which do not need a color")
+        logger.info("          flow decomposition (standalone), trace otherwise")
+
+    def set2_color_basis(self, args, log=True):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        Example: set color_basis ddm
+        """
+        args = ['color_basis'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value not in self._valid_color_basis:
+            raise self.InvalidCmd('color_basis needs one of %s, got %s' % \
+                                  (self._valid_color_basis, args[1]))
+        self.options['color_basis'] = value
 
     def set2_merge_same_topologies(self, args, log=True):
         """Set whether the mg7 output should merge diagrams sharing the same topology
@@ -9789,7 +9840,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                 logger.info('This option will be the default in any output that you are going to create in this session.')
                 logger.info('In order to keep this changes permanent please run \'save options\'')
         else:
-            #MadGraph5_aMC@NLO configuration
+            #MadGraph7 configuration
             if not self.history or self.history[-1].split() != line.split():
                 self.history.append('set %s' % line)
                 self.avoid_history_duplicate('set %s' % args[0], ['define', 'set'])
@@ -10060,9 +10111,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         logger.warning("""
 || The loop-induced decay process you have specified contains several
 || subprocesses and, in order to be able to compute individual branching ratios, 
-|| MG5_aMC will *not* group them. Integration channels will also be considered
+|| MadGraph7 will *not* group them. Integration channels will also be considered
 || for each diagrams and as a result integration will be inefficient.
-|| It is therefore recommended to perform this simulation by setting the MG5_aMC
+|| It is therefore recommended to perform this simulation by setting the MadGraph7
 || option 'group_subprocesses' to 'True' (before the output of the process).
 || Notice that when doing so, processes for which one still wishes to compute
 || branching ratios independently can be specified using the syntax:
@@ -10140,10 +10191,47 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self._export_dir = None
 
     # Export a matrix element
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True, 
+    def set_color_basis_mode(self, *exporters):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
+        formats which never need a color flow decomposition, so in 'auto' mode
+        every exporter involved must support it."""
+
+        mode = self.options.get('color_basis', 'auto')
+        exporters = [exporter for exporter in exporters if exporter]
+        if mode == 'auto':
+            use_ddm = bool(exporters) and \
+                all(getattr(exporter, 'support_ddm_color_basis', False)
+                    for exporter in exporters)
+        else:
+            use_ddm = (mode == 'ddm')
+
+        # An exporter which has to write a color flow per event also needs the
+        # trace basis next to the DDM one
+        with_flow = any(getattr(exporter, 'ddm_needs_flow_basis', False)
+                        for exporter in exporters)
+
+        color_amp.set_ddm_basis(use_ddm, with_flow=with_flow)
+        if use_ddm:
+            logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
+                         'fully adjoint processes (flow basis: %s)', with_flow)
+
+    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
                                                                        args=[]):
         """Export a generated amplitude to file."""
 
+        self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
+        try:
+            return self._export(nojpeg, main_file_name, group_processes, args)
+        finally:
+            # the color basis is tied to this output, it must not leak to the
+            # next command
+            color_amp.set_ddm_basis(False)
+
+    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
+                                                                       args=[]):
+        """Export a generated amplitude to file, with the color basis already
+        selected."""
 
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
@@ -10589,7 +10677,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def write_generation_citations(self):
         """Persist, into the generated directory, the references that are
-        already known at generation time: the MadGraph5_aMC@NLO framework, the
+        already known at generation time: the MadGraph7 framework, the
         UFO model format (or HELAS for v4 models), the ALOHA/HELAS helicity
         routines.  Writes citations.log (machine-readable, collected by every
         run) plus a ready-to-use citations.bib and a citations.md summary.

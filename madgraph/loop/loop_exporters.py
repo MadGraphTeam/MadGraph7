@@ -1,11 +1,11 @@
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -145,7 +145,7 @@ class LoopExporterFortran(object):
                 ln(pjoin(targetPath,'Source','CutTools','includects',file), 
                                                         pjoin(targetPath,'lib'))
             # Make sure it is recompiled at least once. Because for centralized
-            # MG5_aMC installations, it might be that compiler differs.
+            # MadGraph7 installations, it might be that compiler differs.
             # Not necessary anymore because I check the compiler version from
             # the log compiler_version.log generated during CT compilation
             # misc.compile(['cleanCT'], cwd = pjoin(targetPath,'Source'))
@@ -184,7 +184,7 @@ class LoopExporterFortran(object):
                 raise InvalidCmd("Could not find the location of the file"+\
                     " mpmodule.mod in your environment paths.")
             else:
-                logger.info('MG5_aMC is using CutTools installation found at %s.'%\
+                logger.info('MadGraph7 is using CutTools installation found at %s.'%\
                                                          os.path.dirname(CTlib))
                 ln(os.path.join(CTlib),os.path.join(targetPath,'lib'),abspath=True)
                 ln(os.path.join(CTmod),os.path.join(targetPath,'lib'),abspath=True)
@@ -652,7 +652,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     raise MadGraph5Error("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile CutTools.")
     
     def cat_coeff(self, ff_number, frac, is_imaginary, Nc_power, Nc_value=3):
         """Concatenate the coefficient information to reduce it to 
@@ -792,7 +792,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                         imag_num=imag_num-buff_num
                     else:
                         imag_num=imag_num+buff_num
-                assert not (real_num!=0 and imag_num!=0), "MadGraph5_aMC@NLO found a "+\
+                assert not (real_num!=0 and imag_num!=0), "MadGraph7 found a "+\
                   "color matrix element which has both a real and imaginary part."
                 if imag_num!=0:
                     assert int(imag_num) == imag_num and int(common_denom) == common_denom
@@ -1889,7 +1889,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         for tir in self.all_tir:
             tir_dir="%s_dir"%tir
             if tir_dir in self.opt and not self.opt[tir_dir] is None:
-                # Make sure to defer the 'local path' to the current MG5aMC root.
+                # Make sure to defer the 'local path' to the current MadGraph7 root.
                 tir_path = self.opt[tir_dir].strip()
                 if tir_path.startswith('.'):
                     tir_path = os.path.abspath(pjoin(MG5DIR,tir_path))
@@ -1974,7 +1974,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                             to_include = '<Not_found_define_it_yourself>'                
                         tir_include.append('-I %s'%str(to_include))
                         # To be able to easily compile a MadLoop library using
-                        # makefiles built outside of the MG5_aMC framework
+                        # makefiles built outside of the MadGraph7 framework
                         # (such as what is done with the Sherpa interface), we
                         # place here an easy handle on the golem includes
                         name_map = {'golem':'golem95','samurai':'samurai',
@@ -2047,10 +2047,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         version = None
                     if version is None :
                         logger.warning(
-"Your version of '%s' in \n  %s\nseems too old %sto be compatible with MG5_aMC."
+"Your version of '%s' in \n  %s\nseems too old %sto be compatible with MadGraph7."
 %(tir_name, libpath ,'' if not version else '(v%s) '%version)+
-("\nConsider updating it by hand or using the 'install' function of MG5_aMC." if tir_name!='samurai'
- else "\nAsk the authors for the latest version compatible with MG5_aMC."))
+("\nConsider updating it by hand or using the 'install' function of MadGraph7." if tir_name!='samurai'
+ else "\nAsk the authors for the latest version compatible with MadGraph7."))
         else:
             # self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)):
@@ -2065,8 +2065,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             if tir_name in ['pjfry','golem','samurai','ninja','collier']:
                 self.tir_available_dict[tir_name]=False
                 logger.info("When using the 'output_dependencies=internal' "+\
-" MG5_aMC option, the (optional) reduction library %s cannot be employed because"%tir_name+\
-" it is not distributed with the MG5_aMC code so that it cannot be copied locally.")
+" MadGraph7 option, the (optional) reduction library %s cannot be employed because"%tir_name+\
+" it is not distributed with the MadGraph7 code so that it cannot be copied locally.")
                 return ""
             elif tir_name == "iregi":
                 # This is the right paths for IREGI
@@ -2131,7 +2131,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             # his environmental paths
             newlibpath = misc.which_lib(libname)
             if not newlibpath is None:
-                logger.info('MG5_aMC is using %s installation found at %s.'%\
+                logger.info('MadGraph7 is using %s installation found at %s.'%\
                                                           (tir_name,newlibpath)) 
                 # We link the tools below directly to directly where the library is detected
                 if not tir_name in ['pjfry','golem','samurai','ninja','collier']:

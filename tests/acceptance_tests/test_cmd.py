@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -198,6 +198,9 @@ class TestCmdShell1(unittest.TestCase):
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
+                    # set-option added by the DDM colour-basis work
+                    # (ab161ac8a); this dict has to list every one.
+                    'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
                     'dmtcp': None,
@@ -228,6 +231,8 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_size': 100,
                     'loop_color_flows': False,
                     'cluster_local_path': None,
+                    'cvmfs_lhapdf_path':
+                              '/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current',
                     'max_npoint_for_channel': 0,
                     'low_mem_multicore_nlo_generation': False,
                     'ninja': './HEPTools/lib',
