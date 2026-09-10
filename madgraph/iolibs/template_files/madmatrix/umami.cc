@@ -12,6 +12,7 @@
 #include "MemoryBuffers.h"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <array>
 #include <utility>
@@ -24,6 +25,26 @@ using namespace mg5amcCpu;
 
 namespace
 {
+
+  // The per-diagram channel weight handed to madspace as amp2. A subprocess whose
+  // matrix element is identically zero -- an FCNC channel with every Wilson
+  // coefficient at zero, say -- has all numerators at zero, so their sum, the
+  // denominator, is zero too. Dividing would give 0/0 = nan for every diagram, and
+  // that nan becomes the amp2 madspace builds its channel weights from, turning a
+  // channel that should simply contribute nothing into a non-finite event weight
+  // that aborts the whole integration.
+  //
+  // The denominator is a sum of |amp|^2 and so never negative: adding the smallest
+  // normal double floors it away from zero (0/tiny is 0, no channel preferred) while
+  // leaving every denominator a real amplitude produces bit-for-bit unchanged. This
+  // must NOT be written as a test for zero -- this is compiled with -ffast-math, and
+  // its -ffinite-math-only lets the compiler assume the quotient is finite and drop
+  // such a guard as dead code (the trap behind #117 and #516).
+  inline double channel_amp2( double numerator, double denominator )
+  {
+    return numerator / ( denominator + std::numeric_limits<double>::min() );
+  }
+
 
   void* initialize_impl(
     const fptype* momenta,
@@ -146,7 +167,7 @@ namespace
       double denominator = denominators[i_event];
       for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * CPPProcess::ndiagrams + i_diag] / denominator;
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * CPPProcess::ndiagrams + i_diag], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -607,7 +628,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )
@@ -639,7 +660,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )
