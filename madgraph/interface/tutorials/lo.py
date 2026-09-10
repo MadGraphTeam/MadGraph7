@@ -29,6 +29,7 @@ import madgraph
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
+                                                  lhapdf_configured,
                                                   output_name)
 
 P = 'MG7>'
@@ -48,6 +49,29 @@ def madspace_is_installed():
     except Exception:
         return False
     return os.path.isdir(os.path.join(root, 'madspace', 'install', 'madspace'))
+
+
+def _lhapdf_note(interface=None):
+    """The theory-uncertainty caveat, matched to whether LHAPDF is here.
+
+    systematics.py imports the python lhapdf module to do the scale and PDF
+    variations. Without it the run still gives a cross section and its
+    integration error -- the theory uncertainty is simply absent, and the run
+    log says why rather than failing.
+    """
+
+    if lhapdf_configured(interface):
+        return ("Those variations need LHAPDF, which this MG7 has configured, "
+                "so you should see\nthem. If the block is missing, the run log "
+                "will say what went wrong.")
+    return ("**You will not get the second block here.** Those variations are "
+            "computed by\nsystematics.py, which needs LHAPDF, and this MG7 has "
+            "no working lhapdf-config.\nThe run still succeeds and still gives "
+            "you a cross section and its integration\nerror -- you just get no "
+            "theory uncertainty with it. To fix that:\n\n"
+            "  MG7> install lhapdf6\n\n"
+            "and then `set lhapdf /path/to/lhapdf-config` if MG7 does not find "
+            "it by itself.")
 
 
 def intro(interface=None):
@@ -180,11 +204,38 @@ run finishes you come back here and the tutorial picks up again.
 Step('launch', lambda interface: """
 That is a full leading-order event sample.
 
-What you got, and where:
-  * the cross section and its uncertainty, printed at the end of the run;
+**The cross section comes with two different uncertainties**, and they are not
+interchangeable.
+
+The **statistical** one rides along with the cross section itself, in the
+`Result:` row of the summary box and in the survey log lines:
+
+    Result:   503.1(1.4)
+
+It is the Monte-Carlo integration error and nothing more. It falls like
+1/sqrt(N), so asking for more events shrinks it, and it says nothing whatever
+about physics -- only about how long you ran.
+
+The **theoretical** one comes from varying the calculation and is reported
+separately, at the end, as asymmetric percentages of the central value:
+
+    # original cross-section: 503.1
+    #     scale variation: +12.4%% -9.6%%
+    #     PDF variation: +2.1%% -2.1%%
+
+Scale variation moves the renormalisation and factorisation scales (by default
+x0.5, x1 and x2 each, from `[postprocessing] systematics_mur` and
+`systematics_muf`); PDF variation runs the set's error members. This is the one
+that goes in a paper, and no amount of extra events will shrink it -- at LO it
+is usually far the larger of the two.
+
+%(lhapdf)s
+
+The rest of what you got:
   * the events themselves, an LHE file under `%(run)s/Events/`;
   * the banner at the top of that file, which records every card and every
-    setting used -- it is the honest record of how the numbers were made;
+    setting used -- it is the honest record of how the numbers were made. The
+    per-event variation weights live there too;
   * an HTML summary in the run directory, which you can open in a browser.
 
 Two commands worth knowing here. `open` reaches anything in the output
@@ -194,7 +245,8 @@ the settings the run actually used, `open index.html` the summary. And
 having to remember it:
 
 %(p)s history my_first_run.dat
-""" % {'p': P, 'run': output_name(interface, RUN)},
+""" % {'p': P, 'run': output_name(interface, RUN),
+       'lhapdf': _lhapdf_note(interface)},
      title='run it',
      hint="`history FILE` saves the session; `open FILE` shows a file from the output.",
      solution='history my_first_run.dat'),

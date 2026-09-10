@@ -209,6 +209,38 @@ def describe_state(interface, indent='  '):
     return '\n'.join(lines) or (indent + 'nothing that could be summarised')
 
 
+def lhapdf_configured(interface):
+    """Whether this MG7 has a usable lhapdf-config.
+
+    Scale and PDF variations are computed by systematics.py, which imports the
+    python lhapdf module and finds it through lhapdf-config
+    (mg7/launch.py:_lhapdf_config_path).  Without it the run still produces a
+    cross section and its integration error -- only the theory uncertainty is
+    missing.  Reported as a tri-state so a tutorial can say "not configured
+    here" when it knows, and stay general when it cannot tell.
+    """
+
+    try:
+        import madgraph.various.misc as misc
+    except Exception:
+        return None
+
+    try:
+        configured = interface.options.get('lhapdf')
+    except Exception:
+        configured = None
+
+    for candidate in (configured, 'lhapdf-config'):
+        if not candidate:
+            continue
+        if os.path.isabs(candidate):
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return True
+        elif misc.which(candidate):
+            return True
+    return False
+
+
 def output_name(interface, default):
     """The directory the user's last `output` actually made.
 

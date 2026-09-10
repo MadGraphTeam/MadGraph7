@@ -25,6 +25,7 @@ from __future__ import absolute_import
 
 import logging
 import re
+import sys
 import unittest
 
 import madgraph
@@ -873,3 +874,61 @@ class TestTutorialHelp(unittest.TestCase):
             self.assertIn('do_%s' % command, provided,
                           '`tutorial help` advertises %r, which the mixin does '
                           'not provide' % command)
+
+
+#===============================================================================
+# the two uncertainties
+#===============================================================================
+
+class TestUncertaintyLesson(unittest.TestCase):
+    """`lo` must distinguish the statistical and theoretical uncertainties, and
+    say when the theory one will be missing."""
+
+    class _WithLhapdf(object):
+        # lhapdf_configured requires an *executable*, so a readable file will
+        # not do; the interpreter running the tests always is one
+        options = {'lhapdf': sys.executable}
+        _done_export = ['/tmp/x/MYPROC', 'mg7']
+
+    class _WithoutLhapdf(object):
+        options = {'lhapdf': '/nonexistent/lhapdf-config'}
+        _done_export = ['/tmp/x/MYPROC', 'mg7']
+
+    def step(self):
+        return [s for s in tutorials.get('lo').steps if s.title == 'run it'][0]
+
+    def test_it_names_both_uncertainties(self):
+        text = self.step().render(self._WithLhapdf())
+        self.assertIn('statistical', text)
+        self.assertIn('theoretical', text)
+        self.assertIn('scale variation', text)
+        self.assertIn('PDF variation', text)
+
+    def test_it_shows_the_notation_mg7_actually_uses(self):
+        """madspace prints the error in the last digits (format.cpp), not with
+        a +-. The lesson quotes it as-is: the notation is familiar to MadGraph
+        users and does not need explaining."""
+
+        text = self.step().render(self._WithLhapdf())
+        self.assertIn('503.1(1.4)', text)
+
+    def test_it_says_which_one_more_events_help(self):
+        text = self.step().render(self._WithLhapdf())
+        self.assertIn('1/sqrt(N)', text)
+        self.assertIn('no amount of extra events will shrink it', text)
+
+    def test_without_lhapdf_it_says_the_theory_block_is_missing(self):
+        text = self.step().render(self._WithoutLhapdf())
+        self.assertIn('will not get the second block', text)
+        self.assertIn('install lhapdf6', text)
+
+    def test_with_lhapdf_it_does_not_warn(self):
+        text = self.step().render(self._WithLhapdf())
+        self.assertNotIn('will not get the second block', text)
+        self.assertIn('has configured', text)
+
+    def test_lhapdf_detection(self):
+        from madgraph.interface.tutorials.session import lhapdf_configured
+
+        self.assertTrue(lhapdf_configured(self._WithLhapdf()))
+        self.assertFalse(lhapdf_configured(self._WithoutLhapdf()))
