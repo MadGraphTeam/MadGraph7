@@ -226,6 +226,33 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             leg_sets.append(downstream)
         return leg_sets
 
+    def propagator_pdg(self, leg, leg_set):
+        """Signed pdg id of the internal line `leg`, oriented the way the
+        phase-space topology reads it: flowing away from the initial state.
+
+        Madgraph records, on the leg a vertex creates, the pdg of the line
+        flowing into the legs that were combined to make it -- `leg_set`.
+        That is already the decay orientation while those are all final
+        state, but a line holding *every* initial leg is the one madspace
+        roots the other way round: its decay products are the complementary
+        legs, so what belongs in the LHE is the anti-particle. Without this
+        the s-channel W+ of `p p > e+ ve` is written as a W- decaying to
+        e+ ve. A leg set holding only some of the initial legs is a
+        t-channel, which never becomes a decay and is left as madgraph put
+        it.
+
+        Only colour singlets actually depend on this: for a coloured line
+        lhe_output.cpp's compute_decay_color infers the orientation from the
+        colour flow and flips the pdg back itself.
+        """
+        part = self.model.get_particle(leg.get("id"))
+        if part.get("self_antipart"):
+            return part.get("pdg_code")
+        sign = 1 if part.get("is_part") else -1
+        if sum(1 for name in leg_set if name.startswith("i")) == self.n_initial:
+            sign = -sign
+        return sign * part.get("pdg_code")
+
     def diagram_propagator_pdgs(self, diagram, channel_leg_sets, sym_perm):
         """Signed pdg id of each internal line of `diagram`, reordered to
         match `channel_leg_sets` (the order used for
@@ -237,13 +264,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         pdg_by_leg_set = {}
         for i_vert, vertex in enumerate(diag_vertices[:-1]):
             legs = vertex.get("legs")
-            final_part = self.model.get_particle(legs[-1].get("id"))
-            sign = (
-                1
-                if final_part.get("is_part") or final_part.get("self_antipart") else
-                -1
+            pdg_by_leg_set[leg_sets[i_vert]] = self.propagator_pdg(
+                legs[-1], leg_sets[i_vert]
             )
-            pdg_by_leg_set[leg_sets[i_vert]] = sign * final_part.get("pdg_code")
         return [pdg_by_leg_set[leg_set] for leg_set in channel_leg_sets]
 
     def set_channels_colors_map(self):
@@ -304,12 +327,14 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             on_shell_propagators = []
             diagram_edge_names = dict(self.edge_names)
             diag_vertices = diagram.get("vertices")
+            # Index-aligned with `propagators`: both are filled in vertex-list
+            # order and both skip the closing vertex, which is the last one.
+            leg_sets = self.diagram_edge_leg_sets(diagram)
             for i_vert, vertex in enumerate(diag_vertices):
                 legs = vertex.get("legs")
                 # Last amplitude vertex does not create new edges
                 vertex_props = [diagram_edge_names[leg.get("number")] for leg in legs[:-1]]
 
-                final_part = self.model.get_particle(legs[-1].get("id"))
                 if i_vert == len(diag_vertices) - 1:
                     vertex_props.append(diagram_edge_names[legs[-1].get("number")])
                 else:
@@ -317,12 +342,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     prop_name = f"p{prop_index}"
                     diagram_edge_names[legs[-1].get("number")] = prop_name
                     vertex_props.append(prop_name)
-                    sign = (
-                        1
-                        if final_part.get("is_part") or final_part.get("self_antipart") else
-                        -1
+                    propagators.append(
+                        self.propagator_pdg(legs[-1], leg_sets[prop_index])
                     )
-                    propagators.append(sign * final_part.get("pdg_code"))
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
                 vertices.append(vertex_props)
@@ -330,7 +352,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             chan_index = len(self.channels)
             self.diagram_tags.append([IdentifyTopologyTag(diagram, self.model)])
             channel_indices.append(chan_index)
-            channel_leg_sets.append(self.diagram_edge_leg_sets(diagram))
+            channel_leg_sets.append(leg_sets)
             self.channels.append(
                 {
                     "propagators": propagators,
