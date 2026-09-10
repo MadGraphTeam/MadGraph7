@@ -449,7 +449,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("-- list        show the tutorials without starting one")
         logger.info("-- status      show how far you are in the running tutorial")
         logger.info("-- stop        leave tutorial mode")
-        logger.info("   While a tutorial runs: hint, solution, next, repeat, back, skip.")
+        logger.info("-- help        the commands a running tutorial understands")
+        logger.info("   (while one runs: hint, solution, next, repeat, back, skip)")
 
     def help_open(self):
         logger.info("syntax: open FILE  ",'$MG:color:BLUE')
@@ -3123,7 +3124,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         """Names 'tutorial' accepts: every tutorial, its aliases, and the
         housekeeping sub-commands."""
         return (tutorials.names(include_aliases=True) +
-                ['stop', 'list', 'status'])
+                ['stop', 'list', 'status', 'help'])
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
@@ -4152,7 +4153,7 @@ This implies that with decay chains:
                             % session.tutorial.name)
             return
 
-        if name in ('list', 'status'):
+        if name in ('list', 'status', 'help'):
             # informational: never (re)start anything, and never let the
             # postcmd hook mistake this for the tutorial's intro step
             session = getattr(self, '_tutorial_session', None)
@@ -4160,8 +4161,10 @@ This implies that with decay chains:
                 session.suppress_next = True
             if name == 'list':
                 self.print_tutorial_list()
-            else:
+            elif name == 'status':
                 self.print_tutorial_status()
+            else:
+                self.print_tutorial_help()
             return
 
         session = tutorials.start(name)
@@ -4189,6 +4192,41 @@ This implies that with decay chains:
             tutorials.load_plugin_tutorials(self.plugin_path)
         except Exception as error:
             logger.debug('could not load plugin tutorials: %s', error)
+
+    def print_tutorial_help(self):
+        """What `tutorial help` prints: the commands a tutorial understands."""
+
+        running = getattr(self, '_tutorial_session', None)
+
+        logger.info("Commands available while a tutorial is running:",
+                    '$MG:BOLD')
+        logger.info("   hint        a nudge towards the command this step wants")
+        logger.info("   solution    print one right answer -- it is never run "
+                    "for you, you type it")
+        logger.info("   next        same thing: show the command to type next")
+        logger.info("   repeat      print the current step again")
+        logger.info("   back        go back one step")
+        logger.info("   skip        move on without doing this step")
+        logger.info("Anytime:", '$MG:BOLD')
+        logger.info("   tutorial            choose a tutorial from the menu")
+        logger.info("   tutorial NAME       start that one (switches if one is "
+                    "already running)")
+        logger.info("   tutorial list       show the tutorials on offer")
+        logger.info("   tutorial status     how far you have got")
+        logger.info("   tutorial help       this message")
+        logger.info("   tutorial stop       leave tutorial mode")
+        logger.info("A tutorial never blocks a command: anything you type runs "
+                    "normally, and", '$MG:BOLD')
+        logger.info("the tutorial just comments on it. Going off-script is "
+                    "fine.", '$MG:BOLD')
+
+        if running is None:
+            logger.info("No tutorial is running, so the first group above is "
+                        "not active yet.")
+        else:
+            done, total = running.progress()
+            logger.info("Running '%s', step %d of %d."
+                        % (running.tutorial.name, done, total))
 
     def print_tutorial_list(self):
         """Show the available tutorials."""

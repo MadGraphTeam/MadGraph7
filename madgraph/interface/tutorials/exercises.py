@@ -222,7 +222,8 @@ than one right answer to most of these. If you get it wrong you are told
 ever blocked or refused.
 
 `hint` nudges, `solution` prints one right answer, `skip` moves on,
-`tutorial status` shows how far you have got.
+`tutorial status` shows how far you have got, and `tutorial help` lists the
+lot.
 
 --- Exercise 1 ---------------------------------------------------------------
 

@@ -21,7 +21,8 @@ docs/standalone_flavor_python.md.
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  output_name)
 
 P = 'MG7>'
 RUN = 'MY_SA_RUN'
@@ -78,7 +79,7 @@ two.
      hint="`output standalone_fortran DIR --prefix=int`",
      solution='output standalone_fortran %s --prefix=int' % RUN),
 
-Step('output', """
+Step('output', lambda interface: """
 Look at `%(run)s/SubProcesses/`: one directory per subprocess group, each with
 
   matrix.f                the matrix element
@@ -112,8 +113,10 @@ it quietly gives you one flavour when you wanted another.
 
 For contrast, produce the C++ one too:
 %(p)s output standalone %(cpp)s
-""" % {'p': P, 'run': RUN, 'cpp': CPP},
+""" % {'p': P, 'run': output_name(interface, RUN), 'cpp': CPP},
      title='what the output contains',
+     setup=lambda interface: setattr(interface, '_tutorial_sa_fortran_dir',
+                                     output_name(interface, RUN)),
      hint="`output standalone DIR` gives the C++/CUDA standalone.",
      solution='output standalone %s' % CPP),
 
@@ -134,8 +137,8 @@ Which to reach for:
      title='the C++ standalone',
      solution='history my_standalone_session.dat'),
 
-Step('history', lambda interface: """
-The rest happens outside MG7, in the output directory.
+Step('history', lambda interface: (lambda FORTRAN_RUN: """
+The rest happens outside MG7, in the Fortran output directory.
 
 **Evaluate one point with no Python at all.** `check_sa` is built for you;
 run it from a subprocess directory and it prints |M|^2 for a phase-space point.
@@ -174,9 +177,10 @@ Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'run': RUN,
+""" % {'run': FORTRAN_RUN,
        'see_also': tutorials.see_also_block(
-           ['syntax', 'checks', 'lo', 'mg7', 'exercises'])},
+           ['syntax', 'checks', 'lo', 'mg7', 'exercises'])})(
+         getattr(interface, '_tutorial_sa_fortran_dir', RUN)),
      title='build it and call it'),
 
     ],

@@ -131,10 +131,11 @@ class TutorialMixin(object):
         step = self._tutorial_step_or_warn()
         if step is None:
             return
+        solution = step.get_solution(self)
         if step.hint:
             emit(step.hint)
-        elif step.solution:
-            emit("Try:\n%s%s" % (self._tutorial_prompt_text(), step.solution))
+        elif solution:
+            emit("Try:\n%s%s" % (self._tutorial_prompt_text(), solution))
         else:
             emit("No hint for this step -- try 'solution'.")
 
@@ -200,12 +201,13 @@ class TutorialMixin(object):
     def _tutorial_show_solution(self, step):
         if step is None:
             return
-        if not step.solution:
+        solution = step.get_solution(self)
+        if not solution:
             emit("This step has no single command to give -- read it again "
                  "with 'repeat'.")
             return
         emit("The tutorial expects:\n%s%s"
-             % (self._tutorial_prompt_text(), step.solution))
+             % (self._tutorial_prompt_text(), solution))
 
     @staticmethod
     def _tutorial_prompt_text():

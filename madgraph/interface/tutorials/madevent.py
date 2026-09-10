@@ -22,7 +22,8 @@ covers what `output madevent` gives you instead.
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  output_name)
 
 P = 'MG7>'
 RUN = 'MY_MADEVENT_RUN'
@@ -61,7 +62,7 @@ ask for. The difference is in the next command, where you name the format:
      hint="Name the format explicitly: `output madevent DIRNAME`.",
      solution='output madevent %s' % RUN),
 
-Step('output', """
+Step('output', lambda interface: """
 This is the layout a lot of existing code expects:
 
   Cards/run_card.dat     beams, cuts, scales, PDF, number of events
@@ -84,11 +85,11 @@ yes when the run offers to edit it.
 script yourself from inside the directory. For a first run, change nothing.
 
 (Ctrl-C stops a long run and returns you here.)
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
-     solution='launch %s' % RUN),
+     solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
-Step('launch', """
+Step('launch', lambda interface: """
 Same physics, familiar output: a cross section, and an LHE file under
 `%(run)s/Events/`.
 
@@ -109,7 +110,7 @@ good as the widths in your param card, and the widths are not automatically
 kept in step with the masses. Compute one and see:
 
 %(p)s compute_widths t --body_decay=2 --output=./my_widths.dat
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='run it',
      hint="`compute_widths PARTICLE --output=FILE` writes a param card with the widths filled in.",
      solution='compute_widths t --body_decay=2 --output=./my_widths.dat'),
@@ -175,7 +176,7 @@ Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'run': RUN,
+""" % {'run': output_name(interface, RUN),
        'see_also': tutorials.see_also_block(
            ['lo', 'mg7', 'run', 'decays', 'syntax', 'exercises'])},
      title='tools, gridpacks and clusters'),

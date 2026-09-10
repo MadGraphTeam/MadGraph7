@@ -30,6 +30,8 @@ Nothing here talks to the interface; the mixin does that.
 
 from __future__ import absolute_import
 
+import os
+
 
 class Step(object):
     """One lesson of a tutorial.
@@ -45,7 +47,10 @@ class Step(object):
               say).
     hint      printed by the `hint` command; falls back to nothing.
     solution  the command line this step is waiting for.  Printed by `next` and
-              `solution` -- never executed, the user always types it.
+              `solution` -- never executed, the user always types it.  May be a
+              callable(interface) -> str, for a step whose command depends on
+              what the user chose earlier (the name they gave `output`, say);
+              resolve it with get_solution().
     requires  list of prerequisite names checked before the step is announced.
     setup     callable(interface) run before the step is announced.
     """
@@ -66,6 +71,20 @@ class Step(object):
         if callable(self.text):
             return self.text(interface)
         return self.text
+
+    def get_solution(self, interface=None):
+        """The command this step is waiting for, resolved against the session.
+
+        Falls back to a callable's answer for a missing interface, so `hint`
+        and the tests both work before anything has been generated.
+        """
+
+        if callable(self.solution):
+            try:
+                return self.solution(interface)
+            except Exception:
+                return None
+        return self.solution
 
     def matches(self, keys, line=None, interface=None):
         """True if this step is triggered by a command reduced to `keys`."""
@@ -188,6 +207,26 @@ def describe_state(interface, indent='  '):
     if len(amps) > 4:
         lines.append(indent + '... and %d more' % (len(amps) - 4))
     return '\n'.join(lines) or (indent + 'nothing that could be summarised')
+
+
+def output_name(interface, default):
+    """The directory the user's last `output` actually made.
+
+    A tutorial says "you now have a directory called X", and X has to be the
+    name the user chose -- they are not obliged to use the one we suggested.
+    `_done_export` is [path, mode]; falls back to the suggested name before any
+    output exists.
+    """
+
+    try:
+        done = getattr(interface, '_done_export', None)
+        if done:
+            name = os.path.basename(os.path.normpath(done[0]))
+            if name:
+                return name
+    except Exception:
+        pass
+    return default
 
 
 def applied_orders(interface):

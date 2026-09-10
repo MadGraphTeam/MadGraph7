@@ -28,7 +28,8 @@ import os
 import madgraph
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  describe_applied_orders)
+                                                  describe_applied_orders,
+                                                  output_name)
 
 P = 'MG7>'
 RUN = 'MY_FIRST_LO_RUN'
@@ -60,7 +61,7 @@ step along the way.
 As you go: `hint` and `solution` print the command a step expects -- they never
 run it for you, you always type it. `repeat` prints the step again, `skip`
 moves on, `tutorial status` shows how far you have got, and `tutorial stop`
-leaves at any time.
+leaves at any time. `tutorial help` lists the lot.
 """
 
     if madspace_is_installed():
@@ -144,7 +145,7 @@ Now produce the output:
      title='look at the diagrams',
      solution='output %s' % RUN),
 
-Step('output', """
+Step('output', lambda interface: """
 You now have a directory called %(run)s.
 
 Note what you did *not* have to say: `output` with no format produces the MG7
@@ -155,9 +156,10 @@ output, driven by madspace -- that is the default. What is inside:
   SubProcesses/          the generated matrix elements
   bin/generate_events    the runner, which `launch` calls for you
 
-Other things `output` can make, each with a tutorial of its own:
-  `output madevent %(run)s`     the MG5-compatible directory layout
-  `output standalone %(run)s`   the matrix element as a callable, no events
+Other things `output` can make, each with a tutorial of its own (give them a
+different name so they sit beside this one):
+  `output madevent DIRNAME`     the MG5-compatible directory layout
+  `output standalone DIRNAME`   the matrix element as a callable, no events
 
 Now run it:
 %(p)s launch %(run)s
@@ -170,12 +172,12 @@ it gets built, so the first run takes longer than the ones after it. When the
 run finishes you come back here and the tutorial picks up again.
 
 (To stop a long run and carry on with the tutorial, press Ctrl-C.)
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
      hint="`output NAME` with no format gives you the default MG7 output.",
-     solution='launch %s' % RUN),
+     solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
-Step('launch', """
+Step('launch', lambda interface: """
 That is a full leading-order event sample.
 
 What you got, and where:
@@ -192,7 +194,7 @@ the settings the run actually used, `open index.html` the summary. And
 having to remember it:
 
 %(p)s history my_first_run.dat
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='run it',
      hint="`history FILE` saves the session; `open FILE` shows a file from the output.",
      solution='history my_first_run.dat'),

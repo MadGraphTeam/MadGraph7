@@ -396,17 +396,18 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
 
         session = TutorialSession(tutorial)
         for index, step in enumerate(tutorial.steps[:-1]):
-            self.assertTrue(step.solution,
+            solution = step.get_solution()
+            self.assertTrue(solution,
                             'step %d (%s) asks for no command' % (index, step.title))
             session.index = index
-            found = session.step_for(step.solution)
+            found = session.step_for(solution)
             self.assertIsNotNone(
                 found, 'step %d (%s) asks for %r, which triggers nothing'
-                % (index, step.title, step.solution))
+                % (index, step.title, solution))
             self.assertEqual(
                 found[0], index + 1,
                 'step %d (%s) asks for %r, which jumps to step %d rather than %d'
-                % (index, step.title, step.solution, found[0], index + 1))
+                % (index, step.title, solution, found[0], index + 1))
 
     def test_every_sequenced_step_makes_progress(self):
         """Weaker rule, applied to every sequenced tutorial: doing what a step
@@ -426,20 +427,21 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
                     # before it only has to reach it; the exercise itself is
                     # covered by TestExercises
                     pass
+                solution = step.get_solution()
                 self.assertTrue(
-                    step.solution,
+                    solution,
                     '%s step %d (%s) asks for no command'
                     % (tutorial.name, index, step.title))
                 session.index = index - 1 if isinstance(step, Exercise) else index
-                found = session.step_for(step.solution)
+                found = session.step_for(solution)
                 self.assertIsNotNone(
                     found, '%s step %d (%s) asks for %r, which triggers nothing'
-                    % (tutorial.name, index, step.title, step.solution))
+                    % (tutorial.name, index, step.title, solution))
                 expected = index if isinstance(step, Exercise) else index + 1
                 self.assertGreaterEqual(
                     found[0], expected,
                     '%s step %d (%s) asks for %r, which does not move forward'
-                    % (tutorial.name, index, step.title, step.solution))
+                    % (tutorial.name, index, step.title, solution))
 
     def test_sequenced_tutorials_start_on_the_tutorial_command(self):
         """The first step is the intro, triggered by `tutorial NAME` itself."""
@@ -573,7 +575,7 @@ class TestTutorialCommand(unittest.TestCase):
             self.assertEqual(args, [new])
 
     def test_subcommands_pass_through(self):
-        for name in ('stop', 'list', 'status'):
+        for name in ('stop', 'list', 'status', 'help'):
             args = [name]
             _BareMadGraphCmd().check_tutorial(args)
             self.assertEqual(args, [name])
@@ -806,3 +808,68 @@ class TestAppliedOrders(unittest.TestCase):
                 text = step.render(_Empty())
                 self.assertNotIn('it added `QED=0` on its own', text)
                 self.assertNotIn('Trying coupling order WEIGHTED', text)
+
+
+#===============================================================================
+# `tutorial help`
+#===============================================================================
+
+class TestTutorialHelp(unittest.TestCase):
+    """`tutorial help` explains the commands a running tutorial understands."""
+
+    class _Recorder(mg_interface.MadGraphCmd):
+        def __init__(self):
+            self.use_rawinput = False
+            self.lines = []
+
+        def _record(self, message, *args):
+            self.lines.append(message)
+
+    def setUp(self):
+        self.interface = self._Recorder()
+        self._saved = mg_interface.logger.info
+        mg_interface.logger.info = self.interface._record
+
+    def tearDown(self):
+        mg_interface.logger.info = self._saved
+
+    def text(self):
+        return '\n'.join(self.interface.lines)
+
+    def test_it_names_every_in_tutorial_command(self):
+        self.interface.print_tutorial_help()
+        for command in ('hint', 'solution', 'next', 'repeat', 'back', 'skip'):
+            self.assertIn(command, self.text(),
+                          '`tutorial help` does not mention %r' % command)
+
+    def test_it_names_every_subcommand(self):
+        self.interface.print_tutorial_help()
+        for command in ('tutorial list', 'tutorial status', 'tutorial help',
+                        'tutorial stop'):
+            self.assertIn(command, self.text())
+
+    def test_it_says_when_nothing_is_running(self):
+        self.interface.print_tutorial_help()
+        self.assertIn('No tutorial is running', self.text())
+
+    def test_it_reports_progress_when_one_is(self):
+        self.interface._tutorial_session = tutorials.start('lo')
+        self.interface.print_tutorial_session_progress = None
+        self.interface.print_tutorial_help()
+        self.assertIn("Running 'lo'", self.text())
+
+    def test_help_is_an_accepted_argument(self):
+        args = ['help']
+        _BareMadGraphCmd().check_tutorial(args)
+        self.assertEqual(args, ['help'])
+
+    def test_the_in_tutorial_commands_all_exist(self):
+        """Every command `tutorial help` advertises is really implemented."""
+
+        from madgraph.interface.tutorials import mixin as tutorial_mixin_mod
+
+        provided = set(tutorial_mixin_mod.mixin_command_names())
+        for command in ('hint', 'solution', 'next', 'repeat', 'back', 'skip'):
+            self.assertIn('do_%s' % command, provided,
+                          '`tutorial help` advertises %r, which the mixin does '
+                          'not provide' % command)

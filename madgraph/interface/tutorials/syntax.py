@@ -41,7 +41,7 @@ you can put in a process line, one idea at a time.
 Each step asks you to type a command. Type it and the next lesson appears. If
 you are stuck, `hint` and `solution` print what is expected -- they never run
 it for you. `skip` moves on, `repeat` prints the step again, and `tutorial
-status` shows how far you have got.
+status` shows how far you have got. `tutorial help` lists the lot.
 
 Let's start with the simplest possible process:
 %(p)s generate p p > t t~
