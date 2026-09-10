@@ -56,6 +56,29 @@ question_hint = None
 suppress_timeout = False
 
 
+def record_answer_in_history(interface, answer):
+    """Append an answer to the history of `interface` and everything above it.
+
+    A question's mother is often a *child* interface -- the run interface that
+    `launch` created -- while the user types `history` at the one they started
+    from. Recording up the `mother` chain means the file is right wherever it
+    is written, and each interface has its own history so nothing is
+    duplicated within one file.
+    """
+
+    answer = str(answer).strip() if answer is not None else ''
+    if not answer:
+        return
+    seen = set()
+    while interface is not None and id(interface) not in seen:
+        seen.add(id(interface))
+        try:
+            interface.history.append(answer)
+        except Exception:
+            pass
+        interface = getattr(interface, 'mother', None)
+
+
 def get_question_hint():
     """The line to show under a question. Never empty."""
 
@@ -1186,6 +1209,11 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         else:
             answer = self.check_answer_in_input_file(question_instance, default, path_msg)
             if answer is not None:
+                # an answer read out of a script never reaches the question's
+                # cmdloop, so record it here for the same reason
+                # SmartQuestion.precmd records a typed one: `history` has to be
+                # able to reproduce the run either way
+                record_answer_in_history(self, answer)
                 if answer in alias:
                     answer = alias[answer]
                 if ask_class:
@@ -1679,6 +1707,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         args = self.split_arg(line)
         # Check arguments validity
         self.check_history(args)
+
+        # precmd has already recorded this command, and a history file that
+        # ends by rewriting itself is noise at best -- replaying it would
+        # overwrite the file being replayed. Drop it, as import_command_file
+        # drops the `import` that brought it in.
+        if self.history and self.history[-1].split()[:1] == ['history']:
+            self.history.pop()
 
         if len(args) == 0:
             logger.info('\n'.join(self.history))
@@ -2207,6 +2242,20 @@ class SmartQuestion(BasicCmd):
     allowpath = False
     # subclasses set this to redraw the question in place instead of reprinting it below
     overwrite_display = False
+
+    def precmd(self, line):
+        """Record the answer in the *mother's* history.
+
+        A question runs its own cmdloop, so what is typed at it -- a `set`, a
+        switch name, the `done` that closes it -- never reached the history of
+        the interface that asked. `history` then wrote a file that could not
+        reproduce the run: replaying it would answer every question with the
+        default. Commands answered from a script are recorded by ask() for the
+        same reason.
+        """
+
+        record_answer_in_history(getattr(self, 'mother_interface', None), line)
+        return BasicCmd.precmd(self, line)
 
     def preloop(self):
         """Initializing before starting the main loop"""
