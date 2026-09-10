@@ -4410,10 +4410,12 @@ class RunCardLO(RunCard):
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)')
         valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','edff','chff','none','mixed']+\
                        sum(self.allowed_lep_densities.values(),[])
-        self.add_param("pdlabel", "nn23lo1", hidden=True, allowed=valid_pdf)
-        self.add_param("pdlabel1", "nn23lo1", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
-        self.add_param("pdlabel2", "nn23lo1", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
-        self.add_param("lhaid", 230000, hidden=True)
+        self.add_param("pdlabel", "lhapdf", hidden=True, allowed=valid_pdf)
+        self.add_param("pdlabel1", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
+        self.add_param("pdlabel2", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
+        # NNPDF40_lo_as_01180 -- the LO default is an LHAPDF set, not one of the
+        # compiled-in PDFs, so a default run needs LHAPDF (was nn23lo1/230000).
+        self.add_param("lhaid", 331900, hidden=True)
         self.add_param("fixed_ren_scale", False)
         self.add_param("fixed_fac_scale", False, hidden=True, include=False, comment="define if the factorization scale is fixed or not. You can define instead fixed_fac_scale1 and fixed_fac_scale2 if you want to make that choice per beam")
         self.add_param("fixed_fac_scale1", False, hidden=True)
@@ -5826,9 +5828,11 @@ class RunCardNLO(RunCard):
         self.add_param('mass_ion2', -1.0, hidden=True, fortran_name="mass_ion(2)",
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)')
-        self.add_param('pdlabel', 'nn23nlo', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
+        self.add_param('pdlabel', 'lhapdf', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
              sum(self.allowed_lep_densities.values(),[]) )                
-        self.add_param('lhaid', [244600],fortran_name='lhaPDFid')
+        # NNPDF40_nlo_as_01180; create_default_for_process swaps in the
+        # 4-flavour set (334700) when the model has a massive b (was 244600).
+        self.add_param('lhaid', [331700],fortran_name='lhaPDFid')
         self.add_param('pdfscheme', 0)
         # whether to include or not photon-initiated processes in lepton collisions
         self.add_param('photons_from_lepton', True)
@@ -6269,6 +6273,14 @@ class RunCardNLO(RunCard):
         if model['running_elements']:
             self.display_block.append('RUNNING') 
 
+        # 4-flavour scheme: a massive b is not a parton of the proton, so the
+        # default PDF has to be the nf_4 set rather than the 5-flavour one.
+        # Same test the interface uses to drop b from the p/j multiparticles.
+        if 'lhaid' not in self.user_set:
+            b = model.get_particle(5)
+            if b and b['mass'] != 'ZERO':
+                self['lhaid'] = [334700]  # NNPDF40_nlo_as_01180_nf_4
+
         # Check if need matching
         min_particle = 99
         max_particle = 0
@@ -6513,12 +6525,15 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
-        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118. This is the
-        # MC-generator-oriented variant of the NNPDF4.0 LO set: a single member
-        # and ~0.7 MB, versus ~54 MB for NNPDF40_lo_as_01180. NNPDF4.0 has no
-        # 4-flavour LO counterpart, so there is no scheme-dependent choice to
-        # make here: this one set is used whatever the b-quark treatment.
-        self.add_toml_param('beam', 'pdf', "NNPDF40MC_lo_as_01180")
+        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118 -- the same set
+        # the legacy LO run_card now defaults to (lhaid 331900). It carries a
+        # 100-member error set, which is what makes the [systematics] 'errorset'
+        # PDF variation meaningful (the earlier NNPDF40MC_lo_as_01180 default
+        # had a single member and produced none), at ~54 MB rather than ~0.7 MB.
+        # NNPDF4.0 has no 4-flavour LO counterpart, so unlike the NLO card there
+        # is no scheme-dependent choice here: this set is used whatever the
+        # b-quark treatment.
+        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180")
         # Default to the dynamical scale set by dynamical_scale_choice below
         # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
         # / fact_scale values. Those fixed values are kept as the fallback used
@@ -7303,6 +7318,7 @@ class RunCardMG7(RunCard):
     # LO lhaid -> LHAPDF set name (common cases)
     _LO_LHAID_MAP = {
         230000: 'NNPDF23_lo_as_0130_qed', 247000: 'NNPDF23_lo_as_0130_qed',
+        331900: 'NNPDF40_lo_as_01180', 338500: 'NNPDF40MC_lo_as_01180',
         10042: 'cteq6l1',
     }
     # LO parameters that have no MG7 equivalent (reported when non-default).

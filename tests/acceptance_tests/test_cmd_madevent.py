@@ -98,8 +98,8 @@ def _mg7_datadir_or_skip(test):
     misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-        test.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
     return datadir
 
 
@@ -132,9 +132,12 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = 50000', t)
-    # [postprocessing] systematics is the only key defaulting to true; the
-    # [generation] one is already false.
+    # Switch both systematics paths off: [postprocessing] systematics (the
+    # legacy systematics.py pass) and the native [systematics] enable, which
+    # defaults to true and is the one that actually costs the time here. The
+    # cross-section these callers read does not depend on either.
     t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
+    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -720,8 +723,8 @@ class TestMECmdShell(unittest.TestCase):
         Runs the mg7 (madspace) integrator with group_subprocesses on and off
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
-        run_card.toml defaults (NNPDF40MC_lo_as_01180 + dynamical HT/2 scale,
-        events=2000) ~ 7.76e+05 pb.
+        run_card.toml defaults (NNPDF40_lo_as_01180 + dynamical HT/2 scale,
+        events=2000) ~ 8.03e+05 pb.
 
         NOTE: this is NOT the madevent reference (1.31e6 pb in
         test_group_subprocess); but it would be if true lhapdf were used in madevent
@@ -744,8 +747,8 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
         # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -785,12 +788,12 @@ class TestMECmdShell(unittest.TestCase):
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
         # NOT the madevent 1.31e6 value for internal pdf but the one for
-        # lhapdf NNPDF40MC_lo_as_01180 + dynamical HT/2 scale. Was 1.277e+06
-        # with the old default NNPDF23_lo_as_0130_qed; a same-code A/B gives
-        # 1.272e+06 (NNPDF23) vs 7.79e+05, so the -39% is the PDF change alone:
-        # alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
-        # Spread over 6 runs at events=2000: 7.66e5-7.84e5, mean 7.76e5.
-        target = 7.76e+05
+        # lhapdf NNPDF40_lo_as_01180 + dynamical HT/2 scale. The -39% against
+        # the 1.277e+06 obtained with NNPDF23_lo_as_0130_qed is the PDF change
+        # alone: alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
+        # Spread over 6 runs at events=2000: 7.96e5-8.15e5, mean 8.03e5.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 7.76e+05
+        target = 8.03e+05
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -1226,8 +1229,8 @@ class TestMECmdShell(unittest.TestCase):
         sidecar with the same ids and the per-variation cross sections, and the
         systematics summary in info.json. No LHAPDF python module is needed."""
         datadir = _mg7_datadir_or_skip(self)
-        # the default set (NNPDF40MC_lo_as_01180) has a single member, so the
-        # PDF variation uses a member of another set when it is installed
+        # a cross-set PDF variation (its own alpha_s) rather than a member of
+        # the default set, so this also covers the cross-set code path
         other_set = 'NNPDF23_lo_as_0130_qed'
         has_other = os.path.isfile(pjoin(datadir, other_set, '%s_0001.dat' % other_set))
         pdf_entry = '["%s@1"]' % other_set if has_other else '["central"]'
@@ -1448,8 +1451,8 @@ class TestMECmdShell(unittest.TestCase):
                 datadir = None
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1482,14 +1485,13 @@ class TestMECmdShell(unittest.TestCase):
         info = json.load(open(infos[-1]))['process']
         cross = float(info['mean'])
         error = float(info.get('error') or 0.0)
-        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180. This no
-        # longer equals the 4428 pb of the madevent test above: that one runs on
-        # madevent's internal (nn23lo1) PDF while mg7 convolutes with the LHAPDF
-        # grid named in run_card.toml. QCD=0, so there is no alpha_s here at all
-        # and the -16% shift is purely the smaller NNPDF4.0 valence-quark
-        # luminosity; a same-code A/B gives 4380 pb (NNPDF23) vs 3688 pb.
-        # Spread over 7 runs at events=2000: 3675-3775, mean 3731.
-        self.assertAlmostEqual(cross, 3730.0, delta=max(30.0, 5 * error))
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180. QCD=0, so
+        # there is no alpha_s here at all and the shift away from the 4380 pb of
+        # NNPDF23_lo_as_0130_qed is purely the smaller NNPDF4.0 valence-quark
+        # luminosity.
+        # Spread over 6 runs at events=2000: 3446-3536, mean 3490.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3730.0
+        self.assertAlmostEqual(cross, 3490.0, delta=max(50.0, 5 * error))
 
     def test_gridpack_mg7(self):
         """An mg7 gridpack has to run with the libraries it ships.
@@ -3197,13 +3199,13 @@ class TestMEfromfile(unittest.TestCase):
              'import model heft',
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
-        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180 (NNPDF4.0 LO,
-        # alpha_s(M_Z) = 0.118). The previous 3.754e+08 was the same run with the
-        # old default NNPDF23_lo_as_0130_qed: a same-code A/B on this process
-        # gives 3.708e+08 (NNPDF23) vs 1.820e+08 (NNPDF40MC), i.e. the -51% is
-        # entirely the PDF change -- gg luminosity (-25% at these x) times
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180 (NNPDF4.0 LO,
+        # alpha_s(M_Z) = 0.118). The 3.708e+08 of the old NNPDF23_lo_as_0130_qed
+        # default drops by -44% purely through the PDF -- gg luminosity times
         # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
-        target = 1.820e+08
+        # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        target = 2.089e+08
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
@@ -3404,15 +3406,16 @@ class TestMEfromfile(unittest.TestCase):
              'import model MSSM_SLHA2',
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
-        # Reference for the default PDF NNPDF40MC_lo_as_01180, measured over 6
-        # runs: 3.7864 +- 0.0011 (single-run error ~0.003, i.e. ~0.08%), so the
-        # 1% tolerance here is a ~12 sigma check. The value shifts from the old
+        # Reference for the default PDF NNPDF40_lo_as_01180, measured over 6
+        # runs: 2.9632 +- 0.0026 (single-run error ~0.0027, i.e. ~0.09%), so the
+        # 1% tolerance here is a ~11 sigma check. The value shifts from the old
         # NNPDF23_lo_as_0130_qed reference of 5.024 (madevent, no cuts, lhapdf)
         # purely because of the PDF change: p p > go go is forced to large x by
-        # the ~600 GeV gluino pair, where the two sets differ a lot. With
-        # NNPDF23 pinned in the run_card this same setup still gives 5.0235,
-        # matching that madevent reference to 0.01%.
-        target = 3.786
+        # the ~600 GeV gluino pair, where the sets differ a lot. With NNPDF23
+        # pinned in the run_card this same setup still gives 5.0235, matching
+        # that madevent reference to 0.01%.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3.786
+        target = 2.963
         self.assertLess(abs(cross - target) / target, 0.01,
             'mg7 p p > go go cross-section %s far from reference %s'
             % (cross, target))
