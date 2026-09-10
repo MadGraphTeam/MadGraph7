@@ -23,9 +23,9 @@ locally for testing):
     python bin/create_release.py --version 0.2.0 --output dist/
 
 It performs the following actions:
-  1. Check that VERSION and madspace/pyproject.toml agree with --version.
-     (UpdateNotes.txt still tracks the legacy MG5_aMC@NLO 3.7.x series and is
-     not part of this check.)
+  1. Check that VERSION agrees with --version, and that madspace still derives
+     its version from it. (UpdateNotes.txt still tracks the legacy MG5_aMC@NLO
+     3.7.x series and is not part of this check.)
   2. git-archive the current HEAD into a clean MG7_v<version> directory
      (preserves the madgraph/VERSION symlink; ignores untracked/gitignored
      working-tree files).
@@ -128,8 +128,8 @@ def parse_info_file(filepath):
 
 
 def check_versions(version):
-    """Fail loudly if VERSION or madspace/pyproject.toml disagree with the
-    version being released."""
+    """Fail loudly if VERSION disagrees with the version being released, or if
+    madspace/pyproject.toml has stopped deriving its version from VERSION."""
     errors = []
 
     mg_version = parse_info_file(pjoin(ROOT, 'VERSION')).get('version')
@@ -137,10 +137,11 @@ def check_versions(version):
         errors.append(f"VERSION says '{mg_version}', expected '{version}'")
 
     with open(pjoin(ROOT, 'madspace', 'pyproject.toml'), 'rb') as f:
-        ms_version = tomllib.load(f)['project']['version']
-    if ms_version != version:
+        pyproject = tomllib.load(f)
+    if 'version' not in pyproject['project'].get('dynamic', []):
         errors.append(
-            f"madspace/pyproject.toml says '{ms_version}', expected '{version}'")
+            "madspace/pyproject.toml pins its own version instead of reading it "
+            "from VERSION; madspace must be released in lockstep with MadGraph")
 
     if errors:
         for e in errors:
@@ -258,7 +259,7 @@ def main():
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--version', required=True,
                          help="Version being released, e.g. 0.2.0. Must match "
-                              "VERSION and madspace/pyproject.toml.")
+                              "VERSION.")
     parser.add_argument('--output', default='dist',
                          help="Directory to write the tarball into (default: dist/).")
     parser.add_argument('--skip-vendor', action='store_true',

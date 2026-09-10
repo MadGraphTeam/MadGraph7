@@ -434,9 +434,15 @@ def install_build_deps(system: bool = False) -> dict:
     return env
 
 
-def _pyproject_version() -> str:
-    with open(SCRIPT_DIR / "pyproject.toml", "rb") as f:
-        return tomllib.load(f)["project"]["version"]
+def _madspace_version() -> str:
+    """The version a wheel built from this checkout would carry. Comes from the
+    MadGraph VERSION file, the same source pyproject.toml's dynamic version
+    reads, so madspace and MadGraph are always released in lockstep."""
+    for line in (SCRIPT_DIR.parent / "VERSION").read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == "version":
+            return value.strip()
+    raise RuntimeError("no 'version' line in the MadGraph VERSION file")
 
 
 def _release_info() -> dict[str, str]:
@@ -632,7 +638,7 @@ def main() -> None:
     # a wheel for this exact platform/Python (checked locally against the
     # wheel filenames recorded in the marker, no PyPI query).
     release_version = _release_version()
-    is_release = release_version is not None and release_version == _pyproject_version()
+    is_release = release_version is not None and release_version == _madspace_version()
     bin_available = is_release and _release_wheel_available()
 
     # Determine install mode. An explicit --bin/--source always wins; --yes
@@ -669,7 +675,7 @@ def main() -> None:
             "-m",
             "pip",
             "install",
-            f"{PACKAGE_NAME}=={_pyproject_version()}",
+            f"{PACKAGE_NAME}=={_madspace_version()}",
         ]
         if not args.system:
             pip_cmd.append(f"--target={INSTALL_DIR}")
