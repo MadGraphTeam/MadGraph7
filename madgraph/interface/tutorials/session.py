@@ -241,6 +241,25 @@ def lhapdf_configured(interface):
     return False
 
 
+def pythia8_available(interface):
+    """Whether this MG7 has a usable Pythia8 *and* the MG5aMC interface to it.
+
+    MG5 nulls options['pythia8_path'] at startup when the headers are not where
+    it points (madgraph_interface.py:7912), and showering from aMC@NLO also
+    needs options['mg5amc_py8_interface_path'], so both are checked.
+    """
+
+    try:
+        options = interface.options
+    except Exception:
+        return False
+    for key in ('pythia8_path', 'mg5amc_py8_interface_path'):
+        value = options.get(key)
+        if value in (None, '', 'None'):
+            return False
+    return True
+
+
 def output_name(interface, default):
     """The directory the user's last `output` actually made.
 

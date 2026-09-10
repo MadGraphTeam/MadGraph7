@@ -156,8 +156,13 @@ class TestPortedTutorials(_TutorialTestCase):
                                  'tutorial %s should stay silent on %r, said %r'
                                  % (name, line, emitted))
             else:
-                self.assertEqual(emitted, [expected],
-                                 'tutorial %s drifted on %r' % (name, line))
+                self.assertEqual(len(emitted), 1,
+                                 'tutorial %s said %d things on %r'
+                                 % (name, len(emitted), line))
+                # the ported text must survive in full; a tutorial may append
+                # to it (nlo adds shower guidance) but may not alter it
+                self.assertIn(expected, emitted[0],
+                              'tutorial %s drifted on %r' % (name, line))
 
     def test_nlo_matches_legacy(self):
         self._check('nlo', legacy_nlo)
@@ -1144,3 +1149,65 @@ class TestLaunchQuestionPreamble(unittest.TestCase):
 
     def test_it_warns_that_the_tutorial_goes_quiet(self):
         self.assertIn('cannot talk to you', self.text())
+
+
+#===============================================================================
+# the NLO shower guidance
+#===============================================================================
+
+class TestNloShowerGuidance(unittest.TestCase):
+    """`nlo` must tell the reader what to do about the shower on *their*
+    machine, before they type launch."""
+
+    class _WithPy8(object):
+        options = {'pythia8_path': '/somewhere',
+                   'mg5amc_py8_interface_path': '/somewhere/else'}
+
+    class _WithoutPy8(object):
+        options = {'pythia8_path': None, 'mg5amc_py8_interface_path': None}
+
+    class _HalfInstalled(object):
+        """Pythia8 present but not the interface aMC@NLO drives it through."""
+        options = {'pythia8_path': '/somewhere',
+                   'mg5amc_py8_interface_path': None}
+
+    def step(self):
+        return [s for s in tutorials.get('nlo').steps
+                if s.title == 'produce an output'][0]
+
+    def test_without_py8_it_says_how_to_install(self):
+        text = self.step().render(self._WithoutPy8())
+        self.assertIn('install pythia8', text)
+        self.assertIn('install mg5amc_py8_interface', text)
+
+    def test_without_py8_it_offers_parton_level_but_calls_it_unphysical(self):
+        text = self.step().render(self._WithoutPy8())
+        self.assertIn('launch -p', text)
+        self.assertIn('UNPHYSICAL', text)
+        self.assertIn('never to get a number', text)
+
+    def test_with_py8_it_does_not_nag(self):
+        text = self.step().render(self._WithPy8())
+        self.assertNotIn('install pythia8', text)
+        self.assertIn('has installed', text)
+
+    def test_the_interface_counts_as_a_requirement(self):
+        """Pythia8 alone is not enough: aMC@NLO needs the MG5aMC interface."""
+
+        from madgraph.interface.tutorials.session import pythia8_available
+
+        self.assertTrue(pythia8_available(self._WithPy8()))
+        self.assertFalse(pythia8_available(self._WithoutPy8()))
+        self.assertFalse(pythia8_available(self._HalfInstalled()))
+
+    def test_it_warns_off_herwig6(self):
+        for interface in (self._WithPy8(), self._WithoutPy8()):
+            self.assertIn('HERWIG6', self.step().render(interface))
+
+    def test_the_ported_text_is_still_there(self):
+        """Appending must not have dropped any of the original."""
+
+        import madgraph.interface.tutorial_text_nlo as legacy
+
+        text = self.step().render(self._WithPy8())
+        self.assertIn(retarget(legacy.output), text)
