@@ -934,13 +934,6 @@ class TestUncertaintyLesson(unittest.TestCase):
         text = self.step().render(self._WithLhapdf())
         self.assertIn('503.1(1.4)', text)
 
-    def test_it_says_which_one_more_events_help(self):
-        # prose wraps, so compare on collapsed whitespace rather than pinning
-        # where the line breaks happen to fall
-        text = ' '.join(self.step().render(self._WithLhapdf()).split())
-        self.assertIn('More events shrink it', text)
-        self.assertIn('More events will not shrink it', text)
-
     def test_without_lhapdf_it_says_the_pdf_row_is_missing(self):
         """Since PR #89 madspace evaluates the PDF members itself, so the
         scale row survives without LHAPDF -- only the PDF one goes."""

@@ -260,23 +260,20 @@ the first run takes longer than the ones after it.
 
 Step('launch', lambda interface: """
 That is a full leading-order event sample. The events are an LHE file under
-`%(run)s/Events/`, and the run prints two numbers that are easy to confuse.
+`%(run)s/Events/`, and the run prints two different uncertainties.
 
 The **statistical** error travels with the cross section:
 
     Result:   503.1(1.4)
 
-That is the Monte-Carlo integration error. More events shrink it, and it says
-nothing about the physics -- only about how long you ran.
+That is the Monte-Carlo integration error.
 
 The **theoretical** uncertainty gets its own box at the end:
 
     Scale variation:   +12.4%%    -9.6%%
     PDF variation:     +2.1%%    -2.1%%
 
-That is the one that goes in a paper. More events will not shrink it, and at LO
-it is usually much the larger of the two. `tutorial mg7` covers how it is
-computed and how to change what is varied.
+`tutorial mg7` covers how it is computed and how to change what is varied.
 %(lhapdf)s
 Save what you typed, so you can do this again without remembering it:
 
