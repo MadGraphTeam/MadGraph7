@@ -1,18 +1,18 @@
 ###############################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -121,7 +121,7 @@ class CmdExtended(common_run.CommonRunCmd):
 
 
     keyboard_stop_msg = """stopping all operation
-            in order to quit MadGraph5_aMC@NLO please enter exit"""
+            in order to quit MadGraph7 please enter exit"""
     
     # Define the Error
     InvalidCmd = InvalidCmd
@@ -154,18 +154,26 @@ class CmdExtended(common_run.CommonRunCmd):
         # Remember to fill in time at writeout time!
         self.history_header = \
         '#************************************************************\n' + \
-        '#*               MadGraph5_aMC@NLO/MadEvent                 *\n' + \
+        '#*                    MadGraph7/MadEvent                    *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         '#*                                                          *\n' + \
         '#************************************************************\n' + \
@@ -183,18 +191,26 @@ class CmdExtended(common_run.CommonRunCmd):
         "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                      W E L C O M E to                    *\n" + \
-        "*             M A D G R A P H 5 _ a M C @ N L O            *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                      M A D E V E N T                     *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
@@ -2499,7 +2515,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
         cite = common_run.citation
         if cite is not None:
             cite.cite('Alwall:2014hca',
-                'core matrix-element generation (MadGraph5_aMC@NLO)')
+                'core matrix-element generation (MadGraph7)')
             if self.proc_characteristics['loop_induced']:
                 cite.cite('Hirschi:2015iia', 'loop-induced process generation')
             try:
@@ -2687,7 +2703,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
             # We therefore emulate it with multi-core mode with one core
             logger.warning(
 """Single-core mode not supported for loop-induced processes.
-Beware that MG5aMC now changes your runtime options to a multi-core mode with only one active core.""")
+Beware that MadGraph7 now changes your runtime options to a multi-core mode with only one active core.""")
             self.do_set('run_mode 2')
             self.do_set('nb_core 1')
 
@@ -4473,7 +4489,7 @@ Beware that this can be dangerous for local multicore runs.""")
 
     #===============================================================================
     # Return a warning (if applicable) on the consistency of the current Pythia8
-    # and MG5_aMC version specified. It is placed here because it should be accessible
+    # and MadGraph7 version specified. It is placed here because it should be accessible
     # from both madgraph5_interface and madevent_interface
     #===============================================================================
     @staticmethod
@@ -4491,8 +4507,8 @@ Beware that this can be dangerous for local multicore runs.""")
     A Pythia8 path is specified via the option 'pythia8_path' but no path for option
     'mg5amc_py8_interface_path' is specified. This means that Pythia8 cannot be used
     leading order simulations with MadEvent.
-    Consider installing the MG5_aMC-PY8 interface with the following command:
-     MG5_aMC>install mg5amc_py8_interface
+    Consider installing the MadGraph7-PY8 interface with the following command:
+     MadGraph7>install mg5amc_py8_interface
     """
        
         mg5amc_py8_interface_path = options['mg5amc_py8_interface_path']
@@ -4530,10 +4546,10 @@ Beware that this can be dangerous for local multicore runs.""")
             if MG5_version_on_install != MG5_curr_version:
                 return \
     """
-    The current version of MG5_aMC (v%s) is different than the one active when
-    installing the 'mg5amc_py8_interface_path' (which was MG5aMC v%s). 
+    The current version of MadGraph7 (v%s) is different than the one active when
+    installing the 'mg5amc_py8_interface_path' (which was MadGraph7 v%s). 
     Please consider refreshing the installation of this interface with the command:
-     MG5_aMC>install mg5amc_py8_interface
+     MadGraph7>install mg5amc_py8_interface
     """%(MG5_curr_version, MG5_version_on_install)
     
         if not PY8_version_on_install is None and not PY8_curr_version is None:
@@ -4543,7 +4559,7 @@ Beware that this can be dangerous for local multicore runs.""")
     The current version of Pythia8 (v%s) is different than the one active when
     installing the 'mg5amc_py8_interface' tool (which was Pythia8 v%s). 
     Please consider refreshing the installation of this interface with the command:
-     MG5_aMC>install mg5amc_py8_interface
+     MadGraph7>install mg5amc_py8_interface
     """%(PY8_curr_version,PY8_version_on_install)
     
         return None
@@ -4891,8 +4907,8 @@ already exists and is not a fifo file."""%fifo_path)
                                                         'MG5aMC_PY8_interface')):
                 raise self.InvalidCmd(
     """The MG5aMC_PY8_interface tool cannot be found, so that MadEvent cannot steer Pythia8 shower.
-    Please install this tool with the following MG5_aMC command:
-    MG5_aMC> install mg5amc_py8_interface_path""")
+    Please install this tool with the following MadGraph7 command:
+    MadGraph7> install mg5amc_py8_interface_path""")
             else:
                 pythia_main = pjoin(self.options['mg5amc_py8_interface_path'],
                                                             'MG5aMC_PY8_interface')
@@ -4994,7 +5010,7 @@ already exists and is not a fifo file."""%fifo_path)
         st = os.stat(wrapper_path)
         os.chmod(wrapper_path, st.st_mode | stat.S_IEXEC)
 
-        # If the target HEPMC output file is a fifo, don't hang MG5_aMC and let
+        # If the target HEPMC output file is a fifo, don't hang MadGraph7 and let
         # it proceed.
         is_HepMC_output_fifo = False if not HepMC_event_output else \
                               ( os.path.exists(HepMC_event_output) and \
@@ -5711,7 +5727,7 @@ tar -czf split_$1.tar.gz split_$1
                         Ntry = int(info.group('tried'))
                     if Nacc==0:
                         raise self.InvalidCmd('Pythia8 shower failed since it'+\
-                          ' did not accept any event from the MG5aMC event file.')
+                          ' did not accept any event from the MadGraph7 event file.')
                     return sigma_m, Nacc, Ntry
                 except ValueError:
                     return None,None,None

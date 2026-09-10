@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -791,14 +791,14 @@ class OneProcessExporterCPP(object):
         info = misc.get_pkg_info()
         info_lines = ""
         if info and 'version' in info and  'date' in info:
-            info_lines = "//  MadGraph5_aMC@NLO v. %s, %s\n" % \
+            info_lines = "//  MadGraph7 v. %s, %s\n" % \
                          (info['version'], info['date'])
             info_lines = info_lines + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"
         else:
-            info_lines = "//  MadGraph5_aMC@NLO\n" + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+            info_lines = "//  MadGraph7\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"        
 
         return info_lines

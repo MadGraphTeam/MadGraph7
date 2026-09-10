@@ -36,7 +36,7 @@ C ----------
 C
 %(info_lines)s
 C
-C MadGraph5_aMC@NLO StandAlone Version
+C MadGraph7 StandAlone Version
 C
 C Returns amplitude squared summed/avg over colors
 c and helicities

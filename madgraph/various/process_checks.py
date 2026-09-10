@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -2636,7 +2636,7 @@ def output_profile(myprocdef, stability, timing, output_path, reusing=False):
 def output_stability(stability, output_path, reusing=False):
     """Present the result of a stability check in a nice format.
     The full info is printed out in 'Stability_result_<proc_shell_string>.dat'
-    under the MadGraph5_aMC@NLO root folder (output_path)"""
+    under the MadGraph7 root folder (output_path)"""
     
     def accuracy(eval_list):
         """ Compute the accuracy from different evaluations."""
@@ -6641,7 +6641,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
             save_path = CMS_save_path('pkl', result, model, options, 
                                                         output_path=output_path)
             buff = "\nThe results of this check have been stored on disk and its "+\
-              "analysis can be rerun at anytime with the MG5aMC command:\n   "+\
+              "analysis can be rerun at anytime with the MadGraph7 command:\n   "+\
             "      check cms --analyze=%s\n"%save_path
             res_str += buff
             concise_str += buff
@@ -6816,7 +6816,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
                 logger.warning('The median scanning failed during the CMS check '+
                   'for process %s'%proc_title+\
                   'This is means that the difference plot has not stable'+\
-                  'intermediate region and MG5_aMC will arbitrarily consider the'+\
+                  'intermediate region and MadGraph7 will arbitrarily consider the'+\
                                                      'left half of the values.')
                 scan_index = -1
                 break;
@@ -6926,7 +6926,7 @@ minimum value of lambda to be considered in the CMS check."""\
 
     if output=='concise_text':
         res_str += '\nMore detailed information on this check available with the command:\n'
-        res_str += '  MG5_aMC>display checks\n'
+        res_str += '  MadGraph7>display checks\n'
 
     ############################
     # Now we turn to the plots #

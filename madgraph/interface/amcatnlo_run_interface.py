@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -165,7 +165,7 @@ def check_compiler(options, block=False):
     """check that the current fortran compiler is gfortran 4.6 or later.
     If block, stops the execution, otherwise just print a warning"""
 
-    msg = 'In order to be able to run MadGraph5_aMC@NLO at NLO, you need to have ' + \
+    msg = 'In order to be able to run MadGraph7 at NLO, you need to have ' + \
             'gfortran 4.6 or later installed.\n%s has been detected.\n'+\
             'Note that you can still run MadEvent (at LO) without any problem!'
     #first check that gfortran is installed
@@ -217,7 +217,7 @@ class CmdExtended(common_run.CommonRunCmd):
 
 
     keyboard_stop_msg = """stopping all operation
-            in order to quit MadGraph5_aMC@NLO please enter exit"""
+            in order to quit MadGraph7 please enter exit"""
     
     # Define the Error
     InvalidCmd = InvalidCmd
@@ -250,18 +250,26 @@ class CmdExtended(common_run.CommonRunCmd):
         # Remember to fill in time at writeout time!
         self.history_header = \
         '#************************************************************\n' + \
-        '#*                    MadGraph5_aMC@NLO                     *\n' + \
+        '#*                        MadGraph7                         *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         "#*                           and                            *\n" + \
         "#*                http://amcatnlo.cern.ch                   *\n" + \
@@ -280,18 +288,26 @@ class CmdExtended(common_run.CommonRunCmd):
         logger.info(\
         "************************************************************\n" + \
         "*                                                          *\n" + \
-        "*           W E L C O M E  to  M A D G R A P H 5           *\n" + \
+        "*           W E L C O M E  to  M A D G R A P H 7           *\n" + \
         "*                       a M C @ N L O                      *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*                 http://amcatnlo.cern.ch                  *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
@@ -1790,7 +1806,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.setup_citation_tracking()
         if common_run.citation is not None:
             common_run.citation.cite('Alwall:2014hca',
-                'core matrix-element generation (MadGraph5_aMC@NLO)')
+                'core matrix-element generation (MadGraph7)')
             self.cite_nlo_run_options(mode)
             try:
                 self.run_card.add_citation(common_run.citation.cite)
@@ -3454,7 +3470,7 @@ RESTART = %(mint_mode)s
             debug_msg = 'Advanced statistics collection failed with error "%s"\n'%str(e)
             err_string = io.StringIO()
             traceback.print_exc(limit=4, file=err_string)
-            debug_msg += 'Please report this backtrace to a MG5_aMC developer:\n%s'\
+            debug_msg += 'Please report this backtrace to a MadGraph7 developer:\n%s'\
                                                           %err_string.getvalue()
 
         logger.debug(debug_msg+'\n')
@@ -4822,7 +4838,7 @@ RESTART = %(mint_mode)s
                                    ' of the events using LHAPDF. However, no valid LHAPDF installation found with the'+\
                                    ' needed PDF set. Will use default internal PDF for the shower instead. To use the'+\
                                    ' same set as was used in the event generation install LHAPDF and set the path using'+\
-                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph5_aMC@NLO python shell')
+                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph7 python shell')
                 content += 'LHAPDFPATH=\n' 
                 content += 'PDFCODE=0\n'
         else:
@@ -5601,7 +5617,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                 except OSError:
                     raise aMCatNLOError(('No valid %s installation found. \n' + \
                        'Please set the path to %s-config by using \n' + \
-                       'MG5_aMC> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
+                       'MadGraph7> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
         else:
             self.make_opts_var['pineappl'] = ""
 
@@ -5640,7 +5656,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             else:
                 logger.warning('Could not compile StdHEP because its'+\
                    ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies'.\n"+\
+                             " Check the MadGraph7 option 'output_dependencies'.\n"+\
                    " This will prevent the use of HERWIG6/Pythia6 shower.")
 
         # make CutTools (only necessary with MG option output_dependencies='internal')
@@ -5653,7 +5669,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             else:
                 raise aMCatNLOError('Could not compile CutTools because its'+\
                    ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies.'")
+                             " Check the MadGraph7 option 'output_dependencies.'")
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libcts.a'))) or \
             not os.path.exists(os.path.realpath(pjoin(libdir, 'mpmodule.mod'))):
             raise aMCatNLOError('CutTools compilation failed.')            
@@ -5676,7 +5692,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile CutTools.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5704,7 +5720,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile IREGI.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
@@ -6098,7 +6114,7 @@ if '__main__' == __name__:
     import sys
 
     if sys.version_info < (3, 12):
-        sys.exit('MadGraph5_aMc@NLO works only with python 3.12 and later.\n'+\
+        sys.exit('MadGraph7 works only with python 3.12 and later.\n'+\
                'Please upgrade your version of python or specify a compatible version.')
 
     import os

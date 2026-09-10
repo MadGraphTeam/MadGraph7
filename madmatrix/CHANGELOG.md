@@ -28,7 +28,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
-- (OM+AV+SR+SH+ZW+JT+DM) First release of the MG5aMC CUDACPP plugin.
+- (OM+AV+SR+SH+ZW+JT+DM) First release of the MadGraph7 CUDACPP plugin.
   - Validated and released for MG5aMC version 3.6.0.
   - Hosted in the https://github.com/madgraph5/madgraph4gpu original repo.
   - Repo uses the original directory structure (plugin is epochX/cudacpp/CODEGEN/PLUGIN/CUDACPP_SA_OUTPUT).
