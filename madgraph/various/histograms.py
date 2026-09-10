@@ -4578,7 +4578,7 @@ set ytics nomirror
 set mytics %(mxtics)d
 %(set_xtics)s
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 """
         
         # Now the header for each subhistogram
@@ -6245,7 +6245,7 @@ def _draw_main(axis, plot, blocks):
     if plot['x_axis_mode'] == 'LOG' and positive_edges:
         axis.set_xscale('log')
     axis.set_ylabel(r'$\sigma$ per bin [pb]')
-    axis.text(1.01, 0.02, 'MadGraph7_aMC@NLO', transform=axis.transAxes,
+    axis.text(1.01, 0.02, 'MadGraph7', transform=axis.transAxes,
               rotation=90, va='bottom', family='monospace', fontsize='small')
     _finish_axis(axis)
 

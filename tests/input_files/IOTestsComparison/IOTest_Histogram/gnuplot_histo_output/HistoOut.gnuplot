@@ -106,7 +106,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -193,7 +193,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -251,7 +251,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -338,7 +338,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -396,7 +396,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -483,7 +483,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -541,7 +541,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -628,7 +628,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -686,7 +686,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -773,7 +773,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -831,7 +831,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -918,7 +918,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -976,7 +976,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -1063,7 +1063,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
@@ -1121,7 +1121,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'NLO and LO results'
 
@@ -1208,7 +1208,7 @@ set ytics nomirror
 set mytics 10
 set xtics auto
 set key horizontal noreverse maxcols 1 width -4 
-set label front 'MadGraph7\_aMC\@NLO' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
+set label front 'MadGraph7' font "Courier,11" rotate by 90 at graph 1.02, graph 0.04
 
 #-- rendering subhistograms 'single diagram output'
 
