@@ -22,6 +22,17 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 Explore the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/)
 for guided workflows, API examples, technical reference, and release support.
 
+Opt-in [tree-level spin and colour correlations](docs/correlators.md) prepare
+named colour operators at generation and accept spin-contraction vectors at
+runtime. This opt-in path supports LC, NLC and full colour at generic
+connection order. `CorrelatorConfig.all_color(through_order=k)` prepares the
+complete, nonminimal tree-soft catalogue through any positive order `k`;
+`Runtime.available_color_correlations()` lists the generated operators.
+Catalogues grow rapidly with order. Multiple requests share amplitudes and
+accept batches of phase-space points. The `correlators` development branch
+also exposes these operations in the C, C++, Fortran and Rust SDKs with
+binary64 arithmetic; Python supports double-double and arbitrary precision.
+
 ## Installation
 
 Install the release from PyPI:

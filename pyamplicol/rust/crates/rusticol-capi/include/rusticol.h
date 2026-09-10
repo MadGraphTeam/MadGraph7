@@ -22,6 +22,29 @@ enum rusticol_status {
 
 typedef struct RusticolRuntimeHandle RusticolRuntimeHandle;
 
+/* One literal complex spin source on a one-based public external leg.
+ * components use [point][E,px,py,pz][real,imag], with 8 doubles per point.
+ * point_count=1 broadcasts; otherwise it must match the evaluation batch.
+ * Values are copied by the setter and borrowed only during an evaluation.
+ */
+typedef struct RusticolSpinCorrelationVector {
+    size_t leg;
+    size_t point_count;
+    const double *components;
+    size_t component_count;
+} RusticolSpinCorrelationVector;
+
+/* A directed colour insertion, with optional spin replacements.
+ * use_default_spin_vectors=1 inherits the setter and requires an empty array;
+ * 0 uses this request's vectors (an empty array selects physical helicities).
+ */
+typedef struct RusticolCorrelatedRequest {
+    const char *color_correlation;
+    const RusticolSpinCorrelationVector *spin_vectors;
+    size_t spin_vector_count;
+    uint32_t use_default_spin_vectors;
+} RusticolCorrelatedRequest;
+
 enum rusticol_warm_up_event_kind {
     RUSTICOL_WARM_UP_EVENT_START = 0,
     RUSTICOL_WARM_UP_EVENT_UPDATE = 1,
@@ -259,6 +282,42 @@ int rusticol_runtime_warm_up_f64(
 );
 
 /* Momenta use [point][external particle][E, px, py, pz]. */
+/* Correlation queries read the selected process's generation-time catalogue.
+ * They may lazily initialize correlated metadata, but do not evaluate an ME.
+ * String queries include the trailing NUL in required; NULL/0 queries size.
+ */
+int rusticol_runtime_color_correlation_count(
+    RusticolRuntimeHandle *handle, size_t *output
+);
+int rusticol_runtime_color_correlation_id(
+    RusticolRuntimeHandle *handle, size_t index,
+    char *buffer, size_t capacity, size_t *required
+);
+int rusticol_runtime_color_correlation_catalogue_json(
+    RusticolRuntimeHandle *handle, char *buffer, size_t capacity, size_t *required
+);
+
+/* Empty vectors clear defaults. Ordinary evaluations never use these values. */
+int rusticol_runtime_set_spin_correlation_vectors_f64(
+    RusticolRuntimeHandle *handle,
+    const RusticolSpinCorrelationVector *vectors, size_t vector_count
+);
+
+/* Grouped binary64 colour/spin insertions over a phase-space batch.
+ * output uses [request][point][real,imag], with capacity measured in doubles.
+ * helicity_ids optionally selects physical helicities of unreplaced legs.
+ * All request/input buffers are borrowed only for this call. Dimensions and
+ * selectors are validated before evaluation; output is written only on success.
+ */
+int rusticol_runtime_evaluate_correlated_many_f64(
+    RusticolRuntimeHandle *handle,
+    const double *momenta, size_t momentum_count, size_t point_count,
+    const RusticolCorrelatedRequest *requests, size_t request_count,
+    const char *const *helicity_ids, size_t helicity_count,
+    double *output, size_t output_capacity
+);
+
+/* Ordinary momenta use [point][external particle][E, px, py, pz]. */
 int rusticol_runtime_evaluate_f64(
     RusticolRuntimeHandle *handle,
     const double *momenta,

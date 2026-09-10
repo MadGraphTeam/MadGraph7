@@ -60,6 +60,7 @@ def test_lightweight_public_exports_do_not_load_model_tooling() -> None:
         """
         import sys
         from pyamplicol import (
+            CorrelatedRequest,
             Generator,
             ModelSource,
             ProcessRequest,
@@ -79,6 +80,7 @@ def test_lightweight_public_exports_do_not_load_model_tooling() -> None:
         assert ModelSource.built_in_sm().kind == "built-in-sm"
         assert Generator.__module__ == "pyamplicol.api.services"
         assert Runtime.__module__ == "pyamplicol.api.services"
+        assert CorrelatedRequest().color_correlation == "born"
         assert "pyamplicol.models.loading" not in sys.modules
         assert not any(
             name.startswith("pyamplicol.models.compiler")

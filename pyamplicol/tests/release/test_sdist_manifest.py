@@ -54,6 +54,8 @@ def test_sdist_excludes_development_histories_and_report_payloads() -> None:
 
     assert {path for path in includes if path.startswith("docs/")} == {
         "docs/README.md",
+        "docs/correlators.md",
+        "docs/correlator-conventions.md",
         "docs/user/**/*",
     }
     assert not any(

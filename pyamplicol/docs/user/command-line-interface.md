@@ -110,6 +110,8 @@ Useful generation options include:
 - `--flavor-scheme N` and `--max-quark-lines N` to constrain expansion;
 - `--color-accuracy {lc,nlc,full}`;
 - `--color-contraction {direct,symmetric-group-fft}`;
+- `--correlators FILE.json` to prepare named colour operators and allowed spin
+  replacements for the [Python and native correlated APIs](../correlators.md);
 - `--lc-flow-layout {topology-replay,all-flow-union}`;
 - `--execution-mode {recurrence,compiled,eager,on-the-fly}`;
 - `--backend {jit,asm,cpp}`;
@@ -149,6 +151,28 @@ because planning never compiles trusted model input as a side effect.
 
 See [Generation Modes and Evaluators](generation-modes-and-evaluators.md) before
 combining execution modes and prepared-model backends.
+
+### Correlated Born quantities
+
+The [Born Correlations guide](../correlators.md#json-and-command-line) gives the
+declaration format and complete runtime examples:
+
+```console
+pyamplicol generate 'g g > g g' artifacts/gg_correlated \
+  --model built-in-sm --color-accuracy full --correlators correlators.json
+```
+
+`--correlators` is a generation option, separate from the ordinary TOML colour
+settings. `--color-accuracy lc|nlc|full` selects the correlated approximation
+(the ordinary default is LC). Complete amplitudes are generated in all cases;
+direct contraction and generic compiled execution are selected, with those
+adjustments recorded in the effective configuration. Partial
+helicity/colour generation, append, and `--dry-run` are not supported on this
+path. Numerical spin-vector setting and correlated evaluation use
+`Runtime.set_spin_correlation_vectors(...)` and
+`Runtime.evaluate_correlated(...)` or `Runtime.evaluate_correlated_many(...)`
+in Python, or the corresponding [native SDK calls](native-apis.md#correlated-born-evaluations),
+not the CLI `evaluate` command.
 
 ## Inspect and select a process
 

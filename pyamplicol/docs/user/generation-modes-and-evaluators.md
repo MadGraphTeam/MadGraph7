@@ -7,7 +7,8 @@ parent: "Configuration"
 
 # Generation Modes and Evaluators
 
-pyAmpliCol makes two independent choices when it builds a process artifact:
+For ordinary generation, pyAmpliCol makes two independent choices when it
+builds a process artifact:
 
 1. the **execution mode** describes how process-wide work is organized;
 2. the **evaluator backend** describes how local symbolic expressions become
@@ -35,8 +36,8 @@ pyamplicol generate "u u~ > Z g g" artifacts/uubar_zgg \
   --backend jit
 ```
 
-Recurrence, compiled, and eager can deliberately specialize generation to one
-or more flow IDs, helicity IDs, or both with
+Ordinary recurrence, compiled, and eager can deliberately specialize generation
+to one or more flow IDs, helicity IDs, or both with
 `process.selected_color_sector_ids` and
 `process.selected_source_helicities`. This reduces the reusable coverage of
 the resulting artifact and is useful when the same narrow workload will be
@@ -103,6 +104,24 @@ pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml \
 Always use a different output when comparing modes; a process artifact is an
 immutable executable input, not a directory into which unrelated plans should
 be mixed.
+
+### Correlated Born generation
+
+Declaring [Born Correlations](../correlators.md) is an explicit exception to
+the independent mode/accuracy choices: the current path selects generic
+`compiled` amplitudes, a complete full-colour basis, and `direct` contraction.
+Requested LC/NLC/full accuracy selects the inserted colour matrices; requested
+settings are preserved alongside the effective generation adjustments.
+Recurrence, eager, OTF and FFT correlation executors are not implemented.
+
+Correlated generation retains complete source dependence without
+physical-helicity zero/parity reductions, replay, or numerical current reuse.
+Partial generation coverage and append mode are rejected. Correlated
+evaluation uses either the Python Symbolica-backed exact executor (including
+at `precision=16`) or the independent RustiCol binary64 executor exposed by
+the C/C++/Fortran/Rust SDKs. The ordinary native evaluation path remains
+available and unchanged. See the linked guide for declarations and runtime
+spin vectors.
 
 ### Eager
 
@@ -263,7 +282,7 @@ back from recurrence/eager/on-the-fly to compiled mode.
 
 ## Color accuracy and LC flow layout
 
-Execution mode is independent of color accuracy:
+For ordinary Born evaluation, execution mode is independent of color accuracy:
 
 | Accuracy | Runtime color axis |
 | --- | --- |
@@ -323,7 +342,8 @@ pyamplicol generate ... --no-numerical-current-reuse
 
 This changes optimization, not the expected physics result.
 OTF uses its compact source projection and does not run the configurable
-relation-discovery pass.
+relation-discovery pass. Correlated generation also disables this pass,
+regardless of the requested ordinary reuse setting.
 
 ## Three matched examples
 
@@ -361,6 +381,7 @@ pyamplicol profile --card otf_pp_zjj.toml
 | --- | --- |
 | First built-in-SM artifact | Recurrence + JIT O2 (defaults) |
 | Raw JSON/UFO model without a prepared pack | Compiled mode, or prepare a pack first |
+| Spin-/colour-correlated Born quantities | Declare correlations; LC/NLC/full, complete direct compiled generation, grouped Python exact or native binary64 evaluation |
 | Reuse prepared kernels with process tables | Eager + the pack's backend |
 | Keep a high-multiplicity LC artifact compact and repeatedly run one selected flow | On-the-fly + an explicit one-point warm-up |
 | Cross-architecture release-host movement | Compiled all-JIT O1/O2 artifact, or eager/recurrence with a prepared JIT O2 pack |

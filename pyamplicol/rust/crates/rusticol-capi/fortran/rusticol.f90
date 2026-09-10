@@ -76,6 +76,37 @@ module rusticol
     character(len=:), allocatable :: name
   end type rusticol_model_parameter
 
+  type, public :: rusticol_spin_correlation_vector
+    integer(c_size_t) :: leg = 0_c_size_t ! One-based public external leg.
+    ! (E,px,py,pz) by point; a single point broadcasts over the batch.
+    complex(c_double_complex), allocatable :: components(:, :)
+  end type rusticol_spin_correlation_vector
+
+  type, public :: rusticol_correlated_request
+    character(len=:), allocatable :: color_correlation ! Unallocated means "born".
+    ! Unallocated inherits the setter; allocated size zero uses physical helicities.
+    type(rusticol_spin_correlation_vector), allocatable :: spin_vectors(:)
+  end type rusticol_correlated_request
+
+  type, bind(C) :: c_spin_correlation_vector
+    integer(c_size_t) :: leg, point_count
+    type(c_ptr) :: components
+    integer(c_size_t) :: component_count
+  end type c_spin_correlation_vector
+
+  type, bind(C) :: c_correlated_request
+    type(c_ptr) :: color_correlation, spin_vectors
+    integer(c_size_t) :: spin_vector_count
+    integer(c_int32_t) :: use_default_spin_vectors
+  end type c_correlated_request
+
+  ! Explicit real/imaginary transport avoids assumptions about COMPLEX layout.
+  type :: spin_correlation_storage
+    real(c_double), allocatable :: components(:)
+    type(c_spin_correlation_vector), allocatable :: vectors(:)
+    character(kind=c_char), allocatable :: id(:)
+  end type spin_correlation_storage
+
   type, public :: rusticol_runtime
     private
     type(c_ptr) :: handle = c_null_ptr
@@ -98,6 +129,11 @@ module rusticol
     procedure, public :: colors => rusticol_colors
     procedure, public :: model_parameters => rusticol_model_parameters
     procedure, public :: evaluate => rusticol_evaluate
+    procedure, public :: color_correlation_ids => rusticol_color_correlation_ids
+    procedure, public :: color_correlation_catalogue_json => rusticol_color_correlation_catalogue_json
+    procedure, public :: set_spin_correlation_vectors => rusticol_set_spin_correlation_vectors
+    procedure, public :: evaluate_correlated_many => rusticol_evaluate_correlated_many
+    procedure, public :: evaluate_correlated => rusticol_evaluate_correlated
     procedure, public :: warm_up => rusticol_warm_up
     procedure, public :: evaluate_selected => rusticol_evaluate_selected
     procedure, public :: evaluate_resolved => rusticol_evaluate_resolved
@@ -337,6 +373,50 @@ module rusticol
       type(rusticol_warm_up_result) :: output
       integer(c_int) :: status
     end function c_rusticol_runtime_warm_up_f64
+
+    function c_rusticol_color_correlation_count(handle, output) &
+        bind(C, name="rusticol_runtime_color_correlation_count") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle
+      integer(c_size_t) :: output
+      integer(c_int) :: status
+    end function c_rusticol_color_correlation_count
+
+    function c_rusticol_color_correlation_id(handle, index, buffer, capacity, required) &
+        bind(C, name="rusticol_runtime_color_correlation_id") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, buffer
+      integer(c_size_t), value :: index, capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_color_correlation_id
+
+    function c_rusticol_color_correlation_catalogue_json(handle, buffer, capacity, required) &
+        bind(C, name="rusticol_runtime_color_correlation_catalogue_json") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, buffer
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_color_correlation_catalogue_json
+
+    function c_rusticol_set_spin_correlation_vectors(handle, vectors, vector_count) &
+        bind(C, name="rusticol_runtime_set_spin_correlation_vectors_f64") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, vectors
+      integer(c_size_t), value :: vector_count
+      integer(c_int) :: status
+    end function c_rusticol_set_spin_correlation_vectors
+
+    function c_rusticol_evaluate_correlated_many(handle, momenta, momentum_count, point_count, &
+        requests, request_count, helicity_ids, helicity_count, output, output_capacity) &
+        bind(C, name="rusticol_runtime_evaluate_correlated_many_f64") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, momenta, requests, helicity_ids, output
+      integer(c_size_t), value :: momentum_count, point_count, request_count
+      integer(c_size_t), value :: helicity_count, output_capacity
+      integer(c_int) :: status
+    end function c_rusticol_evaluate_correlated_many
 
     function c_rusticol_runtime_evaluate_f64(handle, momenta, momentum_count, point_count, &
         output, output_capacity) bind(C, name="rusticol_runtime_evaluate_f64") result(status)
@@ -844,6 +924,184 @@ contains
       pointers(index) = c_loc(storage(1, index))
     end do
   end subroutine build_c_string_array
+
+  function rusticol_color_correlation_catalogue_json(self, ierr) result(value)
+    class(rusticol_runtime), intent(inout) :: self
+    integer(c_int), intent(out), optional :: ierr
+    character(len=:), allocatable :: value
+    value = runtime_string(self, c_rusticol_color_correlation_catalogue_json, ierr)
+  end function rusticol_color_correlation_catalogue_json
+
+  function rusticol_color_correlation_ids(self, ierr) result(items)
+    class(rusticol_runtime), intent(inout) :: self
+    integer(c_int), intent(out), optional :: ierr
+    type(rusticol_string), allocatable :: items(:)
+    integer(c_size_t) :: count, index
+    integer(c_int) :: status
+
+    status = c_rusticol_color_correlation_count(self%handle, count)
+    if (.not. status_ok(status, ierr)) then
+      allocate(items(0))
+      return
+    end if
+    allocate(items(count))
+    do index = 1, count
+      items(index)%value = indexed_runtime_string( &
+          self, index - 1, c_rusticol_color_correlation_id, status)
+      if (.not. status_ok(status, ierr)) return
+    end do
+  end function rusticol_color_correlation_ids
+
+  logical function build_spin_storage(input, storage, ierr) result(ok)
+    type(rusticol_spin_correlation_vector), intent(in) :: input(:)
+    type(spin_correlation_storage), intent(out), target :: storage
+    integer(c_int), intent(out), optional :: ierr
+    integer(c_size_t) :: total, count, offset, first, item, point, component
+
+    ok = .false.
+    total = 0_c_size_t
+    do item = 1, size(input, kind=c_size_t)
+      if (.not. argument_ok(allocated(input(item)%components), &
+          "Each spin vector requires allocated components(4,points)", ierr)) return
+      if (.not. argument_ok(size(input(item)%components, 1) == 4 .and. &
+          size(input(item)%components, 2) > 0, &
+          "Each spin vector requires components(4,points) with at least one point", ierr)) return
+      count = size(input(item)%components, 2, kind=c_size_t)
+      if (.not. argument_ok(count <= (huge(total) - total) / 8_c_size_t, &
+          "Spin-vector component count overflows", ierr)) return
+      total = total + 8_c_size_t * count
+    end do
+    allocate(storage%components(total), storage%vectors(size(input)))
+    offset = 1_c_size_t
+    do item = 1, size(input, kind=c_size_t)
+      first = offset
+      count = size(input(item)%components, 2, kind=c_size_t)
+      do point = 1, count
+        do component = 1, 4
+          storage%components(offset) = real(input(item)%components(component, point), c_double)
+          storage%components(offset + 1) = aimag(input(item)%components(component, point))
+          offset = offset + 2
+        end do
+      end do
+      storage%vectors(item) = c_spin_correlation_vector(input(item)%leg, count, &
+          c_loc(storage%components(first)), 8_c_size_t * count)
+    end do
+    if (present(ierr)) ierr = RUSTICOL_STATUS_OK
+    ok = .true.
+  end function build_spin_storage
+
+  subroutine rusticol_set_spin_correlation_vectors(self, vectors, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    type(rusticol_spin_correlation_vector), intent(in), optional :: vectors(:)
+    integer(c_int), intent(out), optional :: ierr
+    type(spin_correlation_storage), target :: storage
+    type(c_ptr) :: vector_pointer
+    integer(c_size_t) :: count
+    integer(c_int) :: status
+
+    vector_pointer = c_null_ptr
+    count = 0_c_size_t
+    if (present(vectors)) then
+      if (.not. build_spin_storage(vectors, storage, ierr)) return
+      count = size(storage%vectors, kind=c_size_t)
+      if (count > 0) vector_pointer = c_loc(storage%vectors(1))
+    end if
+    status = c_rusticol_set_spin_correlation_vectors(self%handle, vector_pointer, count)
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_set_spin_correlation_vectors
+
+  subroutine rusticol_evaluate_correlated_many(self, momenta, point_count, requests, values, &
+      helicity_ids, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    real(c_double), intent(in), contiguous, target :: momenta(:)
+    integer(c_size_t), intent(in) :: point_count
+    type(rusticol_correlated_request), intent(in) :: requests(:)
+    ! values(point,request): Fortran ordering matches request-major C output.
+    complex(c_double_complex), allocatable, intent(out) :: values(:, :)
+    character(len=*), intent(in), optional :: helicity_ids(:)
+    integer(c_int), intent(out), optional :: ierr
+    type(spin_correlation_storage), allocatable, target :: storage(:)
+    type(c_correlated_request), allocatable, target :: raw_requests(:)
+    character(kind=c_char), allocatable, target :: helicity_storage(:, :)
+    type(c_ptr), allocatable, target :: helicity_pointers(:)
+    type(c_ptr) :: helicity_pointer
+    real(c_double), allocatable, target :: raw(:)
+    integer(c_size_t) :: request_count, index, point, offset, count
+    integer(c_int) :: status
+
+    allocate(values(0, 0))
+    request_count = size(requests, kind=c_size_t)
+    if (.not. argument_ok(point_count > 0 .and. request_count > 0 .and. size(momenta) > 0, &
+        "Correlated evaluation requires positive point, request and momentum counts", ierr)) return
+    if (.not. argument_ok(point_count <= huge(point_count) / 2_c_size_t / request_count, &
+        "Correlated output dimensions overflow", ierr)) return
+    allocate(storage(request_count), raw_requests(request_count))
+    do index = 1, request_count
+      if (allocated(requests(index)%color_correlation)) then
+        if (.not. argument_ok(scan(requests(index)%color_correlation, c_null_char) == 0, &
+            "Colour correlation ID contains a NUL byte", ierr)) return
+      end if
+      ! build_spin_storage initializes all storage fields, so assign the ID last.
+      raw_requests(index)%spin_vectors = c_null_ptr
+      raw_requests(index)%spin_vector_count = 0_c_size_t
+      raw_requests(index)%use_default_spin_vectors = 1_c_int32_t
+      if (allocated(requests(index)%spin_vectors)) then
+        if (.not. build_spin_storage(requests(index)%spin_vectors, storage(index), ierr)) return
+        count = size(storage(index)%vectors, kind=c_size_t)
+        raw_requests(index)%spin_vector_count = count
+        raw_requests(index)%use_default_spin_vectors = 0_c_int32_t
+        if (count > 0) raw_requests(index)%spin_vectors = c_loc(storage(index)%vectors(1))
+      end if
+      if (allocated(requests(index)%color_correlation)) then
+        call build_c_string(requests(index)%color_correlation, storage(index)%id)
+      else
+        call build_c_string("born", storage(index)%id)
+      end if
+      raw_requests(index)%color_correlation = c_loc(storage(index)%id(1))
+    end do
+    if (present(helicity_ids)) then
+      do index = 1, size(helicity_ids, kind=c_size_t)
+        if (.not. argument_ok(scan(helicity_ids(index), c_null_char) == 0, &
+            "Helicity ID contains a NUL byte", ierr)) return
+      end do
+    end if
+    call build_c_string_array(helicity_ids, helicity_storage, helicity_pointers)
+    helicity_pointer = c_null_ptr
+    if (size(helicity_pointers) > 0) helicity_pointer = c_loc(helicity_pointers(1))
+    allocate(raw(2_c_size_t * point_count * request_count))
+    status = c_rusticol_evaluate_correlated_many(self%handle, c_loc(momenta(1)), &
+        size(momenta, kind=c_size_t), point_count, c_loc(raw_requests(1)), request_count, &
+        helicity_pointer, size(helicity_pointers, kind=c_size_t), c_loc(raw(1)), &
+        size(raw, kind=c_size_t))
+    if (.not. status_ok(status, ierr)) return
+    deallocate(values)
+    allocate(values(point_count, request_count))
+    offset = 1_c_size_t
+    do index = 1, request_count
+      do point = 1, point_count
+        values(point, index) = cmplx(raw(offset), raw(offset + 1), kind=c_double)
+        offset = offset + 2
+      end do
+    end do
+  end subroutine rusticol_evaluate_correlated_many
+
+  subroutine rusticol_evaluate_correlated(self, momenta, point_count, request, values, helicity_ids, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    real(c_double), intent(in), contiguous, target :: momenta(:)
+    integer(c_size_t), intent(in) :: point_count
+    type(rusticol_correlated_request), intent(in) :: request
+    complex(c_double_complex), allocatable, intent(out) :: values(:)
+    character(len=*), intent(in), optional :: helicity_ids(:)
+    integer(c_int), intent(out), optional :: ierr
+    complex(c_double_complex), allocatable :: batch(:, :)
+
+    call self%evaluate_correlated_many(momenta, point_count, [request], batch, helicity_ids, ierr)
+    if (size(batch, 2) == 0) then
+      allocate(values(0))
+    else
+      values = batch(:, 1)
+    end if
+  end subroutine rusticol_evaluate_correlated
 
   subroutine rusticol_evaluate(self, momenta, point_count, values, ierr)
     class(rusticol_runtime), intent(inout) :: self

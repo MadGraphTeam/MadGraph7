@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
 use rusticol_core::{
-    NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind, NativeOnTheFlyWarmUpResult,
-    NativeOnTheFlyWarmUpStage, NativeRuntime, RusticolError, RusticolErrorKind,
-    supported_runtime_capabilities,
+    NativeCorrelatedRequest, NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind,
+    NativeOnTheFlyWarmUpResult, NativeOnTheFlyWarmUpStage, NativeRuntime,
+    NativeSpinCorrelationVectors, RusticolError, RusticolErrorKind, supported_runtime_capabilities,
 };
 use std::any::Any;
 use std::cell::RefCell;
@@ -13,6 +13,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::ptr;
 use std::slice;
+
+mod correlated;
 
 #[allow(non_camel_case_types)]
 type size_t = usize;
@@ -85,6 +87,26 @@ pub type RusticolWarmUpProgressCallback = Option<
 
 pub struct RusticolRuntimeHandle {
     runtime: NativeRuntime,
+}
+
+/// One borrowed literal complex spin-vector batch; see rusticol.h for layout.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct RusticolSpinCorrelationVector {
+    pub leg: size_t,
+    pub point_count: size_t,
+    pub components: *const c_double,
+    pub component_count: size_t,
+}
+
+/// One ordered colour insertion and either explicit or inherited spin vectors.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct RusticolCorrelatedRequest {
+    pub color_correlation: *const c_char,
+    pub spin_vectors: *const RusticolSpinCorrelationVector,
+    pub spin_vector_count: size_t,
+    pub use_default_spin_vectors: u32,
 }
 
 struct AbiError {

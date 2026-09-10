@@ -4343,6 +4343,8 @@ pub struct NativeRuntime {
     pending_warnings: Vec<String>,
     point_selector_scratch: PointSelectorExecutionScratch,
     selector_simd_lane_width: usize,
+    // Cold, opt-in metadata and vector defaults; ordinary evaluation never reads it.
+    correlated: Option<correlated::CorrelatedRuntime>,
 }
 
 enum NativeExecutionLane {
@@ -4693,7 +4695,11 @@ mod sources;
 mod validation;
 use validation::*;
 
+mod correlated;
 mod native_runtime;
+pub use correlated::{
+    NativeCorrelatedEvaluation, NativeCorrelatedRequest, NativeSpinCorrelationVectors,
+};
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod on_the_fly_warm_up;

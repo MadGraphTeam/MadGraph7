@@ -426,6 +426,30 @@ class _ExactExpressionEvaluator:
             for value in outputs
         )
 
+    def evaluate_double_double(
+        self, values: Sequence[_ComplexDecimal]
+    ) -> tuple[_ComplexDecimal, ...]:
+        """Evaluate UFO expressions, including constants, with DoubleFloat."""
+        if len(values) != self.input_len:
+            raise EvaluationError(
+                "exact parameter evaluator input width is inconsistent"
+            )
+        prepared = _upcast_complex_inputs(values, 80)
+        try:
+            return tuple(
+                cast(
+                    _ComplexDecimal,
+                    expression.evaluator(
+                        self._parameters, iterations=0, n_cores=1
+                    ).evaluate_complex_with_prec(prepared, 32)[0],
+                )
+                for expression in self._expressions
+            )
+        except Exception as exc:
+            raise EvaluationError(
+                f"double-double parameter derivation failed: {exc}"
+            ) from exc
+
 
 def _exact_chunk_input_indices(value: object, input_len: int) -> tuple[int, ...]:
     if (
@@ -773,6 +797,8 @@ class SymbolicaExactExecutor:
         self,
         parameters: tuple[Decimal, ...],
         precision: int,
+        *,
+        arithmetic: str = "arbitrary",
     ) -> tuple[Decimal, ...]:
         """Recompute UFO couplings; native cached values are only binary64."""
         compiled = cast(Mapping[str, Any], self._execution["compiled"])
@@ -828,15 +854,17 @@ class SymbolicaExactExecutor:
             tuple(definitions[record["runtime_name"]] for record in outputs),
             tuple(model_symbols.symbol(name).to_canonical_string() for name in inputs),
         )
-        values = evaluator.evaluate(
-            tuple(
-                (
-                    parameters[indices[0]] if indices[0] is not None else _ZERO,
-                    parameters[indices[1]] if indices[1] is not None else _ZERO,
-                )
-                for indices in inputs.values()
-            ),
-            precision,
+        arguments = tuple(
+            (
+                parameters[indices[0]] if indices[0] is not None else _ZERO,
+                parameters[indices[1]] if indices[1] is not None else _ZERO,
+            )
+            for indices in inputs.values()
+        )
+        values = (
+            evaluator.evaluate_double_double(arguments)
+            if arithmetic == "double-double"
+            else evaluator.evaluate(arguments, precision)
         )
         result = list(parameters)
         for value, record in zip(values, outputs, strict=True):
@@ -3161,7 +3189,10 @@ def _source_wavefunction(
     point: Sequence[tuple[Decimal, Decimal, Decimal, Decimal]],
     schema: Mapping[str, object],
     model_parameters: Sequence[Decimal],
+    *,
+    scalar: type[Decimal] | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
+    scalar = Decimal if scalar is None else scalar
     leg_label = _json_integer(source["leg_label"])
     try:
         momentum = point[leg_label - 1]
@@ -3182,7 +3213,7 @@ def _source_wavefunction(
     orientation = str(identity["orientation"])
     wave: tuple[_ComplexDecimal, ...]
     if dimension == 1 and kind == "scalar":
-        wave = ((_ONE, _ZERO),)
+        wave = ((scalar(1), scalar(0)),)
     elif kind == "fermion" and orientation == "self-conjugate":
         raise CompatibilityError(
             "self-conjugate fermion source wavefunctions are unsupported"
@@ -3213,9 +3244,9 @@ def _source_wavefunction(
             model_parameters,
         )
         wave = (
-            _massless_vector(momentum, helicity)
+            _massless_vector(momentum, helicity, scalar=scalar)
             if mass == 0
-            else _massive_vector(momentum, helicity, mass)
+            else _massive_vector(momentum, helicity, mass, scalar=scalar)
         )
     elif dimension == 16 and kind == "spin2":
         mass = _particle_mass(
@@ -3224,13 +3255,15 @@ def _source_wavefunction(
             anti_particle_id,
             model_parameters,
         )
-        wave = _spin2(momentum, helicity, mass)
+        wave = _spin2(momentum, helicity, mass, scalar=scalar)
     else:
         raise CompatibilityError(
             f"high-precision source kind {kind!r} with dimension {dimension} "
             "is unsupported"
         )
-    phase = _crossing_phase(crossing)
+    phase = cast(
+        _ComplexDecimal, tuple(scalar(value) for value in _crossing_phase(crossing))
+    )
     return tuple(_complex_mul(component, phase) for component in wave)
 
 
@@ -3567,12 +3600,13 @@ def _massive_dirac(
 
 
 def _massless_vector(
-    momentum: Sequence[Decimal], helicity: int
+    momentum: Sequence[Decimal], helicity: int, *, scalar: type[Decimal] | None = None
 ) -> tuple[_ComplexDecimal, ...]:
+    scalar = Decimal if scalar is None else scalar
     energy, px, py, pz = momentum
     if energy == 0:
         raise EvaluationError("cannot build a massless vector with zero energy")
-    sqh = _sqrt(_ONE / _TWO, "vector source")
+    sqh = _sqrt(scalar(1) / scalar(2), "vector source")
     if energy > 0:
         hel = Decimal(helicity)
         pp = energy
@@ -3601,8 +3635,13 @@ def _massless_vector(
 
 
 def _massive_vector(
-    momentum: Sequence[Decimal], helicity: int, mass: Decimal
+    momentum: Sequence[Decimal],
+    helicity: int,
+    mass: Decimal,
+    *,
+    scalar: type[Decimal] | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
+    scalar = Decimal if scalar is None else scalar
     energy, px, py, pz = momentum
     if mass == 0:
         raise EvaluationError("massive-vector source has zero mass")
@@ -3611,8 +3650,9 @@ def _massive_vector(
             tuple(-component for component in momentum),
             -helicity,
             mass,
+            scalar=scalar,
         )
-    sqh = _sqrt(_ONE / _TWO, "massive vector source")
+    sqh = _sqrt(scalar(1) / scalar(2), "massive vector source")
     hel = Decimal(helicity)
     nsvahl = Decimal(abs(helicity))
     pt2 = px * px + py * py
@@ -3640,33 +3680,50 @@ def _massive_vector(
 
 
 def _spin2(
-    momentum: Sequence[Decimal], helicity: int, mass: Decimal
+    momentum: Sequence[Decimal],
+    helicity: int,
+    mass: Decimal,
+    *,
+    scalar: type[Decimal] | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
+    scalar = Decimal if scalar is None else scalar
     if mass == 0:
         if helicity not in {-2, 2}:
             raise EvaluationError("massless spin-2 source supports helicity +/-2")
-        vector = _massless_vector(momentum, helicity // 2)
+        vector = _massless_vector(momentum, helicity // 2, scalar=scalar)
         return _spin2_outer(vector, vector)
-    plus = _massive_vector(momentum, 1, mass)
-    minus = _massive_vector(momentum, -1, mass)
-    longitudinal = _massive_vector(momentum, 0, mass)
+    plus = _massive_vector(momentum, 1, mass, scalar=scalar)
+    minus = _massive_vector(momentum, -1, mass, scalar=scalar)
+    longitudinal = _massive_vector(momentum, 0, mass, scalar=scalar)
     if helicity == 2:
         return _spin2_outer(plus, plus)
     if helicity == -2:
         return _spin2_outer(minus, minus)
     if helicity == 1:
         return _spin2_sum(
-            (_spin2_outer(plus, longitudinal), _ONE / _sqrt(_TWO, "spin-2 source")),
-            (_spin2_outer(longitudinal, plus), _ONE / _sqrt(_TWO, "spin-2 source")),
+            (
+                _spin2_outer(plus, longitudinal),
+                scalar(1) / _sqrt(scalar(2), "spin-2 source"),
+            ),
+            (
+                _spin2_outer(longitudinal, plus),
+                scalar(1) / _sqrt(scalar(2), "spin-2 source"),
+            ),
         )
     if helicity == -1:
         return _spin2_sum(
-            (_spin2_outer(minus, longitudinal), _ONE / _sqrt(_TWO, "spin-2 source")),
-            (_spin2_outer(longitudinal, minus), _ONE / _sqrt(_TWO, "spin-2 source")),
+            (
+                _spin2_outer(minus, longitudinal),
+                scalar(1) / _sqrt(scalar(2), "spin-2 source"),
+            ),
+            (
+                _spin2_outer(longitudinal, minus),
+                scalar(1) / _sqrt(scalar(2), "spin-2 source"),
+            ),
         )
     if helicity != 0:
         raise EvaluationError(f"unsupported massive spin-2 helicity {helicity}")
-    sqrt6 = _sqrt(Decimal(6), "spin-2 source")
+    sqrt6 = _sqrt(scalar(6), "spin-2 source")
     return _spin2_sum(
         (_spin2_outer(plus, minus), _ONE / sqrt6),
         (_spin2_outer(minus, plus), _ONE / sqrt6),

@@ -97,6 +97,21 @@ struct DirectLeafPlan {
     persistent_scalar_values_per_point: usize,
 }
 
+/// Call-local memo for correlated spin assignments at identical momenta and
+/// model parameters. It is never read or allocated by ordinary evaluation.
+#[derive(Default)]
+pub(crate) struct CorrelatedStageMemo {
+    leaves: Vec<Option<CorrelatedLeafMemo>>,
+    #[cfg(test)]
+    reused_leaves: usize,
+}
+
+struct CorrelatedLeafMemo {
+    inputs: Vec<u64>,
+    current_outputs: Vec<[f64; 2]>,
+    amplitude_outputs: Vec<[f64; 2]>,
+}
+
 // Leaves are cold-built and kept inline to avoid a separate allocation and
 // indirection for each warmed stage call.
 #[allow(clippy::large_enum_variant)]
@@ -1155,6 +1170,160 @@ impl CompiledDirectEnginePrototype {
             point_count_u32(point_count, self.arena.active_point_count())?,
             &mut self.traffic,
         )
+    }
+
+    /// Replace every retained source slot of a declared leg by the literal
+    /// public vector. Apply only the same SourceIR crossing phase as ordinary
+    /// wavefunctions; no projection, normalization or conjugation is applied.
+    pub(crate) fn replace_correlated_sources(
+        &mut self,
+        sources: &[GenericSourceRecordManifest],
+        vectors: &correlated::NativeSpinCorrelationVectors,
+        point_start: usize,
+        point_count: usize,
+    ) -> RusticolResult<()> {
+        point_count_u32(point_count, self.arena.active_point_count())?;
+        let stride = self.arena.point_stride() as usize;
+        let (re, im, _, _) = self.arena.split_slices_mut();
+        for source in sources {
+            let Some(batch) = vectors.get(&source.leg_label) else {
+                continue;
+            };
+            let [pr, pi] = source.applied_crossing.phase;
+            for component in 0..4 {
+                let physical = self
+                    .current_layout
+                    .physical_component(source.value_slot.component_start + component)?
+                    as usize;
+                for point in 0..point_count {
+                    let [vr, vi] = batch[if batch.len() == 1 {
+                        0
+                    } else {
+                        point_start + point
+                    }][component];
+                    re[physical * stride + point] = vr * pr - vi * pi;
+                    im[physical * stride + point] = vr * pi + vi * pr;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Reuse a leaf only when all of its current inputs are bit-identical.
+    /// Momenta and model parameters must stay fixed for the memo's lifetime;
+    /// the correlated caller creates a fresh memo for each point tile. Saved
+    /// outputs are restored because the production arena reuses dead slots.
+    pub(crate) fn evaluate_correlated_reusing(
+        &mut self,
+        point_count: usize,
+        memo: &mut CorrelatedStageMemo,
+    ) -> RusticolResult<()> {
+        let count = point_count_u32(point_count, self.arena.active_point_count())?;
+        let leaf_count = self
+            .stages
+            .iter()
+            .map(|stage| stage.leaves.len())
+            .sum::<usize>()
+            + self.amplitude.leaves.len();
+        if memo.leaves.is_empty() {
+            memo.leaves.resize_with(leaf_count, || None);
+        }
+        if memo.leaves.len() != leaf_count {
+            return Err(RusticolError::internal(
+                "correlated stage memo belongs to a different compiled plan",
+            ));
+        }
+        let stride = self.arena.point_stride() as usize;
+        let mut index = 0;
+        for stage in self
+            .stages
+            .iter_mut()
+            .chain(std::iter::once(&mut self.amplitude))
+        {
+            for (leaf, plan) in stage.leaves.iter_mut().zip(&stage.leaf_plans) {
+                let input_components = plan
+                    .input_current_components
+                    .iter()
+                    .map(|&component| self.current_layout.physical_component(component))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let output_components = plan
+                    .output_current_components
+                    .iter()
+                    .map(|&component| self.current_layout.physical_component(component))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let (re, im) = self.arena.current_slices();
+                let inputs: Vec<_> = input_components
+                    .iter()
+                    .flat_map(|&component| {
+                        (0..point_count).flat_map(move |point| {
+                            [
+                                re[component as usize * stride + point].to_bits(),
+                                im[component as usize * stride + point].to_bits(),
+                            ]
+                        })
+                    })
+                    .collect();
+                if let Some(saved) = &memo.leaves[index]
+                    && saved.inputs == inputs
+                {
+                    #[cfg(test)]
+                    {
+                        memo.reused_leaves += 1;
+                    }
+                    let (re, im, ar, ai) = self.arena.split_slices_mut();
+                    for (position, &component) in output_components.iter().enumerate() {
+                        for point in 0..point_count {
+                            let value = saved.current_outputs[position * point_count + point];
+                            re[component as usize * stride + point] = value[0];
+                            im[component as usize * stride + point] = value[1];
+                        }
+                    }
+                    for (position, &component) in
+                        plan.output_amplitude_components.iter().enumerate()
+                    {
+                        for point in 0..point_count {
+                            let value = saved.amplitude_outputs[position * point_count + point];
+                            ar[component * stride + point] = value[0];
+                            ai[component * stride + point] = value[1];
+                        }
+                    }
+                } else {
+                    leaf.evaluate(0, count)?;
+                    let (re, im) = self.arena.current_slices();
+                    let current_outputs = output_components
+                        .iter()
+                        .flat_map(|&component| {
+                            (0..point_count).map(move |point| {
+                                [
+                                    re[component as usize * stride + point],
+                                    im[component as usize * stride + point],
+                                ]
+                            })
+                        })
+                        .collect();
+                    let (re, im) = self.arena.amplitude_slices();
+                    let amplitude_outputs = plan
+                        .output_amplitude_components
+                        .iter()
+                        .flat_map(|&component| {
+                            (0..point_count).map(move |point| {
+                                [
+                                    re[component * stride + point],
+                                    im[component * stride + point],
+                                ]
+                            })
+                        })
+                        .collect();
+                    memo.leaves[index] = Some(CorrelatedLeafMemo {
+                        inputs,
+                        current_outputs,
+                        amplitude_outputs,
+                    });
+                }
+                index += 1;
+            }
+        }
+        Ok(())
     }
 
     /// Bind an already producer-validated compiled color schedule to this
@@ -3747,6 +3916,44 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 assert_close(direct_state[row + 1], legacy[row + 1]);
                 assert_close(direct_state[row + 2], legacy[row + 2]);
                 assert_close(*direct_value, legacy[row + 3]);
+            }
+
+            // Correlated memo reuse must restore overwritten planes, and a
+            // genuinely changed source must invalidate the dependent leaves.
+            let mut memo = CorrelatedStageMemo::default();
+            for repeat in 0..3 {
+                let mut correlated_state = initial.clone();
+                if repeat == 2 {
+                    correlated_state[0] += Complex::new(0.125, -0.25);
+                }
+                direct
+                    .begin_tile_from_state(point_count, GLOBAL_PARAMETERS, &correlated_state)
+                    .unwrap();
+                direct
+                    .evaluate_correlated_reusing(point_count, &mut memo)
+                    .unwrap();
+                let mut correlated_amplitude = vec![Complex::new(0.0, 0.0); point_count];
+                direct
+                    .extract_amplitudes_row_major(point_count, &mut correlated_amplitude)
+                    .unwrap();
+                legacy_stage
+                    .evaluate_f64_into_state(point_count, GLOBAL_PARAMETERS, &mut correlated_state)
+                    .unwrap();
+                legacy_amplitude_stage
+                    .evaluate_f64_into_state(point_count, GLOBAL_PARAMETERS, &mut correlated_state)
+                    .unwrap();
+                for (point, value) in correlated_amplitude.iter().enumerate() {
+                    assert_close(*value, correlated_state[point * GLOBAL_PARAMETERS + 3]);
+                }
+                if repeat == 1 {
+                    assert_eq!(memo.reused_leaves, 3);
+                }
+                if repeat == 2 {
+                    assert_eq!(
+                        memo.reused_leaves, 3,
+                        "changed current inputs must invalidate the leaf"
+                    );
+                }
             }
 
             if point_count == 129 {

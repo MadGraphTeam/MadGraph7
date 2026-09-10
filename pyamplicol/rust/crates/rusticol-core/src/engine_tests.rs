@@ -1045,6 +1045,7 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
+        correlated: None,
     };
     let metadata = runtime.metadata();
     assert_eq!(metadata.external_pdg_order, vec![1, -1, 22, 23, 21]);
@@ -4007,6 +4008,7 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             pending_warnings: Vec::new(),
             point_selector_scratch: PointSelectorExecutionScratch::default(),
             selector_simd_lane_width: 1,
+            correlated: None,
         };
 
         runtime.record_resolved_warnings(None, None).unwrap();
@@ -4315,6 +4317,7 @@ fn zero_native_runtime() -> NativeRuntime {
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
+        correlated: None,
     }
 }
 
@@ -4445,6 +4448,7 @@ fn scalar_on_the_fly_native_runtime_with_color_contraction(
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
+        correlated: None,
     }
 }
 

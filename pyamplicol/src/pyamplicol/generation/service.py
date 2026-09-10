@@ -17,7 +17,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Lock
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
 
 from pyamplicol._internal.versions import (
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
@@ -88,6 +88,7 @@ from .artifact_writer import (
     RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
     RECURRENCE_RUNTIME_STORAGE_ABI,
+    ArtifactWriteResult,
     CompiledColorSelectorExecutionArtifact,
     CompiledExecutionArtifact,
     CompiledHelicitySelectorExecutionArtifact,
@@ -3602,7 +3603,7 @@ class GenerationBackend:
                             details=details,
                         )
 
-                    write_result = write_schema_v3_artifact(
+                    write_result = self._write_artifact(
                         Path(output),
                         mode=write_mode,
                         source=resolved_model.source,
@@ -4467,6 +4468,10 @@ class GenerationBackend:
             details={"process": process_name, "step": "validation points ready"},
         )
         return result
+
+    def _write_artifact(self, *args: Any, **kwargs: Any) -> ArtifactWriteResult:
+        """Keep optional payloads inside the existing publication transaction."""
+        return write_schema_v3_artifact(*args, **kwargs)
 
     def _prepare_warmup_process_inner(
         self,

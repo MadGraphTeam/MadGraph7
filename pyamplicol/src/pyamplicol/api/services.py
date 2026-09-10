@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pyamplicol as _pyamplicol
 from pyamplicol.config import (
@@ -51,6 +51,9 @@ from .results import (
 _generator_factory: GeneratorFactory | None = None
 _runtime_loader: RuntimeLoader | None = None
 _benchmark_factory: BenchmarkFactory | None = None
+
+if TYPE_CHECKING:
+    from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
 
 def install_backend_factories(
@@ -293,6 +296,7 @@ class Generator:
         *,
         model: ModelSource | _pyamplicol.CompiledModel | None = None,
         mode: Literal["error", "append", "replace"] = "error",
+        correlators: _pyamplicol.CorrelatorConfig | None = None,
     ) -> GenerationResult:
         """Generate an artifact in ``error``, ``append``, or ``replace`` mode."""
 
@@ -309,6 +313,18 @@ class Generator:
         if mode == "append" and not destination.is_dir():
             raise FileNotFoundError(f"cannot append to missing artifact: {destination}")
         self._resolve_generation_resources()
+        if correlators is not None:
+            from pyamplicol.generation.correlated import generate_correlated
+
+            return generate_correlated(
+                process_set,
+                destination,
+                model=model,
+                mode=mode,
+                config=self._config,
+                progress=self._progress,
+                declarations=correlators,
+            )
         result = self._implementation().generate(
             process_set, destination, model=model, mode=mode
         )
@@ -653,6 +669,112 @@ class Runtime:
 
         self._backend.set_model_parameters(dict(mapping))
 
+    def _correlator_catalogue(self) -> CorrelatorCatalogue:
+        catalogue: CorrelatorCatalogue | None = getattr(
+            self, "_correlated_catalogue", None
+        )
+        if catalogue is None:
+            from pyamplicol.runtime.correlations import load_correlator_catalogue
+
+            catalogue = load_correlator_catalogue(self._backend)
+            self._correlated_catalogue = catalogue
+        return catalogue
+
+    def available_color_correlations(self) -> tuple[_pyamplicol.ColorCorrelator, ...]:
+        """List this process's resolved operators, including ``"born"``.
+
+        Reads the declared catalogue without loading an amplitude executor.
+        Each returned record contains its runtime ID and ordered bra/ket steps.
+        """
+        return self._correlator_catalogue().declarations.color_requests
+
+    def _correlator_evaluator(self) -> CorrelatorEvaluator:
+        evaluator: CorrelatorEvaluator | None = getattr(
+            self, "_correlated_evaluator", None
+        )
+        if evaluator is None:
+            from pyamplicol.runtime.correlations import CorrelatorEvaluator
+
+            evaluator = CorrelatorEvaluator(
+                self._backend, catalogue=self._correlator_catalogue()
+            )
+            self._correlated_evaluator = evaluator
+        return evaluator
+
+    def set_spin_correlation_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> None:
+        """Replace declared spin-1 sources by literal complex four-vectors.
+
+        Keys are public one-based leg labels. A value is either ``(E,x,y,z)``
+        or one such vector per phase-space point. The set of keys must match a
+        spin class declared at generation. ``None`` or ``{}`` restores ordinary
+        helicity states. Vectors are neither normalized nor projected.
+        Real components accept Decimal; a ``(real, imaginary)`` Decimal pair
+        represents a complex component without a binary64 conversion.
+        This affects the correlated evaluation methods, not :meth:`evaluate`.
+        """
+        self._correlator_evaluator().set_spin_correlation_vectors(vectors)
+
+    def evaluate_correlated(
+        self,
+        momenta: Momenta,
+        *,
+        color_correlation: str = "born",
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int = 16,
+        arithmetic: str = "arbitrary",
+    ) -> tuple[_pyamplicol.CorrelatedValue, ...]:
+        """Evaluate a generation-time colour ID with the current spin vectors.
+
+        Returns one complex decimal value per point. ``"born"`` selects the
+        Born metric at the declared colour accuracy. All ordinary normalization
+        factors remain in place; a replaced spin leg is counted once in the
+        helicity sum.
+
+        ``arithmetic="double-double"`` selects genuine DoubleFloat arithmetic
+        (at most 31 output digits); the default uses arbitrary precision.
+        Decimal spin inputs (including complex-component pairs) retain their
+        digits until conversion into the requested arithmetic.
+        """
+        return self._correlator_evaluator().evaluate(
+            momenta,
+            color_correlation=color_correlation,
+            helicities=_selector_ids(
+                helicities, expected_type=HelicityConfiguration, name="helicity"
+            ),
+            precision=_validate_precision(precision),
+            arithmetic=arithmetic,
+        )
+
+    def evaluate_correlated_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, _pyamplicol.CorrelatedRequest],
+        *,
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        precision: int = 16,
+        arithmetic: str = "arbitrary",
+    ) -> dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]:
+        """Evaluate labelled colour/spin combinations over a point batch.
+
+        Equal spin assignments share amplitudes across colour IDs. Different
+        assignments may reuse stages with identical exact inputs. Numerical
+        reuse is local to this call; requests never change the spin setter.
+        ``None`` vectors inherit its initial state and ``{}`` selects physical
+        helicities. Each result tuple follows the input point order.
+        Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
+        """
+        return self._correlator_evaluator().evaluate_many(
+            momenta,
+            requests,
+            helicities=_selector_ids(
+                helicities, expected_type=HelicityConfiguration, name="helicity"
+            ),
+            precision=_validate_precision(precision),
+            arithmetic=arithmetic,
+        )
+
     def clear(self) -> None:
         """Drop warmed execution state while keeping this artifact loaded.
 
@@ -661,6 +783,9 @@ class Runtime:
         """
 
         self._backend.clear()
+        correlated = getattr(self, "_correlated_evaluator", None)
+        if correlated is not None:
+            correlated.clear()
 
     @property
     def representative_process_key(self) -> str:
@@ -789,11 +914,12 @@ def generate(
     mode: Literal["error", "append", "replace"] = "error",
     config: GenerationConfig | RunConfig | ConfigResolution | None = None,
     progress: ProgressSink | None = None,
+    correlators: _pyamplicol.CorrelatorConfig | None = None,
 ) -> GenerationResult:
     """Generate a process artifact using a one-shot convenience function."""
 
     return Generator(config=config, progress=progress).generate(
-        processes, output, model=model, mode=mode
+        processes, output, model=model, mode=mode, correlators=correlators
     )
 
 

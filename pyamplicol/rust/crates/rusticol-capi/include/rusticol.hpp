@@ -5,11 +5,15 @@
 
 #include "rusticol.h"
 
+#include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -68,6 +72,31 @@ struct ModelParameter {
     std::string name;
 };
 
+struct SpinCorrelationVector {
+    std::size_t leg{};  // One-based public external leg.
+    // One four-vector broadcasts; otherwise supply one per momentum point.
+    std::vector<std::array<std::complex<double>, 4>> components;
+};
+
+struct CorrelatedRequest {
+    std::string color_correlation{"born"};
+    // nullopt inherits the setter; an empty vector selects physical helicities.
+    std::optional<std::vector<SpinCorrelationVector>> spin_vectors;
+};
+
+struct CorrelatedEvaluation {
+    std::vector<std::complex<double>> values;  // [request][point]
+    std::size_t request_count{};
+    std::size_t point_count{};
+
+    std::complex<double> operator()(std::size_t request, std::size_t point) const {
+        if (request >= request_count || point >= point_count) {
+            throw std::out_of_range("correlated Rusticol result index is out of range");
+        }
+        return values.at(request * point_count + point);
+    }
+};
+
 enum class WarmUpEventKind : std::uint32_t {
     start = RUSTICOL_WARM_UP_EVENT_START,
     update = RUSTICOL_WARM_UP_EVENT_UPDATE,
@@ -109,6 +138,28 @@ struct WarmUpResult {
 };
 
 namespace detail {
+
+struct SpinCorrelationStorage {
+    std::vector<std::vector<double>> components;
+    std::vector<RusticolSpinCorrelationVector> vectors;
+
+    explicit SpinCorrelationStorage(const std::vector<SpinCorrelationVector> &input) {
+        components.reserve(input.size());
+        vectors.reserve(input.size());
+        for (const auto &item : input) {
+            components.emplace_back();
+            auto &flat = components.back();
+            for (const auto &point : item.components) {
+                for (const auto &value : point) {
+                    flat.push_back(value.real());
+                    flat.push_back(value.imag());
+                }
+            }
+            vectors.push_back({item.leg, item.components.size(),
+                               flat.empty() ? nullptr : flat.data(), flat.size()});
+        }
+    }
+};
 
 inline WarmUpProgress warm_up_progress(const RusticolWarmUpProgressEvent &event) {
     return {
@@ -336,6 +387,88 @@ public:
         check(rusticol_runtime_evaluate_f64(
             handle_, momenta.data(), momenta.size(), point_count, values.data(), values.size()));
         return values;
+    }
+
+    std::string color_correlation_catalogue_json() {
+        return get_string_mut(rusticol_runtime_color_correlation_catalogue_json);
+    }
+
+    std::vector<std::string> color_correlation_ids() {
+        std::size_t count = 0;
+        check(rusticol_runtime_color_correlation_count(handle_, &count));
+        std::vector<std::string> result;
+        result.reserve(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            std::size_t required = 0;
+            check(rusticol_runtime_color_correlation_id(handle_, index, nullptr, 0, &required));
+            std::vector<char> buffer(required);
+            check(rusticol_runtime_color_correlation_id(
+                handle_, index, buffer.data(), buffer.size(), &required));
+            result.emplace_back(buffer.data());
+        }
+        return result;
+    }
+
+    // Empty input clears defaults; this does not affect ordinary evaluate().
+    void set_spin_correlation_vectors(const std::vector<SpinCorrelationVector> &vectors = {}) {
+        const detail::SpinCorrelationStorage storage(vectors);
+        check(rusticol_runtime_set_spin_correlation_vectors_f64(
+            handle_, storage.vectors.empty() ? nullptr : storage.vectors.data(),
+            storage.vectors.size()));
+    }
+
+    CorrelatedEvaluation evaluate_correlated_many(
+        const std::vector<double> &momenta,
+        std::size_t point_count,
+        const std::vector<CorrelatedRequest> &requests,
+        const std::vector<std::string> &helicity_ids = {}) {
+        if (point_count == 0 || requests.empty() ||
+            point_count > std::numeric_limits<std::size_t>::max() / 2 / requests.size()) {
+            throw std::invalid_argument("invalid correlated result dimensions");
+        }
+        std::vector<detail::SpinCorrelationStorage> storage;
+        std::vector<RusticolCorrelatedRequest> raw_requests;
+        const std::vector<SpinCorrelationVector> physical_helicities;
+        storage.reserve(requests.size());
+        raw_requests.reserve(requests.size());
+        for (const auto &request : requests) {
+            if (request.color_correlation.find('\0') != std::string::npos) {
+                throw std::invalid_argument("colour correlation ID contains a NUL byte");
+            }
+            storage.emplace_back(request.spin_vectors ? *request.spin_vectors : physical_helicities);
+            const auto &vectors = storage.back().vectors;
+            raw_requests.push_back({request.color_correlation.c_str(),
+                                    vectors.empty() ? nullptr : vectors.data(), vectors.size(),
+                                    request.spin_vectors ? 0u : 1u});
+        }
+        for (const auto &id : helicity_ids) {
+            if (id.find('\0') != std::string::npos) {
+                throw std::invalid_argument("helicity ID contains a NUL byte");
+            }
+        }
+        const auto helicity_ptrs = c_string_pointers(helicity_ids);
+        std::vector<double> raw(requests.size() * point_count * 2);
+        check(rusticol_runtime_evaluate_correlated_many_f64(
+            handle_, momenta.data(), momenta.size(), point_count,
+            raw_requests.data(), raw_requests.size(),
+            helicity_ptrs.empty() ? nullptr : helicity_ptrs.data(), helicity_ptrs.size(),
+            raw.data(), raw.size()));
+        CorrelatedEvaluation result{{}, requests.size(), point_count};
+        result.values.reserve(raw.size() / 2);
+        for (std::size_t index = 0; index < raw.size(); index += 2) {
+            result.values.emplace_back(raw[index], raw[index + 1]);
+        }
+        return result;
+    }
+
+    std::vector<std::complex<double>> evaluate_correlated(
+        const std::vector<double> &momenta,
+        std::size_t point_count,
+        const std::string &color_correlation = "born",
+        const std::optional<std::vector<SpinCorrelationVector>> &spin_vectors = std::nullopt,
+        const std::vector<std::string> &helicity_ids = {}) {
+        return evaluate_correlated_many(
+            momenta, point_count, {{color_correlation, spin_vectors}}, helicity_ids).values;
     }
 
     WarmUpResult warm_up(
