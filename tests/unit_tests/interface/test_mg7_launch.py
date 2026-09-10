@@ -28,6 +28,7 @@ madspace is not installed.
 
 from __future__ import absolute_import
 
+import logging
 import os
 import subprocess
 import sys
@@ -487,3 +488,63 @@ class MG7CmdTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPostProcessingIsQuiet(unittest.TestCase):
+    """MG7RunCmd is an internal adapter, not an interface someone started.
+
+    MadEventCmd.__init__ prints the MADEVENT welcome banner and a run of
+    "load configuration from ..." lines, which is right for ./bin/madevent and
+    wrong in the middle of a run that has already introduced itself.
+    """
+
+    def setUp(self):
+        import io
+
+        self.captured = io.StringIO()
+        self.handler = logging.StreamHandler(self.captured)
+        self.logger = logging.getLogger('madevent.stdout')
+        self.saved = self.logger.level
+        self.logger.addHandler(self.handler)
+        self.logger.setLevel(logging.INFO)
+
+    def tearDown(self):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.saved)
+
+    def test_info_is_dropped_during_setup(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            self.logger.info('W E L C O M E to')
+            self.logger.info('load configuration from somewhere')
+        self.assertNotIn('W E L C O M E', self.captured.getvalue())
+        self.assertNotIn('load configuration', self.captured.getvalue())
+
+    def test_warnings_still_get_through(self):
+        """Quiet is not silent: anything that needs saying still says it."""
+
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            self.logger.warning('something worth knowing')
+        self.assertIn('something worth knowing', self.captured.getvalue())
+
+    def test_the_level_is_restored_afterwards(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        with _quiet_setup():
+            pass
+        self.logger.info('back to normal')
+        self.assertIn('back to normal', self.captured.getvalue())
+
+    def test_it_restores_the_level_after_a_failure(self):
+        from madgraph.iolibs.template_files.mg7.run_interface import _quiet_setup
+
+        try:
+            with _quiet_setup():
+                raise RuntimeError('setup blew up')
+        except RuntimeError:
+            pass
+        self.logger.info('back to normal')
+        self.assertIn('back to normal', self.captured.getvalue())
