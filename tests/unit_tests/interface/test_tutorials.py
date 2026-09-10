@@ -477,6 +477,7 @@ class _BareMadGraphCmd(mg_interface.MadGraphCmd):
 
     def ask(self, question, default, choices=(), **opts):
         self.asked = (question, default, list(choices))
+        self.ask_opts = dict(opts)
         return self._answer
 
 
@@ -547,6 +548,22 @@ class TestTutorialCommand(unittest.TestCase):
             self.assertIn(name, choices)
         self.assertIn('1', choices)
         self.assertIn('stop', choices)
+
+    def test_the_menu_never_times_out(self):
+        """A tutorial menu waits indefinitely.
+
+        MG7 times most questions out so an unattended script cannot hang, but
+        the menu only ever appears when there is a person at the keyboard --
+        this path is skipped outright without a tty -- so a timer there just
+        picks a tutorial for someone who went to make a coffee. timeout=0
+        means no limit, and also drops the '[Ns to answer]' suffix.
+        """
+
+        interface = _BareMadGraphCmd()
+        interface._answer = 'lo'
+        self._ask_interactively(interface)
+        self.assertEqual(interface.ask_opts.get('timeout'), 0,
+                         'the tutorial menu asks with a timeout')
 
     def test_aliases_are_normalised_to_the_primary_name(self):
         for old, new in (('MadGraph5', 'lo'), ('aMCatNLO', 'nlo'),

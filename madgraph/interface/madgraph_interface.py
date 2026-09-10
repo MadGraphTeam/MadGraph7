@@ -4240,7 +4240,12 @@ This implies that with decay chains:
                                              tutorial.description))
             choices.append(tutorial.name)
         choices += [str(i + 1) for i in range(len(available))] + ['stop']
-        answer = self.ask('Enter a number or a name', default, choices=choices)
+        # timeout=0 means no time limit.  Everywhere else MG7 times a question
+        # out so an unattended script cannot hang; a tutorial is the opposite
+        # situation -- there is a person at the keyboard by definition, and if
+        # they go and make a coffee while reading the menu we wait for them.
+        answer = self.ask('Enter a number or a name', default, choices=choices,
+                          timeout=0)
         if answer.isdigit() and 1 <= int(answer) <= len(available):
             return available[int(answer) - 1].name
         return answer
