@@ -2117,7 +2117,20 @@ class EasterEgg(object):
         "*      '-------'      to obtain cross sections (probably). *\n"
 
 
-    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner, (14,10): Zcommezorglub}
+    # The original MadGraph5 banner (the '5' diagram, now a 7), shown on the
+    # anniversary of the MadGraph 5 paper, arXiv:1106.0522, 2 June 2011.
+    mg5_paper_banner = \
+        "*                 *                       *                *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                     * * * * 7 * * * *                    *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                 *                       *                *\n" + \
+        "*                                                          *\n" + \
+        "*    On this day in 2011 the MadGraph 5 paper appeared.    *\n" + \
+        "*        Happy birthday!   arXiv:1106.0522 [hep-ph]        *\n"
+
+    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner,
+                     (14,10): Zcommezorglub, (2,6): mg5_paper_banner}
 
     
     def __init__(self, msgtype):
