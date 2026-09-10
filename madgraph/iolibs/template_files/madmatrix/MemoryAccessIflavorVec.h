@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: D. Massaro (Jan 2026, based on earlier work by A. Valassi) for the MG5aMC CUDACPP plugin.
+// Created originally by: D. Massaro (Jan 2026, based on earlier work by A. Valassi) for the MadGraph7 CUDACPP plugin.
 // Integrated with the MadGraph7 project in Feb 2026.
 
 #ifndef MemoryAccessIflavorVec_H

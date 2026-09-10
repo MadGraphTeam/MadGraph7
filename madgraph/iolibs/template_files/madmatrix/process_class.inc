@@ -1,9 +1,9 @@
-! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-! Created by: J. Alwall (Jul 2010) for the MG5aMC CPP backend.
+! Copyright (C) 2010 The MadGraph7 development team and contributors.
+! Created by: J. Alwall (Jul 2010) for the MadGraph7 CPP backend.
 !==========================================================================
 ! Copyright (C) 2020-2026 CERN and UCLouvain.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
+! Modified originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
 ! Further modified by: D. Massaro, A. Thete, A. Valassi (2021-2025).
 ! Integrated with the MadGraph7 project in Feb 2026.
 !==========================================================================
@@ -56,6 +56,9 @@
     static constexpr int ncomb = %(nbhel)d; // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
     static constexpr int ndiagrams = %(ndiagrams)d; // #Feynman diagrams: e.g. 3 for e+ e- -> mu+ mu-
     static constexpr int ncolor = %(ncolor)s; // the number of leading colors: e.g. 1 for e+ e- -> mu+ mu-
+    // The color structures the color flow is picked among. Same as ncolor,
+    // unless the color sum runs on a smaller basis (see set_color_flow_lines_cpp).
+    static constexpr int ncolor_flow = %(ncolor_flow)s;
     static constexpr int nmaxflavor = %(nmaxflavor)d; // the maximum number of flavor combinations
 
     // Hardcoded parameters for this process (constant class variables)

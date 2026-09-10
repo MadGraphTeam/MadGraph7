@@ -54,7 +54,7 @@ $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
 endif	
 $(LIBDIR)libcernlib.$(libext): CERNLIB
 	cd CERNLIB; make; cd ..
-# The bias library is here the dummy by default; compilation of other ones specified in the run_card will be done by MG5aMC directly.
+# The bias library is here the dummy by default; compilation of other ones specified in the run_card will be done by MadGraph7 directly.
 $(LIBDIR)libbias.$(libext): BIAS/dummy
 	cd BIAS/dummy; make; cd ../../
 

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -66,7 +66,7 @@ def install_config_file(root):
 def user_config_dir(create=False):
     """MadGraph7's per-user configuration directory.
 
-    MG5aMC's ~/.mg5 is deliberately never consulted: a config file shared
+    MadGraph7's ~/.mg5 is deliberately never consulted: a config file shared
     between installations is what makes one of them write absolute paths into
     another one's HEPTools folder. Returns None without HOME or XDG_CONFIG_HOME.
     """
@@ -159,7 +159,7 @@ PACKAGE_INFO = {}
 # get_pkg_info
 #===============================================================================
 def get_pkg_info(info_str=None):
-    """Returns the current version information of the MadGraph5_aMC@NLO package, 
+    """Returns the current version information of the MadGraph7 package, 
     as written in the VERSION text file. If the file cannot be found, 
     a dictionary with empty values is returned. As an option, an info
     string can be passed to be read instead of the file content.
@@ -288,14 +288,14 @@ def is_MA5_compatible_with_this_MG5(ma5path):
         return None
     
     if mg5_version < LooseVersion("2.6.1") and ma5_version > LooseVersion("1.6.31"):
-        reason =  "This active MG5aMC version is too old (v%s) for your selected version of MadAnalysis5 (v%s)"%(mg5_version,ma5_version)
-        reason += "\nUpgrade MG5aMC or re-install MA5 from within MG5aMC to fix this compatibility issue."
+        reason =  "This active MadGraph7 version is too old (v%s) for your selected version of MadAnalysis5 (v%s)"%(mg5_version,ma5_version)
+        reason += "\nUpgrade MadGraph7 or re-install MA5 from within MadGraph7 to fix this compatibility issue."
         reason += "\nThe specified version of MadAnalysis5 will not be active in your session."
         return reason
 
     if mg5_version > LooseVersion("2.6.0") and ma5_version < LooseVersion("1.6.32"):
-        reason = "Your selected version of MadAnalysis5 (v%s) is too old for this active version of MG5aMC (v%s)."%(ma5_version,mg5_version)
-        reason += "\nRe-install MA5 from within MG5aMC to fix this compatibility issue."
+        reason = "Your selected version of MadAnalysis5 (v%s) is too old for this active version of MadGraph7 (v%s)."%(ma5_version,mg5_version)
+        reason += "\nRe-install MA5 from within MadGraph7 to fix this compatibility issue."
         reason += "\nThe specified version of MadAnalysis5 will not be active in your session."
         return reason
 
@@ -383,7 +383,7 @@ def has_f2py():
 #===============================================================================
 
 def deactivate_dependence(dependency, cmd=None, log = None):
-    """ Make sure to turn off some dependency of MG5aMC. """
+    """ Make sure to turn off some dependency of MadGraph7. """
     
     def tell(msg):
         if log == 'stdout':
@@ -396,7 +396,7 @@ def deactivate_dependence(dependency, cmd=None, log = None):
         if dependency not in cmd.options:
             return
         if cmd.options[dependency] not in ['None',None,'']:
-            tell("Deactivating MG5_aMC dependency '%s'"%dependency)
+            tell("Deactivating MadGraph7 dependency '%s'"%dependency)
             cmd.options[dependency] = None
 
 def activate_dependence(dependency, cmd=None, log = None, MG5dir=None):
@@ -632,7 +632,7 @@ def compile(arg=[], cwd=None, mode='fortran', job_specs = True, nb_core=1 ,**opt
                   'is required to compile %s.\nPlease install it and retry.'%cwd)
             else:
                 logger_stderr.error('ERROR, you could not compile %s because'%cwd+\
-             ' your version of gfortran is older than 4.6. MadGraph5_aMC@NLO will carry on,'+\
+             ' your version of gfortran is older than 4.6. MadGraph7 will carry on,'+\
                               ' but will not be able to compile an executable.')
                 return p.returncode
         # Other reason
@@ -1160,7 +1160,7 @@ def mkfifo(fifo_path):
     try:
         os.mkfifo(fifo_path)
     except:
-        raise OSError('MadGraph5_aMCatNLO could not create a fifo file at:\n'+
+        raise OSError('MadGraph7 could not create a fifo file at:\n'+
           '   %s\n'%fifo_path+'Make sure that this file does not exist already'+
           ' and that the file format of the target drive supports fifo file (i.e not NFS).')
 
@@ -2023,7 +2023,7 @@ class Notification(object):
         elif self.working == "Foundation":
             try:
                 notification = self.NSUserNotification.alloc().init()
-                notification.setTitle_('MadGraph5_aMC@NLO')
+                notification.setTitle_('MadGraph7')
                 notification.setSubtitle_(subtitle)
                 notification.setInformativeText_(info_text)
                 try:
@@ -2037,14 +2037,14 @@ class Notification(object):
         elif self.working=='osascript':
             try:
                 os.system("""
-              osascript -e 'display notification "{}" with title "MadGraph5_aMC@NLO" subtitle "{}"'
+              osascript -e 'display notification "{}" with title "MadGraph7" subtitle "{}"'
               """.format(info_text, subtitle))
             except:
                 pass
 
         elif self.working == 'notify-send':
             try:
-                os.system(""" notify-send "MadGraph5_aMC@NLO" "{}"  &> /dev/null """.format(info_text,subtitle))
+                os.system(""" notify-send "MadGraph7" "{}"  &> /dev/null """.format(info_text,subtitle))
             except:
                 pass
 
@@ -2066,13 +2066,13 @@ class EasterEgg(object):
                    "",
                    'The fish are out of jokes. See you next year for more!'],
 #         'loading': ['Hi %(user)s, You are Loading Madgraph. Please be patient, we are doing the work.'],
-#         'quit': ['Thanks %(user)s for using MadGraph5_aMC@NLO, even on April 1st!']
+#         'quit': ['Thanks %(user)s for using MadGraph7, even on April 1st!']
                }
 
     default_banner_1 =  "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*              M A D G R A P H 5 _ a M C @ N L O           *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" 
 
@@ -2080,15 +2080,13 @@ class EasterEgg(object):
     default_banner_2 =        "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*              http://madgraph.phys.ucl.ac.be/             *\n" + \
         "*                            and                           *\n" + \
         "*            http://amcatnlo.web.cern.ch/amcatnlo/         *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
-        "*           Type 'tutorial' to learn how MG5 works         *\n" + \
-        "*    Type 'tutorial aMCatNLO' to learn how aMC@NLO works   *\n" + \
-        "*    Type 'tutorial MadLoop' to learn how MadLoop works    *\n" + \
+        "*       Type 'tutorial' to learn how MadGraph7 works       *\n" + \
         "*                                                          *\n" + \
         "************************************************************"
 
@@ -2139,7 +2137,20 @@ class EasterEgg(object):
         "*      '-------'      to obtain cross sections (probably). *\n"
 
 
-    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner, (14,10): Zcommezorglub}
+    # The original MadGraph5 banner (the '5' diagram, now a 7), shown on the
+    # anniversary of the MadGraph 5 paper, arXiv:1106.0522, 2 June 2011.
+    mg5_paper_banner = \
+        "*                 *                       *                *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                     * * * * 7 * * * *                    *\n" + \
+        "*                   *        * *        *                  *\n" + \
+        "*                 *                       *                *\n" + \
+        "*                                                          *\n" + \
+        "*    On this day in 2011 the MadGraph 5 paper appeared.    *\n" + \
+        "*        Happy birthday!   arXiv:1106.0522 [hep-ph]        *\n"
+
+    special_banner = {(4,5): May4_banner, (25,5): towel_day_banner,
+                     (14,10): Zcommezorglub, (2,6): mg5_paper_banner}
 
     
     def __init__(self, msgtype):
@@ -2347,10 +2358,10 @@ It has been validated for the last time with version: %s""",
 			   name, '.'.join(str(i) for i in mg5_ver), '.'.join(str(i) for i in val_ver) )
     else:
         if __debug__:
-            logger.error("Plugin %s seems not supported by this version of MG5aMC. Keep it active (please update status)" % name)
+            logger.error("Plugin %s seems not supported by this version of MadGraph7. Keep it active (please update status)" % name)
             plugin_support[name] = True            
         else:
-            logger.error("Plugin %s is not supported by this version of MG5aMC." % name)
+            logger.error("Plugin %s is not supported by this version of MadGraph7." % name)
             plugin_support[name] = False
     return plugin_support[name]
     
@@ -2559,7 +2570,7 @@ def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
     through here, so they cannot disagree about where the PDF sets live.
     Never raises: a missing or broken LHAPDF just yields empty fields.
 
-    ``options``  an MG5aMC option mapping; 'lhapdf', 'lhapdf_py3',
+    ``options``  an MadGraph7 option mapping; 'lhapdf', 'lhapdf_py3',
                  'lhapdf_py2', 'heptools_install_dir' and 'mg5_path' are read
     ``root``     what a relative option value is resolved against
     ``use_env``  honour $MADGRAPH_LHAPDF_CONFIG and $LHAPDF_DATA_PATH
