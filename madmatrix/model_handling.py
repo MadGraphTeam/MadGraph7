@@ -723,7 +723,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                             mydict['denom'] = self.routine.denominator
                             out.write('    %(declnamedenom)s = %(pre_coup)s%(coup)s%(post_coup)s / ( %(denom)s );\n' % mydict) # AV
                     else:
-                        mydict['cId'] = 'cId%s' % denomsuffix
+                        mydict['cId'] = 'cId'  # once per combined
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                         # same formula for all the FPTYPE confs
@@ -1091,7 +1091,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         # the same constexpr fptype) is built by several of them: a given name
         # always stands for the same value, keep the first definition only
         declared = re.compile(r'^(?:const|constexpr)\s+\S+\s+'
-                              r'((?:TMP|FCT)\d+|one|two|half|quarter)\s*[=(]')
+                              r'((?:TMP|FCT)\d+|(?:one|two|half|quarter)d?|cId)\s*[=(]')
         seen = set()
         for body in bodies:
             for line in body.splitlines(True):
