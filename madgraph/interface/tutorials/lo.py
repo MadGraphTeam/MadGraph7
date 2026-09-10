@@ -23,6 +23,8 @@ moved to the tutorials that own it.
 
 from __future__ import absolute_import
 
+import json
+import math
 import os
 
 import madgraph
@@ -104,6 +106,86 @@ wrong thing.
 That is the detour. Back to the main line:
 %(p)s display diagrams
 """ % {'count': count, 'p': P}
+
+
+def _last_run_info(interface=None):
+    """The info.json of the most recent run in the output directory, or None.
+
+    Lets the step show the reader their own numbers instead of invented ones.
+    None means there is nothing to read -- no output yet, or a run that made no
+    events -- and the illustrative values are used instead.
+    """
+
+    try:
+        done = getattr(interface, '_done_export', None)
+        if not done:
+            return None
+        events = os.path.join(done[0], 'Events')
+        runs = [os.path.join(events, name) for name in os.listdir(events)]
+        runs = [d for d in runs if os.path.isfile(os.path.join(d, 'info.json'))]
+        if not runs:
+            return None
+        with open(os.path.join(max(runs, key=os.path.getmtime), 'info.json')) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _result_row(info):
+    """The `Result:` row the run printed, in its own notation.
+
+    The cross section and its error are rebuilt the way the run builds them --
+    the channel means summed, their errors in quadrature -- and formatted by
+    madspace itself rather than by a second copy of its digit-of-error rule.
+    """
+
+    if not info:
+        return '503.1(1.4)'
+    try:
+        channels = info['channels']
+        mean = sum(c['mean'] for c in channels)
+        error = math.sqrt(sum(c['error'] ** 2 for c in channels))
+    except Exception:
+        return '503.1(1.4)'
+    if not mean:
+        return '503.1(1.4)'
+    try:
+        import madspace
+
+        return madspace.format_with_error(mean, error)
+    except Exception:
+        # madspace not importable here: say the same thing the long way
+        return '%.4g +- %.2g' % (mean, error)
+
+
+def _systematics_rows(info):
+    """The Scale/PDF rows of the run's Systematics box, or illustrative ones.
+
+    The percentages come from systematics_summary, the same helper the run's
+    own box and the scan summary use, so the tutorial cannot quote a number
+    computed a third way.
+    """
+
+    illustrative = ('    Scale variation:   +12.4%    -9.6%\n'
+                    '    PDF variation:     +2.1%    -2.1%')
+    if not info:
+        return illustrative
+    try:
+        from madgraph.iolibs.template_files.mg7 import systematics_summary
+    except Exception:
+        return illustrative
+
+    summary = info.get('systematics')
+    if not summary:
+        return illustrative
+    rows = []
+    scale = systematics_summary.scale_percentages(summary)
+    if scale:
+        rows.append('    Scale variation:   +%.3g%%    -%.3g%%' % scale)
+    for _entry, up, down in systematics_summary.pdf_percentages(summary):
+        rows.append('    PDF variation:     +%.3g%%    -%.3g%%' % (up, down))
+        break
+    return '\n'.join(rows) if rows else illustrative
 
 
 def _lhapdf_note(interface=None):
@@ -264,14 +346,13 @@ That is a full leading-order event sample. The events are an LHE file under
 
 The **statistical** error travels with the cross section:
 
-    Result:   503.1(1.4)
+    Result:   %(result)s
 
 That is the Monte-Carlo integration error.
 
 The **theoretical** uncertainty gets its own box at the end:
 
-    Scale variation:   +12.4%%    -9.6%%
-    PDF variation:     +2.1%%    -2.1%%
+%(systematics)s
 
 `tutorial mg7` covers how it is computed and how to change what is varied.
 %(lhapdf)s
@@ -279,6 +360,8 @@ Save what you typed, so you can do this again without remembering it:
 
 %(p)s history my_first_run.dat
 """ % {'p': P, 'run': output_name(interface, RUN),
+       'result': _result_row(_last_run_info(interface)),
+       'systematics': _systematics_rows(_last_run_info(interface)),
        'lhapdf': _lhapdf_note(interface)},
      title='run it',
      hint="`history FILE` saves the session; `open FILE` shows a file from the output.",

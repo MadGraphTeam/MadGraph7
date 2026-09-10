@@ -23,6 +23,7 @@ what makes that safe.
 
 from __future__ import absolute_import
 
+import json
 import logging
 import re
 import sys
@@ -1341,10 +1342,13 @@ class TestTerminalStyling(unittest.TestCase):
         """A span that wrapped would colour the next line's indentation, and
         the line-local regexes would miss it entirely."""
 
+        import ast
         import madgraph.interface.tutorials as package
 
-        # only the content modules: the engine's own docstrings talk *about*
-        # the markup, backticks and all
+        # Only the tutorial text: scan the string literals rather than the
+        # source lines, or `x ** 2` in the module's own code reads as an
+        # unbalanced emphasis marker. Only the content modules, too -- the
+        # engine's docstrings talk *about* the markup, backticks and all.
         for name in package._MODULES:
             module = sys.modules.get(
                 'madgraph.interface.tutorials.%s' % name)
@@ -1352,13 +1356,18 @@ class TestTerminalStyling(unittest.TestCase):
                 continue
             path = module.__file__.replace('.pyc', '.py')
             with open(path) as handle:
-                for number, line in enumerate(handle, 1):
-                    self.assertEqual(
-                        line.count('`') % 2, 0,
-                        'unbalanced backtick at %s:%d' % (path, number))
-                    self.assertEqual(
-                        line.count('**') % 2, 0,
-                        'unbalanced ** at %s:%d' % (path, number))
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Constant) \
+                        or not isinstance(node.value, str):
+                    continue
+                for offset, line in enumerate(node.value.split('\n')):
+                    where = '%s, string at line %s (+%d)' % (
+                        path, getattr(node, 'lineno', '?'), offset)
+                    self.assertEqual(line.count('`') % 2, 0,
+                                     'unbalanced backtick in %s' % where)
+                    self.assertEqual(line.count('**') % 2, 0,
+                                     'unbalanced ** in %s' % where)
 
     def test_no_tutorial_text_collides_with_the_formatter(self):
         """A "$" followed by a formatter keyword would be eaten silently."""
@@ -1499,3 +1508,102 @@ class TestQuestionHooks(_TutorialTestCase):
         self.extended_cmd.question_hint = lambda: 1 / 0
         self.assertEqual(self.extended_cmd.get_question_hint(),
                          "Need help here? type 'help'")
+
+
+#===============================================================================
+# the post-run step shows the reader's own numbers
+#===============================================================================
+
+class TestRealRunNumbers(unittest.TestCase):
+    """The uncertainties step reads the run's info.json rather than quoting
+    invented values, the way the step before it reads the directory name."""
+
+    # taken from a real `p p > t t~` run, which printed
+    #   Result: 380.57(28)
+    #   Scale variation: +26.6%  -19.8%
+    #   PDF variation:   +1.96%  -1.96%
+    INFO = {
+        'channels': [{'mean': 300.0, 'error': 0.2},
+                     {'mean': 80.56585501289203, 'error': 0.19442222}],
+        'systematics': {
+            'nominal': {'cross_section': 380.56585501289857},
+            'event_count': 100000,
+            'scale': {'min': 305.402009221479, 'max': 481.73208634756236},
+            'pdf': [{'pdf_set': 'NNPDF40_lo_as_01180',
+                     'error_type': 'replicas',
+                     'central': 380.799971376436,
+                     'uncertainty_up': 7.450190796275929,
+                     'uncertainty_down': 7.450190796275929}],
+        },
+    }
+
+    def module(self):
+        import madgraph.interface.tutorials.lo as lo_module
+
+        return lo_module
+
+    def test_the_result_row_matches_what_the_run_printed(self):
+        """mean is the channel means summed, error their quadrature sum --
+        the way the run builds it. 380.5658 +- 0.2789 -> 380.57(28)."""
+
+        row = self.module()._result_row(self.INFO)
+        self.assertEqual(row, '380.57(28)')
+
+    def test_the_systematics_rows_match(self):
+        rows = self.module()._systematics_rows(self.INFO)
+        self.assertIn('+26.6%', rows)
+        self.assertIn('-19.8%', rows)
+        self.assertIn('+1.96%', rows)
+
+    def test_the_percentages_come_from_the_shared_helper(self):
+        """Not a third implementation: the run's own box and the scan summary
+        read the same one."""
+
+        from madgraph.iolibs.template_files.mg7 import systematics_summary
+
+        up, down = systematics_summary.scale_percentages(self.INFO['systematics'])
+        rows = self.module()._systematics_rows(self.INFO)
+        self.assertIn('+%.3g%%' % up, rows)
+        self.assertIn('-%.3g%%' % down, rows)
+
+    def test_it_falls_back_when_there_is_no_run(self):
+        """Nothing to read -- no output yet, or a run that made no events."""
+
+        module = self.module()
+        self.assertEqual(module._result_row(None), '503.1(1.4)')
+        self.assertIn('+12.4%', module._systematics_rows(None))
+
+    def test_it_falls_back_on_a_run_without_systematics(self):
+        info = {'channels': self.INFO['channels']}
+        module = self.module()
+        self.assertEqual(module._result_row(info), '380.57(28)')
+        self.assertIn('+12.4%', module._systematics_rows(info))
+
+    def test_a_malformed_info_does_not_break_the_step(self):
+        module = self.module()
+        for broken in ({'channels': 'not a list'}, {'channels': []},
+                       {'channels': [{'mean': 0.0, 'error': 0.0}]}):
+            self.assertEqual(module._result_row(broken), '503.1(1.4)')
+
+    def test_the_step_renders_with_a_real_run(self):
+        import os
+        import tempfile
+
+        module = self.module()
+        root = tempfile.mkdtemp()
+        run = os.path.join(root, 'Events', 'run_01')
+        os.makedirs(run)
+        with open(os.path.join(run, 'info.json'), 'w') as handle:
+            json.dump(self.INFO, handle)
+
+        class _Interface(object):
+            _done_export = [root, 'mg7']
+            options = {}
+            _curr_amps = []
+
+        step = [s for s in tutorials.get('lo').steps
+                if s.title == 'run it'][0]
+        text = step.render(_Interface())
+        self.assertIn('380.57(28)', text)
+        self.assertIn('+26.6%', text)
+        self.assertNotIn('503.1(1.4)', text)
