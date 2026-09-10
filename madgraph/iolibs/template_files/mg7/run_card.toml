@@ -90,8 +90,19 @@ $multiparticles
 
 [cuts]
 # possible groups: jet, bottom, lepton, missing, photon
-# possible observables: pt, eta, dR, mass, sqrt_s
-#     (mass is for pairs of particles from the same group, sqrt_s is for all outgoing particles)
+# possible observables: pt, eta, dR, mass, pair_mass, sqrt_s
+#     (mass is the mass of one particle. Put "-sum-" before it and the momenta
+#      are added up first: "lepton-sum-mass" is the mass of all the leptons
+#      together, while naming a group per member gives one combination at a
+#      time, so "lepton-lepton-sum-mass" is the mass of a lepton pair and
+#      "lepton-jet-top-sum-mass" that of a lepton-jet-top triple.
+#      pair_mass is the invariant mass of a pair, taken over every pair the
+#      named groups can form, so "lepton-pair_mass" is the same cut as
+#      "lepton-lepton-sum-mass". sqrt_s is for all outgoing particles)
+# A pair_mass minimum is also used to bound the integration: where the pair
+# is what a propagator decays into, the cut becomes that propagator's minimum
+# invariant mass, so the forbidden region is never generated rather than
+# generated and thrown away.
 # for all cuts, min or max can be specified
 $cuts
 

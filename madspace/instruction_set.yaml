@@ -583,6 +583,21 @@ obs_delta_r:
       desc:
   dims: 0
 
+obs_pair_mass:
+  inputs:
+    - name: p1
+      type: [float, ..., 4]
+      desc:
+    - name: p2
+      type: [float, ..., 4]
+      desc:
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc:
+  desc: invariant mass of the two-particle system
+  dims: 0
+
 ---
 title: Kinematics
 
