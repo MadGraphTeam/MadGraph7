@@ -119,9 +119,13 @@ def run(clustering, momenta):
 
 
 def run_all(clustering, momenta):
-    """As run(), plus the trailing xqcut_weight."""
-    out = clustering(momenta)
-    return tuple(np.asarray(v) for v in out)
+    """As run(), plus the trailing xqcut_weight.
+
+    Deliberately stops there rather than unpacking whatever the clustering
+    happens to return: an output added to the kernel would otherwise break
+    every caller here, none of which is about that output.
+    """
+    return tuple(np.asarray(v) for v in clustering(momenta))[:6]
 
 
 def assert_jet_scales_agree(reference, other, max_flip_fraction=0.05):
