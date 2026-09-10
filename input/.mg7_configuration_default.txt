@@ -147,6 +147,13 @@
 #! to avoid to send them to the node (if cluster_temp_path is on True or condor)
 # cluster_local_path =  None # example: /cvmfs/cp3.uclouvain.be/madgraph/
 
+#! Directory of the LHAPDF sets mirrored via CVMFS. When it is mounted, a PDF
+#!  set found there is read from it directly: never downloaded, never copied
+#!  into lib/PDFsets and therefore never transferred to the cluster nodes.
+#!  A path which is not mounted is ignored, so this default is safe everywhere.
+#!  Set it to None to switch that fallback off.
+# cvmfs_lhapdf_path = /cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+
 #! Cluster waiting time for status update 
 #!  First number is when the number of waiting job is higher than the number 
 #!  of running one (time in second). The second number is in the second case.

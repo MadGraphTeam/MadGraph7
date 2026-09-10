@@ -299,15 +299,22 @@ AlphaS_Type: ipol
         if self.saved_datapath is not None:
             os.environ['LHAPDF_DATA_PATH'] = self.saved_datapath
 
-    def get_fake_cmd(self):
+    def get_fake_cmd(self, **options):
         common_run = self.common_run
         class FakeRunCmd(object):
             patch_lhapdf_info_file = staticmethod(
                           common_run.CommonRunCmd.patch_lhapdf_info_file)
+            use_shared_pdfsets_dir = staticmethod(
+                          common_run.CommonRunCmd.use_shared_pdfsets_dir)
+            get_shared_pdfsets_dirs = common_run.CommonRunCmd.get_shared_pdfsets_dirs
             copy_lhapdf_set = common_run.CommonRunCmd.copy_lhapdf_set
         cmd = FakeRunCmd()
         cmd.me_dir = self.me_dir
-        cmd.options = {'cluster_local_path': None, 'run_mode': 2}
+        # cvmfs_lhapdf_path is None unless a test asks for it: the default
+        # points at a real mount which may exist on the machine running this
+        cmd.options = {'cluster_local_path': None, 'run_mode': 2,
+                       'cvmfs_lhapdf_path': None}
+        cmd.options.update(options)
         cmd.lhapdf_pdfsets = {}
         return cmd
 
@@ -351,3 +358,98 @@ AlphaS_Type: ipol
         self.assertFalse(os.path.exists(local_set))
         self.assertIn('AlphaS_FlavorScheme: variable', open(global_info).read())
         self.assertIn('AlphaS_NumFlavors: 5', open(global_info).read())
+
+class TestSharedPdfsetsDir(unittest.TestCase):
+    """a PDF set readable from every node (CVMFS, or the user-declared
+    cluster_local_path) is used in place, so it is never copied into
+    lib/PDFsets -- which is exactly what would be shipped to the node."""
+
+    def setUp(self):
+        import madgraph.interface.common_run_interface as common_run
+        self.common_run = common_run
+        self.tmpdir = tempfile.mkdtemp(prefix='mg5_cvmfs_test')
+        # stand-in for /cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+        self.cvmfs = pjoin(self.tmpdir, 'cvmfs')
+        os.makedirs(pjoin(self.cvmfs, 'MYSET'))
+        # the local LHAPDF data directory, holding a different set
+        self.pdfsets_dir = pjoin(self.tmpdir, 'share', 'LHAPDF')
+        os.makedirs(pjoin(self.pdfsets_dir, 'OTHERSET'))
+        self.me_dir = pjoin(self.tmpdir, 'PROC')
+        os.makedirs(pjoin(self.me_dir, 'lib', 'PDFsets'))
+        self.saved = {key: os.environ.get(key) for key in
+                      ('LHAPATH', 'CLUSTER_LHAPATH', 'LHAPDF_DATA_PATH')}
+        for key in self.saved:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def get_fake_cmd(self, **options):
+        common_run = self.common_run
+        class FakeRunCmd(object):
+            patch_lhapdf_info_file = staticmethod(
+                          common_run.CommonRunCmd.patch_lhapdf_info_file)
+            use_shared_pdfsets_dir = staticmethod(
+                          common_run.CommonRunCmd.use_shared_pdfsets_dir)
+            get_shared_pdfsets_dirs = common_run.CommonRunCmd.get_shared_pdfsets_dirs
+            copy_lhapdf_set = common_run.CommonRunCmd.copy_lhapdf_set
+            get_pdf_input_filename = common_run.CommonRunCmd.get_pdf_input_filename
+        cmd = FakeRunCmd()
+        cmd.me_dir = self.me_dir
+        cmd.options = {'cluster_local_path': None, 'run_mode': 2,
+                       'cvmfs_lhapdf_path': self.cvmfs}
+        cmd.options.update(options)
+        cmd.lhapdf_pdfsets = {}
+        return cmd
+
+    def test_set_on_cvmfs_is_not_copied_locally(self):
+        cmd = self.get_fake_cmd()
+        cmd.copy_lhapdf_set(['MYSET'], self.pdfsets_dir)
+        self.assertFalse(os.path.exists(
+                              pjoin(self.me_dir, 'lib', 'PDFsets', 'MYSET')))
+        # ... and LHAPDF is told where to read it, keeping the local dir too
+        self.assertIn(self.cvmfs, os.environ['LHAPATH'].split(':'))
+        self.assertIn(self.pdfsets_dir, os.environ['LHAPATH'].split(':'))
+        self.assertEqual(os.environ['CLUSTER_LHAPATH'], os.environ['LHAPATH'])
+
+    def test_nothing_is_shipped_to_the_node(self):
+        """an empty lib/PDFsets means the node reads the PDF on its own"""
+
+        cmd = self.get_fake_cmd()
+        cmd.run_card = {'pdlabel': 'lhapdf'}
+        # no Source/PDF/pdf_list.txt: the lhapdf branch is the one reached
+        os.makedirs(pjoin(self.me_dir, 'Source', 'PDF'))
+        open(pjoin(self.me_dir, 'Source', 'PDF', 'pdf_list.txt'), 'w').close()
+        cmd.copy_lhapdf_set(['MYSET'], self.pdfsets_dir)
+        self.assertEqual(cmd.get_pdf_input_filename(), '')
+        # a set which is NOT on the mirror is copied, and then shipped
+        cmd = self.get_fake_cmd()
+        cmd.run_card = {'pdlabel': 'lhapdf'}
+        cmd.copy_lhapdf_set(['OTHERSET'], self.pdfsets_dir)
+        self.assertTrue(os.path.isdir(
+                            pjoin(self.me_dir, 'lib', 'PDFsets', 'OTHERSET')))
+        self.assertEqual(cmd.get_pdf_input_filename(),
+                         pjoin(self.me_dir, 'lib', 'PDFsets'))
+
+    def test_cvmfs_disabled(self):
+        """with the mirror switched off, the ordinary local copy is made"""
+
+        cmd = self.get_fake_cmd(cvmfs_lhapdf_path=None)
+        self.assertEqual(cmd.get_shared_pdfsets_dirs(), [])
+        # OTHERSET lives in the local data dir, not on the mirror
+        cmd.copy_lhapdf_set(['OTHERSET'], self.pdfsets_dir)
+        self.assertTrue(os.path.isdir(
+                            pjoin(self.me_dir, 'lib', 'PDFsets', 'OTHERSET')))
+        self.assertNotIn('CLUSTER_LHAPATH', os.environ)
+
+    def test_cluster_local_path_only_for_a_cluster_run(self):
+        cmd = self.get_fake_cmd(cvmfs_lhapdf_path=None,
+                                cluster_local_path=self.cvmfs)
+        self.assertEqual(cmd.get_shared_pdfsets_dirs(), [])
+        cmd.options['run_mode'] = 1
+        self.assertEqual(cmd.get_shared_pdfsets_dirs()[0], self.cvmfs)

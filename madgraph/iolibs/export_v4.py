@@ -1380,6 +1380,22 @@ C
          """ % {"path" : self.opt["cluster_local_path"]}
             changer = {"cluster_specific_path": to_add}
 
+        # The CVMFS mirror is tried after every local candidate, so that a set
+        # copied into lib/PDFsets still wins. Emitting it costs nothing when
+        # CVMFS is not mounted (the Inquire simply fails), and the directory
+        # may well be mounted on the running node but not on this one, so it is
+        # written out without checking that it exists here.
+        cvmfs = self.opt.get("cvmfs_lhapdf_path", misc.CVMFS_LHAPDF_PATH)
+        if not cvmfs:
+            changer["cvmfs_specific_path"] = ""
+        else:
+            changer["cvmfs_specific_path"] = """
+         LHAPath='%(path)s'
+         Inquire(File=LHAPath, exist=exists)
+         if(exists)return
+         LHAPath='./PDFsets'
+         """ % {"path": cvmfs}
+
         # this is for LHAPDF
         ff = writers.FortranWriter(pjoin(self.dir_path, "Source", "PDF", "pdfwrap_lhapdf.f"))        
         #ff = open(pjoin(self.dir_path, "Source", "PDF", "pdfwrap_lhapdf.f"),"w")
@@ -11654,6 +11670,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
       'compute_color_flows':cmd.options['loop_color_flows'],
       'mode': 'reweight' if cmd._export_format == "standalone_rw" else '',
       'cluster_local_path': cmd.options['cluster_local_path'],
+      'cvmfs_lhapdf_path': cmd.options.get('cvmfs_lhapdf_path',
+                                           misc.CVMFS_LHAPDF_PATH),
       'output_options': cmd_options
       }
 
