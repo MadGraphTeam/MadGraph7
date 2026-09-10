@@ -911,7 +911,7 @@ class TestUncertaintyLesson(unittest.TestCase):
         text = self.step().render(self._WithLhapdf())
         self.assertIn('statistical', text)
         self.assertIn('theoretical', text)
-        self.assertIn('scale variation', text)
+        self.assertIn('Scale variation', text)
         self.assertIn('PDF variation', text)
 
     def test_it_shows_the_notation_mg7_actually_uses(self):
@@ -923,19 +923,25 @@ class TestUncertaintyLesson(unittest.TestCase):
         self.assertIn('503.1(1.4)', text)
 
     def test_it_says_which_one_more_events_help(self):
-        text = self.step().render(self._WithLhapdf())
+        # prose wraps, so compare on collapsed whitespace rather than pinning
+        # where the line breaks happen to fall
+        text = ' '.join(self.step().render(self._WithLhapdf()).split())
         self.assertIn('1/sqrt(N)', text)
         self.assertIn('no amount of extra events will shrink it', text)
 
-    def test_without_lhapdf_it_says_the_theory_block_is_missing(self):
+    def test_without_lhapdf_it_says_the_pdf_row_is_missing(self):
+        """Since PR #89 madspace evaluates the PDF members itself, so the
+        scale variations survive without LHAPDF -- only the PDF row goes."""
+
         text = self.step().render(self._WithoutLhapdf())
-        self.assertIn('will not get the second block', text)
+        self.assertIn('PDF row to be missing', text)
+        self.assertIn('scale variations need no new PDF', text)
         self.assertIn('install lhapdf6', text)
 
     def test_with_lhapdf_it_does_not_warn(self):
         text = self.step().render(self._WithLhapdf())
-        self.assertNotIn('will not get the second block', text)
-        self.assertIn('has configured', text)
+        self.assertNotIn('missing here', text)
+        self.assertIn('lhapdf-config', text)
 
     def test_lhapdf_detection(self):
         from madgraph.interface.tutorials.session import lhapdf_configured

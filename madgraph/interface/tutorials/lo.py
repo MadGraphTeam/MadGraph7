@@ -93,21 +93,23 @@ That is the detour. Back to the main line:
 def _lhapdf_note(interface=None):
     """The theory-uncertainty caveat, matched to whether LHAPDF is here.
 
-    systematics.py imports the python lhapdf module to do the scale and PDF
-    variations. Without it the run still gives a cross section and its
-    integration error -- the theory uncertainty is simply absent, and the run
-    log says why rather than failing.
+    madspace evaluates the PDF members itself, but it still has to *have* the
+    set: it resolves and, if need be, downloads it through lhapdf-config
+    (mg7/launch.py, ensure_pdf_set). Without one the scale variations still
+    work -- they need no new PDF -- but the error members cannot be found, and
+    the run says so rather than failing.
     """
 
     if lhapdf_configured(interface):
-        return ("Those variations need LHAPDF, which this MG7 has configured, "
-                "so you should see\nthem. If the block is missing, the run log "
-                "will say what went wrong.")
-    return ("**You will not get the second block here.** Those variations are "
-            "computed by\nsystematics.py, which needs LHAPDF, and this MG7 has "
-            "no working lhapdf-config.\nThe run still succeeds and still gives "
-            "you a cross section and its integration\nerror -- you just get no "
-            "theory uncertainty with it. To fix that:\n\n"
+        return ("The PDF half needs the error set on disk, which madspace "
+                "resolves through\nlhapdf-config -- configured here, and it "
+                "will download the set if it has to.\nIf a row is missing, the "
+                "run log says why.")
+    return ("**Expect the PDF row to be missing here.** madspace evaluates the "
+            "PDF members\nitself, but it still has to find the set, and it "
+            "does that through lhapdf-config,\nwhich this MG7 does not have. "
+            "The scale variations need no new PDF and should\nstill appear; "
+            "the cross section and its integration error are unaffected.\n\n"
             "  MG7> install lhapdf6\n\n"
             "and then `set lhapdf /path/to/lhapdf-config` if MG7 does not find "
             "it by itself.")
@@ -282,18 +284,24 @@ It is the Monte-Carlo integration error and nothing more. It falls like
 1/sqrt(N), so asking for more events shrinks it, and it says nothing whatever
 about physics -- only about how long you ran.
 
-The **theoretical** one comes from varying the calculation and is reported
-separately, at the end, as asymmetric percentages of the central value:
+The **theoretical** one comes from varying the calculation, and gets a box of
+its own at the end of the run:
 
-    # original cross-section: 503.1
-    #     scale variation: +12.4%% -9.6%%
-    #     PDF variation: +2.1%% -2.1%%
+    Systematics
+    Variations per event:    109 (9 scale, 101 PDF members)
+    PDF set:                 NNPDF23_lo_as_0130_qed, replicas
+    Original cross-section:  503.1 pb
+    Scale variation:         +12.4%%    -9.6%%
+    PDF variation:           +2.1%%    -2.1%%
 
-Scale variation moves the renormalisation and factorisation scales (by default
-x0.5, x1 and x2 each, from `[postprocessing] systematics_mur` and
-`systematics_muf`); PDF variation runs the set's error members. This is the one
-that goes in a paper, and no amount of extra events will shrink it -- at LO it
-is usually far the larger of the two.
+Scale variation moves the renormalisation and factorisation scales (x0.5, x1
+and x2 each by default, from `[systematics] mur` and `muf`); PDF variation runs
+the set's error members. This is the one that goes in a paper, and no amount of
+extra events will shrink it -- at LO it is usually far the larger of the two.
+
+madspace computes these while it writes the events, so they cost one pass and
+no extra integration. Every event carries its variation weights, and the
+per-variation cross sections land in `info.json` next to the events.
 
 %(lhapdf)s
 

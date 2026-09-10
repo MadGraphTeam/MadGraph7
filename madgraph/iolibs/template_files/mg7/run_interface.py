@@ -16,7 +16,9 @@ each tool.
 """
 
 import gzip
+import json
 import logging
+import math
 import os
 import shutil
 
@@ -40,7 +42,98 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
       (:class:`RunCardMG7`) and takes the banner straight from the mg7 LHE,
       instead of reading ``run_card.dat`` / juggling banner files.
     * ``do_treatcards`` -- writes Fortran ``.inc`` files; not applicable.
+    * ``getSysSummaryFromLog`` -- madspace computes the scale/PDF systematics
+      itself and reports them in ``info.json``; the base version parses the
+      ``parton_systematics.log`` that systematics.py used to write.
     """
+
+    def getSysSummaryFromLog(self, kpath=None, knext_name=None):
+        """Scale and PDF variation for the scan summary, as [Hi, Lo] percents.
+
+        madspace computes the variations itself while writing the events and
+        reports them in ``Events/<run>/info.json`` under "systematics"; there
+        is no ``parton_systematics.log`` unless the legacy post-processing path
+        ([postprocessing] systematics) was used, so fall back to the base
+        parser for that case.
+
+        The strings match what the base parser returns for a madevent run --
+        signed percentages like "+29.6" / "-21.5" -- so the scan summary column
+        is the same whichever path produced them.
+        """
+
+        summary = self._read_native_systematics(kpath, knext_name)
+        if summary is None:
+            return madevent_interface.MadEventCmd.getSysSummaryFromLog(
+                self, kpath=kpath, knext_name=knext_name)
+
+        nominal = summary.get('nominal', {}).get('cross_section')
+        if not nominal:
+            return [], []
+
+        scale = []
+        band = summary.get('scale')
+        if band and band.get('max') is not None and band.get('min') is not None:
+            # systematics.py reports +(max-nom)/nom and -(nom-min)/nom, both as
+            # positive magnitudes carrying an explicit sign
+            scale = [self._as_percent(band['max'] - nominal, nominal),
+                     self._as_percent(nominal - band['min'], nominal,
+                                      negative=True)]
+
+        pdf = []
+        for entry in summary.get('pdf') or []:
+            up, down = entry.get('uncertainty_up'), entry.get('uncertainty_down')
+            if up is None or down is None:
+                continue
+            # the uncertainties are absolute. Divide by the set's own central
+            # value, which is what log_systematics_summary prints in the same
+            # run -- for a replicas set that is the replica mean, not the
+            # nominal member, and the two numbers should not disagree.
+            reference = entry.get('central') or nominal
+            pdf = [self._as_percent(up, reference),
+                   self._as_percent(down, reference, negative=True)]
+            break          # the nominal set's entry comes first
+
+        return scale, pdf
+
+    def _read_native_systematics(self, kpath, knext_name):
+        """The "systematics" block of the run's info.json, or None.
+
+        None means "no native summary here" -- either the file is missing or
+        the run did not compute them -- and the caller falls back.
+        """
+
+        if not kpath or not knext_name:
+            return None
+        me_dir = kpath.rsplit('/', 2)[0]
+        info_path = pjoin(me_dir, 'Events', knext_name, 'info.json')
+        try:
+            with open(info_path) as handle:
+                info = json.load(handle)
+        except (OSError, ValueError) as error:
+            logger.debug('no native systematics in %s: %s', info_path, error)
+            return None
+        summary = info.get('systematics')
+        if not summary:
+            return None
+        for warning in summary.get('warnings') or []:
+            logger.debug('systematics: %s', warning)
+        return summary
+
+    @staticmethod
+    def _as_percent(value, nominal, negative=False):
+        """A cross-section difference as a signed percentage of the nominal.
+
+        Same shape as the strings the base parser pulls out of
+        parton_systematics.log ("+29.6", "-21.5"): a magnitude with an explicit
+        sign, three significant digits.
+        """
+
+        if value is None or nominal in (None, 0):
+            return ''
+        if isinstance(value, float) and math.isnan(value):
+            return ''
+        return '%s%.3g' % ('-' if negative else '+',
+                           abs(value) / abs(nominal) * 100)
 
     def __init__(self, me_dir, options, run_name, lhe_path):
         self._mg7_run_name = run_name
