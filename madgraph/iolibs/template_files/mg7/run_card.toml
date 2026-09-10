@@ -118,6 +118,10 @@ bw_cutoff = %(phasespace.bw_cutoff)s
 # counterpart of xqcut in the legacy run_card (0 disables it; only used
 # with dynamical_scale_choice = "mlm")
 xqcut = %(phasespace.xqcut)s
+# tighten ptj and the jet-pair invariant mass to xqcut when it is set, so that
+# the phase space is not sampled where the merging cut would throw it away.
+# madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f
+auto_ptj_mjj = %(phasespace.auto_ptj_mjj)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]
