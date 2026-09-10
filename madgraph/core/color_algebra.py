@@ -332,6 +332,13 @@ class f(ColorObject):
 
         return ColorFactor([col_str1, col_str2])
 
+    def complex_conjugate(self):
+        """f (and d) are real, so complex conjugation leaves them untouched.
+        The default behaviour of reversing the indices would introduce a
+        spurious sign, since f is totally antisymmetric."""
+
+        return self
+
 #===============================================================================
 # d
 #===============================================================================
@@ -1128,18 +1135,39 @@ class ColorFactor(list):
         for col_str in new_col_fact:
             self.append_str(col_str)
 
+    @staticmethod
+    def similarity_key(col_str):
+        """Hashable key which is equal for two color strings exactly when
+        ColorString.is_similar says they are, i.e. same Nc power, same
+        imaginary character and same canonical representation (both the
+        canonical structure and the index replacement dictionary)."""
+
+        canonical, repl_dict = col_str.to_canonical()
+        return (col_str.Nc_power, col_str.is_imaginary, canonical,
+                tuple(sorted(repl_dict.items())))
+
     def simplify(self):
         """Returns a new color factor where each color string has been
-        simplified once and similar strings have been added."""
+        simplified once and similar strings have been added.
+
+        Similar strings are looked up through a dictionary rather than by
+        scanning the strings accumulated so far: the color factors appearing
+        for high multiplicity processes have thousands of terms, and the linear
+        scan of append_str made this quadratic. Insertion order is preserved,
+        so the resulting color factor is identical to the one a scan produces."""
 
         new_col_factor = ColorFactor()
+        similar = {}
         # Simplify
         for col_str in self:
             res = col_str.simplify()
-            if res:
-                new_col_factor.extend_str(res)
-            else:
-                new_col_factor.append_str(col_str)
+            for new_str in (res if res else [col_str]):
+                key = self.similarity_key(new_str)
+                try:
+                    similar[key].add(new_str)
+                except KeyError:
+                    similar[key] = new_str
+                    new_col_factor.append(new_str)
 
         # Only returns non zero elements
         return ColorFactor([col_str for col_str in \

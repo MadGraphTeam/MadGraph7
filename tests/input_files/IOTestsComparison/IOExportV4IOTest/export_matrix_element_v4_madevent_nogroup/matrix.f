@@ -332,9 +332,12 @@ C
 C     LOCAL VARIABLES 
 C     
       INTEGER I,J,M,N
-      COMPLEX*16 ZTEMP, TMP_JAMP(0)
+      COMPLEX*16 ZTEMP
+      COMPLEX*16 TMP_JAMP(0)
+
       INTEGER CF(NCOLOR*(NCOLOR+1))
       INTEGER CF_INDEX,DENOM
+      COMMON /COLOR_MATRIX/ CF,DENOM
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       TYPE(ALOHA) W(NWAVEFUNCS)
 C     Needed for v4 models
@@ -374,6 +377,7 @@ C     BEGIN CODE
 C     ----------
       IF (FIRST) THEN
         FIRST=.FALSE.
+        CALL INIT_CF()
         FK_ZERO = 0D0
       ENDIF
 
@@ -434,6 +438,10 @@ C     JAMPs contributing to orders ALL_ORDERS=1
 
       END
 
+
+      SUBROUTINE INIT_CF()
+      RETURN
+      END
 
       INTEGER FUNCTION BROKEN_SYM(FLAV)
       INCLUDE 'nexternal.inc'

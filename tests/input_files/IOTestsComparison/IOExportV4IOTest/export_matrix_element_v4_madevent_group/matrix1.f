@@ -374,6 +374,8 @@ C
       INCLUDE 'maxamps.inc'
       INTEGER    NWAVEFUNCS,     NCOLOR
       PARAMETER (NWAVEFUNCS=5, NCOLOR=2)
+      INTEGER    NCOLOR_FLOW
+      PARAMETER (NCOLOR_FLOW=2)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       COMPLEX*16 IMAG1
@@ -397,10 +399,14 @@ C
 C     LOCAL VARIABLES 
 C     
       INTEGER I,J,M,N
-      COMPLEX*16 ZTEMP, TMP_JAMP(0)
+      COMPLEX*16 ZTEMP
+      COMPLEX*16 TMP_JAMP(0)
+
       INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER DENOM, CF_INDEX
+      COMMON /COLOR_MATRIX1/ CF,DENOM
       COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+
       TYPE(ALOHA) W(NWAVEFUNCS)
 C     Needed for v4 models
       COMPLEX*16 DUM0,DUM1
@@ -453,6 +459,7 @@ C     BEGIN CODE
 C     ----------
       IF (FIRST) THEN
         FIRST=.FALSE.
+        CALL INIT_CF1()
         IF(WZ.NE.0D0) THEN
           FK_WZ = SIGN(MAX(ABS(WZ), ABS(MZ*SMALL_WIDTH_TREATMENT)), WZ)
         ELSE
@@ -502,6 +509,7 @@ C     JAMPs contributing to orders ALL_ORDERS=1
       JAMP(2,1) = (-5.000000000000000D-01)*AMP(1)+(-1.666666666666667D
      $ -01)*AMP(4)+AMP(5)+AMP(6)
 
+
       IF(INIT_MODE)THEN
         DO I=1, NGRAPHS
           IF (AMP(I).NE.0) THEN
@@ -537,7 +545,7 @@ C     JAMPs contributing to orders ALL_ORDERS=1
         AMP2(6)=AMP2(6)+AMP(6)*DCONJG(AMP(6))
       ENDIF
 
-      DO I = 1, NCOLOR
+      DO I = 1, NCOLOR_FLOW
         DO M = 1, NAMPSO
           DO N = 1, NAMPSO
 
@@ -586,6 +594,10 @@ C     JAMPs contributing to orders ALL_ORDERS=1
       RETURN
       END
 
+
+      SUBROUTINE INIT_CF1()
+      RETURN
+      END
 
       INTEGER FUNCTION BROKEN_SYM1(FLAV)
       INCLUDE 'nexternal.inc'

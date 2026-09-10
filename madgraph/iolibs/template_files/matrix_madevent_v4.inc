@@ -109,7 +109,7 @@ C ----------
             AMP2(I)=0D0
         ENDDO
     ENDIF
-        JAMP2(0)=%(ncolor)d
+        JAMP2(0)=%(ncolor_flow)d
         DO I=1,INT(JAMP2(0))
             JAMP2(I)=0D0
         ENDDO
@@ -271,10 +271,13 @@ C
 C LOCAL VARIABLES 
 C  
     INTEGER I,J,M,N
-    COMPLEX*16 ZTEMP, TMP_JAMP(%(nb_temp_jamp)i)
+    COMPLEX*16 ZTEMP
+%(jamp_tmp_decl)s
+%(jamp_decl)s
     INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER CF_INDEX,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(jampflow_decl_tail)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -307,6 +310,7 @@ C BEGIN CODE
 C ----------
 if (first) then
     first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
     %(fake_width_definitions)s
 endif
 
@@ -315,7 +319,7 @@ C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
 %(flavor_mask_setup)s
 AMP(:) = (0d0,0d0)
 %(helas_calls)s
-%(jamp_lines)s
+%(jamp_lines)s%(jampflow_lines_tail)s
 
     MATRIX%(proc_id)s = 0.D0 
     DO M = 1, NAMPSO
@@ -336,11 +340,11 @@ AMP(:) = (0d0,0d0)
      MATRIX%(proc_id)s = MATRIX%(proc_id)s / DENOM
 
 %(amp2_lines)s
-    Do I = 1, NCOLOR
-      DO M = 1, NAMPSO  
+    Do I = 1, %(ncolor_flow_name)s
+      DO M = 1, NAMPSO
         DO N = 1, NAMPSO
-          IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN        
-            Jamp2(i)=Jamp2(i)+DABS(DBLE(Jamp(i,m)*dconjg(Jamp(i,n))))
+          IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN
+            Jamp2(i)=Jamp2(i)+DABS(DBLE(%(jamp_flow)s(i,m)*dconjg(%(jamp_flow)s(i,n))))
           ENDIF
         enddo
       enddo
@@ -349,4 +353,6 @@ AMP(:) = (0d0,0d0)
     END
 
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s

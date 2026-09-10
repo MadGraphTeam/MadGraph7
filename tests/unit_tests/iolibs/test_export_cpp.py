@@ -28,6 +28,7 @@ import aloha.aloha_writers as aloha_writers
 import aloha.create_aloha as create_aloha
 
 import madgraph.iolibs.export_cpp as export_cpp
+import madgraph.iolibs.export_mg7 as export_mg7
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.helas_call_writers as helas_call_writer
@@ -37,6 +38,7 @@ import madgraph.iolibs.group_subprocs as group_subprocs
 
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
+import madgraph.core.color_amp as color_amp
 import madgraph.core.helas_objects as helas_objects
 import madgraph.core.diagram_generation as diagram_generation
 
@@ -929,3 +931,56 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
         self.assertIn('const int n_components = 3;', rendered)
         self.assertIn('const int comp_old[n_components] = {1,1,1};', rendered)
         self.assertIn('const int block_len[n_entries] = {2,2,1,1,1,1};', rendered)
+
+
+#===============================================================================
+# DDMColorFlowMG7Test
+#===============================================================================
+class DDMColorFlowMG7Test(unittest.TestCase):
+    """The mg7 exporter picks a color flow among the (n-1)! trace structures
+    even when the color sum runs on the (n-2)! DDM ones, so everything which
+    indexes a color flow must be built on the trace basis. Switching the color
+    basis changes how the jamps are computed, never which color flows exist,
+    so none of it may depend on the mode."""
+
+    def get_exporter(self, ids, ddm):
+        """The mg7 exporter for the all-gluon process with npar = len(ids),
+        built with or without the DDM color basis."""
+
+        color_amp.set_ddm_basis(ddm, with_flow=ddm)
+        try:
+            model = import_ufo.import_model('sm')
+            legs = base_objects.LegList(
+                [base_objects.Leg({'id': pdg, 'state': i > 1})
+                 for i, pdg in enumerate(ids)])
+            amplitude = diagram_generation.Amplitude(
+                base_objects.Process({'legs': legs, 'model': model}))
+            matrix_element = helas_objects.HelasMatrixElement(amplitude)
+            return export_mg7.OneProcessExporterMG7(
+                matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
+        finally:
+            color_amp.set_ddm_basis(False)
+
+    def test_ddm_color_flow_basis_is_the_trace_one(self):
+        """The color sum shrinks to (n-2)! structures, the color flows stay
+        the (n-1)! trace ones."""
+
+        for npar, ncolor, nflow in [(4, 2, 6), (5, 6, 24)]:
+            exporter = self.get_exporter([21] * npar, ddm=True)
+            self.assertEqual(len(exporter.color_basis), ncolor)
+            self.assertEqual(len(exporter.color_flow_basis), nflow)
+
+    def test_ddm_active_colors_index_the_color_flows(self):
+        """active_colors ends up in the icolamp mask, which the color
+        selection walks over ncolor_flow entries: it must be the same mask
+        the trace basis writes, not one indexed on the smaller DDM basis."""
+
+        for npar in (4, 5):
+            trace = self.get_exporter([21] * npar, ddm=False)
+            ddm = self.get_exporter([21] * npar, ddm=True)
+            self.assertEqual(ddm.active_color_map, trace.active_color_map)
+            # and it is a mask over the color flows, not over the color sum
+            nflow = len(ddm.color_flow_basis)
+            for active_colors in ddm.active_color_map:
+                self.assertTrue(active_colors)
+                self.assertLess(max(active_colors), nflow)

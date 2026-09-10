@@ -103,7 +103,7 @@ C ----------
             AMP2(I)=0D0
         ENDDO
     ENDIF
-    JAMP2(0)=%(ncolor)d
+    JAMP2(0)=%(ncolor_flow)d
     DO I=1,INT(JAMP2(0))
             JAMP2(I)=0D0
     ENDDO
@@ -208,7 +208,9 @@ C
     include 'nexternal.inc'
     include 'maxamps.inc'
     INTEGER    NWAVEFUNCS,     NCOLOR
-    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d) 
+    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d)
+    INTEGER    NCOLOR_FLOW
+    PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -234,11 +236,15 @@ C
 C LOCAL VARIABLES 
 C  
     INTEGER I,J,M,N,K
-    COMPLEX*16 ZTEMP,TMP_JAMP(%(nb_temp_jamp)i)
+    COMPLEX*16 ZTEMP
+%(jamp_tmp_decl)s
+%(jamp_decl)s
     COMPLEX*16 TMP(%(wavefunctionsize)d)
     INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER DENOM, CF_INDEX
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
+%(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -277,6 +283,7 @@ C BEGIN CODE
 C ----------
 if (first) then
 	first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
 	%(fake_width_definitions)s
 endif
 C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
@@ -288,6 +295,7 @@ ${helas_calls}
     JAMP(:,:)  = (0d0,0d0)
     DO K = 1, NCOMB
 ${jamp_lines}
+%(jampflow_lines)s
         TS(K) = 0.D0 
     	DO M = 1, NAMPSO
           CF_INDEX = 0
@@ -308,11 +316,11 @@ ${jamp_lines}
 	if(sde_strat.eq.1) then
         ${amp2_lines}
 	endif
-        Do I = 1, NCOLOR
+        Do I = 1, NCOLOR_FLOW
     	  DO M = 1, NAMPSO
     		DO N = 1, NAMPSO
 			%(select_configs_if)s
-                Jamp2(i)=Jamp2(i)+DABS(DBLE(Jamp(i,m)*dconjg(Jamp(i,n))))
+                Jamp2(i)=Jamp2(i)+DABS(DBLE(%(jamp_flow)s(i,m)*dconjg(%(jamp_flow)s(i,n))))
 			%(select_configs_endif)s
     		enddo
     	  enddo
@@ -330,4 +338,6 @@ ${jamp_lines}
     end
 
 
-%(broken_sym_function)s
+%(color_init_routine)s
+
+    %(broken_sym_function)s

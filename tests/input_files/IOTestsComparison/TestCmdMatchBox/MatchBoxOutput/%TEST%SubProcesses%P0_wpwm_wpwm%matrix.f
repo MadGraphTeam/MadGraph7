@@ -398,7 +398,7 @@ C     Amplitude(s) for diagram number 7
 
       INTEGER     NCOLOR, NJAMP
       PARAMETER (NCOLOR=1)
-      COMPLEX*16  JAMP(NCOLOR), ONEJAMP
+      COMPLEX*16  JAMP(NCOLOR), LNJAMP(NCOLOR), ONEJAMP
       COMMON/MG5_0_JAMP/JAMP,LNJAMP
 
       ONEJAMP = JAMP(NJAMP+1)  ! +1 since njamp start at zero (c convention)

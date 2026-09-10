@@ -14,12 +14,40 @@
 #include "CPPProcess.h"
 #include "GpuAbstraction.h"
 
+#include <cstddef>
+#ifdef MGONGPU_CPP_HAS_BLAS
+#include <vector> // the batched C++ color sum keeps the jamps of every good helicity
+#endif
+
 #ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 #else
 namespace mg5amcCpu
 #endif
 {
+  //--------------------------------------------------------------------------
+
+#ifdef MGONGPUCPP_GPUIMPL
+#ifndef MGONGPU_HAS_NO_BLAS
+  // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
+  // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
+  // precision mode only, one more for the jamps converted from double to float plus one
+  // fptype2[nhel*nevt] buffer for the MEs, which are fptype elsewhere. This is the one place
+  // the size is defined: both the allocation (MatrixElementKernels.cc) and the reset
+  // (color_sum_gpu) come here.
+  constexpr std::size_t
+  blasColorSumTmpSize( const int nhel, const int nevt )
+  {
+    std::size_t nfptype2PerEvent = CPPProcess::ncolor * mgOnGpu::nx2;
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+    nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
+    nfptype2PerEvent += 1;  // the fptype2 matrix elements
+#endif
+    return nfptype2PerEvent * (std::size_t)nhel * (std::size_t)nevt;
+  }
+#endif
+#endif
+
   //--------------------------------------------------------------------------
 
 #ifdef MGONGPUCPP_GPUIMPL
@@ -72,6 +100,23 @@ namespace mg5amcCpu
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
                  const cxtype_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
                  const int ievt0 );           // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
+#endif
+
+  //--------------------------------------------------------------------------
+
+  // Only defined for processes whose color matrix is large enough that the
+  // BLAS call is worth setting up (see blas_wanted): the color sum for every
+  // good helicity of one event page in one go.
+#ifndef MGONGPUCPP_GPUIMPL
+#ifdef MGONGPU_CPP_HAS_BLAS
+  void
+  color_sum_cpu_blas( fptype* allMEs,                  // input/output: allMEs[nevt], add |M|^2 summed over all good helicities
+                      fptype_sv* MEs_ighel,            // output: [ncomb] running sum of |M|^2 up to ighel (first - and/or only - neppV page)
+                      fptype_sv* MEs_ighel2,           // output: [ncomb] the same for the second neppV page (mixed mode only)
+                      const cxtype_sv* ghelAllJamp_sv, // input: jamp_sv[nGoodHel][nParity*ncolor] for all good helicities
+                      const int nGoodHel,              // input: number of good helicities
+                      const int ievt0 );               // input: first event number in current C++ event page
+#endif
 #endif
 
   //--------------------------------------------------------------------------
