@@ -7879,8 +7879,11 @@ class RunCardIterator(object):
 
         if not path:
             return ff.getvalue()
-        
-         
+        ff.close()
+        param_card_reader.write_scan_summary_json(path, self.param_order, keys,
+                                                  to_print)
+
+
     def get_next_name(self, run_name):
         """returns a smart name for the next run"""
     
