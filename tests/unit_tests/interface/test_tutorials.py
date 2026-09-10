@@ -938,22 +938,25 @@ class TestUncertaintyLesson(unittest.TestCase):
         # prose wraps, so compare on collapsed whitespace rather than pinning
         # where the line breaks happen to fall
         text = ' '.join(self.step().render(self._WithLhapdf()).split())
-        self.assertIn('1/sqrt(N)', text)
-        self.assertIn('no amount of extra events will shrink it', text)
+        self.assertIn('More events shrink it', text)
+        self.assertIn('More events will not shrink it', text)
 
     def test_without_lhapdf_it_says_the_pdf_row_is_missing(self):
         """Since PR #89 madspace evaluates the PDF members itself, so the
-        scale variations survive without LHAPDF -- only the PDF row goes."""
+        scale row survives without LHAPDF -- only the PDF one goes."""
 
         text = self.step().render(self._WithoutLhapdf())
-        self.assertIn('PDF row to be missing', text)
-        self.assertIn('scale variations need no new PDF', text)
+        self.assertIn('Expect no PDF row', text)
         self.assertIn('install lhapdf6', text)
+        self.assertIn('scale row and the cross section are unaffected', text)
 
-    def test_with_lhapdf_it_does_not_warn(self):
+    def test_with_lhapdf_it_says_nothing(self):
+        """Nothing to warn about is nothing to say: the caveat is absent
+        rather than reassuring."""
+
         text = self.step().render(self._WithLhapdf())
-        self.assertNotIn('missing here', text)
-        self.assertIn('lhapdf-config', text)
+        self.assertNotIn('PDF row', text)
+        self.assertNotIn('lhapdf', text.lower())
 
     def test_lhapdf_detection(self):
         from madgraph.interface.tutorials.session import lhapdf_configured
@@ -1159,12 +1162,16 @@ class TestLaunchQuestion(unittest.TestCase):
                        'run_card.toml'):
             self.assertNotIn(detail, text)
 
-    def test_the_explanation_comes_after(self):
-        text = self.after()
-        self.assertIn('question you just answered', text)
-        for detail in ('param_card.dat', 'run_card.toml', 'set KEY VALUE',
-                       'Not Avail.'):
-            self.assertIn(detail, text)
+    def test_the_explanation_is_at_the_question(self):
+        """It used to be recapped in the step after the run. Now that the
+        tutorial can speak at the prompt (PR #131), it belongs there -- and
+        the step after does not repeat it."""
+
+        step = self.step('produce the output')
+        self.assertTrue(step.question_hint)
+        for detail in ('param_card.dat', 'run_card.toml'):
+            self.assertIn(detail, step.question_hint)
+        self.assertNotIn('question you just answered', self.after())
 
     def test_it_does_not_reprint_the_question(self):
         """The reader has just seen it; repeating the switch list is noise."""

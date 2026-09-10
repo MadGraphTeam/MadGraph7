@@ -117,18 +117,11 @@ def _lhapdf_note(interface=None):
     """
 
     if lhapdf_configured(interface):
-        return ("The PDF half needs the error set on disk, which madspace "
-                "resolves through\nlhapdf-config -- configured here, and it "
-                "will download the set if it has to.\nIf a row is missing, the "
-                "run log says why.")
-    return ("**Expect the PDF row to be missing here.** madspace evaluates the "
-            "PDF members\nitself, but it still has to find the set, and it "
-            "does that through lhapdf-config,\nwhich this MG7 does not have. "
-            "The scale variations need no new PDF and should\nstill appear; "
-            "the cross section and its integration error are unaffected.\n\n"
-            "  MG7> install lhapdf6\n\n"
-            "and then `set lhapdf /path/to/lhapdf-config` if MG7 does not find "
-            "it by itself.")
+        return ""
+    return ("\n**Expect no PDF row here**: that half needs the error set on "
+            "disk, and finding\nit needs LHAPDF, which this MG7 does not have. "
+            "`install lhapdf6` fixes it. The\nscale row and the cross section "
+            "are unaffected.\n")
 
 
 def intro(interface=None):
@@ -266,63 +259,26 @@ the first run takes longer than the ones after it.
      solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
 Step('launch', lambda interface: """
-That is a full leading-order event sample.
+That is a full leading-order event sample. The events are an LHE file under
+`%(run)s/Events/`, and the run prints two numbers that are easy to confuse.
 
-**The question you just answered** had two blocks. The top one was the programs
-to run after generation -- parton shower, detector simulation, analysis,
-MadSpin for decays with spin correlations, reweighting -- where a number or a
-name toggles one, and `Not Avail.` means it is not installed here. The bottom
-one was the cards: always `param_card.dat` (masses, widths, couplings) and
-`run_card.toml` (beams, cuts, number of events, integrator settings), plus one
-for each program switched on. A number opens a card in your editor,
-`set KEY VALUE` changes a single parameter without one, and a path to an
-existing card or banner reuses it wholesale.
-
-**The cross section comes with two different uncertainties**, and they are not
-interchangeable.
-
-The **statistical** one rides along with the cross section itself, in the
-`Result:` row of the summary box and in the survey log lines:
+The **statistical** error travels with the cross section:
 
     Result:   503.1(1.4)
 
-It is the Monte-Carlo integration error and nothing more. It falls like
-1/sqrt(N), so asking for more events shrinks it, and it says nothing whatever
-about physics -- only about how long you ran.
+That is the Monte-Carlo integration error. More events shrink it, and it says
+nothing about the physics -- only about how long you ran.
 
-The **theoretical** one comes from varying the calculation, and gets a box of
-its own at the end of the run:
+The **theoretical** uncertainty gets its own box at the end:
 
-    Systematics
-    Variations per event:    109 (9 scale, 101 PDF members)
-    PDF set:                 NNPDF23_lo_as_0130_qed, replicas
-    Original cross-section:  503.1 pb
-    Scale variation:         +12.4%%    -9.6%%
-    PDF variation:           +2.1%%    -2.1%%
+    Scale variation:   +12.4%%    -9.6%%
+    PDF variation:     +2.1%%    -2.1%%
 
-Scale variation moves the renormalisation and factorisation scales (x0.5, x1
-and x2 each by default, from `[systematics] mur` and `muf`); PDF variation runs
-the set's error members. This is the one that goes in a paper, and no amount of
-extra events will shrink it -- at LO it is usually far the larger of the two.
-
-madspace computes these while it writes the events, so they cost one pass and
-no extra integration. Every event carries its variation weights, and the
-per-variation cross sections land in `info.json` next to the events.
-
+That is the one that goes in a paper. More events will not shrink it, and at LO
+it is usually much the larger of the two. `tutorial mg7` covers how it is
+computed and how to change what is varied.
 %(lhapdf)s
-
-The rest of what you got:
-  * the events themselves, an LHE file under `%(run)s/Events/`;
-  * the banner at the top of that file, which records every card and every
-    setting used -- it is the honest record of how the numbers were made. The
-    per-event variation weights live there too;
-  * an HTML summary in the run directory, which you can open in a browser.
-
-Two commands worth knowing here. `open` reaches anything in the output
-directory without you typing the whole path -- `open Cards/run_card.toml` shows
-the settings the run actually used, `open index.html` the summary. And
-`history` writes down everything you typed, so you can do this again without
-having to remember it:
+Save what you typed, so you can do this again without remembering it:
 
 %(p)s history my_first_run.dat
 """ % {'p': P, 'run': output_name(interface, RUN),
