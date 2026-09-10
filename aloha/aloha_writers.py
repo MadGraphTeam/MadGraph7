@@ -1741,6 +1741,13 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
         else:
             return 'ALOHA_%s%s' % (str(hash(target_string.lower())).replace('-','m'), suffix)
 
+    if tag:
+        # same normalisation as get_routine_name, which sorts the tag before
+        # building the routine name; without it a loop wavefunction that also
+        # carries a conjugation flag is CALLed as FFS4L3C1_2 while ALOHA writes
+        # FFS4C1L3_2.
+        tag.sort()
+
     if tag and any(t.startswith('P') for t in tag[:-1]):
         # propagator need to be the last entry for the tag
         for i,t  in enumerate(tag):
