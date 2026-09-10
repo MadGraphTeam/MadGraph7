@@ -1115,10 +1115,23 @@ class TestLaunchQuestionPreamble(unittest.TestCase):
         self.assertIn('param_card.dat', text)
         self.assertIn('run_card.toml', text)
 
-    def test_it_names_the_optional_tools(self):
+    def test_it_names_the_programs_the_switches_offer(self):
         text = self.text()
-        for tool in ('MadSpin', 'reweight', 'Pythia8', 'Delphes'):
+        for tool in ('shower', 'detector', 'analysis', 'madspin', 'reweight'):
             self.assertIn(tool, text)
+
+    def test_it_does_not_claim_the_switches_all_start_off(self):
+        """A real run shows madspin=ON and reweight=ON: what starts on depends
+        on what is installed and which cards the directory holds."""
+
+        text = self.text()
+        self.assertNotIn('each OFF until you turn it on', text)
+        self.assertIn('depends on what MG7 finds installed', text)
+
+    def test_it_mentions_the_shortcuts_the_question_advertises(self):
+        text = self.text()
+        self.assertIn('set KEY VALUE', text)
+        self.assertIn('banner', text)
 
     def test_it_says_to_press_enter(self):
         """quit_on in extended_cmd is ['0', 'done', 'EOF', '', 'auto'], so an
