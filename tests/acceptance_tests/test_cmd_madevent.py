@@ -1513,9 +1513,11 @@ class TestMECmdShell(unittest.TestCase):
             has_mg7 = False
         if not has_mg7:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
-        # e+ e- > mu+ mu- is leptonic and runs at a fixed factorisation scale,
-        # so no PDF grid is read; systematics, the one step that would want
-        # LHAPDF, is switched off below. Only madspace is required.
+        # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
+        # and the [systematics] PDF variations are empty -- but alpha_s still
+        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # They are deliberately left enabled: the gridpack has to reproduce the
+        # calculator the launcher built, and used to die doing so.
         datadir = os.environ.get('LHAPDF_DATA_PATH')
         if not datadir:
             try:
@@ -1533,7 +1535,6 @@ class TestMECmdShell(unittest.TestCase):
         t = open(toml).read()
         t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
         t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
-        t = _re.sub(r'(?m)^systematics = true$', 'systematics = false', t)
         open(toml, 'w').write(t)
 
         env = dict(os.environ)
@@ -1577,6 +1578,11 @@ class TestMECmdShell(unittest.TestCase):
         self.assertTrue(
             glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
             'gridpack run produced no events (see %s)' % gplog)
+        # and it has to reweight: without a nominal alpha_s grid the gridpack
+        # either crashed or dropped the weights it was configured to write.
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.weights.json')),
+            'the gridpack run wrote no systematics weights (see %s)' % gplog)
 
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and

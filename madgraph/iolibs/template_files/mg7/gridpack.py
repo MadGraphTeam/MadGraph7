@@ -294,6 +294,14 @@ def load_systematics(run_card, backends=(), param_card_path=None):
     nominal_pdf = None
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+    # The mu_R variations always need an alpha_s grid, so a gridpack that does
+    # not name one cannot reweight anything -- drop the systematics rather than
+    # die here (gridpacks written before the launcher recorded the file for a
+    # run without parton luminosity).
+    if not data.get("nominal_info_file"):
+        print("WARNING systematics: the gridpack records no alpha_s .info file, "
+              "the scale/PDF weights are dropped")
+        return None
     nominal_alpha_s = ms.AlphaSGrid(_locate_pdf_file(data["nominal_info_file"]))
     # PDFs, alpha_s and matrix elements are evaluated on this CPU context
     context = ms.Context(device=ms.cpu_device(), thread_count=1)

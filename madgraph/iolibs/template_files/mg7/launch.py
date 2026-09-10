@@ -565,7 +565,8 @@ class MadgraphProcess:
             self.pdf_grid = None
             self.lhapdf = None
             self.pdf_dir = None
-            self.alphas_grid = ms.AlphaSGrid(self.write_fixed_alphas_info())
+            self.fixed_alphas_info = self.write_fixed_alphas_info()
+            self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
             for context in self.contexts:
                 self.alphas_grid.initialize_globals(context)
             self.running_coupling = ms.RunningCoupling(self.alphas_grid)
@@ -573,6 +574,7 @@ class MadgraphProcess:
 
         pdf_set = beam_args["pdf"]
         self.pdf_set = pdf_set
+        self.fixed_alphas_info = None
         self.lhapdf = self.ensure_pdf_set(pdf_set)
         self.pdf_dir = self.lhapdf.find_set(pdf_set)
         if self.pdf_dir is None:
@@ -742,13 +744,18 @@ class MadgraphProcess:
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
         # Without parton luminosity -- a decay, or leptonic beams -- there is no
-        # nominal PDF set to describe: init_beam() returns before self.pdf_set
-        # is assigned and leaves self.pdf_dir None, so this has to be skipped
-        # rather than just left unused. Only the scale variations remain, and
-        # SystematicsCalculator asks for a nominal PDF grid only when has_pdf.
-        info_path = None
-        if config.has_pdf:
+        # nominal PDF *set* to describe and no PDF variation to compute, so
+        # has_pdf gates the nominal-set metadata and the member list below.
+        # The alpha_s grid is a separate matter: the mu_R variations always need
+        # one, so its .info file has to be recorded whatever has_pdf says.
+        # init_beam() skips the PDF lookup for a decay only -- leptonic beams
+        # still resolve a set and take alpha_s from it -- so the path follows
+        # self.pdf_dir, and falls back to the constant grid written for a decay.
+        if self.pdf_dir is not None:
             info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
+        else:
+            info_path = self.fixed_alphas_info
+        if config.has_pdf:
             info = self.pdf_set_info(info_path)
             config.nominal_set_name = self.pdf_set
             config.nominal_lhaid = info["SetIndex"]
@@ -1698,8 +1705,17 @@ class MadgraphProcess:
             self.lhe_completer = self.build_lhe_completer()
         self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
         if self.systematics_data is not None:
+            systematics_data = dict(self.systematics_data)
+            # A decay takes alpha_s from a constant grid written into the run
+            # directory rather than from an LHAPDF set, so the gridpack cannot
+            # look that file up: ship it and point at the shipped copy.
+            if self.fixed_alphas_info and \
+                    systematics_data["nominal_info_file"] == self.fixed_alphas_info:
+                name = os.path.basename(self.fixed_alphas_info)
+                shutil.copy(self.fixed_alphas_info, os.path.join(data_path, name))
+                systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
-                json.dump(self.systematics_data, f)
+                json.dump(systematics_data, f)
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
