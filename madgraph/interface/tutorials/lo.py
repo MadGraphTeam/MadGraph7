@@ -183,19 +183,14 @@ some for you.
 
 %(orders)s
 
-That matters because it is the first thing to make explicit when a result
-surprises you -- and it is one line of a much larger grammar. Coupling orders,
-interference-only selections, required and forbidden s-channels, decay chains,
-polarisation and NLO all go in the same process line; `tutorial syntax` walks
-through the lot.
-
-**A short detour, if you want it.** MG5 just chose to leave the electroweak
-diagrams out. You can ask for them back by allowing QED vertices:
+You can ask for the electroweak diagrams back by allowing QED vertices:
 
 %(p)s generate p p > t t~ QED<=2
 
-Type that and the tutorial will tell you what changed. Or skip it -- the main
-line carries on with a look at the diagrams:
+Note that `tutorial syntax` walks through the various ways to generate
+diagrams.
+
+The typical next step is to inspect the generated diagrams to check them:
 
 %(p)s display diagrams
 """ % {'p': P, 'orders': describe_applied_orders(interface)},
