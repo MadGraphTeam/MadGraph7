@@ -59,6 +59,7 @@ jobs:
   # The build logic lives in the build_madspace composite action so it stays in
   # sync with acceptancetest_mg7.yml.
   build_madspace:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +67,7 @@ jobs:
 
   check_xsec_processes:
     needs: build_madspace
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -101,7 +103,7 @@ jobs:
 
   xsec_summary:
     needs: check_xsec_processes
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
