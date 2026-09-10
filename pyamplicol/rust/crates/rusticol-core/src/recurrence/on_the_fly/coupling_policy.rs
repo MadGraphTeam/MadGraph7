@@ -65,6 +65,36 @@ struct GlobalTopologyNode {
     orders: Vec<Box<[u32]>>,
 }
 
+/// Index the structural condition on parent sizes before inspecting their
+/// exact colour states. Many states share one support size, and scanning all
+/// pairs of those states only to reject their sizes makes the cold sweep
+/// unnecessarily quadratic in its largest, already-complete currents.
+struct SupportSizePairIndex {
+    by_size: BTreeMap<usize, Vec<usize>>,
+}
+
+impl SupportSizePairIndex {
+    fn new(sizes: impl IntoIterator<Item = usize>) -> Self {
+        let mut by_size = BTreeMap::<usize, Vec<usize>>::new();
+        for (index, size) in sizes.into_iter().enumerate() {
+            by_size.entry(size).or_default().push(index);
+        }
+        Self { by_size }
+    }
+
+    fn partners_after(&self, left_index: usize, left_size: usize, total_size: usize) -> &[usize] {
+        let Some(right_size) = total_size.checked_sub(left_size) else {
+            return &[];
+        };
+        let Some(indices) = self.by_size.get(&right_size) else {
+            return &[];
+        };
+        // Stable insertion order preserves the original left-major,
+        // increasing-right enumeration, including equal-size parent pairs.
+        &indices[indices.partition_point(|&index| index <= left_index)..]
+    }
+}
+
 fn checked_increment(value: &mut u64, label: &str) -> RusticolResult<()> {
     *value = value
         .checked_add(1)
@@ -349,11 +379,14 @@ fn build_global_topologies(
             .filter(|node| node.key.support.len() < target_size)
             .cloned()
             .collect::<Vec<_>>();
+        let pair_index =
+            SupportSizePairIndex::new(parents.iter().map(|node| node.key.support.len()));
         for (left_index, left) in parents.iter().enumerate() {
-            for right in parents.iter().skip(left_index + 1) {
-                if left.key.support.len() + right.key.support.len() != target_size
-                    || !supports_are_disjoint(&left.key.support, &right.key.support)
-                {
+            for &right_index in
+                pair_index.partners_after(left_index, left.key.support.len(), target_size)
+            {
+                let right = &parents[right_index];
+                if !supports_are_disjoint(&left.key.support, &right.key.support) {
                     continue;
                 }
                 let Some(rows) = grammar.transitions.get(&canonical_state_pair(
@@ -402,11 +435,21 @@ fn collect_viable_total_orders(
 ) -> RusticolResult<Vec<Box<[u32]>>> {
     let source_count = seed.source_anchors.len();
     let mut totals = Vec::new();
+    let pair_index = SupportSizePairIndex::new(nodes.iter().map(|node| node.key.support.len()));
     for (left_index, left) in nodes.iter().enumerate() {
-        for right in nodes.iter().skip(left_index + 1) {
-            if left.key.support.len() + right.key.support.len() != source_count
-                || !supports_are_disjoint(&left.key.support, &right.key.support)
-            {
+        // Physical closure below requires a singleton canonical anchor.
+        // Reject impossible size classes before visiting their colour states;
+        // the exact anchor and colour/pairing checks remain unchanged.
+        if left.key.support.len() != 1
+            && left.key.support.len().checked_add(1) != Some(source_count)
+        {
+            continue;
+        }
+        for &right_index in
+            pair_index.partners_after(left_index, left.key.support.len(), source_count)
+        {
+            let right = &nodes[right_index];
+            if !supports_are_disjoint(&left.key.support, &right.key.support) {
                 continue;
             }
             let Some(rows) = grammar.closures.get(&canonical_state_pair(
@@ -573,6 +616,83 @@ mod tests {
 
     fn digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).unwrap()
+    }
+
+    #[test]
+    fn support_size_index_matches_exhaustive_parent_order() {
+        let cases = [
+            vec![],
+            vec![0],
+            vec![1, 1],
+            vec![1, 2, 1, 3, 2, 1, 4, 3],
+            vec![0, 2, 0, 1, 3, 0, 2],
+            vec![usize::MAX, 0, 1, usize::MAX, 2],
+        ];
+        for sizes in cases {
+            let index = SupportSizePairIndex::new(sizes.iter().copied());
+            for target in (0..=9).chain([usize::MAX]) {
+                let exhaustive = sizes
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(left, &left_size)| {
+                        sizes.iter().enumerate().skip(left + 1).filter_map(
+                            move |(right, &right_size)| {
+                                (left_size.checked_add(right_size) == Some(target))
+                                    .then_some((left, right))
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let indexed = sizes
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(left, &size)| {
+                        index
+                            .partners_after(left, size, target)
+                            .iter()
+                            .map(move |&right| (left, right))
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(indexed, exhaustive, "sizes={sizes:?}, target={target}");
+
+                // Closure's early size filter must remove exactly the pairs
+                // that cannot possibly contain its singleton anchor. For two
+                // sources it must not duplicate the symmetric singleton pair.
+                let expected_closure = exhaustive
+                    .iter()
+                    .copied()
+                    .filter(|&(left, right)| sizes[left] == 1 || sizes[right] == 1)
+                    .collect::<Vec<_>>();
+                let indexed_closure = sizes
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &size)| size == 1 || size.checked_add(1) == Some(target))
+                    .flat_map(|(left, &size)| {
+                        index
+                            .partners_after(left, size, target)
+                            .iter()
+                            .map(move |&right| (left, right))
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(indexed_closure, expected_closure);
+            }
+        }
+    }
+
+    #[test]
+    fn support_size_index_does_not_scan_pairs_of_complete_currents() {
+        let sizes = std::iter::repeat_n(1, 4)
+            .chain(std::iter::repeat_n(8, 10_000))
+            .collect::<Vec<_>>();
+        let index = SupportSizePairIndex::new(sizes.iter().copied());
+        let candidate_count = sizes
+            .iter()
+            .enumerate()
+            .map(|(left, &size)| index.partners_after(left, size, 9).len())
+            .sum::<usize>();
+        assert_eq!(candidate_count, 40_000);
+        assert!(index.partners_after(0, 10, 9).is_empty());
+        assert!(index.partners_after(0, 1, 8).is_empty());
     }
 
     fn scalar_templates() -> ValidatedRecurrenceTemplateInput {

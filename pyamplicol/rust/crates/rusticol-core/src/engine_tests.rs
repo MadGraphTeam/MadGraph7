@@ -4720,6 +4720,15 @@ fn on_the_fly_unprofiled_lc_and_contracted_match_profiles_and_allocate_nothing()
             profiled.profile.recurrence_closure_call_count > 0,
             "{label} profile lost closure-call counts"
         );
+        let NativeExecutionLane::OnTheFly(execution) = &runtime.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        let selected_census = execution.active_family_prepared_census().unwrap();
+        assert_eq!(
+            selected_census.query_count, 1,
+            "{label} evaluated unselected helicities"
+        );
+        assert_eq!(selected_census.union_amplitude_destination_count, 1);
 
         runtime
             .evaluate_f64_into_with_selectors(
@@ -5316,6 +5325,15 @@ fn on_the_fly_public_paths_vectorize_with_a_last_family_only_cache() {
     assert_eq!(selected, global);
     assert_eq!(retained(&runtime).0, 1);
     assert_eq!(retained(&runtime).1, 1);
+    // The output retains all four physical helicities, but this selected
+    // call prepares only one query, rather than evaluating all and filtering.
+    let selected_census = census(&runtime);
+    assert_eq!(selected_census["retained_request_count"], 1);
+    assert_eq!(selected_census["retained_amplitude_destination_count"], 1);
+    assert_eq!(
+        selected_census["active_family_union_census"]["query_count"],
+        1
+    );
 
     let global_again = runtime
         .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)

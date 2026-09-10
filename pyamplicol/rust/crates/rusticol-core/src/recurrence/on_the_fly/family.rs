@@ -1891,6 +1891,19 @@ impl OnTheFlyFamilyWorkspaceV1 {
             .checked_mul(u32::from(family.lorentz_component_count))
             .ok_or_else(|| invalid("query-family momentum plane count exceeds u32"))?;
         let momentum_len = family_scalar_len(momentum_planes, point_stride, "momentum arena")?;
+        // The family is immutable after preparation. Check its momentum
+        // sources here rather than once per term and phase-space point on
+        // every warmed evaluation.
+        if family
+            .momentum_forms
+            .iter()
+            .flat_map(CanonicalMomentumLinearForm::terms)
+            .any(|term| term.source_slot >= family.source_count)
+        {
+            return Err(integrity(
+                "query-family momentum source slot is out of bounds",
+            ));
+        }
         let mut factors_re =
             AlignedF64Buffer::zeroed(family.exact_factors.len(), "query-family factor real")?;
         let mut factors_im =
@@ -1953,32 +1966,42 @@ impl OnTheFlyFamilyWorkspaceV1 {
                 external_momenta.len()
             )));
         }
-        for (form_id, form) in family.momentum_forms.iter().enumerate() {
-            for lorentz in 0..usize::from(self.lorentz_component_count) {
-                for point in 0..point_count as usize {
-                    let mut value = 0.0;
-                    for term in form.terms() {
-                        if term.source_slot >= self.source_count {
-                            return Err(integrity(
-                                "query-family momentum source slot is out of bounds",
-                            ));
-                        }
-                        let input_index = (term.source_slot as usize
-                            * usize::from(self.lorentz_component_count)
-                            + lorentz)
-                            * point_count as usize
-                            + point;
-                        value += f64::from(term.coefficient) * external_momenta[input_index];
+        let point_count = point_count as usize;
+        let lorentz_count = usize::from(self.lorentz_component_count);
+        let point_stride = self.point_stride as usize;
+        for (form, form_planes) in family.momentum_forms.iter().zip(
+            self.momenta
+                .as_mut_slice()
+                .chunks_exact_mut(lorentz_count * point_stride),
+        ) {
+            for (lorentz, plane) in form_planes.chunks_exact_mut(point_stride).enumerate() {
+                let output = &mut plane[..point_count];
+                let Some((first, remaining)) = form.terms().split_first() else {
+                    output.fill(0.0);
+                    continue;
+                };
+                let input_start =
+                    (first.source_slot as usize * lorentz_count + lorentz) * point_count;
+                let coefficient = f64::from(first.coefficient);
+                for (value, source) in output
+                    .iter_mut()
+                    .zip(&external_momenta[input_start..input_start + point_count])
+                {
+                    // Retain the original initial addition, including its
+                    // treatment of signed zero. Terms remain in their original
+                    // order; only independent phase-space points are grouped.
+                    *value = 0.0 + coefficient * source;
+                }
+                for term in remaining {
+                    let input_start =
+                        (term.source_slot as usize * lorentz_count + lorentz) * point_count;
+                    let coefficient = f64::from(term.coefficient);
+                    for (value, source) in output
+                        .iter_mut()
+                        .zip(&external_momenta[input_start..input_start + point_count])
+                    {
+                        *value += coefficient * source;
                     }
-                    let plane = form_id
-                        .checked_mul(usize::from(self.lorentz_component_count))
-                        .and_then(|base| base.checked_add(lorentz))
-                        .ok_or_else(|| invalid("query-family momentum plane exceeds usize"))?;
-                    let index = plane
-                        .checked_mul(self.point_stride as usize)
-                        .and_then(|base| base.checked_add(point))
-                        .ok_or_else(|| invalid("query-family momentum index exceeds usize"))?;
-                    self.momenta.as_mut_slice()[index] = value;
                 }
             }
         }
@@ -1990,7 +2013,7 @@ impl OnTheFlyFamilyWorkspaceV1 {
         // their active prefix must still start at zero.
         for plane in 0..self.amplitude_re.len() / self.point_stride as usize {
             let start = plane * self.point_stride as usize;
-            let end = start + point_count as usize;
+            let end = start + point_count;
             self.amplitude_re.as_mut_slice()[start..end].fill(0.0);
             self.amplitude_im.as_mut_slice()[start..end].fill(0.0);
         }
@@ -4615,6 +4638,135 @@ mod tests {
             momenta.extend(std::iter::repeat_n(0.0, 3 * point_count));
         }
         momenta
+    }
+
+    #[test]
+    fn momentum_plane_refresh_preserves_scalar_order_and_inactive_lanes() {
+        let (trace, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let mut family = build_query_family_from_traces(
+            &direct_catalog(),
+            &[QueryFamilyTraceInput {
+                trace: &trace,
+                projection,
+            }],
+        )
+        .unwrap();
+        family.source_count = 3;
+        family.momentum_forms = [
+            vec![],
+            vec![(0, -1)],
+            vec![(0, 1), (1, 1), (2, 1)],
+            vec![(0, 3), (1, -2), (2, 7)],
+        ]
+        .into_iter()
+        .map(|terms| {
+            CanonicalMomentumLinearForm::new(
+                terms
+                    .into_iter()
+                    .map(|(source_slot, coefficient)| MomentumTerm {
+                        source_slot,
+                        coefficient,
+                    })
+                    .collect(),
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+        let mut workspace = OnTheFlyFamilyWorkspaceV1::new(&family, 9, false).unwrap();
+        let stride = workspace.point_stride as usize;
+        let lorentz_count = usize::from(family.lorentz_component_count);
+        for point_count in [1, 9, 3, 5, 1] {
+            let mut inputs = Vec::new();
+            for source in 0..family.source_count as usize {
+                for lorentz in 0..lorentz_count {
+                    for point in 0..point_count {
+                        inputs.push(match lorentz {
+                            0 => [1.0e16, -1.0e16, 1.0][source] * (point + 1) as f64,
+                            1 if (point + source) % 2 == 0 => -0.0,
+                            1 => 0.0,
+                            2 => (source + point + 1) as f64 * f64::MIN_POSITIVE,
+                            _ => (source * 31 + point * 7) as f64 / 13.0,
+                        });
+                    }
+                }
+            }
+            workspace.momenta.as_mut_slice().fill(31.0);
+            workspace.amplitude_re.as_mut_slice().fill(37.0);
+            workspace.amplitude_im.as_mut_slice().fill(41.0);
+            workspace.current_re.as_mut_slice().fill(43.0);
+            workspace.current_im.as_mut_slice().fill(47.0);
+            workspace
+                .refresh_inputs(&family, &inputs, point_count as u32)
+                .unwrap();
+            for (form_id, form) in family.momentum_forms.iter().enumerate() {
+                for lorentz in 0..lorentz_count {
+                    let plane = (form_id * lorentz_count + lorentz) * stride;
+                    for point in 0..point_count {
+                        let mut expected = 0.0_f64;
+                        for term in form.terms() {
+                            let source = (term.source_slot as usize * lorentz_count + lorentz)
+                                * point_count
+                                + point;
+                            expected += f64::from(term.coefficient) * inputs[source];
+                        }
+                        assert_eq!(
+                            workspace.momenta.as_slice()[plane + point].to_bits(),
+                            expected.to_bits(),
+                        );
+                    }
+                    assert!(
+                        workspace.momenta.as_slice()[plane + point_count..plane + stride]
+                            .iter()
+                            .all(|value| *value == 31.0)
+                    );
+                }
+            }
+            for (amplitudes, sentinel) in [
+                (&workspace.amplitude_re, 37.0),
+                (&workspace.amplitude_im, 41.0),
+            ] {
+                for plane in amplitudes.as_slice().chunks_exact(stride) {
+                    assert!(plane[..point_count].iter().all(|value| *value == 0.0));
+                    assert!(plane[point_count..].iter().all(|value| *value == sentinel));
+                }
+            }
+            assert!(
+                workspace
+                    .current_re
+                    .as_slice()
+                    .iter()
+                    .all(|value| *value == 43.0)
+            );
+            assert!(
+                workspace
+                    .current_im
+                    .as_slice()
+                    .iter()
+                    .all(|value| *value == 47.0)
+            );
+        }
+        assert!(workspace.refresh_inputs(&family, &[], 1).is_err());
+        assert!(workspace.refresh_inputs(&family, &[], 0).is_err());
+        assert!(workspace.refresh_inputs(&family, &[], 10).is_err());
+
+        family.momentum_forms = vec![
+            CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                source_slot: family.source_count,
+                coefficient: 1,
+            }])
+            .unwrap(),
+        ]
+        .into_boxed_slice();
+        let error = OnTheFlyFamilyWorkspaceV1::new(&family, 1, false)
+            .err()
+            .expect("out-of-bounds sources must fail during preparation");
+        assert!(
+            error
+                .to_string()
+                .contains("momentum source slot is out of bounds")
+        );
     }
 
     #[test]

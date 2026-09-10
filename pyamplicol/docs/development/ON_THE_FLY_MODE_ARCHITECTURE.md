@@ -138,6 +138,12 @@ the prepared grammar, effective policy, timing, families, and family semantic
 bindings, so the next cold evaluation recomputes this warm-up. Generation and
 warm-up therefore remain separately reportable timings.
 
+The cold sweep indexes parent currents by source-support size and visits only
+size-complementary pairs. Final closure additionally requires a singleton
+anchor. These filters preserve the original candidate order and exact colour,
+flavour and fermion-pairing checks; they avoid scanning pairs that cannot
+possibly form the requested current.
+
 ### Selector family, transient traces, and retained rows
 
 The public selector adapter accepts arbitrary subsets of the helicity and flow
@@ -172,6 +178,11 @@ Compactness means that the artifact/load boundary has no dense recurrence plan
 and that retained executable state belongs only to the requested Cartesian
 family. It does not promise memory independent of that family's size: an
 all-helicity times all-flow request may itself be large.
+
+Warmed momentum preparation traverses contiguous phase-space-point planes.
+Source bounds are checked once when the immutable family workspace is prepared;
+each point retains the original momentum-term summation order. Only active
+lanes are refreshed, with no warmed reallocation.
 
 ### Prepared executors, source binding, and checked resources
 

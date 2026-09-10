@@ -3353,6 +3353,90 @@ mod tests {
     }
 
     #[test]
+    fn source_major_workspace_preserves_values_across_partial_batches() {
+        use crate::recurrence::on_the_fly::{OnTheFlyExternalColorRoleV1, OnTheFlySourceAnchorV1};
+
+        let base = scalar_adapter_test_seed(digest(1), digest(2), digest(3), digest(4)).unwrap();
+        let anchors = (0..3)
+            .map(|slot| {
+                OnTheFlySourceAnchorV1::new(
+                    slot,
+                    slot,
+                    false,
+                    OnTheFlyExternalColorRoleV1::Singlet,
+                    false,
+                    None,
+                    base.source_anchors()[0].states().to_vec(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let seed = OnTheFlyProcessSeedV1::new(
+            base.process_digest(),
+            base.model_digest(),
+            base.template_catalog_digest(),
+            base.prepared_pack_digest(),
+            base.direct_catalog_digest(),
+            digest(92),
+            "raw-amplitude-test",
+            crate::recurrence::ExactComplexRational::ONE,
+            anchors,
+            vec![1, 2, 0],
+            base.coupling_order_policy(),
+            base.coupling_hierarchies().to_vec(),
+            base.explicit_coupling_limits().to_vec(),
+            Vec::new(),
+        )
+        .unwrap();
+        let mut scratch = vec![53.0; seed.external_permutation().len() * 4 * 17];
+        let pointer = scratch.as_ptr();
+        let capacity = scratch.capacity();
+        for lorentz_count in [1, 3, 4] {
+            for point_count in [1, 17, 3, 8, 1] {
+                let point_width = seed.external_permutation().len() * lorentz_count;
+                let input = (0..point_width * point_count)
+                    .map(|index| {
+                        if index % 7 == 0 {
+                            -0.0
+                        } else {
+                            index as f64 / 11.0
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                scratch.fill(53.0);
+                let count = on_the_fly_source_major_momenta_into(
+                    &seed,
+                    &input,
+                    point_count as u32,
+                    lorentz_count as u16,
+                    &mut scratch,
+                )
+                .unwrap();
+                assert_eq!(count, input.len());
+                for (source, public) in seed.external_permutation().iter().copied().enumerate() {
+                    for lorentz in 0..lorentz_count {
+                        for point in 0..point_count {
+                            assert_eq!(
+                                scratch[(source * lorentz_count + lorentz) * point_count + point]
+                                    .to_bits(),
+                                input[point * point_width
+                                    + public as usize * lorentz_count
+                                    + lorentz]
+                                    .to_bits(),
+                            );
+                        }
+                    }
+                }
+                assert!(scratch[count..].iter().all(|value| *value == 53.0));
+                assert_eq!(scratch.as_ptr(), pointer);
+                assert_eq!(scratch.capacity(), capacity);
+            }
+        }
+        assert!(on_the_fly_source_major_momenta_into(&seed, &[1.0], 1, 4, &mut scratch).is_err());
+        assert!(on_the_fly_source_major_momenta_into(&seed, &[], 0, 4, &mut scratch).is_err());
+    }
+
+    #[test]
     fn mixed_structural_zero_and_trace_preserve_zero_resolved_slot() {
         let query = scalar_query();
         let requests = vec![

@@ -2225,12 +2225,15 @@ pub(super) fn on_the_fly_source_major_momenta_into(
     let permutation = seed.external_permutation();
     let point_count_usize = point_count as usize;
     let lorentz_count = usize::from(lorentz_component_count);
-    let expected = point_count_usize
-        .checked_mul(permutation.len())
-        .and_then(|count| count.checked_mul(lorentz_count))
+    let point_width = permutation
+        .len()
+        .checked_mul(lorentz_count)
         .ok_or_else(|| {
             RusticolError::invalid_argument("on-the-fly momentum shape exceeds usize")
         })?;
+    let expected = point_count_usize.checked_mul(point_width).ok_or_else(|| {
+        RusticolError::invalid_argument("on-the-fly momentum shape exceeds usize")
+    })?;
     if point_count == 0 || point_major.len() != expected {
         return Err(RusticolError::invalid_argument(format!(
             "on-the-fly point-major momenta contain {} scalars, expected {expected}",
@@ -2251,29 +2254,23 @@ pub(super) fn on_the_fly_source_major_momenta_into(
         let public_slot = usize::try_from(public_slot).map_err(|_| {
             RusticolError::integrity("on-the-fly public momentum slot exceeds usize")
         })?;
+        if public_slot >= permutation.len() {
+            return Err(RusticolError::integrity(
+                "on-the-fly public momentum slot is out of bounds",
+            ));
+        }
         for lorentz in 0..lorentz_count {
-            for point in 0..point_count_usize {
-                let input = point
-                    .checked_mul(permutation.len())
-                    .and_then(|base| base.checked_add(public_slot))
-                    .and_then(|base| base.checked_mul(lorentz_count))
-                    .and_then(|base| base.checked_add(lorentz))
-                    .ok_or_else(|| {
-                        RusticolError::invalid_argument(
-                            "on-the-fly point-major momentum index exceeds usize",
-                        )
-                    })?;
-                let output = source_slot
-                    .checked_mul(lorentz_count)
-                    .and_then(|base| base.checked_add(lorentz))
-                    .and_then(|base| base.checked_mul(point_count_usize))
-                    .and_then(|base| base.checked_add(point))
-                    .ok_or_else(|| {
-                        RusticolError::invalid_argument(
-                            "on-the-fly source-major momentum index exceeds usize",
-                        )
-                    })?;
-                source_major[output] = point_major[input];
+            // The checked total shape bounds every plane offset. Walk the
+            // strided input and contiguous destination directly instead of
+            // repeating checked index arithmetic for every scalar.
+            let input_offset = public_slot * lorentz_count + lorentz;
+            let output_offset = (source_slot * lorentz_count + lorentz) * point_count_usize;
+            let output = &mut source_major[output_offset..output_offset + point_count_usize];
+            for (value, source) in output
+                .iter_mut()
+                .zip(point_major[input_offset..].iter().step_by(point_width))
+            {
+                *value = *source;
             }
         }
     }
