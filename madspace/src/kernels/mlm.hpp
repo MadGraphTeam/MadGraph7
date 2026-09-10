@@ -31,6 +31,10 @@ constexpr int SCALES_MADEVENT = 1;
 // daughter's own flavour, or from the propagated goodjet flag of reweight.f.
 constexpr int LINE_FLAVOR = 0;
 constexpr int LINE_GOODJET = 1;
+// How alpha_s is evaluated for a merged event.
+constexpr int ALPHAS_NONE = 0;          // one coupling at mu_R, as before
+constexpr int ALPHAS_PER_VERTEX = 1;    // alphas(pt_i) at each vertex, as madevent
+constexpr int ALPHAS_GEOMETRIC = 2;     // alphas at the geometric mean of the pt_i
 // trace_data bits above the 2-bit trace mode: the flavour of the mother.
 constexpr int TRACE_IS_JET_IN = 1 << 2;
 constexpr int TRACE_IS_COLORED_IN = 1 << 3;
@@ -226,6 +230,7 @@ KERNELSPEC void mlm_clustering(
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
+    IIn<T, 0> alphas_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -798,23 +803,42 @@ KERNELSPEC void mlm_clustering(
     // reweight.f drops an event outright when a reweighted vertex sits at or
     // below 2 GeV, where the coupling is not to be trusted; alphas_weight is
     // that veto.
+    //
+    // ALPHAS_GEOMETRIC hands every reweighted vertex the same scale, the
+    // geometric mean of the individual ones, so the product below turns into
+    // alphas(<pt>)^n. That is the cheaper approximation of the same idea: one
+    // coupling for the whole ladder rather than one per rung.
     bool alphas_ok = true;
+    FVal<T> log_sum = 0.0;
+    int reweighted = 0;
     for (int i = 0; i < cluster_max; ++i) {
         if ((cluster_history[i] >> 27) & 1) {
             FVal<T> scale = cluster_scales[i];
             if (!(scale * scale > 4.0)) {
                 alphas_ok = false;
+            } else {
+                log_sum += log(scale);
+                ++reweighted;
             }
-            alphas_scales[i] = scale;
-        } else {
+        }
+    }
+    FVal<T> mean_scale =
+        reweighted > 0 ? exp(log_sum / reweighted) : ren_scale_val;
+    for (int i = 0; i < cluster_max; ++i) {
+        bool is_qcd_vertex = (cluster_history[i] >> 27) & 1;
+        if (alphas_scheme == ALPHAS_NONE || !is_qcd_vertex) {
             alphas_scales[i] = ren_scale_val;
+        } else if (alphas_scheme == ALPHAS_GEOMETRIC) {
+            alphas_scales[i] = mean_scale;
+        } else {
+            alphas_scales[i] = cluster_scales[i];
         }
     }
 
     // Kept apart from xqcut_weight: that one is the merging cut and nothing
     // else, and only the reweighting cares where the coupling stops being
     // usable.
-    alphas_weight = alphas_ok ? 1.0 : 0.0;
+    alphas_weight = (alphas_scheme == ALPHAS_NONE || alphas_ok) ? 1.0 : 0.0;
     xqcut_weight = passes_xqcut ? 1.0 : 0.0;
 
     int diag_count = state_machine[state];
@@ -842,6 +866,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
+    IIn<T, 0> alphas_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -867,6 +892,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         beam_flags,
         jet_leg_mask,
         parton_line_scheme,
+        alphas_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -896,6 +922,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> beam_flags,
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
+    IIn<T, 0> alphas_scheme,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -921,6 +948,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         beam_flags,
         jet_leg_mask,
         parton_line_scheme,
+        alphas_scheme,
         ren_scale,
         fact_scale1,
         fact_scale2,

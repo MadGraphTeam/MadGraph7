@@ -379,7 +379,8 @@ MLMClustering::MLMClustering(
     bool hadronic,
     std::vector<int> external_pdg_ids,
     int max_jet_flavor,
-    PartonLineScheme parton_line_scheme
+    PartonLineScheme parton_line_scheme,
+    AlphasScheme alphas_scheme
 ) :
     FunctionGenerator(
         "MLMClustering",
@@ -400,6 +401,7 @@ MLMClustering::MLMClustering(
     _jet_scale_scheme(jet_scale_scheme),
     _scale_scheme(scale_scheme),
     _parton_line_scheme(parton_line_scheme),
+    _alphas_scheme(alphas_scheme),
     _beam_flags(0),
     _jet_leg_mask(0),
     _xqcut(xqcut),
@@ -667,7 +669,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_scale_scheme),
             static_cast<me_int_t>(_beam_flags),
             static_cast<me_int_t>(_jet_leg_mask),
-            static_cast<me_int_t>(_parton_line_scheme)
+            static_cast<me_int_t>(_parton_line_scheme),
+            static_cast<me_int_t>(_alphas_scheme)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -685,7 +688,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_scale_scheme),
             static_cast<me_int_t>(_beam_flags),
             static_cast<me_int_t>(_jet_leg_mask),
-            static_cast<me_int_t>(_parton_line_scheme)
+            static_cast<me_int_t>(_parton_line_scheme),
+            static_cast<me_int_t>(_alphas_scheme)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

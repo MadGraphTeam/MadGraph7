@@ -52,6 +52,19 @@ enum class PartonLineScheme {
     goodjet = 1,
 };
 
+// How alpha_s is evaluated for a merged event.
+enum class AlphasScheme {
+    // One coupling at the event's renormalisation scale, for the whole event.
+    none = 0,
+    // alphas(pt_i) at each clustering vertex where a parton is produced, which
+    // is what madevent does (the rewgt loop in reweight.f). A merged sample
+    // without it is short by one factor per emission.
+    per_vertex = 1,
+    // One coupling at the geometric mean of those vertex scales, raised to the
+    // number of them: the same idea with a single scale for the whole ladder.
+    geometric_mean = 2,
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
     MLMClustering(
@@ -82,7 +95,8 @@ public:
         // clustering is assumed to be a QCD splitting between jets.
         std::vector<int> external_pdg_ids = {},
         int max_jet_flavor = 4,
-        PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet
+        PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet,
+        AlphasScheme alphas_scheme = AlphasScheme::per_vertex
     );
 
     // The compiled clustering state machine, in the flat encoding the kernel
@@ -93,6 +107,7 @@ public:
     const std::vector<double>& external_masses() const { return _external_masses; }
     const std::vector<double>& bw_masses() const { return _bw_masses; }
     const std::vector<double>& bw_widths() const { return _bw_widths; }
+    AlphasScheme alphas_scheme() const { return _alphas_scheme; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -107,6 +122,7 @@ private:
     JetScaleScheme _jet_scale_scheme;
     ScaleScheme _scale_scheme;
     PartonLineScheme _parton_line_scheme;
+    AlphasScheme _alphas_scheme;
     int _beam_flags;
     int _jet_leg_mask;
     double _xqcut;

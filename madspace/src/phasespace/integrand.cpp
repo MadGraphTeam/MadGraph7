@@ -594,7 +594,7 @@ NamedVector<Value> Integrand::build_channel_part(
         //
         // The kernel hands back mu_R for any vertex it does not reweight, so
         // that vertex's ratio is one and no mask is needed here.
-        if (_running_coupling) {
+        if (_energy_scale->mlm_alphas_reweighting() && _running_coupling) {
             auto vertex_scales = scales.at("alphas_scales");
             std::size_t vertex_count = vertex_scales.type.shape.at(0);
             if (vertex_count > 0) {

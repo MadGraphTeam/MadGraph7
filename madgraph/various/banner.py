@@ -6568,6 +6568,19 @@ class RunCardMG7(RunCard):
         #              would have stopped them.
         self.add_toml_param('beam', 'parton_line_scheme', "goodjet",
             allowed=['goodjet', 'flavor'])
+        # Evaluate alpha_s at the scale of each clustering vertex instead of
+        # once at the event scale, which is what madevent does for a merged
+        # sample (the rewgt loop in Template/LO/SubProcesses/reweight.f). A
+        # merged sample without it is short by roughly one factor of
+        # alphas(pt_emission)/alphas(mu_R) per extra jet, compounding with
+        # multiplicity.
+        #   "per_vertex":     alphas(pt_i) at each vertex, what madevent does
+        #   "geometric_mean": one coupling at the geometric mean of the pt_i,
+        #                     raised to the number of vertices
+        #   "none":           a single coupling at mu_R for the whole event
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'alphas_reweighting', "per_vertex",
+            allowed=['per_vertex', 'geometric_mean', 'none'])
         # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
         # the lowest Q of a PDF grid the densities are undefined, so an event
         # whose scales fall under this is dropped. madevent applies the same

@@ -65,6 +65,10 @@ public:
     );
 
     bool is_mlm() const { return _clustering.has_value(); }
+    bool mlm_alphas_reweighting() const {
+        return _clustering &&
+               _clustering->alphas_scheme() != AlphasScheme::none;
+    }
 
     bool has_scale_range() const {
         return _min_scale > 0. || _max_scale > 0.;

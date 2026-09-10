@@ -1008,6 +1008,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"production", JetScaleScheme::production},
         }
     );
+    add_enum<AlphasScheme>(
+        mlm,
+        "AlphasScheme",
+        {
+            {"none", AlphasScheme::none},
+            {"per_vertex", AlphasScheme::per_vertex},
+            {"geometric_mean", AlphasScheme::geometric_mean},
+        }
+    );
     add_enum<PartonLineScheme>(
         mlm,
         "PartonLineScheme",
@@ -1032,7 +1041,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 std::vector<int>,
                 int,
-                PartonLineScheme>(),
+                PartonLineScheme,
+                AlphasScheme>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
@@ -1046,7 +1056,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("hadronic") = true,
             py::arg("external_pdg_ids") = std::vector<int>{},
             py::arg("max_jet_flavor") = 4,
-            py::arg("parton_line_scheme") = PartonLineScheme::goodjet
+            py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
+            py::arg("alphas_scheme") = AlphasScheme::per_vertex
         )
         .def_property_readonly(
             "cluster_state_machine", &MLMClustering::cluster_state_machine

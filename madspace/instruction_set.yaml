@@ -2253,6 +2253,9 @@ mlm_clustering_hadronic:
     - name: parton_line_scheme
       type: [int, single]
       desc:
+    - name: alphas_scheme
+      type: [int, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2326,6 +2329,9 @@ mlm_clustering_leptonic:
       type: [int, single]
       desc:
     - name: parton_line_scheme
+      type: [int, single]
+      desc:
+    - name: alphas_scheme
       type: [int, single]
       desc:
   outputs:

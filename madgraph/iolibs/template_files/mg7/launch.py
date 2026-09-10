@@ -1642,6 +1642,10 @@ class MadgraphSubprocess:
                         ms.MLMClustering.PartonLineScheme,
                         self.process.run_card["beam"]["parton_line_scheme"],
                     ),
+                    alphas_scheme=getattr(
+                        ms.MLMClustering.AlphasScheme,
+                        self.process.run_card["beam"]["alphas_reweighting"],
+                    ),
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
                 max_scale=max_scale,
