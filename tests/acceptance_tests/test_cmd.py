@@ -228,6 +228,8 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_size': 100,
                     'loop_color_flows': False,
                     'cluster_local_path': None,
+                    'cvmfs_lhapdf_path':
+                              '/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current',
                     'max_npoint_for_channel': 0,
                     'low_mem_multicore_nlo_generation': False,
                     'ninja': './HEPTools/lib',

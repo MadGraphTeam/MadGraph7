@@ -682,6 +682,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                        'cluster_status_update': (600, 30),
                        'cluster_nb_retry':1,
                        'cluster_local_path': None,
+                       'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
                        'cluster_retry_wait':300,
                        'heptools_install_dir': pjoin(root_path,'HEPTools'),}
 
@@ -3721,7 +3722,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
     ############################################################################
     def get_pdf_input_filename(self):
-        """return the name of the file which is used by the pdfset"""
+        """return the name of the file which has to be shipped with a job for
+        the PDF to be readable from the node. An empty string means that the
+        node reads the PDF on its own (CVMFS, cluster_local_path) and that
+        nothing has to be transferred."""
 
         if self.options["cluster_local_path"] and \
                os.path.exists(self.options["cluster_local_path"]) and \
@@ -3735,13 +3739,12 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         self.options['run_mode'] !=1:
                 return path
             main = self.options["cluster_local_path"]
-            if os.path.isfile(path):
-                filename = os.path.basename(path)
+            filename = os.path.basename(path)
             possible_path = [pjoin(main, filename),
-                             pjoin(main, "lhadpf", filename),
+                             pjoin(main, "lhapdf", filename),
                              pjoin(main, "Pdfdata", filename)]
             if any(os.path.exists(p) for p in possible_path):
-                return " "
+                return ''
             else:
                 return path
                              
@@ -3757,12 +3760,14 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     self.pdffile = check_cluster(pjoin(self.me_dir, 'lib', 'Pdfdata', data[2]))
                     return self.pdffile
             else:
-                # possible when using lhapdf
+                # possible when using lhapdf. copy_lhapdf_set leaves that
+                # directory empty for every set served by a shared path, so an
+                # empty one means there is nothing to send to the node.
                 path = pjoin(self.me_dir, 'lib', 'PDFsets')
-                if os.path.exists(path):
+                if os.path.isdir(path) and os.listdir(path):
                     self.pdffile = path
                 else:
-                    self.pdffile = " "
+                    self.pdffile = ''
                 return self.pdffile
                       
     ############################################################################
@@ -4401,7 +4406,13 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             else:
                 name = name.strip()
                 value = value.strip()
-                if name.endswith('_path') and not name.startswith('cluster'):
+                # 'cluster_local_path' and 'cvmfs_lhapdf_path' name a
+                # directory on the *worker node*: it may well not exist here,
+                # and resolving symlinks ('.../lhapdfsets/current') would pin a
+                # version the node does not necessarily have.
+                if name.endswith('_path') and \
+                        not name.startswith('cluster') and \
+                        name != 'cvmfs_lhapdf_path':
                     path = value
                     if os.path.isdir(path):
                         self.options[name] = os.path.realpath(path)
@@ -4424,7 +4435,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         # delphes/pythia/... path
         for key in self.options:
             # Final cross check for the path
-            if key.endswith('path') and not key.startswith("cluster"):
+            if key.endswith('path') and not key.startswith("cluster") \
+                    and key != 'cvmfs_lhapdf_path':
                 path = self.options[key]
                 if path is None:
                     continue
@@ -4441,6 +4453,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         self.options[key] = os.path.realpath(path)
                         continue
                 self.options[key] = None
+            elif key == 'cvmfs_lhapdf_path':
+                if isinstance(self.options[key], str) and \
+                        self.options[key].strip().lower() in ('none', ''):
+                    self.options[key] = None
             elif key.startswith('cluster') and key != 'cluster_status_update':
                 if key in ('cluster_nb_retry','cluster_wait_retry'):
                     self.options[key] = int(self.options[key]) 
@@ -4891,6 +4907,12 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         """
         if not pdfset_dir or not os.path.isdir(pdfset_dir):
             return
+        if not os.access(pdfset_dir, os.W_OK):
+            # a read-only share (CVMFS, a central install): nothing to patch
+            # here, and warning about it on every run is only noise
+            logger.debug('%s is read-only: skipping the LHAPDF metadata patch',
+                         pdfset_dir)
+            return
         try:
             info_names = [n for n in os.listdir(pdfset_dir) if n.endswith('.info')]
         except OSError:
@@ -4933,6 +4955,61 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'file manually.',
                     ', '.join(e2.split(':')[0] for e2 in extra), path, e)
 
+
+    def get_shared_pdfsets_dirs(self):
+        """Directories holding LHAPDF sets that every node of this run can read
+        on its own, so that a set found there needs neither to be downloaded
+        nor to be shipped along with the job.
+
+        Two sources, in that order:
+        - the CVMFS mirror ('cvmfs_lhapdf_path'), when it is mounted. CVMFS is
+          a read-only network filesystem, so a mounted mirror is available to
+          the local run as well as to the cluster nodes;
+        - 'cluster_local_path', a node-local directory declared by the user.
+          That one says nothing about the submitting machine, so it is only
+          trusted for an actual cluster run (run_mode 1).
+        """
+
+        dirs = []
+        cvmfs = misc.get_cvmfs_lhapdf_path(self.options)
+        if cvmfs:
+            dirs.append(cvmfs)
+
+        local = self.options.get("cluster_local_path")
+        if local and self.options.get("run_mode") == 1:
+            dirs += [local,
+                     pjoin(local, "lhapdf"),
+                     pjoin(local, "lhapdf", "pdfsets"),
+                     pjoin(local, os.pardir, "lhapdf"),
+                     pjoin(local, os.pardir, "lhapdf", "pdfsets"),
+                     pjoin(local, os.pardir, "lhapdf", "pdfsets", "6.1"),
+                     ]
+        return dirs
+
+    @staticmethod
+    def use_shared_pdfsets_dir(path, default_dir=None):
+        """Make *path* part of the LHAPDF search path for this run.
+
+        LHAPATH is what the Template survey.sh/refine.sh re-export on the node
+        (through CLUSTER_LHAPATH). LHAPDF 6 only falls back to LHAPATH when
+        LHAPDF_DATA_PATH is unset, so that one is extended too when it is set.
+        *default_dir* (the local PDF-set directory) is kept in the list: once
+        LHAPATH is defined LHAPDF no longer looks into its own datadir, and a
+        run can well need one set from the mirror and another one from there.
+        """
+
+        def extend(var, entries):
+            current = [p for p in os.environ.get(var, '').split(':') if p]
+            for entry in entries:
+                if entry and entry not in current:
+                    current.append(entry)
+            if current:
+                os.environ[var] = ':'.join(current)
+
+        extend('LHAPATH', [default_dir, path])
+        os.environ['CLUSTER_LHAPATH'] = os.environ['LHAPATH']
+        if os.environ.get('LHAPDF_DATA_PATH'):
+            extend('LHAPDF_DATA_PATH', [path])
 
     def copy_lhapdf_set(self, lhaid_list, pdfsets_dir, require_local=True):
         """copy (if needed) the lhapdf set corresponding to the lhaid in lhaid_list
@@ -4983,16 +5060,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     except Exception as error:
                         logger.debug('%s', error)
         
-        if self.options["cluster_local_path"]:
-            lhapdf_cluster_possibilities = [self.options["cluster_local_path"],
-                                      pjoin(self.options["cluster_local_path"], "lhapdf"),
-                                      pjoin(self.options["cluster_local_path"], "lhapdf", "pdfsets"),
-                                      pjoin(self.options["cluster_local_path"], "..", "lhapdf"),
-                                      pjoin(self.options["cluster_local_path"], "..", "lhapdf", "pdfsets"),
-                                      pjoin(self.options["cluster_local_path"], "..", "lhapdf","pdfsets", "6.1")
-                                      ]
-        else:
-            lhapdf_cluster_possibilities = []
+        lhapdf_shared_possibilities = self.get_shared_pdfsets_dirs()
 
         for pdfset in pdfsetname:
             # Patch the *source* set (the one LHAPDF actually loads from its
@@ -5002,21 +5070,26 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             # Done here (before the early 'continue's) so it always runs.
             self.patch_lhapdf_info_file(pjoin(pdfsets_dir, pdfset))
         # Check if we need to copy the pdf
-            if self.options["cluster_local_path"] and self.options["run_mode"] == 1 and \
-                any((os.path.exists(pjoin(d, pdfset)) for d in lhapdf_cluster_possibilities)):
-    
-                os.environ["LHAPATH"] = [d for d in lhapdf_cluster_possibilities if os.path.exists(pjoin(d, pdfset))][0]
-                os.environ["CLUSTER_LHAPATH"] = os.environ["LHAPATH"]
-                self.patch_lhapdf_info_file(pjoin(os.environ["LHAPATH"], pdfset))
-                # no need to copy it
-                if os.path.exists(pjoin(pdfsets_dir, pdfset)):
+            shared = next((d for d in lhapdf_shared_possibilities
+                           if os.path.exists(pjoin(d, pdfset))), None)
+            if shared:
+                # the set is readable from every node of this run (CVMFS or a
+                # user-declared node-local mirror): point LHAPDF at it, and
+                # neither download it nor keep a copy under lib/PDFsets --
+                # that copy is what would be shipped to the worker node.
+                logger.info('Using the PDF set %s from %s', pdfset, shared)
+                self.use_shared_pdfsets_dir(shared, pdfsets_dir)
+                self.patch_lhapdf_info_file(pjoin(shared, pdfset))
+                local_copy = pjoin(self.me_dir, 'lib', 'PDFsets', pdfset)
+                if os.path.exists(local_copy):
                     try:
-                        if os.path.isdir(pjoin(pdfsets_dir, name)):
-                            shutil.rmtree(pjoin(pdfsets_dir, name))
+                        if os.path.isdir(local_copy):
+                            shutil.rmtree(local_copy)
                         else:
-                            os.remove(pjoin(pdfsets_dir, name))
+                            os.remove(local_copy)
                     except Exception as error:
                         logger.debug('%s', error)
+                continue
             if not require_local and (os.path.exists(pjoin(pdfsets_dir, pdfset)) or \
                                     os.path.isdir(pjoin(pdfsets_dir, pdfset))):
                 self.patch_lhapdf_info_file(pjoin(pdfsets_dir, pdfset))
@@ -5288,8 +5361,12 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             for totry in datadir.split(':'):
                 if os.path.exists(pjoin(totry, 'pdfsets.index')):
                     return totry
-            else:
-                return None
+            # no index anywhere: keep the first directory that does exist
+            # rather than None, which every caller then joins paths onto
+            for totry in datadir.split(':'):
+                if totry and os.path.isdir(totry):
+                    return totry
+            return None
         
         return datadir
 

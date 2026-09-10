@@ -371,7 +371,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Install the madspace phase-space library used by the MG7 integrator.")
         logger.info("   Without options an interactive installer is launched. Available options:")
         logger.info("     -y/--yes       Re-install non-interactively using saved settings.")
-        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive).")
+        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
+        logger.info("                    only guaranteed to match this checkout in a release tarball).")
         logger.info("     --source       Build from source (non-interactive).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
@@ -3223,6 +3224,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'cluster_temp_path':None,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
+                       'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
@@ -8066,6 +8068,36 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             self._export_dir = os.path.sep.join(path_split[:-2])
             return
 
+    def setup_mg7_environment(self):
+        """Export what an mg7 run needs from MG5's configuration.
+
+        These used to be built into the environment of the bin/generate_events
+        subprocess. Running in process, the same values have to reach the tools
+        the run shells out to (the madspace build, the real LHAPDF library used
+        by systematics/MadSpin/reweight), and the only channel those have is
+        os.environ -- so set it here rather than per child process.
+        """
+        # The one-off madspace build picks up a cmake installed through MG5's
+        # 'install cmake' from here (heptools_install_dir may point outside
+        # MG5DIR).
+        heptools_dir = self.options.get('heptools_install_dir')
+        if heptools_dir:
+            if not os.path.isabs(heptools_dir):
+                heptools_dir = pjoin(MG5DIR, heptools_dir)
+            os.environ['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+
+        # The resolved LHAPDF location. The launcher resolves it the same way on
+        # its own (launch.lhapdf_paths), so this only matters for the real
+        # LHAPDF library used by the post-processing tools, which reads
+        # LHAPDF_DATA_PATH natively.
+        lhapdf = misc.resolve_lhapdf(self.options, root=MG5DIR, create=True)
+        search = lhapdf.data_paths or (
+            [lhapdf.download_path] if lhapdf.download_path else [])
+        if search:
+            os.environ['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
+        if lhapdf.config:
+            os.environ['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
+
     def do_launch(self, line):
         """Main commands: Ask for editing the parameter and then
         Execute the code (madevent/standalone/...)
@@ -8176,66 +8208,42 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                                                  options=self.options,**options)            
         elif args[0] == 'mg7':
             me_dir = args[1]
-            # When MG5 runs non-interactively (a command file / piped input),
-            # drive bin/generate_events from the card-editing commands that
-            # follow `launch` in the script. Feeding them on stdin also makes
-            # the subprocess non-interactive, so the one-off madspace install
-            # runs with defaults instead of blocking on a prompt.
-            scripted = not self.use_rawinput
-            feed_lines = []
-            if scripted and self.inputfile is not None:
-                stop_prefixes = ('generate', 'add process', 'define', 'output',
-                                 'launch', 'import', 'quit', 'exit')
-                while True:
-                    try:
-                        nxt = next(self.inputfile)
-                    except (StopIteration, TypeError):
-                        break
-                    stripped = nxt.replace('\n', '').strip()
-                    if not stripped:
-                        continue
-                    if stripped.lower().startswith(stop_prefixes):
-                        self.store_line(nxt)  # belongs to MG5, hand it back
-                        break
-                    feed_lines.append(stripped)
-                    if stripped.lower() in ('done', '0'):
-                        break
+            # An mg7 output runs in this process, exactly like a madevent one:
+            # the run interface becomes a child cmd interface, which gives it
+            # MG5's inputfile (so the launch question reads the same script and
+            # hands back what it does not understand), MG5's error handling and
+            # crash_on_error, and the loggers already configured here.
+            self.setup_mg7_environment()
 
-            # Expose the configured HEPTools location so that the one-off
-            # madspace build can pick up a cmake installed there via MG5's
-            # 'install cmake' (heptools_install_dir may point outside MG5DIR).
-            gen_env = os.environ.copy()
-            heptools_dir = self.options.get('heptools_install_dir')
-            if heptools_dir:
-                if not os.path.isabs(heptools_dir):
-                    heptools_dir = os.path.join(MG5DIR, heptools_dir)
-                gen_env['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+            # Install madspace *before* importing the launcher (importing it is
+            # what needs madspace). The bootstrap has to be told whether it may
+            # take over the terminal: in a subprocess it could read that off
+            # sys.argv/sys.stdin, but in process those describe MG5, not the run.
+            from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+            mg7_bootstrap.ensure_madspace(
+                interactive=bool(self.use_rawinput) and not options['force'])
+            from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
 
-            # Forward the resolved LHAPDF location. bin/generate_events
-            # resolves it the same way on its own (launch.lhapdf_paths), so
-            # this only matters for the real LHAPDF library used by the
-            # post-processing tools, which reads LHAPDF_DATA_PATH natively.
-            lhapdf = misc.resolve_lhapdf(self.options, root=MG5DIR, create=True)
-            search = lhapdf.data_paths or (
-                [lhapdf.download_path] if lhapdf.download_path else [])
-            if search:
-                gen_env['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
-            if lhapdf.config:
-                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
+            MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
+            if options['interactive']:
+                stop = self.define_child_cmd_interface(MG7)
+                return stop
+
+            mother = self
 
             class ext_program:
                 @staticmethod
                 def run():
-                    os.chdir(me_dir)
-                    gen = os.path.join("bin", "generate_events")
-                    try:
-                        if scripted:
-                            stdin_text = "\n".join(feed_lines + ["done"]) + "\n"
-                            subprocess.run([gen], input=stdin_text, text=True, env=gen_env)
-                        else:
-                            subprocess.run(gen, env=gen_env)
-                    except KeyboardInterrupt:
-                        pass
+                    child = mother.define_child_cmd_interface(MG7, interface=False)
+                    command = 'generate_events'
+                    if options['force']:
+                        command += ' -f'
+                    if options['name']:
+                        command += ' --name=%s' % options['name']
+                    if options['laststep']:
+                        command += ' --laststep=%s' % options['laststep']
+                    child.run_cmd(command)
+                    child.run_cmd('quit')
 
         else:
             os.chdir(start_cwd) #ensure to go to the initial path
@@ -9104,6 +9112,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         args = ['max_npoint_for_channel'] + args
         self.check_set(args)
         self.options[args[0]] = int(args[1])
+
+    def set2_cvmfs_lhapdf_path(self, args, log=True):
+        """default=/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+        Directory of the LHAPDF sets mirrored via CVMFS. When that directory is
+        mounted, a PDF set found there is read directly from it: it is neither
+        downloaded nor copied into lib/PDFsets, and therefore not transferred to
+        the cluster nodes (which mount the same read-only filesystem).
+        A path that is not mounted is simply ignored; set the option to None to
+        switch the fallback off.
+        """
+        args = ['cvmfs_lhapdf_path'] + args
+        self.check_set(args)
+        value = args[1].strip()
+        self.options[args[0]] = None if value in ['None', 'none', ''] else value
 
     def set2_cluster_local_path(self, args, log=True):
         """default=None 

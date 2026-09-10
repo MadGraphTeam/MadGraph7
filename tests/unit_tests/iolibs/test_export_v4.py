@@ -19,7 +19,10 @@ from __future__ import absolute_import
 import copy
 import fractions
 import os 
+import re
+import shutil
 import sys
+import tempfile
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
 
@@ -10360,3 +10363,79 @@ if __name__ == '__main__':
                        [me.get('diagrams')[323], me.get('diagrams')[954],
                         me.get('diagrams')[1123], me.get('diagrams')[1139]])
         
+
+
+class F2PYSplitterFlavorOrderTest(unittest.TestCase):
+    """all_matrix.f has to repair a leg ordering FLAV_TABLE does not tabulate.
+
+    The generated flavor table keeps one column per *class* of leg orderings:
+    orderings that differ only by permuting legs inside the initial or inside
+    the final state are deduplicated, so for `q q' > z q q'` the column
+    (1,2,1,1,2) is there and (2,1,1,2,1) is not, and GET_FLAVOR_INDEX answers
+    the 0 sentinel for the second one (-> |M|^2 = 0, -> a zero density).  That
+    is the matrix element behaving as designed; absorbing the ordering is the
+    wrapper's job, and all_matrix.f is where every python caller -- MadSpin's
+    density, reweighting's smatrixhel -- goes through.
+    """
+
+    class FakeModel(dict):
+        """The handful of model reads write_f2py_splitter does."""
+
+        def get(self, key, default=None):
+            return dict.get(self, key, default)
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        os.mkdir(os.path.join(self.tmpdir, 'SubProcesses'))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def write(self, merged_particles):
+        """Run write_f2py_splitter for a single `q q > z q q` matrix element
+        (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
+        the fortran continuations folded back into single lines."""
+        exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        exporter.model = self.FakeModel({'merged_particles': merged_particles,
+                                         'parameters': {('external',): []},
+                                         'running_elements': []})
+        # [prefix, tag, ncomb, iden, ninitial, nflav]
+        exporter.prefix_info = {((81, 81, 23, 81, 81), 1):
+                                ['M0_', 'tag0', 32, 36, 2, 12]}
+        exporter.write_f2py_splitter()
+        text = open(os.path.join(self.tmpdir, 'SubProcesses',
+                                 'all_matrix.f')).read()
+        text = re.sub(r'\n {5}[$&]', ' ', text)
+        return re.sub(r'[ \t]+', ' ', text)
+
+    def test_repair_is_wired_into_every_entry_point(self):
+        text = self.write({81: [1, 2, 3, 4]})
+        # the shared routine is emitted once ...
+        self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_REPAIR('), 1)
+        # ... and called from all three wrappers, with this ME's table shape
+        # (5 external legs, 2 of them incoming, 12 flavor columns).
+        calls = [re.sub(r' *, *', ',', c) for c in
+                 re.findall(r'CALL FLAVOR_ORDER_REPAIR\([^)]*\)', text)]
+        self.assertEqual(len(calls), 3)
+        for call in calls:
+            self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
+        # the density and interference wrappers freeze the legs whose helicity
+        # is an open index of rho (POS); smatrixhel has no such leg.
+        self.assertEqual(len([c for c in calls
+                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
+        # smatrixhel also disarms the repair when a single helicity row was
+        # asked for: that row names the legs by position.
+        self.assertEqual(len([c for c in calls
+                              if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+        # and every matrix element is handed the repaired momenta, not P
+        for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
+            self.assertIn('CALL %sPFIX' % callee, text)
+
+    def test_nothing_changes_without_merged_particles(self):
+        """No merged particle means one all-ones flavor per ME and no ordering
+        to repair: the wrapper must stay exactly what it was."""
+        text = self.write({})
+        self.assertNotIn('FLAVOR_ORDER_REPAIR', text)
+        self.assertNotIn('PFIX', text)
+        for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
+            self.assertIn('CALL %sP' % callee, text)

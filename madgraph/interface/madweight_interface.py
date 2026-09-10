@@ -464,10 +464,13 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         
         input_files = [pjoin(self.me_dir, 'SubProcesses', dirname, 'comp_madweight'), 
                        pjoin(self.me_dir, 'Cards', 'param_card_%i.dat' % nb_card),
-                       self.get_pdf_input_filename(),
                        pjoin(self.me_dir, 'Cards', 'ident_card.dat'),
                        pjoin(self.me_dir, 'Cards', 'run_card.dat')
                        ]
+        # empty when the node reads the PDF on its own (CVMFS/cluster_local_path)
+        pdfinput = self.get_pdf_input_filename()
+        if pdfinput.strip():
+            input_files.insert(2, pdfinput)
         
         # add event_file:
         if not evt_file:
