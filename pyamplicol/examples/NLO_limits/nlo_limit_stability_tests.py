@@ -645,13 +645,13 @@ def evaluate_batch(paths, sources, format_name, precision, *, diagnostics=False)
         real = Runtime.load(
             paths["real"],
             model_parameters={
-                "normalization.alpha_s_me_check": 0.125,
+                "alpha_s": float(ALPHA_S),
             },
         )
         born = Runtime.load(
             paths["born"],
             model_parameters={
-                "normalization.alpha_s_me_check": 0.125,
+                "alpha_s": float(ALPHA_S),
             },
         )
         requests = correlation_requests(sources, diagnostics=diagnostics)

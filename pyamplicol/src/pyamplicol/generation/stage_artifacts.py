@@ -29,7 +29,6 @@ from ..evaluators.execution_schema import (
     evaluator_runtime_capabilities,
 )
 from ..models.base import Model
-from ..models.compiler_records import _replace_evaluator_constants
 from .contracts import StageCompilationInput
 from .dag_types import GenericDAG
 from .stage_parameters import _dict, _list, _logical_model_parameter_symbols
@@ -236,6 +235,9 @@ def write_model_parameter_evaluator_artifact(
     output_names = tuple(name for name in requested_output_names if name in definitions)
     if not output_names:
         return None
+
+    # Planning imports this module without compiling model parameters.
+    from ..models.compiler_records import _replace_evaluator_constants
 
     builder = ParamBuilder()
     model_symbols = symbols.model(getattr(model, "name", "unnamed-model"))

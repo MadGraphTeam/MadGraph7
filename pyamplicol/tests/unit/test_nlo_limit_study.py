@@ -247,10 +247,12 @@ def test_evaluation_requests_whole_point_batch_once(monkeypatch):
     import pyamplicol
 
     calls = []
+    loads = []
 
     class FakeRuntime:
         @classmethod
         def load(cls, path, model_parameters):
+            loads.append((path, model_parameters))
             return cls()
 
         def evaluate_correlated_many(self, points, requests, precision):
@@ -276,6 +278,10 @@ def test_evaluation_requests_whole_point_batch_once(monkeypatch):
     records = study.evaluate_batch(
         {"real": "real", "born": "born"}, sources, "double", 16
     )
+    assert loads == [
+        ("real", {"alpha_s": float(study.ALPHA_S)}),
+        ("born", {"alpha_s": float(study.ALPHA_S)}),
+    ]
     assert len(calls) == 1 and len(calls[0][0]) == 3
     assert len(calls[0][1]) == 12
     assert [record["exponent"] for record in records] == [2, 3, 4]
