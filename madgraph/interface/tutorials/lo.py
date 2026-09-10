@@ -224,13 +224,8 @@ Now produce the output:
 Step('output', lambda interface: """
 You now have a directory called %(run)s.
 
-Note what you did *not* have to say: `output` with no format produces the MG7
-output, driven by madspace -- that is the default. What is inside:
-
-  Cards/run_card.toml    beams, cuts, number of events, integrator settings
-  Cards/param_card.dat   masses, widths and couplings
-  SubProcesses/          the generated matrix elements
-  bin/generate_events    the runner, which `launch` calls for you
+Note that `output` can take a format: `output FORMAT PATH`. No format is our
+default output for event generation.
 
 Other things `output` can make, each with a tutorial of its own (give them a
 different name so they sit beside this one):
@@ -238,12 +233,11 @@ different name so they sit beside this one):
   `output standalone DIRNAME`   the matrix element as a callable, no events
 
 Now run it:
+%(p)s launch
+or
 %(p)s launch %(run)s
 
-It asks one question before it starts -- which programs to run and which cards
-to edit. **Just press Enter**: the defaults are a reasonable LHC run, and we
-will go through what the question was offering once you are back. (The tutorial
-is still with you at that prompt, so `help` works there too.)
+-- with no argument it takes the output you just made.
 
 Then it runs. If madspace was not built earlier this is where it gets built, so
 the first run takes longer than the ones after it.

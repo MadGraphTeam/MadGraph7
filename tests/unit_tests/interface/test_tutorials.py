@@ -1137,12 +1137,15 @@ class TestLaunchQuestion(unittest.TestCase):
 
         self.assertLess(len(self.before().strip().split('\n')), 30)
 
-    def test_the_preamble_only_says_press_enter(self):
+    def test_the_preamble_says_nothing_about_the_question(self):
+        """The step no longer previews the card question at all: it is in
+        process, so the tutorial is at the prompt with the user, and the
+        explanation follows once they have seen it."""
+
         text = self.before()
-        self.assertIn('press Enter', text)
-        # the detail belongs after, so none of it should be here
-        self.assertNotIn('Not Avail.', text)
-        self.assertNotIn('set KEY VALUE', text)
+        for detail in ('Not Avail.', 'set KEY VALUE', 'param_card.dat',
+                       'run_card.toml'):
+            self.assertNotIn(detail, text)
 
     def test_the_explanation_comes_after(self):
         text = self.after()
@@ -1160,13 +1163,18 @@ class TestLaunchQuestion(unittest.TestCase):
 
     def test_it_does_not_claim_the_tutorial_stops(self):
         """It used to say launch handed over to a separate program. Since
-        PR #131 that is false: the run is in this process and `help` works at
-        the question."""
+        PR #131 that is false: the run is in this process."""
 
         text = self.before()
         self.assertNotIn('goes quiet', text)
         self.assertNotIn('separate program', text)
-        self.assertIn('help', text)
+
+    def test_it_offers_launch_with_and_without_an_argument(self):
+        """Bare `launch` takes _done_export -- see check_launch."""
+
+        text = self.before()
+        self.assertIn('launch\n', text)
+        self.assertIn('takes the output you just made', text)
 
 
 #===============================================================================
