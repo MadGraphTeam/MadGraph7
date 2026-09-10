@@ -73,7 +73,17 @@ NamedVector<Value> EnergyScale::apply_scale_range(
     double low = _min_scale > 0. ? _min_scale : 0.;
     double high = _max_scale > 0. ? _max_scale : 1e30;
     Value weight;
-    for (auto name : {"fact_scale1", "fact_scale2", "ren_scale"}) {
+    std::vector<const char*> names{"fact_scale1", "fact_scale2", "ren_scale"};
+    if (_clustering && _clustering->pdf_reweighting()) {
+        // The scale the density is actually asked for under pdf reweighting.
+        // It sits below the factorisation scale, so clamping that one is not
+        // enough to keep the density inside the grid, and madevent applies its
+        // own 2 GeV floor to the lowered scale too rather than to the central
+        // one.
+        names.push_back("pdf_scale1");
+        names.push_back("pdf_scale2");
+    }
+    for (auto name : names) {
         auto& scale = scales.at(name);
         auto pass = fb.cut_one(scale, low, high);
         weight = weight ? fb.mul(weight, pass) : pass;

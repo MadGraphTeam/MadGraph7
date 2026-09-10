@@ -1042,7 +1042,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<int>,
                 int,
                 PartonLineScheme,
-                AlphasScheme>(),
+                AlphasScheme,
+                bool>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
@@ -1057,7 +1058,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("external_pdg_ids") = std::vector<int>{},
             py::arg("max_jet_flavor") = 4,
             py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
-            py::arg("alphas_scheme") = AlphasScheme::per_vertex
+            py::arg("alphas_scheme") = AlphasScheme::per_vertex,
+            py::arg("pdf_reweighting") = true
+        )
+        .def_property_readonly(
+            "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
         )
         .def_property_readonly(
             "cluster_state_machine", &MLMClustering::cluster_state_machine

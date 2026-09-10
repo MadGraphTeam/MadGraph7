@@ -1646,6 +1646,9 @@ class MadgraphSubprocess:
                         ms.MLMClustering.AlphasScheme,
                         self.process.run_card["beam"]["alphas_reweighting"],
                     ),
+                    pdf_reweighting=self.process.run_card["beam"][
+                        "pdf_reweighting"
+                    ],
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
                 max_scale=max_scale,

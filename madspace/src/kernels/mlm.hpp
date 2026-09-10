@@ -38,6 +38,13 @@ constexpr int ALPHAS_GEOMETRIC = 2;     // alphas at the geometric mean of the p
 // trace_data bits above the 2-bit trace mode: the flavour of the mother.
 constexpr int TRACE_IS_JET_IN = 1 << 2;
 constexpr int TRACE_IS_COLORED_IN = 1 << 3;
+// Bits 4..11 hold the mother's pdf flavour class plus one, so that zero means
+// the line is not a parton and the pdf reweighting chain stops there. The
+// classes themselves are assigned in mlm_clustering.cpp; the kernel only
+// carries them, since which density they stand for is not known until the
+// flavour has been sampled.
+constexpr int TRACE_FLAVOR_SHIFT = 4;
+constexpr int TRACE_FLAVOR_MASK = 0xFF;
 
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
@@ -231,6 +238,7 @@ KERNELSPEC void mlm_clustering(
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
+    IIn<T, 0> pdf_reweighting,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -239,6 +247,14 @@ KERNELSPEC void mlm_clustering(
     FOut<T, 0> xqcut_weight,
     FOut<T, 1> alphas_scales,
     FOut<T, 0> alphas_weight,
+    FOut<T, 0> pdf_scale1,
+    FOut<T, 0> pdf_scale2,
+    IOut<T, 1> pdf_rw_flavor,
+    FOut<T, 1> pdf_rw_x,
+    FOut<T, 1> pdf_rw_q_num,
+    FOut<T, 1> pdf_rw_q_den,
+    FOut<T, 1> pdf_rw_active,
+    FOut<T, 1> pdf_rw_beam,
     bool hadronic
 ) {
     // we do not support SIMD for now, so we can assume simple types
@@ -263,6 +279,10 @@ KERNELSPEC void mlm_clustering(
     // zero for a final-state one. This is mt2ij in cluster.f, kept
     // unsquared like every other scale here.
     FVal<T> cluster_mt[N_EXT_MAX - 3];
+    // The Pythia ISR momentum fraction of each initial-state clustering,
+    // zcl in cluster.f, zero for a final-state one. The pdf reweighting walks
+    // the beam's momentum fraction down the ladder with it.
+    FVal<T> cluster_z[N_EXT_MAX - 3];
 
     for (int i = 0; i < n_part; ++i) {
         for (int j = 0; j < 4; ++j) {
@@ -350,6 +370,31 @@ KERNELSPEC void mlm_clustering(
             cluster_mt[cluster_count] = p1_win < 2
                 ? sqrt(djb_clus<T>(momenta_tmp[p2_win], hadronic))
                 : FVal<T>(0.0);
+            // zclus() of Template/LO/Source/kin_functions.f: the ratio of the
+            // partonic invariants before and after the emission is taken back
+            // out of the beam, both measured against the other beam. Taken
+            // here, before update_momenta, because that is where cluster.f
+            // takes it; the boosts it applies preserve the dot products
+            // anyway.
+            cluster_z[cluster_count] = 0.0;
+            if (p1_win < 2) {
+                int other_beam = 1 - p1_win;
+                FourMom<T> sum_prev, sum_red;
+                for (int k = 0; k < 4; ++k) {
+                    sum_prev[k] =
+                        momenta_tmp[p1_win][k] + momenta_tmp[other_beam][k];
+                    sum_red[k] = momenta_tmp[p1_win][k] -
+                        momenta_tmp[p2_win][k] + momenta_tmp[other_beam][k];
+                }
+                FVal<T> s_prev = lsquare<T>(sum_prev);
+                FVal<T> s_red = lsquare<T>(sum_red);
+                // The Fortran gives up below 1 GeV^2 rather than dividing;
+                // a z of zero then fails the 0 < z < 1 test downstream and the
+                // momentum fraction is left alone.
+                if (s_red >= 1.0 && s_prev > 0.0) {
+                    cluster_z[cluster_count] = s_red / s_prev;
+                }
+            }
             // The mother keeps slot p1_win. A final-state clustering merges the
             // two daughters; an initial-state one takes the emission back out
             // of the beam, as pcl(imo) = pcl(ida1) - pcl(ida2) does in
@@ -535,6 +580,30 @@ KERNELSPEC void mlm_clustering(
         fac_scale = ren_scale_val;
     }
     FVal<T> fac_scale1 = fac_scale, fac_scale2 = fac_scale;
+
+    // One pdf reweighting slot per clustering that can sit on a beam line,
+    // plus one per beam for the 2 -> 1 root, which sits on both. A slot that
+    // no step claims stays inert: its two scales are equal, so its ratio is
+    // one, and its weight is one whatever the density comes out as.
+    int pdf_slot_count = n_part - 1;
+    int rw_flavor[N_EXT_MAX - 1];
+    FVal<T> rw_x[N_EXT_MAX - 1];
+    FVal<T> rw_q_num[N_EXT_MAX - 1];
+    FVal<T> rw_q_den[N_EXT_MAX - 1];
+    FVal<T> rw_active[N_EXT_MAX - 1];
+    // Which beam a slot sits on. Only the two root slots know that statically;
+    // for the rest it depends on which clustering won, so it has to travel
+    // with the slot.
+    FVal<T> rw_beam[N_EXT_MAX - 1];
+    for (int i = 0; i < pdf_slot_count; ++i) {
+        rw_flavor[i] = 0;
+        rw_x[i] = 1.0;
+        rw_q_num[i] = 1.0;
+        rw_q_den[i] = 1.0;
+        rw_active[i] = 0.0;
+        rw_beam[i] = 0.0;
+    }
+    FVal<T> pdf_scale_val[2] = {-1.0, -1.0};
 
     if (scale_scheme == SCALES_MADEVENT) {
         // madevent clusters one step further than this kernel does: its loop
@@ -783,6 +852,96 @@ KERNELSPEC void mlm_clustering(
         if (!(fac_scale2 > 0.0) || !(fac_scale2 < SCALE_MAX)) {
             fac_scale2 = ren_scale_val;
         }
+
+        // The pdf half of rewgt in Template/LO/SubProcesses/reweight.f, the
+        // other thing madevent does to a merged event that a single density at
+        // the factorisation scale does not.
+        //
+        // A merged event's beam density belongs at the scale of the emission
+        // that took the parton out of the beam, not at the scale of the hard
+        // process. madevent gets there in two moves: it evaluates the density
+        // low on the clustering ladder, at min(pt(jfirst), mu_F), and then
+        // walks each beam line back up, multiplying by f(x z, Q_i) / f(x z,
+        // Q_i-1) at every further clustering the line takes part in, with the
+        // momentum fraction rescaled by that clustering's z as it goes. The
+        // last step lands on mu_F itself, so the chain ends where the density
+        // would have been evaluated in the first place - except when the line
+        // has only one clustering on it, where the lowered scale stands with
+        // nothing to correct it. That asymmetry is madevent's, and it is a
+        // good part of why turning pdfwgt off moves the cross section at all.
+        //
+        // Only the scales, the momentum fractions and the flavour classes are
+        // decided here. Which density a class stands for is not knowable yet:
+        // the flavour is sampled from the very densities this is correcting.
+        bool reweight_pdf =
+            pdf_reweighting != 0 && jcentral[0] >= 0 && jcentral[1] >= 0;
+        pdf_scale_val[0] = fac_scale1;
+        pdf_scale_val[1] = fac_scale2;
+        if (reweight_pdf) {
+            FVal<T> q_central[2] = {fac_scale1, fac_scale2};
+            for (int j = 0; j < 2; ++j) {
+                if (jlast[j] >= 0 && jfirst[j] >= 0 && jfirst[j] <= jlast[j]) {
+                    pdf_scale_val[j] = min(pt_step[jfirst[j]], q_central[j]);
+                }
+            }
+            // Where each beam's line has got to: its flavour class, the
+            // product of the z it has picked up, and the scale its density
+            // was last evaluated at. reweight.f keeps these as ibeam(j),
+            // xnow(j) and pt2pdf(ibeam(j)).
+            int line_class[2];
+            FVal<T> x_frac[2] = {1.0, 1.0};
+            FVal<T> pt_pdf[2] = {0.0, 0.0};
+            for (int j = 0; j < 2; ++j) {
+                line_class[j] =
+                    ((beam_flags >> (8 * (j + 1))) & TRACE_FLAVOR_MASK) - 1;
+            }
+            for (int i = 0; i < steps; ++i) {
+                for (int j = 0; j < 2; ++j) {
+                    // A recorded clustering sits on the beam whose slot is its
+                    // first daughter, and on no beam at all if that daughter is
+                    // a final-state one. The root sits on both.
+                    bool at_root = i >= cluster_max;
+                    if (!at_root && (cluster_history[i] & 0xFF) != j) {
+                        continue;
+                    }
+                    // Once a line stops being a parton reweight.f stops
+                    // advancing ibeam(j), so no later clustering can match it
+                    // again and the chain is over for good.
+                    if (line_class[j] < 0) {
+                        continue;
+                    }
+                    int slot = at_root ? cluster_max + j : i;
+                    // zcl is 1 at the root, so the momentum fraction is only
+                    // ever rescaled by the recorded clusterings.
+                    FVal<T> z = at_root ? FVal<T>(1.0) : cluster_z[i];
+                    if (z > 0.0 && z < 1.0) {
+                        x_frac[j] *= z;
+                    }
+                    FVal<T> q_now = i == jlast[j] ? q_central[j]
+                                                  : min(pt_step[i], q_central[j]);
+                    if (!(pt_pdf[j] > 0.0)) {
+                        // the first clustering on the line only records where
+                        // the density it already has was evaluated
+                        pt_pdf[j] = q_now;
+                    } else if (pt_pdf[j] < q_now && i <= jlast[j]) {
+                        rw_flavor[slot] = line_class[j];
+                        rw_x[slot] = x_frac[j];
+                        rw_q_num[slot] = q_now;
+                        rw_q_den[slot] = pt_pdf[j];
+                        rw_active[slot] = 1.0;
+                        rw_beam[slot] = j;
+                        pt_pdf[j] = q_now;
+                    }
+                    // and the line becomes the mother; at the root that is the
+                    // s-channel object, which ends the chain.
+                    line_class[j] = at_root
+                        ? -1
+                        : ((cluster_trace[i] >> TRACE_FLAVOR_SHIFT) &
+                           TRACE_FLAVOR_MASK) -
+                            1;
+                }
+            }
+        }
     }
 
     ren_scale = ren_scale_val;
@@ -841,6 +1000,31 @@ KERNELSPEC void mlm_clustering(
     alphas_weight = (alphas_scheme == ALPHAS_NONE || alphas_ok) ? 1.0 : 0.0;
     xqcut_weight = passes_xqcut ? 1.0 : 0.0;
 
+    // Any scale scheme other than madevent's has no clustering ladder to walk,
+    // so the density stays where the factorisation scale put it.
+    if (!(pdf_scale_val[0] > 0.0)) {
+        pdf_scale_val[0] = fac_scale1;
+    }
+    if (!(pdf_scale_val[1] > 0.0)) {
+        pdf_scale_val[1] = fac_scale2;
+    }
+    pdf_scale1 = pdf_scale_val[0];
+    pdf_scale2 = pdf_scale_val[1];
+    for (int i = 0; i < pdf_slot_count; ++i) {
+        if (rw_active[i] == 0.0) {
+            // Somewhere the density is defined, so that an inert slot cannot
+            // trip the low-density veto the consumer applies.
+            rw_q_num[i] = pdf_scale_val[0];
+            rw_q_den[i] = pdf_scale_val[0];
+        }
+        pdf_rw_flavor[i] = rw_flavor[i];
+        pdf_rw_x[i] = rw_x[i];
+        pdf_rw_q_num[i] = rw_q_num[i];
+        pdf_rw_q_den[i] = rw_q_den[i];
+        pdf_rw_active[i] = rw_active[i];
+        pdf_rw_beam[i] = rw_beam[i];
+    }
+
     int diag_count = state_machine[state];
     int rand_index = static_cast<int>(FVal<T>(random) * diag_count);
     if (rand_index >= diag_count) {
@@ -867,6 +1051,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
+    IIn<T, 0> pdf_reweighting,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -874,7 +1059,15 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IOut<T, 0> diagram_index,
     FOut<T, 0> xqcut_weight,
     FOut<T, 1> alphas_scales,
-    FOut<T, 0> alphas_weight
+    FOut<T, 0> alphas_weight,
+    FOut<T, 0> pdf_scale1,
+    FOut<T, 0> pdf_scale2,
+    IOut<T, 1> pdf_rw_flavor,
+    FOut<T, 1> pdf_rw_x,
+    FOut<T, 1> pdf_rw_q_num,
+    FOut<T, 1> pdf_rw_q_den,
+    FOut<T, 1> pdf_rw_active,
+    FOut<T, 1> pdf_rw_beam
 ) {
     mlm_clustering<T>(
         momenta,
@@ -893,6 +1086,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         jet_leg_mask,
         parton_line_scheme,
         alphas_scheme,
+        pdf_reweighting,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -901,6 +1095,14 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         xqcut_weight,
         alphas_scales,
         alphas_weight,
+        pdf_scale1,
+        pdf_scale2,
+        pdf_rw_flavor,
+        pdf_rw_x,
+        pdf_rw_q_num,
+        pdf_rw_q_den,
+        pdf_rw_active,
+        pdf_rw_beam,
         true
     );
 }
@@ -923,6 +1125,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> jet_leg_mask,
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
+    IIn<T, 0> pdf_reweighting,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -930,7 +1133,15 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IOut<T, 0> diagram_index,
     FOut<T, 0> xqcut_weight,
     FOut<T, 1> alphas_scales,
-    FOut<T, 0> alphas_weight
+    FOut<T, 0> alphas_weight,
+    FOut<T, 0> pdf_scale1,
+    FOut<T, 0> pdf_scale2,
+    IOut<T, 1> pdf_rw_flavor,
+    FOut<T, 1> pdf_rw_x,
+    FOut<T, 1> pdf_rw_q_num,
+    FOut<T, 1> pdf_rw_q_den,
+    FOut<T, 1> pdf_rw_active,
+    FOut<T, 1> pdf_rw_beam
 ) {
     mlm_clustering<T>(
         momenta,
@@ -949,6 +1160,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         jet_leg_mask,
         parton_line_scheme,
         alphas_scheme,
+        pdf_reweighting,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -957,6 +1169,14 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         xqcut_weight,
         alphas_scales,
         alphas_weight,
+        pdf_scale1,
+        pdf_scale2,
+        pdf_rw_flavor,
+        pdf_rw_x,
+        pdf_rw_q_num,
+        pdf_rw_q_den,
+        pdf_rw_active,
+        pdf_rw_beam,
         false
     );
 }

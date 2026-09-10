@@ -33,6 +33,42 @@ bool is_jet_pdg(int pdg_id, int max_jet_flavor) {
     return (a >= 1 && a <= max_jet_flavor) || a == 21 || a == 81;
 }
 
+// Mirrors isparton() in Template/LO/SubProcesses/reweight.f: a line that can
+// be a beam parton, i.e. one the pdf reweighting can follow back into a beam.
+// Wider than is_jet_pdg: madevent tests against max(asrwgtflavor, maxjetflavor)
+// and asrwgtflavor defaults to 5, so the b is a parton even when it is not a
+// jet.
+bool is_parton_pdg(int pdg_id) {
+    int a = std::abs(pdg_id);
+    return (a >= 1 && a <= 5) || a == 21 || a == 81;
+}
+
+// Which density the pdf reweighting should ask for on a given line.
+//
+// The flavour cannot simply be baked in. One MLMClustering serves every flavour
+// channel of a subprocess, and external_pdg_ids is a single representative
+// assignment with the signs stripped (clean_pids in launch.py), so "the beam is
+// a u" is only true of one channel out of many. What is stable across the
+// channels is the *structure*: whether a line is a gluon, and whether it still
+// carries the flavour the beam came in with. Those two are baked here as
+// classes; the integrand resolves them per event once the flavour has been
+// sampled.
+//
+// Anything else - a quark line whose flavour changed along the way, which for
+// W+jets means past the W vertex - falls back to an absolute pdg taken from the
+// representative assignment. That is a real approximation, but it is confined
+// to lines whose flavour the representative was already guessing at, and a pdf
+// ratio between two nearby scales is far more sensitive to quark-versus-gluon
+// than to which quark.
+constexpr int flavor_class_none = -1;
+constexpr int flavor_class_gluon = 0;
+constexpr int flavor_class_beam1 = 1;
+constexpr int flavor_class_beam2 = 2;
+constexpr int flavor_class_first_absolute = 3;
+// _MERGED_PID_REPRESENTATIVE in launch.py, which is what external_pdg_ids has
+// already been mapped through by the time it gets here.
+constexpr int merged_quark_representative = 1;
+
 // Color representation of a line, as the signed color of the model (1 for a
 // singlet, +-3 for a (anti)triplet, 8 for an octet, +-6 for a sextet). The
 // merged-flavor placeholders that survive in propagator pdg ids stand for the
@@ -123,7 +159,51 @@ struct CompileContext {
     const std::unordered_map<int, int>& pdg_color_types;
     bool have_pdg_ids;
     int max_jet_flavor;
+    // |pdg| of each beam, to recognise a line that still carries the flavour
+    // the beam came in with.
+    int beam_pdg[2];
+    // The absolute flavours needed beyond gluon and the two beams, in the
+    // order the classes above index them.
+    std::vector<int>& absolute_pdgs;
 };
+
+// The flavour class of one line, allocating a new absolute class if it needs
+// one. flavor_class_none for anything the reweighting cannot follow.
+//
+// on_beam is the beam a line sits on, or -1 for one that sits on neither. It
+// only matters for the flavour-merged placeholder 81, which says "a light
+// quark" without saying which: on a quark beam that is the beam's own flavour
+// and resolves exactly, and anywhere else it falls back to the representative
+// quark that clean_pids in launch.py would have picked.
+int flavor_class(CompileContext& ctx, int pdg_id, int on_beam = -1) {
+    if (!ctx.have_pdg_ids || !is_parton_pdg(pdg_id)) {
+        return flavor_class_none;
+    }
+    int a = std::abs(pdg_id);
+    if (a == 21) {
+        return flavor_class_gluon;
+    }
+    if (a == 81) {
+        if (on_beam >= 0 && std::abs(ctx.beam_pdg[on_beam]) != 21 &&
+            is_parton_pdg(ctx.beam_pdg[on_beam])) {
+            return flavor_class_beam1 + on_beam;
+        }
+        a = merged_quark_representative;
+    }
+    for (int beam = 0; beam < 2; ++beam) {
+        if (a == std::abs(ctx.beam_pdg[beam])) {
+            return flavor_class_beam1 + beam;
+        }
+    }
+    auto found = std::find(ctx.absolute_pdgs.begin(), ctx.absolute_pdgs.end(), a);
+    if (found == ctx.absolute_pdgs.end()) {
+        ctx.absolute_pdgs.push_back(a);
+        return flavor_class_first_absolute +
+            static_cast<int>(ctx.absolute_pdgs.size()) - 1;
+    }
+    return flavor_class_first_absolute +
+        static_cast<int>(found - ctx.absolute_pdgs.begin());
+}
 
 using StateKey = std::pair<std::vector<int>, std::vector<int>>;
 struct StateItem {
@@ -142,6 +222,10 @@ struct StateItem {
     // a beam's parton line stops being a jet and where it stops being coloured.
     bool is_jet_in;
     bool is_colored_in;
+    // Flavour class of the mother, i.e. of the beam line as it stands after
+    // this clustering. flavor_class_none ends the pdf reweighting chain,
+    // which is also what stops madevent following ibeam(j) any further.
+    int flavor_class_in;
 };
 
 // 1-based index into the Breit-Wigner tables handed to the kernel, or 0 for
@@ -237,6 +321,8 @@ StateItem make_state_item(
         .is_jet_in = !ctx.have_pdg_ids ||
             is_jet_pdg(meta_in.pdg_id, ctx.max_jet_flavor),
         .is_colored_in = !ctx.have_pdg_ids || color_in != 1,
+        .flavor_class_in =
+            flavor_class(ctx, meta_in.pdg_id, is_initial ? particle1 : -1),
     };
 }
 
@@ -327,6 +413,7 @@ void find_clusterings(
                             .trace_mode = trace_first,
                             .is_jet_in = false,
                             .is_colored_in = false,
+                            .flavor_class_in = flavor_class_none,
                         });
                     }
                 } else {
@@ -380,7 +467,8 @@ MLMClustering::MLMClustering(
     std::vector<int> external_pdg_ids,
     int max_jet_flavor,
     PartonLineScheme parton_line_scheme,
-    AlphasScheme alphas_scheme
+    AlphasScheme alphas_scheme,
+    bool pdf_reweighting
 ) :
     FunctionGenerator(
         "MLMClustering",
@@ -395,13 +483,34 @@ MLMClustering::MLMClustering(
          {"xqcut_weight", batch_float},
          {"alphas_scales",
           batch_float_array(topologies.at(0).outgoing_masses().size() - 1)},
-         {"alphas_weight", batch_float}}
+         {"alphas_weight", batch_float},
+         // The scale the beam density itself is evaluated at. Not the same as
+         // fact_scale under pdf reweighting: madevent drops the density low on
+         // the clustering ladder and walks it back up, so the reported
+         // factorisation scale and the one the pdf is asked for differ.
+         {"pdf_scale1", batch_float},
+         {"pdf_scale2", batch_float},
+         // One slot per clustering that can put a pdf ratio on a beam line,
+         // plus one per beam for the 2 -> 1 root, which lies on both.
+         {"pdf_rw_flavor",
+          batch_int_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_x",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_q_num",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_q_den",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_active",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         {"pdf_rw_beam",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)}}
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
     _scale_scheme(scale_scheme),
     _parton_line_scheme(parton_line_scheme),
     _alphas_scheme(alphas_scheme),
+    _pdf_reweighting(pdf_reweighting),
     _beam_flags(0),
     _jet_leg_mask(0),
     _xqcut(xqcut),
@@ -434,6 +543,14 @@ MLMClustering::MLMClustering(
         if (is_jet_pdg(pdg, max_jet_flavor)) {
             _beam_flags |= 1 << (2 * beam + 1);
         }
+        // The flavour class the pdf reweighting starts each beam line at,
+        // stored as class + 1 so that 0 means "not a parton" and the chain
+        // never starts. A beam that is a parton is by construction either the
+        // gluon or its own class, so this needs no lookup.
+        int beam_class = !have_pdg_ids || !is_parton_pdg(pdg) ? flavor_class_none
+            : std::abs(pdg) == 21                             ? flavor_class_gluon
+                                                              : flavor_class_beam1 + beam;
+        _beam_flags |= (beam_class + 1) << (8 * (beam + 1));
     }
 
     for (std::size_t leg = 0; leg < n_ext; ++leg) {
@@ -585,6 +702,9 @@ MLMClustering::MLMClustering(
         .pdg_color_types = pdg_color_types,
         .have_pdg_ids = have_pdg_ids,
         .max_jet_flavor = max_jet_flavor,
+        .beam_pdg = {have_pdg_ids ? external_pdg_ids.at(0) : 21,
+                     have_pdg_ids ? external_pdg_ids.at(1) : 21},
+        .absolute_pdgs = _pdf_absolute_pdgs,
     };
     std::set<int> dead_states;
     find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
@@ -641,7 +761,8 @@ MLMClustering::MLMClustering(
                 _cluster_state_machine.push_back(first_indices.at(item.next_state));
                 _cluster_state_machine.push_back(
                     static_cast<int>(item.trace_mode) + (item.is_jet_in << 2) +
-                    (item.is_colored_in << 3)
+                    (item.is_colored_in << 3) +
+                    ((item.flavor_class_in + 1) << 4)
                 );
             }
         }
@@ -651,7 +772,7 @@ MLMClustering::MLMClustering(
 NamedVector<Value> MLMClustering::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
-    std::array<Value, 8> mlm_out;
+    std::array<Value, 16> mlm_out;
     Value random = fb.squeeze(fb.random(fb.batch_size(args.values()), 1));
     if (_hadronic) {
         mlm_out = fb.mlm_clustering_hadronic(
@@ -670,7 +791,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_beam_flags),
             static_cast<me_int_t>(_jet_leg_mask),
             static_cast<me_int_t>(_parton_line_scheme),
-            static_cast<me_int_t>(_alphas_scheme)
+            static_cast<me_int_t>(_alphas_scheme),
+            static_cast<me_int_t>(_pdf_reweighting)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -689,7 +811,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_beam_flags),
             static_cast<me_int_t>(_jet_leg_mask),
             static_cast<me_int_t>(_parton_line_scheme),
-            static_cast<me_int_t>(_alphas_scheme)
+            static_cast<me_int_t>(_alphas_scheme),
+            static_cast<me_int_t>(_pdf_reweighting)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};

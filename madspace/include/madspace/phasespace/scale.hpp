@@ -69,6 +69,15 @@ public:
         return _clustering &&
                _clustering->alphas_scheme() != AlphasScheme::none;
     }
+    bool mlm_pdf_reweighting() const {
+        return _clustering && _clustering->pdf_reweighting();
+    }
+    const std::vector<int>& mlm_pdf_absolute_pdgs() const {
+        return _clustering.value().pdf_absolute_pdgs();
+    }
+    // The band the pdf grid covers, for whoever has to keep a scale inside it.
+    double min_scale() const { return _min_scale; }
+    double max_scale() const { return _max_scale; }
 
     bool has_scale_range() const {
         return _min_scale > 0. || _max_scale > 0.;

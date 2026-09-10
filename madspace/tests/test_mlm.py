@@ -136,6 +136,31 @@ def alphas_outputs(clustering, momenta):
     return np.asarray(out[6]), np.asarray(out[7])
 
 
+PDF_OUTPUTS = [
+    "pdf_scale1",
+    "pdf_scale2",
+    "pdf_rw_flavor",
+    "pdf_rw_x",
+    "pdf_rw_q_num",
+    "pdf_rw_q_den",
+    "pdf_rw_active",
+    "pdf_rw_beam",
+]
+
+
+def pdf_outputs(clustering, momenta):
+    """The pdf reweighting outputs, by name: the scale each beam density is to
+    be evaluated at, and one slot per step of the ladder it is walked back up.
+    Named rather than positional because there are eight of them and their
+    order is not something a test should be pinning down."""
+    out = clustering(momenta)
+    first = len(out) - len(PDF_OUTPUTS)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(PDF_OUTPUTS, list(out)[first:])
+    }
+
+
 def assert_jet_scales_agree(reference, other, max_flip_fraction=0.05):
     """Compare two sets of per-jet clustering scales that should be identical.
 
@@ -1331,3 +1356,209 @@ def test_xqcut_does_not_depend_on_the_jet_scale_scheme(process):
         diagrams, pdg_ids, momenta, 40.0, jet_scale_scheme=PRODUCTION
     )
     assert np.array_equal(emission, production)
+
+
+# --------------------------------------------------------------------------
+# the alpha_s and pdf reweighting a merged event carries
+# --------------------------------------------------------------------------
+#
+# Both are corrections madevent applies to a merged event that a single scale
+# does not describe: the coupling belongs at the scale of each emission, and
+# the beam density belongs at the scale that took the parton out of the beam.
+# The reference is the rewgt loop of Template/LO/SubProcesses/reweight.f.
+#
+# What is checkable here is the bookkeeping, not the densities: which one is
+# asked for is only settled once the flavour has been sampled, which happens in
+# the integrand and not in the clustering.
+
+
+def t_channel_diagram():
+    """u u~ > b b~ g g through a t-channel quark line, with the propagator
+    flavours filled in.
+
+    The pdf reweighting follows a beam's parton line through the clustering, so
+    a test of it needs a process where a beam emits more than once and stays a
+    parton in between. Here beam 0 emits both gluons before the Z attaches: the
+    line is a u throughout, which is also the case the "same flavour as the
+    beam" class exists for.
+
+    The propagator pdg ids matter and the json fixtures do not carry them. A
+    line whose flavour is unknown is not a parton as far as the reweighting is
+    concerned, so on those fixtures the chain stops at the first clustering and
+    nothing is exercised.
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_B, M_B, 0.0, 0.0],
+            # p0 = Z (b b~), p1/p2 = the t-channel u line
+            "propagators": [(M_Z, W_Z, 23), (0.0, 0.0, 2), (0.0, 0.0, 2)],
+            "vertices": [
+                ["o0", "o1", "p0"],
+                ["i0", "o2", "p1"],
+                ["p1", "o3", "p2"],
+                ["p2", "p0", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4, 5]],
+        }
+    ]
+
+
+T_CHANNEL_PDGS = [2, -2, 5, -5, 21, 21]
+
+
+def t_channel_clustering(**kwargs):
+    kwargs.setdefault("scale_scheme", ms.MLMClustering.ScaleScheme.madevent)
+    diagrams = t_channel_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=T_CHANNEL_PDGS,
+        **kwargs,
+    )
+
+
+@pytest.fixture(scope="module")
+def t_channel_momenta():
+    return sample_momenta(t_channel_diagram(), batch_size=2000)
+
+
+def test_alphas_scales_are_clustering_scales_or_the_renormalisation_scale(
+    process,
+):
+    """Every vertex is handed either its own scale or mu_R, the latter meaning
+    "not reweighted": its ratio against mu_R is then exactly one and the
+    consumer needs no mask."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    ren_scale = run(clustering, momenta)[0]
+    scales, weight = alphas_outputs(clustering, momenta)
+    assert np.all(np.isfinite(scales))
+    assert np.all(scales > 0.0)
+    assert np.all((weight == 0.0) | (weight == 1.0))
+    # gluon-only processes: every vertex is a QCD one, so few of them should
+    # have been left at mu_R
+    assert np.mean(np.isclose(scales, ren_scale[:, None])) < 0.5
+
+
+def test_pdf_reweighting_off_leaves_the_density_where_the_scale_is(
+    t_channel_momenta,
+):
+    clustering = t_channel_clustering(pdf_reweighting=False)
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert out["pdf_scale1"] == pytest.approx(fact1)
+    assert out["pdf_scale2"] == pytest.approx(fact2)
+    assert np.all(out["pdf_rw_active"] == 0.0)
+
+
+def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
+    """The point of the whole thing: with it on, the density is asked for at or
+    below the factorisation scale, and for a real part of the sample strictly
+    below it. If it were never below there would be nothing to walk back up."""
+    clustering = t_channel_clustering()
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    for scale, fact in [(out["pdf_scale1"], fact1), (out["pdf_scale2"], fact2)]:
+        assert np.all(np.isfinite(scale))
+        assert np.all(scale > 0.0)
+        assert np.all(scale <= fact * (1.0 + 1e-9))
+        assert np.mean(scale < fact * (1.0 - 1e-9)) > 0.1
+
+
+def test_pdf_reweighting_steps_only_ever_raise_the_scale(t_channel_momenta):
+    """A step exists precisely to move the density from where it was last
+    evaluated up to this clustering, so its two scales are ordered. reweight.f
+    reaches the same place through its pt2pdf(ida) < q2now test."""
+    out = pdf_outputs(t_channel_clustering(), t_channel_momenta)
+    active = out["pdf_rw_active"] == 1.0
+    assert active.any(), "no step fired; this test would prove nothing"
+    assert np.all(out["pdf_rw_q_num"][active] > out["pdf_rw_q_den"][active])
+
+
+def test_pdf_reweighting_ends_at_the_factorisation_scale(t_channel_momenta):
+    """A chain that fired at all has to arrive back at the scale the event is
+    reported at, otherwise the lowering it started from is never undone."""
+    clustering = t_channel_clustering()
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    fact = np.stack([fact1, fact2], axis=1)
+    for beam in (0, 1):
+        on_beam = (out["pdf_rw_active"] == 1.0) & (out["pdf_rw_beam"] == beam)
+        fired = on_beam.any(axis=1)
+        if not fired.any():
+            continue
+        top = np.max(np.where(on_beam, out["pdf_rw_q_num"], 0.0), axis=1)
+        assert top[fired] == pytest.approx(fact[fired, beam], rel=1e-9)
+
+
+def test_inert_pdf_slots_cannot_change_the_weight(t_channel_momenta):
+    """A slot no step claimed still costs two density evaluations, because the
+    graph is the same for every event. Its two scales are equal so that its
+    ratio is exactly one whatever those come out as."""
+    out = pdf_outputs(t_channel_clustering(), t_channel_momenta)
+    inert = out["pdf_rw_active"] == 0.0
+    assert inert.any()
+    assert out["pdf_rw_q_num"][inert] == pytest.approx(out["pdf_rw_q_den"][inert])
+    assert np.all(out["pdf_rw_q_den"][inert] > 0.0)
+
+
+def test_pdf_reweighting_only_ever_takes_momentum_off_the_beam(
+    t_channel_momenta,
+):
+    """The fraction travels down the ladder as a product of the clustering z,
+    each of which reweight.f only applies when it lies in (0, 1)."""
+    x = pdf_outputs(t_channel_clustering(), t_channel_momenta)["pdf_rw_x"]
+    assert np.all(x > 0.0)
+    assert np.all(x <= 1.0)
+    # and it does move: a chain that never rescaled x would be asking for the
+    # density of the beam parton at every rung
+    assert np.mean(x < 1.0) > 0.05
+
+
+def test_pdf_flavor_classes_stay_inside_the_table(t_channel_momenta):
+    """The class is an index the consumer looks up, so an out-of-range one
+    would read off the end of a table rather than fail visibly."""
+    clustering = t_channel_clustering()
+    class_count = 3 + len(clustering.pdf_absolute_pdgs)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert np.all(out["pdf_rw_flavor"] >= 0)
+    assert np.all(out["pdf_rw_flavor"] < class_count)
+    # the t-channel line is a u throughout, which is beam 0's own flavour, so
+    # no absolute flavour is needed and none should have been allocated
+    assert list(clustering.pdf_absolute_pdgs) == []
+    active = out["pdf_rw_active"] == 1.0
+    assert np.all(out["pdf_rw_flavor"][active] == 1)
+
+
+def test_pdf_steps_name_a_real_beam(t_channel_momenta):
+    beam = pdf_outputs(t_channel_clustering(), t_channel_momenta)["pdf_rw_beam"]
+    assert np.all((beam == 0.0) | (beam == 1.0))
+
+
+def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
+    """There is no beam parton line to walk without madevent's scale scheme, so
+    asking for the reweighting there must do nothing rather than something
+    arbitrary."""
+    clustering = t_channel_clustering(
+        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean
+    )
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert np.all(out["pdf_rw_active"] == 0.0)
+    assert out["pdf_scale1"] == pytest.approx(fact1)
+    assert out["pdf_scale2"] == pytest.approx(fact2)

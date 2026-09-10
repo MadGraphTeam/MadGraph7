@@ -96,7 +96,11 @@ public:
         std::vector<int> external_pdg_ids = {},
         int max_jet_flavor = 4,
         PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet,
-        AlphasScheme alphas_scheme = AlphasScheme::per_vertex
+        AlphasScheme alphas_scheme = AlphasScheme::per_vertex,
+        // Re-evaluate the beam densities along the clustering ladder instead of
+        // once at the factorisation scale, which is what madevent does for a
+        // merged sample (pdfwgt in the run card, hidden and on by default).
+        bool pdf_reweighting = true
     );
 
     // The compiled clustering state machine, in the flat encoding the kernel
@@ -108,6 +112,13 @@ public:
     const std::vector<double>& bw_masses() const { return _bw_masses; }
     const std::vector<double>& bw_widths() const { return _bw_widths; }
     AlphasScheme alphas_scheme() const { return _alphas_scheme; }
+    bool pdf_reweighting() const { return _pdf_reweighting; }
+    // The flavours the pdf reweighting asks for that are neither the gluon nor
+    // a beam's own, in the order the kernel's flavour classes index them. The
+    // consumer turns these, the gluon and the per-channel beam flavours into
+    // the density it evaluates; see the flavour-class comment in
+    // mlm_clustering.cpp.
+    const std::vector<int>& pdf_absolute_pdgs() const { return _pdf_absolute_pdgs; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -123,6 +134,8 @@ private:
     ScaleScheme _scale_scheme;
     PartonLineScheme _parton_line_scheme;
     AlphasScheme _alphas_scheme;
+    bool _pdf_reweighting;
+    std::vector<int> _pdf_absolute_pdgs;
     int _beam_flags;
     int _jet_leg_mask;
     double _xqcut;

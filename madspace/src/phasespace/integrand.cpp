@@ -222,6 +222,44 @@ Integrand::Integrand(
             }
             _pdfs.at(i) = PartonDensity(pdf_grid.value(), {pids.begin(), pids.end()});
         }
+        if (energy_scale && energy_scale->mlm_pdf_reweighting()) {
+            // Everything the reweighting can ask for: the gluon, whatever the
+            // beams can be, and the flavours the clustering pinned down along
+            // the way. The kernel names these by class, not by pdg, because
+            // one clustering serves every flavour channel; the table turns
+            // (class, sampled option) into an index into this one density.
+            auto& absolute = energy_scale->mlm_pdf_absolute_pdgs();
+            std::vector<int> rw_pids{21};
+            auto index_of = [&](int pid) {
+                auto found = std::find(rw_pids.begin(), rw_pids.end(), pid);
+                if (found == rw_pids.end()) {
+                    rw_pids.push_back(pid);
+                    return static_cast<me_int_t>(rw_pids.size() - 1);
+                }
+                return static_cast<me_int_t>(found - rw_pids.begin());
+            };
+            std::size_t class_count = 3 + absolute.size();
+            std::size_t option_count = std::max<std::size_t>(pid_options.size(), 1);
+            _pdf_rw_table.resize(class_count * option_count);
+            for (std::size_t f = 0; f < option_count; ++f) {
+                _pdf_rw_table.at(0 * option_count + f) = index_of(21);
+                for (std::size_t beam = 0; beam < 2; ++beam) {
+                    _pdf_rw_table.at((1 + beam) * option_count + f) = index_of(
+                        pid_options.size() > 0 ? pid_options.at(f).at(beam) : 21
+                    );
+                }
+                for (std::size_t c = 0; c < absolute.size(); ++c) {
+                    _pdf_rw_table.at((3 + c) * option_count + f) =
+                        index_of(absolute.at(c));
+                }
+            }
+            for (std::size_t c = 0; c < class_count; ++c) {
+                _pdf_rw_class_offsets.push_back(
+                    static_cast<me_int_t>(c * option_count)
+                );
+            }
+            _pdf_rw = PartonDensity(pdf_grid.value(), rw_pids, true);
+        }
     }
 
     if (active_flavors.size() > 0) {
@@ -473,11 +511,19 @@ NamedVector<Value> Integrand::build_channel_part(
         ValueVec pdf_priors;
         for (std::size_t i = 0; i < 2; ++i) {
             if (_diff_xs.at(0).has_pdf(i)) {
-                auto pdf =
-                    _pdfs.at(i)
-                        .value()
-                        .build_function(fb, {x_acc.at(i), scales.at(i + 1)})
-                        .at(0);
+                // Under pdf reweighting the density is asked for low on the
+                // clustering ladder rather than at the factorisation scale,
+                // and walked back up by the ratios applied further down. This
+                // is madevent setting q2fact below q2bck before calling DSIG,
+                // and it is what the flavour prior should see too, since that
+                // is the density the event is actually generated with.
+                auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+                    ? scales.at(std::format("pdf_scale{}", i + 1))
+                    : scales.at(i + 1);
+                auto pdf = _pdfs.at(i)
+                               .value()
+                               .build_function(fb, {x_acc.at(i), pdf_scale})
+                               .at(0);
                 pdf_results.at(i) = pdf;
                 pdf_priors.push_back(fb.select(pdf, _pdf_indices.at(i)));
             }
@@ -612,6 +658,90 @@ NamedVector<Value> Integrand::build_channel_part(
                 }
                 weights_after_cuts.push_back(factor);
                 weights_after_cuts.push_back(scales.at("alphas_weight"));
+            }
+        }
+
+        // pdf reweighting: the beam density, evaluated above at the bottom of
+        // the clustering ladder, walked back up one clustering at a time. Each
+        // slot the kernel marked active contributes f(x, Q_i) / f(x, Q_i-1)
+        // for the flavour its beam line carried at that point.
+        //
+        // The flavour is only knowable here, after the sampling: the kernel
+        // hands out a class - the gluon, one of the two beams' own flavours, or
+        // a flavour the diagram pinned down - and the table turns that plus the
+        // sampled option into an index into the reweighting density.
+        if (_pdf_rw && _pid_options.size() > 0) {
+            auto flavor_classes = scales.at("pdf_rw_flavor");
+            std::size_t slot_count = flavor_classes.type.shape.at(0);
+            double low = _energy_scale->min_scale();
+            double high = _energy_scale->max_scale() > 0.
+                ? _energy_scale->max_scale()
+                : 1e30;
+            auto ones = fb.full({1., batch_size_acc});
+            Value factor, veto;
+            for (std::size_t i = 0; i < slot_count; ++i) {
+                std::vector<me_int_t> column{static_cast<me_int_t>(i)};
+                auto pick = [&](const char* name) {
+                    return fb.squeeze(fb.select(scales.at(name), column));
+                };
+                auto active = pick("pdf_rw_active");
+                auto beam = pick("pdf_rw_beam");
+                // x of the beam line: the beam's own momentum fraction times
+                // everything the clustering z has taken off it since.
+                auto x_beam = fb.add(
+                    x_acc.at(0),
+                    fb.mul(beam, fb.sub(x_acc.at(1), x_acc.at(0)))
+                );
+                auto x = fb.mul(x_beam, pick("pdf_rw_x"));
+                auto scale_of = [&](const char* name) {
+                    auto q = pick(name);
+                    if (low > 0.) {
+                        q = fb.max(q, fb.full({low, batch_size_acc}));
+                    }
+                    return fb.min(q, fb.full({high, batch_size_acc}));
+                };
+                auto index = fb.gather_int(
+                    fb.add_int(
+                        fb.gather_int(
+                            fb.squeeze(fb.select_int(flavor_classes, column)),
+                            _pdf_rw_class_offsets
+                        ),
+                        flavor_id
+                    ),
+                    _pdf_rw_table
+                );
+                auto density = [&](const char* name) {
+                    return _pdf_rw.value()
+                        .build_function(fb, {x, scale_of(name), index})
+                        .at(0);
+                };
+                auto numerator = density("pdf_rw_q_num");
+                auto denominator = density("pdf_rw_q_den");
+                // madevent drops the event outright when the density it is
+                // dividing by falls under 1e-10, where the grid is no longer
+                // saying anything. Same threshold, as a ramp rather than a
+                // branch, and the floor under the division keeps the term
+                // finite so that a vetoed slot multiplies to zero and not to
+                // a NaN.
+                auto floor = fb.full({1e-10, batch_size_acc});
+                auto usable = fb.min(
+                    fb.max(
+                        fb.mul(denominator, fb.full({1e10, batch_size_acc})),
+                        fb.full({0., batch_size_acc})
+                    ),
+                    ones
+                );
+                auto ratio = fb.div(numerator, fb.max(denominator, floor));
+                // An inert slot contributes exactly one, whatever its density
+                // came out as.
+                auto term = fb.add(ones, fb.mul(active, fb.sub(ratio, ones)));
+                auto pass = fb.add(ones, fb.mul(active, fb.sub(usable, ones)));
+                factor = factor ? fb.mul(factor, term) : term;
+                veto = veto ? fb.mul(veto, pass) : pass;
+            }
+            if (factor) {
+                weights_after_cuts.push_back(factor);
+                weights_after_cuts.push_back(veto);
             }
         }
     }

@@ -65,6 +65,10 @@ parton_line_scheme = %(beam.parton_line_scheme)s
 #          as madevent does), geometric_mean (one coupling at the geometric
 #          mean of those scales), none (a single coupling at mu_R)
 alphas_reweighting = %(beam.alphas_reweighting)s
+# re-evaluate the beam densities along the clustering ladder rather than once
+# at the factorisation scale, as madevent's pdfwgt does. Only used under
+# dynamical_scale_choice = "mlm" and scale_scheme = "madevent"
+pdf_reweighting = %(beam.pdf_reweighting)s
 # floor on mu_R and mu_F: an event whose scales fall below this is dropped,
 # since a PDF grid has no densities there (0 disables it)
 min_scale = %(beam.min_scale)s

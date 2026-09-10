@@ -6581,6 +6581,14 @@ class RunCardMG7(RunCard):
         # Only read when dynamical_scale_choice = "mlm".
         self.add_toml_param('beam', 'alphas_reweighting', "per_vertex",
             allowed=['per_vertex', 'geometric_mean', 'none'])
+        # Re-evaluate the beam densities along the clustering ladder instead of
+        # once at the factorisation scale: the density is taken at the scale of
+        # the emission that pulled the parton out of the beam and walked back
+        # up, with the momentum fraction rescaled at each step. This is the
+        # pdf half of the same rewgt loop, madevent's hidden pdfwgt flag, which
+        # is on by default there. Only read when dynamical_scale_choice = "mlm"
+        # and scale_scheme = "madevent".
+        self.add_toml_param('beam', 'pdf_reweighting', True)
         # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
         # the lowest Q of a PDF grid the densities are undefined, so an event
         # whose scales fall under this is dropped. madevent applies the same
