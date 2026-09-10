@@ -39,7 +39,15 @@ runs:
         test -x $HOME/.cache/HEPtools/bin/eMELA-config                || VALID=false
         test -x $HOME/.cache/HEPtools/fastjet/bin/fastjet-config      || VALID=false
         test -d $HOME/.cache/HEPtools/rivet                           || VALID=false
-        test -d $HOME/.cache/HEPtools/ninja                           || VALID=false
+        # looptools: check the libraries themselves, not just the ninja/ dir.
+        # A "install collier"/"install ninja" that failed still leaves the dirs
+        # behind, and a combined cache built from such a run has MadLoop paths
+        # configured but nothing to link against (MG5 looks for exactly these
+        # two files, see activate_dependence in madgraph/various/misc.py).
+        test -f $HOME/.cache/HEPtools/ninja/lib/libninja.a            || VALID=false
+        test -f $HOME/.cache/HEPtools/collier/libcollier.a            || VALID=false
+        test -f $HOME/.cache/HEPtools/CutTools/lib/libcts.a           || VALID=false
+        test -f $HOME/.cache/HEPtools/IREGI/src/libiregi.a            || VALID=false
         echo "cache_valid=$VALID" >> $GITHUB_OUTPUT
         if [ "$VALID" = "false" ]; then
           echo "::warning::heptools cache is incomplete, will restore from sub-caches"

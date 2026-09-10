@@ -29,6 +29,10 @@ on:
       reset_pip:
         type: boolean
         default: false
+
+  # Called from release.yml to warm caches before the release test suite runs,
+  # so restore_heptools's fail-on-cache-miss doesn't abort the release.
+  workflow_call:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -47,26 +51,33 @@ jobs:
       - name: Set cache key
         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
 #
+      # NB: 'inputs.reset_heptools' is a *boolean* for workflow_dispatch, and
+      # GitHub coerces types to numbers on a loose comparison (true -> 1,
+      # 'true' -> NaN), so `inputs.reset_heptools == 'true'` is always false.
+      # Test the boolean itself.
       - name: Delete heptools related cache
-        if: inputs.reset_heptools == 'true'
+        if: inputs.reset_heptools
         run: | 
           gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete emela-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete contur-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
+          # looptools was missing here: an incomplete looptools-<os> cache could
+          # therefore never be reset, and every later run would cache-hit on it.
+          gh cache delete looptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Delete ufo cache
-        if: inputs.reset_ufo == 'true'
+        if: inputs.reset_ufo
         run: |
           gh cache delete ufomodel-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Delete pip cache
-        if: inputs.reset_pip == 'true'
+        if: inputs.reset_pip
         run: | 
           gh cache delete pip-numpy-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
@@ -76,7 +87,7 @@ jobs:
       # large and stable). They are only rebuilt on explicit request, so the
       # cache can be cleaned independently of the heptools one.
       - name: Delete root/delphes cache
-        if: inputs.reset_delphes == 'true'
+        if: inputs.reset_delphes
         run: |
           gh cache delete root-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete delphes-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
@@ -84,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   rebuild-numpy-cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name == 'schedule')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -111,7 +122,7 @@ jobs:
         run: pip install --target ~/.cache/pip-packages --ignore-installed numpy meson ninja
 
   ufo_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name == 'schedule')
     runs-on: ubuntu-24.04
     needs: delete-cache
 
@@ -141,7 +152,7 @@ jobs:
          cp -r models/2HDM /home/runner/.cache/UFOMODEL
            
   lhapdf_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     needs: delete-cache
     runs-on: ${{ matrix.os }}
     strategy:
@@ -191,7 +202,7 @@ jobs:
                tar -xzpvf NNPDF23_lo_as_0130_qed.tar.gz
                
   pythia8_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: lhapdf_cache
     strategy:
@@ -246,7 +257,7 @@ jobs:
                test -x /home/runner/.cache/HEPtools/pythia8/bin/pythia8-config
 
   emela_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: lhapdf_cache
     strategy:
@@ -301,7 +312,7 @@ jobs:
 #             GH_TOKEN: ${{ github.token }}
 
   contur_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: pythia8_cache
     strategy:
@@ -366,7 +377,7 @@ jobs:
        #     GH_TOKEN: ${{ github.token }}
 
   looptools_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
      matrix:
@@ -417,8 +428,41 @@ jobs:
              echo "install ninja " >> cmd
              ./bin/madgraph cmd
 
+     # madgraph exits 0 even when "install collier"/"install ninja" fails (e.g.
+     # a download timeout), so the job would otherwise go green with a
+     # half-populated cache -- and heptools_cache would then fold that into the
+     # combined cache and delete the sub-caches. Fail here instead: actions/cache
+     # does not run its post-save step when the job fails, so no incomplete
+     # looptools-<os> cache is stored and a re-run of *this job only* rebuilds it.
+     # Runs on the cache-hit path too, so an already-stored incomplete cache is
+     # reported instead of being silently reused (fix it with the reset_heptools
+     # input, which now also deletes looptools-<os>).
+     - name: Verify looptools landed in the cache
+       run: |
+             set -e
+             H=$HOME/.cache/HEPtools
+             # paths as consumed by .github/actions/restore_heptools_looptools
+             # (ninja = $H/ninja/lib, collier = $H/collier) and by the NLO
+             # subprocess makefiles (libcts.a / mpmodule.mod / libiregi.a).
+             for f in \
+                 "$H/CutTools/lib/libcts.a" \
+                 "$H/CutTools/lib/mpmodule.mod" \
+                 "$H/IREGI/src/libiregi.a" \
+                 "$H/ninja/lib/libninja.a" \
+                 "$H/collier/libcollier.a" ; do
+               if [ ! -f "$f" ]; then
+                 echo "::error::looptools cache is incomplete: missing $f"
+                 MISSING=1
+               fi
+             done
+             if [ -n "$MISSING" ]; then
+               echo "cache-hit was '${{ steps.cache-nlo.outputs.cache-hit }}'"
+               exit 1
+             fi
+             echo "looptools content OK (cuttools, iregi, ninja, collier)"
+
   heptools_cache:
-    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}       
     strategy:
       matrix:
@@ -462,27 +506,99 @@ jobs:
           path: ~/.cache/HEPtools
           key: looptools-${{ env.CACHE_KEY }}
 
+      # A green sub-job is NOT proof that its content landed in the cache: the
+      # installers run through ./bin/madgraph, which exits 0 even when a tool
+      # fails to build. That is how an incomplete looptools (no collier/ninja)
+      # got folded into the combined cache and the sub-caches were deleted
+      # afterwards, losing the only good copies. So validate the *restored
+      # files* here, and let a single flag gate the delete/save/cleanup below.
+      # When something is missing the intermediate caches are kept untouched,
+      # so re-running just the offending job (or the whole workflow) rebuilds
+      # only the missing piece instead of everything.
+      - name: Validate restored heptools content
+        id: validate
+        env:
+          LHAPDF_RESULT: ${{ needs.lhapdf_cache.result }}
+          PYTHIA8_RESULT: ${{ needs.pythia8_cache.result }}
+          EMELA_RESULT: ${{ needs.emela_cache.result }}
+          CONTUR_RESULT: ${{ needs.contur_cache.result }}
+          LOOPTOOLS_RESULT: ${{ needs.looptools_cache.result }}
+        run: |
+          H=$HOME/.cache/HEPtools
+          MISSING=""
+          # req <tool> <file>... : record <tool> as incomplete if any file is absent
+          req() {
+            tool=$1; shift
+            for f in "$@"; do
+              if [ ! -e "$f" ]; then
+                echo "::warning::$tool incomplete: missing $f"
+                case " $MISSING " in
+                  *" $tool "*) ;;
+                  *) MISSING="$MISSING $tool" ;;
+                esac
+              fi
+            done
+          }
+
+          req lhapdf    "$H/lhapdf6_py3/bin/lhapdf-config"
+          req pythia8   "$H/pythia8/include/Pythia8/Pythia.h" \
+                        "$H/pythia8/bin/pythia8-config"
+          req emela     "$H/bin/eMELA-config"
+          req contur    "$H/fastjet/bin/fastjet-config" "$H/rivet"
+          # the four looptools pieces, exactly as consumed by
+          # .github/actions/restore_heptools_looptools and the NLO makefiles
+          req looptools "$H/CutTools/lib/libcts.a" \
+                        "$H/CutTools/lib/mpmodule.mod" \
+                        "$H/IREGI/src/libiregi.a" \
+                        "$H/ninja/lib/libninja.a" \
+                        "$H/collier/libcollier.a"
+
+          # a job that did not succeed cannot have contributed anything
+          for j in lhapdf pythia8 emela contur looptools; do
+            var=$(echo $j | tr 'a-z' 'A-Z')_RESULT
+            eval "res=\$$var"
+            if [ "$res" != "success" ]; then
+              echo "::warning::${j}_cache job result is '$res'"
+              case " $MISSING " in
+                *" $j "*) ;;
+                *) MISSING="$MISSING $j" ;;
+              esac
+            fi
+          done
+
+          MISSING=$(echo $MISSING)
+          if [ -n "$MISSING" ]; then
+            echo "complete=false" >> $GITHUB_OUTPUT
+            echo "missing=$MISSING" >> $GITHUB_OUTPUT
+            echo "::error::heptools is incomplete ($MISSING): the combined cache will NOT be refreshed and the intermediate caches are kept, so only the failing part has to be rebuilt."
+          else
+            echo "complete=true" >> $GITHUB_OUTPUT
+            echo "missing=" >> $GITHUB_OUTPUT
+            echo "all heptools present (lhapdf, pythia8, emela, contur, looptools)"
+          fi
+
       # GitHub Actions caches are immutable: actions/cache/save is a silent
       # no-op when the key already exists (it logs "Unable to reserve cache
       # ... another job may be creating this cache" and the freshly rebuilt
       # combined cache is discarded). Outside the Sunday cron / reset_heptools
       # the old heptools-$KEY therefore never gets replaced. Delete it first so
       # the new content is actually saved. Only do this (and the save) once all
-      # sub-caches succeeded, so a partial rebuild never replaces a good cache.
+      # sub-caches succeeded *and* their content is really on disk, so a partial
+      # rebuild never replaces a good cache.
       - name: Delete previous combined cache (so the fresh one can be saved)
-        if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
+        if: steps.validate.outputs.complete == 'true'
         run: gh cache delete heptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
 
       - uses: actions/cache/save@v5
-        if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
+        if: steps.validate.outputs.complete == 'true'
         with:
           path: ~/.cache/HEPtools
           key: heptools-${{ env.CACHE_KEY }}
 
       - name: Cleanup intermediate caches (only if all succeeded)
-        if: needs.pythia8_cache.result == 'success' && needs.emela_cache.result == 'success' && needs.contur_cache.result == 'success' && needs.looptools_cache.result == 'success'
+        if: steps.validate.outputs.complete == 'true'
         run: |
           gh cache delete lhapdf-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
           gh cache delete pythia8-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
@@ -491,6 +607,25 @@ jobs:
           gh cache delete looptools-${{ env.CACHE_KEY }} --repo $GITHUB_REPOSITORY --ref "${{ github.ref }}" || true
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # Without this the job goes green while having silently skipped the
+      # combine, which is exactly how the problem stayed invisible.
+      - name: Report the incomplete combine
+        if: steps.validate.outputs.complete != 'true'
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ### heptools cache NOT refreshed
+
+          Incomplete: \`${{ steps.validate.outputs.missing }}\`
+
+          The intermediate caches (lhapdf/pythia8/emela/contur/looptools) were
+          **kept**, so re-running only the failing job above is enough: the
+          others will cache-hit and this job will combine and clean up.
+          If the stale sub-cache itself is the incomplete one, re-run this
+          workflow via *Run workflow* with \`reset_heptools\` ticked to drop it
+          first.
+          EOF
+          exit 1
 
   # On the scheduled run the heptools rebuild chain is skipped (the *_cache jobs
   # are guarded with github.event_name != 'schedule'). Restore the combined

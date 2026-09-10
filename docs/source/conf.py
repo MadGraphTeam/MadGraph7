@@ -13,7 +13,7 @@ import sys
 project = "madspace"
 copyright = "2025, Theo Heimel"
 author = "Theo Heimel"
-release = "0.2.2"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

@@ -885,11 +885,11 @@ void EventGenerator::read_and_combine(
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
-        auto sampled_chan = std::lower_bound(
+        auto sampled_chan = select_combine_channel(
             channel_data.begin(),
             channel_data.end(),
             random_index,
-            [](auto& chan, std::size_t val) { return chan.cum_count < val; }
+            [](const CombineChannelData& chan) { return chan.cum_count; }
         );
         std::for_each(sampled_chan, channel_data.end(), [](auto& chan) {
             --chan.cum_count;

@@ -559,6 +559,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"delta_eta", Observable::obs_delta_eta},
             {"delta_phi", Observable::obs_delta_phi},
             {"delta_r", Observable::obs_delta_r},
+            {"pair_mass", Observable::obs_pair_mass},
             {"sqrt_s", Observable::obs_sqrt_s},
         },
         "obs_"
@@ -1394,8 +1395,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
         )
         .def_readwrite(
-            "buffered_steps_fraction",
-            &MadnisTraining::Config::buffered_steps_fraction
+            "buffered_steps_fraction", &MadnisTraining::Config::buffered_steps_fraction
         )
         .def_readwrite(
             "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
@@ -1519,6 +1519,13 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("abs_cross_section_count"),
         py::arg("abs_cross_section_rel_error"),
         py::arg("config")
+    );
+
+    m.def(
+        "select_combine_channel_index",
+        &select_combine_channel_index,
+        py::arg("cum_counts"),
+        py::arg("random_index")
     );
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
