@@ -548,3 +548,64 @@ class TestPostProcessingIsQuiet(unittest.TestCase):
             pass
         self.logger.info('back to normal')
         self.assertIn('back to normal', self.captured.getvalue())
+
+
+class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
+    """A plain generate/output/launch announced a post-processing step with
+    nothing after the colon, and built the run interface to do nothing.
+
+    The guard that was there counted any switch that is not "off", which is a
+    different question from whether any driver will run: "Not Avail." is not
+    off, and a shower switch set to anything but Pythia8 selects nothing here.
+    """
+
+    def tools_for(self, switch):
+        """The tool list run_selected_tools builds, without running it."""
+
+        from madgraph.iolibs.template_files.mg7 import launch
+
+        off = launch._off
+        ma5 = switch.get('analysis') == 'MadAnalysis5'
+        showered = not off(switch.get('shower'))
+        return [t for t, on in (
+            ("reweighting", not off(switch.get("reweight"))),
+            ("MadSpin", not off(switch.get("madspin"))),
+            ("MadAnalysis5 (parton level)", ma5),
+            ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+            ("Delphes", switch.get("detector") == "Delphes"),
+            ("MadAnalysis5 (hadron level)", ma5 and showered),
+            ("Rivet", switch.get("analysis") == "Rivet"),
+        ) if on]
+
+    def test_a_not_available_switch_selects_no_tool(self):
+        """The case from a real run: Delphes is not installed, so the detector
+        switch reads "Not Avail." -- which is not "off"."""
+
+        switch = {'shower': 'OFF', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_everything_off_selects_no_tool(self):
+        switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'OFF',
+                  'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_a_real_selection_still_selects(self):
+        switch = {'shower': 'Pythia8', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'ON', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), ['MadSpin', 'Pythia8 shower'])
+
+    def test_run_selected_tools_returns_before_building_anything(self):
+        """With no tool selected it must not construct MG7RunCmd -- that is
+        what printed the MADEVENT banner and the configuration lines."""
+
+        from madgraph.iolibs.template_files.mg7 import launch
+
+        class _Process(object):
+            run_path = '/nonexistent/run_01'
+
+        switch = {'shower': 'OFF', 'detector': 'Not Avail.',
+                  'analysis': 'OFF', 'madspin': 'OFF', 'reweight': 'OFF'}
+        # _find_event_file would fail on the fake path, and MG7RunCmd would
+        # fail harder: returning early means neither is reached
+        launch.run_selected_tools(switch, _Process())
