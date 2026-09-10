@@ -125,6 +125,58 @@ logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # -> stoud for MadLo
 # Central definition of the main interface prompt (bold blue "MG7> ")
 MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
 
+# The banner (and every easter-egg variant of it in madgraph.various.misc) is
+# written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
+# a closing '*'. On a wider terminal the block is re-centred so that the two
+# columns of '*' sit on the edges of the screen.
+BANNER_WIDTH = 60
+# Width assumed when the output is not a terminal (a log file, a pipe, ...).
+BANNER_FILE_WIDTH = 80
+# Escape sequences (the development-version warning is printed in red) do not
+# take any place on screen and must not be counted in the width of a line.
+BANNER_ANSI = re.compile('\\033\\[[0-9;]*m')
+
+def get_banner_width():
+    """Number of columns available for the banner: the width of the terminal,
+    or BANNER_FILE_WIDTH when the output is redirected to a file/pipe."""
+
+    try:
+        if not sys.stdout.isatty():
+            return BANNER_FILE_WIDTH
+        width = shutil.get_terminal_size((BANNER_FILE_WIDTH, 24)).columns
+    except Exception:
+        return BANNER_FILE_WIDTH
+    return max(width, BANNER_WIDTH)
+
+def fit_banner_width(text, width=None):
+    """Re-centre a BANNER_WIDTH columns banner on a screen of *width* columns.
+
+    Each line of exactly BANNER_WIDTH visible characters delimited by '*' is
+    padded symmetrically (with '*' for the horizontal rules, with spaces
+    otherwise); any other line is returned untouched."""
+
+    if width is None:
+        width = get_banner_width()
+    if width <= BANNER_WIDTH:
+        return text
+
+    left = (width - BANNER_WIDTH) // 2
+    right = width - BANNER_WIDTH - left
+
+    out = []
+    for line in text.split('\n'):
+        plain = BANNER_ANSI.sub('', line)
+        if len(plain) != BANNER_WIDTH or not plain.startswith('*') \
+                                      or not plain.endswith('*'):
+            out.append(line)
+            continue
+        start = line.index('*')
+        end = line.rindex('*')
+        inside = line[start+1:end]
+        fill = '*' if set(BANNER_ANSI.sub('', inside)) == set('*') else ' '
+        out.append(line[:start+1] + fill*left + inside + fill*right + line[end:])
+    return '\n'.join(out)
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -176,11 +228,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...                   7777777           *\n" + \
-        "*                    ....                     7            *\n" + \
-        "*                       .................... 7             *\n" + \
-        "*                                           7              *\n" + \
-        "*                                          7               *\n" + \
+        "*                  ...               7777777               *\n" + \
+        "*                    ....                 7                *\n" + \
+        "*                       ................ 7                 *\n" + \
+        "*                                       7                  *\n" + \
+        "*                                      7                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -238,6 +290,14 @@ class CmdExtended(cmd.Cmd):
                 branch = branch.decode(errors='ignore').strip()
                 
 
+                # that line is BANNER_WIDTH columns wide, of which 34 are
+                # shared between the tag and the branch name: truncate them
+                # when they do not both fit, otherwise the line sticks out of
+                # the banner (and of the header of the proc_card).
+                if len(tag) > 30:
+                    tag = tag[:27] + '...'
+                if len(tag) + len(branch) > 33:
+                    branch = branch[:33 - len(tag) - 3] + '...'
                 info_line += "#*         GIT %s %s %s         *\n" % \
                                 (tag,
                                 (34 - len(tag) - len(branch)) * ' ',
@@ -258,7 +318,7 @@ class CmdExtended(cmd.Cmd):
             info_line = info_line.replace("#*","*")
             
 
-        logger.info(self.intro_banner % info_line)
+        logger.info(fit_banner_width(self.intro_banner % info_line))
 
         cmd.Cmd.__init__(self, *arg, **opt)
 
