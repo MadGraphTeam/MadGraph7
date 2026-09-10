@@ -8,13 +8,14 @@
 *                    @               ...                   *
 *                  @    M         M    .                   *
 *                 @     MM       MM    ..                  *
-*                 .     M  M   M  M     .                  *
-*                 ..    M   M M   M    ..                  *
-*                  .    M    M    M    .                   *
+*                 .     M  M   M  M  ..                    *
+*                 ..    M   M M   M ..                     *
+*                  .    M    M    M.                       *
 *                  ...                   7777777           *
 *                    ....                     7            *
-*                       ..........           7             *
+*                       .................... 7             *
 *                                           7              *
+*                                          7               *
 *                                                          *
 *       The MadGraph7 Development Team - Find us at        *
 *    https://server06.fynu.ucl.ac.be/projects/madgraph     *
