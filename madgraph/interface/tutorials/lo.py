@@ -241,12 +241,32 @@ different name so they sit beside this one):
 Now run it:
 %(p)s launch %(run)s
 
-A word on what happens next, because MG7 hands over to a separate program
-here. `launch` starts `bin/generate_events` as its own process: it will ask you
-whether to edit the cards, and for a first run the answer is to change nothing
--- just accept the defaults. If madspace was not built earlier, this is where
-it gets built, so the first run takes longer than the ones after it. When the
-run finishes you come back here and the tutorial picks up again.
+MG7 hands over to a separate program here -- `launch` starts
+`bin/generate_events` as its own process -- so the tutorial cannot talk to you
+while it runs. Here is what you are about to see.
+
+**It asks one question first**: a numbered list of the cards you can edit and
+the tools you can switch on.
+
+  param_card.dat   masses, widths and couplings. Always offered.
+  run_card.toml    beams, cuts, number of events, and the integrator
+                   settings. Always offered.
+  then one line per optional tool, each OFF until you turn it on:
+                   MadSpin (decays keeping spin correlations), reweight (new
+                   parameters without regenerating), Pythia8 (parton shower),
+                   Delphes (detector simulation), MadAnalysis5, Rivet.
+
+Typing a number opens that card in your editor; typing a tool's name toggles
+it on or off.
+
+**For this tutorial, just press Enter.** An empty answer, `0` and `done` all
+mean the same thing -- "run it with what is there" -- and the defaults are a
+reasonable LHC run. You do not have to change anything to get your first
+events.
+
+Then it runs. If madspace was not built earlier this is where it gets built,
+so the first run takes longer than the ones after it. When it finishes you come
+back here and the tutorial picks up again.
 
 (To stop a long run and carry on with the tutorial, press Ctrl-C.)
 """ % {'p': P, 'run': output_name(interface, RUN)},

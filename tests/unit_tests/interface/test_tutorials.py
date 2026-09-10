@@ -1086,3 +1086,48 @@ class TestLoDetour(_TutorialTestCase):
             _curr_amps = []
 
         self.assertIn('QED<=2', step.render(_Empty()))
+
+
+#===============================================================================
+# what `lo` says about the launch question
+#===============================================================================
+
+class TestLaunchQuestionPreamble(unittest.TestCase):
+    """`launch` on an mg7 output runs bin/generate_events as a subprocess,
+    which never configures the `tutorial` logger -- so nothing the tutorial
+    prints can reach the card question the way it does for the in-process NLO
+    run. The step therefore has to describe the question up front."""
+
+    def step(self):
+        return [s for s in tutorials.get('lo').steps
+                if s.title == 'produce the output'][0]
+
+    def text(self):
+        class _Interface(object):
+            _done_export = ['/tmp/x/MYPROC', 'mg7']
+
+        return self.step().render(_Interface())
+
+    def test_it_names_the_cards_always_offered(self):
+        """launch.py's MG7Selector.always_cards."""
+
+        text = self.text()
+        self.assertIn('param_card.dat', text)
+        self.assertIn('run_card.toml', text)
+
+    def test_it_names_the_optional_tools(self):
+        text = self.text()
+        for tool in ('MadSpin', 'reweight', 'Pythia8', 'Delphes'):
+            self.assertIn(tool, text)
+
+    def test_it_says_to_press_enter(self):
+        """quit_on in extended_cmd is ['0', 'done', 'EOF', '', 'auto'], so an
+        empty answer accepts -- which is the thing a beginner needs told."""
+
+        text = self.text()
+        self.assertIn('just press Enter', text)
+        self.assertIn('`0`', text)
+        self.assertIn('`done`', text)
+
+    def test_it_warns_that_the_tutorial_goes_quiet(self):
+        self.assertIn('cannot talk to you', self.text())
