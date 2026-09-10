@@ -5097,7 +5097,7 @@ RESTART = %(mint_mode)s
             # Find the correct PDF input file
             input_files, output_files = [], []
             pdfinput = self.get_pdf_input_filename()
-            if os.path.exists(pdfinput):
+            if pdfinput.strip() and os.path.exists(pdfinput):
                 input_files.append(pdfinput)
             input_files.append(pjoin(os.path.dirname(exe), os.path.pardir, 'reweight_xsec_events'))
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
@@ -5280,7 +5280,7 @@ RESTART = %(mint_mode)s
 
         #Find the correct PDF input file
         pdfinput = self.get_pdf_input_filename()
-        if os.path.exists(pdfinput):
+        if pdfinput.strip() and os.path.exists(pdfinput):
             input_files.append(pdfinput)            
         return input_files, output_files, required_output,  args
 

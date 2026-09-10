@@ -6308,8 +6308,11 @@ tar -czf split_$1.tar.gz split_$1
                 required_output = []
                 
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
                         
                 #Find the correct ajob
                 Gre = re.compile(r"\s*j=(G[\d\.\w]+)")
@@ -6349,8 +6352,11 @@ tar -czf split_$1.tar.gz split_$1
                     input_files.append(pjoin(self.me_dir,'SubProcesses', 
                                                    'MadLoop5_resources.tar.gz'))
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
 
 
                 output_files = []
@@ -6402,8 +6408,11 @@ tar -czf split_$1.tar.gz split_$1
                     input_files.append(pjoin(self.me_dir,'SubProcesses', 
                                                    'MadLoop5_resources.tar.gz'))
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
 
 
                 output_files = [argument[0]]

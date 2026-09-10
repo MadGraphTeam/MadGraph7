@@ -121,6 +121,9 @@ class TestResolveLhapdf(unittest.TestCase):
         return exe
 
     def resolve(self, **options):
+        # the CVMFS mirror is a real path which may be mounted on the machine
+        # running the tests: opt out unless the test is about it
+        options.setdefault('cvmfs_lhapdf_path', None)
         return misc.resolve_lhapdf(options, root=self.root)
 
     def test_absolute_lhapdf(self):
@@ -183,11 +186,13 @@ class TestResolveLhapdf(unittest.TestCase):
         other = pjoin(self.tmpdir, 'other')
         os.makedirs(pjoin(other, 'MYSET'))
         os.environ['LHAPDF_DATA_PATH'] = os.pathsep.join([other, self.datadir])
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root)
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.data_paths[0], other)
         self.assertEqual(paths.find_set('MYSET'), other)
         # ... and use_env=False ignores the environment entirely
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root,
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root,
                                     use_env=False)
         self.assertEqual(paths.data_paths, [self.datadir])
 
@@ -196,7 +201,8 @@ class TestResolveLhapdf(unittest.TestCase):
         os.makedirs(other)
         exe = self.write_config('lhaenv', other)
         os.environ['MADGRAPH_LHAPDF_CONFIG'] = exe
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root)
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.config, exe)
 
     def test_lhapdf_py3_fallback(self):
@@ -228,11 +234,30 @@ class TestResolveLhapdf(unittest.TestCase):
     def test_create_makes_the_download_directory(self):
         os.environ['PATH'] = pjoin(self.tmpdir, 'empty')
         target = pjoin(self.root, 'HEPTools', 'lhapdf_pdfsets')
-        paths = misc.resolve_lhapdf({}, root=self.root)
+        paths = misc.resolve_lhapdf({'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.download_path, target)
         self.assertFalse(os.path.isdir(target))
-        paths = misc.resolve_lhapdf({}, root=self.root, create=True)
+        paths = misc.resolve_lhapdf({'cvmfs_lhapdf_path': None}, root=self.root,
+                                    create=True)
         self.assertTrue(os.path.isdir(target))
+
+    def test_cvmfs_mirror_is_searched_last_and_never_downloaded_into(self):
+        """a set present on the CVMFS mirror is found there instead of being
+        downloaded, but the mirror is read-only so it is never a download
+        target"""
+
+        mirror = pjoin(self.tmpdir, 'cvmfs')
+        os.makedirs(pjoin(mirror, 'CVMFSSET'))
+        paths = self.resolve(lhapdf=self.exe, cvmfs_lhapdf_path=mirror)
+        self.assertEqual(paths.data_paths, [self.datadir, mirror])
+        self.assertEqual(paths.find_set('CVMFSSET'), mirror)
+        # the local data directory still wins for a set it holds
+        self.assertEqual(paths.find_set('MYSET'), self.datadir)
+        self.assertNotEqual(paths.download_path, mirror)
+        # a mirror which is not mounted is simply ignored
+        paths = self.resolve(lhapdf=self.exe,
+                             cvmfs_lhapdf_path=pjoin(self.tmpdir, 'nomount'))
+        self.assertEqual(paths.data_paths, [self.datadir])
 
     def test_with_data_path_promotes_a_directory(self):
         paths = self.resolve(lhapdf=self.exe)

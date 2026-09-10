@@ -2494,6 +2494,32 @@ def _lhapdf_datadirs(exe):
     return _lhapdf_datadirs_cache[exe]
 
 
+# The LHAPDF sets mirrored on CVMFS. Where it is mounted -- most grid and
+# laboratory clusters -- it is a complete, read-only, node-local copy of the
+# sets, so a set found there needs neither a download nor a transfer to the
+# worker node.
+CVMFS_LHAPDF_PATH = '/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current'
+
+def get_cvmfs_lhapdf_path(options=None):
+    """Return the CVMFS PDF-set mirror to use, or None.
+
+    The location is configurable ('cvmfs_lhapdf_path'); setting it to None
+    switches the fallback off. A configured path that is not mounted is
+    simply ignored, so the default value is safe on any machine.
+    """
+
+    path = CVMFS_LHAPDF_PATH
+    if options is not None:
+        try:
+            path = options.get('cvmfs_lhapdf_path', CVMFS_LHAPDF_PATH)
+        except AttributeError:
+            pass
+    if not path or str(path).strip().lower() in ('none', 'false', ''):
+        return None
+    path = str(path).strip()
+    return path if os.path.isdir(path) else None
+
+
 def _writable_dir(path):
     """True if *path* is a writable directory or can be created as one."""
 
@@ -2555,6 +2581,12 @@ def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
     search += data_dirs
     search.append(pjoin(heptools, 'lhapdf_pdfsets'))
     search.append(pjoin(root, 'lhapdf_pdfsets'))
+    # last resort before a download: the read-only CVMFS mirror. It is never a
+    # download target -- _writable_dir rejects it -- so it only ever spares us
+    # from fetching a set that is already on the machine.
+    cvmfs = get_cvmfs_lhapdf_path(options)
+    if cvmfs:
+        search.append(cvmfs)
     search = [os.path.abspath(p) for p in search]
 
     data_paths = []

@@ -3235,6 +3235,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'cluster_temp_path':None,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
+                       'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
@@ -8965,6 +8966,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         args = ['max_npoint_for_channel'] + args
         self.check_set(args)
         self.options[args[0]] = int(args[1])
+
+    def set2_cvmfs_lhapdf_path(self, args, log=True):
+        """default=/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+        Directory of the LHAPDF sets mirrored via CVMFS. When that directory is
+        mounted, a PDF set found there is read directly from it: it is neither
+        downloaded nor copied into lib/PDFsets, and therefore not transferred to
+        the cluster nodes (which mount the same read-only filesystem).
+        A path that is not mounted is simply ignored; set the option to None to
+        switch the fallback off.
+        """
+        args = ['cvmfs_lhapdf_path'] + args
+        self.check_set(args)
+        value = args[1].strip()
+        self.options[args[0]] = None if value in ['None', 'none', ''] else value
 
     def set2_cluster_local_path(self, args, log=True):
         """default=None 
