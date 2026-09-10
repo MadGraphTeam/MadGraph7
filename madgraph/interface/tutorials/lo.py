@@ -62,7 +62,7 @@ The two cards worth knowing here:
   run_card.toml    beams, cuts, number of events, integrator settings
 
 The rest belong to whichever programs are switched on above them.
-`tutorial madevent` and `tutorial mg7` go through both card formats properly.
+`tutorial mg7` goes through the run card properly.
 
 **For this tutorial the defaults are fine -- just press Enter.**
 """
