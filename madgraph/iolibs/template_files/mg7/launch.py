@@ -51,6 +51,7 @@ if str(_INSTALL_DIR) not in sys.path:
 
 import madspace as ms
 from models.check_param_card import ParamCard
+from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 
@@ -897,9 +898,11 @@ class MadgraphProcess:
         if self.systematics is None or self.systematics.weight_count == 0:
             return
         summary = json.loads(self.systematics.summary())
-        nominal = summary.get("nominal", {})
-        xsec = nominal.get("cross_section")
-        if not xsec:
+        # the percentages come from systematics_summary, which get_result()
+        # reads too: the box and the scan row must not disagree, so neither
+        # computes them itself
+        xsec = systematics_summary.nominal_cross_section(summary)
+        if xsec is None:
             return
         def format_variation(up, down):
             # right-justify the signed numbers (not the sign alone) so the %
@@ -913,15 +916,11 @@ class MadgraphProcess:
         for pdf in summary.get("pdf", []):
             rows.append(("PDF set:", f"{pdf['pdf_set']}, {pdf['error_type']}"))
         rows.append(("Original cross-section:", f"{xsec} pb"))
-        if "scale" in summary:
-            lo, hi = summary["scale"]["min"], summary["scale"]["max"]
-            rows.append(("Scale variation:", format_variation(
-                (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)))
-        for pdf in summary.get("pdf", []):
-            if "uncertainty_up" in pdf and pdf.get("central"):
-                rows.append(("PDF variation:", format_variation(
-                    pdf["uncertainty_up"] / pdf["central"] * 100,
-                    pdf["uncertainty_down"] / pdf["central"] * 100)))
+        scale = systematics_summary.scale_percentages(summary)
+        if scale is not None:
+            rows.append(("Scale variation:", format_variation(*scale)))
+        for _entry, up, down in systematics_summary.pdf_percentages(summary):
+            rows.append(("PDF variation:", format_variation(up, down)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
             box = ms.PrettyBox("Systematics", len(rows), [24, 0])
             box.set_column(0, [label for label, _ in rows])
@@ -1479,15 +1478,14 @@ class MadgraphProcess:
         try:
             if self.systematics is not None and self.systematics.weight_count:
                 summary = json.loads(self.systematics.summary())
-                xsec = summary.get("nominal", {}).get("cross_section")
-                if xsec and "scale" in summary:
-                    result['scale_up(%)'] = (summary["scale"]["max"] - xsec) / xsec * 100
-                    result['scale_down(%)'] = (xsec - summary["scale"]["min"]) / xsec * 100
-                for pdf in summary.get("pdf", []):
-                    if pdf.get("central") and "uncertainty_up" in pdf:
-                        result['pdf_up(%)'] = pdf["uncertainty_up"] / pdf["central"] * 100
-                        result['pdf_down(%)'] = pdf["uncertainty_down"] / pdf["central"] * 100
-                        break
+                scale = systematics_summary.scale_percentages(summary)
+                if scale is not None:
+                    result['scale_up(%)'], result['scale_down(%)'] = scale
+                pdf = systematics_summary.pdf_percentages(summary)
+                if pdf:
+                    # one column pair; the nominal set's entry comes first
+                    _entry, up, down = pdf[0]
+                    result['pdf_up(%)'], result['pdf_down(%)'] = up, down
         except Exception as err:
             logger.warning("could not extract the systematics summary: %s", err)
         try:
