@@ -24,7 +24,8 @@ from __future__ import absolute_import
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Exercise, Step, Tutorial,
-                                                  core_process, describe_state)
+                                                  core_process, describe_state,
+                                                  total_diagrams)
 
 P = 'MG7>'
 
@@ -76,10 +77,6 @@ def squared_of(process):
 
 def types_of(process):
     return dict(process.get('sqorders_types'))
-
-
-def total_diagrams(interface):
-    return sum(amp.get_number_of_diagrams() for amp in amplitudes(interface))
 
 
 def has_decay_chain(interface):

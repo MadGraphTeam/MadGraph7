@@ -261,6 +261,18 @@ def output_name(interface, default):
     return default
 
 
+def total_diagrams(interface):
+    """How many diagrams the current process(es) came to, over all of them."""
+
+    total = 0
+    for amplitude in getattr(interface, '_curr_amps', None) or []:
+        try:
+            total += amplitude.get_number_of_diagrams()
+        except Exception:
+            continue
+    return total
+
+
 def applied_orders(interface):
     """The coupling orders MG5 actually put on the current process(es).
 

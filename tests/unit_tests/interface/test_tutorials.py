@@ -1004,3 +1004,85 @@ class TestTutorialStepCommandAliases(unittest.TestCase):
             self.assertIn('do_%s' % name, provided,
                           '`tutorial %s` is accepted but nothing implements it'
                           % name)
+
+
+#===============================================================================
+# the optional detour in `lo`
+#===============================================================================
+
+class TestLoDetour(_TutorialTestCase):
+    """`lo` offers an optional side-trip: regenerate allowing QED vertices and
+    be told what changed. Taking it must report the real counts; skipping it
+    must land on the next step as if it were not there."""
+
+    def steps(self):
+        return tutorials.get('lo').steps
+
+    def index_of(self, title):
+        for i, step in enumerate(self.steps()):
+            if step.title == title:
+                return i
+        self.fail('no step titled %r' % title)
+
+    def test_skipping_it_reaches_the_next_step(self):
+        session = TutorialSession(tutorials.get('lo'))
+        offered_at = self.index_of('generate a process')
+        session.index = offered_at
+        found = session.step_for('display diagrams')
+        self.assertIsNotNone(found)
+        self.assertEqual(found[1].title, 'look at the diagrams',
+                         'skipping the detour did not reach the main line')
+
+    def test_taking_it_reaches_the_detour(self):
+        session = TutorialSession(tutorials.get('lo'))
+        session.index = self.index_of('generate a process')
+        found = session.step_for('generate p p > t t~ QED<=2')
+        self.assertIsNotNone(found)
+        self.assertEqual(found[1].title, 'the electroweak diagrams (detour)')
+
+    def test_the_detour_leads_back_to_the_main_line(self):
+        session = TutorialSession(tutorials.get('lo'))
+        detour = self.index_of('the electroweak diagrams (detour)')
+        session.index = detour
+        found = session.step_for(self.steps()[detour].get_solution())
+        self.assertIsNotNone(found)
+        self.assertEqual(found[1].title, 'look at the diagrams')
+
+    def test_it_reports_the_counts_it_was_given(self):
+        """The before/after numbers come from the session, not from the text."""
+
+        import madgraph.interface.tutorials.lo as lo_module
+
+        class _Interface(object):
+            _tutorial_lo_ndiag = 4
+            _curr_amps = []
+
+        interface = _Interface()
+        original = lo_module.total_diagrams
+        try:
+            lo_module.total_diagrams = lambda i: 6
+            text = lo_module._detour_text(interface)
+        finally:
+            lo_module.total_diagrams = original
+
+        self.assertIn('**4** diagrams', text)
+        self.assertIn('**6**', text)
+
+    def test_it_copes_with_no_remembered_count(self):
+        """`repeat` on the detour after a restart must not blow up."""
+
+        import madgraph.interface.tutorials.lo as lo_module
+
+        class _Interface(object):
+            _curr_amps = []
+
+        text = lo_module._detour_text(_Interface())
+        self.assertIn('display diagrams', text)
+
+    def test_the_offer_names_the_command(self):
+        step = self.steps()[self.index_of('generate a process')]
+
+        class _Empty(object):
+            _curr_amps = []
+
+        self.assertIn('QED<=2', step.render(_Empty()))

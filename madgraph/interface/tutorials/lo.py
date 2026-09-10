@@ -30,7 +30,8 @@ import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
                                                   lhapdf_configured,
-                                                  output_name)
+                                                  output_name,
+                                                  total_diagrams)
 
 P = 'MG7>'
 RUN = 'MY_FIRST_LO_RUN'
@@ -49,6 +50,44 @@ def madspace_is_installed():
     except Exception:
         return False
     return os.path.isdir(os.path.join(root, 'madspace', 'install', 'madspace'))
+
+
+def _detour_text(interface=None):
+    """The optional QED<=2 side-trip: say what changed, then send them back.
+
+    Reached only if the user takes it; typing `display diagrams` at the
+    previous step jumps straight past this one.
+    """
+
+    before = getattr(interface, '_tutorial_lo_ndiag', None)
+    now = total_diagrams(interface)
+
+    if before and now and now != before:
+        count = ("You had **%d** diagrams a moment ago and now you have "
+                 "**%d**." % (before, now))
+    elif now:
+        count = "You now have **%d** diagrams." % now
+    else:
+        count = ""
+
+    return """
+%(count)s
+
+The new ones are all in the quark-antiquark subprocess. Without QED vertices
+it can only go through a gluon; allowing two lets it go through a photon or a
+Z as well, so `q q~ > t t~` picks up the two s-channel electroweak diagrams.
+The gluon-gluon subprocess is unchanged -- there is no electroweak way to make
+a top pair out of two gluons at this order.
+
+Whether that matters is a physics question, not a syntax one. Here the
+electroweak contribution is tiny next to QCD, which is exactly why MG5's search
+left it out. For a process where it is not tiny -- anything with a Z or a W in
+the final state -- leaving it to the search is how you quietly compute the
+wrong thing.
+
+That is the detour. Back to the main line:
+%(p)s display diagrams
+""" % {'count': count, 'p': P}
 
 
 def _lhapdf_note(interface=None):
@@ -146,11 +185,25 @@ interference-only selections, required and forbidden s-channels, decay chains,
 polarisation and NLO all go in the same process line; `tutorial syntax` walks
 through the lot.
 
-Before generating anything, it is worth a look at the diagrams:
+**A short detour, if you want it.** MG5 just chose to leave the electroweak
+diagrams out. You can ask for them back by allowing QED vertices:
+
+%(p)s generate p p > t t~ QED<=2
+
+Type that and the tutorial will tell you what changed. Or skip it -- the main
+line carries on with a look at the diagrams:
+
 %(p)s display diagrams
 """ % {'p': P, 'orders': describe_applied_orders(interface)},
      title='generate a process',
      hint="A space between every particle name, and `>` separates initial from final state.",
+     setup=lambda interface: setattr(interface, '_tutorial_lo_ndiag',
+                                     total_diagrams(interface)),
+     solution='display diagrams'),
+
+Step('generate', lambda interface: _detour_text(interface),
+     title='the electroweak diagrams (detour)',
+     hint="Nothing to do here -- `display diagrams` picks the main line back up.",
      solution='display diagrams'),
 
 Step('display', """
