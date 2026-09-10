@@ -584,6 +584,36 @@ NamedVector<Value> Integrand::build_channel_part(
         // factor on the weight rather than as one of the cuts themselves. An
         // event below xqcut ends up with weight zero and is never unweighted.
         weights_after_cuts.push_back(scales.at("xqcut_weight"));
+
+        // alpha_s reweighting, the CKKW-style factor madevent applies in
+        // Template/LO/SubProcesses/reweight.f: every clustering vertex that
+        // produced a parton is evaluated at its own scale rather than at the
+        // event's, so the weight carries prod_i alphas(pt_i) instead of
+        // alphas(mu_R)^n. Without it a merged sample is short by one factor
+        // per emission, compounding with multiplicity.
+        //
+        // The kernel hands back mu_R for any vertex it does not reweight, so
+        // that vertex's ratio is one and no mask is needed here.
+        if (_running_coupling) {
+            auto vertex_scales = scales.at("alphas_scales");
+            std::size_t vertex_count = vertex_scales.type.shape.at(0);
+            if (vertex_count > 0) {
+                auto reference = _running_coupling.value()
+                                     .build_function(fb, {scales.at("ren_scale")})
+                                     .at(0);
+                Value factor;
+                for (std::size_t i = 0; i < vertex_count; ++i) {
+                    auto [rest, one_scale] = fb.pop(vertex_scales);
+                    vertex_scales = rest;
+                    auto alpha =
+                        _running_coupling.value().build_function(fb, {one_scale}).at(0);
+                    auto ratio = fb.div(alpha, reference);
+                    factor = factor ? fb.mul(factor, ratio) : ratio;
+                }
+                weights_after_cuts.push_back(factor);
+                weights_after_cuts.push_back(scales.at("alphas_weight"));
+            }
+        }
     }
     if (_energy_scale && _energy_scale->has_scale_range()) {
         // Same for the floor on the scales themselves, which applies to every

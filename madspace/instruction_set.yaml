@@ -2272,6 +2272,13 @@ mlm_clustering_hadronic:
     - name: xqcut_weight
       type: [float]
       desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+
   vectorized: False
 
 mlm_clustering_leptonic:
@@ -2340,6 +2347,13 @@ mlm_clustering_leptonic:
     - name: xqcut_weight
       type: [float]
       desc:
+    - name: alphas_scales
+      type: [float, n-3]
+      desc: scale of each clustering vertex for the alpha_s reweighting
+    - name: alphas_weight
+      type: [float]
+      desc: zero when a reweighted vertex sits where the coupling is not usable
+
   vectorized: False
 
 ---

@@ -232,6 +232,8 @@ KERNELSPEC void mlm_clustering(
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index,
     FOut<T, 0> xqcut_weight,
+    FOut<T, 1> alphas_scales,
+    FOut<T, 0> alphas_weight,
     bool hadronic
 ) {
     // we do not support SIMD for now, so we can assume simple types
@@ -783,6 +785,36 @@ KERNELSPEC void mlm_clustering(
     fact_scale2 = fac_scale2;
     // A weight rather than a flag, so that it can simply multiply the event
     // weight the way every other cut in madspace does.
+    // Scale of each clustering vertex for the alpha_s reweighting, following
+    // the loop in Template/LO/SubProcesses/reweight.f: every clustering except
+    // the last one is reweighted by alphas(pt_clust) / alphas(mu_R), and only
+    // where a parton is produced. A vertex that is not reweighted is handed
+    // mu_R itself, so its ratio is exactly one and the consumer needs no mask.
+    //
+    // madevent gates this on goodjet / ispartonvx; the QCD flag of the vertex
+    // is the same statement for every case that arises here - all three lines
+    // coloured - and is what the rest of this kernel already uses.
+    //
+    // reweight.f drops an event outright when a reweighted vertex sits at or
+    // below 2 GeV, where the coupling is not to be trusted; alphas_weight is
+    // that veto.
+    bool alphas_ok = true;
+    for (int i = 0; i < cluster_max; ++i) {
+        if ((cluster_history[i] >> 27) & 1) {
+            FVal<T> scale = cluster_scales[i];
+            if (!(scale * scale > 4.0)) {
+                alphas_ok = false;
+            }
+            alphas_scales[i] = scale;
+        } else {
+            alphas_scales[i] = ren_scale_val;
+        }
+    }
+
+    // Kept apart from xqcut_weight: that one is the merging cut and nothing
+    // else, and only the reweighting cares where the coupling stops being
+    // usable.
+    alphas_weight = alphas_ok ? 1.0 : 0.0;
     xqcut_weight = passes_xqcut ? 1.0 : 0.0;
 
     int diag_count = state_machine[state];
@@ -815,7 +847,9 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     FOut<T, 0> fact_scale2,
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index,
-    FOut<T, 0> xqcut_weight
+    FOut<T, 0> xqcut_weight,
+    FOut<T, 1> alphas_scales,
+    FOut<T, 0> alphas_weight
 ) {
     mlm_clustering<T>(
         momenta,
@@ -839,6 +873,8 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         outgoing_scales,
         diagram_index,
         xqcut_weight,
+        alphas_scales,
+        alphas_weight,
         true
     );
 }
@@ -865,7 +901,9 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     FOut<T, 0> fact_scale2,
     FOut<T, 1> outgoing_scales,
     IOut<T, 0> diagram_index,
-    FOut<T, 0> xqcut_weight
+    FOut<T, 0> xqcut_weight,
+    FOut<T, 1> alphas_scales,
+    FOut<T, 0> alphas_weight
 ) {
     mlm_clustering<T>(
         momenta,
@@ -889,6 +927,8 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         outgoing_scales,
         diagram_index,
         xqcut_weight,
+        alphas_scales,
+        alphas_weight,
         false
     );
 }

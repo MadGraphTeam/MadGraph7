@@ -121,11 +121,19 @@ def run(clustering, momenta):
 def run_all(clustering, momenta):
     """As run(), plus the trailing xqcut_weight.
 
-    Deliberately stops there rather than unpacking whatever the clustering
-    happens to return: an output added to the kernel would otherwise break
-    every caller here, none of which is about that output.
+    Deliberately stops there: the clustering also returns the per-vertex
+    alpha_s scales and their weight, which these tests are not about, and
+    unpacking everything would break every caller each time an output is
+    added. Use alphas_outputs() for those.
     """
     return tuple(np.asarray(v) for v in clustering(momenta))[:6]
+
+
+def alphas_outputs(clustering, momenta):
+    """The alpha_s reweighting outputs: per-vertex scales, and the weight that
+    drops an event whose vertices sit where the coupling is not usable."""
+    out = clustering(momenta)
+    return np.asarray(out[6]), np.asarray(out[7])
 
 
 def assert_jet_scales_agree(reference, other, max_flip_fraction=0.05):
