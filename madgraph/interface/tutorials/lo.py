@@ -243,51 +243,13 @@ different name so they sit beside this one):
 Now run it:
 %(p)s launch %(run)s
 
-MG7 hands over to a separate program here -- `launch` starts
-`bin/generate_events` as its own process -- so the tutorial cannot talk to you
-while it runs. Here is what you are about to see.
+It asks one question before it starts -- which programs to run and which cards
+to edit. **Just press Enter**: the defaults are a reasonable LHC run, and we
+will go through what the question was offering once you are back.
 
-**It asks one question first**, in two blocks -- which programs to run after
-generation, and which cards to edit. It looks like this:
-
-   The following switches determine which programs are run:
-   1   shower=Pythia8
-   2 detector=Not Avail.
-   3 analysis=OFF
-   4  madspin=ON
-   5 reweight=ON
-    You can also edit the following cards:
-     6. param    : param_card.dat
-     7. run      : run_card.toml
-     8. pythia8  : pythia8_card.dat
-     9. madspin  : madspin_card.dat
-     10. reweight : reweight_card.dat
-
-The top block is the programs: the parton shower (Pythia8), a detector
-simulation, an analysis, MadSpin for decays with spin correlations, and
-reweighting. Type a number or the name -- `1` or `shower` -- to cycle a switch.
-`Not Avail.` means that program is not installed here.
-
-The bottom block is the cards. Type its number to open it in your editor:
-`param_card.dat` holds the masses, widths and couplings; `run_card.toml` the
-beams, cuts, number of events and integrator settings. The rest belong to
-whichever programs are switched on, which is why the list grows and shrinks.
-
-You do not have to open an editor to change one thing: `set KEY VALUE` edits a
-parameter directly, and you can hand it the path to an existing card or banner
-to reuse it wholesale.
-
-Your list will not match the one above exactly -- which switches start on
-depends on what MG7 finds installed and which cards the directory already has.
-
-**For this tutorial, just press Enter.** An empty answer, `0` and `done` all
-mean the same thing -- "run it with what is there" -- and the defaults are a
-reasonable LHC run. You do not have to change anything to get your first
-events.
-
-Then it runs. If madspace was not built earlier this is where it gets built,
-so the first run takes longer than the ones after it. When it finishes you come
-back here and the tutorial picks up again.
+Then it runs. If madspace was not built earlier this is where it gets built, so
+the first run takes longer than the ones after it. `launch` hands over to a
+separate program, so the tutorial goes quiet until it returns.
 
 (To stop a long run and carry on with the tutorial, press Ctrl-C.)
 """ % {'p': P, 'run': output_name(interface, RUN)},
@@ -297,6 +259,16 @@ back here and the tutorial picks up again.
 
 Step('launch', lambda interface: """
 That is a full leading-order event sample.
+
+**The question you just answered** had two blocks. The top one was the programs
+to run after generation -- parton shower, detector simulation, analysis,
+MadSpin for decays with spin correlations, reweighting -- where a number or a
+name toggles one, and `Not Avail.` means it is not installed here. The bottom
+one was the cards: always `param_card.dat` (masses, widths, couplings) and
+`run_card.toml` (beams, cuts, number of events, integrator settings), plus one
+for each program switched on. A number opens a card in your editor,
+`set KEY VALUE` changes a single parameter without one, and a path to an
+existing card or banner reuses it wholesale.
 
 **The cross section comes with two different uncertainties**, and they are not
 interchangeable.

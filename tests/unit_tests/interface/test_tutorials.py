@@ -1102,58 +1102,56 @@ class TestLoDetour(_TutorialTestCase):
 # what `lo` says about the launch question
 #===============================================================================
 
-class TestLaunchQuestionPreamble(unittest.TestCase):
+class TestLaunchQuestion(unittest.TestCase):
     """`launch` on an mg7 output runs bin/generate_events as a subprocess,
-    which never configures the `tutorial` logger -- so nothing the tutorial
-    prints can reach the card question the way it does for the in-process NLO
-    run. The step therefore has to describe the question up front."""
+    which never configures the `tutorial` logger -- so the tutorial cannot
+    speak while the card question is on screen. It says the minimum before
+    (press Enter) and explains what the question held afterwards, once the
+    reader has actually seen it."""
 
-    def step(self):
-        return [s for s in tutorials.get('lo').steps
-                if s.title == 'produce the output'][0]
+    class _Interface(object):
+        _done_export = ['/tmp/x/MYPROC', 'mg7']
+        options = {'lhapdf': sys.executable}
+        _curr_amps = []
 
-    def text(self):
-        class _Interface(object):
-            _done_export = ['/tmp/x/MYPROC', 'mg7']
+    def step(self, title):
+        return [s for s in tutorials.get('lo').steps if s.title == title][0]
 
-        return self.step().render(_Interface())
+    def before(self):
+        return self.step('produce the output').render(self._Interface())
 
-    def test_it_names_the_cards_always_offered(self):
-        """launch.py's MG7Selector.always_cards."""
+    def after(self):
+        return self.step('run it').render(self._Interface())
 
-        text = self.text()
-        self.assertIn('param_card.dat', text)
-        self.assertIn('run_card.toml', text)
+    def test_the_preamble_stays_short(self):
+        """The whole point: it used to describe the question at length before
+        the reader had any use for it."""
 
-    def test_it_names_the_programs_the_switches_offer(self):
-        text = self.text()
-        for tool in ('shower', 'detector', 'analysis', 'madspin', 'reweight'):
-            self.assertIn(tool, text)
+        self.assertLess(len(self.before().strip().split('\n')), 30)
 
-    def test_it_does_not_claim_the_switches_all_start_off(self):
-        """A real run shows madspin=ON and reweight=ON: what starts on depends
-        on what is installed and which cards the directory holds."""
+    def test_the_preamble_only_says_press_enter(self):
+        text = self.before()
+        self.assertIn('press Enter', text)
+        # the detail belongs after, so none of it should be here
+        self.assertNotIn('Not Avail.', text)
+        self.assertNotIn('set KEY VALUE', text)
 
-        text = self.text()
-        self.assertNotIn('each OFF until you turn it on', text)
-        self.assertIn('depends on what MG7 finds installed', text)
+    def test_the_explanation_comes_after(self):
+        text = self.after()
+        self.assertIn('question you just answered', text)
+        for detail in ('param_card.dat', 'run_card.toml', 'set KEY VALUE',
+                       'Not Avail.'):
+            self.assertIn(detail, text)
 
-    def test_it_mentions_the_shortcuts_the_question_advertises(self):
-        text = self.text()
-        self.assertIn('set KEY VALUE', text)
-        self.assertIn('banner', text)
+    def test_it_does_not_reprint_the_question(self):
+        """The reader has just seen it; repeating the switch list is noise."""
 
-    def test_it_says_to_press_enter(self):
-        """quit_on in extended_cmd is ['0', 'done', 'EOF', '', 'auto'], so an
-        empty answer accepts -- which is the thing a beginner needs told."""
-
-        text = self.text()
-        self.assertIn('just press Enter', text)
-        self.assertIn('`0`', text)
-        self.assertIn('`done`', text)
+        text = self.after()
+        for row in ('1   shower=', '6. param', 'The following switches'):
+            self.assertNotIn(row, text)
 
     def test_it_warns_that_the_tutorial_goes_quiet(self):
-        self.assertIn('cannot talk to you', self.text())
+        self.assertIn('goes quiet', self.before())
 
 
 #===============================================================================
