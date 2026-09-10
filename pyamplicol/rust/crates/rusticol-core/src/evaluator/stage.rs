@@ -345,6 +345,28 @@ impl StageRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        self.evaluate_selected_chunks_generic_into_state(
+            batch_size,
+            parameter_count,
+            state,
+            binary_precision,
+            None,
+        )
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn evaluate_selected_chunks_generic_into_state<T>(
+        &mut self,
+        batch_size: usize,
+        parameter_count: usize,
+        state: &mut [Complex<T>],
+        binary_precision: Option<u32>,
+        active_chunk_indices: Option<&[usize]>,
+    ) -> RusticolResult<(f64, f64, f64)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         let mut input_pack_s = 0.0;
         let (evaluated, evaluator_s) =
             if let Some(input_components) = self.input_components.as_ref() {
@@ -371,20 +393,55 @@ impl StageRuntime {
                 }
                 input_pack_s = pack_start.elapsed().as_secs_f64();
                 let eval_start = Instant::now();
-                let evaluated = self.evaluator.evaluate_batch_generic(
+                let evaluated = self.evaluator.evaluate_selected_chunks_generic(
                     batch_size,
                     &parameter_scratch,
                     binary_precision,
+                    active_chunk_indices,
                 )?;
                 (evaluated, eval_start.elapsed().as_secs_f64())
             } else {
                 let eval_start = Instant::now();
-                let evaluated =
-                    self.evaluator
-                        .evaluate_batch_generic(batch_size, state, binary_precision)?;
+                let evaluated = self.evaluator.evaluate_selected_chunks_generic(
+                    batch_size,
+                    state,
+                    binary_precision,
+                    active_chunk_indices,
+                )?;
                 (evaluated, eval_start.elapsed().as_secs_f64())
             };
 
+        if let Some(indices) = active_chunk_indices {
+            // Inactive chunks may share storage with still-live currents.
+            // Assign only the selected leaves, never their zero placeholders.
+            let assign_start = Instant::now();
+            let mut offset = 0;
+            let chunk_offsets = self
+                .evaluator
+                .output_chunk_lengths()
+                .into_iter()
+                .map(|length| {
+                    let start = offset;
+                    offset += length;
+                    start
+                })
+                .collect::<Vec<_>>();
+            for row in 0..batch_size {
+                let row_state = row * parameter_count;
+                let row_eval = row * self.evaluator.output_len;
+                for &index in indices {
+                    for &(column, state_offset) in &self.chunk_outputs[index] {
+                        state[row_state + state_offset] =
+                            evaluated[row_eval + chunk_offsets[index] + column].clone();
+                    }
+                }
+            }
+            return Ok((
+                input_pack_s,
+                evaluator_s,
+                assign_start.elapsed().as_secs_f64(),
+            ));
+        }
         self.assign_generic_outputs(
             batch_size,
             parameter_count,
@@ -578,6 +635,94 @@ mod tests {
                 .to_string()
                 .contains("columns are not contiguous")
         );
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    #[test]
+    fn generic_selected_chunks_preserve_inactive_live_current_slots() {
+        use symbolica::{atom::AtomCore, parse};
+
+        let leaf = |expression: &str| LoadedEvaluator {
+            eval: F64Evaluator::ExactOnly,
+            exact_eval: Some(
+                parse!(expression)
+                    .evaluator(&[parse!("selected_chunk_x")])
+                    .build()
+                    .unwrap(),
+            ),
+            exact_eval_source: None,
+            double_eval: None,
+            arb_eval: None,
+            input_len: 1,
+            output_len: 1,
+        };
+        let evaluator = EvaluatorGroup {
+            evaluators: vec![
+                leaf("selected_chunk_x + 100"),
+                leaf("selected_chunk_x + 200"),
+            ],
+            input_len: 2,
+            input_mappings: vec![Some(vec![0]), Some(vec![1])],
+            input_mapping_spans: vec![Vec::new(), Vec::new()],
+            output_len: 2,
+            chunk_parameter_scratch_f64: Vec::new(),
+            chunk_scratch_f64: Vec::new(),
+            chunk_parameter_scratch_aosoa_f64: Vec::new(),
+            chunk_scratch_aosoa_f64: Vec::new(),
+            chunk_input_mapping_scratch: Vec::new(),
+        };
+        let mut stage = StageRuntime {
+            outputs: vec![(0, 1), (1, 3)],
+            output_spans: Vec::new(),
+            chunk_outputs: vec![vec![(0, 1)], vec![(0, 3)]],
+            chunk_output_spans: vec![Vec::new(), Vec::new()],
+            input_components: Some(vec![2, 0]),
+            input_spans: Vec::new(),
+            parameter_scratch_f64: Vec::new(),
+            output_scratch_f64: Vec::new(),
+            evaluator,
+        };
+        let number = |value| c_generic(DoubleFloat::from(value), DoubleFloat::from(0.0));
+        let initial = [3.0, -99.0, 7.0, -99.0, 11.0, -99.0, 13.0, -99.0]
+            .map(number)
+            .to_vec();
+        let mut state = initial.clone();
+        stage
+            .evaluate_selected_chunks_generic_into_state(2, 4, &mut state, None, Some(&[1]))
+            .unwrap();
+        assert!(stage.evaluator.evaluators[0].double_eval.is_none());
+        assert!(stage.evaluator.evaluators[1].double_eval.is_some());
+        assert_eq!(state[1], number(-99.0));
+        assert_eq!(state[5], number(-99.0));
+        assert_eq!(state[3], number(203.0));
+        assert_eq!(state[7], number(211.0));
+
+        stage
+            .evaluate_selected_chunks_generic_into_state(2, 4, &mut state, None, Some(&[0]))
+            .unwrap();
+        assert_eq!(state[1], number(107.0));
+        assert_eq!(state[5], number(113.0));
+        assert_eq!(state[3], number(203.0));
+        assert_eq!(state[7], number(211.0));
+        let mut complete = initial;
+        stage
+            .evaluate_generic_into_state(2, 4, &mut complete, None)
+            .unwrap();
+        assert_eq!(state, complete);
+        for invalid in [&[1, 1][..], &[1, 0][..], &[2][..]] {
+            assert!(
+                stage
+                    .evaluate_selected_chunks_generic_into_state(
+                        2,
+                        4,
+                        &mut state,
+                        None,
+                        Some(invalid),
+                    )
+                    .is_err()
+            );
+            assert_eq!(state, complete);
+        }
     }
 
     #[cfg(all(

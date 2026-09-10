@@ -184,7 +184,7 @@ impl ExecutionRuntime {
                         physics.canonical_total_color_selector(selected_color_ids),
                     )
                 });
-        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)?
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids, selected_color_ids)?
             && self.try_run_f64_with_helicity_recurrence_into_unprofiled(
                 batch,
                 selected_helicity_ids,
@@ -279,7 +279,7 @@ impl ExecutionRuntime {
         if self.has_compiled_symmetric_group_diagnostic() {
             return Err(self.compiled_symmetric_group_unsupported("resolved evaluation"));
         }
-        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids, selected_color_ids)? {
             return self.run_resolved_f64_with_helicity_recurrence_unprofiled(
                 batch,
                 selected_helicity_ids,
@@ -677,6 +677,12 @@ impl ExecutionRuntime {
         selected_color_ids: Option<&BTreeSet<String>>,
         output: &mut [f64],
     ) -> RusticolResult<bool> {
+        // A fused colour lane computes the complete helicity axis. With an
+        // explicit helicity selection, retain the parent's pruned schedule
+        // and map the selected physical flow before executing it instead.
+        if selected_helicity_ids.is_some() && self.has_compiled_helicity_execution_plan() {
+            return Ok(false);
+        }
         let physics = self.physics.clone().ok_or_else(|| {
             RusticolError::invalid_argument(
                 "schema-v3 artifact is missing resolved physics metadata; regenerate it with pyAmpliCol 0.1.0 or newer",
@@ -1543,7 +1549,7 @@ impl ExecutionRuntime {
                         physics.canonical_total_color_selector(selected_color_ids),
                     )
                 });
-        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids, selected_color_ids)? {
             let (resolved, mut profile) = self.run_resolved_f64_with_helicity_recurrence(
                 batch,
                 selected_helicity_ids,
@@ -1705,7 +1711,7 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
-        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids, selected_color_ids)? {
             return self.run_resolved_f64_with_helicity_recurrence(
                 batch,
                 selected_helicity_ids,
@@ -2419,7 +2425,7 @@ impl ExecutionRuntime {
             binary_precision,
             None,
             None,
-            true,
+            None,
         )?;
         let component_count = resolved.helicity_indices.len() * resolved.color_indices.len();
         let values = resolved
@@ -2580,13 +2586,13 @@ impl ExecutionRuntime {
             return Err(self
                 .compiled_symmetric_group_unsupported("resolved exact/high-precision evaluation"));
         }
-        if self.has_safe_singleton_helicity_execution(selected_helicity_ids)? {
+        if self.has_safe_singleton_helicity_execution(selected_helicity_ids, selected_color_ids)? {
             return self.run_resolved_generic_with_helicity_recurrence(
                 batch,
                 binary_precision,
                 selected_helicity_ids,
                 selected_color_ids,
-                true,
+                None,
             );
         }
         if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
@@ -2613,7 +2619,7 @@ impl ExecutionRuntime {
                 binary_precision,
                 selected_helicity_ids,
                 selected_color_ids,
-                true,
+                None,
             );
         }
         self.run_resolved_generic_materialized(
@@ -2689,7 +2695,7 @@ impl ExecutionRuntime {
                         binary_precision,
                         Some(&source_group.helicity_ids),
                         Some(&source_group.color_ids),
-                        false,
+                        source_group.materialized_sector_ids.as_ref(),
                     )?
                 } else {
                     self.run_resolved_generic_materialized(

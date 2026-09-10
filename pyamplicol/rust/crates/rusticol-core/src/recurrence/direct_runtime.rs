@@ -8,17 +8,19 @@
 //! fill the persistent momentum and parameter arenas, then execute the
 //! authenticated direct plan without resizing the active runtime storage.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem::size_of;
 use std::ops::Range;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 use super::direct_backend::observe_direct_amplitudes_before_replay;
 use super::direct_backend::{
-    DIRECT_STATUS_OK, DirectContributionFanoutProgram, DirectExecutionCounters,
-    DirectExecutionRoleTimings, DirectExecutorCatalog, DirectFactorView, DirectMomentumView,
-    DirectParameterView, DirectUnionSourceDispatchHandle, DirectWorkspace,
+    DIRECT_STATUS_OK, DirectContributionFanoutProgram, DirectCurrentClearRange,
+    DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog, DirectFactorView,
+    DirectMomentumView, DirectParameterView, DirectStageClearRanges,
+    DirectUnionSourceDispatchHandle, DirectWorkspace, execute_direct_plan_destination_selected,
     execute_direct_plan_profiled_with_fanout_and_traffic,
     execute_direct_plan_selected_profiled_with_fanout_and_traffic,
     execute_direct_plan_selected_unprofiled_with_fanout,
@@ -28,7 +30,7 @@ use super::direct_plan::{
     DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
     DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor,
 };
-use super::{RecurrenceStrategy, SemanticDigest};
+use super::{DIRECT_NONE_U32, DirectNodeKind, RecurrenceStrategy, SemanticDigest};
 use crate::direct_arena::{
     AlignedF64Buffer, DIRECT_ARENA_ALIGNMENT, DirectArenaAllocationCounters,
     DirectArenaTrafficCounters, DirectArenaWorkspace, checked_plane_scalar_len,
@@ -51,6 +53,7 @@ pub struct DirectRecurrenceTileOutput<'a> {
     destination_count: u32,
     public_flow_id: Option<u32>,
     representative_flow_id: Option<u32>,
+    selected_destination_ids: Option<&'a [u32]>,
 }
 
 impl<'a> DirectRecurrenceTileOutput<'a> {
@@ -93,13 +96,25 @@ impl<'a> DirectRecurrenceTileOutput<'a> {
     }
 
     pub fn selected_destination_ids(&self) -> impl Iterator<Item = u32> + '_ {
-        self.amplitude_destinations
+        let unrestricted = if self.selected_destination_ids.is_some() {
+            &[][..]
+        } else {
+            self.amplitude_destinations
+        };
+        self.selected_destination_ids
+            .unwrap_or_default()
             .iter()
-            .filter(|destination| {
-                self.representative_flow_id
-                    .is_none_or(|representative| destination.target_sector_id == representative)
-            })
-            .map(|destination| destination.id)
+            .copied()
+            .chain(
+                unrestricted
+                    .iter()
+                    .filter(|destination| {
+                        self.representative_flow_id.is_none_or(|representative| {
+                            destination.target_sector_id == representative
+                        })
+                    })
+                    .map(|destination| destination.id),
+            )
     }
 
     pub(crate) fn destination_target_helicity_id_or_sentinel(
@@ -115,6 +130,12 @@ impl<'a> DirectRecurrenceTileOutput<'a> {
         if destination_id >= self.destination_count {
             return None;
         }
+        if self
+            .selected_destination_ids
+            .is_some_and(|ids| ids.binary_search(&destination_id).is_err())
+        {
+            return None;
+        }
         let descriptor = self.amplitude_destinations.get(destination_id as usize)?;
         if self
             .representative_flow_id
@@ -128,18 +149,28 @@ impl<'a> DirectRecurrenceTileOutput<'a> {
 }
 
 /// Prepared, plan-authenticated topology-replay selection.
+#[derive(Clone)]
 pub struct DirectReplaySelectorPlan {
     runtime_layout_digest: SemanticDigest,
     public_flow_id: u32,
     representative_flow_id: u32,
-    source_permutation: Box<[u32]>,
-    source_momentum_signs: Box<[i32]>,
-    helicity_map: Box<[u32]>,
+    source_permutation: Arc<[u32]>,
+    source_momentum_signs: Arc<[i32]>,
+    helicity_map: Arc<[u32]>,
     phase_re: f64,
     phase_im: f64,
     multiplicity: u32,
+    row_groups: Arc<[DirectRowGroupDescriptor]>,
+    amplitude_clear_ranges: Arc<[Range<usize>]>,
+    destination_program: Option<Arc<DirectReplayDestinationProgram>>,
+}
+
+/// A cold dependency closure, reusable across flows with the same representative.
+struct DirectReplayDestinationProgram {
+    destination_ids: Arc<[u32]>,
     row_groups: Box<[DirectRowGroupDescriptor]>,
     amplitude_clear_ranges: Box<[Range<usize>]>,
+    current_clear_stages: Box<[DirectStageClearRanges]>,
 }
 
 /// Prepared, plan-authenticated all-flow-union helicity selection.
@@ -185,14 +216,22 @@ impl DirectReplaySelectorPlan {
     }
 
     pub fn selected_row_group_count(&self) -> usize {
-        self.row_groups.len()
+        self.selected_row_groups().len()
     }
 
     pub fn selected_row_count(&self) -> u64 {
-        self.row_groups
+        self.selected_row_groups()
             .iter()
             .map(|group| u64::from(group.row_count))
             .sum()
+    }
+
+    fn selected_row_groups(&self) -> &[DirectRowGroupDescriptor] {
+        self.destination_program
+            .as_ref()
+            .map_or(self.row_groups.as_ref(), |program| {
+                program.row_groups.as_ref()
+            })
     }
 
     fn identity(&self) -> DirectReplaySelectorIdentity {
@@ -321,6 +360,7 @@ pub struct DirectRecurrenceExecutionRuntime {
     last_point_count: u32,
     last_public_flow_id: Option<u32>,
     last_representative_flow_id: Option<u32>,
+    last_selected_destination_ids: Option<Arc<[u32]>>,
     counters: DirectExecutionCounters,
     allocation_counters: DirectArenaAllocationCounters,
     traffic_counters: DirectArenaTrafficCounters,
@@ -553,6 +593,7 @@ impl DirectRecurrenceExecutionRuntime {
             last_point_count: 0,
             last_public_flow_id: None,
             last_representative_flow_id: None,
+            last_selected_destination_ids: None,
             counters: DirectExecutionCounters::default(),
             allocation_counters,
             traffic_counters: DirectArenaTrafficCounters::default(),
@@ -712,15 +753,60 @@ impl DirectRecurrenceExecutionRuntime {
             runtime_layout_digest: self.plan.runtime_layout_digest(),
             public_flow_id,
             representative_flow_id: target.representative_id,
-            source_permutation: source_permutation.into_boxed_slice(),
-            source_momentum_signs: source_momentum_signs.into_boxed_slice(),
-            helicity_map: helicity_map.into_boxed_slice(),
+            source_permutation: source_permutation.into(),
+            source_momentum_signs: source_momentum_signs.into(),
+            helicity_map: helicity_map.into(),
             phase_re: phase.real().numerator() as f64 / phase.real().denominator() as f64,
             phase_im: phase.imag().numerator() as f64 / phase.imag().denominator() as f64,
             multiplicity: target.multiplicity,
-            row_groups: row_groups.into_boxed_slice(),
-            amplitude_clear_ranges: amplitude_clear_ranges.into_boxed_slice(),
+            row_groups: row_groups.into(),
+            amplitude_clear_ranges: amplitude_clear_ranges.into(),
+            destination_program: None,
         })
+    }
+
+    /// Prepare just the dependency closure of the requested representative
+    /// amplitude destinations. Sources remain helicity-generic in the plan;
+    /// numerical current identities, including identities between helicities,
+    /// are followed through their real parent dependencies here.
+    pub fn prepare_replay_selector_for_destinations(
+        &self,
+        base: &DirectReplaySelectorPlan,
+        needed_destinations: &[u32],
+    ) -> RusticolResult<DirectReplaySelectorPlan> {
+        self.validate_replay_selector(base)?;
+        let mut selector = base.clone();
+        selector.destination_program = Some(Arc::new(selected_replay_destination_program(
+            &self.plan,
+            selector.representative_flow_id,
+            &selector.row_groups,
+            needed_destinations,
+        )?));
+        Ok(selector)
+    }
+
+    /// Reuse an already prepared closure for another public flow represented
+    /// by the same sector. Only the momentum/helicity replay mapping differs.
+    pub fn prepare_replay_selector_with_destination_program(
+        &self,
+        base: &DirectReplaySelectorPlan,
+        prepared: &DirectReplaySelectorPlan,
+    ) -> RusticolResult<DirectReplaySelectorPlan> {
+        self.validate_replay_selector(base)?;
+        self.validate_replay_selector(prepared)?;
+        let mut selector = base.clone();
+        if selector.representative_flow_id != prepared.representative_flow_id {
+            return Err(invalid(
+                "replay destination program has a different representative",
+            ));
+        }
+        selector.destination_program = Some(Arc::clone(
+            prepared
+                .destination_program
+                .as_ref()
+                .ok_or_else(|| invalid("replay selector has no restricted destination program"))?,
+        ));
+        Ok(selector)
     }
 
     /// Resolve one retained helicity once for all-flow-union execution.
@@ -1195,10 +1281,21 @@ impl DirectRecurrenceExecutionRuntime {
         }
 
         self.execute_selected_direct_tile_impl::<PROFILE>(selector, point_count)?;
-        self.scale_replay_amplitudes::<PROFILE>(selector, None, point_count)?;
+        self.scale_replay_amplitudes::<PROFILE>(
+            selector,
+            selector
+                .destination_program
+                .as_ref()
+                .map(|program| program.destination_ids.as_ref()),
+            point_count,
+        )?;
         self.last_point_count = point_count;
         self.last_public_flow_id = Some(selector.public_flow_id);
         self.last_representative_flow_id = Some(selector.representative_flow_id);
+        self.last_selected_destination_ids = selector
+            .destination_program
+            .as_ref()
+            .map(|program| Arc::clone(&program.destination_ids));
         Ok(self.borrowed_output(
             point_count,
             self.last_public_flow_id,
@@ -1219,14 +1316,19 @@ impl DirectRecurrenceExecutionRuntime {
         let active_points = point_count as usize;
         let mut scaled_values = 0_u64;
         let (_, _, amplitude_re, amplitude_im) = self.arena.split_slices_mut();
-        for destination_id in 0..self.plan.amplitude_destinations().len() {
+        let unrestricted = if selected_destination_ids.is_some() {
+            0
+        } else {
+            self.plan.amplitude_destinations().len()
+        };
+        for destination_id in selected_destination_ids
+            .unwrap_or_default()
+            .iter()
+            .map(|&id| id as usize)
+            .chain(0..unrestricted)
+        {
             let destination = self.plan.amplitude_destinations()[destination_id];
             if destination.target_sector_id != selector.representative_flow_id {
-                continue;
-            }
-            if selected_destination_ids
-                .is_some_and(|selected| selected.binary_search(&(destination_id as u32)).is_err())
-            {
                 continue;
             }
             let start = destination_id * point_stride;
@@ -1510,11 +1612,17 @@ impl DirectRecurrenceExecutionRuntime {
         self.last_public_flow_id = None;
         self.last_representative_flow_id = None;
         // `execute_direct_plan` initializes every current stage exactly once
+        self.last_selected_destination_ids = None;
         // before its first contribution group. Re-clearing all current planes
         // here only duplicates that work.
-        let amplitude_ranges = selector
-            .map_or(self.additive_amplitude_ranges.as_slice(), |selector| {
-                selector.amplitude_clear_ranges.as_ref()
+        let amplitude_ranges =
+            selector.map_or(self.additive_amplitude_ranges.as_slice(), |selector| {
+                selector
+                    .destination_program
+                    .as_ref()
+                    .map_or(selector.amplitude_clear_ranges.as_ref(), |program| {
+                        program.amplitude_clear_ranges.as_ref()
+                    })
             });
         for range in amplitude_ranges {
             let component_base = u32::try_from(range.start).map_err(|_| {
@@ -1545,9 +1653,41 @@ impl DirectRecurrenceExecutionRuntime {
                 point_stride: self.point_stride,
             };
             let started = PROFILE.then(Instant::now);
-            let result = match (PROFILE, selector) {
-                (true, Some(selector)) => {
-                    execute_direct_plan_selected_profiled_with_fanout_and_traffic(
+            let result = if let Some((selector, program)) = selector.and_then(|selector| {
+                selector
+                    .destination_program
+                    .as_ref()
+                    .map(|program| (selector, program))
+            }) {
+                execute_direct_plan_destination_selected::<PROFILE>(
+                    &self.plan,
+                    &program.row_groups,
+                    selector.representative_flow_id,
+                    &program.current_clear_stages,
+                    &self.executors,
+                    &mut workspace,
+                    point_count,
+                    &mut self.counters,
+                    &mut self.role_timings,
+                    &mut self.traffic_counters,
+                )
+            } else {
+                match (PROFILE, selector) {
+                    (true, Some(selector)) => {
+                        execute_direct_plan_selected_profiled_with_fanout_and_traffic(
+                            &self.plan,
+                            &selector.row_groups,
+                            selector.representative_flow_id,
+                            &self.executors,
+                            &self.contribution_fanout,
+                            &mut workspace,
+                            point_count,
+                            &mut self.counters,
+                            &mut self.role_timings,
+                            &mut self.traffic_counters,
+                        )
+                    }
+                    (false, Some(selector)) => execute_direct_plan_selected_unprofiled_with_fanout(
                         &self.plan,
                         &selector.row_groups,
                         selector.representative_flow_id,
@@ -1555,37 +1695,25 @@ impl DirectRecurrenceExecutionRuntime {
                         &self.contribution_fanout,
                         &mut workspace,
                         point_count,
+                    ),
+                    (true, None) => execute_direct_plan_profiled_with_fanout_and_traffic(
+                        &self.plan,
+                        &self.executors,
+                        &self.contribution_fanout,
+                        &mut workspace,
+                        point_count,
                         &mut self.counters,
                         &mut self.role_timings,
                         &mut self.traffic_counters,
-                    )
+                    ),
+                    (false, None) => execute_direct_plan_unprofiled_with_fanout(
+                        &self.plan,
+                        &self.executors,
+                        &self.contribution_fanout,
+                        &mut workspace,
+                        point_count,
+                    ),
                 }
-                (false, Some(selector)) => execute_direct_plan_selected_unprofiled_with_fanout(
-                    &self.plan,
-                    &selector.row_groups,
-                    selector.representative_flow_id,
-                    &self.executors,
-                    &self.contribution_fanout,
-                    &mut workspace,
-                    point_count,
-                ),
-                (true, None) => execute_direct_plan_profiled_with_fanout_and_traffic(
-                    &self.plan,
-                    &self.executors,
-                    &self.contribution_fanout,
-                    &mut workspace,
-                    point_count,
-                    &mut self.counters,
-                    &mut self.role_timings,
-                    &mut self.traffic_counters,
-                ),
-                (false, None) => execute_direct_plan_unprofiled_with_fanout(
-                    &self.plan,
-                    &self.executors,
-                    &self.contribution_fanout,
-                    &mut workspace,
-                    point_count,
-                ),
             };
             if PROFILE {
                 self.timings.direct_execution += started
@@ -1625,6 +1753,7 @@ impl DirectRecurrenceExecutionRuntime {
             destination_count: self.plan.amplitude_destination_count(),
             public_flow_id,
             representative_flow_id,
+            selected_destination_ids: self.last_selected_destination_ids.as_deref(),
         }
     }
 
@@ -2006,6 +2135,222 @@ fn greatest_power_of_two_not_exceeding(value: usize) -> usize {
     1_usize << (usize::BITS - 1 - value.leading_zeros())
 }
 
+/// Component storage can be recycled after a current's last use. Resolve
+/// parents by lifetime, not by their physical component address alone.
+struct ReplayCurrentIndex {
+    by_stage_and_base: BTreeMap<(u16, u32), usize>,
+    by_base: BTreeMap<u32, Vec<usize>>,
+}
+
+impl ReplayCurrentIndex {
+    fn new(plan: &DirectRecurrencePlan) -> RusticolResult<Self> {
+        let mut by_stage_and_base = BTreeMap::new();
+        let mut by_base = BTreeMap::<u32, Vec<usize>>::new();
+        for (id, current) in plan.currents().iter().enumerate() {
+            if by_stage_and_base
+                .insert((current.stage, current.component_base), id)
+                .is_some()
+            {
+                return Err(invalid("replay current address is repeated within a stage"));
+            }
+            by_base.entry(current.component_base).or_default().push(id);
+        }
+        for ids in by_base.values_mut() {
+            ids.sort_unstable_by_key(|&id| {
+                let current = &plan.currents()[id];
+                (current.first_use, current.last_use, id)
+            });
+        }
+        Ok(Self {
+            by_stage_and_base,
+            by_base,
+        })
+    }
+
+    fn destination(&self, stage: u16, base: u32) -> RusticolResult<usize> {
+        self.by_stage_and_base
+            .get(&(stage, base))
+            .copied()
+            .ok_or_else(|| invalid("replay contribution has no current at its stage"))
+    }
+
+    fn parent(&self, plan: &DirectRecurrencePlan, stage: u16, base: u32) -> RusticolResult<usize> {
+        let ids = self
+            .by_base
+            .get(&base)
+            .ok_or_else(|| invalid("replay parent current address is absent"))?;
+        let end = ids.partition_point(|&id| plan.currents()[id].first_use <= u32::from(stage));
+        ids.get(end.wrapping_sub(1))
+            .copied()
+            .filter(|&id| plan.currents()[id].last_use >= u32::from(stage))
+            .ok_or_else(|| invalid("replay parent current is not live at its use stage"))
+    }
+}
+
+fn selected_replay_destination_program(
+    plan: &DirectRecurrencePlan,
+    representative: u32,
+    flow_groups: &[DirectRowGroupDescriptor],
+    destination_ids: &[u32],
+) -> RusticolResult<DirectReplayDestinationProgram> {
+    if destination_ids.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(invalid(
+            "replay amplitude destination IDs must be sorted and unique",
+        ));
+    }
+    let mut amplitude_marks =
+        zeroed_marks(plan.amplitude_destinations().len(), "destination selection")?;
+    for &id in destination_ids {
+        let destination = plan
+            .amplitude_destinations()
+            .get(id as usize)
+            .filter(|destination| destination.target_sector_id == representative)
+            .ok_or_else(|| {
+                invalid("replay amplitude destination is outside the selected representative")
+            })?;
+        amplitude_marks[destination.id as usize] = 1;
+    }
+
+    let index = ReplayCurrentIndex::new(plan)?;
+    let mut source_marks = zeroed_marks(plan.sources().len(), "source selection")?;
+    let mut contribution_marks =
+        zeroed_marks(plan.contributions().len(), "contribution selection")?;
+    let mut finalization_marks =
+        zeroed_marks(plan.finalizations().len(), "finalization selection")?;
+    let mut closure_marks = zeroed_marks(plan.closures().len(), "closure selection")?;
+    let mut current_marks = zeroed_marks(plan.currents().len(), "current selection")?;
+    let mut contributions_by_current = vec![Vec::<(usize, u16)>::new(); plan.currents().len()];
+    let mut finalizations_by_current = vec![Vec::<usize>::new(); plan.currents().len()];
+    let mut pending = Vec::new();
+    for group in flow_groups {
+        let start = group.row_start as usize;
+        let end = start + group.row_count as usize;
+        match group.role {
+            DirectExecutorRole::Contribution => {
+                for row_id in start..end {
+                    let row = &plan.contributions()[row_id];
+                    let current = index.destination(group.stage, row.destination_component_base)?;
+                    contributions_by_current[current].push((row_id, group.stage));
+                }
+            }
+            DirectExecutorRole::Finalization => {
+                for row_id in start..end {
+                    let row = &plan.finalizations()[row_id];
+                    let current = index.destination(group.stage, row.component_base)?;
+                    finalizations_by_current[current].push(row_id);
+                }
+            }
+            DirectExecutorRole::Closure => {
+                for row_id in start..end {
+                    let row = &plan.closures()[row_id];
+                    if amplitude_marks[row.amplitude_destination_id as usize] == 0 {
+                        continue;
+                    }
+                    closure_marks[row_id] = 1;
+                    pending.push(index.parent(plan, group.stage, row.parent0_component_base)?);
+                    if row.parent1_component_base_or_sentinel != DIRECT_NONE_U32 {
+                        pending.push(index.parent(
+                            plan,
+                            group.stage,
+                            row.parent1_component_base_or_sentinel,
+                        )?);
+                    }
+                }
+            }
+            DirectExecutorRole::Source => {}
+        }
+    }
+    while let Some(current_id) = pending.pop() {
+        if current_marks[current_id] != 0 {
+            continue;
+        }
+        current_marks[current_id] = 1;
+        let current = &plan.currents()[current_id];
+        if current.source_row_or_sentinel != DIRECT_NONE_U32 {
+            source_marks[current.source_row_or_sentinel as usize] = 1;
+        }
+        for &row_id in &finalizations_by_current[current_id] {
+            finalization_marks[row_id] = 1;
+        }
+        for &(row_id, stage) in &contributions_by_current[current_id] {
+            let row = &plan.contributions()[row_id];
+            contribution_marks[row_id] = 1;
+            pending.push(index.parent(plan, stage, row.parent0_component_base)?);
+            if row.parent1_component_base_or_sentinel != DIRECT_NONE_U32 {
+                pending.push(index.parent(plan, stage, row.parent1_component_base_or_sentinel)?);
+            }
+        }
+    }
+
+    let mut row_groups = Vec::new();
+    for group in flow_groups {
+        let marks = match group.role {
+            DirectExecutorRole::Source => &source_marks,
+            DirectExecutorRole::Contribution => &contribution_marks,
+            DirectExecutorRole::Finalization => &finalization_marks,
+            DirectExecutorRole::Closure => &closure_marks,
+        };
+        let end = group.row_start as usize + group.row_count as usize;
+        let mut row = group.row_start as usize;
+        while row < end {
+            if marks[row] == 0 {
+                row += 1;
+                continue;
+            }
+            let start = row;
+            while row < end && marks[row] != 0 {
+                row += 1;
+            }
+            row_groups.push(DirectRowGroupDescriptor {
+                row_start: start as u64,
+                row_count: (row - start) as u32,
+                ..*group
+            });
+        }
+    }
+    let mut clear_by_stage = BTreeMap::<u16, Vec<Range<u32>>>::new();
+    for (id, current) in plan.currents().iter().enumerate() {
+        if current_marks[id] == 0 || current.node_kind != DirectNodeKind::Current {
+            continue;
+        }
+        clear_by_stage.entry(current.stage).or_default().push(
+            current.component_base..current.component_base + u32::from(current.component_count),
+        );
+    }
+    let current_clear_stages = clear_by_stage
+        .into_iter()
+        .map(|(stage, mut ranges)| {
+            ranges.sort_unstable_by_key(|range| range.start);
+            let mut merged = Vec::<DirectCurrentClearRange>::new();
+            for range in ranges {
+                if let Some(last) = merged.last_mut()
+                    && range.start <= last.component_base + last.component_count
+                {
+                    last.component_count = (last.component_base + last.component_count)
+                        .max(range.end)
+                        - last.component_base;
+                    continue;
+                }
+                merged.push(DirectCurrentClearRange {
+                    component_base: range.start,
+                    component_count: range.end - range.start,
+                });
+            }
+            DirectStageClearRanges {
+                stage,
+                ranges: merged.into_boxed_slice(),
+            }
+        })
+        .collect::<Vec<_>>();
+    Ok(DirectReplayDestinationProgram {
+        destination_ids: Arc::from(destination_ids),
+        row_groups: row_groups.into_boxed_slice(),
+        amplitude_clear_ranges: compact_ranges(&amplitude_marks, "destination selection")?
+            .into_boxed_slice(),
+        current_clear_stages: current_clear_stages.into_boxed_slice(),
+    })
+}
+
 fn selected_replay_row_groups(
     plan: &DirectRecurrencePlan,
     representative_sector_id: u32,
@@ -2028,9 +2373,8 @@ fn selected_replay_row_groups(
                 offset += 1;
             }
             // Preserve selector-domain boundaries even when adjacent domains
-            // are both active. Prepared SymJIT descriptor caches authenticate
-            // a row-table pointer together with its count; a shared-domain
-            // prefix must therefore have one stable count for every selector.
+            // are both active, so full-flow fanout runs retain their original
+            // authenticated partitions.
             if !plan.selector_domain_contains(selector_domain_id, representative_sector_id)? {
                 continue;
             }

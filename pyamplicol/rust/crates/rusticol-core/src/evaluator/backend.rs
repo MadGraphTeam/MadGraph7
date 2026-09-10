@@ -1583,16 +1583,20 @@ impl EvaluatorGroup {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(crate) fn evaluate_batch_generic<T>(
+    pub(crate) fn evaluate_selected_chunks_generic<T>(
         &mut self,
         batch_size: usize,
         params: &[Complex<T>],
         binary_precision: Option<u32>,
+        active_chunk_indices: Option<&[usize]>,
     ) -> RusticolResult<Vec<Complex<T>>>
     where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        if let Some(indices) = active_chunk_indices {
+            validate_active_chunk_indices(indices, self.evaluators.len())?;
+        }
         let mut out = vec![complex_zero::<T>(); batch_size * self.output_len];
         if params.len() != batch_size * self.input_len {
             return Err(RusticolError::invalid_argument(format!(
@@ -1602,7 +1606,20 @@ impl EvaluatorGroup {
             )));
         }
         let mut output_offset = 0;
-        for (evaluator, input_mapping) in self.evaluators.iter_mut().zip(&self.input_mappings) {
+        let mut active_position = 0;
+        for (chunk_index, (evaluator, input_mapping)) in self
+            .evaluators
+            .iter_mut()
+            .zip(&self.input_mappings)
+            .enumerate()
+        {
+            if let Some(indices) = active_chunk_indices {
+                if indices.get(active_position) != Some(&chunk_index) {
+                    output_offset += evaluator.output_len;
+                    continue;
+                }
+                active_position += 1;
+            }
             let mapped_params = input_mapping.as_ref().map(|indices| {
                 let mut mapped = Vec::with_capacity(batch_size * indices.len());
                 for row in 0..batch_size {

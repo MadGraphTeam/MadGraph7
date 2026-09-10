@@ -904,17 +904,12 @@ impl SymjitDirectExecutorContext {
             address: rows.as_ptr().addr(),
             row_count,
         };
-        let group_index = if let Some((index, cached)) = workspace
+        let group_index = if let Some((index, _)) = workspace
             .row_groups
             .iter()
             .enumerate()
-            .find(|(_, cached)| cached.identity.address == identity.address)
+            .find(|(_, cached)| cached.identity == identity)
         {
-            if cached.identity != identity {
-                return Err(RusticolError::integrity(
-                    "recurrence row table identity changed after its descriptors were bound",
-                ));
-            }
             index
         } else {
             let cached =
@@ -2685,6 +2680,26 @@ pub(crate) mod tests {
             assert_eq!(current_re[3 * len + point], 10.0 + point as f64);
             assert_eq!(current_im[3 * len + point], -0.5);
         }
+        // A selected dependency run can share the same first row as a longer
+        // selection. Pointer equality alone must not reject the second table.
+        for row_count in [1, 2, 1] {
+            assert_eq!(
+                unsafe {
+                    call(
+                        context,
+                        arena,
+                        momenta,
+                        parameters,
+                        factors,
+                        rows.as_ptr(),
+                        row_count,
+                        len as u32,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+        }
+        assert_eq!(loaded.context.tiled_workspace.borrow().row_groups.len(), 2);
     }
 
     unsafe extern "C" fn initialize_stable_row_probe_sources(

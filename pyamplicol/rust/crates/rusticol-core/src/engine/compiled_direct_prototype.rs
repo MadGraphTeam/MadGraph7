@@ -465,6 +465,8 @@ pub(crate) struct CompiledDirectEnginePrototype {
     parameter_im: Box<AlignedF64Buffer>,
     zero_plane: Box<AlignedF64Buffer>,
     full_schedule: CompiledDirectValidatedSchedule,
+    helicity_color_schedules:
+        BTreeMap<usize, BTreeMap<BTreeSet<i64>, Arc<CompiledDirectValidatedSchedule>>>,
     source_components: Box<[usize]>,
     default_source_states: Box<[GenericSourceStateIrManifest]>,
     source_wavefunction_scratch: Vec<Complex<f64>>,
@@ -730,6 +732,7 @@ impl CompiledDirectEnginePrototype {
             parameter_im,
             zero_plane,
             full_schedule,
+            helicity_color_schedules: BTreeMap::new(),
             source_components: source_components.to_vec().into_boxed_slice(),
             default_source_states: Box::new([]),
             source_wavefunction_scratch: vec![c64(0.0, 0.0); source_scratch_len],
@@ -1361,6 +1364,54 @@ impl CompiledDirectEnginePrototype {
         )
     }
 
+    /// Reuse the closure common to a helicity and a union of requested colours.
+    /// Binding is done once per selection, never per tile or phase-space point.
+    pub(crate) fn bind_helicity_color_schedule(
+        &mut self,
+        selector_domain_id: usize,
+        helicity: &CompiledDirectValidatedSchedule,
+        selected_sector_ids: &BTreeSet<i64>,
+        color_schedules: &BTreeMap<i64, CompiledDirectValidatedSchedule>,
+    ) -> RusticolResult<Arc<CompiledDirectValidatedSchedule>> {
+        if let Some(schedule) = self
+            .helicity_color_schedules
+            .get(&selector_domain_id)
+            .and_then(|colors| colors.get(selected_sector_ids))
+        {
+            return Ok(Arc::clone(schedule));
+        }
+        if selected_sector_ids.is_empty() {
+            return Err(RusticolError::integrity(
+                "compiled Direct-Arena colour selection is empty",
+            ));
+        }
+        let colors = selected_sector_ids
+            .iter()
+            .map(|id| {
+                color_schedules.get(id).ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "compiled Direct-Arena colour schedule {id} is missing"
+                    ))
+                })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let (stages, amplitude) = intersect_helicity_color_schedules(helicity, &colors)?;
+        let schedule = Arc::new(validate_schedule(
+            &self.stages,
+            &self.amplitude,
+            self.value_component_count,
+            &self.source_components,
+            self.amplitude_component_count,
+            &stages,
+            &amplitude,
+        )?);
+        self.helicity_color_schedules
+            .entry(selector_domain_id)
+            .or_default()
+            .insert(selected_sector_ids.clone(), Arc::clone(&schedule));
+        Ok(schedule)
+    }
+
     /// Execute a cold-bound canonical preorder leaf schedule.
     pub(crate) fn evaluate_validated(
         &mut self,
@@ -1943,6 +1994,49 @@ fn evaluate_bound_stage_leaves(
         traffic.leaf.record_call(1, point_count);
     }
     Ok(())
+}
+
+fn intersect_helicity_color_schedules(
+    helicity: &CompiledDirectValidatedSchedule,
+    colors: &[&CompiledDirectValidatedSchedule],
+) -> RusticolResult<(Vec<Vec<usize>>, Vec<usize>)> {
+    if colors
+        .iter()
+        .any(|color| color.active_stage_leaves.len() != helicity.active_stage_leaves.len())
+    {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena selector schedules have different stage counts",
+        ));
+    }
+    let intersect = |selected: &[usize], union: BTreeSet<usize>| {
+        selected
+            .iter()
+            .copied()
+            .filter(|id| union.contains(id))
+            .collect()
+    };
+    let stages = helicity
+        .active_stage_leaves
+        .iter()
+        .enumerate()
+        .map(|(index, leaves)| {
+            intersect(
+                leaves,
+                colors
+                    .iter()
+                    .flat_map(|color| color.active_stage_leaves[index].iter().copied())
+                    .collect(),
+            )
+        })
+        .collect();
+    let amplitude = intersect(
+        &helicity.active_amplitude_leaves,
+        colors
+            .iter()
+            .flat_map(|color| color.active_amplitude_leaves.iter().copied())
+            .collect(),
+    );
+    Ok((stages, amplitude))
 }
 
 fn validate_schedule<S: DirectStagePlan>(
@@ -2703,6 +2797,24 @@ fn append_component_bindings(
 
 #[cfg(all(test, feature = "f64-symjit"))]
 mod tests {
+    #[test]
+    fn joint_selection_intersects_helicity_with_union_of_colors_in_leaf_order() {
+        let schedule =
+            |stages: Vec<Vec<usize>>, amplitudes: Vec<usize>| CompiledDirectValidatedSchedule {
+                active_stage_leaves: stages.into_iter().map(Vec::into_boxed_slice).collect(),
+                active_amplitude_leaves: amplitudes.into_boxed_slice(),
+                inactive_amplitude_components: Box::new([]),
+            };
+        let helicity = schedule(vec![vec![0, 1, 3], vec![0, 2]], vec![1, 2, 4]);
+        let first_color = schedule(vec![vec![0, 2], vec![0]], vec![1, 3]);
+        let second_color = schedule(vec![vec![0, 3], vec![1, 2]], vec![2, 3]);
+        let (stages, amplitudes) =
+            intersect_helicity_color_schedules(&helicity, &[&first_color, &second_color]).unwrap();
+        assert_eq!(stages, vec![vec![0, 3], vec![0, 2]]);
+        assert_eq!(amplitudes, vec![1, 2]);
+        let wrong_stages = schedule(vec![], vec![]);
+        assert!(intersect_helicity_color_schedules(&helicity, &[&wrong_stages]).is_err());
+    }
     use super::super::evaluator::count_test_allocations;
     use super::*;
     use sha2::{Digest, Sha256};
@@ -3845,6 +3957,44 @@ extern "C" int native_direct_leaf_direct_application_v1(
             active_amplitude_chunk_indices: vec![0],
         };
         let direct_selector = direct.bind_color_schedule(&existing_selector).unwrap();
+        let color_schedules =
+            BTreeMap::from([(7, direct.bind_color_schedule(&existing_selector).unwrap())]);
+        let selected_colors = BTreeSet::from([7]);
+        let joint = direct
+            .bind_helicity_color_schedule(11, &direct_selector, &selected_colors, &color_schedules)
+            .unwrap();
+        let cached = direct
+            .bind_helicity_color_schedule(11, &direct_selector, &selected_colors, &color_schedules)
+            .unwrap();
+        assert!(Arc::ptr_eq(&joint, &cached));
+        assert_eq!(
+            joint.active_stage_leaves,
+            direct_selector.active_stage_leaves
+        );
+        assert_eq!(
+            joint.active_amplitude_leaves,
+            direct_selector.active_amplitude_leaves
+        );
+        assert!(
+            direct
+                .bind_helicity_color_schedule(
+                    11,
+                    &direct_selector,
+                    &BTreeSet::new(),
+                    &color_schedules,
+                )
+                .is_err()
+        );
+        assert!(
+            direct
+                .bind_helicity_color_schedule(
+                    11,
+                    &direct_selector,
+                    &BTreeSet::from([8]),
+                    &color_schedules,
+                )
+                .is_err()
+        );
         let initial_state = |point_count: usize| {
             let mut initial = vec![Complex::new(0.0, 0.0); point_count * GLOBAL_PARAMETERS];
             for point in 0..point_count {

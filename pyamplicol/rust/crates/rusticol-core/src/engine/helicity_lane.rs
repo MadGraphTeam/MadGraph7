@@ -21,26 +21,40 @@ pub(super) struct CompiledHelicityExecutionPlan {
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-fn validate_direct_materialized_sector_selection(
+fn bind_direct_helicity_color_schedule(
+    direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
+    helicity_schedules: &BTreeMap<
+        usize,
+        compiled_direct_prototype::CompiledDirectValidatedSchedule,
+    >,
     color_schedules: &BTreeMap<i64, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
+    schedule: &CompiledHelicitySelectorSchedule,
     selected: Option<&BTreeSet<i64>>,
-) -> RusticolResult<()> {
+) -> RusticolResult<Option<Arc<compiled_direct_prototype::CompiledDirectValidatedSchedule>>> {
     let Some(selected) = selected else {
-        return Ok(());
+        return Ok(None);
     };
     if selected.is_empty() {
         return Err(RusticolError::invalid_argument(
             "compiled Direct-Arena materialized-sector selection cannot be empty",
         ));
     }
-    for sector_id in selected {
-        if !color_schedules.contains_key(sector_id) {
-            return Err(RusticolError::integrity(format!(
-                "compiled Direct-Arena has no cold-bound schedule for materialized sector {sector_id}"
-            )));
-        }
-    }
-    Ok(())
+    let helicity = helicity_schedules
+        .get(&schedule.selector_domain_id)
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compiled Direct-Arena has no cold-bound helicity schedule for selector domain {}",
+                schedule.selector_domain_id
+            ))
+        })?;
+    direct
+        .bind_helicity_color_schedule(
+            schedule.selector_domain_id,
+            helicity,
+            selected,
+            color_schedules,
+        )
+        .map(Some)
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -48,18 +62,21 @@ fn evaluate_direct_helicity_schedule(
     direct: &mut compiled_direct_prototype::CompiledDirectEnginePrototype,
     schedules: &BTreeMap<usize, compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     schedule: &CompiledHelicitySelectorSchedule,
+    color_schedule: Option<&compiled_direct_prototype::CompiledDirectValidatedSchedule>,
     execute_union: bool,
     point_count: usize,
 ) -> RusticolResult<()> {
     if execute_union {
         return direct.evaluate_all(point_count);
     }
-    let direct_schedule = schedules.get(&schedule.selector_domain_id).ok_or_else(|| {
-        RusticolError::integrity(format!(
-            "compiled Direct-Arena has no cold-bound helicity schedule for selector domain {}",
-            schedule.selector_domain_id
-        ))
-    })?;
+    let direct_schedule = color_schedule
+        .or_else(|| schedules.get(&schedule.selector_domain_id))
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "compiled Direct-Arena has no cold-bound helicity schedule for selector domain {}",
+                schedule.selector_domain_id
+            ))
+        })?;
     direct.evaluate_validated_materialized_helicity(point_count, direct_schedule)
 }
 
@@ -241,13 +258,18 @@ impl ExecutionRuntime {
     /// Whether a singleton physical-helicity request can bypass a compact
     /// helicity-sum/topology-replay execution without losing physical colour.
     ///
-    /// A nested runtime owns a complete non-replay colour DAG. A local
-    /// materialized schedule is safe only when this runtime is itself not a
-    /// replay representative. Parent closures are deliberately not considered
-    /// here: replay-backed closures bypass the physical topology contraction.
+    /// A nested runtime owns a complete non-replay colour DAG. When a proper
+    /// subset of LC flows is requested, prefer the compact topology replay:
+    /// that path maps both the flow and its helicity to the representative.
+    /// The complete-colour nested runtime remains useful for all-flow calls.
+    /// A local materialized schedule is safe only when this runtime is itself
+    /// not a replay representative. Parent closures are deliberately not
+    /// considered here: replay-backed closures bypass the physical topology
+    /// contraction.
     pub(super) fn has_safe_singleton_helicity_execution(
         &self,
         selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<bool> {
         let Some(selected_helicity_ids) = selected_helicity_ids else {
             return Ok(false);
@@ -287,6 +309,14 @@ impl ExecutionRuntime {
             })?;
         if schedule.structural_zero {
             return Ok(true);
+        }
+        if self.lc_topology_replay_enabled
+            && !physics.has_contracted_color_axis()
+            && physics
+                .canonical_total_color_selector(selected_color_ids)
+                .is_some()
+        {
+            return Ok(false);
         }
         if self
             .helicity_selector_lane_by_domain
@@ -589,7 +619,10 @@ impl ExecutionRuntime {
                     }
                 }
             } else {
-                if self.color_topology_replay_enabled || self.lc_topology_replay_enabled {
+                if self.color_topology_replay_enabled
+                    || (self.lc_topology_replay_enabled
+                        && selected_materialized_sector_ids.is_none())
+                {
                     return Err(RusticolError::integrity(
                         "topology-replay runtime cannot execute its representative materialized helicity schedule directly",
                     ));
@@ -747,8 +780,11 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena helicity execution was selected without a complete runtime",
             ));
         };
-        validate_direct_materialized_sector_selection(
+        let color_schedule = bind_direct_helicity_color_schedule(
+            direct,
+            compiled_direct_helicity_schedules,
             compiled_direct_color_schedules,
+            schedule,
             selected_materialized_sector_ids,
         )?;
         let tile_capacity = direct.reduction_tile_capacity();
@@ -769,6 +805,7 @@ impl ExecutionRuntime {
                 direct,
                 compiled_direct_helicity_schedules,
                 schedule,
+                color_schedule.as_deref(),
                 execute_union,
                 point_stop - point_start,
             )?;
@@ -842,8 +879,11 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena helicity totals were selected without a complete runtime",
             ));
         };
-        validate_direct_materialized_sector_selection(
+        let color_schedule = bind_direct_helicity_color_schedule(
+            direct,
+            compiled_direct_helicity_schedules,
             compiled_direct_color_schedules,
+            schedule,
             selected_materialized_sector_ids,
         )?;
         let direct_total_plan = amplitude.bind_default_materialized_helicity_direct_total_plan(
@@ -871,6 +911,7 @@ impl ExecutionRuntime {
                 direct,
                 compiled_direct_helicity_schedules,
                 schedule,
+                color_schedule.as_deref(),
                 execute_union,
                 point_stop - point_start,
             )?;
@@ -955,11 +996,24 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena routed helicity execution was selected without a complete runtime",
             ));
         };
-        validate_direct_materialized_sector_selection(
+        let color_schedule = bind_direct_helicity_color_schedule(
+            direct,
+            compiled_direct_helicity_schedules,
             compiled_direct_color_schedules,
+            schedule.as_ref(),
             Some(selected_materialized_sector_ids),
         )?;
-        let tile_capacity = direct.reduction_tile_capacity();
+        // A selected helicity/flow uses only these routed components. The
+        // complete-axis footprint can otherwise shrink even a singleton to
+        // one point per tile, despite the already allocated SIMD capacity.
+        let reduction_footprint = amplitude.compiled_direct_reduction_footprint(
+            0,
+            CompiledDirectRoutedReductionFootprint {
+                maximum_source_component_count: source_component_count,
+                maximum_target_component_count: target_component_count,
+            },
+        )?;
+        let tile_capacity = direct.reduction_tile_capacity_for_footprint(reduction_footprint)?;
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -977,6 +1031,7 @@ impl ExecutionRuntime {
                 direct,
                 compiled_direct_helicity_schedules,
                 schedule.as_ref(),
+                color_schedule.as_deref(),
                 false,
                 point_stop - point_start,
             )?;
@@ -1226,7 +1281,10 @@ impl ExecutionRuntime {
                     }
                 }
             } else {
-                if self.color_topology_replay_enabled || self.lc_topology_replay_enabled {
+                if self.color_topology_replay_enabled
+                    || (self.lc_topology_replay_enabled
+                        && selected_materialized_sector_ids.is_none())
+                {
                     return Err(RusticolError::integrity(
                         "topology-replay runtime cannot execute its representative materialized helicity schedule directly",
                     ));
@@ -1563,7 +1621,7 @@ impl ExecutionRuntime {
         binary_precision: Option<u32>,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
-        allow_nested_runtime: bool,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
     ) -> RusticolResult<(ResolvedValues<T>, RuntimeProfile)>
     where
         T: RusticolHighPrecisionNumber,
@@ -1609,7 +1667,7 @@ impl ExecutionRuntime {
                 .get(&schedule.selector_domain_id)
                 .copied()
                 .filter(|lane_index| {
-                    allow_nested_runtime
+                    selected_materialized_sector_ids.is_none()
                         && self
                             .helicity_selector_runtime_schedule_modes
                             .get(*lane_index)
@@ -1640,6 +1698,7 @@ impl ExecutionRuntime {
                     binary_precision,
                     &physics,
                     selected_color_ids,
+                    selected_materialized_sector_ids,
                     &schedule,
                 )?
             };
@@ -1685,6 +1744,7 @@ impl ExecutionRuntime {
         binary_precision: Option<u32>,
         physics: &PhysicsRuntime,
         selected_color_ids: Option<&BTreeSet<String>>,
+        selected_materialized_sector_ids: Option<&BTreeSet<i64>>,
         schedule: &CompiledHelicitySelectorSchedule,
     ) -> RusticolResult<(ResolvedValues<T>, RuntimeProfile)>
     where
@@ -1696,6 +1756,10 @@ impl ExecutionRuntime {
         }
         let total_start = Instant::now();
         let point_count = batch.len();
+        let color_schedule = selected_materialized_sector_ids
+            .map(|sector_ids| self.compiled_color_selector_schedule(sector_ids))
+            .transpose()?
+            .flatten();
         let state_len = point_count
             .checked_mul(self.parameter_count)
             .ok_or_else(|| RusticolError::invalid_argument("runtime state length overflows"))?;
@@ -1753,25 +1817,48 @@ impl ExecutionRuntime {
                 stages.len()
             )));
         }
-        // Exact/high-precision execution is not the hot f64 lane.  Evaluate all
-        // materialized chunks for now, then select only the certified roots.
-        // This preserves exact semantics without adding a second chunk-loader
-        // implementation; the f64 lane still executes only active chunks.
+        // The same certified closure applies independently of precision.
+        // Follow its chunks after intersecting the mapped colour selection.
         let mut stage_input_pack_by_stage_s = Vec::with_capacity(stages.len());
         let mut stage_evaluator_call_by_stage_s = Vec::with_capacity(stages.len());
         let mut stage_output_assign_by_stage_s = Vec::with_capacity(stages.len());
-        for stage in stages {
-            let (pack_s, eval_s, assign_s) = stage.evaluate_generic_into_state(
+        for (stage_index, (stage, active_chunks)) in stages
+            .iter_mut()
+            .zip(&schedule.active_stage_chunk_indices)
+            .enumerate()
+        {
+            let combined_chunks;
+            let active_chunks = if let Some(color_schedule) = color_schedule.as_ref() {
+                combined_chunks = intersect_sorted_chunk_indices(
+                    active_chunks,
+                    &color_schedule.active_stage_chunk_indices[stage_index],
+                );
+                &combined_chunks
+            } else {
+                active_chunks
+            };
+            let (pack_s, eval_s, assign_s) = stage.evaluate_selected_chunks_generic_into_state(
                 point_count,
                 self.parameter_count,
                 state.as_mut_slice(),
                 binary_precision,
+                Some(active_chunks),
             )?;
             stage_input_pack_by_stage_s.push(pack_s);
             stage_evaluator_call_by_stage_s.push(eval_s);
             stage_output_assign_by_stage_s.push(assign_s);
         }
 
+        let combined_amplitude_chunks;
+        let active_amplitude_chunks = if let Some(color_schedule) = color_schedule.as_ref() {
+            combined_amplitude_chunks = intersect_sorted_chunk_indices(
+                &schedule.active_amplitude_chunk_indices,
+                &color_schedule.active_amplitude_chunk_indices,
+            );
+            &combined_amplitude_chunks
+        } else {
+            &schedule.active_amplitude_chunk_indices
+        };
         let (resolved, amplitude_input_pack_s, amplitude_evaluator_call_s, reduction_s) = self
             .amplitude_stage
             .as_mut()
@@ -1785,6 +1872,7 @@ impl ExecutionRuntime {
                 schedule.physical_helicity_index,
                 &schedule.root_factors,
                 selected_color_ids,
+                active_amplitude_chunks,
             )?;
         let stage_input_pack_s = stage_input_pack_by_stage_s.iter().sum::<f64>();
         let stage_evaluator_call_s = stage_evaluator_call_by_stage_s.iter().sum::<f64>();
@@ -2140,14 +2228,14 @@ mod tests {
         let (mut runtime, selected_helicity_ids) = runtime_with_singleton_helicity_schedule(false);
         assert!(
             runtime
-                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
                 .unwrap()
         );
 
         runtime.color_topology_replay_enabled = true;
         assert!(
             !runtime
-                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
                 .unwrap()
         );
 
@@ -2160,7 +2248,7 @@ mod tests {
         runtime.helicity_selector_lane_by_domain.insert(0, 0);
         assert!(
             runtime
-                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
                 .unwrap()
         );
 
@@ -2168,7 +2256,7 @@ mod tests {
             HelicitySelectorScheduleMode::ParentClosure;
         assert!(
             !runtime
-                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
                 .unwrap()
         );
     }
@@ -2180,16 +2268,105 @@ mod tests {
 
         assert!(
             runtime
-                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids))
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
                 .unwrap()
         );
-        assert!(!runtime.has_safe_singleton_helicity_execution(None).unwrap());
         assert!(
             !runtime
-                .has_safe_singleton_helicity_execution(Some(&BTreeSet::from([
-                    "hel:+-".to_string(),
-                    "hel:-+".to_string(),
-                ])))
+                .has_safe_singleton_helicity_execution(None, None)
+                .unwrap()
+        );
+        assert!(
+            !runtime
+                .has_safe_singleton_helicity_execution(
+                    Some(&BTreeSet::from([
+                        "hel:+-".to_string(),
+                        "hel:-+".to_string(),
+                    ])),
+                    None,
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn selected_lc_flows_keep_their_compact_replay_even_with_a_helicity_companion() {
+        let (mut runtime, selected_helicity_ids) = runtime_with_singleton_helicity_schedule(false);
+        runtime.physics = Some(Arc::new(super::super::tests::test_physics_runtime("lc")));
+        runtime.lc_topology_replay_enabled = true;
+        runtime
+            .helicity_selector_runtimes
+            .push(Box::new(super::super::tests::empty_generic_runtime()));
+        runtime
+            .helicity_selector_runtime_schedule_modes
+            .push(HelicitySelectorScheduleMode::NestedRuntime);
+        runtime.helicity_selector_lane_by_domain.insert(0, 0);
+
+        // Both the computed flow and a nontrivial replay alias must be mapped
+        // before selecting the helicity; neither belongs to the all-flow lane.
+        for flow_id in ["flow:0", "flow:1"] {
+            assert!(
+                !runtime
+                    .has_safe_singleton_helicity_execution(
+                        Some(&selected_helicity_ids),
+                        Some(&BTreeSet::from([flow_id.to_string()])),
+                    )
+                    .unwrap()
+            );
+        }
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(Some(&selected_helicity_ids), None)
+                .unwrap()
+        );
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(
+                    Some(&selected_helicity_ids),
+                    Some(&BTreeSet::from([
+                        "flow:0".to_string(),
+                        "flow:1".to_string()
+                    ])),
+                )
+                .unwrap()
+        );
+        assert!(
+            !runtime
+                .has_safe_singleton_helicity_execution(
+                    None,
+                    Some(&BTreeSet::from(["flow:0".to_string()])),
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn contracted_color_and_structural_zero_requests_keep_the_singleton_shortcut() {
+        for accuracy in ["full", "nlc"] {
+            let (mut runtime, selected_helicity_ids) =
+                runtime_with_singleton_helicity_schedule(false);
+            runtime.physics = Some(Arc::new(super::super::tests::test_physics_runtime(
+                accuracy,
+            )));
+            assert!(
+                runtime
+                    .has_safe_singleton_helicity_execution(
+                        Some(&selected_helicity_ids),
+                        Some(&BTreeSet::from(["contracted".to_string()])),
+                    )
+                    .unwrap()
+            );
+        }
+
+        let (mut runtime, selected_helicity_ids) = runtime_with_singleton_helicity_schedule(true);
+        runtime.physics = Some(Arc::new(super::super::tests::test_physics_runtime("lc")));
+        runtime.lc_topology_replay_enabled = true;
+        assert!(
+            runtime
+                .has_safe_singleton_helicity_execution(
+                    Some(&selected_helicity_ids),
+                    Some(&BTreeSet::from(["flow:1".to_string()])),
+                )
                 .unwrap()
         );
     }

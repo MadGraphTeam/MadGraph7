@@ -26,6 +26,7 @@ use crate::recurrence::{
     RuntimeSymmetricGroupColorWorkspace,
 };
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PreparedParameterProjectionEntry {
@@ -55,6 +56,9 @@ pub(super) struct RecurrenceNativeRuntime {
     color_transform_im: Vec<f64>,
     symmetric_group_color_workspace: Option<RuntimeSymmetricGroupColorWorkspace>,
     replay_color_index_scratch: Vec<usize>,
+    selected_replay_cache:
+        BTreeMap<BTreeSet<String>, BTreeMap<usize, Arc<DirectReplaySelectorPlan>>>,
+    selected_replay_programs: BTreeMap<(u32, Vec<u32>), Arc<DirectReplaySelectorPlan>>,
     helicity_selector_companion: Option<RecurrencePersistedHelicitySelectorRuntime>,
 }
 
@@ -902,6 +906,8 @@ impl RecurrenceNativeRuntime {
             color_transform_im: vec![0.0; color_transform_scratch_len],
             symmetric_group_color_workspace,
             replay_color_index_scratch: Vec::new(),
+            selected_replay_cache: BTreeMap::new(),
+            selected_replay_programs: BTreeMap::new(),
             helicity_selector_companion,
         })
     }
@@ -1387,6 +1393,76 @@ impl RecurrenceNativeRuntime {
         result
     }
 
+    /// Restrict work only when the caller restricts the physical helicity
+    /// axis. The original helicity-summed selectors remain untouched. Plans
+    /// are prepared once per requested subset/flow, outside the point loop,
+    /// and retained across selector changes and intervening summed calls.
+    fn selected_replay_color_plan(
+        &mut self,
+        reduction: LcSelectorReductionView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        color_index: usize,
+    ) -> RusticolResult<Option<Arc<DirectReplaySelectorPlan>>> {
+        let Some(selected_helicities) = selected_helicities else {
+            return Ok(None);
+        };
+        if selected_helicities.len() == reduction.helicity_index_by_id.len() {
+            // Selector IDs were validated at the public boundary. Spelling
+            // out the complete axis is the same work as omitting it.
+            return Ok(None);
+        }
+        if let Some(plan) = self
+            .selected_replay_cache
+            .get(selected_helicities)
+            .and_then(|plans| plans.get(&color_index))
+        {
+            return Ok(Some(Arc::clone(plan)));
+        }
+        let RecurrenceNativeSelectors::TopologyReplay {
+            replay_selectors,
+            direct_helicity_to_physics,
+        } = &self.selectors
+        else {
+            return Err(RusticolError::internal(
+                "selected replay plan requires topology replay",
+            ));
+        };
+        let selector = replay_selectors.get(color_index).ok_or_else(|| {
+            RusticolError::integrity("recurrence replay selector is outside the public color axis")
+        })?;
+        let destinations = selected_replay_destination_ids(
+            self.scheduler.plan().amplitude_destinations(),
+            selector.representative_flow_id(),
+            selector.helicity_map(),
+            direct_helicity_to_physics,
+            reduction,
+            selected_helicities,
+        )?;
+        let program_key = (selector.representative_flow_id(), destinations);
+        // Different public flows and physical aliases can select the same
+        // representative currents. Share their dependency program instead
+        // of retaining another copy for every flow/permutation.
+        let selected = if let Some(program) = self.selected_replay_programs.get(&program_key) {
+            Arc::new(
+                self.scheduler
+                    .prepare_replay_selector_with_destination_program(selector, program)?,
+            )
+        } else {
+            let selected = Arc::new(
+                self.scheduler
+                    .prepare_replay_selector_for_destinations(selector, &program_key.1)?,
+            );
+            self.selected_replay_programs
+                .insert(program_key, Arc::clone(&selected));
+            selected
+        };
+        self.selected_replay_cache
+            .entry(selected_helicities.clone())
+            .or_default()
+            .insert(color_index, Arc::clone(&selected));
+        Ok(Some(selected))
+    }
+
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     fn run_replay_color_view_into_unprofiled(
@@ -1402,6 +1478,8 @@ impl RecurrenceNativeRuntime {
             return Ok(());
         }
         let color_weight = reduction.color(color_index).coefficient();
+        let selected_replay =
+            self.selected_replay_color_plan(reduction, selected_helicities, color_index)?;
 
         let mut tile_start = 0usize;
         while tile_start < batch.point_count() {
@@ -1425,6 +1503,7 @@ impl RecurrenceNativeRuntime {
                 RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                 RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
             };
+            let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
             let direct_output = self
                 .scheduler
                 .execute_replay_tile_from_external_unprofiled(
@@ -1641,6 +1720,8 @@ impl RecurrenceNativeRuntime {
                 continue;
             }
             let color_weight = reduction_view.color(color_index).coefficient();
+            let selected_replay =
+                self.selected_replay_color_plan(reduction_view, selected_helicities, color_index)?;
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -1670,6 +1751,7 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
+                let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
                 let output = self.scheduler.execute_replay_tile_from_external(
                     replay_selector,
                     u32::try_from(point_count).map_err(|_| {
@@ -1793,6 +1875,8 @@ impl RecurrenceNativeRuntime {
                 continue;
             }
             let color_weight = reduction_view.color(color_index).coefficient();
+            let selected_replay =
+                self.selected_replay_color_plan(reduction_view, selected_helicities, color_index)?;
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -1822,6 +1906,7 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
+                let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
                 let output = self.scheduler.execute_replay_tile_from_external(
                     replay_selector,
                     u32::try_from(point_count).map_err(|_| {
@@ -3899,6 +3984,39 @@ fn validate_replay_destination_helicity_mappings(
     Ok(())
 }
 
+/// Resolve selection in the physical helicity domain, after the requested
+/// flow's relabelling. A parity/numerical alias requests its computed
+/// representative's destination; a structural zero requests no work.
+fn selected_replay_destination_ids(
+    destinations: &[DirectAmplitudeDestinationDescriptor],
+    representative_flow_id: u32,
+    replay_helicity_map: &[u32],
+    direct_helicity_to_physics: &[usize],
+    reduction: LcSelectorReductionView<'_>,
+    selected_helicities: &BTreeSet<String>,
+) -> RusticolResult<Vec<u32>> {
+    let mut selected = Vec::new();
+    for destination in destinations {
+        if destination.target_sector_id != representative_flow_id {
+            continue;
+        }
+        let physics_helicity = replay_destination_physics_helicity(
+            replay_helicity_map,
+            direct_helicity_to_physics,
+            destination.target_helicity_id_or_sentinel,
+        )?;
+        let helicity = reduction.helicity(physics_helicity);
+        if helicity.computed
+            && !helicity.structural_zero
+            && helicity.coefficient != 0.0
+            && reduction.helicity_orbit_weight(Some(selected_helicities), physics_helicity) != 0.0
+        {
+            selected.push(destination.id);
+        }
+    }
+    Ok(selected)
+}
+
 fn replay_output_destination_physics_helicity(
     output: &DirectRecurrenceTileOutput<'_>,
     selector: &DirectReplaySelectorPlan,
@@ -4237,6 +4355,76 @@ mod replay_destination_helicity_tests {
         assert!(view.color_is_selected(Some(&selected_colors), 0));
         assert!(
             view.validate_selector_ids(Some(&BTreeSet::from(["missing".into()])), None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn selected_replay_destinations_follow_flow_permutation_and_physical_orbits() {
+        let helicities = (0..5)
+            .map(|index| crate::Helicity {
+                id: format!("h{index}"),
+                index,
+                values: Vec::new(),
+                computed: !matches!(index, 1 | 3),
+                structural_zero: index == 3,
+                representative_id: format!("h{}", if index == 1 { 0 } else { index }),
+                coefficient: if index == 4 { 0.0 } else { 1.0 },
+            })
+            .collect::<Vec<_>>();
+        let helicity_ids = helicities
+            .iter()
+            .enumerate()
+            .map(|(index, helicity)| (helicity.id.clone(), index))
+            .collect::<BTreeMap<_, _>>();
+        let colors = BTreeMap::new();
+        let orbits = vec![vec![0, 1], vec![], vec![2], vec![], vec![4]];
+        let reduction =
+            LcSelectorReductionView::from_parts(&helicities, &[], &helicity_ids, &colors, &orbits);
+        let mut destinations = (0..4)
+            .map(|id| DirectAmplitudeDestinationDescriptor {
+                id,
+                target_sector_id: 7,
+                target_helicity_id_or_sentinel: id,
+                closure_row_start: 0,
+                closure_row_count: 0,
+                selector_domain_id: 0,
+            })
+            .collect::<Vec<_>>();
+        destinations.push(DirectAmplitudeDestinationDescriptor {
+            id: 4,
+            target_sector_id: 8,
+            target_helicity_id_or_sentinel: 0,
+            closure_row_start: 0,
+            closure_row_count: 0,
+            selector_domain_id: 0,
+        });
+        let selected = |ids: &[&str]| {
+            selected_replay_destination_ids(
+                &destinations,
+                7,
+                &[1, 0, 2, 3],
+                &[0, 2, 3, 4],
+                reduction,
+                &ids.iter().map(|id| (*id).to_string()).collect(),
+            )
+            .unwrap()
+        };
+
+        // Selecting an uncomputed physical alias must retain the current of
+        // its computed representative, after the non-identity flow map.
+        assert_eq!(selected(&["h1"]), [1]);
+        assert_eq!(selected(&["h0"]), [1]);
+        assert_eq!(selected(&["h2"]), [0]);
+        assert_eq!(selected(&["h1", "h2"]), [0, 1]);
+        assert_eq!(selected(&["h0", "h1"]), [1]);
+        assert!(selected(&["h3"]).is_empty());
+        assert!(selected(&["h4"]).is_empty());
+        assert!(selected(&[]).is_empty());
+        let invalid = BTreeSet::from(["not-a-helicity".to_string()]);
+        assert!(
+            reduction
+                .validate_selector_ids(Some(&invalid), None)
                 .is_err()
         );
     }

@@ -2502,6 +2502,94 @@ fn plane_native_materialized_helicity_routed_components_match_resolved_accumulat
         );
     }
     assert_eq!(candidate, expected);
+
+    // Alternate proper subsets with implicit and explicit complete axes.
+    // Sparse routing must neither read nor reset a previous dense position
+    // table, and it must preserve the resolved reducer's accumulation order.
+    for selected_colors in [
+        Some(BTreeSet::from(["flow:1".to_string()])),
+        None,
+        Some(BTreeSet::from(["flow:0".to_string()])),
+        Some(BTreeSet::from(["flow:0".to_string(), "flow:1".to_string()])),
+        Some(BTreeSet::from(["flow:1".to_string()])),
+    ] {
+        let selected_colors = selected_colors.as_ref();
+        let color_indices = physics.selected_color_indices(selected_colors).unwrap();
+        let selected_replay = LcResolvedReplayEntry {
+            routes: color_indices
+                .iter()
+                .enumerate()
+                .map(|(position, &color)| LcResolvedReplayRoute {
+                    source_index: position,
+                    target_index: (color + 1) % TARGET_COMPONENT_COUNT,
+                    weight: if position == 0 { 1.5 } else { -0.25 },
+                })
+                .collect(),
+        };
+        let materialized =
+            with_plane_native_amplitudes(&outputs, POINT_COUNT, OUTPUT_COUNT, |planes| {
+                amplitude
+                    .reduce_planes_f64_for_materialized_helicity(
+                        planes,
+                        &physics,
+                        1.25,
+                        0,
+                        &root_factors,
+                        selected_colors,
+                    )
+                    .unwrap()
+            });
+        let mut expected = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+        accumulate_selected_lc_replay_resolved_f64(
+            &mut expected,
+            POINT_COUNT,
+            &materialized,
+            std::slice::from_ref(&selected_replay),
+            color_indices.len(),
+            TARGET_COMPONENT_COUNT,
+        )
+        .unwrap();
+        amplitude.routed_reduction_scratch.color_positions = vec![Some(usize::MAX); 7];
+        let mut candidate = vec![0.0; POINT_COUNT * TARGET_COMPONENT_COUNT];
+        for (start, stop) in [(0usize, 32usize), (32, POINT_COUNT)] {
+            with_plane_native_amplitudes(
+                &outputs[start * OUTPUT_COUNT..stop * OUTPUT_COUNT],
+                stop - start,
+                OUTPUT_COUNT,
+                |planes| {
+                    amplitude
+                        .reduce_planes_f64_for_materialized_helicity_routed_components_add_into(
+                            planes,
+                            &physics,
+                            1.25,
+                            0,
+                            &root_factors,
+                            selected_colors,
+                            &selected_replay,
+                            color_indices.len(),
+                            TARGET_COMPONENT_COUNT,
+                            POINT_COUNT,
+                            start,
+                            &mut candidate,
+                        )
+                        .unwrap()
+                },
+            );
+        }
+        assert_eq!(candidate, expected);
+        if color_indices.len() < physics.manifest.color_components.len() {
+            assert_eq!(
+                amplitude.routed_reduction_scratch.color_positions,
+                vec![Some(usize::MAX); 7],
+                "restricted colours must not touch the complete-axis position table"
+            );
+        } else {
+            assert_eq!(
+                amplitude.routed_reduction_scratch.color_positions,
+                vec![Some(0), Some(1)]
+            );
+        }
+    }
 }
 
 #[cfg(not(feature = "f64-symjit"))]

@@ -3952,7 +3952,82 @@ fn execute_direct_plan_impl<const PROFILE: bool, const ALLOW_INTERACTION_REWRITE
     point_count: u32,
     counters: &mut DirectExecutionCounters,
     timings: &mut DirectExecutionRoleTimings,
+    traffic: Option<&mut DirectArenaTrafficCounters>,
+) -> RusticolResult<()> {
+    execute_direct_plan_with_clears_impl::<PROFILE, ALLOW_INTERACTION_REWRITE, false>(
+        plan,
+        row_groups,
+        selected_sector_id,
+        executors,
+        fanout,
+        workspace,
+        point_count,
+        counters,
+        timings,
+        traffic,
+        None,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DirectCurrentClearRange {
+    pub(crate) component_base: u32,
+    pub(crate) component_count: u32,
+}
+
+pub(crate) struct DirectStageClearRanges {
+    pub(crate) stage: u16,
+    pub(crate) ranges: Box<[DirectCurrentClearRange]>,
+}
+
+/// Restricted destination closures are prepared once. Their row runs may cut
+/// through a full-plan fanout step, so execute the authenticated raw rows and
+/// clear only their dependency-closed stage spans, with no current-table scan.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_direct_plan_destination_selected<const PROFILE: bool>(
+    plan: &DirectRecurrencePlan,
+    row_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: u32,
+    current_clear_stages: &[DirectStageClearRanges],
+    executors: &DirectExecutorCatalog,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
+    traffic: &mut DirectArenaTrafficCounters,
+) -> RusticolResult<()> {
+    execute_direct_plan_with_clears_impl::<PROFILE, false, true>(
+        plan,
+        row_groups,
+        Some(selected_sector_id),
+        executors,
+        None,
+        workspace,
+        point_count,
+        counters,
+        timings,
+        PROFILE.then_some(traffic),
+        Some(current_clear_stages),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_direct_plan_with_clears_impl<
+    const PROFILE: bool,
+    const ALLOW_INTERACTION_REWRITE: bool,
+    const PREPARED_CLEARS: bool,
+>(
+    plan: &DirectRecurrencePlan,
+    row_groups: &[DirectRowGroupDescriptor],
+    selected_sector_id: Option<u32>,
+    executors: &DirectExecutorCatalog,
+    fanout: Option<&DirectContributionFanoutProgram>,
+    workspace: &mut DirectWorkspace<'_>,
+    point_count: u32,
+    counters: &mut DirectExecutionCounters,
+    timings: &mut DirectExecutionRoleTimings,
     mut traffic: Option<&mut DirectArenaTrafficCounters>,
+    current_clear_stages: Option<&[DirectStageClearRanges]>,
 ) -> RusticolResult<()> {
     clear_direct_executor_error_detail();
     workspace.validate(point_count)?;
@@ -4072,12 +4147,41 @@ fn execute_direct_plan_impl<const PROFILE: bool, const ALLOW_INTERACTION_REWRITE
             && descriptor.role == DirectExecutorRole::Contribution
             && initialized_contribution_stage != Some(descriptor.stage)
         {
-            workspace.clear_current_stage(
-                plan,
-                descriptor.stage,
-                point_count,
-                selected_sector_id,
-            )?;
+            if PREPARED_CLEARS {
+                let stages = current_clear_stages.ok_or_else(|| {
+                    RusticolError::integrity("selected recurrence has no prepared stage clears")
+                })?;
+                if let Ok(stage_index) =
+                    stages.binary_search_by_key(&descriptor.stage, |entry| entry.stage)
+                {
+                    let current_plane_count =
+                        u32::try_from(workspace.current_re.len() / workspace.point_stride as usize)
+                            .map_err(|_| {
+                                RusticolError::integrity(
+                                    "selected recurrence current plane count exceeds u32",
+                                )
+                            })?;
+                    for range in stages[stage_index].ranges.iter() {
+                        clear_split_active_range(
+                            workspace.current_re,
+                            workspace.current_im,
+                            current_plane_count,
+                            workspace.point_stride,
+                            point_count,
+                            range.component_base,
+                            range.component_count,
+                            "selected recurrence current arena",
+                        )?;
+                    }
+                }
+            } else {
+                workspace.clear_current_stage(
+                    plan,
+                    descriptor.stage,
+                    point_count,
+                    selected_sector_id,
+                )?;
+            }
             initialized_contribution_stage = Some(descriptor.stage);
         }
         let start = usize::try_from(descriptor.row_start).map_err(|_| {

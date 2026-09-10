@@ -2125,6 +2125,304 @@ fn replay_selector_executes_only_its_dependency_closed_rows() {
     assert_eq!(runtime.counters().source_rows, 1);
 }
 
+/// The second helicity uses a numerically identified current from the first,
+/// copied into the storage formerly occupied by its (now dead) source.
+fn two_helicity_reused_storage_runtime() -> DirectRecurrenceExecutionRuntime {
+    let (plan, _) = synthetic_plan_and_executors();
+    let mut parts = plan.into_parts();
+    parts.amplitude_destination_count = 2;
+    parts.currents.push(DirectCurrentDescriptor {
+        semantic_current_id: 2,
+        component_base: 0,
+        stage: 2,
+        first_use: 2,
+        last_use: 3,
+        finalization_row_or_sentinel: DIRECT_NONE_U32,
+        ..parts.currents[1]
+    });
+    parts.contributions.push(DirectContributionRow {
+        parent0_component_base: 1,
+        parent0_momentum_form_id: 1, // certified-reuse component count
+        destination_component_base: 0,
+        exact_factor_id: 3,
+        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+            | crate::recurrence::direct_plan::DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+        ..parts.contributions[0]
+    });
+    parts.row_groups.insert(
+        3,
+        DirectRowGroupDescriptor {
+            stage: 2,
+            row_start: 1,
+            direct_executor_id: DIRECT_NONE_U32,
+            ..parts.row_groups[1]
+        },
+    );
+    parts.closures.push(DirectClosureRow {
+        parent0_component_base: 0,
+        amplitude_destination_id: 1,
+        flags: 1,
+        ..parts.closures[0]
+    });
+    parts.row_groups.push(DirectRowGroupDescriptor {
+        stage: 3,
+        row_start: 1,
+        ..parts.row_groups[4]
+    });
+    parts
+        .amplitude_destinations
+        .push(DirectAmplitudeDestinationDescriptor {
+            id: 1,
+            target_helicity_id_or_sentinel: 1,
+            closure_row_start: 1,
+            ..parts.amplitude_destinations[0]
+        });
+    parts
+        .resolved_helicities
+        .push(DirectResolvedHelicityDescriptor {
+            id: 1,
+            source_state_start: 2,
+            public_helicity_start: 2,
+            ..parts.resolved_helicities[0]
+        });
+    parts.source_state_assignments.extend_from_within(0..2);
+    parts.public_helicities.extend([1, -1]);
+    parts.replay_helicity_map = vec![0, 1, 0, 1];
+    parts.replay_targets[0].helicity_map_count = 2;
+    parts.replay_targets[1].helicity_map_start = 2;
+    parts.replay_targets[1].helicity_map_count = 2;
+    let prototype = &parts.closure_proofs.contributions()[0];
+    let contribution = ClosureProofContributionV2::new(
+        1,
+        0,
+        Some(1),
+        Some(1),
+        prototype.closure_template_id(),
+        prototype.closure_template_semantic_digest(),
+        prototype.quantum_flow_template_id(),
+        vec![2],
+        vec![Some(2)],
+        prototype.construction_parent_semantic_digests().to_vec(),
+        prototype.construction_parent_color_digests().to_vec(),
+        vec![0],
+        vec![0],
+        vec![0],
+        prototype.color_witness_term_id(),
+        prototype.color_witness_proof_digest(),
+        prototype.three_line_certificate_id(),
+        prototype.pairing_certificate_ids().to_vec(),
+        prototype.reflection_certificate_id(),
+        prototype.exact_factor(),
+        prototype.multiplicity(),
+    )
+    .unwrap();
+    let old_group = &parts.closure_proofs.groups()[0];
+    let group = ClosureExecutionProofGroupV2::new_with_candidate_selector_domain(
+        1,
+        Some(1),
+        Some(1),
+        CheckedTableRange::new(1, 1),
+        old_group.exact_summed_factor(),
+        old_group.component_factor_digest(),
+        old_group.candidate_selector_domain_digest(),
+        old_group.selector_domain_digest(),
+    )
+    .unwrap();
+    parts.closure_proofs = ClosureProofMetadataV2::new_with_three_line_certificates(
+        vec![prototype.clone(), contribution],
+        vec![old_group.clone(), group],
+        parts.closure_proofs.reflection_certificates().to_vec(),
+        parts
+            .closure_proofs
+            .three_line_traversal_certificates()
+            .to_vec(),
+    )
+    .unwrap();
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    runtime
+}
+
+#[test]
+fn destination_replay_preserves_shared_helicity_currents_and_recycled_storage() {
+    let mut runtime = two_helicity_reused_storage_runtime();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let selected = [
+        runtime
+            .prepare_replay_selector_for_destinations(&all, &[0])
+            .unwrap(),
+        runtime
+            .prepare_replay_selector_for_destinations(&all, &[1])
+            .unwrap(),
+    ];
+    assert_eq!(all.selected_row_count(), 6);
+    assert_eq!(selected[0].selected_row_count(), 4);
+    assert_eq!(selected[1].selected_row_count(), 5);
+    let empty = runtime
+        .prepare_replay_selector_for_destinations(&all, &[])
+        .unwrap();
+    let both = runtime
+        .prepare_replay_selector_for_destinations(&all, &[0, 1])
+        .unwrap();
+    let momenta = external_two_point_momenta();
+    let expected = {
+        let output = runtime
+            .execute_replay_tile_from_external(&all, 2, &momenta)
+            .unwrap();
+        [0, 1].map(|id| {
+            (
+                output.destination_re(id).unwrap().to_vec(),
+                output.destination_im(id).unwrap().to_vec(),
+            )
+        })
+    };
+    let allocations = runtime.allocation_counters();
+    for id in [0, 1, 0, 1] {
+        let output = runtime
+            .execute_replay_tile_from_external(&selected[id], 2, &momenta)
+            .unwrap();
+        assert_eq!(
+            output.selected_destination_ids().collect::<Vec<_>>(),
+            vec![id as u32]
+        );
+        assert_eq!(output.destination_re(id as u32).unwrap(), expected[id].0);
+        assert_eq!(output.destination_im(id as u32).unwrap(), expected[id].1);
+        assert!(output.destination_re(1 - id as u32).is_none());
+    }
+    let output = runtime
+        .execute_replay_tile_from_external(&empty, 2, &momenta)
+        .unwrap();
+    assert_eq!(output.selected_destination_ids().count(), 0);
+    assert!(output.destination_re(0).is_none());
+    let output = runtime
+        .execute_replay_tile_from_external(&both, 2, &momenta)
+        .unwrap();
+    for id in [0, 1] {
+        assert_eq!(output.destination_re(id).unwrap(), expected[id as usize].0);
+    }
+    assert_eq!(runtime.allocation_counters(), allocations);
+    assert!(
+        runtime
+            .prepare_replay_selector_for_destinations(&all, &[1, 0])
+            .is_err()
+    );
+    assert!(
+        runtime
+            .prepare_replay_selector_for_destinations(&all, &[0, 0])
+            .is_err()
+    );
+    assert!(
+        runtime
+            .prepare_replay_selector_for_destinations(&all, &[2])
+            .is_err()
+    );
+}
+
+#[test]
+fn destination_replay_shared_program_preserves_public_flow_phase() {
+    let mut runtime = synthetic_runtime_with_lorentz(4);
+    let base = runtime.prepare_replay_selector(0).unwrap();
+    let unrestricted = runtime.prepare_replay_selector(1).unwrap();
+    let first = runtime
+        .prepare_replay_selector_for_destinations(&base, &[0])
+        .unwrap();
+    let second = runtime
+        .prepare_replay_selector_with_destination_program(&unrestricted, &first)
+        .unwrap();
+    // Adding selected helicities must not duplicate the full helicity map,
+    // immutable source mapping, or unrestricted per-flow row schedule.
+    for (base, selected) in [(&base, &first), (&unrestricted, &second)] {
+        assert!(std::sync::Arc::ptr_eq(
+            &base.source_permutation,
+            &selected.source_permutation
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &base.source_momentum_signs,
+            &selected.source_momentum_signs
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &base.helicity_map,
+            &selected.helicity_map
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &base.row_groups,
+            &selected.row_groups
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &base.amplitude_clear_ranges,
+            &selected.amplitude_clear_ranges
+        ));
+    }
+    assert!(std::sync::Arc::ptr_eq(
+        first.destination_program.as_ref().unwrap(),
+        second.destination_program.as_ref().unwrap()
+    ));
+    let momenta = external_two_point_momenta();
+    let expected = {
+        let output = runtime
+            .execute_replay_tile_from_external(&unrestricted, 2, &momenta)
+            .unwrap();
+        (
+            output.destination_re(0).unwrap().to_vec(),
+            output.destination_im(0).unwrap().to_vec(),
+        )
+    };
+    let output = runtime
+        .execute_replay_tile_from_external(&second, 2, &momenta)
+        .unwrap();
+    assert_eq!(output.destination_re(0).unwrap(), expected.0);
+    assert_eq!(output.destination_im(0).unwrap(), expected.1);
+}
+
+#[test]
+fn destination_replay_matches_fanout_under_complex_cancellation() {
+    let plan = fanout_test_plan();
+    let census = ContributionCallCensus::default();
+    let catalog = fanout_test_catalog(&plan, &census, false);
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, catalog, 4).unwrap();
+    runtime.set_parameters(&[0.375], &[-1.125]).unwrap();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let selected = runtime
+        .prepare_replay_selector_for_destinations(&all, &[0])
+        .unwrap();
+    let momenta = [0.125, -0.875, 1.75, -3.5, 0.0625, 7.25, -11.0]
+        .into_iter()
+        .flat_map(|energy| [energy, 0.0, 0.0, 0.0])
+        .collect::<Vec<_>>();
+    let expected = {
+        let output = runtime
+            .execute_replay_tile_from_external(&all, 7, &momenta)
+            .unwrap();
+        output
+            .destination_re(0)
+            .unwrap()
+            .iter()
+            .copied()
+            .zip(output.destination_im(0).unwrap().iter().copied())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(census.rows.load(Ordering::Relaxed), 1);
+    let output = runtime
+        .execute_replay_tile_from_external_unprofiled(&selected, 7, &momenta)
+        .unwrap();
+    let observed = output
+        .destination_re(0)
+        .unwrap()
+        .iter()
+        .copied()
+        .zip(output.destination_im(0).unwrap().iter().copied())
+        .collect::<Vec<_>>();
+    assert_scale_relative_complex_parity(&expected, &observed);
+    assert_eq!(census.rows.load(Ordering::Relaxed), 19);
+}
+
 #[test]
 fn tile_execution_clears_only_active_additive_regions() {
     let mut runtime = synthetic_runtime();

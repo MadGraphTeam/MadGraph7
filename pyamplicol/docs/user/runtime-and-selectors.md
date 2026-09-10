@@ -335,10 +335,37 @@ per-point form of the topology-replay workload;
 `helicity_by_point=(...)` with no color-flow selector is the per-point form of
 the all-flow-union workload.
 
-Other selector combinations remain valid when the artifact has the required
-coverage, but they are not the workload for which that LC layout was generated
-and benchmarked. In particular, selecting both axes computes a narrower slice,
-while omitting the required selector asks for a broader sum. Use
+To sample one helicity and one LC flow from a helicity-generic output, select
+both axes at runtime:
+
+```python
+single_flow_single_helicity = runtime.evaluate(
+    momenta,
+    helicities=(helicity,),
+    color_flows=(flow,),
+    precision=16,
+)
+```
+
+With `topology-replay`, recurrence prepares and caches the current dependencies
+needed by the selected helicity and flow. Compiled evaluation selects the
+corresponding colour and helicity sub-schedules instead of computing an
+all-colour companion. The output still supports every generated helicity:
+changing the runtime selectors requires no regeneration. Shared currents and
+physical helicity/flow relabellings are preserved. Omitting the helicity
+selector retains the existing helicity-summed evaluation path.
+
+Use the same selectors with the public profiler to time the warmed, batched
+single-flow/single-helicity workload:
+
+```console
+pyamplicol profile artifacts/my_process \
+  --color-flow 1 --helicity 'h:-1,+1,-1,+1,+1' \
+  --batch-size 128 --precision 16
+```
+
+Other selector combinations remain valid when the output has the required
+coverage. Omitting the layout's required selector asks for a broader sum. Use
 `Runtime.evaluate()` at `precision=16` for the optimized native total;
 `evaluate_resolved()` and higher precision are diagnostic/exact paths rather
 than that benchmarked execution unit.

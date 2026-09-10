@@ -3,6 +3,39 @@
 use super::super::*;
 use super::*;
 
+/// A single-state selector needs only an equality check, not a position table
+/// covering every physical helicity or colour per tile. Larger selections
+/// retain the existing constant-time dense lookup, including nearly full axes.
+enum SelectedAxisPositions<'a> {
+    Sparse(&'a [usize]),
+    Dense(&'a [Option<usize>]),
+}
+
+impl<'a> SelectedAxisPositions<'a> {
+    fn new(indices: &'a [usize], complete_count: usize, dense: &'a mut Vec<Option<usize>>) -> Self {
+        if indices.len() <= 1 {
+            return Self::Sparse(indices);
+        }
+        dense.clear();
+        dense.resize(complete_count, None);
+        for (position, index) in indices.iter().copied().enumerate() {
+            dense[index] = Some(position);
+        }
+        Self::Dense(dense)
+    }
+
+    #[inline(always)]
+    fn position(&self, index: usize) -> Option<usize> {
+        match self {
+            Self::Sparse(indices) => indices
+                .first()
+                .filter(|&&selected| selected == index)
+                .map(|_| 0),
+            Self::Dense(positions) => positions[index],
+        }
+    }
+}
+
 trait AmplitudeSamples: Copy {
     fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64>;
 }
@@ -1956,16 +1989,16 @@ impl AmplitudeRuntime {
             }
         }
 
-        scratch.helicity_positions.clear();
-        scratch.helicity_positions.resize(helicity_count, None);
-        for (position, index) in scratch.helicity_indices.iter().copied().enumerate() {
-            scratch.helicity_positions[index] = Some(position);
-        }
-        scratch.color_positions.clear();
-        scratch.color_positions.resize(color_count, None);
-        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
-            scratch.color_positions[index] = Some(position);
-        }
+        let helicity_positions = SelectedAxisPositions::new(
+            &scratch.helicity_indices,
+            helicity_count,
+            &mut scratch.helicity_positions,
+        );
+        let color_positions = SelectedAxisPositions::new(
+            &scratch.color_indices,
+            color_count,
+            &mut scratch.color_positions,
+        );
         scratch.selected_member_weights.clear();
         scratch.selected_member_weight_ranges.clear();
         for group in &self.raw_sum_groups {
@@ -1983,8 +2016,8 @@ impl AmplitudeRuntime {
                 reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
-                    scratch.helicity_positions[helicity_index],
-                    scratch.color_positions[color_index],
+                    helicity_positions.position(helicity_index),
+                    color_positions.position(color_index),
                 ) else {
                     continue;
                 };
@@ -2154,16 +2187,16 @@ impl AmplitudeRuntime {
             }
         }
 
-        scratch.helicity_positions.clear();
-        scratch.helicity_positions.resize(helicity_count, None);
-        for (position, index) in scratch.helicity_indices.iter().copied().enumerate() {
-            scratch.helicity_positions[index] = Some(position);
-        }
-        scratch.color_positions.clear();
-        scratch.color_positions.resize(color_count, None);
-        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
-            scratch.color_positions[index] = Some(position);
-        }
+        let helicity_positions = SelectedAxisPositions::new(
+            &scratch.helicity_indices,
+            helicity_count,
+            &mut scratch.helicity_positions,
+        );
+        let color_positions = SelectedAxisPositions::new(
+            &scratch.color_indices,
+            color_count,
+            &mut scratch.color_positions,
+        );
         scratch.selected_member_weights.clear();
         scratch.selected_member_weight_ranges.clear();
         for group in &self.raw_sum_groups {
@@ -2181,8 +2214,8 @@ impl AmplitudeRuntime {
                 reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
-                    scratch.helicity_positions[helicity_index],
-                    scratch.color_positions[color_index],
+                    helicity_positions.position(helicity_index),
+                    color_positions.position(color_index),
                 ) else {
                     continue;
                 };
@@ -2309,16 +2342,16 @@ impl AmplitudeRuntime {
             )));
         }
 
-        scratch.helicity_positions.clear();
-        scratch.helicity_positions.resize(helicity_count, None);
-        for (position, index) in scratch.helicity_indices.iter().copied().enumerate() {
-            scratch.helicity_positions[index] = Some(position);
-        }
-        scratch.color_positions.clear();
-        scratch.color_positions.resize(color_count, None);
-        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
-            scratch.color_positions[index] = Some(position);
-        }
+        let helicity_positions = SelectedAxisPositions::new(
+            &scratch.helicity_indices,
+            helicity_count,
+            &mut scratch.helicity_positions,
+        );
+        let color_positions = SelectedAxisPositions::new(
+            &scratch.color_indices,
+            color_count,
+            &mut scratch.color_positions,
+        );
         scratch.selected_member_weights.clear();
         scratch.selected_member_weight_ranges.clear();
         for group in raw_sum_groups {
@@ -2336,8 +2369,8 @@ impl AmplitudeRuntime {
                 reduction.normalized_member_weights.iter().copied()
             {
                 let (Some(helicity_position), Some(color_position)) = (
-                    scratch.helicity_positions[helicity_index],
-                    scratch.color_positions[color_index],
+                    helicity_positions.position(helicity_index),
+                    color_positions.position(color_index),
                 ) else {
                     continue;
                 };
@@ -3173,11 +3206,11 @@ impl AmplitudeRuntime {
                 ));
             }
         }
-        scratch.color_positions.clear();
-        scratch.color_positions.resize(color_count, None);
-        for (position, index) in scratch.color_indices.iter().copied().enumerate() {
-            scratch.color_positions[index] = Some(position);
-        }
+        let color_positions = SelectedAxisPositions::new(
+            &scratch.color_indices,
+            color_count,
+            &mut scratch.color_positions,
+        );
 
         scratch.selected_member_weights.clear();
         scratch.selected_member_weight_ranges.clear();
@@ -3202,7 +3235,7 @@ impl AmplitudeRuntime {
                 continue;
             }
             for (color_index, weight) in reduction.normalized_color_weights.iter().copied() {
-                if let Some(color_position) = scratch.color_positions[color_index] {
+                if let Some(color_position) = color_positions.position(color_index) {
                     scratch
                         .selected_member_weights
                         .push((0, color_position, weight));
@@ -3459,13 +3492,18 @@ impl AmplitudeRuntime {
         helicity_index: usize,
         root_factors: &[Option<Complex<f64>>],
         selected_color_ids: Option<&BTreeSet<String>>,
+        active_chunk_indices: &[usize],
     ) -> RusticolResult<(ResolvedValues<T>, f64, f64, f64)>
     where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
-        let (amplitudes, input_pack_s, evaluator_call_s) =
-            self.evaluate_outputs_generic(batch_size, state, binary_precision)?;
+        let (amplitudes, input_pack_s, evaluator_call_s) = self.evaluate_selected_outputs_generic(
+            batch_size,
+            state,
+            binary_precision,
+            Some(active_chunk_indices),
+        )?;
         let reduction_start = Instant::now();
         if root_factors.len() != self.output_length {
             return Err(RusticolError::integrity(format!(
@@ -3652,6 +3690,21 @@ impl AmplitudeRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
+        self.evaluate_selected_outputs_generic(batch_size, state, binary_precision, None)
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    fn evaluate_selected_outputs_generic<T>(
+        &mut self,
+        batch_size: usize,
+        state: &[Complex<T>],
+        binary_precision: Option<u32>,
+        active_chunk_indices: Option<&[usize]>,
+    ) -> RusticolResult<(Vec<Complex<T>>, f64, f64)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         let evaluator = self.evaluator.as_mut().ok_or_else(|| {
             RusticolError::integrity(
                 "compiled plane-arena reducer cannot execute an exact dense amplitude evaluator",
@@ -3687,16 +3740,21 @@ impl AmplitudeRuntime {
             }
             input_pack_elapsed = pack_start.elapsed();
             let eval_start = Instant::now();
-            let evaluated = evaluator.evaluate_batch_generic(
+            let evaluated = evaluator.evaluate_selected_chunks_generic(
                 batch_size,
                 &parameter_scratch,
                 binary_precision,
+                active_chunk_indices,
             )?;
             (evaluated, eval_start.elapsed().as_secs_f64())
         } else {
             let eval_start = Instant::now();
-            let evaluated =
-                evaluator.evaluate_batch_generic(batch_size, state, binary_precision)?;
+            let evaluated = evaluator.evaluate_selected_chunks_generic(
+                batch_size,
+                state,
+                binary_precision,
+                active_chunk_indices,
+            )?;
             (evaluated, eval_start.elapsed().as_secs_f64())
         };
         if evaluated.len() != batch_size * self.output_length {
@@ -4858,4 +4916,36 @@ pub(crate) fn generic_root_group_id(
         "generic coherent group id for root {} must be an integer or string",
         root.root_id
     )))
+}
+
+#[cfg(test)]
+mod selected_axis_position_tests {
+    use super::*;
+
+    #[test]
+    fn sparse_and_complete_axis_positions_match_without_resizing_sparse_scratch() {
+        let mut dense = vec![Some(usize::MAX); 17];
+        for selected in [&[8][..], &[][..]] {
+            let positions = SelectedAxisPositions::new(selected, 10, &mut dense);
+            assert!(matches!(positions, SelectedAxisPositions::Sparse(_)));
+            for index in 0..10 {
+                assert_eq!(
+                    positions.position(index),
+                    selected.iter().position(|&i| i == index)
+                );
+            }
+            assert_eq!(dense, vec![Some(usize::MAX); 17]);
+        }
+        for selected in [vec![1, 4, 8], (1..10).collect(), (0..10).collect()] {
+            let positions = SelectedAxisPositions::new(&selected, 10, &mut dense);
+            assert!(matches!(positions, SelectedAxisPositions::Dense(_)));
+            for index in 0..10 {
+                assert_eq!(
+                    positions.position(index),
+                    selected.iter().position(|&i| i == index)
+                );
+            }
+            assert_eq!(dense.len(), 10);
+        }
+    }
 }
