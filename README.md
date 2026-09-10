@@ -15,8 +15,8 @@ MadNIS, and more accurate handling of spin correlations in MadSpin.
 This is an **alpha release**, meant for testing and feedback, **not for production**.
 The MadGraph7 workflow currently covers leading-order event generation. The LO
 workflow from MG5_aMC@NLO is still reachable through the `output madevent` mode.
-The NLO workflow is also available (with more minor update).
-Amplicol mode is not include in this release
+The NLO workflow is also available (with only minor updates).
+AmpliCol mode is not included in this release.
 
 If you need a stable release, use
 [MadGraph5_aMC@NLO](https://github.com/mg5amcnlo/mg5amcnlo) (also on
