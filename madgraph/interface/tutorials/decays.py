@@ -129,12 +129,10 @@ ratio above 1 -- a decayed cross section larger than the undecayed one. Put
 `DECAY <pdg> Auto` in the param card and the width is recomputed with the mass.
 `tutorial exercises` and `tutorial madevent` both go through this.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['syntax', 'madevent', 'model', 'bsm', 'run', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='MadSpin, and choosing between the three'),
 
     ],

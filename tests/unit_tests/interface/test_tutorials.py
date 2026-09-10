@@ -226,17 +226,34 @@ class TestLoTutorial(_TutorialTestCase):
         finally:
             lo_module.madspace_is_installed = original
 
-    def test_see_also_never_points_at_a_missing_tutorial(self):
-        """The closing signposts list only tutorials that actually exist."""
+    def test_it_points_at_tutorial_list_rather_than_listing(self):
+        """Tutorials used to close by listing the others with their
+        descriptions -- eleven lines that grew with every new tutorial, and
+        that `tutorial list` already prints on demand."""
 
         text = tutorials.get('lo').steps[-1].render(None)
+        self.assertIn('tutorial list', text)
+        self.assertNotIn('generate, output and run a process', text)
+
+    def test_no_tutorial_names_one_that_does_not_exist(self):
+        """Whatever a step mentions inline still has to be real."""
+
+        class _Empty(object):
+            _curr_amps = []
+            options = {}
+
         registered = set(tutorials.names(include_aliases=True))
-        # 'stop', 'list' and 'status' are sub-commands, not tutorials
-        registered |= {'stop', 'list', 'status'}
-        for name in re.findall(r'`tutorial ([a-z0-9_]+)`', text):
-            self.assertIn(name, registered,
-                          'lo points at `tutorial %s`, which does not exist'
-                          % name)
+        # sub-commands, not tutorials
+        registered |= {'stop', 'list', 'status', 'help', 'hint', 'solution',
+                       'next', 'repeat', 'back', 'skip'}
+        for tutorial in tutorials.all_tutorials(include_hidden=True):
+            for step in tutorial.steps:
+                for name in re.findall(r'`tutorial ([a-z0-9_]+)`',
+                                       step.render(_Empty())):
+                    self.assertIn(
+                        name, registered,
+                        '%s / %s points at `tutorial %s`, which does not exist'
+                        % (tutorial.name, step.title, name))
 
 
 #===============================================================================

@@ -163,12 +163,10 @@ maps the old names onto the new sections.
 **Gridpacks** work here too, via the `[gridpack]` section and
 `bin/gridpack.py`.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['lo', 'madevent', 'run', 'standalone', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='training MadNIS'),
 
     ],

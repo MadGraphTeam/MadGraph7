@@ -172,13 +172,11 @@ older tooling still lives. The process line is identical, so moving a study
 across is a matter of changing one word in the `output` command and
 translating the run card.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
 """ % {'run': output_name(interface, RUN),
-       'see_also': tutorials.see_also_block(
-           ['lo', 'mg7', 'run', 'decays', 'syntax', 'exercises'])},
+       'see_also': tutorials.where_next()},
      title='tools, gridpacks and clusters'),
 
     ],

@@ -173,13 +173,11 @@ it on `LD_LIBRARY_PATH` (`DYLD_LIBRARY_PATH` on macOS).
 **The full reference**, including the flavour tables and every call signature,
 is `docs/standalone_flavor_python.md` in the MG7 source tree.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
 """ % {'run': FORTRAN_RUN,
-       'see_also': tutorials.see_also_block(
-           ['syntax', 'checks', 'lo', 'mg7', 'exercises'])})(
+       'see_also': tutorials.where_next()})(
          getattr(interface, '_tutorial_sa_fortran_dir', RUN)),
      title='build it and call it'),
 

@@ -409,12 +409,10 @@ What these were really about, in one line each:
        s-channel. They are not interchangeable and only one is gauge-safe.
   7    the process line decides which interface you are in.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['syntax', 'lo', 'madevent', 'model', 'bsm', 'standalone', 'mg7'])},
+""" % {'see_also': tutorials.where_next()},
      title='what those were about'),
 
     ],

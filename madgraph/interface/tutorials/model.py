@@ -186,12 +186,10 @@ Three more things, worth knowing they exist:
 And `save model PATH` writes the current model, restrictions and all, so a
 collaborator gets exactly what you had.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['bsm', 'syntax', 'lo', 'checks', 'decays', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='customise, merge, save'),
 
     ],

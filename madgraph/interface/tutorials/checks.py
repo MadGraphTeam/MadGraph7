@@ -156,12 +156,10 @@ Step('history', lambda interface: """
   * `./bin/madgraph --debug` and the `MG5_debug` file MG7 writes on a crash,
     which is what to attach to a bug report.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['model', 'bsm', 'syntax', 'standalone', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='when a check fails'),
 
     ],

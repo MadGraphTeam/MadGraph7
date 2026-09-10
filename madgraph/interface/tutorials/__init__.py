@@ -166,20 +166,13 @@ def start(name):
     return TutorialSession(tutorial)
 
 
-def see_also_block(names, indent='  '):
-    """Render a "where to go next" list, dropping tutorials that do not exist.
+def where_next():
+    """The closing pointer every tutorial ends on.
 
-    Lets a tutorial point at one that has not been written yet without ever
-    advertising a dead end.
+    Tutorials used to end by listing the others with their descriptions --
+    eleven lines that grew every time one was added, and that `tutorial list`
+    already prints on demand. One sentence instead, defined here so the
+    wording is the same everywhere.
     """
 
-    lines = []
-    for name in names:
-        tutorial = get(name)
-        if tutorial is None:
-            continue
-        lines.append('%s* `tutorial %-10s %s' % (indent, tutorial.name + '`',
-                                                 tutorial.description))
-    if not lines:
-        return ''
-    return '\n'.join(lines)
+    return "Type `tutorial list` to see the other tutorials."

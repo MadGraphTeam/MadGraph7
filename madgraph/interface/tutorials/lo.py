@@ -299,13 +299,10 @@ Two more things worth knowing:
   * `help COMMAND` prints the syntax for any command, and `help` on its own
     lists them all.
 
-Where to go next:
 %(see_also)s
 
 Leave tutorial mode with `tutorial stop`. Thanks for using the tutorial!
-""" % {'see_also': tutorials.see_also_block(
-           ['syntax', 'model', 'bsm', 'run', 'decays', 'madevent', 'mg7',
-            'standalone', 'nlo', 'madloop', 'checks', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='where to go next'),
 
     ],

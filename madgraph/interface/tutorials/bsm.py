@@ -189,12 +189,10 @@ normal practice, not a shortcut.
   * `set complex_mass_scheme True` matters as soon as a wide resonance is
     involved.
 
-Where to go next:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.see_also_block(
-           ['model', 'syntax', 'decays', 'checks', 'lo', 'exercises'])},
+""" % {'see_also': tutorials.where_next()},
      title='big models and EFT pitfalls'),
 
     ],
