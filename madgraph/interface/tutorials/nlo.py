@@ -75,6 +75,8 @@ tutorial = Tutorial(
     title='NLO computations with aMC@NLO',
     description='generate, output and run a process at next-to-leading order',
     aliases=('aMCatNLO',),
+    section='basic',
+    ai_generated=False,
     order='free',
     steps=[
         Step('tutorial', retarget(legacy.tutorial),

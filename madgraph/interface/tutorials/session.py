@@ -374,10 +374,20 @@ class Tutorial(object):
                 block.  Names that are not registered are dropped, so a
                 tutorial can point at one that has not been written yet
                 without ever advertising a dead end.
+    section     which group of the menu this belongs to: 'basic', 'advanced'
+                or 'exercises'.
+    ai_generated
+                True when the content was written by an AI and has not been
+                validated by the developers.  The menu says so, per section,
+                and this is what keeps that notice honest for the tutorials
+                carried over from the pre-2026 hand-written text.
     """
 
+    SECTIONS = ('basic', 'advanced', 'exercises')
+
     def __init__(self, name, title, steps, description='', aliases=(),
-                 order='free', requires=None, hidden=False, see_also=()):
+                 order='free', requires=None, hidden=False, see_also=(),
+                 section='advanced', ai_generated=True):
         self.name = name
         self.title = title
         self.description = description or title
@@ -389,6 +399,10 @@ class Tutorial(object):
         self.requires = list(requires) if requires else []
         self.hidden = hidden
         self.see_also = tuple(see_also)
+        if section not in self.SECTIONS:
+            raise ValueError('unknown tutorial section %r' % section)
+        self.section = section
+        self.ai_generated = bool(ai_generated)
 
     @property
     def names(self):

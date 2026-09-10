@@ -206,6 +206,7 @@ tutorial = Tutorial(
     title='practise, with the answers checked',
     description='we ask, you answer, we tell you which mistake you made',
     order='sequence',
+    section='exercises',
     see_also=('syntax', 'lo', 'madevent', 'standalone'),
     steps=[
 

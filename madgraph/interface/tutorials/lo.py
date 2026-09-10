@@ -153,6 +153,8 @@ tutorial = Tutorial(
     title='first events at leading order',
     description='from a cold start to an event sample, with madspace',
     aliases=('MadGraph5',),
+    section='basic',
+    ai_generated=False,
     order='sequence',
     see_also=('syntax', 'madevent', 'mg7', 'model', 'bsm', 'standalone',
               'nlo', 'run', 'decays', 'checks', 'exercises'),

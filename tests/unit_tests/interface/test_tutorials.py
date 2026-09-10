@@ -516,7 +516,12 @@ class TestTutorialCommand(unittest.TestCase):
         self.assertIsNone(interface.asked)
 
     def test_a_number_picks_that_tutorial(self):
-        for index, tutorial in enumerate(tutorials.all_tutorials()):
+        """Numbers follow the order the menu prints, which is by section --
+        not the order the registry happens to hold."""
+
+        listed = [tutorial for _key, _title, group, _notice
+                  in tutorials.by_section() for tutorial in group]
+        for index, tutorial in enumerate(listed):
             interface = _BareMadGraphCmd()
             interface._answer = str(index + 1)
             self.assertEqual(self._ask_interactively(interface), tutorial.name)
@@ -1320,3 +1325,101 @@ class TestTerminalStyling(unittest.TestCase):
                     has_formatter_keyword(step.render(_Empty())),
                     '%s / %s contains a $KEYWORD the formatter would swallow'
                     % (tutorial.name, step.title))
+
+
+#===============================================================================
+# menu sections and provenance
+#===============================================================================
+
+class TestMenuSections(unittest.TestCase):
+    """The menu is grouped, and the AI-generated notice has to be true of
+    every tutorial it covers."""
+
+    def sections(self):
+        return list(tutorials.by_section())
+
+    def test_the_order_is_basic_advanced_exercises(self):
+        keys = [key for key, _title, _group, _notice in self.sections()]
+        self.assertEqual(keys, ['basic', 'advanced', 'exercises'])
+
+    def test_basic_is_lo_and_nlo(self):
+        for key, _title, group, _notice in self.sections():
+            if key == 'basic':
+                self.assertEqual([t.name for t in group], ['lo', 'nlo'])
+                return
+        self.fail('no basic section')
+
+    def test_exercises_is_its_own_section(self):
+        for key, _title, group, _notice in self.sections():
+            if key == 'exercises':
+                self.assertIn('exercises', [t.name for t in group])
+                return
+        self.fail('no exercises section')
+
+    def test_basic_carries_no_ai_notice(self):
+        for key, _title, _group, notice in self.sections():
+            if key == 'basic':
+                self.assertIsNone(notice, 'the Basic section is flagged')
+
+    def test_advanced_and_exercises_carry_it(self):
+        for key, _title, _group, notice in self.sections():
+            if key in ('advanced', 'exercises'):
+                self.assertIsNotNone(notice, '%s is not flagged' % key)
+                self.assertIn('not yet validated', notice)
+
+    def test_the_ported_tutorials_are_not_called_ai_generated(self):
+        """nlo and madloop are the pre-2026 text, near verbatim."""
+
+        for name in ('nlo', 'madloop'):
+            self.assertFalse(tutorials.get(name).ai_generated,
+                             '%s is the original text, not AI-generated' % name)
+
+    def test_a_notice_covers_only_what_it_is_true_of(self):
+        """A tutorial the section notice does not apply to must be visibly
+        marked, or the notice misleads."""
+
+        interface = _RecordingCmd()
+        with _capturing(interface):
+            interface.print_tutorial_list()
+        shown = '\n'.join(interface.lines)
+
+        for _key, _title, group, notice in self.sections():
+            if not notice:
+                continue
+            for tutorial in group:
+                if tutorial.ai_generated:
+                    continue
+                row = [l for l in interface.lines if tutorial.name in l]
+                self.assertTrue(row and '[original]' in row[0],
+                                '%s sits under an AI notice unmarked'
+                                % tutorial.name)
+        if '[original]' in shown:
+            self.assertIn('carried over from the hand-written', shown)
+
+    def test_an_unknown_section_is_refused(self):
+        self.assertRaises(ValueError, Tutorial, name='x', title='x',
+                          steps=[], section='nonsense')
+
+
+class _RecordingCmd(mg_interface.MadGraphCmd):
+    def __init__(self):
+        self.use_rawinput = False
+        self.lines = []
+
+    def _record(self, message, *args):
+        self.lines.append(message)
+
+
+class _capturing(object):
+    """Point madgraph_interface's logger at a recorder for the block."""
+
+    def __init__(self, interface):
+        self.interface = interface
+
+    def __enter__(self):
+        self.saved = mg_interface.logger.info
+        mg_interface.logger.info = self.interface._record
+        return self.interface
+
+    def __exit__(self, *exc):
+        mg_interface.logger.info = self.saved

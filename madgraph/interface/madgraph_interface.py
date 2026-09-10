@@ -4243,13 +4243,41 @@ This implies that with decay chains:
             logger.info("Running '%s', step %d of %d."
                         % (running.tutorial.name, done, total))
 
-    def print_tutorial_list(self):
-        """Show the available tutorials."""
+    def print_tutorial_list(self, numbered=False):
+        """Show the available tutorials, grouped by section.
 
-        logger.info("Available tutorials:", '$MG:BOLD')
-        for tutorial in tutorials.all_tutorials():
-            logger.info("   %-12s %s" % (tutorial.name, tutorial.description))
-        logger.info("Start one with 'tutorial NAME', or just 'tutorial' to choose.")
+        With `numbered`, the rows carry the number the menu accepts as an
+        answer; returns the tutorials in that order so the caller can map a
+        number back.
+        """
+
+        ordered = []
+        for _key, title, group, notice in tutorials.by_section():
+            if notice:
+                logger.info("%s  (%s)" % (title, notice), '$MG:BOLD')
+            else:
+                logger.info("%s" % title, '$MG:BOLD')
+            for tutorial in group:
+                ordered.append(tutorial)
+                # the section notice is a blanket statement; a tutorial it does
+                # not apply to has to be marked, or the notice is a lie
+                exempt = ' [original]' if (notice and not tutorial.ai_generated) \
+                         else ''
+                if numbered:
+                    logger.info("  %2d. %-12s %s%s"
+                                % (len(ordered), tutorial.name,
+                                   tutorial.description, exempt))
+                else:
+                    logger.info("      %-12s %s%s"
+                                % (tutorial.name, tutorial.description, exempt))
+        if any(not t.ai_generated and n for _k, _t, g, n in
+               tutorials.by_section() for t in g):
+            logger.info("   [original] marks content carried over from the "
+                        "hand-written tutorials.")
+        if not numbered:
+            logger.info("Start one with 'tutorial NAME', or just 'tutorial' "
+                        "to choose.")
+        return ordered
 
     def print_tutorial_status(self):
         """Say where the user has got to."""
@@ -4287,11 +4315,8 @@ This implies that with decay chains:
             return default
 
         logger.info("Which tutorial would you like?", '$MG:BOLD')
-        choices = []
-        for i, tutorial in enumerate(available):
-            logger.info("  %2d. %-12s %s" % (i + 1, tutorial.name,
-                                             tutorial.description))
-            choices.append(tutorial.name)
+        available = self.print_tutorial_list(numbered=True)
+        choices = [tutorial.name for tutorial in available]
         choices += [str(i + 1) for i in range(len(available))] + ['stop']
         # timeout=0 means no time limit.  Everywhere else MG7 times a question
         # out so an unattended script cannot hang; a tutorial is the opposite
