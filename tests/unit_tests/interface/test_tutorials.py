@@ -1211,3 +1211,112 @@ class TestNloShowerGuidance(unittest.TestCase):
 
         text = self.step().render(self._WithPy8())
         self.assertIn(retarget(legacy.output), text)
+
+
+#===============================================================================
+# terminal styling
+#===============================================================================
+
+class TestTerminalStyling(unittest.TestCase):
+    """Tutorials are authored with **emphasis** and `code` because that reads
+    well in the source. A terminal shows those literally, so they are
+    translated on the way out."""
+
+    def convert(self, text):
+        from madgraph.interface.tutorials._style import to_terminal
+
+        return to_terminal(text)
+
+    def test_bold_and_code_become_formatter_markers(self):
+        self.assertEqual(self.convert('**loud**'), '$_BOLDloud$_RESET')
+        self.assertEqual(self.convert('`cmd`'), '$GREENcmd$_RESET')
+
+    def test_italic_becomes_underline(self):
+        """There is no MG5 marker for italic, so the escape goes in direct."""
+
+        self.assertEqual(self.convert('*soft*'), '\033[4msoft\033[0m')
+
+    def test_a_star_inside_a_word_is_left_alone(self):
+        self.assertEqual(self.convert('a*b*c'), 'a*b*c')
+
+    def test_it_uses_the_unconditional_markers(self):
+        """ColorFormatter drops $BOLD/$RESET/$COLOR for an INFO record with no
+        colour argument, and always substitutes the underscored ones."""
+
+        converted = self.convert('**a** and `b`')
+        self.assertIn('$_BOLD', converted)
+        self.assertIn('$_RESET', converted)
+        self.assertNotIn('$BOLD', converted.replace('$_BOLD', ''))
+
+    def test_a_bullet_is_not_emphasis(self):
+        text = '  * a point\n  * another'
+        self.assertEqual(self.convert(text), text)
+
+    def test_the_dollar_syntax_survives(self):
+        """`$` is MG5 process syntax for a forbidden s-channel, and the syntax
+        tutorial is full of it."""
+
+        for text in ('p p > e+ e- $ z', 'p p > e+ e- $$ z', '$ vs $$ vs /'):
+            self.assertEqual(self.convert(text), text)
+
+    def test_no_tutorial_emits_raw_markup(self):
+        """Nothing a user sees should still carry asterisks or backticks."""
+
+        class _Empty(object):
+            _curr_amps = []
+            options = {}
+
+        for tutorial in tutorials.all_tutorials(include_hidden=True):
+            for step in tutorial.steps:
+                shown = self.convert(step.render(_Empty()))
+                self.assertNotIn('**', shown,
+                                 '%s / %s still shows ** in the terminal'
+                                 % (tutorial.name, step.title))
+                self.assertNotIn('`', shown,
+                                 '%s / %s still shows a backtick in the terminal'
+                                 % (tutorial.name, step.title))
+                # a leftover single-* emphasis span
+                self.assertIsNone(
+                    re.search(r'(?<![\w*])\*(?=\S)[^*\n]+?(?<=\S)\*(?![\w*])',
+                              shown),
+                    '%s / %s still shows *emphasis* in the terminal'
+                    % (tutorial.name, step.title))
+
+    def test_no_span_wraps_a_line(self):
+        """A span that wrapped would colour the next line's indentation, and
+        the line-local regexes would miss it entirely."""
+
+        import madgraph.interface.tutorials as package
+
+        # only the content modules: the engine's own docstrings talk *about*
+        # the markup, backticks and all
+        for name in package._MODULES:
+            module = sys.modules.get(
+                'madgraph.interface.tutorials.%s' % name)
+            if module is None:
+                continue
+            path = module.__file__.replace('.pyc', '.py')
+            with open(path) as handle:
+                for number, line in enumerate(handle, 1):
+                    self.assertEqual(
+                        line.count('`') % 2, 0,
+                        'unbalanced backtick at %s:%d' % (path, number))
+                    self.assertEqual(
+                        line.count('**') % 2, 0,
+                        'unbalanced ** at %s:%d' % (path, number))
+
+    def test_no_tutorial_text_collides_with_the_formatter(self):
+        """A "$" followed by a formatter keyword would be eaten silently."""
+
+        from madgraph.interface.tutorials._style import has_formatter_keyword
+
+        class _Empty(object):
+            _curr_amps = []
+            options = {}
+
+        for tutorial in tutorials.all_tutorials(include_hidden=True):
+            for step in tutorial.steps:
+                self.assertFalse(
+                    has_formatter_keyword(step.render(_Empty())),
+                    '%s / %s contains a $KEYWORD the formatter would swallow'
+                    % (tutorial.name, step.title))

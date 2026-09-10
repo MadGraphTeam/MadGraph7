@@ -175,9 +175,9 @@ Two last things that bite in BSM work.
 **Big models are slow.** A full BSM model can have hundreds of particles, and
 generating with all of them is painful. `customize_model` opens the switches
 the model exposes -- zero masses, diagonal mixing, dropped sectors -- and
-`customize_model --save=NAME` keeps the result so you can `import model
-MODEL-NAME` later. Restricting to the sector you actually study is normal
-practice, not a shortcut.
+`customize_model --save=NAME` keeps the result, and you reload it later with
+`import model MODEL-NAME`. Restricting to the sector you actually study is
+normal practice, not a shortcut.
 
 **EFTs need care that models do not.**
   * Order counting is the physics. A dimension-six analysis usually wants the

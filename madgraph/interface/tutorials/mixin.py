@@ -37,6 +37,7 @@ from __future__ import absolute_import
 import logging
 
 import madgraph.various.misc as misc
+from madgraph.interface.tutorials._style import to_terminal
 from madgraph.interface.tutorials.session import Exercise
 
 logger_tuto = logging.getLogger('tutorial')
@@ -46,7 +47,7 @@ logger = logging.getLogger('madgraph')
 def emit(text):
     """Print one tutorial block, in the format the tutorial logger frames."""
 
-    logger_tuto.info(text.replace('\n', '\n\t'))
+    logger_tuto.info(to_terminal(text).replace('\n', '\n\t'))
 
 
 class TutorialMixin(object):
