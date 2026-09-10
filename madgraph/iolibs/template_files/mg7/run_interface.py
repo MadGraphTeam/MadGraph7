@@ -34,18 +34,26 @@ logger = logging.getLogger('madevent')
 def _quiet_setup():
     """Silence the INFO chatter of a madevent interface being constructed.
 
-    Raises the stdout logger to WARNING for the duration, so the banner and the
-    configuration lines are dropped while anything that actually needs saying
-    still gets through.
+    Raises the loggers that carry it to WARNING for the duration, so the
+    banner, the configuration lines and the shell-tool notes are dropped while
+    anything that actually needs saying still gets through.
     """
 
-    stdout_logger = logging.getLogger('madevent.stdout')
-    previous = stdout_logger.level
-    stdout_logger.setLevel(max(previous, logging.WARNING))
+    # three different loggers carry the setup chatter: the MADEVENT banner
+    # (madevent.stdout), the "load configuration from ..." lines
+    # (madgraph.stdout, from CommonRunCmd.set_configuration) and the shell-tool
+    # notes such as "Using default gzip" (cmdprint.ext_program, from misc)
+    names = ('madevent.stdout', 'madgraph.stdout', 'cmdprint.ext_program')
+    previous = {}
+    for name in names:
+        lg = logging.getLogger(name)
+        previous[name] = lg.level
+        lg.setLevel(max(lg.level, logging.WARNING))
     try:
         yield
     finally:
-        stdout_logger.setLevel(previous)
+        for name, level in previous.items():
+            logging.getLogger(name).setLevel(level)
 
 
 class MG7RunCmd(madevent_interface.MadEventCmd):
