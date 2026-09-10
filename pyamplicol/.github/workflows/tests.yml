@@ -136,6 +136,16 @@ jobs:
           .venv/bin/python tools/release/check_dependencies.py --candidate
           PYTHON="$PWD/.venv/bin/python" just typing
           .venv/bin/python -m ruff check tools/ci tests/unit/test_ci_memory_watchdog.py
+      - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
+        env:
+          RUST_BACKTRACE: "1"
+        # Keep native compiler/panic diagnostics visible even if Python aborts.
+        run: >-
+          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
+          .venv/bin/python -m pytest
+          tests/integration/test_multilanguage_api.py
+          tests/integration/test_correlated_native_sdk.py
+          -q -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
@@ -184,13 +194,6 @@ jobs:
           tests/integration/test_correlators.py
           tests/integration/test_correlator_colour_accuracy.py
           tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
-          -q
-      - name: Build and exercise Python, C, C++, Fortran, and Rust APIs (30 GiB RSS limit)
-        run: >-
-          .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
-          .venv/bin/python -m pytest
-          tests/integration/test_multilanguage_api.py
-          tests/integration/test_correlated_native_sdk.py
           -q
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
