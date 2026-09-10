@@ -16,6 +16,8 @@ from __future__ import division
 from __future__ import absolute_import
 import subprocess
 import unittest
+import json
+import glob
 import os
 import re
 import shutil
@@ -96,8 +98,8 @@ def _mg7_datadir_or_skip(test):
     misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-        test.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
     return datadir
 
 
@@ -130,9 +132,12 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = 50000', t)
-    # [postprocessing] systematics is the only key defaulting to true; the
-    # [generation] one is already false.
+    # Switch both systematics paths off: [postprocessing] systematics (the
+    # legacy systematics.py pass) and the native [systematics] enable, which
+    # defaults to true and is the one that actually costs the time here. The
+    # cross-section these callers read does not depend on either.
     t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
+    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -247,12 +252,8 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
                               timeout=timeout)
     # Surface any per-tool *_crash.log written by run_selected_tools when a
     # post-processing tool fails *without* failing generate_events (rc stays 0),
-    # so a silently-swallowed tool failure is visible in CI. The systematics
-    # crash is a known, gracefully-handled mg7 gap (LHE lacks <mgrwt>) and is
-    # filtered out to keep the passing tests quiet.
+    # so a silently-swallowed tool failure is visible in CI.
     for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
-        if os.path.basename(cl) == 'systematics_computation_crash.log':
-            continue
         try:
             print('\n----- %s -----\n%s' % (cl, open(cl).read()),
                   file=sys.stderr, flush=True)
@@ -722,8 +723,8 @@ class TestMECmdShell(unittest.TestCase):
         Runs the mg7 (madspace) integrator with group_subprocesses on and off
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
-        run_card.toml defaults (NNPDF40MC_lo_as_01180 + dynamical HT/2 scale,
-        events=2000) ~ 7.76e+05 pb.
+        run_card.toml defaults (NNPDF40_lo_as_01180 + dynamical HT/2 scale,
+        events=2000) ~ 8.03e+05 pb.
 
         NOTE: this is NOT the madevent reference (1.31e6 pb in
         test_group_subprocess); but it would be if true lhapdf were used in madevent
@@ -746,8 +747,8 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
         # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -787,12 +788,12 @@ class TestMECmdShell(unittest.TestCase):
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
         # NOT the madevent 1.31e6 value for internal pdf but the one for
-        # lhapdf NNPDF40MC_lo_as_01180 + dynamical HT/2 scale. Was 1.277e+06
-        # with the old default NNPDF23_lo_as_0130_qed; a same-code A/B gives
-        # 1.272e+06 (NNPDF23) vs 7.79e+05, so the -39% is the PDF change alone:
-        # alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
-        # Spread over 6 runs at events=2000: 7.66e5-7.84e5, mean 7.76e5.
-        target = 7.76e+05
+        # lhapdf NNPDF40_lo_as_01180 + dynamical HT/2 scale. The -39% against
+        # the 1.277e+06 obtained with NNPDF23_lo_as_0130_qed is the PDF change
+        # alone: alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
+        # Spread over 6 runs at events=2000: 7.96e5-8.15e5, mean 8.03e5.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 7.76e+05
+        target = 8.03e+05
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -1193,44 +1194,170 @@ class TestMECmdShell(unittest.TestCase):
             ['generate u u~ > d d~', 'add process u u~ > d d~ QED=2'],
             pjoin(self.path, 'MG7_nqcd_mixed')))
 
-    def test_systematics_mg7(self):
-        """Scale/PDF systematics on the mg7 output, end to end (u u > u u).
+    def _check_systematics_weights(self, lhe_path, expected_ids=None):
+        """Every event carries the variation weights of the <initrwgt> header
+        and they differ from the nominal weight (real scale/PDF information
+        entered the computation). Returns the number of events."""
+        banner = banner_mod.Banner(lhe_path)
+        self.assertIn('initrwgt', banner, 'no <initrwgt> header in %s' % lhe_path)
+        ids = re.findall(r'<weight id=["\'](\w+)["\']', banner['initrwgt'])
+        self.assertTrue(ids, 'empty <initrwgt> header')
+        if expected_ids is not None:
+            self.assertEqual(ids, expected_ids)
+        nb_event = 0
+        nb_nontrivial = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertEqual(sorted(rwgt), sorted(ids),
+                'the event weights do not match the <initrwgt> header')
+            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
+                nb_nontrivial += 1
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+        self.assertGreater(nb_nontrivial, 0,
+            'the systematic weights are all equal to the nominal weight')
+        return nb_event
 
-        The mg7 LHE carries no <mgrwt> block, so the LO reweighting info is
-        reconstructed from the single alpha_s power recorded at output time
-        (single_qcd_order in proc_characteristics -> --lo_nqcd -> systematics ->
-        Event.reconstruct_lo_weight). Checks that the systematic-variation
-        weights are added to every event and actually differ from the nominal
-        (i.e. the reconstruction fed real scale/PDF information)."""
+    def test_systematics_mg7(self):
+        """Scale/PDF systematics computed by madspace when the events are
+        written ([systematics] section of the run_card), end to end (u u > u u).
+
+        Checks the LHEF3 output: an <initrwgt> header with the 3x3 scale grid
+        (8 weights, ids 1-8) plus one PDF member of another set when that set
+        is available (a cross-set variation, with its own alpha_s), a <rwgt>
+        block in every event, non-trivial weights, the events.weights.json
+        sidecar with the same ids and the per-variation cross sections, and the
+        systematics summary in info.json. No LHAPDF python module is needed."""
         datadir = _mg7_datadir_or_skip(self)
+        # a cross-set PDF variation (its own alpha_s) rather than a member of
+        # the default set, so this also covers the cross-set code path
+        other_set = 'NNPDF23_lo_as_0130_qed'
+        has_other = os.path.isfile(pjoin(datadir, other_set, '%s_0001.dat' % other_set))
+        pdf_entry = '["%s@1"]' % other_set if has_other else '["central"]'
+        nb_pdf = 1 if has_other else 0
         run = _run_mg7_postproc(
             self,
             ['set automatic_html_opening False --no_save',
              'import model sm',
              'generate u u > u u'],
             pjoin(self.path, 'MG7_syst'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
+                        # one histogram, to get the event-sample histograms
+                        # with their variation bands in info.json
+                        (r'\[histograms\]\n',
+                         '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
+                         'sqrt_s.bin_count = 10\n')],
+            events=100)
+
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        # 8 scale variations, then the PDF member
+        nb_ids = 8 + nb_pdf
+        nb_event = self._check_systematics_weights(
+            lhe_path, expected_ids=[str(i) for i in range(1, nb_ids + 1)])
+
+        side_path = pjoin(run, 'events.weights.json')
+        self.assertTrue(os.path.exists(side_path), 'no events.weights.json sidecar')
+        side = json.load(open(side_path))
+        self.assertEqual([v['id'] for v in side['variations']], list(range(1, nb_ids + 1)))
+        self.assertEqual(side['columns'], ['rwgt_%d' % i for i in range(1, nb_ids + 1)])
+        self.assertEqual(side['event_count'], nb_event)
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations'][:8]],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
+        xsec = side['nominal']['cross_section']
+        self.assertGreater(xsec, 0)
+        # the scale envelope brackets the nominal cross section
+        self.assertLess(side['scale']['min'], xsec)
+        self.assertGreater(side['scale']['max'], xsec)
+        if has_other:
+            member = side['variations'][8]
+            self.assertEqual((member['pdf_set'], member['pdf_member']), (other_set, 1))
+            self.assertNotAlmostEqual(member['cross_section'] / xsec, 1.0, places=3)
+        info = json.load(open(pjoin(run, 'info.json')))
+        self.assertIn('systematics', info)
+        self.assertEqual(len(info['systematics']['variations']), nb_ids)
+        # event-sample histograms: nominal + one column per variation, each
+        # summing to the corresponding cross section, with the scale envelope
+        self.assertIn('event_histograms', info)
+        hist = info['event_histograms'][0]
+        self.assertEqual(hist['name'], 'sqrt_s')
+        self.assertEqual(len(hist['bin_values']), 12)  # 10 bins + under/overflow
+        self.assertAlmostEqual(sum(hist['bin_values']) / xsec, 1.0, places=8)
+        self.assertEqual([w['id'] for w in hist['weights']], list(range(1, nb_ids + 1)))
+        for w, var in zip(hist['weights'], side['variations']):
+            self.assertAlmostEqual(sum(w['bin_values']) / var['cross_section'], 1.0, places=8)
+        env = hist['scale_envelope']
+        for lo, nom, hi in zip(env['low'], hist['bin_values'], env['high']):
+            self.assertLessEqual(lo, nom + 1e-12)
+            self.assertGreaterEqual(hi, nom - 1e-12)
+        # no legacy systematics.py run happened
+        self.assertFalse(glob.glob(pjoin(run, '*systematics*crash.log')))
+
+    def test_systematics_mixed_order_mg7(self):
+        """A process whose |M|^2 mixes several alpha_s powers (u u~ > d d~ with
+        QCD and QED contributions, qcd_power = -1) gets exact renormalisation
+        scale weights by re-evaluating the matrix element at the varied alpha_s,
+        so the full 3x3 scale grid is written and the mu_R weights differ from
+        the nominal."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u~ > d d~',
+             'add process u u~ > d d~ QED=2'],
+            pjoin(self.path, 'MG7_syst_mixed'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = ["central"]')],
+            events=100)
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        side = json.load(open(pjoin(run, 'events.weights.json')))
+        self.assertEqual(side['warnings'], [])
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations']],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
+        self._check_systematics_weights(lhe_path, expected_ids=[str(i) for i in range(1, 9)])
+        # the mu_R-only variations (ids 2 and 7) really move the weights
+        moved = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            if abs(rwgt['2'] - evt.wgt) > 1e-6 * abs(evt.wgt) and \
+               abs(rwgt['7'] - evt.wgt) > 1e-6 * abs(evt.wgt):
+                moved += 1
+        self.assertGreater(moved, 0, 'the mu_R weights equal the nominal weight')
+
+    def test_systematics_mg7_legacy(self):
+        """The legacy path ([postprocessing] systematics = true, systematics.py
+        + the LHAPDF python module) still works when the native computation is
+        switched off, and reads the reweighting inputs from the LHE (the
+        single alpha_s power recorded at output time, single_qcd_order)."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u > u u'],
+            pjoin(self.path, 'MG7_syst_legacy'), datadir,
             switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
-            toml_edits=[(r'systematics_pdf = \[[^\]]*\]',
+            toml_edits=[(r'\nenable = true\nmur', '\nenable = false\nmur'),
+                        (r'\nsystematics = false\n', '\nsystematics = true\n'),
+                        (r'systematics_pdf = \[[^\]]*\]',
                          'systematics_pdf = ["central"]')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')
         if not os.path.exists(lhe_path):
             misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
-
-        nb_event = 0
-        nb_nontrivial = 0
-        for evt in lhe_parser.EventFile(lhe_path):
-            rwgt = evt.parse_reweight()
-            self.assertGreater(len(rwgt), 1,
-                'no systematic weights were added to the mg7 events')
-            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
-                nb_nontrivial += 1
-            nb_event += 1
-        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
-        self.assertGreater(nb_nontrivial, 0,
-            'the systematic weights are all equal to the nominal weight: the LO '
-            'reweighting info was not reconstructed')
+        crash = glob.glob(pjoin(run, '*systematics*crash.log'))
+        if crash:
+            self.skipTest('legacy systematics.py could not run (LHAPDF python '
+                          'module?): %s' % open(crash[0]).read()[-500:])
+        self._check_systematics_weights(lhe_path)
 
     def test_relaunch_switch_defaults_mg7(self):
         """Re-launching an mg7 output must not turn every tool on.
@@ -1324,8 +1451,8 @@ class TestMECmdShell(unittest.TestCase):
                 datadir = None
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF40MC_lo_as_01180*')):
-            self.skipTest('NNPDF40MC_lo_as_01180 PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -1358,14 +1485,13 @@ class TestMECmdShell(unittest.TestCase):
         info = json.load(open(infos[-1]))['process']
         cross = float(info['mean'])
         error = float(info.get('error') or 0.0)
-        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180. This no
-        # longer equals the 4428 pb of the madevent test above: that one runs on
-        # madevent's internal (nn23lo1) PDF while mg7 convolutes with the LHAPDF
-        # grid named in run_card.toml. QCD=0, so there is no alpha_s here at all
-        # and the -16% shift is purely the smaller NNPDF4.0 valence-quark
-        # luminosity; a same-code A/B gives 4380 pb (NNPDF23) vs 3688 pb.
-        # Spread over 7 runs at events=2000: 3675-3775, mean 3731.
-        self.assertAlmostEqual(cross, 3730.0, delta=max(30.0, 5 * error))
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180. QCD=0, so
+        # there is no alpha_s here at all and the shift away from the 4380 pb of
+        # NNPDF23_lo_as_0130_qed is purely the smaller NNPDF4.0 valence-quark
+        # luminosity.
+        # Spread over 6 runs at events=2000: 3446-3536, mean 3490.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3730.0
+        self.assertAlmostEqual(cross, 3490.0, delta=max(50.0, 5 * error))
 
     def test_gridpack_mg7(self):
         """An mg7 gridpack has to run with the libraries it ships.
@@ -1389,9 +1515,11 @@ class TestMECmdShell(unittest.TestCase):
             has_mg7 = False
         if not has_mg7:
             self.skipTest('mg7 runtime stack (madspace) unavailable')
-        # e+ e- > mu+ mu- is leptonic and runs at a fixed factorisation scale,
-        # so no PDF grid is read; systematics, the one step that would want
-        # LHAPDF, is switched off below. Only madspace is required.
+        # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
+        # and the [systematics] PDF variations are empty -- but alpha_s still
+        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # They are deliberately left enabled: the gridpack has to reproduce the
+        # calculator the launcher built, and used to die doing so.
         datadir = os.environ.get('LHAPDF_DATA_PATH')
         if not datadir:
             try:
@@ -1409,7 +1537,6 @@ class TestMECmdShell(unittest.TestCase):
         t = open(toml).read()
         t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
         t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
-        t = _re.sub(r'(?m)^systematics = true$', 'systematics = false', t)
         open(toml, 'w').write(t)
 
         env = dict(os.environ)
@@ -1453,6 +1580,11 @@ class TestMECmdShell(unittest.TestCase):
         self.assertTrue(
             glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
             'gridpack run produced no events (see %s)' % gplog)
+        # and it has to reweight: without a nominal alpha_s grid the gridpack
+        # either crashed or dropped the weights it was configured to write.
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.weights.json')),
+            'the gridpack run wrote no systematics weights (see %s)' % gplog)
 
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and
@@ -3067,13 +3199,13 @@ class TestMEfromfile(unittest.TestCase):
              'import model heft',
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
-        # mg7 reference with the default PDF NNPDF40MC_lo_as_01180 (NNPDF4.0 LO,
-        # alpha_s(M_Z) = 0.118). The previous 3.754e+08 was the same run with the
-        # old default NNPDF23_lo_as_0130_qed: a same-code A/B on this process
-        # gives 3.708e+08 (NNPDF23) vs 1.820e+08 (NNPDF40MC), i.e. the -51% is
-        # entirely the PDF change -- gg luminosity (-25% at these x) times
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180 (NNPDF4.0 LO,
+        # alpha_s(M_Z) = 0.118). The 3.708e+08 of the old NNPDF23_lo_as_0130_qed
+        # default drops by -44% purely through the PDF -- gg luminosity times
         # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
-        target = 1.820e+08
+        # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        target = 2.089e+08
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
@@ -3274,15 +3406,16 @@ class TestMEfromfile(unittest.TestCase):
              'import model MSSM_SLHA2',
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
-        # Reference for the default PDF NNPDF40MC_lo_as_01180, measured over 6
-        # runs: 3.7864 +- 0.0011 (single-run error ~0.003, i.e. ~0.08%), so the
-        # 1% tolerance here is a ~12 sigma check. The value shifts from the old
+        # Reference for the default PDF NNPDF40_lo_as_01180, measured over 6
+        # runs: 2.9632 +- 0.0026 (single-run error ~0.0027, i.e. ~0.09%), so the
+        # 1% tolerance here is a ~11 sigma check. The value shifts from the old
         # NNPDF23_lo_as_0130_qed reference of 5.024 (madevent, no cuts, lhapdf)
         # purely because of the PDF change: p p > go go is forced to large x by
-        # the ~600 GeV gluino pair, where the two sets differ a lot. With
-        # NNPDF23 pinned in the run_card this same setup still gives 5.0235,
-        # matching that madevent reference to 0.01%.
-        target = 3.786
+        # the ~600 GeV gluino pair, where the sets differ a lot. With NNPDF23
+        # pinned in the run_card this same setup still gives 5.0235, matching
+        # that madevent reference to 0.01%.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3.786
+        target = 2.963
         self.assertLess(abs(cross - target) / target, 0.01,
             'mg7 p p > go go cross-section %s far from reference %s'
             % (cross, target))

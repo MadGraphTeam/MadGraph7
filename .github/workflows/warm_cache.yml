@@ -193,7 +193,17 @@ jobs:
                tar -xzpvf NNPDF23_nlo_as_0118_qed.tar.gz
                wget https://lhapdfsets.web.cern.ch/lhapdfsets/current/cteq6l1.tar.gz
                tar -xzpvf cteq6l1.tar.gz
-               # LO set used by the mg7 run_card.toml default (madspace integration)
+               # LO set used by the mg7 run_card.toml default and by the
+               # legacy LO run_card (pdlabel=lhapdf, lhaid=331900)
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF40_lo_as_01180.tar.gz
+               tar -xzpvf NNPDF40_lo_as_01180.tar.gz
+               # NLO run_card defaults: 5-flavour (331700) and, for a model with
+               # a massive b, the 4-flavour set (334700)
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF40_nlo_as_01180.tar.gz
+               tar -xzpvf NNPDF40_nlo_as_01180.tar.gz
+               wget https://lhapdfsets.web.cern.ch/current/NNPDF40_nlo_as_01180_nf_4.tar.gz
+               tar -xzpvf NNPDF40_nlo_as_01180_nf_4.tar.gz
+               # previous mg7 default; still pinned by some tests
                wget https://lhapdfsets.web.cern.ch/current/NNPDF40MC_lo_as_01180.tar.gz
                tar -xzpvf NNPDF40MC_lo_as_01180.tar.gz
                # previous mg7 default; still pinned by the mg7 cross-section

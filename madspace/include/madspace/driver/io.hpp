@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstring>
+#include <format>
 #include <fstream>
+#include <string>
 
 #include "madspace/driver/lhe_output.hpp"
 #include "madspace/driver/tensor.hpp"
@@ -15,7 +17,7 @@ struct FieldLayout {
     static constexpr const char* i32 = "<i4";
     static constexpr const char* f64 = "<f8";
 
-    const char* name;
+    std::string name;
     const char* type;
     int group;
 };
@@ -146,8 +148,14 @@ public:
     static constexpr int f_beam1 = 16;
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
+    static constexpr int f_syst_weights = 128;
 
-    static std::vector<FieldLayout> layout(int fields) {
+    // `syst_weight_count` columns of systematic variation weights are appended
+    // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
+    static std::vector<FieldLayout> layout(
+        int fields,
+        const std::vector<int>& syst_weight_ids = {}
+    ) {
         std::vector<FieldLayout> ret;
         if (fields & f_weight) {
             ret.push_back({"weight", FieldLayout::f64, 0});
@@ -201,6 +209,11 @@ public:
         if (fields & f_partial_weights) {
             ret.push_back({"partial_weight_product", FieldLayout::f64, 6});
         }
+        if (fields & f_syst_weights) {
+            for (int id : syst_weight_ids) {
+                ret.push_back({std::format("rwgt_{}", id), FieldLayout::f64, 7});
+            }
+        }
         return ret;
     }
 
@@ -238,6 +251,11 @@ public:
 
     // combined partial weight
     UnalignedRef<double> partial_weight_product() { return &_data[_offsets[5] + 0]; }
+
+    // systematic variation weights
+    UnalignedRef<double> syst_weight(std::size_t index) {
+        return &_data[_offsets[6] + 8 * index];
+    }
 
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;

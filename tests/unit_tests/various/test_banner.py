@@ -1095,9 +1095,13 @@ c
         run_card['lpp2'] = 1
         run_card.check_validity()
         # check that pdlabel is set correctly
-        self.assertEqual(run_card['pdlabel'], 'mixed')
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 'mixed'/'nn23lo1': the proton beam now defaults to LHAPDF
+        # (NNPDF40_lo_as_01180), so the pair is eva + lhapdf and the combined
+        # label is the one that links the right library.
+        self.assertEqual(run_card['pdlabel'], 'lhapdf')
         self.assertEqual(run_card['pdlabel1'], 'eva') # since automatically set to eva if lpp=3/4 and pdlabel is lhapdf/nnpdf
-        self.assertEqual(run_card['pdlabel2'], 'nn23lo1')
+        self.assertEqual(run_card['pdlabel2'], 'lhapdf')
         run_card.set('pdlabel', 'lhapdf', user=True) 
         run_card.check_validity()
         self.assertEqual(run_card['pdlabel'], 'lhapdf') #important for linking the correct library
@@ -1116,7 +1120,10 @@ c
         self.assertEqual(run_card['pdlabel'], run_card['pdlabel1'])
         # should now allow assymetric pdlabel here
         run_card.set('pdlabel1','lhapdf', user=True) 
-        run_card.set('pdlabel2', 'nnpdf23lo1', user=True) 
+        # 'nn23lo1' rather than the invalid 'nnpdf23lo1' used before: that one
+        # was rejected and left pdlabel2 at its default, which only differed
+        # from 'lhapdf' while the default was nn23lo1 itself.
+        run_card.set('pdlabel2', 'nn23lo1', user=True) 
         with self.assertRaises(bannermod.InvalidRunCard):
             run_card.check_validity()
         run_card.set('pdlabel2', 'lhapdf', user=True) 
