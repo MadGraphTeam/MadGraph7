@@ -71,10 +71,22 @@ class _TutorialTestCase(unittest.TestCase):
         self.logger.handlers = [self.capture]
         self.logger.propagate = False
         self.logger.setLevel(logging.INFO)
+        # attach() arms module-level switches in extended_cmd, and a test that
+        # does not detach would leave them armed for the next one -- start and
+        # end from a known state rather than inheriting one
+        self._reset_question_hooks()
 
     def tearDown(self):
         (self.logger.handlers, self.logger.propagate,
          self.logger.level) = self._saved
+        self._reset_question_hooks()
+
+    @staticmethod
+    def _reset_question_hooks():
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        extended_cmd.question_hint = None
+        extended_cmd.suppress_timeout = False
 
     def run_lines(self, tutorial_name, lines):
         """Feed command lines to a fresh session; return [(line, [text])]."""
@@ -1398,3 +1410,75 @@ class TestMenuSections(unittest.TestCase):
     def test_an_unknown_section_is_refused(self):
         self.assertRaises(ValueError, Tutorial, name='x', title='x',
                           steps=[], section='nonsense')
+
+
+#===============================================================================
+# what a tutorial says at a question
+#===============================================================================
+
+class TestQuestionHooks(_TutorialTestCase):
+    """A question is often asked by an object the mixin is not attached to --
+    the launch card question belongs to the run interface -- so the tutorial
+    reaches it through module-level switches in extended_cmd."""
+
+    def setUp(self):
+        _TutorialTestCase.setUp(self)
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        self.extended_cmd = extended_cmd
+
+    def attach(self, name='lo'):
+        interface = _BareInterface()
+        session = tutorials.start(name)
+        tutorial_mixin.attach(interface, session)
+        return interface, session
+
+    def test_the_generic_line_is_the_default(self):
+        self.assertEqual(self.extended_cmd.get_question_hint(),
+                         "Need help here? type 'help'")
+
+    def test_a_step_can_speak_at_a_question(self):
+        _interface, session = self.attach()
+        for index, step in enumerate(session.tutorial.steps):
+            if step.title == 'produce the output':
+                session.index = index
+        hint = self.extended_cmd.get_question_hint()
+        self.assertIn('param_card.dat', hint)
+        self.assertIn('run_card.toml', hint)
+        self.assertIn('just press Enter', hint)
+
+    def test_the_hint_is_styled_like_the_rest(self):
+        """It goes through the same markup conversion as step text."""
+
+        _interface, session = self.attach()
+        for index, step in enumerate(session.tutorial.steps):
+            if step.title == 'produce the output':
+                session.index = index
+        hint = self.extended_cmd.get_question_hint()
+        self.assertNotIn('**', hint)
+        self.assertNotIn('`', hint)
+
+    def test_a_step_without_one_keeps_the_generic_line(self):
+        _interface, session = self.attach()
+        session.index = 0            # the intro has no question_hint
+        self.assertEqual(self.extended_cmd.get_question_hint(),
+                         "Need help here? type 'help'")
+
+    def test_questions_do_not_time_out_during_a_tutorial(self):
+        self.assertFalse(self.extended_cmd.suppress_timeout)
+        interface, _session = self.attach()
+        self.assertTrue(self.extended_cmd.suppress_timeout)
+        tutorial_mixin.detach(interface)
+        self.assertFalse(self.extended_cmd.suppress_timeout)
+
+    def test_stopping_puts_the_generic_line_back(self):
+        interface, _session = self.attach()
+        tutorial_mixin.detach(interface)
+        self.assertIsNone(self.extended_cmd.question_hint)
+        self.assertEqual(self.extended_cmd.get_question_hint(),
+                         "Need help here? type 'help'")
+
+    def test_a_broken_hint_does_not_break_the_question(self):
+        self.extended_cmd.question_hint = lambda: 1 / 0
+        self.assertEqual(self.extended_cmd.get_question_hint(),
+                         "Need help here? type 'help'")

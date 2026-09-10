@@ -52,6 +52,22 @@ def madspace_is_installed():
     return os.path.isdir(os.path.join(root, 'madspace', 'install', 'madspace'))
 
 
+# Shown under the card question `launch` asks, in place of the generic
+# "type 'help'" line. It has to be short: it sits between the question and the
+# prompt, and the reader is mid-command.
+LAUNCH_QUESTION_HINT = """
+The two cards worth knowing here:
+
+  param_card.dat   masses, widths and couplings
+  run_card.toml    beams, cuts, number of events, integrator settings
+
+The rest belong to whichever programs are switched on above them.
+`tutorial madevent` and `tutorial mg7` go through both card formats properly.
+
+**For this tutorial the defaults are fine -- just press Enter.**
+"""
+
+
 def _detour_text(interface=None):
     """The optional QED<=2 side-trip: say what changed, then send them back.
 
@@ -246,6 +262,7 @@ the first run takes longer than the ones after it.
 """ % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
      hint="`output NAME` with no format gives you the default MG7 output.",
+     question_hint=LAUNCH_QUESTION_HINT,
      solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
 Step('launch', lambda interface: """

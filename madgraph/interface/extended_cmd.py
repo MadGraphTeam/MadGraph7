@@ -40,6 +40,33 @@ logger_stderr = logging.getLogger('fatalerror') # for stderr
 logger_tuto = logging.getLogger('tutorial') # for stdout
 logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 
+# Set by tutorial mode -- madgraph.interface.tutorials.mixin, on attach, and
+# cleared on detach. Module level rather than an attribute on the interface
+# because a question is often asked by a *different* object than the one the
+# tutorial is attached to: the launch card question belongs to the run
+# interface, not to the MG5 command the user typed `launch` at.
+#
+#   question_hint      str, or callable() -> str, shown under a question in
+#                      place of the generic "type 'help'" line
+#   suppress_timeout   answer a question in your own time. Everywhere else MG7
+#                      times a question out so an unattended script cannot hang;
+#                      a tutorial is the opposite case, since there is someone
+#                      reading by definition.
+question_hint = None
+suppress_timeout = False
+
+
+def get_question_hint():
+    """The line to show under a question. Never empty."""
+
+    hint = question_hint
+    if callable(hint):
+        try:
+            hint = hint()
+        except Exception:
+            hint = None
+    return hint or "Need help here? type 'help'"
+
 try:
     import madgraph.various.misc as misc
     from madgraph import MG5DIR, MadGraph5Error
@@ -1100,10 +1127,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             path_msg = []
             
         if timeout is True:
-            try:
-                timeout = self.options['timeout']
-            except Exception:
-                pass
+            if suppress_timeout:
+                timeout = 0          # a tutorial waits for its reader
+            else:
+                try:
+                    timeout = self.options['timeout']
+                except Exception:
+                    pass
 
         # add choice info to the question
         if choices + path_msg:
@@ -2316,7 +2346,7 @@ class SmartQuestion(BasicCmd):
         try:
             if reprint_opt:
                 self.display_question()
-                logger_tuto.info("Need help here? type 'help'", '$MG:BOLD')
+                logger_tuto.info(get_question_hint(), '$MG:BOLD')
                 logger_plugin.info("Need help here? type 'help'" , '$MG:BOLD')
             return self.cmdloop()
         finally:

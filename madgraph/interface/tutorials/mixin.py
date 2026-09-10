@@ -36,6 +36,7 @@ from __future__ import absolute_import
 
 import logging
 
+import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.various.misc as misc
 from madgraph.interface.tutorials._style import to_terminal
 from madgraph.interface.tutorials.session import Exercise
@@ -244,6 +245,7 @@ def attach(interface, session):
         interface.__class__ = _wrap(interface.__class__)
         _suspend_crash_on_error(interface)
     interface._tutorial_session = session
+    _arm_question_hooks(session)
     return session
 
 
@@ -258,6 +260,7 @@ def detach(interface):
             interface.__class__ = base
         interface._tutorial_base_class = None
         _restore_crash_on_error(interface)
+    _disarm_question_hooks()
     return session
 
 
@@ -297,3 +300,28 @@ def mixin_command_names():
     these, since they are deliberately not forwarded through self.cmd."""
 
     return [name for name in vars(TutorialMixin) if name.startswith('do_')]
+
+
+def _arm_question_hooks(session):
+    """Let the running tutorial speak at any question, and stop the clock.
+
+    Both are module-level switches in extended_cmd because a question is often
+    asked by an object the mixin is not attached to -- the launch card question
+    belongs to the run interface, not to the command the user typed `launch`
+    at.
+    """
+
+    extended_cmd.question_hint = lambda: _question_hint(session)
+    extended_cmd.suppress_timeout = True
+
+
+def _disarm_question_hooks():
+    extended_cmd.question_hint = None
+    extended_cmd.suppress_timeout = False
+
+
+def _question_hint(session):
+    """The current step's hint, styled, or None to keep the generic line."""
+
+    hint = session.question_hint()
+    return to_terminal(hint) if hint else None

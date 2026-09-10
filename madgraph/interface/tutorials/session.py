@@ -53,10 +53,16 @@ class Step(object):
               resolve it with get_solution().
     requires  list of prerequisite names checked before the step is announced.
     setup     callable(interface) run before the step is announced.
+    question_hint
+              shown under any question MG7 asks while this step is current, in
+              place of the generic "type 'help'" line. The card question a
+              `launch` step leads to is the case that matters: it is asked by
+              the run interface in the middle of the command, so this is the
+              only way a step can say anything there.
     """
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
-                 setup=None, title=None):
+                 setup=None, title=None, question_hint=None):
         self.key = key
         self.text = text
         self.hint = hint
@@ -64,6 +70,7 @@ class Step(object):
         self.requires = list(requires) if requires else []
         self.setup = setup
         self.title = title
+        self.question_hint = question_hint
 
     def render(self, interface=None):
         """The text to print for this step."""
@@ -122,9 +129,10 @@ class Exercise(Step):
     """
 
     def __init__(self, key, question, check, mistakes=(), hint=None,
-                 solution=None, title=None, praise=None, report=None):
+                 solution=None, title=None, praise=None, report=None,
+                 question_hint=None):
         Step.__init__(self, key, question, hint=hint, solution=solution,
-                      title=title)
+                      title=title, question_hint=question_hint)
         self.question = question
         self.check = check
         self.mistakes = list(mistakes)
@@ -504,6 +512,17 @@ class TutorialSession(object):
     @property
     def finished(self):
         return self.index >= len(self.tutorial.steps) - 1
+
+    def question_hint(self):
+        """The hint for whatever step is current, or None.
+
+        The step that *asked* for the command is the current one while that
+        command runs, which is what makes this reach the card question a
+        `launch` step leads to.
+        """
+
+        step = self.current
+        return step.question_hint if step is not None else None
 
     def progress(self):
         """(done, total) for the prompt and `status`."""
