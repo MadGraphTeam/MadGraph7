@@ -6538,13 +6538,22 @@ tar -czf split_$1.tar.gz split_$1
 
 
         # set  lhapdf.
-        if self.run_card['pdlabel'] == "lhapdf":
+        # A 1->N directory never initialises a PDF (alpha_s comes from the
+        # param card), so it must not be built against the LHAPDF alpha_s
+        # either: alphas_ would call alphasPDF on an uninitialised LHAGLUE set
+        # and LHAPDF would abort the process. The run_card alone cannot decide
+        # this -- MadSpin writes the *production* card (lpp!=0, pdlabel=lhapdf)
+        # into the decay directories it builds -- so key it on the directory's
+        # own proc_characteristics.
+        use_lhapdf = self.run_card['pdlabel'] == "lhapdf" and \
+                     self.proc_characteristics['ninitial'] != 1
+        if use_lhapdf:
             self.make_opts_var['lhapdf'] = 'True'
             self.link_lhapdf(pjoin(self.me_dir,'lib'))
             pdfsetsdir = self.get_lhapdf_pdfsetsdir()
             lhaid_list = [int(self.run_card['lhaid'])]
             self.copy_lhapdf_set(lhaid_list, pdfsetsdir)
-        if self.run_card['pdlabel'] != "lhapdf":
+        if not use_lhapdf:
             self.pdffile = None
             self.make_opts_var['lhapdf'] = ""
 

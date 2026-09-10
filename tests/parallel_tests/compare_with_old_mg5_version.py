@@ -560,14 +560,17 @@ class OLDMG5Comparator(unittest.TestCase):
                         'u u~ > z{T} z{T}, (z > l+ l-)'
                         ]
 
+        # previously PDF was nn23lo1 (lhaid 230000) with these reference values
+        # P0 0.00016429, P1 0.0001662 (from 3.5.16 with 250k), P2 0.00066055,
+        # P3 0.0019198
         values =  {'number_of_P0': '1',
                    'number_of_P1': '1', 
                    'number_of_P2': '1',
                    'number_of_P3': '1',
-                   'cross_P0_qq_z0zT_z_ll_z_ll': '0.00016429',
-                   'cross_P1_qq_z0zT_z_ll_z_ll': '0.0001662', #cross from 3.5.16 with 250k
-                   'cross_P2_qq_z0zT_z_ll_z_ll': '0.00066055',
-                   'cross_P3_qq_zTzT_z_ll_z_ll': '0.0019198',
+                   'cross_P0_qq_z0zT_z_ll_z_ll': '0.00017485',
+                   'cross_P1_qq_z0zT_z_ll_z_ll': '0.00018527',
+                   'cross_P2_qq_z0zT_z_ll_z_ll': '0.00069580',
+                   'cross_P3_qq_zTzT_z_ll_z_ll': '0.0021422',
                    } 
                   
         self.compare_cross_section_to_values(values, my_proc_list,
