@@ -33,7 +33,6 @@ import madspace as ms
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
 from models.check_param_card import ParamCard
-from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -890,11 +889,9 @@ class MadgraphProcess:
         if self.systematics is None or self.systematics.weight_count == 0:
             return
         summary = json.loads(self.systematics.summary())
-        # the percentages come from systematics_summary, which the parameter
-        # scan reads too -- see MG7RunCmd.getSysSummaryFromLog. The two must
-        # agree, so neither computes them itself.
-        xsec = systematics_summary.nominal_cross_section(summary)
-        if xsec is None:
+        nominal = summary.get("nominal", {})
+        xsec = nominal.get("cross_section")
+        if not xsec:
             return
         def format_variation(up, down):
             # right-justify the signed numbers (not the sign alone) so the %
@@ -908,11 +905,15 @@ class MadgraphProcess:
         for pdf in summary.get("pdf", []):
             rows.append(("PDF set:", f"{pdf['pdf_set']}, {pdf['error_type']}"))
         rows.append(("Original cross-section:", f"{xsec} pb"))
-        scale = systematics_summary.scale_percentages(summary)
-        if scale is not None:
-            rows.append(("Scale variation:", format_variation(*scale)))
-        for _entry, up, down in systematics_summary.pdf_percentages(summary):
-            rows.append(("PDF variation:", format_variation(up, down)))
+        if "scale" in summary:
+            lo, hi = summary["scale"]["min"], summary["scale"]["max"]
+            rows.append(("Scale variation:", format_variation(
+                (hi - xsec) / xsec * 100, (xsec - lo) / xsec * 100)))
+        for pdf in summary.get("pdf", []):
+            if "uncertainty_up" in pdf and pdf.get("central"):
+                rows.append(("PDF variation:", format_variation(
+                    pdf["uncertainty_up"] / pdf["central"] * 100,
+                    pdf["uncertainty_down"] / pdf["central"] * 100)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
             box = ms.PrettyBox("Systematics", len(rows), [24, 0])
             box.set_column(0, [label for label, _ in rows])

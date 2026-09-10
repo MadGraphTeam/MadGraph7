@@ -16,14 +16,11 @@ each tool.
 """
 
 import gzip
-import json
 import logging
-import math
 import os
 import shutil
 
 import madgraph.interface.madevent_interface as madevent_interface
-from madgraph.iolibs.template_files.mg7 import systematics_summary
 import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
 import madgraph.various.banner as banner_mod
 import madgraph.various.lhe_parser as lhe_parser
@@ -43,78 +40,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
       (:class:`RunCardMG7`) and takes the banner straight from the mg7 LHE,
       instead of reading ``run_card.dat`` / juggling banner files.
     * ``do_treatcards`` -- writes Fortran ``.inc`` files; not applicable.
-    * ``getSysSummaryFromLog`` -- madspace computes the scale/PDF systematics
-      itself and reports them in ``info.json``; the base version parses the
-      ``parton_systematics.log`` that systematics.py used to write.
     """
-
-    def getSysSummaryFromLog(self, kpath=None, knext_name=None):
-        """Scale and PDF variation for the scan summary, as [Hi, Lo] percents.
-
-        madspace computes the variations itself while writing the events and
-        reports them in ``Events/<run>/info.json`` under "systematics"; there
-        is no ``parton_systematics.log`` unless the legacy post-processing path
-        ([postprocessing] systematics) was used, so fall back to the base
-        parser for that case.
-
-        The percentages come from :mod:`systematics_summary`, which the run's
-        own Systematics box reads too, so the two cannot disagree. The strings
-        match what the base parser returns for a madevent run -- "+29.6",
-        "-21.5" -- so the scan column is the same whichever path produced them.
-        """
-
-        summary = self._read_native_systematics(kpath, knext_name)
-        if summary is None:
-            return madevent_interface.MadEventCmd.getSysSummaryFromLog(
-                self, kpath=kpath, knext_name=knext_name)
-
-        scale = systematics_summary.scale_percentages(summary)
-        scale = self._signed(scale) if scale else []
-
-        # the nominal set's entry comes first; the scan summary has one column
-        pdf_entries = systematics_summary.pdf_percentages(summary)
-        pdf = self._signed(pdf_entries[0][1:]) if pdf_entries else []
-
-        return scale, pdf
-
-    def _read_native_systematics(self, kpath, knext_name):
-        """The "systematics" block of the run's info.json, or None.
-
-        None means "no native summary here" -- either the file is missing or
-        the run did not compute them -- and the caller falls back.
-        """
-
-        if not kpath or not knext_name:
-            return None
-        me_dir = kpath.rsplit('/', 2)[0]
-        info_path = pjoin(me_dir, 'Events', knext_name, 'info.json')
-        try:
-            with open(info_path) as handle:
-                info = json.load(handle)
-        except (OSError, ValueError) as error:
-            logger.debug('no native systematics in %s: %s', info_path, error)
-            return None
-        summary = info.get('systematics')
-        if not summary:
-            return None
-        for warning in summary.get('warnings') or []:
-            logger.debug('systematics: %s', warning)
-        return summary
-
-    @staticmethod
-    def _signed(percentages):
-        """An (up, down) pair as the scan summary wants it.
-
-        Same shape as the strings the base parser pulls out of
-        parton_systematics.log -- "+29.6", "-21.5": a magnitude with an
-        explicit sign, three significant digits.
-        """
-
-        up, down = percentages
-        if any(v is None or (isinstance(v, float) and math.isnan(v))
-               for v in (up, down)):
-            return []
-        return ['+%.3g' % abs(up), '-%.3g' % abs(down)]
 
     def __init__(self, me_dir, options, run_name, lhe_path):
         self._mg7_run_name = run_name
