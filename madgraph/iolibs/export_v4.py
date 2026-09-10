@@ -3647,9 +3647,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         max_nexternal = max([len(ids[0]) for ids in allids])
 
         info = []
-        for (key, pid), (prefix, tag, ncomb, iden) in self.prefix_info.items():
+        for (key, pid), value in self.prefix_info.items():
+            prefix, tag = value[0], value[1]
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
-            
+
         flavor_text= "  flavor(:) = 1\n"
         flavor_text += " do i =1, npdg\n"
         nb = 0
@@ -3675,6 +3676,21 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # so we resolve FLAVOR->FLAV_IDX inline with the per-process
         # GET_FLAVOR_INDEX (which is part of matrix.f, hence linked into this
         # all_matrix module) before calling SMATRIXHEL.
+        #
+        # With merged particles a caller can legitimately hand us a leg ordering
+        # the generated FLAV_TABLE does not tabulate (`u d > z u d` on a table
+        # that only holds `d u > z d u`), for which GET_FLAVOR_INDEX answers the
+        # 0 sentinel and the matrix element is 0.  FLAVOR_ORDER_REPAIR (below)
+        # absorbs that here, once, for every python caller -- MadSpin's density
+        # and reweighting's smatrixhel alike -- so no caller has to know about
+        # the table's ordering convention.  It is only emitted for a model with
+        # merged particles; without them every ME has a single all-ones flavor
+        # and the generated file is unchanged.  (A prefix_info filled by another
+        # exporter in the short, pre-repair form keeps the old wrapper rather
+        # than crashing on the missing ninitial/nflav entries.)
+        use_repair = nb > 0 and all(len(v) > 5
+                                    for v in self.prefix_info.values())
+        momenta = 'pfix' if use_repair else 'p'
         text = []
         smtext = []
         smatrixhel_prefixes = set()
@@ -3701,11 +3717,25 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     line = ' else if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition,pid,ii)
                 text.append(line)
                 smtext.append(line)
-                prefix = self.prefix_info[(pdgs,pid)][0]
-                text.append(' call %s%%(fct_name)s' % prefix)
+                info_me = self.prefix_info[(pdgs,pid)]
+                prefix = info_me[0]
                 smatrixhel_prefixes.add(prefix)
-                smtext.append(' call %ssmatrixhel(p, nhel, %sget_flavor_index(flavor), ans)'
-                              % (prefix, prefix))
+                if use_repair:
+                    # POS names the legs whose helicity is an open index of the
+                    # density: those must stay where they are, so they are
+                    # passed as the frozen legs. smatrixhel has no such leg.
+                    repair = (' call flavor_order_repair(%sget_flavor_index,'
+                              ' %sget_flavor, %i, %i, %i, %%s, flavor, pdgs,'
+                              ' p, pfix)' % (prefix, prefix, n_ext,
+                                             info_me[4], info_me[5]))
+                    text.append(repair % 'n_changing, pos, .true.')
+                    # a request for one specific helicity row names it by leg
+                    # position, so re-ordering the legs would answer for a
+                    # different helicity assignment: leave those calls alone.
+                    smtext.append(repair % '0, ms_nofrozen, nhel.lt.1')
+                text.append(' call %s%%(fct_name)s' % prefix)
+                smtext.append(' call %ssmatrixhel(%s, nhel, %sget_flavor_index(flavor), ans)'
+                              % (prefix, momenta, prefix))
             text.append(' endif')
             smtext.append(' endif')
         #close the function
@@ -3716,8 +3746,23 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # INTEGER declarations for the per-process GET_FLAVOR_INDEX functions
         # used inline by the smatrixhel dispatch (their name does not start with
         # i-n, so they default to REAL without an explicit declaration).
+        # With the ordering repair on, the same two per-process routines are
+        # also *passed* to FLAVOR_ORDER_REPAIR, hence the EXTERNAL statements,
+        # and every wrapper needs the repaired-momenta scratch array (PFIX) and
+        # the empty frozen-leg list smatrixhel hands over.
         flavor_index_decl = '\n'.join('  integer %sget_flavor_index' % prefix
                                       for prefix in sorted(smatrixhel_prefixes))
+        if use_repair:
+            flavor_index_decl += '\n' + '\n'.join(
+                '  external %sget_flavor_index\n  external %sget_flavor'
+                % (prefix, prefix) for prefix in sorted(smatrixhel_prefixes))
+            flavor_index_decl += ('\n  double precision pfix(0:3,%i)'
+                                  '\n  integer ms_nofrozen(1)' % max_nexternal)
+            flavor_repair_function = open(pjoin(MG5DIR, 'madgraph', 'iolibs',
+                    'template_files', 'f2py_flavor_order_repair.inc')).read()
+            flavor_repair_function %= {'maxpart': max_nexternal}
+        else:
+            flavor_repair_function = ''
 
         all_prefix = set([k[0] for k in self.prefix_info.values()])
         setpara_for_each_matrix = ''
@@ -3793,7 +3838,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)'},
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta},
+                          'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
                           'helreset_setup' : '\n'.join(helreset_setup),
@@ -3802,7 +3848,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)'},
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta},
                           
                           }
 
@@ -3976,11 +4022,16 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             else:
                 raise Exception('--prefix options supports only \'int\' and \'proc\'')
             ncomb = matrix_element.get_helicity_combinations()
-            #iden = matrix_element.get_denominator_factor() 
+            # nexternal/ninitial/nflav describe the flavor table of this ME and
+            # are what all_matrix.f needs to repair a leg ordering that
+            # GET_FLAVOR_INDEX does not tabulate (see write_f2py_splitter).
+            nflav = self._build_flav_table_flat(matrix_element)[0]
+            #iden = matrix_element.get_denominator_factor()
             for proc in matrix_element.get('processes'):
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
                 iden = compute_iden_from_pdgs(ids, ninitial, self.model)
-                self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag(), ncomb, iden]
+                self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix,
+                        proc.get_tag(), ncomb, iden, ninitial, nflav]
 
         template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'),'r')
         text = template.read()

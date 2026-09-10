@@ -15,6 +15,9 @@ on:
         description: 'running IOTests'
         required: true
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 env:
   commitmsg: ${{ github.event.head_commit.message }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"

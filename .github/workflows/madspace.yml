@@ -3,8 +3,15 @@ name: MadSpace
 on:
   push:
   pull_request:
-  release:
-    types: [published]
+  # Called from release.yml once the full test suite has passed. madspace is
+  # never released on its own -- its version always matches the MadGraph
+  # release, so publishing only happens through that call.
+  workflow_call:
+    inputs:
+      publish:
+        description: 'Build the full wheel matrix and publish to PyPI'
+        type: boolean
+        default: false
 
 jobs:
   build_wheels:
@@ -56,7 +63,7 @@ jobs:
         with:
           package-dir: madspace
         env:
-            CIBW_BUILD: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && matrix.build_full || matrix.build_small }}
+            CIBW_BUILD: ${{ (inputs.publish || github.ref == 'refs/heads/main') && matrix.build_full || matrix.build_small }}
             CIBW_BEFORE_ALL: ${{ matrix.CIBW_BEFORE_ALL }}
             CIBW_REPAIR_WHEEL_COMMAND: ${{ matrix.CIBW_REPAIR_WHEEL_COMMAND }}
             CIBW_ENVIRONMENT: ${{ matrix.CIBW_ENVIRONMENT }}
@@ -76,7 +83,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish to PyPI
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: inputs.publish
     needs:
       - build_wheels
     runs-on: ubuntu-latest
@@ -94,34 +101,3 @@ jobs:
           merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-
-  github-release:
-    name: Sign with Sigstore, upload to GitHub Release
-    needs:
-      - publish-to-pypi
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # IMPORTANT: mandatory for making GitHub Releases
-      id-token: write  # IMPORTANT: mandatory for sigstore
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v5
-        with:
-          pattern: cibw-*
-          path: dist
-          merge-multiple: true
-      - name: Sign the dists with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.0.0
-        with:
-          inputs: ./dist/*.whl
-      - name: Upload artifact signatures to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        # Upload to GitHub Release using the `gh` CLI.
-        # `dist/` contains the built packages, and the
-        # sigstore-produced signatures and certificates.
-        run: >-
-          gh release upload
-          '${{ github.ref_name }}' dist/**
-          --repo '${{ github.repository }}'
-          --clobber
