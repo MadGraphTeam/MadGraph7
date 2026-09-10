@@ -1,0 +1,161 @@
+name: Release
+
+# Fires once a GitHub Release is published (draft -> Publish release), never on
+# a tag push by itself. Runs the full test suite, publishes madspace to PyPI
+# with the same version as the MadGraph release, and attaches the MadGraph
+# tarball to the release. If anything fails, the release is reverted to draft
+# so a half-published version never stays public.
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  actions: write
+
+jobs:
+  check_version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Check VERSION / madspace/pyproject.toml agree with the release tag
+        run: python3 bin/create_release.py --version "${{ steps.version.outputs.value }}" --check-only
+
+  # Warm the HEPTools/UFO/pip caches first: restore_heptools (used throughout
+  # the test suites below) hard-fails on a cache miss, and a release should not
+  # depend on a cache having been kept warm by chance.
+  warm_cache:
+    needs: check_version
+    uses: ./.github/workflows/warm_cache.yml
+
+  test_unit:
+    needs: warm_cache
+    uses: ./.github/workflows/unittest.yml
+  test_acceptance:
+    needs: warm_cache
+    uses: ./.github/workflows/acceptancetest.yml
+  test_madevent:
+    needs: warm_cache
+    uses: ./.github/workflows/acceptancetest_madevent.yml
+  test_mg7:
+    needs: warm_cache
+    uses: ./.github/workflows/acceptancetest_mg7.yml
+  test_parallel:
+    needs: warm_cache
+    uses: ./.github/workflows/parralel.yml
+  test_io:
+    needs: warm_cache
+    uses: ./.github/workflows/IOtest.yml
+  test_aloha:
+    needs: warm_cache
+    uses: ./.github/workflows/aloha.yml
+  test_madspin:
+    needs: warm_cache
+    uses: ./.github/workflows/madspin_parallel.yml
+  test_xsec:
+    needs: warm_cache
+    uses: ./.github/workflows/check_xsec_processes_mg7.yml
+
+  # Builds the full wheel matrix and publishes to PyPI. madspace is never
+  # released standalone, so this is the only path that ever sets publish: true.
+  madspace:
+    needs:
+      - test_unit
+      - test_acceptance
+      - test_madevent
+      - test_mg7
+      - test_parallel
+      - test_io
+      - test_aloha
+      - test_madspin
+      - test_xsec
+    uses: ./.github/workflows/madspace.yml
+    with:
+      publish: true
+
+  tarball:
+    needs:
+      - check_version
+      - madspace
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # full history: create_release.py's authors.md needs it
+
+      # The actual wheel filenames built for this release, so create_release.py
+      # can record them in input/.release and install.py can later check
+      # platform/Python availability locally instead of querying PyPI.
+      - name: Download the madspace wheels built for this release
+        uses: actions/download-artifact@v5
+        with:
+          pattern: cibw-*
+          path: wheels
+          merge-multiple: true
+
+      - name: Build the MadGraph tarball
+        run: >
+          python3 bin/create_release.py --version "${{ needs.check_version.outputs.version }}"
+          --output dist --wheels-dir wheels
+
+      - name: Smoke-test the tarball
+        run: |
+          set -e
+          tar xzf dist/MG7_v${{ needs.check_version.outputs.version }}.tar.gz -C /tmp
+          cd "/tmp/MG7_v$(echo "${{ needs.check_version.outputs.version }}" | tr . _)"
+
+          # madgraph/VERSION is a symlink to ../VERSION: prove it survived packaging.
+          grep -q "version = ${{ needs.check_version.outputs.version }}" madgraph/VERSION
+
+          # The just-published PyPI wheel may take a little while to become
+          # installable; retry rather than fail on the first miss.
+          for attempt in $(seq 10); do
+            python3 madspace/install.py --bin -y && break
+            echo "attempt $attempt: madspace==${{ needs.check_version.outputs.version }} not installable yet, retrying..."
+            sleep 15
+          done
+          test -d madspace/install/madspace
+
+      - name: Sign the tarball with Sigstore
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: ./dist/MG7_v${{ needs.check_version.outputs.version }}.tar.gz
+
+      - name: Upload tarball to the GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}' --clobber
+
+  revert_to_draft:
+    needs:
+      - check_version
+      - warm_cache
+      - test_unit
+      - test_acceptance
+      - test_madevent
+      - test_mg7
+      - test_parallel
+      - test_io
+      - test_aloha
+      - test_madspin
+      - test_xsec
+      - madspace
+      - tarball
+    if: failure() || cancelled()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Revert the release to draft
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit '${{ github.ref_name }}' --draft --repo '${{ github.repository }}'
+          echo "::error::Release checks failed -- '${{ github.ref_name }}' was reverted to draft. Fix the issue and re-publish."

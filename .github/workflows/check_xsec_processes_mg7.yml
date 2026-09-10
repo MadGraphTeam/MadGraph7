@@ -40,6 +40,9 @@ on:
         required: false
         default: '100000'
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

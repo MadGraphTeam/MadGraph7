@@ -32,6 +32,9 @@ on:
         required: false
         default: '800'
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 env:
   MADSPIN_TEST_NEVENTS: ${{ github.event.inputs.nevents || '10000' }}
   MADSPIN_TEST_EFF_TOL: ${{ github.event.inputs.eff_tol || '0.15' }}
