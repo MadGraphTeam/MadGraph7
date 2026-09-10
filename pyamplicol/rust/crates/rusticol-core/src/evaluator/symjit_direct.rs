@@ -25,7 +25,9 @@ use crate::recurrence::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::ffi::{c_int, c_void};
+use std::hash::{Hash, Hasher};
 use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
@@ -145,6 +147,16 @@ struct RowTableIdentity {
     row_count: u32,
 }
 
+impl Hash for RowTableIdentity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (self.role as u16).hash(state);
+        self.address.hash(state);
+        self.row_count.hash(state);
+    }
+}
+
+const ROW_GROUP_LINEAR_LOOKUP_LIMIT: usize = 4;
+
 struct CachedRowGroup {
     identity: RowTableIdentity,
     rows: Vec<CachedRowTables>,
@@ -166,6 +178,7 @@ struct CachedRowTables {
 struct PlaneWorkspace {
     storage: Option<DescriptorStorageIdentity>,
     row_groups: Vec<CachedRowGroup>,
+    row_group_indices: HashMap<RowTableIdentity, usize>,
     descriptor_bytes: usize,
     scratch: Vec<f64>,
     broadcasts: Vec<f64>,
@@ -176,8 +189,58 @@ struct PlaneWorkspace {
 impl PlaneWorkspace {
     fn invalidate_row_tables(&mut self) {
         self.row_groups.clear();
+        self.row_group_indices.clear();
         self.storage = None;
         self.descriptor_bytes = 0;
+    }
+
+    fn cached_row_group_index(&self, identity: RowTableIdentity) -> Option<usize> {
+        // The usual full-schedule cache has only a few entries. Varied runtime
+        // selections can add many row slices, which must not slow warm lookup.
+        if self.row_groups.len() <= ROW_GROUP_LINEAR_LOOKUP_LIMIT {
+            self.row_groups
+                .iter()
+                .position(|cached| cached.identity == identity)
+        } else {
+            self.row_group_indices.get(&identity).copied()
+        }
+    }
+
+    fn cache_row_group(&mut self, cached: CachedRowGroup) -> RusticolResult<usize> {
+        let total_bytes =
+            checked_descriptor_cache_bytes(self.descriptor_bytes, cached.descriptor_bytes)?;
+        self.row_groups.try_reserve(1).map_err(|error| {
+            RusticolError::compatibility(format!(
+                "could not reserve recurrence descriptor row group: {error}"
+            ))
+        })?;
+        let index = self.row_groups.len();
+        if index >= ROW_GROUP_LINEAR_LOOKUP_LIMIT {
+            let additional = if index == ROW_GROUP_LINEAR_LOOKUP_LIMIT {
+                index + 1
+            } else {
+                1
+            };
+            self.row_group_indices
+                .try_reserve(additional)
+                .map_err(|error| {
+                    RusticolError::compatibility(format!(
+                        "could not reserve recurrence descriptor row index: {error}"
+                    ))
+                })?;
+            if index == ROW_GROUP_LINEAR_LOOKUP_LIMIT {
+                self.row_group_indices.extend(
+                    self.row_groups
+                        .iter()
+                        .enumerate()
+                        .map(|(index, cached)| (cached.identity, index)),
+                );
+            }
+            self.row_group_indices.insert(cached.identity, index);
+        }
+        self.descriptor_bytes = total_bytes;
+        self.row_groups.push(cached);
+        Ok(index)
     }
 
     fn prepare(
@@ -904,28 +967,12 @@ impl SymjitDirectExecutorContext {
             address: rows.as_ptr().addr(),
             row_count,
         };
-        let group_index = if let Some((index, _)) = workspace
-            .row_groups
-            .iter()
-            .enumerate()
-            .find(|(_, cached)| cached.identity == identity)
-        {
+        let group_index = if let Some(index) = workspace.cached_row_group_index(identity) {
             index
         } else {
             let cached =
                 self.build_cached_row_group(&mut workspace, identity, rows, arena, momenta)?;
-            let total_bytes = checked_descriptor_cache_bytes(
-                workspace.descriptor_bytes,
-                cached.descriptor_bytes,
-            )?;
-            workspace.row_groups.try_reserve(1).map_err(|error| {
-                RusticolError::compatibility(format!(
-                    "could not reserve recurrence descriptor row group: {error}"
-                ))
-            })?;
-            workspace.descriptor_bytes = total_bytes;
-            workspace.row_groups.push(cached);
-            workspace.row_groups.len() - 1
+            workspace.cache_row_group(cached)?
         };
 
         let mut call_scratch_bytes = 0_u64;
@@ -2608,6 +2655,104 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn row_group_cache_preserves_exact_identity_across_lookup_modes() {
+        let mut workspace = PlaneWorkspace::default();
+        let mut identities = vec![
+            RowTableIdentity {
+                role: DirectExecutorRole::Contribution,
+                address: 100,
+                row_count: 1,
+            },
+            RowTableIdentity {
+                role: DirectExecutorRole::Contribution,
+                address: 100,
+                row_count: 2,
+            },
+            RowTableIdentity {
+                role: DirectExecutorRole::Closure,
+                address: 100,
+                row_count: 1,
+            },
+            RowTableIdentity {
+                role: DirectExecutorRole::Contribution,
+                address: 101,
+                row_count: 1,
+            },
+        ];
+        identities.extend((102..230).map(|address| RowTableIdentity {
+            role: DirectExecutorRole::Finalization,
+            address,
+            row_count: 1,
+        }));
+        for (index, identity) in identities.iter().copied().enumerate() {
+            assert_eq!(workspace.cached_row_group_index(identity), None);
+            assert_eq!(
+                workspace
+                    .cache_row_group(CachedRowGroup {
+                        identity,
+                        rows: Vec::new(),
+                        descriptor_bytes: 0,
+                    })
+                    .unwrap(),
+                index
+            );
+            assert_eq!(
+                workspace.row_group_indices.is_empty(),
+                index < ROW_GROUP_LINEAR_LOOKUP_LIMIT
+            );
+            for (expected_index, cached_identity) in identities[..=index].iter().enumerate() {
+                assert_eq!(
+                    workspace.cached_row_group_index(*cached_identity),
+                    Some(expected_index)
+                );
+            }
+        }
+        let (_, allocations, _) = count_allocations(|| {
+            for (index, identity) in identities.iter().enumerate().rev() {
+                assert_eq!(workspace.cached_row_group_index(*identity), Some(index));
+            }
+        });
+        assert_eq!(allocations, 0);
+    }
+
+    #[test]
+    fn row_group_cache_invalidation_restarts_small_lookup() {
+        let mut workspace = PlaneWorkspace::default();
+        for address in 0..32 {
+            workspace
+                .cache_row_group(CachedRowGroup {
+                    identity: RowTableIdentity {
+                        role: DirectExecutorRole::Contribution,
+                        address,
+                        row_count: 1,
+                    },
+                    rows: Vec::new(),
+                    descriptor_bytes: 1,
+                })
+                .unwrap();
+        }
+        let old_identity = workspace.row_groups[31].identity;
+        assert_eq!(workspace.cached_row_group_index(old_identity), Some(31));
+        workspace.invalidate_row_tables();
+        assert!(workspace.row_groups.is_empty());
+        assert!(workspace.row_group_indices.is_empty());
+        assert_eq!(workspace.descriptor_bytes, 0);
+        assert_eq!(workspace.cached_row_group_index(old_identity), None);
+        assert_eq!(
+            workspace
+                .cache_row_group(CachedRowGroup {
+                    identity: old_identity,
+                    rows: Vec::new(),
+                    descriptor_bytes: 1,
+                })
+                .unwrap(),
+            0
+        );
+        assert!(workspace.row_group_indices.is_empty());
+        assert_eq!(workspace.cached_row_group_index(old_identity), Some(0));
+    }
+
+    #[test]
     fn cached_row_group_reuses_one_scratch_set_sequentially() {
         let loaded = identity_executor(DirectExecutorRole::Contribution);
         let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
@@ -2831,6 +2976,7 @@ pub(crate) mod tests {
         ] {
             let workspace = workspace.borrow();
             assert!(workspace.row_groups.is_empty());
+            assert!(workspace.row_group_indices.is_empty());
             assert!(workspace.storage.is_none());
             assert_eq!(workspace.descriptor_bytes, 0);
         }
