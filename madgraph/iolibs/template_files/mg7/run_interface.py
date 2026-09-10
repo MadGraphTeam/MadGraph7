@@ -15,7 +15,6 @@ and inherit the real (parallel) shower code, etc., instead of re-implementing
 each tool.
 """
 
-import contextlib
 import gzip
 import logging
 import os
@@ -28,32 +27,6 @@ import madgraph.various.lhe_parser as lhe_parser
 
 pjoin = os.path.join
 logger = logging.getLogger('madevent')
-
-
-@contextlib.contextmanager
-def _quiet_setup():
-    """Silence the INFO chatter of a madevent interface being constructed.
-
-    Raises the loggers that carry it to WARNING for the duration, so the
-    banner, the configuration lines and the shell-tool notes are dropped while
-    anything that actually needs saying still gets through.
-    """
-
-    # three different loggers carry the setup chatter: the MADEVENT banner
-    # (madevent.stdout), the "load configuration from ..." lines
-    # (madgraph.stdout, from CommonRunCmd.set_configuration) and the shell-tool
-    # notes such as "Using default gzip" (cmdprint.ext_program, from misc)
-    names = ('madevent.stdout', 'madgraph.stdout', 'cmdprint.ext_program')
-    previous = {}
-    for name in names:
-        lg = logging.getLogger(name)
-        previous[name] = lg.level
-        lg.setLevel(max(lg.level, logging.WARNING))
-    try:
-        yield
-    finally:
-        for name, level in previous.items():
-            logging.getLogger(name).setLevel(level)
 
 
 class MG7RunCmd(madevent_interface.MadEventCmd):
@@ -84,14 +57,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         # Make the run directory look enough like a madevent run for the
         # results-db scan (and the tools' event-file lookup) to be happy.
         self._prepare_run_dir()
-        # MadEventCmd.__init__ announces itself with the MADEVENT welcome
-        # banner and a run of "load configuration from ..." lines. That is
-        # right for `./bin/madevent`, which is an interface someone just
-        # started; this is an internal adapter built to drive a tool, in the
-        # middle of a run that has already introduced itself. Keep the setup
-        # quiet -- warnings and errors still come through.
-        with _quiet_setup():
-            super(MG7RunCmd, self).__init__(me_dir, merged, force_run=True)
+        super(MG7RunCmd, self).__init__(me_dir, merged, force_run=True)
 
     # ------------------------------------------------------------------
     # directory / run-state adaptation
