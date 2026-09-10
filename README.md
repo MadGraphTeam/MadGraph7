@@ -52,6 +52,6 @@ launch
 modern web interface to MadGraph, for setting up processes, following runs from the
 browser and inspecting their results. You can install it with
 ```
-pip install madboard`
+pip install madboard
 ```
 and launch it by running the `madboard` command within your MadGraph7 directory.
