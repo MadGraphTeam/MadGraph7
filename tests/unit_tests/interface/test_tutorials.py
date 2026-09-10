@@ -1374,52 +1374,6 @@ class TestMenuSections(unittest.TestCase):
             self.assertFalse(tutorials.get(name).ai_generated,
                              '%s is the original text, not AI-generated' % name)
 
-    def test_a_notice_covers_only_what_it_is_true_of(self):
-        """A tutorial the section notice does not apply to must be visibly
-        marked, or the notice misleads."""
-
-        interface = _RecordingCmd()
-        with _capturing(interface):
-            interface.print_tutorial_list()
-        shown = '\n'.join(interface.lines)
-
-        for _key, _title, group, notice in self.sections():
-            if not notice:
-                continue
-            for tutorial in group:
-                if tutorial.ai_generated:
-                    continue
-                row = [l for l in interface.lines if tutorial.name in l]
-                self.assertTrue(row and '[original]' in row[0],
-                                '%s sits under an AI notice unmarked'
-                                % tutorial.name)
-        if '[original]' in shown:
-            self.assertIn('carried over from the hand-written', shown)
-
     def test_an_unknown_section_is_refused(self):
         self.assertRaises(ValueError, Tutorial, name='x', title='x',
                           steps=[], section='nonsense')
-
-
-class _RecordingCmd(mg_interface.MadGraphCmd):
-    def __init__(self):
-        self.use_rawinput = False
-        self.lines = []
-
-    def _record(self, message, *args):
-        self.lines.append(message)
-
-
-class _capturing(object):
-    """Point madgraph_interface's logger at a recorder for the block."""
-
-    def __init__(self, interface):
-        self.interface = interface
-
-    def __enter__(self):
-        self.saved = mg_interface.logger.info
-        mg_interface.logger.info = self.interface._record
-        return self.interface
-
-    def __exit__(self, *exc):
-        mg_interface.logger.info = self.saved

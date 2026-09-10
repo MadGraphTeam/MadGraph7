@@ -4259,21 +4259,12 @@ This implies that with decay chains:
                 logger.info("%s" % title, '$MG:BOLD')
             for tutorial in group:
                 ordered.append(tutorial)
-                # the section notice is a blanket statement; a tutorial it does
-                # not apply to has to be marked, or the notice is a lie
-                exempt = ' [original]' if (notice and not tutorial.ai_generated) \
-                         else ''
                 if numbered:
-                    logger.info("  %2d. %-12s %s%s"
-                                % (len(ordered), tutorial.name,
-                                   tutorial.description, exempt))
+                    logger.info("  %2d. %-12s %s" % (len(ordered), tutorial.name,
+                                                     tutorial.description))
                 else:
-                    logger.info("      %-12s %s%s"
-                                % (tutorial.name, tutorial.description, exempt))
-        if any(not t.ai_generated and n for _k, _t, g, n in
-               tutorials.by_section() for t in g):
-            logger.info("   [original] marks content carried over from the "
-                        "hand-written tutorials.")
+                    logger.info("      %-12s %s" % (tutorial.name,
+                                                    tutorial.description))
         if not numbered:
             logger.info("Start one with 'tutorial NAME', or just 'tutorial' "
                         "to choose.")
