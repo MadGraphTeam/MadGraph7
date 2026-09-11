@@ -97,6 +97,7 @@ def _symjit_stage_manifest(
     *,
     label: str,
     optimization_level: int = 3,
+    value_component_count: int = 0,
 ) -> dict[str, object]:
     evaluator_dir = root / "evaluators"
     evaluator_dir.mkdir(parents=True, exist_ok=True)
@@ -152,7 +153,7 @@ def _symjit_stage_manifest(
         "kind": "momentum",
         "source_id": 0,
         "component": 0,
-        "global_component": 0,
+        "global_component": value_component_count,
         "parameter_index": 0,
         "real_valued": True,
     }
@@ -229,7 +230,7 @@ def _materialize_without_symbolica(
 
     def compile_stages(
         stage_input: object,
-        _runtime_schema: object,
+        runtime_schema: dict[str, object],
         root: Path,
         **_kwargs: object,
     ) -> tuple[object, dict[str, object]]:
@@ -238,10 +239,13 @@ def _materialize_without_symbolica(
             "",
         )
         calls.append((root, len(stage_input.dag.currents)))  # type: ignore[attr-defined]
+        layout = runtime_schema["parameter_layout"]
+        assert isinstance(layout, dict)
         return object(), _symjit_stage_manifest(
             root,
             label=lane,
             optimization_level=jit_optimization_level,
+            value_component_count=int(layout["value_component_count"]),
         )
 
     monkeypatch.setattr(
@@ -308,10 +312,16 @@ def _materialize_without_symbolica(
     return artifact
 
 
+@pytest.mark.parametrize("value_component_count", [0, 12])
 def test_mock_symjit_manifest_preserves_the_compiled_arena_invariant(
     tmp_path: Path,
+    value_component_count: int,
 ) -> None:
-    manifest = _symjit_stage_manifest(tmp_path, label="authenticated")
+    manifest = _symjit_stage_manifest(
+        tmp_path,
+        label="authenticated",
+        value_component_count=value_component_count,
+    )
     amplitude_stage = manifest["amplitude_stage"]
     assert isinstance(amplitude_stage, dict)
     evaluator = amplitude_stage["evaluator"]
@@ -341,6 +351,11 @@ def test_mock_symjit_manifest_preserves_the_compiled_arena_invariant(
         COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY
         in manifest["required_runtime_capabilities"]
     )
+    assert artifact_writer._compiled_momentum_slot_ids(
+        manifest,
+        value_component_count=value_component_count,
+        momentum_component_count=4,
+    ) == [0]
 
     del amplitude_stage["compiled_plane_arena"]
     with pytest.raises(ValueError, match="compiled f64 artifacts require"):
