@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -785,23 +785,31 @@ class ProcCard(list):
     
     history_header = \
         '#************************************************************\n' + \
-        '#*                     MadGraph5_aMC@NLO                    *\n' + \
+        '#*                         MadGraph7                        *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         "%(info_line)s" +\
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         '#*                                                          *\n' + \
         '#************************************************************\n' + \
         '#*                                                          *\n' + \
-        '#*               Command File for MadGraph5_aMC@NLO         *\n' + \
+        '#*                Command File for MadGraph7                *\n' + \
         '#*                                                          *\n' + \
         '#*     run as ./bin/madgraph  filename                      *\n' + \
         '#*                                                          *\n' + \
@@ -2041,7 +2049,7 @@ class PY8Card(ConfigFile):
         # ==================
         self.add_param("Main:numberOfEvents", 0)
         # for MLM merging
-        # -1.0 means that it will be set automatically by MadGraph5_aMC@NLO
+        # -1.0 means that it will be set automatically by MadGraph7
         self.add_param("JetMatching:qCut", -1.0, always_write_to_card=False)
         self.add_param("JetMatching:doShowerKt",False,always_write_to_card=False)
         # -1 means that it is automatically set.
@@ -2088,7 +2096,7 @@ class PY8Card(ConfigFile):
             comment='This allows to turn on/off MPI alltogether.')
         self.add_param("Beams:setProductionScalesFromLHEF", False, hidden=True, 
             always_write_to_card=False,
-            comment='This parameter is automatically set to True by MG5aMC when doing MLM merging with PY8.')
+            comment='This parameter is automatically set to True by MadGraph7 when doing MLM merging with PY8.')
         
         # for MLM merging
         self.add_param("JetMatching:merge", False, hidden=True, always_write_to_card=False,
@@ -2322,7 +2330,7 @@ class PY8Card(ConfigFile):
           or system_set are commented.
         > If 'add_missing' is False then parameters that should be written_out but are absent
         from the template will not be written out.
-        > use_mg5amc_py8_interface is a flag to indicate that the MG5aMC-PY8 interface is used or not
+        > use_mg5amc_py8_interface is a flag to indicate that the MadGraph7-PY8 interface is used or not
           if not used some parameters need to be translated from the old convention to the new one
         """
 
@@ -2479,7 +2487,7 @@ class PY8Card(ConfigFile):
                     else:
                         output.write(line)
                 else:
-                    output.write('! The following parameter was forced to be commented out by MG5aMC.\n')
+                    output.write('! The following parameter was forced to be commented out by MadGraph7.\n')
                     output.write('! %s'%line)
                 # Proceed to next line
                 last_pos = tmpl.tell()
@@ -2514,7 +2522,7 @@ class PY8Card(ConfigFile):
 
             #elif param in self.interface_to_164.values() and not direct_pythia_input:
             #    misc.sprint(use_mg5amc_py8_interface, direct_pythia_input,param)
-            #    raise Exception('The parameter %s is not supported in the MG5aMC-PY8 interface. Please use the new interface.'%param_entry
+            #    raise Exception('The parameter %s is not supported in the MadGraph7-PY8 interface. Please use the new interface.'%param_entry
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
         
@@ -2551,7 +2559,7 @@ class PY8Card(ConfigFile):
         if len(hidden_output_param)>0 and not template is None:
             output.write(
 """!
-! Additional technical parameters%s set by MG5_aMC.
+! Additional technical parameters%s set by MadGraph7.
 !
 """%(' for subrun %d'%self['Main:subrun'] if 'Main:subrun' in self else ''))
         for param in hidden_output_param:
@@ -2841,6 +2849,10 @@ class RunCard(ConfigFile):
     default_autodef_file = 'run.inc'
     donewarning = []
     include_as_parameter = []
+    # list of the retro-compatibility fixes to apply on the user provided
+    # functions (see retro_compatible_custom_fct). Empty by default: each
+    # RunCard class opts-in for the fixes which make sense for its output.
+    retro_compatible_modes = []
 
     @classmethod
     def fill_post_set_from_blocks(cls):
@@ -3502,17 +3514,24 @@ class RunCard(ConfigFile):
                     fsock = file_writers.FortranWriter(tmp,'w')
                     function_text = fsock.remove_routine(text, fct)
                     fsock.close()
-                    test = open(tmp,'r').read()                        
-                    if fct not in self.dummy_fct_file:
-                        if fct.startswith('user_'):
-                            self.dummy_fct_file[fct] = self.dummy_fct_file['user_']
+                    test = open(tmp,'r').read()
+                    # fortran is case insensitive (and upper case is idiomatic),
+                    # while dummy_fct_file --and the routines of the template
+                    # files-- are written in lower case. So normalise the name
+                    # extracted from the user file before any comparison.
+                    # (the removal above has to use the original case since it
+                    #  operates on the user file itself)
+                    lfct = fct.lower()
+                    if lfct not in self.dummy_fct_file:
+                        if lfct.startswith('user_'):
+                            self.dummy_fct_file[lfct] = self.dummy_fct_file['user_']
                         else:
-                            raise InvalidRunCard("function %s is not designed for overwritting")
-                    writein = self.dummy_fct_file[fct]
+                            raise InvalidRunCard("function %s is not designed for overwriting" % fct)
+                    writein = self.dummy_fct_file[lfct]
                     if writein not in to_mod:
-                        to_mod[writein]=[[fct], [function_text]]
+                        to_mod[writein]=[[lfct], [function_text]]
                     else:
-                        to_mod[writein][0].append(fct)
+                        to_mod[writein][0].append(lfct)
                         to_mod[writein][1].append(function_text)
 
         # step 2: write the new files
@@ -3522,9 +3541,13 @@ class RunCard(ConfigFile):
             #avoid to systematically rewrite the file. -> write in tmp place
             fsock = file_writers.FortranWriter(pjoin(outdir, path+'.tmp'),'w')
             starttext = open(pjoin(outdir, path+'.orig')).read()
+            # only apply a retro-compatibility fix if the shipped version of the
+            # file does use the associated include itself. This prevents adding
+            # an include to a file where it is not available (and not needed).
+            mode = [m for m in self.retro_compatible_modes if m in starttext]
             fsock.remove_routine(starttext, to_mod[path][0])
             for text in to_mod[path][1]:
-                text = self.retro_compatible_custom_fct(text)
+                text = self.retro_compatible_custom_fct(text, mode=mode)
                 fsock.writelines(text)
             fsock.close()
             if not filecmp.cmp(pjoin(outdir, path), pjoin(outdir, path+'.tmp')):
@@ -3543,6 +3566,13 @@ class RunCard(ConfigFile):
 
     @staticmethod
     def retro_compatible_custom_fct(lines, mode=None):
+        """update a user provided routine (list of lines) to make it compatible
+           with the current version of the code.
+           mode is the list of fixes to apply, None means "all of them".
+           supported fixes:
+            - 'vector.inc': add the include of vector.inc (needed since 3.6 to
+              be able to include run.inc) if the routine does not have it.
+        """
 
         f77_type = ['real*8', 'integer', 'double precision', 'logical']
         function_pat = re.compile(r'^\s+(?:SUBROUTINE|(?:%(type)s)\s+function)\s+([a-zA-Z]\w*)' \
@@ -3550,9 +3580,9 @@ class RunCard(ConfigFile):
         include_pat = re.compile(r"\s+include\s+[\'\"]([\w\./]*)") 
         
         assert isinstance(lines, list)
-        sol = []
 
         if mode is None or 'vector.inc' in mode:
+            sol = []
             search = True
             for i,line in enumerate(lines[:]):
                 if search and re.search(include_pat, line):
@@ -3565,7 +3595,8 @@ class RunCard(ConfigFile):
                 sol.append(line)
                 if re.search(function_pat, line):
                     search = True
-        return sol
+            lines = sol
+        return lines
 
     def guess_entry_fromname(self, name, value):
         """
@@ -4349,6 +4380,10 @@ class RunCardLO(RunCard):
                       }
     
     include_as_parameter = ['vector.inc']
+    # since 3.6, run.inc dimensions arrays with VECSIZE_MEMMAX which is defined
+    # in vector.inc -> older (<3.6) user functions need that include to be added.
+    # This is meaningless for NLO where vector.inc does not exist at all.
+    retro_compatible_modes = ['vector.inc']
 
     if MG5DIR:
         default_run_card = pjoin(MG5DIR, "internal", "default_run_card_lo.dat")
@@ -4403,10 +4438,12 @@ class RunCardLO(RunCard):
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)')
         valid_pdf = ['lhapdf', 'cteq6_m','cteq6_l', 'cteq6l1','nn23lo', 'nn23lo1', 'nn23nlo','iww','eva','edff','chff','none','mixed']+\
                        sum(self.allowed_lep_densities.values(),[])
-        self.add_param("pdlabel", "nn23lo1", hidden=True, allowed=valid_pdf)
-        self.add_param("pdlabel1", "nn23lo1", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
-        self.add_param("pdlabel2", "nn23lo1", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
-        self.add_param("lhaid", 230000, hidden=True)
+        self.add_param("pdlabel", "lhapdf", hidden=True, allowed=valid_pdf)
+        self.add_param("pdlabel1", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(1)")
+        self.add_param("pdlabel2", "lhapdf", hidden=True, allowed=valid_pdf, fortran_name="pdsublabel(2)")
+        # NNPDF40_lo_as_01180 -- the LO default is an LHAPDF set, not one of the
+        # compiled-in PDFs, so a default run needs LHAPDF (was nn23lo1/230000).
+        self.add_param("lhaid", 331900, hidden=True)
         self.add_param("fixed_ren_scale", False)
         self.add_param("fixed_fac_scale", False, hidden=True, include=False, comment="define if the factorization scale is fixed or not. You can define instead fixed_fac_scale1 and fixed_fac_scale2 if you want to make that choice per beam")
         self.add_param("fixed_fac_scale1", False, hidden=True)
@@ -4868,7 +4905,7 @@ class RunCardLO(RunCard):
             lpp2 = self['lpp2']
             if abs(lpp1) in (3, 4) or abs(lpp2) in (3, 4):
                 if self['pdlabel'] not in ('none',):
-                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph5_aMC@NLO')
+                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
 
@@ -5352,7 +5389,7 @@ class MadAnalysis5Card(dict):
         """define the default value""" 
         self['mode']      = 'parton'
         self['inputs']    = []
-        # None is the default stdout level, it will be set automatically by MG5aMC
+        # None is the default stdout level, it will be set automatically by MadGraph7
         self['stdout_lvl'] = None
         # These two dictionaries are formated as follows:
         #     {'analysis_name':
@@ -5511,7 +5548,7 @@ class MadAnalysis5Card(dict):
                 
                 else:
                     raise InvalidMadAnalysis5Card(
-               "Unreckognized MG5aMC instruction in MadAnalysis5 card: '%s'"%option)
+               "Unreckognized MadGraph7 instruction in MadAnalysis5 card: '%s'"%option)
                 
                 if option in ['analysis_name','reconstruction_name'] or \
                                                  option.startswith('recasting'):
@@ -5819,9 +5856,11 @@ class RunCardNLO(RunCard):
         self.add_param('mass_ion2', -1.0, hidden=True, fortran_name="mass_ion(2)",
                        allowed=[-1,0, 0.938, 207.9766521*0.938, 0.000511, 0.105, '*'],
                        comment='For heavy ion physics mass in GeV of the ion (of beam 2)')
-        self.add_param('pdlabel', 'nn23nlo', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
+        self.add_param('pdlabel', 'lhapdf', allowed=['lhapdf', 'emela', 'cteq6_m','cteq6_d','cteq6_l','cteq6l1', 'nn23lo','nn23lo1','nn23nlo','ct14q00','ct14q07','ct14q14','ct14q21','edff','chff'] +\
              sum(self.allowed_lep_densities.values(),[]) )                
-        self.add_param('lhaid', [244600],fortran_name='lhaPDFid')
+        # NNPDF40_nlo_as_01180; create_default_for_process swaps in the
+        # 4-flavour set (334700) when the model has a massive b (was 244600).
+        self.add_param('lhaid', [331700],fortran_name='lhaPDFid')
         self.add_param('pdfscheme', 0)
         # whether to include or not photon-initiated processes in lepton collisions
         self.add_param('photons_from_lepton', True)
@@ -5887,7 +5926,7 @@ class RunCardNLO(RunCard):
         self.add_param('flavour_bias',[5,1], hidden=True, comment="Example: '5,100' means that the probability to generate an event with a bottom (or anti-bottom) quark is increased by a factor 100, but the weight of those events is reduced by a factor 100. Requires that the 'event_norm' is set to 'bias'.")
         
         #merging
-        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MG5aMC)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
+        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MadGraph7)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
         self.add_param('bwcutoff', 15.0)
         #cuts        
         self.add_param('jetalgo', 1.0)
@@ -6172,7 +6211,7 @@ class RunCardNLO(RunCard):
             lpp2 = self['lpp2']
             if abs(lpp1) in (3, 4) or abs(lpp2) in (3, 4):
                 if self['pdlabel'] not in ('none',):
-                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph5_aMC@NLO')
+                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
 
@@ -6318,6 +6357,14 @@ class RunCardNLO(RunCard):
             else:
                 continue
             break
+
+        # 4-flavour scheme: a massive b is not a parton of the proton, so the
+        # default PDF has to be the nf_4 set rather than the 5-flavour one.
+        # Same test the interface uses to drop b from the p/j multiparticles.
+        if 'lhaid' not in self.user_set:
+            b = model.get_particle(5)
+            if b and b['mass'] != 'ZERO':
+                self['lhaid'] = [334700]  # NNPDF40_nlo_as_01180_nf_4
 
         # Check if need matching
         min_particle = 99
@@ -6530,6 +6577,12 @@ class RunCardMG7(RunCard):
 
         # ----------------------------- [run] --------------------------
         self.add_toml_param('run', 'run_name', "run", gridpack=True)
+        self.add_toml_param('run', 'seed', -1, gridpack=True,
+            comment="every run is reproducible: the same seed reproduces the run "
+                    "bit-identically. -1 draws a fresh random seed each run instead "
+                    "of fixing one here; the seed actually used is still recorded "
+                    "(the MG7Seed tag in the LHE file, or the info.json status "
+                    "file), so the run can be reproduced later")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
             comment="list of devices; each entry is cpu, cuda or hip, optionally followed by a device index (e.g. \"cuda:1\")")
@@ -6557,12 +6610,15 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
-        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118. This is the
-        # MC-generator-oriented variant of the NNPDF4.0 LO set: a single member
-        # and ~0.7 MB, versus ~54 MB for NNPDF40_lo_as_01180. NNPDF4.0 has no
-        # 4-flavour LO counterpart, so there is no scheme-dependent choice to
-        # make here: this one set is used whatever the b-quark treatment.
-        self.add_toml_param('beam', 'pdf', "NNPDF40MC_lo_as_01180")
+        # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118 -- the same set
+        # the legacy LO run_card now defaults to (lhaid 331900). It carries a
+        # 100-member error set, which is what makes the [systematics] 'errorset'
+        # PDF variation meaningful (the earlier NNPDF40MC_lo_as_01180 default
+        # had a single member and produced none), at ~54 MB rather than ~0.7 MB.
+        # NNPDF4.0 has no 4-flavour LO counterpart, so unlike the NLO card there
+        # is no scheme-dependent choice here: this set is used whatever the
+        # b-quark treatment.
+        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180")
         # Default to the dynamical scale set by dynamical_scale_choice below
         # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
         # / fact_scale values. Those fixed values are kept as the fallback used
@@ -6587,7 +6643,28 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'survey_target_precision', 0.1)
         self.add_toml_param('generation', 'cut_efficiency_threshold', 0.7, gridpack=True)
         self.add_toml_param('generation', 'max_cut_repetitions', 1000, gridpack=True)
-        self.add_toml_param('generation', 'systematics', False)
+        # legacy alias of systematics.enable (kept so that older cards still
+        # read; not written to new cards)
+        self.add_toml_param('generation', 'systematics', False, hidden=True)
+
+        # --------------------------- [systematics] --------------------
+        # scale/PDF variation weights computed by madspace when the events are
+        # written (LHE <rwgt> blocks / npy columns), replacing the systematics.py
+        # post-processing step.
+        self.add_toml_param('systematics', 'enable', True, gridpack=True,
+            comment="compute scale/PDF variation weights when writing the events")
+        self.add_toml_param('systematics', 'mur', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="renormalisation scale variation factors")
+        self.add_toml_param('systematics', 'muf', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="factorisation scale variation factors")
+        self.add_toml_param('systematics', 'together', True, gridpack=True,
+            comment="true: all mur x muf combinations; false: vary one scale at a time")
+        self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,
+            comment="alternative dynamical scale choices to evaluate the weights with: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy")
+        self.add_toml_param('systematics', 'pdf', ['errorset'], typelist=str, gridpack=True,
+            comment="PDF variations: 'errorset' (all members of the nominal set), 'central', LHAPDF set names or ids, optionally with @member")
+        self.add_toml_param('systematics', 'write_inputs', False, gridpack=True,
+            comment="also write the per-event reweighting inputs (x1/x2/scales columns in npy, <mgrwt> block in LHE)")
 
         # ------------------------- [postprocessing] -------------------
         # LHE-level post-processing of the generated event file (only applied
@@ -6595,8 +6672,8 @@ class RunCardMG7(RunCard):
         # legacy run_card (add_time_of_flight and systematics.py).
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
             comment="threshold (in mm) below which the invariant livetime is not written (-1 means not written)")
-        self.add_toml_param('postprocessing', 'systematics', True,
-            comment="compute scale/PDF systematic uncertainties on the events (systematics.py)")
+        self.add_toml_param('postprocessing', 'systematics', False,
+            comment="legacy: recompute the scale/PDF uncertainties with systematics.py (LHAPDF) after the generation; superseded by the [systematics] section")
         self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
             comment="factorisation scale variation factors")
         self.add_toml_param('postprocessing', 'systematics_mur', [0.5, 1.0, 2.0], typelist=float,
@@ -6671,10 +6748,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4)
         self.add_toml_param('madnis', 'grad_clip_threshold', 0.003)
         self.add_toml_param('madnis', 'train_mcw', True)
-        self.add_toml_param('madnis', 'buffer_capacity', 100000)
+        self.add_toml_param('madnis', 'buffer_capacity', 60000)
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000)
-        self.add_toml_param('madnis', 'buffered_steps', 5)
-        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.99)
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8)
+        self.add_toml_param('madnis', 'buffer_skip_batches', 1000)
+        self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95)
         self.add_toml_param('madnis', 'uniform_channel_ratio', 0.5)
         self.add_toml_param('madnis', 'integration_history_length', 100)
         self.add_toml_param('madnis', 'max_stored_channel_weights', 100)
@@ -7256,9 +7334,13 @@ class RunCardMG7(RunCard):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
 
-        # 1 -> N decay: no cuts at all
+        # 1 -> N decay: no cuts at all. A partial width is an inclusive
+        # quantity, so any kinematic cut biases it low (the collider defaults
+        # cost ~3% on t > b w+, w+ > e+ ve). The Breit-Wigner cutoff in
+        # [phasespace] is deliberately left alone: it is a sampling range for
+        # the off-shell propagators, not a cut on the final state.
         if proc_characteristic and proc_characteristic['ninitial'] == 1:
-            self.dynamic_sections['cuts'] = collections.OrderedDict()
+            self.remove_all_cut()
 
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):
@@ -7283,7 +7365,7 @@ class RunCardMG7(RunCard):
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',
         'bwcutoff': 'phasespace.bw_cutoff',
-        'use_syst': 'generation.systematics',
+        'use_syst': 'systematics.enable',
     }
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
@@ -7321,6 +7403,7 @@ class RunCardMG7(RunCard):
     # LO lhaid -> LHAPDF set name (common cases)
     _LO_LHAID_MAP = {
         230000: 'NNPDF23_lo_as_0130_qed', 247000: 'NNPDF23_lo_as_0130_qed',
+        331900: 'NNPDF40_lo_as_01180', 338500: 'NNPDF40MC_lo_as_01180',
         10042: 'cteq6l1',
     }
     # LO parameters that have no MG7 equivalent (reported when non-default).
@@ -7918,8 +8001,11 @@ class RunCardIterator(object):
 
         if not path:
             return ff.getvalue()
-        
-         
+        ff.close()
+        param_card_reader.write_scan_summary_json(path, self.param_order, keys,
+                                                  to_print)
+
+
     def get_next_name(self, run_name):
         """returns a smart name for the next run"""
     

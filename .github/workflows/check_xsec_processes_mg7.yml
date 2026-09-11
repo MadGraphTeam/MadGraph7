@@ -40,6 +40,9 @@ on:
         required: false
         default: '100000'
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -56,6 +59,7 @@ jobs:
   # The build logic lives in the build_madspace composite action so it stays in
   # sync with acceptancetest_mg7.yml.
   build_madspace:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +67,7 @@ jobs:
 
   check_xsec_processes:
     needs: build_madspace
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -74,6 +79,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Provides the NNPDF23 grid + LHAPDF_DATA_PATH the mg7 runtime needs.
       - uses: ./.github/actions/install_lhapdf_pdfset
@@ -98,7 +104,7 @@ jobs:
 
   xsec_summary:
     needs: check_xsec_processes
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

@@ -518,7 +518,7 @@ function cleanup_MG5AMC_HOME()
   # Remove MG5aMC fragments from previous runs
   rm -f ${MG5AMC_HOME}/py.py
   rm -f ${MG5AMC_HOME}/Template/LO/Source/make_opts
-  rm -f ${MG5AMC_HOME}/input/mg5_configuration.txt
+  rm -f ${MG5AMC_HOME}/input/mg7_configuration.txt
   rm -f ${MG5AMC_HOME}/models/sm/py3_model.pkl
   # Remove any *~ files in MG5AMC_HOME
   rm -rf $(find ${MG5AMC_HOME} -name '*~')

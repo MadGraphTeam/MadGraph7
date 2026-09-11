@@ -1,4 +1,6 @@
 #include "madspace/driver/channel_generator.hpp"
+#include "madspace/driver/random.hpp"
+#include "madspace/util.hpp"
 
 using namespace madspace;
 using json = nlohmann::json;
@@ -32,6 +34,44 @@ int particle_extra_flags(
     return flags;
 }
 
+DerivedSeed::SeedType generate_seed_type(bool is_survey, std::size_t survey_pass) {
+    if (!is_survey) {
+        return DerivedSeed::generator_generate;
+    }
+    return survey_pass == 0
+        ? DerivedSeed::first_survey_generate
+        : DerivedSeed::second_survey_generate;
+}
+
+DerivedSeed::SeedType unweight_seed_type(bool is_survey, std::size_t survey_pass) {
+    if (!is_survey) {
+        return DerivedSeed::generator_unweight;
+    }
+    return survey_pass == 0
+        ? DerivedSeed::first_survey_unweight
+        : DerivedSeed::second_survey_unweight;
+}
+
+// Role folded into job_index so integrand_channel and integrand_common get
+// independent streams despite sharing seed_type/channel_index.
+enum RngRole { rng_role_channel = 0, rng_role_common = 1, rng_role_count = 2 };
+
+DerivedSeed generate_phase_seed(
+    std::optional<std::uint64_t> seed,
+    bool is_survey,
+    std::size_t survey_pass,
+    std::size_t job_index,
+    std::size_t channel_index,
+    RngRole role
+) {
+    return DerivedSeed(
+        seed,
+        generate_seed_type(is_survey, survey_pass),
+        job_index * rng_role_count + role,
+        channel_index
+    );
+}
+
 } // namespace
 
 ChannelEventGenerator::ChannelEventGenerator(
@@ -50,13 +90,15 @@ ChannelEventGenerator::ChannelEventGenerator(
         .name = name,
         .mean = 0.,
         .error = 0.,
+        .mean_abs = 0.,
+        .error_abs = 0.,
         .rel_std_dev = 0.,
         .count = 0,
         .count_opt = 0,
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = 1.,
+        .count_target = 1,
         .optimized = false,
         .done = false
     },
@@ -174,13 +216,15 @@ ChannelEventGenerator::ChannelEventGenerator(
         .name = name,
         .mean = 0.,
         .error = 0.,
+        .mean_abs = 0.,
+        .error_abs = 0.,
         .rel_std_dev = 0.,
         .count = 0,
         .count_opt = 0,
         .count_after_cuts = 0,
         .count_after_cuts_opt = 0,
         .count_unweighted = 0.,
-        .count_target = 1.,
+        .count_target = 1,
         .optimized = false,
         .done = false
     },
@@ -283,27 +327,30 @@ void ChannelEventGenerator::init_field_indices() {
     _field_indices.rest = _field_indices.random + 1;
 }
 
-void ChannelEventGenerator::unweight_file(std::mt19937& rand_gen) {
+void ChannelEventGenerator::unweight_file(MixMaxRandom& rand_gen) {
     std::size_t buf_size = 1000000;
-    std::uniform_real_distribution<double> rand_dist;
     EventBuffer buffer(0, 0, weight_file_layout);
-    std::size_t accept_count = _unweighted_count;
+    std::size_t accept_count = _unweighted_accept_count;
     for (std::size_t i = _unweighted_count; i < _weight_file.event_count();
          i += buf_size) {
         _weight_file.seek(i);
         _weight_file.read(buffer, buf_size);
         for (std::size_t j = 0; j < buffer.event_count(); ++j) {
             auto weight = buffer.event(j).weight();
-            if (weight / _max_weight < rand_dist(rand_gen)) {
+            if (std::abs(weight.value()) / _max_weight < rand_gen.generate_double()) {
                 weight = 0;
             } else {
-                weight = std::max(weight.value(), _max_weight);
+                weight = std::copysign(
+                    std::max(std::abs(weight.value()), _max_weight), weight.value()
+                );
                 ++accept_count;
             }
         }
         _weight_file.seek(i);
         _weight_file.write(buffer);
     }
+    _unweighted_count = _weight_file.event_count();
+    _unweighted_accept_count = accept_count;
     _status.count_unweighted = accept_count;
 }
 
@@ -315,10 +362,13 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
             ++sample_count_after_cuts;
         }
         _cross_section.push(w_view[i]);
+        _abs_cross_section.push(std::abs(w_view[i]));
     }
     _status.mean = _cross_section.mean();
     _status.error = _cross_section.error();
-    _status.rel_std_dev = _cross_section.rel_std_dev();
+    _status.mean_abs = _abs_cross_section.mean();
+    _status.error_abs = _abs_cross_section.error();
+    _status.rel_std_dev = _abs_cross_section.rel_std_dev();
     _status.count += w_view.size();
     _status.count_opt += w_view.size();
     _status.count_after_cuts += sample_count_after_cuts;
@@ -353,7 +403,7 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
     if (_discrete_optimizer) {
         _discrete_optimizer->optimize();
     }
-    double rsd = _cross_section.rel_std_dev();
+    double rsd = _abs_cross_section.rel_std_dev();
     if (rsd < _config.optimization_threshold * _best_rsd) {
         _iters_without_improvement = 0;
     } else {
@@ -384,8 +434,7 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
             if (weight == 0.) {
                 continue;
             }
-            weight_sum += weight / _max_weight;
-            _unweighted_count = 0;
+            weight_sum += std::abs(weight) / _max_weight;
             ++unweighted_count;
         }
         if (done) {
@@ -395,27 +444,55 @@ double ChannelEventGenerator::channel_weight_sum(std::size_t event_count) {
     return weight_sum;
 }
 
+// Assigns job's base seed on the scheduling thread, from its logical identity
+// only (channel, kind, sequence) -- never from context_index -- so it doesn't
+// depend on worker/context assignment.
 void ChannelEventGenerator::start_job(
-    GeneratorBatchJob& job, ResultQueue& result_queue
+    GeneratorBatchJob& job,
+    ResultQueue& result_queue,
+    std::optional<std::uint64_t> seed,
+    bool is_survey,
+    std::size_t survey_pass
 ) {
+    job.rng_seed = seed;
+    job.rng_is_survey = is_survey;
+    job.rng_survey_pass = survey_pass;
+    job.rng_job_index = is_survey ? _survey_rng_seq++ : _generate_rng_seq++;
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
+            if (job.rng_seed) {
+                runtimes.integrand_channel->set_seed(generate_phase_seed(
+                    job.rng_seed,
+                    job.rng_is_survey,
+                    job.rng_survey_pass,
+                    job.rng_job_index,
+                    job.channel_index,
+                    rng_role_channel
+                ));
+            }
             std::size_t max_batch_size =
                 context->device()->device_type() == DeviceType::cpu
                 ? _config.cpu_batch_size
                 : _config.gpu_batch_size;
             std::size_t batch_size = max_batch_size;
-            if (job.vegas_batch_size > 0 && batch_size > job.vegas_batch_size) {
-                batch_size = job.vegas_batch_size;
+            // Only VEGAS batches shrink to fit -- they need next_vegas_batch_size()'s
+            // exact geometric progression for correct grid-adaptation statistics.
+            // Generation batches always submit full device-sized jobs; a little
+            // overshoot there is expected and cheaper than a partial job.
+            if (job.is_vegas_batch && job.batch_event_count > 0 &&
+                batch_size > job.batch_event_count) {
+                batch_size = job.batch_event_count;
             }
             std::size_t target_count = batch_size;
 
             std::size_t total_count = 0, repetitions = 0;
             TensorVec all_ps_points;
             while (true) {
+                // Successive calls draw further from integrand_channel's own
+                // persistent stream (set once above) -- no per-call re-seeding.
                 auto ps_points =
                     runtimes.integrand_channel->run({Tensor({batch_size})});
                 std::size_t acc_count =
@@ -452,9 +529,21 @@ void ChannelEventGenerator::start_job(
                     (target_count - total_count) / cut_eff
                 );
             }
+            if (job.rng_seed) {
+                runtimes.integrand_common->set_seed(generate_phase_seed(
+                    job.rng_seed,
+                    job.rng_is_survey,
+                    job.rng_survey_pass,
+                    job.rng_job_index,
+                    job.channel_index,
+                    rng_role_common
+                ));
+            }
             job.events = runtimes.integrand_common->run(all_ps_points);
 
             job.weights = job.events.at(_field_indices.weight).cpu();
+            // observable_histograms/vegas_histogram/discrete_histogram don't consume
+            // random numbers, so they're never seeded.
             if (runtimes.observable_histograms) {
                 auto hists = runtimes.observable_histograms->run(
                     {job.events.at(_field_indices.weight),
@@ -464,7 +553,7 @@ void ChannelEventGenerator::start_job(
                     job.hists.push_back(item.cpu());
                 }
             }
-            if (job.vegas_batch_size != 0) {
+            if (job.is_vegas_batch) {
                 if (_vegas_optimizer) {
                     auto hist = runtimes.vegas_histogram->run(
                         {job.events.at(_field_indices.random),
@@ -490,15 +579,26 @@ void ChannelEventGenerator::start_job(
         });
 }
 
-void ChannelEventGenerator::start_unweight_job(
+void ChannelEventGenerator::prepare_unweight_job(GeneratorBatchJob& job) const {
+    job.max_weight = _max_weight;
+}
+
+void ChannelEventGenerator::submit_unweight_job(
     GeneratorBatchJob& job, ResultQueue& result_queue
 ) {
-    job.max_weight = _max_weight;
     _contexts.at(job.context_index)
         ->thread_pool()
         .submit([this, &job, &result_queue]() {
             auto& runtimes = _runtimes.at(job.context_index);
             auto& context = _contexts.at(job.context_index);
+            if (job.rng_seed) {
+                runtimes.unweighter->set_seed(DerivedSeed(
+                    job.rng_seed,
+                    unweight_seed_type(job.rng_is_survey, job.rng_survey_pass),
+                    job.rng_job_index,
+                    job.channel_index
+                ));
+            }
             std::vector<Tensor> unweighter_args(
                 job.events.begin(), job.events.begin() + _field_indices.random
             );
@@ -512,6 +612,13 @@ void ChannelEventGenerator::start_unweight_job(
         });
 }
 
+void ChannelEventGenerator::start_unweight_job(
+    GeneratorBatchJob& job, ResultQueue& result_queue
+) {
+    prepare_unweight_job(job);
+    submit_unweight_job(job, result_queue);
+}
+
 std::size_t ChannelEventGenerator::next_vegas_batch_size() {
     std::size_t batch_size = _batch_size;
     _batch_size = std::min(_batch_size * 2, _config.max_batch_size);
@@ -522,11 +629,13 @@ void ChannelEventGenerator::clear_events() {
     _status.count_unweighted = 0;
     _max_weight = 0;
     _unweighted_count = 0;
+    _unweighted_accept_count = 0;
     _status.count_opt = 0;
     _status.count_after_cuts_opt = 0;
     _event_file.clear();
     _weight_file.clear();
     _cross_section.reset();
+    _abs_cross_section.reset();
     _large_weights.clear();
     for (auto& hist : _histograms) {
         std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
@@ -557,8 +666,9 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
 
     double w_sum = 0;
     double max_truncation = _config.max_overweight_truncation *
-        std::min(_status.count_target,
-                 static_cast<double>(_config.freeze_max_weight_after));
+        static_cast<double>(std::min(
+            _status.count_target, _config.freeze_max_weight_after
+        ));
     std::size_t count = 0;
     for (auto w : _large_weights) {
         if (w < _max_weight) {
@@ -571,6 +681,7 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
                 _status.count_unweighted *= _max_weight / w;
                 _max_weight = w;
                 _unweighted_count = 0;
+                _unweighted_accept_count = 0;
             }
             break;
         }

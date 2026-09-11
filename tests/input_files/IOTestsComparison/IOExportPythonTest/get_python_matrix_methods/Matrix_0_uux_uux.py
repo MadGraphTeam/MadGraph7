@@ -9,11 +9,11 @@ class Matrix_0_uux_uux(object):
 
     def smatrix(self, p, model, flavor=None):
         #  
-        #  MadGraph5_aMC@NLO v. %(version)s, %(date)s
-        #  By the MadGraph5_aMC@NLO Development Team
+        #  MadGraph7 v. %(version)s, %(date)s
+        #  By the MadGraph7 Development Team
         #  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
         # 
-        # MadGraph5_aMC@NLO StandAlone Version
+        # MadGraph7 StandAlone Version
         # 
         # Returns amplitude squared summed/avg over colors
         # and helicities
@@ -103,8 +103,8 @@ class Matrix_0_uux_uux(object):
 
     def matrix(self, p, hel, model, flavor=None):
         #  
-        #  MadGraph5_aMC@NLO v. %(version)s, %(date)s
-        #  By the MadGraph5_aMC@NLO Development Team
+        #  MadGraph7 v. %(version)s, %(date)s
+        #  By the MadGraph7 Development Team
         #  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
         #
         # Returns amplitude squared summed/avg over colors

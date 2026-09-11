@@ -1,13 +1,14 @@
 #pragma once
 
 #include <fstream>
-#include <random>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "madspace/phasespace/topology.hpp"
 #include "madspace/util.hpp"
@@ -52,6 +53,17 @@ struct LHEParticle {
     double spin;
 };
 
+// LO reweighting inputs of one event, written as <mgrwt> block (the format
+// MadEvent uses, read by lhe_parser.Event.parse_lo_weight)
+struct LOReweightInfo {
+    int qcd_power;
+    double ren_scale;
+    bool has_beam1, has_beam2;
+    int pdg1, pdg2;
+    double x1, x2;
+    double fact_scale1, fact_scale2;
+};
+
 struct LHEEvent {
     // event-level information as defined in arXiv:0109068
     int process_id;
@@ -60,6 +72,11 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     std::vector<LHEParticle> particles;
+    // optional LHEF v3 weights (<rwgt> block); ids and values have the same length
+    std::vector<int> rwgt_ids;
+    std::vector<double> rwgt;
+    // optional <mgrwt> block
+    std::optional<LOReweightInfo> lo_info;
 
     void format_to(std::string& buffer) const;
 };
@@ -89,7 +106,7 @@ public:
         int color_index,
         int flavor_index,
         int helicity_index,
-        std::mt19937& rand_gen
+        MixMaxRandom& rand_gen
     );
     std::size_t max_particle_count() const { return _max_particle_count; }
     void save(const std::string& file) const;
@@ -101,6 +118,9 @@ private:
         std::size_t color_offset, pdg_id_offset, helicity_offset, mass_offset;
         std::size_t particle_count, color_count, flavor_count;
         std::size_t diagram_count, helicity_count;
+        // 2 for a collision, 1 for a decay. Decides which leading particles are
+        // written as initial state and what the outgoing ones point at.
+        std::size_t incoming_count;
     };
     struct PropagatorData {
         int pdg_id;

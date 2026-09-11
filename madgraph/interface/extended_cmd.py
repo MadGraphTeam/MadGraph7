@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -1984,38 +1984,30 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         if check:
             Cmd.check_save(self, args)
             
-        # find base file for the configuration
-        legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-        if os.path.exists(legacy_config_dir):
-            config_dir = legacy_config_dir
-        else:
-            config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-
-        config_file = os.path.join(config_dir, 'mg5_configuration.txt')
-
-        if 'HOME' in os.environ and os.environ['HOME'] and os.path.exists(config_file):
-            base = config_file
-            if hasattr(self, 'me_dir'):
-                basedir = self.me_dir
-            elif not MADEVENT:
-                basedir = MG5DIR
-            else:
-                basedir = os.getcwd()
-        elif MADEVENT:
-            # launch via ./bin/madevent
-            for config_file in ['me5_configuration.txt', 'amcatnlo_configuration.txt']:
-                if os.path.exists(pjoin(self.me_dir, 'Cards', config_file)): 
-                    base = pjoin(self.me_dir, 'Cards', config_file)
-            basedir = self.me_dir
-        else:
-            if hasattr(self, 'me_dir'):
+        # find base file for the configuration. The card of the directory we
+        # run in comes first: tool paths that are relative to a process
+        # directory have no business in the shared per-user file, and writing
+        # them there is what makes another installation pick them up.
+        base, basedir = None, None
+        if getattr(self, 'me_dir', None):
+            for name in ['me5_configuration.txt', 'amcatnlo_configuration.txt']:
+                if os.path.exists(pjoin(self.me_dir, 'Cards', name)):
+                    base = pjoin(self.me_dir, 'Cards', name)
+                    basedir = self.me_dir
+                    break
+        if base is None:
+            config_file = misc.user_config_file()
+            if config_file and os.path.exists(config_file):
+                base = config_file
+                basedir = os.getcwd() if MADEVENT else MG5DIR
+        if base is None:
+            if MADEVENT:
                 base = pjoin(self.me_dir, 'Cards', 'me5_configuration.txt')
-                if len(args) == 0 and os.path.exists(base):
-                    self.write_configuration(base, base, self.me_dir)
-            base = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
-            basedir = MG5DIR
-            
+                basedir = self.me_dir
+            else:
+                base = misc.install_config_file(MG5DIR)
+                basedir = MG5DIR
+
         if len(args) == 0:
             args.append(base)
         self.write_configuration(args[0], base, basedir, self.options)

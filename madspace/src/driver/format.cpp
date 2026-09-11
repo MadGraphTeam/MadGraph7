@@ -17,6 +17,27 @@ const std::array<std::string, 9> progress_symbols{
     " ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"
 };
 
+// Fallback for format_with_error() once the relative error is O(1) or larger (or
+// value/error are non-finite/non-positive): the "1.234(56)" digit-of-error notation is
+// meaningless there, so print "value ± error" instead, with the error rendered to two
+// significant digits (or the value alone if the error itself isn't meaningful).
+std::string format_value_pm_error(double value, double error) {
+    if (!std::isfinite(error) || error <= 0.) {
+        if (!std::isfinite(value) || value == 0.) {
+            return std::format("{}", value);
+        }
+        int value_power = static_cast<int>(std::floor(std::log10(std::abs(value))));
+        return value_power < -5 || value_power > 5
+            ? std::format("{:.3e}", value)
+            : std::format("{:.3f}", value);
+    }
+    int sig_power = 1 - static_cast<int>(std::floor(std::log10(error)));
+    if (sig_power < 0 || sig_power > 5) {
+        return std::format("{:.1e} ± {:.1e}", value, error);
+    }
+    return std::format("{:.{}f} ± {:.{}f}", value, sig_power, error, sig_power);
+}
+
 } // namespace
 
 std::size_t madspace::cpu_time_microsec() {
@@ -60,10 +81,13 @@ std::string madspace::format_si_prefix(double value) {
 }
 
 std::string madspace::format_with_error(double value, double error) {
-    int value_power = std::floor(std::log10(value));
-    int sig_power = std::isnan(error) || error <= 0.
-        ? 3 - value_power
-        : 1 - static_cast<int>(std::floor(std::log10(error)));
+    if (!std::isfinite(value) || !std::isfinite(error) || error <= 0. ||
+        std::abs(error) >= std::abs(value)) {
+        // relative error is O(1) or larger -- the (56) digit notation is meaningless
+        return format_value_pm_error(value, error);
+    }
+    int value_power = std::floor(std::log10(std::abs(value)));
+    int sig_power = 1 - static_cast<int>(std::floor(std::log10(error)));
     if (sig_power < 0 || sig_power > 5) {
         std::string exp_fmt = std::format("{:.{}e}", value, value_power + sig_power);
         auto e_pos = exp_fmt.find("e");

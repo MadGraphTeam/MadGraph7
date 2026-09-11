@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -14,6 +14,7 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import glob
 import subprocess
 import unittest
 import os
@@ -33,6 +34,7 @@ import madgraph.interface.master_interface as MGCmd
 import madgraph.interface.amcatnlo_run_interface as NLOCmd
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
+import madgraph.core.color_amp as color_amp
 import tests.IOTests as IOTests
 import madgraph.various.lhe_parser as lhe_parser
 
@@ -269,6 +271,33 @@ class TestCmdLoop(unittest.TestCase):
         self.assertIn('not allowed in the output path', str(ctx.exception))
         self.assertNotIn('No processes generated', str(ctx.exception))
         self.assertTrue(self.interface._curr_amps)
+
+    def test_loop_nc_memo_not_poisoned_across_generations(self):
+        """Two loop generations in one process. The first one runs with
+        compute_loop_nc=False; it must not pin loop_Nc_power in the
+        process-wide color memo for the loop-induced generation that follows,
+        which needs the real value to write coloramps.inc.
+
+        Value-level discrimination lives in the unit test
+        (test_color_amp.LoopNcMemoTest); this one guards the reported crash."""
+
+        # The poisoning generation must be the one that fills the memo: if a
+        # good value lands first the poisoning is inert and this test would
+        # pass on a broken tree.
+        color_amp.ColorBasis._canonical_dict.clear()
+
+        self.do('import model loop_sm')
+        self.do('generate g g > h [sqrvirt=QCD]')
+        self.do('output standalone_fortran %s -f' % pjoin(self.tmpdir, 'sqrvirt'))
+
+        self.do('generate g g > h [noborn=QCD]')
+        self.do('output madevent %s -f' % pjoin(self.tmpdir, 'noborn'))
+
+        coloramps = glob.glob(pjoin(self.tmpdir, 'noborn', 'SubProcesses',
+                                    'P*', 'coloramps.inc'))
+        self.assertTrue(coloramps)
+        for f in coloramps:
+            self.assertIn('ICOLAMP', open(f).read())
 
     def test_ML_check_full_epem_ttx(self):
         """ Test that check full e+ e- > t t~ works fine """
@@ -1324,6 +1353,28 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         IOTests.IOTest.remove_f77_function_from_file(
                     pjoin(self.IOpath,'ggttx_IOTest', 'SubProcesses','MadLoopCommons.f'),
                     'PRINT_MADLOOP_BANNER')
+
+    @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
+    def testIO_loop_induced_standalone_output(self):
+        r""" target: gghLI_IOTest/SubProcesses/P0_gg_h/[(check_sa|loop_matrix)\.f]
+        """
+        # A loop-induced ([noborn=]) process is exported from the MadGraph
+        # interface, which used to hand the loop matrix element to the
+        # tree-level standalone exporter and crash.
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+
+        # Select the Tensor Integral to include in the test
+        misc.deactivate_dependence('pjfry', cmd = interface, log='stdout')
+        misc.deactivate_dependence('samurai', cmd = interface, log='stdout')
+        misc.deactivate_dependence('golem', cmd = interface, log='stdout')
+        misc.activate_dependence('ninja', cmd = interface, log='stdout',MG5dir=MG5DIR)
+
+        # no 'import model': validate_model must bootstrap sm -> loop_sm itself
+        interface.exec_cmd('generate g g > h [noborn=QCD]', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.onecmd('output standalone_fortran %s -f' %
+                                    str(pjoin(self.IOpath,'gghLI_IOTest')))
         
 
 

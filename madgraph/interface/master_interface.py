@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access all MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access all MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 
@@ -631,6 +631,9 @@ class Switcher(object):
     def help_set2_output_dependencies(self, *args, **opts):
         return self.cmd.help_set2_output_dependencies(self, *args, **opts)
 
+    def help_set2_color_basis(self, *args, **opts):
+        return self.cmd.help_set2_color_basis(self, *args, **opts)
+
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
 
@@ -784,7 +787,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], 'mg5_configuration.txt')
+        config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):
@@ -801,7 +804,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
             # put default options since 
             # in the web the local file is not used
             # in download the default file is more usefull
-            files.cp(pjoin(MG5DIR,'input','mg5_configuration.txt'), args[1])
+            files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):
         """block all install"""

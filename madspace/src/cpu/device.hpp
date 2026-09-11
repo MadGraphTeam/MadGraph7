@@ -1,11 +1,17 @@
 #pragma once
 
+#include <cstdint>
+#include <random>
+
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "simd.hpp"
 
 namespace madspace {
 namespace cpu {
+
+class CpuRuntime;
 
 class CpuDevice : public Device {
 public:

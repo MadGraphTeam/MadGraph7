@@ -3,12 +3,20 @@ name: MadSpace
 on:
   push:
   pull_request:
-  release:
-    types: [published]
+  # Called from release.yml once the full test suite has passed. madspace is
+  # never released on its own -- its version always matches the MadGraph
+  # release, so publishing only happens through that call.
+  workflow_call:
+    inputs:
+      publish:
+        description: 'Build the full wheel matrix and publish to PyPI'
+        type: boolean
+        default: false
 
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,18 +29,16 @@ jobs:
               yum -y install openblas-devel yum-utils &&
               yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
               yum-config-manager --add-repo /project/.github/workflows/rocm.repo &&
-              yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 libcurand-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocrand-devel rocthrust-devel hipcub-devel
+              yum -y install cuda-nvcc-12-8 cuda-cudart-devel-12-8 cuda-thrust-12-8 libcublas-devel-12-8 rocm-hip-runtime-devel rocblas-devel rocthrust-devel hipcub-devel
             CIBW_REPAIR_WHEEL_COMMAND: >
               auditwheel repair
               --exclude libmadspace.so
               --exclude 'libcublas.so.*'
-              --exclude 'libcurand.so.*'
               --exclude 'libcublasLt.so.*'
               --exclude 'libcudart.so.*'
               --exclude 'libamdhip64.so.*'
               --exclude 'libhipblaslt.so.*'
               --exclude 'librocblas.so.*'
-              --exclude 'librocrand.so.*'
               --exclude 'libroctx64.so.*'
               -w {dest_dir} {wheel}
             CIBW_ENVIRONMENT: >
@@ -58,7 +64,7 @@ jobs:
         with:
           package-dir: madspace
         env:
-            CIBW_BUILD: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && matrix.build_full || matrix.build_small }}
+            CIBW_BUILD: ${{ (inputs.publish || github.ref == 'refs/heads/main') && matrix.build_full || matrix.build_small }}
             CIBW_BEFORE_ALL: ${{ matrix.CIBW_BEFORE_ALL }}
             CIBW_REPAIR_WHEEL_COMMAND: ${{ matrix.CIBW_REPAIR_WHEEL_COMMAND }}
             CIBW_ENVIRONMENT: ${{ matrix.CIBW_ENVIRONMENT }}
@@ -78,7 +84,7 @@ jobs:
 
   publish-to-pypi:
     name: Publish to PyPI
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: inputs.publish
     needs:
       - build_wheels
     runs-on: ubuntu-latest
@@ -96,34 +102,3 @@ jobs:
           merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-
-  github-release:
-    name: Sign with Sigstore, upload to GitHub Release
-    needs:
-      - publish-to-pypi
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # IMPORTANT: mandatory for making GitHub Releases
-      id-token: write  # IMPORTANT: mandatory for sigstore
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v5
-        with:
-          pattern: cibw-*
-          path: dist
-          merge-multiple: true
-      - name: Sign the dists with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.0.0
-        with:
-          inputs: ./dist/*.whl
-      - name: Upload artifact signatures to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        # Upload to GitHub Release using the `gh` CLI.
-        # `dist/` contains the built packages, and the
-        # sigstore-produced signatures and certificates.
-        run: >-
-          gh release upload
-          '${{ github.ref_name }}' dist/**
-          --repo '${{ github.repository }}'
-          --clobber

@@ -20,6 +20,9 @@ on:
         description: 'running acceptance test'
         required: true
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 env:
   commitmsg: ${{ github.event.head_commit.message }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -35,11 +38,12 @@ jobs:
     # (restore_data default + chmod -R 555 madevent) and run it from several
     # empty directories simultaneously.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
       - name: test concurrent read-only gridpack
         run: |
@@ -51,12 +55,13 @@ jobs:
   acceptancetest_5:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       # Runs a set of commands using the runners shell
@@ -73,12 +78,13 @@ jobs:
   acceptancetest_10:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_complex_mass_SA/ DYj has no assymetry
@@ -90,13 +96,14 @@ jobs:
   acceptancetest_11:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_custom_propa
@@ -109,12 +116,13 @@ jobs:
   acceptancetest_12:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -128,12 +136,13 @@ jobs:
   acceptancetest_13:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -147,13 +156,14 @@ jobs:
   acceptancetest_14:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -167,13 +177,14 @@ jobs:
   acceptancetest_15:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -187,12 +198,13 @@ jobs:
   acceptancetest_16:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -206,13 +218,14 @@ jobs:
   acceptancetest_18:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -226,13 +239,14 @@ jobs:
   acceptancetest_26:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -246,13 +260,14 @@ jobs:
   acceptancetest_29:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -266,13 +281,14 @@ jobs:
   acceptancetest_30:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -286,13 +302,14 @@ jobs:
   acceptancetest_31:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -311,13 +328,14 @@ jobs:
   acceptancetest_32:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -332,13 +350,14 @@ jobs:
   acceptancetest_33:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -355,11 +374,12 @@ jobs:
     # caller's wavefunction slot when TXXXXX writes 16 complex into
     # a 4-complex aloha element.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_standalone_spin2_loop_smgrav
@@ -372,13 +392,14 @@ jobs:
   acceptancetest_34:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -414,13 +435,14 @@ jobs:
   acceptancetest_67:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -434,41 +456,41 @@ jobs:
   acceptancetest_68:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
 
   acceptancetest_69:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
 
@@ -476,13 +498,14 @@ jobs:
   acceptancetest_71:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -491,18 +514,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_brs_gd_gd -pA -t0 -l INFO
             ./tests/test_manager.py test_generate_output_semicolon_preserves_loop_process -pA -t0 -l INFO
+            ./tests/test_manager.py test_loop_nc_memo_not_poisoned_across_generations -pA -t0 -l INFO
 
 
 
   acceptancetest_72:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -516,13 +541,14 @@ jobs:
   acceptancetest_73:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -536,12 +562,13 @@ jobs:
   acceptancetest_74:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -555,13 +582,14 @@ jobs:
   acceptancetest_75:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
 
@@ -576,13 +604,14 @@ jobs:
   acceptancetest_76:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -596,13 +625,14 @@ jobs:
   acceptancetest_78:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -616,13 +646,14 @@ jobs:
   acceptancetest_79:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -636,7 +667,7 @@ jobs:
   acceptancetest_80:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     strategy:
       matrix:
         os: [ubuntu-24.04]
@@ -646,6 +677,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -660,13 +692,14 @@ jobs:
   acceptancetest_81:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -680,13 +713,14 @@ jobs:
   acceptancetest_82:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -700,13 +734,14 @@ jobs:
   acceptancetest_83:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -722,13 +757,14 @@ jobs:
   acceptancetest_emela:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -739,13 +775,14 @@ jobs:
   acceptancetest_emela2:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -756,13 +793,14 @@ jobs:
   acceptancetest_emela3:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -772,13 +810,14 @@ jobs:
   acceptancetest_emela4:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -788,13 +827,14 @@ jobs:
   acceptancetest_88:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -812,13 +852,14 @@ jobs:
   acceptancetest_93:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -832,13 +873,14 @@ jobs:
   acceptancetest_94:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -852,13 +894,14 @@ jobs:
   acceptancetest_95:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -871,12 +914,13 @@ jobs:
   acceptancetest_96:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -890,13 +934,14 @@ jobs:
   acceptancetest_97:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -910,13 +955,14 @@ jobs:
   acceptancetest_98:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -930,12 +976,13 @@ jobs:
   acceptancetest_99:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -947,10 +994,11 @@ jobs:
 
   acceptancetest_100:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test testIO_gnuplot_histo_output
         run: |
@@ -959,7 +1007,7 @@ jobs:
 
   acceptancetest_100_2:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
@@ -973,10 +1021,11 @@ jobs:
   
   acceptancetest_101:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
       - name: test one of the test test_loop_improved_reweighting
         run: |
@@ -985,7 +1034,7 @@ jobs:
   
   acceptancetest_102:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
@@ -1005,10 +1054,11 @@ jobs:
   
   acceptancetest_104:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_all
       - name: test loop-induced gg>h cross-section
@@ -1018,26 +1068,28 @@ jobs:
   
   acceptancetest_103_polarization:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # kept previous version (checkout@v2)
       - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_polarization_top_decay
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
             ./tests/test_manager.py test_polarization_top_decay -pA -t0 -l INFO
   
   acceptancetest_ewsudakov:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_tt_ewsudakov
@@ -1049,10 +1101,11 @@ jobs:
     # Previously uncovered acceptance tests in tests/acceptance_tests/test_cmd.py
     # related to the merged/ufo_aloha pipelines and decay-chain ordering
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test cmd uncovered merged/ufo_aloha/standalone tests
@@ -1064,10 +1117,11 @@ jobs:
   acceptancetest_uncovered_madloop:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test ML gauge invariance acceptance test
@@ -1080,10 +1134,11 @@ jobs:
     # element is evaluated in a frame where the selected leg has an exactly
     # zero three-momentum, and HELAS reads its spin axis off that zero.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test improve_ps keeps a leg at rest
@@ -1094,10 +1149,11 @@ jobs:
   acceptancetest_check_madevent_me_vs_standalone:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
 
       - name: test that ME of madevent are consistent with the standalone one
         run: |
@@ -1107,10 +1163,11 @@ jobs:
   acceptancetest_check_mlm_rwgt:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_MLM_reweight.py
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
 
       - name: test MLM reweight factory cases (TestMLMReweight)
         run: |
@@ -1121,13 +1178,14 @@ jobs:
   acceptancetest_density:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
@@ -1160,13 +1218,13 @@ jobs:
             cd $GITHUB_WORKSPACE
             sudo pip install numpy
             which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
 
   acceptancetest_density_decay2:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1184,7 +1242,7 @@ jobs:
   acceptancetest_density_tttbartbar:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1203,7 +1261,7 @@ jobs:
   acceptancetest_density_LI_standalone1:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1221,7 +1279,7 @@ jobs:
   acceptancetest_density_LI_standalone2:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1240,7 +1298,7 @@ jobs:
   acceptancetest_density_LI_standalone3:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1258,7 +1316,7 @@ jobs:
   acceptancetest_density_LI_f2py:
     # The type of runner that the job will run on
     runs-on: ${{ matrix.os }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     strategy:
       matrix:
         os: [ubuntu-24.04]
@@ -1329,13 +1387,14 @@ jobs:
   acceptancetest_delphes_parallel:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_all
       - uses: ./.github/actions/restore_delphes
@@ -1349,11 +1408,12 @@ jobs:
   acceptancetest_check_gauge:
     # gauge/lorentz check commands that were not listed in any workflow (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test the check gauge/full acceptance tests
         run: |
@@ -1367,11 +1427,12 @@ jobs:
   acceptancetest_decay_chain_outoforder:
     # decay chain with identical particles out of order (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test test_decay_chain_identical_particle_outoforder
         run: |
@@ -1388,11 +1449,12 @@ jobs:
   acceptancetest_dy3j_mlm:
     # DY+3j with MLM matching (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test test_madevent_dy3j_mlm
         run: |
@@ -1403,7 +1465,7 @@ jobs:
   acceptancetest_PA_decay:
     # w production with PA decay modes (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
@@ -1420,7 +1482,7 @@ jobs:
   acceptancetest_wj_ms_decay:
     # wj production with madspin decay (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
@@ -1436,7 +1498,7 @@ jobs:
   acceptancetest_density_LI_convolution:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -1454,12 +1516,13 @@ jobs:
   acceptancetest_madspin_tree:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test that the different options of madspin do not crash at tree level
@@ -1470,7 +1533,7 @@ jobs:
   acceptancetest_madspin_LI:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
