@@ -54,6 +54,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - keep OM's default for this plugin (using grouped_mode=False, "can decide to merge uu~ and u~u anyway")
     sa_symmetry = True
 
+    # The name this exporter is reached by on the 'output' line, for the error
+    # messages that have to name it back to the user.
+    format_name = 'mg7'
+
     # The color sum can run on the (n-2)! Del Duca-Dixon-Maltoni basis for a
     # multi-gluon process, but a color flow still has to be picked among the
     # (n-1)! trace structures, so the trace basis is built alongside and the
@@ -206,8 +210,46 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             rendered = self.read_template_file(pjoin(self.madmatrix_templates, name)) % replace_dict
             open(pjoin(self.dir_path, 'SubProcesses', name), 'w').write(rendered)
 
+    def check_split_orders(self, matrix_element):
+        """Report what a squared-order constraint will produce here.
+
+        Supported: the jamps carry an amplitude-order index and the color sum
+        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        so a '^2' constraint that keeps only some squared orders gets the
+        contribution it asked for rather than the total. That is what makes the
+        interference case work -- `u u~ > t t~ QED^2==2` keeps all three
+        diagrams and wants the QCD-EW cross term alone, which no amount of
+        dropping diagrams at generation can produce.
+
+        Not supported: a GPU build of such a process. The device jamp buffers
+        are sized for one jamp vector per helicity (ncolor, not njampso), and
+        the backend is a make-time choice rather than an output-time one, so
+        the refusal cannot live here: color_sum_splitorders.cc #errors under
+        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the first the user hears of it.
+        """
+
+        so = export_v4.split_order_tables(matrix_element)
+        if not so or so['nampso'] <= 1:
+            return
+        process = matrix_element.get('processes')[0]
+        kept = [n for n, k in zip(so['names'], so['chosen']) if k]
+        dropped = [n for n, k in zip(so['names'], so['chosen']) if not k]
+        logger.info(
+            "%s: '%s' has %d squared-order components (%s); keeping %s%s. "
+            "The jamps are split over %d amplitude orders and the color sum "
+            "pairs them; CPU backends only (a GPU build of this process will "
+            "not compile, by design).",
+            self.__class__.format_name,
+            process.nice_string().replace('Process: ', ''),
+            so['nsqampso'], ', '.join(so['names']),
+            ', '.join(kept) if kept else 'nothing',
+            '' if not dropped else ', dropping %s' % ', '.join(dropped),
+            so['nampso'])
+
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        self.check_split_orders(matrix_element)
         # Propagate the --mask toggle to the helas call writer that emits the
         # guarded wavefunction/amplitude calls, and the output command line as
         # a whole for the --jamp_optim toggle of the color-flow optimisation.
@@ -239,6 +281,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 # an additional wrapper makefile (madmatrix_standalone.mk) on top of madmatrix.mk,
 # so that when running `make` in a P* folder, it builds check_sa.exe as well as the process library (predicatable behaviour)
 class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
+
+    format_name = 'standalone'
 
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/

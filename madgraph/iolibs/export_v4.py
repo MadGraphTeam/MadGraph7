@@ -222,6 +222,105 @@ class VirtualExporter(object):
         return
 
 #===============================================================================
+# Squared split orders: which components the user's constraint keeps
+#===============================================================================
+def chosen_squared_orders(process, squared_orders):
+    """Which entries of squared_orders the user's '^2' constraint keeps.
+
+    squared_orders is the list of squared split-order tuples actually present
+    in the matrix element, as get_split_orders_mapping returns it; the process
+    carries the constraint. A False entry is a component that contributes to
+    the amplitude but that the user asked *not* to have summed into the total,
+    so a backend which cannot mask it does not compute what was asked for.
+
+    This is the boolean form of what set_chosen_SO_index writes as the Fortran
+    CHOSEN_SO_CONFIGS DATA statement, kept here so that a backend can ask the
+    question without parsing that string.
+    """
+
+    user_squared_orders = process.get('squared_orders')
+    split_orders = process.get('split_orders')
+
+    if len(user_squared_orders)==0:
+        return [True]*len(squared_orders)
+
+    res = []
+    for sqsos in squared_orders:
+        is_a_match = True
+        for user_sqso, value in user_squared_orders.items():
+            if user_sqso == 'WEIGHTED' :
+                logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
+                        'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
+                        (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
+            if user_sqso not in split_orders:
+                is_a_match = False
+            elif (process.get_squared_order_type(user_sqso) =='==' and \
+                    value!=sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) in ['<=','='] and \
+                            value<sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) == '>' and \
+                            value>=sqsos[split_orders.index(user_sqso)]):
+                is_a_match = False
+                break
+        res.append(is_a_match)
+
+    return res
+
+def split_order_tables(matrix_element):
+    """The squared split-order bookkeeping a backend needs, or None.
+
+    Returns a dict with
+
+      nampso      how many amplitude split orders the amplitudes fall into
+      nsqampso    how many squared orders their pairs produce
+      amp_so      {amplitude number -> amplitude-order index}, 0-based
+      sqsoindex   sqsoindex[m][n] -> squared-order index, 0-based. SYMMETRIC,
+                  because a squared order is the SUM of the two amplitude
+                  orders (Fortran SQSOINDEX), which is what lets a masked sum
+                  stay real: (m,n) and (n,m) are kept or dropped together.
+      chosen      [bool] per squared order, the user's constraint
+      names       ['QED=0', ...] per squared order, for comments
+
+    None when the process has no split orders, i.e. when there is one implicit
+    component and every backend already computes it.
+    """
+
+    process = matrix_element.get('processes')[0]
+    split_orders = process.get('split_orders')
+    if not split_orders:
+        return None
+    squared_orders, amp_orders = matrix_element.get_split_orders_mapping()
+    if not squared_orders:
+        return None
+
+    amp_so = {}
+    for iampso, (_orders, amp_numbers) in enumerate(amp_orders):
+        for namp in amp_numbers:
+            amp_so[namp] = iampso
+
+    # The squared order a pair of amplitude orders lands in: add the two
+    # amplitude orders and look the sum up. A pair whose sum is not in the
+    # list cannot happen (the list is built from exactly these sums), but
+    # guard anyway rather than write a negative index into the generated code.
+    index_of = {tuple(sqso): i for i, sqso in enumerate(squared_orders)}
+    sqsoindex = []
+    for m, (orders_m, _a) in enumerate(amp_orders):
+        row = []
+        for n, (orders_n, _b) in enumerate(amp_orders):
+            key = tuple(om + on for om, on in zip(orders_m, orders_n))
+            row.append(index_of.get(key, -1))
+        sqsoindex.append(row)
+
+    return {'nampso': len(amp_orders),
+            'nsqampso': len(squared_orders),
+            'amp_so': amp_so,
+            'sqsoindex': sqsoindex,
+            'chosen': chosen_squared_orders(process, squared_orders),
+            'names': [' '.join('%s=%d' % (o, v)
+                               for o, v in zip(split_orders, sqso))
+                      for sqso in squared_orders]}
+
+#===============================================================================
 # ProcessExporterFortran
 #===============================================================================
 class ProcessExporterFortran(VirtualExporter,
@@ -2033,34 +2132,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         finds what indices of the squared_orders list the user intends to pick.
         It returns this as a string of comma-separated successive '.true.' or 
         '.false.' for each index."""
-        
-        user_squared_orders = process.get('squared_orders')
-        split_orders = process.get('split_orders')
-        
-        if len(user_squared_orders)==0:
-            return ','.join(['.true.']*len(squared_orders))
-        
-        res = []
-        for sqsos in squared_orders:
-            is_a_match = True
-            for user_sqso, value in user_squared_orders.items():
-                if user_sqso == 'WEIGHTED' :
-                    logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
-                            'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
-                            (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
-                if user_sqso not in split_orders:
-                    is_a_match = False
-                elif (process.get_squared_order_type(user_sqso) =='==' and \
-                        value!=sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) in ['<=','='] and \
-                                value<sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) == '>' and \
-                                value>=sqsos[split_orders.index(user_sqso)]):
-                    is_a_match = False
-                    break
-            res.append('.true.' if is_a_match else '.false.')
-            
-        return ','.join(res)
+
+        return ','.join('.true.' if keep else '.false.' for keep in
+                        chosen_squared_orders(process, squared_orders))
 
     def get_split_orders_lines(self, orders, array_name, n=5):
         """ Return the split orders definition as defined in the list orders and
