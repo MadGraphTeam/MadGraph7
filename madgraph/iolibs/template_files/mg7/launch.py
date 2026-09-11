@@ -1189,7 +1189,12 @@ class MadgraphProcess:
                 mean += status.mean_abs
                 variance += status.error_abs**2
                 count_opt += status.count_opt
-            rsd = (variance * count_opt)**0.5 / mean
+            # A subprocess whose matrix element is identically zero (an FCNC
+            # channel with every Wilson coefficient at zero, say) integrates to
+            # exactly zero, so there is no relative spread to speak of. Report 0
+            # rather than dividing by it: that asks for the smallest networks and
+            # leaves MadNIS off, which is what an empty subprocess wants.
+            rsd = (variance * count_opt)**0.5 / mean if mean else 0.
             subproc.set_madnis_auto_settings(rsd)
             chan_offset += len(ps.channels)
             if subproc.madnis_settings["enable"]:

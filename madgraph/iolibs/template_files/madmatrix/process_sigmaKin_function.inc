@@ -312,7 +312,23 @@
         if( mulChannelWeight && allChannelIds != nullptr )
         {
           const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
-          MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
+          // A vanishing denominator means every diagram's |amp|^2 is zero for this
+          // event, which is what a subprocess whose matrix element is identically zero
+          // looks like (an FCNC channel with all its Wilson coefficients at zero, say).
+          // The channel weight would then be 0/0 = nan, turning a matrix element that
+          // is simply zero into a nan that reaches the event weight and aborts the
+          // integration. Clamping the (non-negative) denominator to the smallest
+          // normal value keeps that division finite -- 0/tiny is 0 -- and is a no-op
+          // for any denominator a real amplitude produces. Note this must NOT be
+          // written as a test for zero: this file is compiled with -ffast-math, whose
+          // -ffinite-math-only lets the compiler assume the quotient is finite and so
+          // drop the guard as dead (the same trap as #117/#516).
+          // (fpmax is SIMD-only, so the floor is added rather than max'ed: the
+          // denominator is a sum of |amp|^2 and so never negative, and adding the
+          // smallest normal leaves every denominator a real amplitude produces
+          // bit-for-bit unchanged.)
+          const fptype_sv safe_den = denominators_sv + std::numeric_limits<fptype>::min();
+          MEs_sv *= numerators_sv[channelId - 1] / safe_den;
         }
       }
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )

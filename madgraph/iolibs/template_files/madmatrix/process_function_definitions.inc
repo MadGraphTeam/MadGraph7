@@ -716,7 +716,12 @@ namespace mg5amcCpu
       if( mulChannelWeight )
       {
         unsigned int channelId = allChannelIds[ievt];
-        allMEs[ievt] *= numerators[channelId - 1] / denominator;
+        // denominator == 0 means every diagram's |amp|^2 vanishes for this event (a
+        // subprocess whose matrix element is identically zero); 0/0 would turn a zero
+        // matrix element into a nan. Floored rather than tested, so that -ffast-math
+        // cannot drop the guard -- see process_sigmaKin_function.inc for the reasoning.
+        allMEs[ievt] *= numerators[channelId - 1] /
+                        ( denominator + std::numeric_limits<fptype>::min() );
       }
     }
     return;
