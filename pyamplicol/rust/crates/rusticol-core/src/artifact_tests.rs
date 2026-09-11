@@ -1347,6 +1347,7 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
         DIRECT,
         direct_evaluator_manifest("evaluators/direct.symjit"),
     );
+    direct_execution["compiled"]["momentum_slot_ids"] = json!([0, 1, 2]);
     let input_binding = |parameter_index: usize| {
         let (kind, source_id, component, global_component, real_valued) = if parameter_index < 2 {
             ("value", parameter_index, 0, parameter_index, false)

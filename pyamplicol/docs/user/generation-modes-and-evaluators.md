@@ -79,6 +79,13 @@ workspace_mib = 256
 The runtime may reduce the effective point tile to stay within the configured
 workspace. It does not increase the requested tile.
 
+For topology replay, generation groups current-building operations with similar
+helicity coverage while keeping shared-input groups together. The row order is
+stored in the process output; selecting one helicity does not rebuild or
+optimise the currents. Momentum sums follow their stored term order across a
+batch of points. These arrangements retain the full generated helicity
+coverage and do not introduce an OTF-style first-call preparation step.
+
 ### Compiled
 
 Compiled mode lowers a process-wide DAG into evaluator stages while generating
@@ -104,6 +111,11 @@ pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml \
 Always use a different output when comparing modes; a process artifact is an
 immutable executable input, not a directory into which unrelated plans should
 be mixed.
+
+Generation also records which momentum sums the final compiled kernels use.
+Evaluation fills only those sums, directly across the point batch, without
+searching the expressions on the first call. The list covers every helicity
+retained by that compiled output, not just the first runtime selection.
 
 ### Correlated Born generation
 

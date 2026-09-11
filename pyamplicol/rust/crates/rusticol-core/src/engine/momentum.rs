@@ -170,6 +170,64 @@ impl<'a> F64MomentumBatchView<'a> {
         self.external_count
     }
 
+    /// Execute one term of an already-generated momentum sum into a point
+    /// plane. Resolve the public input layout and crossing once per term, not
+    /// once per point. `ADD = false` starts the sum with the same positive
+    /// zero as the scalar momentum accumulator, including for signed zeros.
+    #[inline]
+    pub(super) fn accumulate_component_into<const ADD: bool>(
+        self,
+        external_index: usize,
+        component: usize,
+        coefficient: f64,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        if external_index >= self.external_count
+            || component >= 4
+            || output.len() != self.point_count
+        {
+            return Err(RusticolError::integrity(
+                "momentum component plane has an invalid input or output range",
+            ));
+        }
+        #[inline(always)]
+        fn store<const ADD: bool>(output: &mut f64, coefficient: f64, value: f64) {
+            let previous = if ADD { *output } else { 0.0 };
+            *output = previous + coefficient * value;
+        }
+        match self.storage {
+            F64MomentumBatchStorage::Contiguous(values) => {
+                let point_stride = self.external_count * 4;
+                if let Some(crossing) = self.crossing_lookup {
+                    let entry = &crossing[external_index];
+                    let input_start = entry.source_index * 4 + component;
+                    for (target, &value) in output
+                        .iter_mut()
+                        .zip(values[input_start..].iter().step_by(point_stride))
+                    {
+                        // Keep both multiplications in their scalar order;
+                        // do not combine the crossing and sum coefficients.
+                        store::<ADD>(target, coefficient, entry.sign * value);
+                    }
+                } else {
+                    let input_start = external_index * 4 + component;
+                    for (target, &value) in output
+                        .iter_mut()
+                        .zip(values[input_start..].iter().step_by(point_stride))
+                    {
+                        store::<ADD>(target, coefficient, value);
+                    }
+                }
+            }
+            F64MomentumBatchStorage::Nested(values) => {
+                for (target, point) in output.iter_mut().zip(values) {
+                    store::<ADD>(target, coefficient, point[external_index][component]);
+                }
+            }
+        }
+        Ok(())
+    }
+
     #[inline(always)]
     pub(super) fn point(self, point_index: usize) -> F64MomentumPointView<'a> {
         assert!(point_index < self.point_count);
@@ -322,5 +380,119 @@ mod tests {
     fn contiguous_view_rejects_invalid_shapes() {
         assert!(F64MomentumBatchView::from_contiguous_prevalidated(&[], 0, 2, None).is_err());
         assert!(F64MomentumBatchView::from_contiguous_prevalidated(&[0.0; 7], 1, 2, None).is_err());
+    }
+
+    #[test]
+    fn component_plane_accumulation_matches_scalar_bits_for_every_layout() {
+        let numbers = [
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            f64::MAX,
+            f64::MIN_POSITIVE,
+            1e16,
+            -1e16,
+        ];
+        let nested = (0..19)
+            .map(|point| {
+                (0..3)
+                    .map(|external| {
+                        std::array::from_fn(|component| {
+                            numbers[(point + external * 3 + component) % numbers.len()]
+                        })
+                    })
+                    .collect::<Vec<[f64; 4]>>()
+            })
+            .collect::<Vec<_>>();
+        let flat = nested
+            .iter()
+            .flatten()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let crossing = [
+            InputCrossingMapEntry {
+                target_index: 0,
+                source_index: 2,
+                sign: 2.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 1,
+                source_index: 0,
+                sign: -1.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 2,
+                source_index: 1,
+                sign: 0.5,
+            },
+        ];
+        let views = [
+            F64MomentumBatchView::from_nested(&nested, 3).unwrap(),
+            F64MomentumBatchView::from_contiguous_prevalidated(&flat, 19, 3, None).unwrap(),
+            F64MomentumBatchView::from_contiguous_prevalidated(&flat, 19, 3, Some(&crossing))
+                .unwrap(),
+        ];
+        for view in views {
+            for count in [1, 3, 17] {
+                let batch = view.subview(1, 1 + count).unwrap();
+                for external in 0..3 {
+                    for component in 0..4 {
+                        for coefficient in [1.0, -1.0, 0.25, -0.0] {
+                            let mut output = vec![23.0; count + 5];
+                            let pointer = output.as_ptr();
+                            batch
+                                .accumulate_component_into::<false>(
+                                    external,
+                                    component,
+                                    coefficient,
+                                    &mut output[..count],
+                                )
+                                .unwrap();
+                            for (point, &actual) in output[..count].iter().enumerate() {
+                                let value =
+                                    batch.point(point).momentum(external).unwrap()[component];
+                                let expected = 0.0 + coefficient * value;
+                                assert_eq!(actual.to_bits(), expected.to_bits());
+                            }
+                            let previous = output[..count].to_vec();
+                            batch
+                                .accumulate_component_into::<true>(
+                                    external,
+                                    component,
+                                    coefficient,
+                                    &mut output[..count],
+                                )
+                                .unwrap();
+                            for (point, &actual) in output[..count].iter().enumerate() {
+                                let value =
+                                    batch.point(point).momentum(external).unwrap()[component];
+                                let expected = previous[point] + coefficient * value;
+                                assert_eq!(actual.to_bits(), expected.to_bits());
+                            }
+                            assert_eq!(output.as_ptr(), pointer);
+                            assert!(output[count..].iter().all(|&value| value == 23.0));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn component_plane_accumulation_rejects_invalid_ranges() {
+        let values = [0.0; 12];
+        let batch =
+            F64MomentumBatchView::from_contiguous_prevalidated(&values, 1, 3, None).unwrap();
+        for (external, component, len) in [(3, 0, 1), (0, 4, 1), (0, 0, 0), (0, 0, 2)] {
+            let mut output = vec![23.0; len];
+            assert!(
+                batch
+                    .accumulate_component_into::<false>(external, component, 1.0, &mut output,)
+                    .is_err()
+            );
+            assert!(output.iter().all(|&value| value == 23.0));
+        }
     }
 }

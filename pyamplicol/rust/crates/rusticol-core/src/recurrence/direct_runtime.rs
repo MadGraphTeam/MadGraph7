@@ -911,7 +911,11 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<()> {
-        self.fill_momenta_from_external_impl::<true>(selector, point_count, external_four_momenta)
+        self.fill_momenta_from_external_impl::<true, false>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )
     }
 
     pub fn fill_momenta_from_external_unprofiled(
@@ -920,10 +924,14 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<()> {
-        self.fill_momenta_from_external_impl::<false>(selector, point_count, external_four_momenta)
+        self.fill_momenta_from_external_impl::<false, false>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )
     }
 
-    fn fill_momenta_from_external_impl<const PROFILE: bool>(
+    fn fill_momenta_from_external_impl<const PROFILE: bool, const SOURCE_MAJOR: bool>(
         &mut self,
         selector: &DirectReplaySelectorPlan,
         point_count: u32,
@@ -960,50 +968,27 @@ impl DirectRecurrenceExecutionRuntime {
         let terms = self.plan.momentum_terms();
         let momenta = self.momenta.as_mut_slice();
         for (form_id, form) in self.plan.momentum_forms().iter().enumerate() {
-            let term_start = usize::try_from(form.term_start).map_err(|_| {
-                RusticolError::integrity("direct recurrence momentum term start exceeds usize")
-            })?;
-            let term_end = term_start
-                .checked_add(form.term_count as usize)
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "direct recurrence momentum term range overflows usize",
+            // The immutable plan has already validated term ranges, source
+            // slots and replay maps. Consume those persisted instructions once
+            // per term, not once per component and phase-space point.
+            let term_start = form.term_start as usize;
+            let form_terms = &terms[term_start..term_start + form.term_count as usize];
+            let form_start = form_id * 4 * point_stride;
+            fill_momentum_form_from_external::<SOURCE_MAJOR>(
+                &mut momenta[form_start..form_start + 4 * point_stride],
+                point_stride,
+                active_points,
+                external_four_momenta,
+                source_count,
+                form_terms.iter().map(|term| {
+                    let slot = term.source_slot as usize;
+                    (
+                        selector.source_permutation[slot] as usize,
+                        f64::from(term.coefficient)
+                            * f64::from(selector.source_momentum_signs[slot]),
                     )
-                })?;
-            let form_terms = terms.get(term_start..term_end).ok_or_else(|| {
-                RusticolError::integrity("direct recurrence momentum term range is out of bounds")
-            })?;
-            for component in 0..4 {
-                let destination_start = (form_id * 4 + component) * point_stride;
-                for point in 0..active_points {
-                    let mut value = 0.0;
-                    for term in form_terms {
-                        let external_slot = selector
-                            .source_permutation
-                            .get(term.source_slot as usize)
-                            .copied()
-                            .ok_or_else(|| {
-                                RusticolError::integrity(
-                                    "direct recurrence momentum term source is outside the replay permutation",
-                                )
-                            })? as usize;
-                        let source = (point * source_count + external_slot) * 4 + component;
-                        let replay_sign = selector
-                            .source_momentum_signs
-                            .get(term.source_slot as usize)
-                            .copied()
-                            .ok_or_else(|| {
-                                RusticolError::integrity(
-                                    "direct recurrence momentum term sign is outside the replay mapping",
-                                )
-                            })?;
-                        value += f64::from(term.coefficient)
-                            * f64::from(replay_sign)
-                            * external_four_momenta[source];
-                    }
-                    momenta[destination_start + point] = value;
-                }
-            }
+                }),
+            );
         }
         if active_points < previous_points {
             for plane in 0..form_count * 4 {
@@ -1041,7 +1026,7 @@ impl DirectRecurrenceExecutionRuntime {
     }
 
     /// Fill canonical momentum forms without a replay permutation.
-    fn fill_identity_momenta_from_external<const PROFILE: bool>(
+    fn fill_identity_momenta_from_external<const PROFILE: bool, const SOURCE_MAJOR: bool>(
         &mut self,
         point_count: u32,
         external_four_momenta: &[f64],
@@ -1081,31 +1066,19 @@ impl DirectRecurrenceExecutionRuntime {
         let terms = self.plan.momentum_terms();
         let momenta = self.momenta.as_mut_slice();
         for (form_id, form) in self.plan.momentum_forms().iter().enumerate() {
-            let term_start = usize::try_from(form.term_start).map_err(|_| {
-                RusticolError::integrity("direct recurrence momentum term start exceeds usize")
-            })?;
-            let term_end = term_start
-                .checked_add(form.term_count as usize)
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "direct recurrence momentum term range overflows usize",
-                    )
-                })?;
-            let form_terms = terms.get(term_start..term_end).ok_or_else(|| {
-                RusticolError::integrity("direct recurrence momentum term range is out of bounds")
-            })?;
-            for component in 0..4 {
-                let destination_start = (form_id * 4 + component) * point_stride;
-                for point in 0..active_points {
-                    let mut value = 0.0;
-                    for term in form_terms {
-                        let external_slot = term.source_slot as usize;
-                        let source = (point * source_count + external_slot) * 4 + component;
-                        value += f64::from(term.coefficient) * external_four_momenta[source];
-                    }
-                    momenta[destination_start + point] = value;
-                }
-            }
+            let term_start = form.term_start as usize;
+            let form_terms = &terms[term_start..term_start + form.term_count as usize];
+            let form_start = form_id * 4 * point_stride;
+            fill_momentum_form_from_external::<SOURCE_MAJOR>(
+                &mut momenta[form_start..form_start + 4 * point_stride],
+                point_stride,
+                active_points,
+                external_four_momenta,
+                source_count,
+                form_terms
+                    .iter()
+                    .map(|term| (term.source_slot as usize, f64::from(term.coefficient))),
+            );
         }
         if active_points < previous_points {
             for plane in 0..form_count * 4 {
@@ -1381,6 +1354,23 @@ impl DirectRecurrenceExecutionRuntime {
         self.execute_replay_tile_unprofiled(selector, point_count)
     }
 
+    /// Internal lane input is `[source][component][point]`, written directly
+    /// into its existing external-input workspace. The public point-major
+    /// entrypoints remain unchanged; this adds no preparation or transpose.
+    pub(crate) fn execute_replay_tile_from_external_planes<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectReplaySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.fill_momenta_from_external_impl::<PROFILE, true>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )?;
+        self.execute_replay_tile_impl::<PROFILE>(selector, point_count)
+    }
+
     /// Fill one runtime helicity's union sources and execute the compact
     /// all-flow schedule exactly once.
     pub fn execute_union_tile_from_external(
@@ -1389,7 +1379,7 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
-        self.execute_union_tile_from_external_impl::<true>(
+        self.execute_union_tile_from_external_impl::<true, false>(
             selector,
             point_count,
             external_four_momenta,
@@ -1402,21 +1392,37 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
-        self.execute_union_tile_from_external_impl::<false>(
+        self.execute_union_tile_from_external_impl::<false, false>(
             selector,
             point_count,
             external_four_momenta,
         )
     }
 
-    fn execute_union_tile_from_external_impl<const PROFILE: bool>(
+    pub(crate) fn execute_union_tile_from_external_planes<const PROFILE: bool>(
+        &mut self,
+        selector: &DirectUnionHelicitySelectorPlan,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_union_tile_from_external_impl::<PROFILE, true>(
+            selector,
+            point_count,
+            external_four_momenta,
+        )
+    }
+
+    fn execute_union_tile_from_external_impl<const PROFILE: bool, const SOURCE_MAJOR: bool>(
         &mut self,
         selector: &DirectUnionHelicitySelectorPlan,
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
         self.validate_union_selector(selector)?;
-        self.fill_identity_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
+        self.fill_identity_momenta_from_external::<PROFILE, SOURCE_MAJOR>(
+            point_count,
+            external_four_momenta,
+        )?;
         self.execute_union_sources::<PROFILE>(selector, point_count)?;
         self.execute_direct_tile_impl::<PROFILE>(point_count)?;
         if PROFILE {
@@ -1437,7 +1443,10 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
-        self.execute_contracted_tile_from_external_impl::<true>(point_count, external_four_momenta)
+        self.execute_contracted_tile_from_external_impl::<true, false>(
+            point_count,
+            external_four_momenta,
+        )
     }
 
     pub fn execute_contracted_tile_from_external_unprofiled(
@@ -1445,10 +1454,24 @@ impl DirectRecurrenceExecutionRuntime {
         point_count: u32,
         external_four_momenta: &[f64],
     ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
-        self.execute_contracted_tile_from_external_impl::<false>(point_count, external_four_momenta)
+        self.execute_contracted_tile_from_external_impl::<false, false>(
+            point_count,
+            external_four_momenta,
+        )
     }
 
-    fn execute_contracted_tile_from_external_impl<const PROFILE: bool>(
+    pub(crate) fn execute_contracted_tile_from_external_planes<const PROFILE: bool>(
+        &mut self,
+        point_count: u32,
+        external_four_momenta: &[f64],
+    ) -> RusticolResult<DirectRecurrenceTileOutput<'_>> {
+        self.execute_contracted_tile_from_external_impl::<PROFILE, true>(
+            point_count,
+            external_four_momenta,
+        )
+    }
+
+    fn execute_contracted_tile_from_external_impl<const PROFILE: bool, const SOURCE_MAJOR: bool>(
         &mut self,
         point_count: u32,
         external_four_momenta: &[f64],
@@ -1458,7 +1481,10 @@ impl DirectRecurrenceExecutionRuntime {
                 "contracted-color execution requires a contracted-color recurrence plan",
             ));
         }
-        self.fill_identity_momenta_from_external::<PROFILE>(point_count, external_four_momenta)?;
+        self.fill_identity_momenta_from_external::<PROFILE, SOURCE_MAJOR>(
+            point_count,
+            external_four_momenta,
+        )?;
         self.execute_direct_tile_impl::<PROFILE>(point_count)?;
         self.last_point_count = point_count;
         self.last_public_flow_id = None;
@@ -2506,6 +2532,85 @@ fn compact_ranges(marked: &[u8], label: &str) -> RusticolResult<Vec<Range<usize>
         ranges.push(start..index);
     }
     Ok(ranges)
+}
+
+/// Interpret an already validated, generation-time momentum form. Only
+/// independent phase-space points are reordered: each point keeps its original
+/// initial addition and term order, including cancellation and signed zero.
+/// There is no auxiliary input buffer or selection-dependent preparation.
+#[inline]
+fn fill_momentum_form_from_external<const SOURCE_MAJOR: bool>(
+    form_planes: &mut [f64],
+    point_stride: usize,
+    active_points: usize,
+    external_four_momenta: &[f64],
+    source_count: usize,
+    mut terms: impl Iterator<Item = (usize, f64)>,
+) {
+    let Some(first) = terms.next() else {
+        for plane in form_planes.chunks_exact_mut(point_stride) {
+            plane[..active_points].fill(0.0);
+        }
+        return;
+    };
+    fill_external_momentum_term::<true, SOURCE_MAJOR>(
+        form_planes,
+        point_stride,
+        active_points,
+        external_four_momenta,
+        source_count,
+        first,
+    );
+    for term in terms {
+        fill_external_momentum_term::<false, SOURCE_MAJOR>(
+            form_planes,
+            point_stride,
+            active_points,
+            external_four_momenta,
+            source_count,
+            term,
+        );
+    }
+}
+
+#[inline]
+fn fill_external_momentum_term<const INITIALIZE: bool, const SOURCE_MAJOR: bool>(
+    form_planes: &mut [f64],
+    point_stride: usize,
+    active_points: usize,
+    external_four_momenta: &[f64],
+    source_count: usize,
+    (external_slot, coefficient): (usize, f64),
+) {
+    let external_point_stride = source_count * 4;
+    for (component, plane) in form_planes.chunks_exact_mut(point_stride).enumerate() {
+        if SOURCE_MAJOR {
+            let input_start = (external_slot * 4 + component) * active_points;
+            for (value, source) in plane[..active_points]
+                .iter_mut()
+                .zip(&external_four_momenta[input_start..input_start + active_points])
+            {
+                if INITIALIZE {
+                    *value = 0.0 + coefficient * source;
+                } else {
+                    *value += coefficient * source;
+                }
+            }
+        } else {
+            let input_start = external_slot * 4 + component;
+            for (value, source) in plane[..active_points].iter_mut().zip(
+                external_four_momenta[input_start..]
+                    .iter()
+                    .step_by(external_point_stride),
+            ) {
+                if INITIALIZE {
+                    *value = 0.0 + coefficient * source;
+                } else {
+                    *value += coefficient * source;
+                }
+            }
+        }
+    }
 }
 
 fn validate_split_values(

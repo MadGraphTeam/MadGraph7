@@ -18,6 +18,7 @@ from pyamplicol._internal.versions import (
     SYMJIT_PLANE_APPLICATION_ABI,
 )
 from pyamplicol.generation.artifact_writer import (
+    _compiled_momentum_slot_ids,
     _prefix_evaluator_payload_paths,
     _stage_evaluator_set,
 )
@@ -147,6 +148,46 @@ def _stage(*, amplitude: bool = False) -> dict[str, object]:
         "blockers": [],
         "evaluator": evaluator,
     }
+
+
+def test_compiled_momentum_slot_selection_uses_whole_lane_leaf_inputs() -> None:
+    stage = _stage()
+    # The parent binding still mentions a momentum, but neither final chunk
+    # consumes it. It must not keep a dead momentum sum alive.
+    stage["evaluator"]["chunk_input_indices"] = [[0, 2], [0]]
+    stage["compiled_plane_arena"] = _compiled_plane_arena_stage(stage)
+    amplitude = _stage(amplitude=True)
+    amplitude["compiled_plane_arena"] = _compiled_plane_arena_stage(amplitude)
+    evaluators = {"stages": [stage], "amplitude_stage": amplitude}
+    assert _compiled_momentum_slot_ids(
+        evaluators, value_component_count=8, momentum_component_count=16
+    ) == [3]
+
+    # Every leaf in the prepared lane contributes, regardless of any runtime
+    # helicity/colour selection. Repeated bindings are retained only once.
+    stage["evaluator"]["chunk_input_indices"] = [[1, 2], [1]]
+    stage["input_components"][1]["global_component"] = 10
+    stage["input_components"][1]["source_id"] = 0
+    stage["compiled_plane_arena"] = _compiled_plane_arena_stage(stage)
+    assert _compiled_momentum_slot_ids(
+        evaluators, value_component_count=8, momentum_component_count=16
+    ) == [0, 3]
+    assert _compiled_momentum_slot_ids(
+        {"stages": [], "amplitude_stage": stage},
+        value_component_count=8,
+        momentum_component_count=16,
+    ) == [0]
+
+
+def test_compiled_momentum_slot_selection_rejects_out_of_range_input() -> None:
+    stage = _stage(amplitude=True)
+    stage["compiled_plane_arena"] = _compiled_plane_arena_stage(stage)
+    with pytest.raises(ValueError, match="outside momentum slots"):
+        _compiled_momentum_slot_ids(
+            {"stages": [], "amplitude_stage": stage},
+            value_component_count=8,
+            momentum_component_count=12,
+        )
 
 
 def _native_leaf(

@@ -17,7 +17,7 @@ use crate::recurrence::direct_plan::{
     DirectSourceRow, DirectSourceStateAssignment,
 };
 use crate::recurrence::direct_runtime::{
-    DIRECT_RUNTIME_ARENA_ALIGNMENT, DirectRecurrenceExecutionRuntime,
+    DIRECT_RUNTIME_ARENA_ALIGNMENT, DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput,
     DirectRuntimeActivityCounters, replay_cache_split_complex_scalar_count,
 };
 use crate::recurrence::exact::{ExactComplexRational, ExactRational};
@@ -1906,6 +1906,272 @@ fn a_reused_source_slot_is_cleared_before_the_later_current_accumulates() {
     let output = runtime.execute_tile(1).unwrap();
     assert_eq!(output.destination_re(0).unwrap(), &[16.0]);
     assert_eq!(output.destination_im(0).unwrap(), &[12.0]);
+}
+
+#[test]
+fn external_momentum_planes_keep_bitwise_term_order_and_untouched_padding() {
+    let values = [0.0, -0.0, 1.0e16, 1.0, -1.0e16, f64::MIN_POSITIVE, -3.5];
+    for source_count in [1, 2, 5] {
+        for active_points in [1, 3, 4, 7, 8, 9, 31, 128] {
+            let point_stride = active_points + 8;
+            let external = (0..active_points * source_count * 4)
+                .map(|index| values[index % values.len()])
+                .collect::<Vec<_>>();
+            let mut external_planes = vec![0.0; external.len()];
+            for source in 0..source_count {
+                for component in 0..4 {
+                    for point in 0..active_points {
+                        external_planes[(source * 4 + component) * active_points + point] =
+                            external[(point * source_count + source) * 4 + component];
+                    }
+                }
+            }
+            for reverse in [false, true] {
+                // Repeated sources deliberately exercise non-associative
+                // cancellation: the new loop may not reorder any terms.
+                let terms = [(0, 1_i32), (source_count - 1, -2), (0, -1)];
+                for term_count in 0..=terms.len() {
+                    let mut observed = vec![17.0; 4 * point_stride];
+                    let permutation = |slot| {
+                        if reverse {
+                            source_count - 1 - slot
+                        } else {
+                            slot
+                        }
+                    };
+                    let sign = |slot| if reverse && slot % 2 == 0 { -1_i32 } else { 1 };
+                    super::fill_momentum_form_from_external::<false>(
+                        &mut observed,
+                        point_stride,
+                        active_points,
+                        &external,
+                        source_count,
+                        terms[..term_count].iter().map(|&(slot, coefficient)| {
+                            (
+                                permutation(slot),
+                                f64::from(coefficient) * f64::from(sign(slot)),
+                            )
+                        }),
+                    );
+                    let mut observed_planes = vec![17.0; 4 * point_stride];
+                    super::fill_momentum_form_from_external::<true>(
+                        &mut observed_planes,
+                        point_stride,
+                        active_points,
+                        &external_planes,
+                        source_count,
+                        terms[..term_count].iter().map(|&(slot, coefficient)| {
+                            (
+                                permutation(slot),
+                                f64::from(coefficient) * f64::from(sign(slot)),
+                            )
+                        }),
+                    );
+                    assert_eq!(
+                        observed
+                            .iter()
+                            .map(|value| value.to_bits())
+                            .collect::<Vec<_>>(),
+                        observed_planes
+                            .iter()
+                            .map(|value| value.to_bits())
+                            .collect::<Vec<_>>()
+                    );
+                    for component in 0..4 {
+                        for point in 0..active_points {
+                            let mut expected = 0.0_f64;
+                            for &(slot, coefficient) in &terms[..term_count] {
+                                let source =
+                                    (point * source_count + permutation(slot)) * 4 + component;
+                                expected += f64::from(coefficient)
+                                    * f64::from(sign(slot))
+                                    * external[source];
+                            }
+                            assert_eq!(
+                                observed[component * point_stride + point].to_bits(),
+                                expected.to_bits(),
+                                "sources={source_count}, points={active_points}, reverse={reverse}, terms={term_count}, component={component}, point={point}"
+                            );
+                        }
+                        assert!(
+                            observed[component * point_stride + active_points
+                                ..(component + 1) * point_stride]
+                                .iter()
+                                .all(|&value| value == 17.0)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn external_momentum_planes_profiled_and_unprofiled_execution_match_point_major() {
+    fn bits(output: DirectRecurrenceTileOutput<'_>) -> (Vec<u64>, Vec<u64>) {
+        (
+            output
+                .storage_re()
+                .iter()
+                .map(|value| value.to_bits())
+                .collect(),
+            output
+                .storage_im()
+                .iter()
+                .map(|value| value.to_bits())
+                .collect(),
+        )
+    }
+    for contracted in [false, true] {
+        let (base, _) = synthetic_plan_and_executors();
+        let mut parts = base.into_parts();
+        if contracted {
+            parts.strategy = RecurrenceStrategy::ContractedColorUnion;
+        }
+        parts.replay_momentum_signs = vec![-1, 1, 1, -1];
+        let plan = DirectRecurrencePlan::new(parts).unwrap();
+        let executors = DirectExecutorCatalog::new(
+            &plan,
+            plan.direct_template_catalog_digest(),
+            direct_executor_handles(),
+        )
+        .unwrap();
+        let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+        runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+        for count in [4, 3, 1, 4] {
+            let point_major = (0..count * 8)
+                .map(|index| {
+                    if index % 7 == 0 {
+                        -0.0
+                    } else {
+                        index as f64 + 0.25
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut planes = vec![0.0; point_major.len()];
+            for source in 0..2 {
+                for component in 0..4 {
+                    for point in 0..count {
+                        planes[(source * 4 + component) * count + point] =
+                            point_major[(point * 2 + source) * 4 + component];
+                    }
+                }
+            }
+            for flow in 0..2 {
+                let selector = runtime.prepare_replay_selector(flow).unwrap();
+                let expected = bits(if contracted {
+                    runtime
+                        .execute_contracted_tile_from_external(count as u32, &point_major)
+                        .unwrap()
+                } else {
+                    runtime
+                        .execute_replay_tile_from_external(&selector, count as u32, &point_major)
+                        .unwrap()
+                });
+                let profiled = bits(if contracted {
+                    runtime
+                        .execute_contracted_tile_from_external_planes::<true>(count as u32, &planes)
+                        .unwrap()
+                } else {
+                    runtime
+                        .execute_replay_tile_from_external_planes::<true>(
+                            &selector,
+                            count as u32,
+                            &planes,
+                        )
+                        .unwrap()
+                });
+                assert_eq!(profiled, expected);
+                let before_unprofiled = runtime.activity_counters();
+                let unprofiled = bits(if contracted {
+                    runtime
+                        .execute_contracted_tile_from_external_planes::<false>(
+                            count as u32,
+                            &planes,
+                        )
+                        .unwrap()
+                } else {
+                    runtime
+                        .execute_replay_tile_from_external_planes::<false>(
+                            &selector,
+                            count as u32,
+                            &planes,
+                        )
+                        .unwrap()
+                });
+                assert_eq!(unprofiled, expected);
+                assert_eq!(runtime.activity_counters(), before_unprofiled);
+            }
+        }
+    }
+}
+
+#[test]
+fn external_momentum_fill_crossings_and_identity_preserve_bits_across_tile_tails() {
+    let (base, _) = synthetic_plan_and_executors();
+    let mut parts = base.into_parts();
+    parts.strategy = RecurrenceStrategy::ContractedColorUnion;
+    parts.point_tile_size = 9;
+    parts.momentum_terms[1].coefficient = -2;
+    parts.replay_momentum_signs = vec![-1, 1, 1, -1];
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    let selectors = [
+        runtime.prepare_replay_selector(0).unwrap(),
+        runtime.prepare_replay_selector(1).unwrap(),
+    ];
+    let values = [-0.0, 0.0, 1.0e16, 1.0, -1.0e16, f64::MIN_POSITIVE];
+    for point_count in [9, 7, 1, 9, 3] {
+        let external = (0..point_count as usize * 8)
+            .map(|index| values[index % values.len()])
+            .collect::<Vec<_>>();
+        for selector in [Some(&selectors[0]), Some(&selectors[1]), None] {
+            if let Some(selector) = selector {
+                runtime
+                    .fill_momenta_from_external_unprofiled(selector, point_count, &external)
+                    .unwrap();
+            } else {
+                runtime
+                    .fill_identity_momenta_from_external::<true, false>(point_count, &external)
+                    .unwrap();
+            }
+            let stride = runtime.point_stride() as usize;
+            for component in 0..4 {
+                for point in 0..point_count as usize {
+                    let mut expected = 0.0_f64;
+                    for term in runtime.plan.momentum_terms() {
+                        let slot = term.source_slot as usize;
+                        let (external_slot, coefficient) =
+                            selector.map_or((slot, f64::from(term.coefficient)), |selector| {
+                                (
+                                    selector.source_permutation[slot] as usize,
+                                    f64::from(term.coefficient)
+                                        * f64::from(selector.source_momentum_signs[slot]),
+                                )
+                            });
+                        expected +=
+                            coefficient * external[(point * 2 + external_slot) * 4 + component];
+                    }
+                    assert_eq!(
+                        runtime.momenta.as_slice()[component * stride + point].to_bits(),
+                        expected.to_bits()
+                    );
+                }
+                assert!(
+                    runtime.momenta.as_slice()[component * stride + point_count as usize
+                        ..component * stride + runtime.point_tile_size() as usize]
+                        .iter()
+                        .all(|value| value.to_bits() == 0.0_f64.to_bits())
+                );
+            }
+        }
+    }
 }
 
 #[test]

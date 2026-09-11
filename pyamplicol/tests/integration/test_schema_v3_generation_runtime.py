@@ -7,7 +7,7 @@ import os
 import shutil
 import warnings
 from collections.abc import Iterator
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -721,6 +721,11 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
             encoding="utf-8"
         )
     )
+    # The final Zg kernels need internal momenta but not every canonical slot.
+    # Exercise genuine pruning, including nonzero retained global slot offsets.
+    live_momenta = execution["compiled"]["momentum_slot_ids"]
+    assert 0 < len(live_momenta) < len(execution["runtime_schema"]["momentum_slots"])
+    assert live_momenta != list(range(len(live_momenta)))
     stages = execution["compiled"]["stage_evaluators"]
     evaluator_manifests = [
         *(stage["evaluator"] for stage in stages["stages"]),
@@ -770,6 +775,15 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
         *final_state,
     )
     mixed_batch = (momenta[0], alternate, momenta[0])
+    oracle = runtime.evaluate(mixed_batch, precision=80)
+    double_double = runtime.evaluate(
+        mixed_batch, arithmetic="double-double", precision=31
+    )
+    with localcontext() as context:
+        context.prec = 90
+        for value, reference in zip(double_double, oracle, strict=True):
+            assert reference > 0
+            assert abs(value - reference) / reference < Decimal("1e-27")
     assert runtime.evaluate(mixed_batch) == pytest.approx(
         Runtime.load(artifact).evaluate(mixed_batch),
         rel=1.0e-13,

@@ -3056,6 +3056,13 @@ def _compiled_execution_lane_manifest(
         "model_parameter_evaluator": serialized_model_parameters,
         "stage_evaluators": stage_evaluators,
     }
+    if COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY in required_runtime_capabilities:
+        layout = _mapping(runtime_schema["parameter_layout"])
+        compiled_manifest["momentum_slot_ids"] = _compiled_momentum_slot_ids(
+            stage_evaluators,
+            value_component_count=int(layout["value_component_count"]),
+            momentum_component_count=int(layout["momentum_parameter_count"]),
+        )
     topology_replay = runtime_schema.get("lc_topology_replay")
     if topology_replay is not None:
         compiled_manifest["lc_topology_replay"] = _plain_mapping(
@@ -3086,6 +3093,39 @@ def _compiled_execution_lane_manifest(
         ),
         "runtime_schema": _execution_plan(runtime_schema),
     }
+
+
+def _compiled_momentum_slot_ids(
+    stage_evaluators: Mapping[str, object],
+    *,
+    value_component_count: int,
+    momentum_component_count: int,
+) -> list[int]:
+    """Retain the union needed by every final compiled leaf in this lane.
+
+    Chunk input maps are final here. Keep canonical momentum-slot numbering
+    and the complete lane's coverage, independently of runtime selectors.
+    """
+    live: set[int] = set()
+    stages = (
+        *_sequence(stage_evaluators["stages"]),
+        stage_evaluators["amplitude_stage"],
+    )
+    for raw_stage in stages:
+        direct = _mapping(_mapping(raw_stage)["compiled_plane_arena"])
+        bindings = _sequence(direct["input_bindings"])
+        for raw_leaf in _sequence(direct["leaves"]):
+            for raw_index in _sequence(_mapping(raw_leaf)["input_indices"]):
+                binding = _mapping(bindings[int(raw_index)])
+                if binding["kind"] != "momentum":
+                    continue
+                component = int(binding["global_component"]) - value_component_count
+                if not 0 <= component < momentum_component_count:
+                    raise ValueError(
+                        "compiled momentum input is outside momentum slots"
+                    )
+                live.add(component // 4)
+    return sorted(live)
 
 
 def _prefix_evaluator_payload_paths(

@@ -1106,7 +1106,7 @@ impl RecurrenceNativeRuntime {
             let tile_stop =
                 (tile_start + self.effective_point_tile_size()).min(batch.point_count());
             let point_count =
-                self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                self.flatten_external_tile_view::<false>(batch.subview(tile_start, tile_stop)?)?;
             self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
             let input_len = self.external_tile_input_len(point_count)?;
             let point_count_u32 = direct_point_count(point_count)?;
@@ -1179,7 +1179,7 @@ impl RecurrenceNativeRuntime {
         while tile_start < batch.len() {
             let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
             let input_started = Instant::now();
-            let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+            let point_count = self.flatten_external_tile::<false>(&batch[tile_start..tile_stop])?;
             input_setup += input_started.elapsed();
             self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
             let input_len = self.external_tile_input_len(point_count)?;
@@ -1486,7 +1486,7 @@ impl RecurrenceNativeRuntime {
             let tile_stop =
                 (tile_start + self.effective_point_tile_size()).min(batch.point_count());
             let point_count =
-                self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
             let input_len = self.external_tile_input_len(point_count)?;
             let (replay_selector, direct_helicity_to_physics) = match &self.selectors {
                 RecurrenceNativeSelectors::TopologyReplay {
@@ -1506,7 +1506,7 @@ impl RecurrenceNativeRuntime {
             let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
             let direct_output = self
                 .scheduler
-                .execute_replay_tile_from_external_unprofiled(
+                .execute_replay_tile_from_external_planes::<false>(
                     replay_selector,
                     direct_point_count(point_count)?,
                     &self.external_momenta[..input_len],
@@ -1578,7 +1578,7 @@ impl RecurrenceNativeRuntime {
                 let tile_stop =
                     (tile_start + self.effective_point_tile_size()).min(batch.point_count());
                 let point_count =
-                    self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                    self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
                 let input_len = self.external_tile_input_len(point_count)?;
                 let destination_by_public_flow = match &self.selectors {
                     RecurrenceNativeSelectors::AllFlowUnion {
@@ -1588,11 +1588,13 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::TopologyReplay { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
-                let direct_output = self.scheduler.execute_union_tile_from_external_unprofiled(
-                    &selector,
-                    direct_point_count(point_count)?,
-                    &self.external_momenta[..input_len],
-                )?;
+                let direct_output = self
+                    .scheduler
+                    .execute_union_tile_from_external_planes::<false>(
+                        &selector,
+                        direct_point_count(point_count)?,
+                        &self.external_momenta[..input_len],
+                    )?;
 
                 for color_index in 0..physics.manifest.color_components.len() {
                     if !physics.color_is_computed(color_index)
@@ -1651,7 +1653,7 @@ impl RecurrenceNativeRuntime {
             let tile_stop =
                 (tile_start + self.effective_point_tile_size()).min(batch.point_count());
             let point_count =
-                self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
+                self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
             let input_len = self.external_tile_input_len(point_count)?;
             self.execute_and_contract_contracted_tile(
                 point_count,
@@ -1726,7 +1728,8 @@ impl RecurrenceNativeRuntime {
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
-                let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+                let point_count =
+                    self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
                 external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
@@ -1752,15 +1755,17 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
                 let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
-                let output = self.scheduler.execute_replay_tile_from_external(
-                    replay_selector,
-                    u32::try_from(point_count).map_err(|_| {
-                        RusticolError::invalid_argument(
-                            "recurrence point tile exceeds the native u32 ABI",
-                        )
-                    })?,
-                    &self.external_momenta[..input_len],
-                )?;
+                let output = self
+                    .scheduler
+                    .execute_replay_tile_from_external_planes::<true>(
+                        replay_selector,
+                        u32::try_from(point_count).map_err(|_| {
+                            RusticolError::invalid_argument(
+                                "recurrence point tile exceeds the native u32 ABI",
+                            )
+                        })?,
+                        &self.external_momenta[..input_len],
+                    )?;
 
                 let reduction_started = Instant::now();
                 for destination_id in output.selected_destination_ids() {
@@ -1881,7 +1886,8 @@ impl RecurrenceNativeRuntime {
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
-                let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+                let point_count =
+                    self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
                 external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
@@ -1907,15 +1913,17 @@ impl RecurrenceNativeRuntime {
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
                 let replay_selector = selected_replay.as_deref().unwrap_or(replay_selector);
-                let output = self.scheduler.execute_replay_tile_from_external(
-                    replay_selector,
-                    u32::try_from(point_count).map_err(|_| {
-                        RusticolError::invalid_argument(
-                            "recurrence point tile exceeds the native u32 ABI",
-                        )
-                    })?,
-                    &self.external_momenta[..input_len],
-                )?;
+                let output = self
+                    .scheduler
+                    .execute_replay_tile_from_external_planes::<true>(
+                        replay_selector,
+                        u32::try_from(point_count).map_err(|_| {
+                            RusticolError::invalid_argument(
+                                "recurrence point tile exceeds the native u32 ABI",
+                            )
+                        })?,
+                        &self.external_momenta[..input_len],
+                    )?;
 
                 let reduction_started = Instant::now();
                 for destination_id in output.selected_destination_ids() {
@@ -2040,7 +2048,7 @@ impl RecurrenceNativeRuntime {
         while tile_start < batch.len() {
             let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
             let flatten_started = Instant::now();
-            let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+            let point_count = self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
             external_momentum_flatten += flatten_started.elapsed();
             let input_len = self.external_tile_input_len(point_count)?;
             reduction += self.execute_and_contract_contracted_tile(
@@ -2153,7 +2161,7 @@ impl RecurrenceNativeRuntime {
         while tile_start < batch.len() {
             let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
             let flatten_started = Instant::now();
-            let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+            let point_count = self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
             external_momentum_flatten += flatten_started.elapsed();
             let input_len = self.external_tile_input_len(point_count)?;
             reduction += self.execute_and_contract_contracted_tile(
@@ -2233,7 +2241,8 @@ impl RecurrenceNativeRuntime {
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
-                let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+                let point_count =
+                    self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
                 external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
@@ -2243,15 +2252,17 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let output = self.scheduler.execute_union_tile_from_external(
-                    &selector,
-                    u32::try_from(point_count).map_err(|_| {
-                        RusticolError::invalid_argument(
-                            "recurrence point tile exceeds the native u32 ABI",
-                        )
-                    })?,
-                    &self.external_momenta[..input_len],
-                )?;
+                let output = self
+                    .scheduler
+                    .execute_union_tile_from_external_planes::<true>(
+                        &selector,
+                        u32::try_from(point_count).map_err(|_| {
+                            RusticolError::invalid_argument(
+                                "recurrence point tile exceeds the native u32 ABI",
+                            )
+                        })?,
+                        &self.external_momenta[..input_len],
+                    )?;
 
                 let reduction_started = Instant::now();
                 for (color_index, destination_id) in color_destinations.iter().copied() {
@@ -2351,7 +2362,8 @@ impl RecurrenceNativeRuntime {
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
                 let flatten_started = Instant::now();
-                let point_count = self.flatten_external_tile(&batch[tile_start..tile_stop])?;
+                let point_count =
+                    self.flatten_external_tile::<true>(&batch[tile_start..tile_stop])?;
                 external_momentum_flatten += flatten_started.elapsed();
                 let input_len = point_count
                     .checked_mul(self.external_source_count)
@@ -2361,15 +2373,17 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let output = self.scheduler.execute_union_tile_from_external(
-                    &selector,
-                    u32::try_from(point_count).map_err(|_| {
-                        RusticolError::invalid_argument(
-                            "recurrence point tile exceeds the native u32 ABI",
-                        )
-                    })?,
-                    &self.external_momenta[..input_len],
-                )?;
+                let output = self
+                    .scheduler
+                    .execute_union_tile_from_external_planes::<true>(
+                        &selector,
+                        u32::try_from(point_count).map_err(|_| {
+                            RusticolError::invalid_argument(
+                                "recurrence point tile exceeds the native u32 ABI",
+                            )
+                        })?,
+                        &self.external_momenta[..input_len],
+                    )?;
 
                 let reduction_started = Instant::now();
                 for (color_position, color_index, destination_id) in
@@ -2481,7 +2495,14 @@ impl RecurrenceNativeRuntime {
         )
     }
 
-    fn flatten_external_tile(&mut self, batch: &[Vec<[f64; 4]>]) -> RusticolResult<usize> {
+    // The ordinary direct scheduler consumes contiguous source/component
+    // planes. Persisted-helicity companion entrypoints retain their existing
+    // point-major contract by requesting SOURCE_MAJOR=false. Both layouts use
+    // the same preallocated workspace and the same single input-copy pass.
+    fn flatten_external_tile<const SOURCE_MAJOR: bool>(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+    ) -> RusticolResult<usize> {
         let point_count = batch.len();
         for point in batch {
             if point.len() != self.external_source_count {
@@ -2500,15 +2521,20 @@ impl RecurrenceNativeRuntime {
         )?;
         for (point_index, point) in batch.iter().enumerate() {
             for (source_slot, momentum) in point.iter().enumerate() {
-                let start =
-                    (point_index * self.external_source_count + source_slot) * momentum.len();
-                self.external_momenta[start..start + 4].copy_from_slice(momentum);
+                write_external_momentum::<SOURCE_MAJOR>(
+                    &mut self.external_momenta,
+                    point_count,
+                    self.external_source_count,
+                    point_index,
+                    source_slot,
+                    momentum,
+                );
             }
         }
         Ok(point_count)
     }
 
-    fn flatten_external_tile_view(
+    fn flatten_external_tile_view<const SOURCE_MAJOR: bool>(
         &mut self,
         batch: F64MomentumBatchView<'_>,
     ) -> RusticolResult<usize> {
@@ -2534,8 +2560,14 @@ impl RecurrenceNativeRuntime {
                         "validated recurrence momentum view is missing an external leg",
                     )
                 })?;
-                let start = (point_index * self.external_source_count + source_slot) * 4;
-                self.external_momenta[start..start + 4].copy_from_slice(&momentum);
+                write_external_momentum::<SOURCE_MAJOR>(
+                    &mut self.external_momenta,
+                    point_count,
+                    self.external_source_count,
+                    point_index,
+                    source_slot,
+                    &momentum,
+                );
             }
         }
         Ok(point_count)
@@ -2608,10 +2640,11 @@ impl RecurrenceNativeRuntime {
 
         if replay_routes.is_empty() {
             let direct_output = if profiled {
-                scheduler.execute_contracted_tile_from_external(point_count_u32, input)?
+                scheduler
+                    .execute_contracted_tile_from_external_planes::<true>(point_count_u32, input)?
             } else {
                 scheduler
-                    .execute_contracted_tile_from_external_unprofiled(point_count_u32, input)?
+                    .execute_contracted_tile_from_external_planes::<false>(point_count_u32, input)?
             };
             let reduction_started = profiled.then(Instant::now);
             contract_color_tile(
@@ -2642,13 +2675,13 @@ impl RecurrenceNativeRuntime {
         let mut replay_output_copy = Duration::ZERO;
         for route in replay_routes {
             let direct_output = if profiled {
-                scheduler.execute_replay_tile_from_external(
+                scheduler.execute_replay_tile_from_external_planes::<true>(
                     &route.selector,
                     point_count_u32,
                     input,
                 )?
             } else {
-                scheduler.execute_replay_tile_from_external_unprofiled(
+                scheduler.execute_replay_tile_from_external_planes::<false>(
                     &route.selector,
                     point_count_u32,
                     input,
@@ -2821,6 +2854,25 @@ fn external_momentum_scalar_len(
         .ok_or_else(|| {
             RusticolError::invalid_argument("recurrence external-momentum tile length overflows")
         })
+}
+
+#[inline]
+fn write_external_momentum<const SOURCE_MAJOR: bool>(
+    output: &mut [f64],
+    point_count: usize,
+    source_count: usize,
+    point: usize,
+    source: usize,
+    momentum: &[f64; 4],
+) {
+    if SOURCE_MAJOR {
+        for (component, &value) in momentum.iter().enumerate() {
+            output[(source * 4 + component) * point_count + point] = value;
+        }
+    } else {
+        let start = (point * source_count + source) * 4;
+        output[start..start + 4].copy_from_slice(momentum);
+    }
 }
 
 fn ensure_external_momentum_workspace_capacity(
@@ -4573,6 +4625,111 @@ mod replay_destination_helicity_tests {
 
         ensure_symmetric_group_color_workspace_capacity(&mut workspace, reducer, 2).unwrap();
         assert_eq!(workspace.as_ref().unwrap().lane_capacity(), 3);
+    }
+
+    #[test]
+    fn recurrence_external_planes_match_nested_contiguous_and_crossed_views() {
+        let source_count = 3;
+        let values = (0..7 * source_count * 4)
+            .map(|index| {
+                if index % 9 == 0 {
+                    -0.0
+                } else {
+                    index as f64 + 0.5
+                }
+            })
+            .collect::<Vec<_>>();
+        let crossing = [
+            InputCrossingMapEntry {
+                target_index: 0,
+                source_index: 2,
+                sign: -1.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 1,
+                source_index: 0,
+                sign: 1.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 2,
+                source_index: 1,
+                sign: -1.0,
+            },
+        ];
+        for lookup in [None, Some(crossing.as_slice())] {
+            let contiguous = F64MomentumBatchView::from_contiguous_prevalidated(
+                &values,
+                7,
+                source_count,
+                lookup,
+            )
+            .unwrap();
+            let nested = contiguous.materialize_nested();
+            let nested_view = F64MomentumBatchView::from_nested(&nested, source_count).unwrap();
+            for (start, stop) in [(0, 7), (2, 6), (6, 7)] {
+                let count = stop - start;
+                let mut expected = vec![0.0_f64; source_count * 4 * count];
+                for source in 0..source_count {
+                    for component in 0..4 {
+                        for point in 0..count {
+                            expected[(source * 4 + component) * count + point] =
+                                nested[start + point][source][component];
+                        }
+                    }
+                }
+                for view in [contiguous, nested_view] {
+                    let view = view.subview(start, stop).unwrap();
+                    let mut source_major = vec![17.0; expected.len() + 8];
+                    let mut point_major = vec![17.0; expected.len() + 8];
+                    for point in 0..count {
+                        for source in 0..source_count {
+                            let momentum = view.point(point).momentum(source).unwrap();
+                            write_external_momentum::<true>(
+                                &mut source_major,
+                                count,
+                                source_count,
+                                point,
+                                source,
+                                &momentum,
+                            );
+                            write_external_momentum::<false>(
+                                &mut point_major,
+                                count,
+                                source_count,
+                                point,
+                                source,
+                                &momentum,
+                            );
+                            assert_eq!(
+                                point_major[(point * source_count + source) * 4
+                                    ..(point * source_count + source + 1) * 4],
+                                momentum
+                            );
+                        }
+                    }
+                    assert_eq!(
+                        source_major[..expected.len()]
+                            .iter()
+                            .map(|value| value.to_bits())
+                            .collect::<Vec<_>>(),
+                        expected
+                            .iter()
+                            .map(|value| value.to_bits())
+                            .collect::<Vec<_>>()
+                    );
+                    assert!(
+                        source_major[expected.len()..]
+                            .iter()
+                            .all(|&value| value == 17.0)
+                    );
+                    assert!(
+                        point_major[expected.len()..]
+                            .iter()
+                            .all(|&value| value == 17.0)
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -131,12 +131,27 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
              do not form one complete execution contract",
         ));
     }
+    let momentum_slot_ids = manifest.compiled.momentum_slot_ids.as_deref().ok_or_else(|| {
+        RusticolError::compatibility(
+            "compiled execution omits generation-time momentum-slot selection; regenerate the artifact",
+        )
+    })?;
+    validate_sorted_unique_ids(
+        momentum_slot_ids,
+        manifest.runtime_schema.momentum_slots.len(),
+        "compiled momentum-slot ids",
+    )?;
     for (position, stage) in all_stages.into_iter().enumerate() {
         validate_compiled_plane_arena_stage(
             stage,
             position == stages.stages.len(),
             manifest.runtime_schema.value_storage.component_count,
             manifest.runtime_schema.amplitude_stage.output_count,
+            manifest
+                .runtime_schema
+                .parameter_layout
+                .momentum_parameter_count,
+            momentum_slot_ids,
         )?;
     }
     Ok(true)
@@ -147,6 +162,8 @@ fn validate_compiled_plane_arena_stage(
     is_amplitude: bool,
     value_component_count: usize,
     amplitude_component_count: usize,
+    momentum_component_count: usize,
+    momentum_slot_ids: &[usize],
 ) -> RusticolResult<()> {
     let direct = stage.compiled_plane_arena.as_ref().ok_or_else(|| {
         RusticolError::integrity("compiled plane-arena fused stage has no direct bindings")
@@ -388,6 +405,27 @@ fn validate_compiled_plane_arena_stage(
                 "compiled plane-arena stage {:?} leaf bindings disagree with its source payload",
                 stage.evaluator_label
             )));
+        }
+        for &input_index in &binding.input_indices {
+            let input = direct.input_bindings.get(input_index).ok_or_else(|| {
+                RusticolError::integrity("compiled leaf input index is outside its bindings")
+            })?;
+            if input.kind == "momentum" {
+                let component = input
+                    .global_component
+                    .checked_sub(value_component_count)
+                    .filter(|component| *component < momentum_component_count)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled leaf momentum input is outside momentum planes",
+                        )
+                    })?;
+                if momentum_slot_ids.binary_search(&(component / 4)).is_err() {
+                    return Err(RusticolError::integrity(
+                        "compiled momentum-slot selection omits a leaf input",
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -3423,6 +3461,7 @@ impl ExecutionRuntime {
         validate_helicity_selector_executions(&manifest)?;
         validate_color_selector_executions(&manifest)?;
         let compiled_plane_arena = validate_compiled_plane_arena_contract(&manifest)?;
+        let compiled_momentum_slot_ids = manifest.compiled.momentum_slot_ids.take();
         ensure_execution_capabilities_supported(&manifest)?;
         let helicity_sum_manifest = manifest.helicity_sum_execution.take();
         let helicity_selector_manifests =
@@ -3449,6 +3488,16 @@ impl ExecutionRuntime {
         drop(replay_materialized_sector_ids);
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
         let mut runtime = Self::from_manifest(manifest)?;
+        if compiled_plane_arena {
+            // These ids were selected at generation and checked alongside
+            // the final leaf bindings above. Loading only binds that list;
+            // it does not rediscover which momentum sums are live.
+            runtime.momentum_slots = compiled_momentum_slot_ids
+                .expect("validated compiled momentum-slot selection")
+                .into_iter()
+                .map(|id| runtime.momentum_slots[id].clone())
+                .collect();
+        }
         runtime.helicity_recurrence = helicity_recurrence;
         runtime.compiled_color_execution_plan = compiled_color_execution_plan;
         let sizing_physics = if let Some(reduction) = runtime.physics_reduction_override.as_ref() {
@@ -4236,6 +4285,7 @@ mod compiled_plane_arena_contract_tests {
             SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             crate::artifact::tests::direct_evaluator_manifest("evaluators/direct.symjit"),
         );
+        value["compiled"]["momentum_slot_ids"] = json!([0, 1, 2]);
         let stage = &mut value["compiled"]["stage_evaluators"]["amplitude_stage"];
         stage["parameter_layout"] = json!("stage-local-value-momentum");
         stage["input_components"] = Value::Array((0..14).map(source_binding).collect());
@@ -4311,6 +4361,28 @@ mod compiled_plane_arena_contract_tests {
 
     fn arena_manifest() -> ExecutionManifest {
         arena_manifest_at(3)
+    }
+
+    #[test]
+    fn compiled_momentum_slot_selection_is_required_and_covers_final_inputs() {
+        let mut manifest = arena_manifest();
+        assert!(validate_compiled_plane_arena_contract(&manifest).unwrap());
+        manifest.compiled.momentum_slot_ids = None;
+        assert!(
+            validate_compiled_plane_arena_contract(&manifest)
+                .unwrap_err()
+                .message()
+                .contains("regenerate")
+        );
+        for ids in [
+            vec![0, 1],
+            vec![0, 0, 1, 2],
+            vec![2, 1, 0],
+            vec![0, 1, 2, 3],
+        ] {
+            manifest.compiled.momentum_slot_ids = Some(ids);
+            assert!(validate_compiled_plane_arena_contract(&manifest).is_err());
+        }
     }
 
     #[test]

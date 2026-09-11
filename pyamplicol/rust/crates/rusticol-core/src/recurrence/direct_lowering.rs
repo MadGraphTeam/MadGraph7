@@ -7,6 +7,7 @@
 //! descriptors and direct-arena rows; it does not construct or invoke a
 //! prepared runtime backend.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::arena::{DirectArenaLayout, recurrence_direct_arena_layout};
@@ -407,6 +408,210 @@ fn order_contributions_for_runtime_fanout(drafts: &mut [ContributionDraft]) {
             draft.semantic_contribution_id,
         )
     });
+}
+
+/// Temporary generation-time locality information. Only the resulting row
+/// order is persisted: loading or selecting helicities does not run this pass.
+#[derive(Debug)]
+struct FixedHelicityDemands {
+    word_count: usize,
+    words: Vec<u64>,
+}
+
+impl FixedHelicityDemands {
+    fn current(&self, current_id: u32) -> &[u64] {
+        let start = current_id as usize * self.word_count;
+        &self.words[start..start + self.word_count]
+    }
+}
+
+fn fixed_helicity_demands(
+    current_count: usize,
+    helicity_count: usize,
+    contributions: &[ContributionDraft],
+    seeds: impl Iterator<Item = (u32, u32)>,
+) -> RusticolResult<FixedHelicityDemands> {
+    let word_count = helicity_count.div_ceil(64);
+    let scalar_count = current_count
+        .checked_mul(word_count)
+        .ok_or_else(|| invalid("fixed-helicity locality mask size overflows usize"))?;
+    let mut demands = FixedHelicityDemands {
+        word_count,
+        words: vec![0; scalar_count],
+    };
+    for (current_id, helicity_id) in seeds {
+        if current_id as usize >= current_count || helicity_id as usize >= helicity_count {
+            return Err(invalid(
+                "fixed-helicity locality seed is outside the program",
+            ));
+        }
+        demands.words[current_id as usize * word_count + helicity_id as usize / 64] |=
+            1_u64 << (helicity_id % 64);
+    }
+
+    // Use the actual lowered edges, including certified numerical copies, not
+    // the original source-state ancestry. Flat linked row lists avoid making
+    // a second collection of all parent IDs or allocating one list per current.
+    let mut first_contribution = vec![usize::MAX; current_count];
+    let mut next_contribution = vec![usize::MAX; contributions.len()];
+    for (row_id, draft) in contributions.iter().enumerate() {
+        let result = draft.semantic_result_current_id as usize;
+        if result >= current_count {
+            return Err(invalid(
+                "fixed-helicity locality result is outside the program",
+            ));
+        }
+        let parents = draft
+            .semantic_parent_current_ids
+            .get(..usize::from(draft.semantic_parent_count))
+            .ok_or_else(|| invalid("fixed-helicity locality parent count is invalid"))?;
+        if parents.iter().any(|&parent| {
+            parent as usize > result
+                || (parent as usize == result
+                    && draft.row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0)
+        }) {
+            return Err(invalid(
+                "fixed-helicity locality requires topologically ordered current dependencies",
+            ));
+        }
+        next_contribution[row_id] = first_contribution[result];
+        first_contribution[result] = row_id;
+    }
+    for result in (0..current_count).rev() {
+        let mut row_id = first_contribution[result];
+        let (earlier, current_and_later) = demands.words.split_at_mut(result * word_count);
+        let result_words = &current_and_later[..word_count];
+        while row_id != usize::MAX {
+            let draft = &contributions[row_id];
+            for &parent in
+                &draft.semantic_parent_current_ids[..usize::from(draft.semantic_parent_count)]
+            {
+                // A certified zero current may keep a self-copy row. It
+                // introduces no additional dependency or demanded helicity.
+                if parent as usize == result {
+                    continue;
+                }
+                let start = parent as usize * word_count;
+                for (word, demanded) in earlier[start..start + word_count]
+                    .iter_mut()
+                    .zip(result_words)
+                {
+                    *word |= *demanded;
+                }
+            }
+            row_id = next_contribution[row_id];
+        }
+    }
+    Ok(demands)
+}
+
+fn topology_replay_helicity_demands(
+    program: &RecurrenceProgram,
+    contributions: &[ContributionDraft],
+) -> RusticolResult<Option<FixedHelicityDemands>> {
+    if program.strategy() != RecurrenceStrategy::TopologyReplay
+        || program.resolved_helicities().len() <= 1
+        || program
+            .amplitude_destinations()
+            .iter()
+            .any(|destination| destination.target_helicity_id().is_none())
+    {
+        return Ok(None);
+    }
+    let seeds = program.closure_terms().iter().flat_map(|closure| {
+        let helicity = program.amplitude_destinations()[closure.target_destination_id() as usize]
+            .target_helicity_id()
+            .expect("validated topology-replay destinations specify their helicity");
+        closure
+            .parent_current_ids()
+            .iter()
+            .map(move |&current| (current, helicity))
+    });
+    fixed_helicity_demands(
+        program.currents().len(),
+        program.resolved_helicities().len(),
+        contributions,
+        seeds,
+    )
+    .map(Some)
+}
+
+/// Improve selected-helicity locality without splitting an existing reusable
+/// parent-input class. This follows the ordinary fanout ordering and leaves
+/// each class's exact-factor/destination order intact. Same-stage certified
+/// copies are left in their existing order to preserve copy dependencies.
+fn order_contributions_for_helicity_locality(
+    drafts: &mut [ContributionDraft],
+    demands: &FixedHelicityDemands,
+) {
+    let mut group_start = 0;
+    while group_start < drafts.len() {
+        let first = &drafts[group_start];
+        let primary = (first.stage, first.executor_id, first.row.selector_domain_id);
+        let mut group_end = group_start + 1;
+        while group_end < drafts.len() {
+            let next = &drafts[group_end];
+            if (next.stage, next.executor_id, next.row.selector_domain_id) != primary {
+                break;
+            }
+            group_end += 1;
+        }
+        let group = &mut drafts[group_start..group_end];
+        if primary.1 != DIRECT_NONE_U32
+            && !group
+                .iter()
+                .any(|draft| draft.row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+        {
+            let mut blocks = Vec::new();
+            let mut start = 0;
+            while start < group.len() {
+                let first = &group[start];
+                let key = contribution_fanout_order_key_parts(
+                    u32::from(first.stage),
+                    first.executor_id,
+                    first.row,
+                );
+                let mut end = start + 1;
+                while end < group.len()
+                    && contribution_fanout_order_key_parts(
+                        u32::from(group[end].stage),
+                        group[end].executor_id,
+                        group[end].row,
+                    ) == key
+                {
+                    end += 1;
+                }
+                let mut support = Cow::Borrowed(demands.current(first.semantic_result_current_id));
+                for draft in &group[start + 1..end] {
+                    let next = demands.current(draft.semantic_result_current_id);
+                    if support.as_ref() != next {
+                        for (word, demanded) in support.to_mut().iter_mut().zip(next) {
+                            *word |= *demanded;
+                        }
+                    }
+                }
+                blocks.push((start..end, support));
+                start = end;
+            }
+            // Preserve the original repeated-input-before-singleton policy.
+            // Stable sorting retains the old order within equal support masks.
+            if !blocks.is_sorted_by(|left, right| {
+                (left.0.len() == 1, &left.1) <= (right.0.len() == 1, &right.1)
+            }) {
+                blocks.sort_by(|left, right| {
+                    (left.0.len() == 1)
+                        .cmp(&(right.0.len() == 1))
+                        .then_with(|| left.1.cmp(&right.1))
+                });
+                let reordered = blocks
+                    .iter()
+                    .flat_map(|(range, _)| group[range.clone()].iter().copied())
+                    .collect::<Vec<_>>();
+                group.copy_from_slice(&reordered);
+            }
+        }
+        group_start = group_end;
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1263,29 +1468,46 @@ fn build_direct_parts(
         relation_options,
     )?;
 
-    source_drafts.sort_by_key(|draft| {
-        (
-            draft.stage,
-            draft.executor_id,
-            draft.row.selector_domain_id,
-            draft.semantic_current_id,
-        )
+    let helicity_demands = topology_replay_helicity_demands(program, &contribution_drafts)?;
+    source_drafts.sort_by(|left, right| {
+        (left.stage, left.executor_id, left.row.selector_domain_id)
+            .cmp(&(right.stage, right.executor_id, right.row.selector_domain_id))
+            .then_with(|| {
+                helicity_demands
+                    .as_ref()
+                    .map_or(std::cmp::Ordering::Equal, |demands| {
+                        demands
+                            .current(left.semantic_current_id)
+                            .cmp(demands.current(right.semantic_current_id))
+                    })
+            })
+            .then_with(|| left.semantic_current_id.cmp(&right.semantic_current_id))
     });
     order_contributions_for_runtime_fanout(&mut contribution_drafts);
+    if let Some(demands) = &helicity_demands {
+        order_contributions_for_helicity_locality(&mut contribution_drafts, demands);
+    }
     let mut initialized_currents = BTreeSet::new();
     for draft in &mut contribution_drafts {
         if initialized_currents.insert(draft.semantic_result_current_id) {
             draft.row.flags |= DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION;
         }
     }
-    finalization_drafts.sort_by_key(|draft| {
-        (
-            draft.stage,
-            draft.executor_id,
-            draft.row.selector_domain_id,
-            draft.semantic_current_id,
-        )
+    finalization_drafts.sort_by(|left, right| {
+        (left.stage, left.executor_id, left.row.selector_domain_id)
+            .cmp(&(right.stage, right.executor_id, right.row.selector_domain_id))
+            .then_with(|| {
+                helicity_demands
+                    .as_ref()
+                    .map_or(std::cmp::Ordering::Equal, |demands| {
+                        demands
+                            .current(left.semantic_current_id)
+                            .cmp(demands.current(right.semantic_current_id))
+                    })
+            })
+            .then_with(|| left.semantic_current_id.cmp(&right.semantic_current_id))
     });
+    drop(helicity_demands);
     // Destination ownership is primary. Each destination retains exactly one
     // contiguous closure range; executor changes create additional row groups.
     closure_drafts.sort_by_key(|draft| {

@@ -462,6 +462,7 @@ impl EagerExecutionManifest {
                 color_topology_replay: None,
                 model_parameter_evaluator: None,
                 stage_evaluators: None,
+                momentum_slot_ids: None,
             },
             dag_summary: self.dag_summary.clone(),
             materialization_census,

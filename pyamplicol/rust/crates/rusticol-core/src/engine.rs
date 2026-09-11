@@ -511,6 +511,7 @@ struct EvaluatorSetManifest {
     color_topology_replay: Option<ColorTopologyReplayManifest>,
     model_parameter_evaluator: Option<GenericModelParameterEvaluatorManifest>,
     stage_evaluators: Option<GenericStageEvaluatorArtifactsManifest>,
+    momentum_slot_ids: Option<Vec<usize>>,
 }
 
 #[derive(Deserialize)]
@@ -530,6 +531,8 @@ struct EvaluatorSetManifestWire {
     #[serde(default)]
     model_parameter_evaluator: Option<GenericModelParameterEvaluatorManifest>,
     stage_evaluators: Option<GenericStageEvaluatorArtifactsManifest>,
+    #[serde(default)]
+    momentum_slot_ids: Option<Vec<usize>>,
 }
 
 impl<'de> Deserialize<'de> for EvaluatorSetManifest {
@@ -547,6 +550,7 @@ impl<'de> Deserialize<'de> for EvaluatorSetManifest {
             color_topology_replay: wire.color_topology_replay,
             model_parameter_evaluator: wire.model_parameter_evaluator,
             stage_evaluators: wire.stage_evaluators,
+            momentum_slot_ids: wire.momentum_slot_ids,
         })
     }
 }
@@ -3237,6 +3241,8 @@ struct ExecutionRuntime {
     color_selector_runtimes: BTreeMap<i64, Box<ExecutionRuntime>>,
     runtime_unavailable_message: Option<String>,
     sources: Vec<GenericSourceRecordManifest>,
+    // Iterable fill list, not indexed by canonical momentum-slot ID. Compiled
+    // lanes retain only generated live slots, with their global offsets intact.
     momentum_slots: Vec<GenericMomentumSlotManifest>,
     external_is_initial: Vec<bool>,
     particle_masses: BTreeMap<i32, f64>,

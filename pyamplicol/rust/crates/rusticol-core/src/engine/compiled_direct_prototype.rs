@@ -870,57 +870,62 @@ impl CompiledDirectEnginePrototype {
             let (current_re, current_im, _, _) = self.arena.split_slices_mut();
             let scratch = &mut self.source_wavefunction_scratch;
             for (source_index, source) in sources.iter().enumerate() {
+                let start = source.value_slot.component_start;
+                let stop = source.value_slot.component_stop;
+                let dimension = stop.checked_sub(start).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena source component range underflows",
+                    )
+                })?;
+                if dimension == 0 || stop > self.value_component_count || dimension > scratch.len()
+                {
+                    return Err(RusticolError::integrity(format!(
+                        "compiled Direct-Arena source {} has an invalid component range",
+                        source.source_id
+                    )));
+                }
+                let physical_components = &self.current_layout.physical_map()[start..stop];
+                if physical_components
+                    .iter()
+                    .any(|&component| component >= self.current_layout.physical_component_count)
+                {
+                    return Err(RusticolError::integrity(format!(
+                        "compiled Direct-Arena source {} has an unmapped component",
+                        source.source_id
+                    )));
+                }
+                let runtime_state = source_states.map(|states| &states[source_index]);
+                let factor = runtime_state.map_or(c64(1.0, 0.0), |state| state.factor);
+                if factor == c64(0.0, 0.0) {
+                    for &component in physical_components {
+                        let target = component as usize * stride;
+                        current_re[target..target + point_count].fill(0.0);
+                        current_im[target..target + point_count].fill(0.0);
+                    }
+                    continue;
+                }
+                let state = runtime_state.map_or_else(
+                    || &self.default_source_states[source_index],
+                    |state| &state.state,
+                );
+                let output = &mut scratch[..dimension];
                 for point_index in 0..point_count {
                     let point = batch.point(point_index);
-                    let start = source.value_slot.component_start;
-                    let stop = source.value_slot.component_stop;
-                    let dimension = stop.checked_sub(start).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "compiled Direct-Arena source component range underflows",
-                        )
-                    })?;
-                    if dimension == 0
-                        || stop > self.value_component_count
-                        || dimension > scratch.len()
-                    {
-                        return Err(RusticolError::integrity(format!(
-                            "compiled Direct-Arena source {} has an invalid component range",
-                            source.source_id
-                        )));
-                    }
-                    let output = &mut scratch[..dimension];
-                    if let Some(runtime_state) = source_states.map(|states| &states[source_index]) {
-                        if runtime_state.factor == c64(0.0, 0.0) {
-                            output.fill(c64(0.0, 0.0));
-                        } else {
-                            ExecutionRuntime::write_source_wavefunction_with_state(
-                                source,
-                                &runtime_state.state,
-                                external_count,
-                                particle_masses,
-                                &point,
-                                output,
-                            )?;
-                            if runtime_state.factor != c64(1.0, 0.0) {
-                                for value in output.iter_mut() {
-                                    *value *= runtime_state.factor;
-                                }
-                            }
+                    ExecutionRuntime::write_source_wavefunction_with_state(
+                        source,
+                        state,
+                        external_count,
+                        particle_masses,
+                        &point,
+                        output,
+                    )?;
+                    if factor != c64(1.0, 0.0) {
+                        for value in output.iter_mut() {
+                            *value *= factor;
                         }
-                    } else {
-                        ExecutionRuntime::write_source_wavefunction_with_state(
-                            source,
-                            &self.default_source_states[source_index],
-                            external_count,
-                            particle_masses,
-                            &point,
-                            output,
-                        )?;
                     }
-                    for (offset, value) in output.iter().copied().enumerate() {
-                        let physical_component =
-                            self.current_layout.physical_component(start + offset)?;
-                        let target = physical_component as usize * stride + point_index;
+                    for (&component, value) in physical_components.iter().zip(output.iter()) {
+                        let target = component as usize * stride + point_index;
                         current_re[target] = value.re;
                         current_im[target] = value.im;
                     }
@@ -928,49 +933,14 @@ impl CompiledDirectEnginePrototype {
             }
         }
 
-        let momenta = self.momenta.as_mut_slice();
-        for slot in momentum_slots {
-            if slot.component_stop.checked_sub(slot.component_start) != Some(4)
-                || slot.component_stop > self.momentum_component_count
-            {
-                return Err(RusticolError::integrity(format!(
-                    "compiled Direct-Arena momentum slot {} has an invalid component range",
-                    slot.momentum_slot_id
-                )));
-            }
-            for point_index in 0..point_count {
-                let point = batch.point(point_index);
-                let mut momentum = [0.0; 4];
-                for label in &slot.external_labels {
-                    let external_index = label.checked_sub(1).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "compiled Direct-Arena momentum labels are one-based",
-                        )
-                    })?;
-                    let point_momentum = point.momentum(external_index).ok_or_else(|| {
-                        RusticolError::integrity(format!(
-                            "compiled Direct-Arena momentum slot {} references absent external leg {}",
-                            slot.momentum_slot_id, label
-                        ))
-                    })?;
-                    let sign = if *external_is_initial.get(external_index).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "compiled Direct-Arena external-side metadata is incomplete",
-                        )
-                    })? {
-                        -1.0
-                    } else {
-                        1.0
-                    };
-                    for (target, value) in momentum.iter_mut().zip(point_momentum) {
-                        *target += sign * value;
-                    }
-                }
-                for (offset, value) in momentum.into_iter().enumerate() {
-                    momenta[(slot.component_start + offset) * stride + point_index] = value;
-                }
-            }
-        }
+        fill_compiled_momentum_planes(
+            batch,
+            momentum_slots,
+            external_is_initial,
+            self.momentum_component_count,
+            stride,
+            self.momenta.as_mut_slice(),
+        )?;
         for (index, value) in model_parameter_values.iter().copied().enumerate() {
             self.parameter_re.as_mut_slice()[index] = value;
             self.parameter_im.as_mut_slice()[index] = 0.0;
@@ -983,7 +953,7 @@ impl CompiledDirectEnginePrototype {
         );
         self.traffic.momentum_fill_bytes = self.traffic.momentum_fill_bytes.saturating_add(
             point_count
-                .saturating_mul(self.momentum_component_count)
+                .saturating_mul(momentum_slots.len().saturating_mul(4))
                 .saturating_mul(std::mem::size_of::<f64>()) as u64,
         );
         self.traffic.parameter_fill_bytes = self.traffic.parameter_fill_bytes.saturating_add(
@@ -1575,6 +1545,84 @@ pub(crate) fn compiled_direct_symjit_supported(
         }
     }
     Ok(true)
+}
+
+/// Execute the momentum sums already recorded in the process output. Only
+/// the point loop is transposed: label order, crossings and the initial
+/// positive-zero addition remain identical to the scalar implementation.
+fn fill_compiled_momentum_planes(
+    batch: F64MomentumBatchView<'_>,
+    slots: &[GenericMomentumSlotManifest],
+    external_is_initial: &[bool],
+    component_count: usize,
+    stride: usize,
+    momenta: &mut [f64],
+) -> RusticolResult<()> {
+    let point_count = batch.point_count();
+    if stride < point_count || component_count.checked_mul(stride) != Some(momenta.len()) {
+        return Err(RusticolError::integrity(
+            "compiled Direct-Arena momentum plane shape is invalid",
+        ));
+    }
+    for slot in slots {
+        if slot.component_stop.checked_sub(slot.component_start) != Some(4)
+            || slot.component_stop > component_count
+        {
+            return Err(RusticolError::integrity(format!(
+                "compiled Direct-Arena momentum slot {} has an invalid component range",
+                slot.momentum_slot_id
+            )));
+        }
+        if slot.external_labels.is_empty() {
+            for component in slot.component_start..slot.component_stop {
+                let start = component * stride;
+                momenta[start..start + point_count].fill(0.0);
+            }
+            continue;
+        }
+        for (term, label) in slot.external_labels.iter().enumerate() {
+            let external_index = label.checked_sub(1).ok_or_else(|| {
+                RusticolError::integrity("compiled Direct-Arena momentum labels are one-based")
+            })?;
+            if external_index >= batch.external_count() {
+                return Err(RusticolError::integrity(format!(
+                    "compiled Direct-Arena momentum slot {} references absent external leg {}",
+                    slot.momentum_slot_id, label
+                )));
+            }
+            let sign = if *external_is_initial.get(external_index).ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena external-side metadata is incomplete",
+                )
+            })? {
+                -1.0
+            } else {
+                1.0
+            };
+            for component in 0..4 {
+                let start = (slot.component_start + component) * stride;
+                let output = &mut momenta[start..start + point_count];
+                if term == 0 {
+                    // Avoid a separate zero-fill pass, especially for the
+                    // common single-external-momentum slots.
+                    batch.accumulate_component_into::<false>(
+                        external_index,
+                        component,
+                        sign,
+                        output,
+                    )?;
+                } else {
+                    batch.accumulate_component_into::<true>(
+                        external_index,
+                        component,
+                        sign,
+                        output,
+                    )?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn canonical_source_layout(
@@ -2797,6 +2845,148 @@ fn append_component_bindings(
 
 #[cfg(all(test, feature = "f64-symjit"))]
 mod tests {
+    fn momentum_slot(start: usize, labels: &[usize]) -> GenericMomentumSlotManifest {
+        GenericMomentumSlotManifest {
+            momentum_slot_id: start / 4,
+            momentum_mask: 0,
+            external_labels: labels.to_vec(),
+            component_start: start,
+            component_stop: start + 4,
+            real_valued: true,
+        }
+    }
+
+    #[test]
+    fn compiled_momentum_planes_preserve_scalar_order_crossing_and_partial_tiles() {
+        let nested = (0..19)
+            .map(|point| {
+                let offset = point as f64;
+                vec![
+                    [1e16, -0.0, 3.0 + offset, -1e16],
+                    [-1e16, 0.0, 5.0 - offset, 1.0],
+                    [1.0, -0.0, -7.0, 1e16],
+                ]
+            })
+            .collect::<Vec<_>>();
+        let flat = nested
+            .iter()
+            .flatten()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let crossing = [
+            InputCrossingMapEntry {
+                target_index: 0,
+                source_index: 2,
+                sign: -1.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 1,
+                source_index: 0,
+                sign: 1.0,
+            },
+            InputCrossingMapEntry {
+                target_index: 2,
+                source_index: 1,
+                sign: -1.0,
+            },
+        ];
+        let views = [
+            F64MomentumBatchView::from_nested(&nested, 3).unwrap(),
+            F64MomentumBatchView::from_contiguous_prevalidated(&flat, 19, 3, None).unwrap(),
+            F64MomentumBatchView::from_contiguous_prevalidated(&flat, 19, 3, Some(&crossing))
+                .unwrap(),
+        ];
+        let slots = [
+            momentum_slot(0, &[1]),
+            momentum_slot(4, &[3, 1, 2]),
+            momentum_slot(8, &[3, 2, 1, 3]),
+            momentum_slot(16, &[]),
+        ];
+        let initial = [true, false, true];
+        let stride = 24;
+        let mut actual = vec![23.0_f64; 20 * stride];
+        let pointer = actual.as_ptr();
+        for view in views {
+            for count in [1, 17, 3, 1] {
+                let batch = view.subview(1, 1 + count).unwrap();
+                let mut expected = actual.clone();
+                for slot in &slots {
+                    for point_index in 0..count {
+                        let point = batch.point(point_index);
+                        let mut momentum = [0.0; 4];
+                        for &label in &slot.external_labels {
+                            let external = label - 1;
+                            let sign = if initial[external] { -1.0 } else { 1.0 };
+                            for (target, value) in
+                                momentum.iter_mut().zip(point.momentum(external).unwrap())
+                            {
+                                *target += sign * value;
+                            }
+                        }
+                        for (component, value) in momentum.into_iter().enumerate() {
+                            expected[(slot.component_start + component) * stride + point_index] =
+                                value;
+                        }
+                    }
+                }
+                fill_compiled_momentum_planes(batch, &slots, &initial, 20, stride, &mut actual)
+                    .unwrap();
+                assert_eq!(actual.as_ptr(), pointer);
+                for (&actual, expected) in actual.iter().zip(expected) {
+                    assert_eq!(actual.to_bits(), expected.to_bits());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compiled_momentum_planes_reject_invalid_generated_ranges_and_labels() {
+        let values = [0.0; 24];
+        let batch =
+            F64MomentumBatchView::from_contiguous_prevalidated(&values, 2, 3, None).unwrap();
+        let mut output = [0.0; 32];
+        let valid = momentum_slot(0, &[1]);
+        for slot in [
+            momentum_slot(8, &[1]),
+            momentum_slot(0, &[0]),
+            momentum_slot(0, &[4]),
+            GenericMomentumSlotManifest {
+                component_stop: 3,
+                ..valid.clone()
+            },
+            GenericMomentumSlotManifest {
+                component_stop: 0,
+                component_start: 4,
+                ..valid.clone()
+            },
+        ] {
+            assert!(
+                fill_compiled_momentum_planes(batch, &[slot], &[true; 3], 8, 4, &mut output,)
+                    .is_err()
+            );
+        }
+        assert!(
+            fill_compiled_momentum_planes(batch, &[valid.clone()], &[], 8, 4, &mut output,)
+                .is_err()
+        );
+        assert!(
+            fill_compiled_momentum_planes(
+                batch,
+                &[valid.clone()],
+                &[true; 3],
+                8,
+                4,
+                &mut output[..31],
+            )
+            .is_err()
+        );
+        assert!(
+            fill_compiled_momentum_planes(batch, &[valid], &[true; 3], 8, 1, &mut output[..8],)
+                .is_err()
+        );
+    }
+
     #[test]
     fn joint_selection_intersects_helicity_with_union_of_colors_in_leaf_order() {
         let schedule =

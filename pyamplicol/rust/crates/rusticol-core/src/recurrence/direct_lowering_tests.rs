@@ -1256,6 +1256,185 @@ fn contribution_fanout_order_uses_only_authenticated_kinematic_inputs() {
 }
 
 #[test]
+fn fixed_helicity_locality_follows_certified_reuse_and_multiple_mask_words() {
+    let mut copied = locality_draft(3, 5, &[4], 2, 0);
+    copied.executor_id = DIRECT_NONE_U32;
+    copied.row.flags = DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
+    let contributions = [
+        locality_draft(0, 2, &[0], 1, 0),
+        locality_draft(1, 3, &[1], 1, 0),
+        locality_draft(2, 4, &[2], 2, 0),
+        copied,
+        locality_draft(4, 6, &[3], 2, 0),
+    ];
+    let demands =
+        fixed_helicity_demands(8, 71, &contributions, [(5, 70), (6, 1), (4, 2)].into_iter())
+            .unwrap();
+    for id in [0, 2, 4] {
+        assert_eq!(demands.current(id), &[1 << 2, 1 << 6]);
+    }
+    assert_eq!(demands.current(5), &[0, 1 << 6]);
+    for id in [1, 3, 6] {
+        assert_eq!(demands.current(id), &[1 << 1, 0]);
+    }
+    assert_eq!(demands.current(7), &[0, 0]);
+
+    let mut zero_self_copy = locality_draft(5, 7, &[7], 2, 0);
+    zero_self_copy.executor_id = DIRECT_NONE_U32;
+    zero_self_copy.row.flags = DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
+    let zero_demand =
+        fixed_helicity_demands(8, 71, &[zero_self_copy], [(7, 70)].into_iter()).unwrap();
+    assert_eq!(zero_demand.current(7), &[0, 1 << 6]);
+    assert!(zero_demand.words[..7 * 2].iter().all(|&word| word == 0));
+
+    let repeated = fixed_helicity_demands(
+        8,
+        71,
+        &contributions,
+        [(4, 2), (6, 1), (5, 70), (5, 70)].into_iter(),
+    )
+    .unwrap();
+    assert_eq!(demands.words, repeated.words);
+    assert!(fixed_helicity_demands(8, 71, &contributions, [(5, 71)].into_iter()).is_err());
+    let mut invalid_copy = copied;
+    invalid_copy.semantic_parent_current_ids[0] = 7;
+    assert!(
+        fixed_helicity_demands(8, 71, &[invalid_copy], [(5, 70)].into_iter())
+            .unwrap_err()
+            .to_string()
+            .contains("topologically ordered")
+    );
+}
+
+fn locality_draft(
+    id: u32,
+    result: u32,
+    parents: &[u32],
+    stage: u16,
+    selector_domain_id: u32,
+) -> ContributionDraft {
+    let second = parents.get(1).copied().unwrap_or(DIRECT_NONE_U32);
+    ContributionDraft {
+        stage,
+        executor_id: 7,
+        semantic_contribution_id: id,
+        semantic_result_current_id: result,
+        semantic_parent_current_ids: [parents[0], second],
+        semantic_parent_count: parents.len() as u8,
+        row: DirectContributionRow {
+            parent0_component_base: parents[0],
+            parent1_component_base_or_sentinel: second,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: result,
+            exact_factor_id: id % 3,
+            selector_domain_id,
+            flags: 0,
+        },
+    }
+}
+
+#[test]
+fn fixed_helicity_locality_preserves_fanout_classes_rows_and_primary_groups() {
+    let mut drafts = vec![
+        locality_draft(0, 4, &[0], 1, 0),
+        locality_draft(1, 5, &[0], 1, 0),
+        locality_draft(2, 6, &[1], 1, 0),
+        locality_draft(3, 7, &[2], 1, 0),
+        locality_draft(4, 8, &[3], 1, 0),
+        locality_draft(5, 9, &[3], 1, 0),
+        locality_draft(6, 10, &[0], 1, 1),
+        locality_draft(7, 11, &[0], 2, 0),
+    ];
+    let demands = fixed_helicity_demands(
+        12,
+        5,
+        &drafts,
+        [
+            (4, 4),
+            (5, 0),
+            (6, 0),
+            (7, 1),
+            (8, 2),
+            (9, 2),
+            (10, 0),
+            (11, 0),
+        ]
+        .into_iter(),
+    )
+    .unwrap();
+    order_contributions_for_runtime_fanout(&mut drafts);
+    let original = drafts.clone();
+    order_contributions_for_helicity_locality(&mut drafts, &demands);
+    assert_eq!(
+        drafts
+            .iter()
+            .map(|draft| draft.semantic_result_current_id)
+            .collect::<Vec<_>>(),
+        // Intact repeated classes first, ordered by union demand: {2}, {0,4}.
+        // Singleton classes follow, ordered by their own demand: {0}, {1}.
+        vec![8, 9, 4, 5, 6, 7, 10, 11]
+    );
+    for pair in [&drafts[..2], &drafts[2..4]] {
+        assert_eq!(
+            contribution_fanout_order_key(&pair[0]),
+            contribution_fanout_order_key(&pair[1])
+        );
+    }
+    for draft in &drafts {
+        let before = original
+            .iter()
+            .find(|before| before.semantic_contribution_id == draft.semantic_contribution_id)
+            .unwrap();
+        assert_eq!(draft.row, before.row);
+        assert_eq!(draft.stage, before.stage);
+        assert_eq!(draft.executor_id, before.executor_id);
+        assert_eq!(
+            draft.semantic_parent_current_ids,
+            before.semantic_parent_current_ids
+        );
+    }
+    assert_eq!(drafts.len(), original.len());
+    let first_order = drafts
+        .iter()
+        .map(|draft| draft.semantic_contribution_id)
+        .collect::<Vec<_>>();
+    order_contributions_for_helicity_locality(&mut drafts, &demands);
+    assert_eq!(
+        first_order,
+        drafts
+            .iter()
+            .map(|draft| draft.semantic_contribution_id)
+            .collect::<Vec<_>>()
+    );
+    let mut repeated = original.clone();
+    order_contributions_for_helicity_locality(&mut repeated, &demands);
+    assert_eq!(
+        first_order,
+        repeated
+            .iter()
+            .map(|draft| draft.semantic_contribution_id)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn fixed_helicity_locality_does_not_reorder_same_stage_copies() {
+    let mut drafts = vec![
+        locality_draft(0, 4, &[2], 2, 0),
+        locality_draft(1, 5, &[4], 2, 0),
+    ];
+    for draft in &mut drafts {
+        draft.executor_id = DIRECT_NONE_U32;
+        draft.row.flags = DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE;
+    }
+    let demands = fixed_helicity_demands(6, 2, &drafts, [(4, 1), (5, 0)].into_iter()).unwrap();
+    order_contributions_for_helicity_locality(&mut drafts, &demands);
+    assert_eq!(drafts[0].semantic_result_current_id, 4);
+    assert_eq!(drafts[1].semantic_result_current_id, 5);
+}
+
+#[test]
 fn prepared_executor_ids_do_not_depend_on_process_encounter_order() {
     let templates = validated_template();
     let program = count_fixture_program(&templates, 4, 31, 34, 12, 1);
