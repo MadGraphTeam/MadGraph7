@@ -43,7 +43,7 @@ fn resolved_source_inputs_match_formula_bits_for_all_families_and_crossings() {
                 let state = GenericSourceStateIrManifest {
                     helicity,
                     chirality,
-                    spin_state: helicity,
+                    spin_state: GenericSourceSpinStateManifest::Scalar(helicity),
                 };
                 for phase in [[1.0, 0.0], [0.0, 1.0], [0.6, -0.8]] {
                     source.applied_crossing.phase = phase;
