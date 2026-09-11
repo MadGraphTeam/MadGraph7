@@ -1543,7 +1543,6 @@ pub(crate) fn compiled_direct_symjit_supported(
 /// Execute the momentum sums already recorded in the process output. Only
 /// the point loop is transposed: label order, crossings and the initial
 /// positive-zero addition remain identical to the scalar implementation.
-#[inline(always)]
 fn fill_compiled_momentum_planes(
     batch: F64MomentumBatchView<'_>,
     slots: &[GenericMomentumSlotManifest],
