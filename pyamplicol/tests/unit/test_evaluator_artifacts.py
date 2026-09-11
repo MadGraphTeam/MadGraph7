@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -124,6 +125,179 @@ def _jit_adapter(
         input_len=3,
         output_len=2,
     )
+
+
+def test_symjit_output_deferral_preserves_no_read_program_identity() -> None:
+    program = (
+        [
+            ("assign", ("temp", 0), ("param", 0)),
+            ("assign", ("out", 0), ("temp", 0)),
+            ("assign", ("out", 1), ("const", 0)),
+        ],
+        1,
+        [object()],
+    )
+
+    assert symbolica_adapters._defer_reused_symjit_outputs(program, 2) is program
+
+
+def test_symjit_output_deferral_preserves_overwrites_and_shared_outputs() -> None:
+    constants = [object()]
+    original = [
+        ("assign", ("temp", 1), ("param", 1)),
+        ("assign", ("out", 0), ("param", 0)),
+        ("assign", ("out", 1), ("out", 0)),
+        ("add", ("out", 0), [("out", 0), ("temp", 1)], 0),
+        ("assign", ("out", 2), ("const", 0)),
+        ("assign", ("out", 1), ("out", 0)),
+    ]
+    program = (original, 2, constants)
+
+    rewritten, temporary_count, rewritten_constants = (
+        symbolica_adapters._defer_reused_symjit_outputs(program, 3)
+    )
+
+    assert rewritten == [
+        ("assign", ("temp", 1), ("param", 1)),
+        ("assign", ("temp", 2), ("param", 0)),
+        ("assign", ("temp", 3), ("temp", 2)),
+        ("add", ("temp", 2), [("temp", 2), ("temp", 1)], 0),
+        ("assign", ("temp", 4), ("const", 0)),
+        ("assign", ("temp", 3), ("temp", 2)),
+        ("assign", ("out", 0), ("temp", 2)),
+        ("assign", ("out", 1), ("temp", 3)),
+        ("assign", ("out", 2), ("temp", 4)),
+    ]
+    assert temporary_count == 5
+    assert rewritten_constants is constants
+    assert original[1] == ("assign", ("out", 0), ("param", 0))
+    assert len(original) == 6
+
+
+@pytest.mark.parametrize(
+    ("instruction", "expected"),
+    [
+        (
+            ("mul", ("out", 1), [("param", 0), ("out", 0)], 1),
+            ("mul", ("temp", 1), [("param", 0), ("temp", 0)], 1),
+        ),
+        (
+            ("pow", ("out", 1), ("out", 0), -2, False),
+            ("pow", ("temp", 1), ("temp", 0), -2, False),
+        ),
+        (
+            ("powf", ("out", 1), ("param", 0), ("out", 0), True),
+            ("powf", ("temp", 1), ("param", 0), ("temp", 0), True),
+        ),
+        (
+            ("fun", ("out", 1), "sin", [], [("out", 0)], False),
+            ("fun", ("temp", 1), "sin", [], [("temp", 0)], False),
+        ),
+        (
+            ("join", ("out", 1), ("param", 0), ("out", 0), ("param", 1)),
+            ("join", ("temp", 1), ("param", 0), ("temp", 0), ("param", 1)),
+        ),
+    ],
+)
+def test_symjit_output_deferral_finds_all_rhs_slot_shapes(
+    instruction: tuple[object, ...], expected: tuple[object, ...]
+) -> None:
+    program = (
+        [("assign", ("out", 0), ("param", 0)), instruction],
+        0,
+        [],
+    )
+
+    rewritten, temporary_count, _constants = (
+        symbolica_adapters._defer_reused_symjit_outputs(program, 2)
+    )
+
+    assert rewritten[1] == expected
+    assert temporary_count == 2
+    assert rewritten[-2:] == [
+        ("assign", ("out", 0), ("temp", 0)),
+        ("assign", ("out", 1), ("temp", 1)),
+    ]
+
+
+def test_symjit_output_deferral_preserves_branch_labels_and_join() -> None:
+    # The condition is the only output read; unlike other instructions,
+    # if_else has no destination, and its label is not a list offset.
+    program = (
+        [
+            ("assign", ("out", 0), ("param", 0)),
+            ("if_else", ("out", 0), 17),
+            ("assign", ("temp", 0), ("param", 1)),
+            ("goto", 91),
+            ("label", 17),
+            ("assign", ("temp", 1), ("param", 2)),
+            ("label", 91),
+            ("join", ("out", 1), ("param", 0), ("temp", 0), ("temp", 1)),
+        ],
+        2,
+        [],
+    )
+
+    rewritten, temporary_count, _constants = (
+        symbolica_adapters._defer_reused_symjit_outputs(program, 2)
+    )
+
+    assert rewritten == [
+        ("assign", ("temp", 2), ("param", 0)),
+        ("if_else", ("temp", 2), 17),
+        *program[0][2:7],
+        ("join", ("temp", 3), ("param", 0), ("temp", 0), ("temp", 1)),
+        ("assign", ("out", 0), ("temp", 2)),
+        ("assign", ("out", 1), ("temp", 3)),
+    ]
+    assert temporary_count == 4
+
+
+def test_symjit_plane_export_uses_deferred_outputs_and_matching_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program = (
+        [
+            ("assign", ("out", 0), ("param", 0)),
+            ("assign", ("out", 1), ("out", 0)),
+        ],
+        0,
+        [],
+    )
+    expected = repr(
+        (
+            [
+                ("assign", ("temp", 0), ("param", 0)),
+                ("assign", ("temp", 1), ("temp", 0)),
+                ("assign", ("out", 0), ("temp", 0)),
+                ("assign", ("out", 1), ("temp", 1)),
+            ],
+            2,
+            [],
+        )
+    )
+    source = _FakeJITEvaluator()
+    monkeypatch.setattr(source, "get_instructions", lambda: program)
+    received: list[tuple[object, ...]] = []
+
+    def compile_plane(*args: object) -> bytes:
+        received.append(args)
+        return b"rewritten-plane"
+
+    monkeypatch.setattr(
+        _FakeRusticol,
+        "_compile_symjit_plane_application_v2",
+        staticmethod(compile_plane),
+    )
+
+    application, digest, _target = _jit_adapter(
+        source
+    )._export_symjit_plane_application(optimization_level=2)
+
+    assert received == [(expected, 3, 2, 2, False)]
+    assert application == b"rewritten-plane"
+    assert digest == hashlib.sha256(expected.encode()).hexdigest()
+    assert source.get_instructions() is program
 
 
 def test_jit_artifact_persists_direct_application_and_precision_fallback(

@@ -44,9 +44,9 @@ not attempt to parse or rewrite Rust source.
 ## Dependency Modes
 
 Release mode reads `dependencies/release-lock.toml` and accepts exact published
-package/crate versions plus SymJIT 2.22.0 from the official
+package/crate versions plus SymJIT 2.25.0 from the official
 `siravan/symjit-crate` repository at immutable revision
-`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. The release lock and canonical
+`f1c193d301897149de6609f706297b0c97a4f018`. The release lock and canonical
 `Cargo.lock` must name that same repository and full commit. Other Git, path,
 editable, floating, and candidate dependencies are forbidden.
 

@@ -46,6 +46,50 @@ from .symbolica_settings import (
 )
 
 
+def _defer_reused_symjit_outputs(program: Any, output_len: int) -> Any:
+    """Keep shared outputs in temporaries until the final output stores.
+
+    SymJIT 2.25 can inline an output's only internal use and then lose the
+    value needed by its final store. Symbolica legitimately reuses output
+    slots as scratch space. Renaming these slots preserves the instruction
+    order and arithmetic, while making their final uses explicit. This is
+    generation-only; programs without output reads are left unchanged.
+    """
+    instructions, temporary_count, constants = program
+
+    def is_output(value: Any) -> bool:
+        return isinstance(value, tuple) and len(value) == 2 and value[0] == "out"
+
+    def contains_output(value: Any) -> bool:
+        return is_output(value) or (
+            isinstance(value, (tuple, list))
+            and any(contains_output(item) for item in value)
+        )
+
+    # All value-producing instructions have their destination in position 1.
+    # The condition of if_else is a read, not a destination.
+    if not any(
+        contains_output(line[1:] if line[0] == "if_else" else line[2:])
+        for line in instructions
+    ):
+        return program
+
+    def rename(value: Any) -> Any:
+        if is_output(value):
+            return ("temp", temporary_count + value[1])
+        if isinstance(value, tuple):
+            return tuple(rename(item) for item in value)
+        if isinstance(value, list):
+            return [rename(item) for item in value]
+        return value
+
+    rewritten = [rename(line) for line in instructions]
+    rewritten.extend(
+        ("assign", ("out", i), ("temp", temporary_count + i)) for i in range(output_len)
+    )
+    return rewritten, temporary_count + output_len, constants
+
+
 class _JITSymbolicaEvaluatorAdapter:
     def __init__(
         self,
@@ -165,9 +209,7 @@ class _JITSymbolicaEvaluatorAdapter:
         evaluator_dir = _artifact_subdirectory(artifact_dir, "evaluators")
         unique = uuid.uuid4().hex
         application_path = evaluator_dir / f"{self.label}_{unique}.symjit"
-        plane_application_path = (
-            evaluator_dir / f"{self.label}_{unique}.plane.symjit"
-        )
+        plane_application_path = evaluator_dir / f"{self.label}_{unique}.plane.symjit"
         evaluator_state_path = evaluator_dir / f"{self.label}_{unique}.evaluator.bin"
         save_started = time.perf_counter()
         application, element_layout = self._export_symjit_application()
@@ -192,9 +234,7 @@ class _JITSymbolicaEvaluatorAdapter:
         build_timing = dict(self.build_timing)
         build_timing["jit_materialize_s"] = jit_compile_s
         build_timing["symjit_application_export_s"] = application_export_s
-        build_timing["symjit_plane_application_export_s"] = (
-            plane_application_export_s
-        )
+        build_timing["symjit_plane_application_export_s"] = plane_application_export_s
         build_timing["evaluator_save_s"] = evaluator_state_save_s
         build_timing["artifact_manifest_s"] = jit_compile_s + evaluator_save_s
         optimization_level = self._optimization_level()
@@ -278,7 +318,9 @@ class _JITSymbolicaEvaluatorAdapter:
                 "pyAmpliCol candidate dependency"
             )
         try:
-            program_repr = repr(instructions())
+            program_repr = repr(
+                _defer_reused_symjit_outputs(instructions(), self.output_len)
+            )
         except Exception as error:
             raise NativeEvaluationError(
                 "Symbolica could not export structured evaluator instructions "

@@ -33,8 +33,8 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 Publication uploads these already validated files without rebuilding them.
 
 Release dependencies include Symbolica 2.2.0 and the official
-[`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
-immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
+[`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.25.0 at
+immutable revision `f1c193d301897149de6609f706297b0c97a4f018`.
 
 ## 0.4.1 (unreleased)
 

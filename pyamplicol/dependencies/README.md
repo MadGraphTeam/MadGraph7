@@ -58,8 +58,8 @@ It installs the verified published `ufo-model-loader==0.1.7` wheel directly
 from the hash-locked runtime closure. Artifacts produced in this mode record
 the candidate revisions and are not eligible for PyPI publication.
 
-The contributor and release builds use SymJIT 2.22.0 at immutable upstream
-revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. Rusticol builds its plane-oriented
+The contributor and release builds use SymJIT 2.25.0 at immutable upstream
+revision `f1c193d301897149de6609f706297b0c97a4f018`. Rusticol builds its plane-oriented
 arena adapter from SymJIT's standard P-kernel interface and owns all
 pyAmpliCol-specific scheduling, factor, overwrite/accumulate, fanout, and
 artifact-binding policies. The pinned upstream P2 contract interprets scalar

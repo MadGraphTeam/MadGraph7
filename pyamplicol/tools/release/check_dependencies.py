@@ -241,15 +241,14 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
             )
         )
     if (
-        symjit.get("version") != "2.22.0"
-        or symjit.get("repository") != _SYMJIT_REPOSITORY
+        symjit.get("repository") != _SYMJIT_REPOSITORY
         or not isinstance(symjit.get("revision"), str)
         or _GIT_REVISION.fullmatch(str(symjit["revision"])) is None
     ):
         issues.append(
             GateIssue(
                 "symjit-source-contract",
-                "SymJIT must use the official 2.22.0 Git repository and an "
+                "SymJIT must use the official Git repository and an "
                 "immutable full revision",
             )
         )

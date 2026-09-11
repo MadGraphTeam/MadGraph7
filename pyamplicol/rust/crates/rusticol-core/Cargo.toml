@@ -31,6 +31,6 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 symbolica = { version = "=2.2.0", default-features = false, features = ["bincode", "gmp"], optional = true }
-symjit = { version = "=2.22.0", default-features = false, optional = true }
+symjit = { version = "=2.25.0", default-features = false, optional = true }
 thiserror.workspace = true
 wide.workspace = true

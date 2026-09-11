@@ -537,17 +537,35 @@ def _candidate_runtime_snapshot() -> capture.RuntimeSnapshot:
     )
 
 
-def test_dependency_snapshot_uses_compact_source_descriptors() -> None:
-    snapshot = provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
-    payloads = {str(payload["id"]): payload for payload in snapshot.payloads}
+def test_dependency_snapshot_uses_compact_source_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     symbolica_descriptor = {
         "url": "https://github.com/symbolica-dev/symbolica.git",
         "revision": "77c137481904b8a5531ede86e3ef36b82beed7fd",
     }
     symjit_descriptor = {
         "url": "https://github.com/siravan/symjit-crate.git",
-        "revision": "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7",
+        "revision": "f1c193d301897149de6609f706297b0c97a4f018",
     }
+    state_path = tmp_path / "install-state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": False,
+                "sources": {
+                    "symbolica": symbolica_descriptor,
+                    "symjit": symjit_descriptor,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(provenance, "INSTALL_STATE", state_path)
+    snapshot = provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
+    payloads = {str(payload["id"]): payload for payload in snapshot.payloads}
 
     assert payloads["dependency:symbolica"] == {
         "id": "dependency:symbolica",
@@ -561,7 +579,7 @@ def test_dependency_snapshot_uses_compact_source_descriptors() -> None:
     assert payloads["dependency:symjit"] == {
         "id": "dependency:symjit",
         "name": "Symjit",
-        "version": "2.22.0",
+        "version": "2.25.0",
         "revision": symjit_descriptor["revision"],
         "content_sha256": provenance.canonical_sha256(symjit_descriptor),
         "serialization_abi": "symjit-application-storage-v3",

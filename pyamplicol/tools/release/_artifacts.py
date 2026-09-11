@@ -1810,7 +1810,6 @@ def _release_sdist_symjit_contract(
             isinstance(symjit.get(field), str) and symjit[field]
             for field in _RELEASE_SYMJIT_FIELDS
         )
-        or symjit["version"] != "2.22.0"
         or re.fullmatch(r"[0-9a-f]{40}", symjit["revision"]) is None
     ):
         raise ArtifactError("sdist has an invalid immutable SymJIT source contract")

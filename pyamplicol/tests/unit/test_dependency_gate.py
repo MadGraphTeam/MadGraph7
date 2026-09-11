@@ -50,9 +50,9 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "repository",
         "revision",
     }
-    assert lock["symjit"]["version"] == "2.22.0"
+    assert lock["symjit"]["version"] == "2.25.0"
     assert lock["symjit"]["repository"] == "https://github.com/siravan/symjit-crate.git"
-    assert lock["symjit"]["revision"] == "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7"
+    assert lock["symjit"]["revision"] == "f1c193d301897149de6609f706297b0c97a4f018"
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
@@ -127,7 +127,7 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     for name in ("graphica", "numerica"):
         (checkouts / "symbolica" / "lib" / name).mkdir(parents=True)
     (checkouts / "symjit" / "Cargo.toml").write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
+        f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
     )
@@ -177,7 +177,7 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     }
 
     (checkouts / "symjit" / "Cargo.toml").write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
+        f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib", "cdylib"]\n',
         encoding="utf-8",
     )

@@ -343,7 +343,7 @@ Read the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyampli
 
 ## Dependencies and license
 
-Release builds use pinned published dependencies plus SymJIT 2.22.0 from an
+Release builds use pinned published dependencies plus SymJIT 2.25.0 from an
 immutable revision of the official
 [symjit-crate repository](https://github.com/siravan/symjit-crate).
 

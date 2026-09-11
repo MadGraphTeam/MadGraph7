@@ -204,9 +204,9 @@ def test_official_symjit_git_revision_is_pinned_without_local_patches() -> None:
     symjit = payload["symjit"]
 
     assert symjit == {
-        "version": "2.22.0",
+        "version": "2.25.0",
         "repository": "https://github.com/siravan/symjit-crate.git",
-        "revision": "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7",
+        "revision": "f1c193d301897149de6609f706297b0c97a4f018",
     }
     source = next(
         item

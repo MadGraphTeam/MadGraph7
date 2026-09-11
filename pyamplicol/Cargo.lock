@@ -1031,8 +1031,8 @@ dependencies = [
 
 [[package]]
 name = "symjit"
-version = "2.22.0"
-source = "git+https://github.com/siravan/symjit-crate.git?rev=d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7#d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7"
+version = "2.25.0"
+source = "git+https://github.com/siravan/symjit-crate.git?rev=f1c193d301897149de6609f706297b0c97a4f018#f1c193d301897149de6609f706297b0c97a4f018"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1041,6 +1041,7 @@ dependencies = [
  "lazy_static",
  "libc",
  "num-complex",
+ "num-rational",
  "num-traits",
  "rand",
  "rayon",
