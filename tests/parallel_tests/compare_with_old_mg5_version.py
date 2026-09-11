@@ -499,9 +499,11 @@ class OLDMG5Comparator(unittest.TestCase):
         """Test a short list of sm processes"""
         # Create a list of processes to check automatically                                                                                                                             
         my_proc_list = ['p p > t t~']
+        # previously PDF was nn23lo1 (lhaid 230000) with these reference values
+        # cross_P0_qq_ttx 0.65258E+02, cross_P0_gg_ttx 0.43817E+03
         values = {'number_of_P0': '2', 
-                  'cross_P0_qq_ttx': '0.65258E+02', 
-                  'cross_P0_gg_ttx': '0.43817E+03'}
+                  'cross_P0_qq_ttx': '69.125', 
+                  'cross_P0_gg_ttx': '313.474'}
 
         # Store list of non-zero processes and results in file
         self.compare_cross_section_to_values(values, my_proc_list,
@@ -521,8 +523,9 @@ class OLDMG5Comparator(unittest.TestCase):
         only the QCD-QED interference."""
         # Create a list of processes to check automatically                                                                                                                             
         my_proc_list = ['p p > j j']
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 62923
         values = {'number_of_P0': '1',
-                  'cross_P0_qq_qq': '62923'}
+                  'cross_P0_qq_qq': '54438.6'}
 
         # Store list of non-zero processes and results in file                                                                                                                          
         self.compare_cross_section_to_values(values, my_proc_list,
@@ -533,10 +536,12 @@ class OLDMG5Comparator(unittest.TestCase):
         """Test a short list of sm processes""" 
         my_proc_list = ['u j > W+ g', 'g g > W+ j j']
 
+        # previously PDF was nn23lo1 (lhaid 230000) with these reference values
+        # cross_P0_qq_wpg 2649.7, cross_P1_gg_wpqq 429.154316
         values = {'number_of_P0': '1', 
          'number_of_P1': '1', 
-         'cross_P0_qq_wpg': '2649.7', 
-         'cross_P1_gg_wpqq': '429.154316'}      
+         'cross_P0_qq_wpg': '2275.77', 
+         'cross_P1_gg_wpqq': '320.313'}      
         self.compare_cross_section_to_values(values, my_proc_list,
                              orders = {'QED':99, 'QCD':99},
                              filename = "short_cs_sm2.log")
@@ -545,8 +550,9 @@ class OLDMG5Comparator(unittest.TestCase):
         """Test a short list of sm processes""" 
         my_proc_list = ['g g > t t~, (t > b W+, W+ > e+ ve)']
 
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 0.41434E+02
         values =  {'number_of_P0': '1', 
-                   'cross_P0_gg_ttx_t_bwp_wp_lvl': '0.41434E+02'} 
+                   'cross_P0_gg_ttx_t_bwp_wp_lvl': '29.7255'} 
                   
         self.compare_cross_section_to_values(values, my_proc_list,
                              orders = {'QED':99, 'QCD':99},
@@ -582,7 +588,8 @@ class OLDMG5Comparator(unittest.TestCase):
         """Test a short list of sm processes""" 
         my_proc_list = ['g g > go go']
 
-        values = {'number_of_P0': '1', 'cross_P0_gg_gogo': '0.46066E+01'}
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 0.46066E+01
+        values = {'number_of_P0': '1', 'cross_P0_gg_gogo': '2.82562'}
         
         self.compare_cross_section_to_values(values, my_proc_list,
                              model='MSSM_SLHA2',

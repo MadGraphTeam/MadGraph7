@@ -2963,10 +2963,14 @@ set boost_choice [6, -6]
                 aux = data[i].strip("\t\n[]").split(",")
                 rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
             
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_user_interface(self):
@@ -3039,10 +3043,14 @@ set boost_choice [6, -6]
                         raise ValueError
             
 
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_ttbar(self):

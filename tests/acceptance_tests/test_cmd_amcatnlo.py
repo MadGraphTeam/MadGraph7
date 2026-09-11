@@ -792,10 +792,14 @@ class MECmdShell(IOTests.IOTestManager):
         #      Total cross-section: 1.249e+03 +- 3.2e+00 pb        
         cross_section = data[i+4]
         cross_section = float(cross_section.split(':')[1].split('+-')[0])
+        # previously PDF was nn23nlo (lhaid 244600) with this reference value 6675.0
+        # loop_sm gives the b a non-zero mass, so the NLO default here is the
+        # 4-flavour set NNPDF40_nlo_as_01180_nf_4 (lhaid 334700), matching the
+        # b-less proton MG5 already uses for this model.
         try:
-            self.assertAlmostEqual(6675.0, cross_section,delta=50)
+            self.assertAlmostEqual(6936.0, cross_section,delta=50)
         except TypeError:
-            self.assertTrue(cross_section < 6750.0 and cross_section > 6650.0)
+            self.assertTrue(cross_section < 7011.0 and cross_section > 6911.0)
 
         #      Number of events generated: 10000        
         self.assertIn('Number of events generated: 100', data[i+3])
