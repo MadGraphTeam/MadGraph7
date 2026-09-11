@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -426,7 +426,7 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
         # reference files by hand.
         text = " \nModifications performed by hand on %s at %s in"%(\
                          str(datetime.date.today()),misc.format_timer(0.0)[14:])
-        text += '\n   MadGraph5_aMC@NLO v. %(version)s, %(date)s\n'%misc.get_pkg_info()
+        text += '\n   MadGraph7 v. %(version)s, %(date)s\n'%misc.get_pkg_info()
         log = open(_hc_comparison_modif_log,mode='a')
         log.write(text)
         log.close()
@@ -557,7 +557,7 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
         text = colored%(34, " \nModifications performed on %s at %s in"%(\
                         str(datetime.date.today()),misc.format_timer(0.0)[14:]))
         text += colored%(34, 
-        '\n   MadGraph5_aMC@NLO v. %(version)s, %(date)s\n'%misc.get_pkg_info())
+        '\n   MadGraph7 v. %(version)s, %(date)s\n'%misc.get_pkg_info())
         for key in modifications.keys():
             if len(modifications[key])==0:
                 continue
@@ -1249,7 +1249,7 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
         pass
 
     if sys.platform == "darwin" and options.nosleep:
-        logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MG5aMC is running. Run './bin/madgraph -s' to prevent this.")
+        logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MadGraph7 is running. Run './bin/madgraph -s' to prevent this.")
         pid = os.getpid()
         subprocess.Popen(['caffeinate', '-i', '-w', str(pid)])
         
@@ -1258,7 +1258,7 @@ https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/DevelopmentPage/CodeTesting
     
     if options.synchronize and IOTestManager._compress_ref_fodler:
         print("The tarball synchronization is not necessary since"+ \
-          " MadGraph5_aMCatNLO is configured not to compress the references files.")
+          " MadGraph7 is configured not to compress the references files.")
     
     if options.IOTests=='No' and not options.synchronize:
         if not options.border_effect:

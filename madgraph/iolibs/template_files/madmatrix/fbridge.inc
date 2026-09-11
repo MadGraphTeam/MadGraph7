@@ -1,6 +1,6 @@
 C Copyright (C) 2020-2026 CERN and UCLouvain.
 C Licensed under the GNU Lesser General Public License (version 3 or later).
-C Created originally by: A. Valassi (Feb 2022) for the MG5aMC CUDACPP plugin.
+C Created originally by: A. Valassi (Feb 2022) for the MadGraph7 CUDACPP plugin.
 C Further modified by: D. Massaro, A. Thete, A. Valassi (2022-2026).
 C Integrated with the MadGraph7 project in Feb 2026.
 C

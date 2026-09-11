@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -2058,7 +2058,7 @@ class ReweightInterface(extended_cmd.Cmd):
         # deactivate golem since it creates troubles
         old_options = dict(mgcmd.options)
         if mgcmd.options['golem']:
-            logger.info(" When doing NLO reweighting, MG5aMC cannot use the loop reduction algorithms Golem")
+            logger.info(" When doing NLO reweighting, MadGraph7 cannot use the loop reduction algorithms Golem")
         mgcmd.options['golem'] = None            
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)

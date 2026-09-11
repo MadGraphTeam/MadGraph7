@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -24,18 +24,23 @@ output_type='default', or ExportCPPFactory) even though the amplitude is a
 LoopAmplitude and the matrix element a LoopHelasMatrixElement.
 
 Every format used to hand that loop matrix element to a tree-level exporter and
-die deep inside it -- 'output standalone' with an IndexError in write_check_sa,
-'output matrix' with "wavefunction_rank has not been computed", 'output mg7'
-with a KeyError on the first loop leg, which the mg7 exporter's edge-name map
-does not contain.  Two things were wrong:
+die deep inside it -- 'output standalone_fortran' with an IndexError in
+write_check_sa, 'output matrix' with "wavefunction_rank has not been computed",
+'output mg7' with a KeyError on the first loop leg, which the mg7 exporter's
+edge-name map does not contain.  Two things were wrong:
 
   * `HelasMatrixElement._flavor_enumeration_context` counted *every* motherless
     wavefunction as an external leg.  A LoopHelasMatrixElement's L-cut
     wavefunctions are motherless too, so `get_external_flavors()` returned
     tuples of length nexternal+2 -- which is what write_check_sa tripped over;
-  * the exporter itself was the tree-level one.  'standalone' is now routed to
-    the MadLoop standalone exporter (LOOP_INDUCED_FORMATS), joining 'madevent'
-    which has always had the LoopInducedExporterME* exporters.
+  * the exporter itself was the tree-level one.  'standalone_fortran' is now
+    routed to the MadLoop standalone exporter (LOOP_INDUCED_FORMATS), joining
+    'madevent' which has always had the LoopInducedExporterME* exporters.
+
+Mind the vocabulary: the format with the MadLoop backend is the *Fortran*
+standalone, which is spelled 'standalone_fortran' since the export formats were
+renamed.  Plain 'standalone' now names the MadMatrix (C++) output, which has no
+loop backend and must be refused like any other.
 
 The formats with no MadLoop backend at all still cannot serve the process, and
 refuse it up front pointing at [sqrvirt=...], which stays in the MadLoop
@@ -164,7 +169,7 @@ class TestLoopInducedOutput(unittest.TestCase):
     #===========================================================================
     # helpers
     #===========================================================================
-    def get_exporter(self, interface, format='standalone'):
+    def get_exporter(self, interface, format='standalone_fortran'):
         """The exporter ExportV4Factory picks for 'format'."""
 
         interface._export_format = format
@@ -199,7 +204,7 @@ class TestLoopInducedOutput(unittest.TestCase):
             "'output %s' silently accepted %s; no exporter for that format can "
             "write a LoopHelasMatrixElement" % (format, LOOP_INDUCED_PROCESS))
 
-    def assert_output_succeeds(self, process, format='standalone'):
+    def assert_output_succeeds(self, process, format='standalone_fortran'):
         """'output <format>' must go through, and write a MadLoop directory."""
 
         interface = get_interface(process)
@@ -213,7 +218,7 @@ class TestLoopInducedOutput(unittest.TestCase):
             '%s did not produce a MadLoop output' % process)
 
     #===========================================================================
-    # 'standalone' is served by the MadLoop standalone exporter
+    # 'standalone_fortran' is served by the MadLoop standalone exporter
     #===========================================================================
     def test_standalone_factory_uses_the_madloop_exporter(self):
         """ExportV4Factory must not hand a loop-induced process to the
@@ -236,8 +241,8 @@ class TestLoopInducedOutput(unittest.TestCase):
         self.assertFalse(isinstance(
             exporter, loop_exporters.LoopProcessExporterFortranSA))
 
-    def test_output_standalone_accepts_loop_induced(self):
-        """'output standalone' used to die with an IndexError in
+    def test_output_standalone_fortran_accepts_loop_induced(self):
+        """'output standalone_fortran' used to die with an IndexError in
         write_check_sa; it now writes a MadLoop standalone directory."""
 
         self.assert_output_succeeds(LOOP_INDUCED_PROCESS)
@@ -257,10 +262,14 @@ class TestLoopInducedOutput(unittest.TestCase):
     # ... the formats with no MadLoop backend refuse it
     #===========================================================================
     def test_loop_induced_formats_are_matched_exactly(self):
-        """'standalone' is a prefix of formats that have no loop backend; the
-        allow-list must never be tested with startswith."""
+        """The allow-list must never be tested with startswith.
 
-        for format in ['standalone_cpp', 'standalone_mg7', 'standalone_msP',
+        'standalone' is a prefix of the format that does have a loop backend
+        ('standalone_fortran') and it names the MadMatrix output, which does
+        not -- so a startswith test would get this exactly backwards.
+        """
+
+        for format in ['standalone', 'standalone_mg7', 'standalone_msP',
                        'standalone_msF', 'standalone_rw']:
             self.assertNotIn(format, export_v4.LOOP_INDUCED_FORMATS)
 
@@ -276,10 +285,16 @@ class TestLoopInducedOutput(unittest.TestCase):
 
         self.assert_output_refused('mg7')
 
-    def test_output_standalone_cpp_refuses_loop_induced(self):
-        """The prefix trap: standalone_cpp must not ride on 'standalone'."""
+    def test_output_standalone_refuses_loop_induced(self):
+        """The prefix trap: plain 'standalone' is the MadMatrix output.
 
-        self.assert_output_refused('standalone_cpp')
+        It must not ride on the 'standalone_fortran' entry of the allow-list.
+        While it did, it reached the mg7 exporter and died there with a
+        KeyError on the first loop leg -- the very crash the guard in
+        ExportCPPFactory exists to prevent.
+        """
+
+        self.assert_output_refused('standalone')
 
     def test_output_standalone_msP_refuses_loop_induced(self):
         """Same for the MadSpin standalone variants."""

@@ -77,6 +77,13 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         self.process = self.amplitude.get("process")
         self.legs = self.process.get("legs_with_decays")
         self.color_basis = self.matrix_element.get("color_basis")
+        # The basis a color flow is picked among: always the trace one, which
+        # is the color basis itself unless the color sum runs on the DDM basis.
+        # Everything indexing a color flow -- the color_flows table, the
+        # active_colors masks, icolamp -- has to use this one and not the
+        # (smaller) basis of the color sum.
+        self.color_flow_basis = self.color_basis.get_flow_basis() \
+                                if self.color_basis else self.color_basis
         self.set_subprocess_class()
         self.set_topology()
         self.set_flavor_indices()
@@ -226,6 +233,33 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             leg_sets.append(downstream)
         return leg_sets
 
+    def propagator_pdg(self, leg, leg_set):
+        """Signed pdg id of the internal line `leg`, oriented the way the
+        phase-space topology reads it: flowing away from the initial state.
+
+        Madgraph records, on the leg a vertex creates, the pdg of the line
+        flowing into the legs that were combined to make it -- `leg_set`.
+        That is already the decay orientation while those are all final
+        state, but a line holding *every* initial leg is the one madspace
+        roots the other way round: its decay products are the complementary
+        legs, so what belongs in the LHE is the anti-particle. Without this
+        the s-channel W+ of `p p > e+ ve` is written as a W- decaying to
+        e+ ve. A leg set holding only some of the initial legs is a
+        t-channel, which never becomes a decay and is left as madgraph put
+        it.
+
+        Only colour singlets actually depend on this: for a coloured line
+        lhe_output.cpp's compute_decay_color infers the orientation from the
+        colour flow and flips the pdg back itself.
+        """
+        part = self.model.get_particle(leg.get("id"))
+        if part.get("self_antipart"):
+            return part.get("pdg_code")
+        sign = 1 if part.get("is_part") else -1
+        if sum(1 for name in leg_set if name.startswith("i")) == self.n_initial:
+            sign = -sign
+        return sign * part.get("pdg_code")
+
     def diagram_propagator_pdgs(self, diagram, channel_leg_sets, sym_perm):
         """Signed pdg id of each internal line of `diagram`, reordered to
         match `channel_leg_sets` (the order used for
@@ -237,27 +271,26 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         pdg_by_leg_set = {}
         for i_vert, vertex in enumerate(diag_vertices[:-1]):
             legs = vertex.get("legs")
-            final_part = self.model.get_particle(legs[-1].get("id"))
-            sign = (
-                1
-                if final_part.get("is_part") or final_part.get("self_antipart") else
-                -1
+            pdg_by_leg_set[leg_sets[i_vert]] = self.propagator_pdg(
+                legs[-1], leg_sets[i_vert]
             )
-            pdg_by_leg_set[leg_sets[i_vert]] = sign * final_part.get("pdg_code")
         return [pdg_by_leg_set[leg_set] for leg_set in channel_leg_sets]
 
     def set_channels_colors_map(self):
         if self.color_basis:
+            # active_colors ends up in the icolamp mask, which is walked over
+            # the color flows, so it must be indexed on the flow basis
+            flow_basis = self.color_flow_basis
             diag_jamps = defaultdict(list)
             # Only leading-Nc jamps are planar-compatible with a diagram's own
             # topology; like export_v4's get_icolamp_lines, drop the rest.
             max_Nc = max(
                 v[4] - v[5]
-                for val in self.color_basis.values()
+                for val in flow_basis.values()
                 for v in val
             )
-            for ijamp, col_basis_elem in enumerate(sorted(self.color_basis.keys())):
-                for diag_tuple in self.color_basis[col_basis_elem]:
+            for ijamp, col_basis_elem in enumerate(sorted(flow_basis.keys())):
+                for diag_tuple in flow_basis[col_basis_elem]:
                     if diag_tuple[4] - diag_tuple[5] == max_Nc:
                         diag_jamps[diag_tuple[0]].append(ijamp)
 
@@ -304,12 +337,14 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             on_shell_propagators = []
             diagram_edge_names = dict(self.edge_names)
             diag_vertices = diagram.get("vertices")
+            # Index-aligned with `propagators`: both are filled in vertex-list
+            # order and both skip the closing vertex, which is the last one.
+            leg_sets = self.diagram_edge_leg_sets(diagram)
             for i_vert, vertex in enumerate(diag_vertices):
                 legs = vertex.get("legs")
                 # Last amplitude vertex does not create new edges
                 vertex_props = [diagram_edge_names[leg.get("number")] for leg in legs[:-1]]
 
-                final_part = self.model.get_particle(legs[-1].get("id"))
                 if i_vert == len(diag_vertices) - 1:
                     vertex_props.append(diagram_edge_names[legs[-1].get("number")])
                 else:
@@ -317,12 +352,9 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                     prop_name = f"p{prop_index}"
                     diagram_edge_names[legs[-1].get("number")] = prop_name
                     vertex_props.append(prop_name)
-                    sign = (
-                        1
-                        if final_part.get("is_part") or final_part.get("self_antipart") else
-                        -1
+                    propagators.append(
+                        self.propagator_pdg(legs[-1], leg_sets[prop_index])
                     )
-                    propagators.append(sign * final_part.get("pdg_code"))
                     if legs[-1].get("onshell"):
                         on_shell_propagators.append(prop_index)
                 vertices.append(vertex_props)
@@ -330,7 +362,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             chan_index = len(self.channels)
             self.diagram_tags.append([IdentifyTopologyTag(diagram, self.model)])
             channel_indices.append(chan_index)
-            channel_leg_sets.append(self.diagram_edge_leg_sets(diagram))
+            channel_leg_sets.append(leg_sets)
             self.channels.append(
                 {
                     "propagators": propagators,
@@ -369,8 +401,11 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 repr_dict[leg.get("number")] = self.model.get_particle(
                     leg.get("id")
                 ).get_color() * (-1) ** (1 + leg.get("state"))
-            # Get the list of color flows
-            color_flow_dicts = self.color_basis.color_flow_decomposition(repr_dict, n_initial)
+            # Get the list of color flows. This is about color flows, so
+            # always the trace basis, even when the color sum runs on the DDM
+            # one.
+            color_flow_dicts = self.color_flow_basis.\
+                               color_flow_decomposition(repr_dict, n_initial)
             # And output them properly
             color_flows = [
                 [[color_flow_dict[leg.get("number")][i] for i in [0, 1]] for leg in legs]
@@ -423,6 +458,20 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             for index, options in self.all_flavors_same_initial
         ]
 
+        # power of alpha_s in |M|^2 (the QCD coupling order of the amplitude),
+        # -1 when it differs between diagrams. The systematics computation uses
+        # it to rescale |M|^2 for renormalisation scale variations; never let
+        # its computation break the output.
+        qcd_orders = set()
+        try:
+            for diagram in self.helas_diagrams:
+                qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+        except Exception as error:
+            logger.debug('could not determine the QCD order: %s', error)
+            qcd_orders.add(None)
+        qcd_power = (qcd_orders.pop()
+                     if len(qcd_orders) == 1 and None not in qcd_orders else -1)
+
         return (
             {
                 "incoming": self.incoming,
@@ -431,6 +480,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 "me_path": lib_me_path,
                 "path": proc_dir,
                 "flavors": flavors,
+                "qcd_power": qcd_power,
                 "color_flows": color_flows,
                 "pdg_color_types": pdg_color_types,
                 "diagram_count": len(self.diagrams),

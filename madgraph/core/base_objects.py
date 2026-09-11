@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -2080,7 +2080,7 @@ class Model(PhysicsObject):
                 '%s particles with pdg code %s is in conflict with MG ' + \
                 'convention name for particle %s.\n Use -modelname in order ' + \
                 'to use the particles name defined in the model and not the ' + \
-                'MadGraph5_aMC@NLO convention'
+                'MadGraph7 convention'
                 
                 raise MadGraph5Error(error_text % \
                                      (part.get_name(), part.get_pdg_code(), pdg))                
@@ -2676,6 +2676,21 @@ class FLV_Coupling(PhysicsObject):
 #===============================================================================
 # Leg
 #===============================================================================
+def polarization_to_string(polarization):
+    """Render a leg 'polarization' list as the brace content of a process
+    string. The propagator-only entries (4,5,6,7,9,99) are printed as the
+    letters the parser understands ('G','H','Q','W','S','A') rather than as
+    their raw integers, which the parser rejects ("polarization are between
+    -3 and 3"). This is what makes nice_string()/input_string() round-trip."""
+
+    # no separator: the process parser reads the brace character by character
+    # (and a ',' inside a brace additionally confuses the decay-chain split on
+    # ','), so '{0S}' round-trips where '{0,S}' does not.
+    return ''.join([Leg.propagator_only_polarizations.get(p, str(p))
+                    for p in polarization])
+
+
+#===============================================================================
 class Leg(PhysicsObject):
     """Leg object: id (Particle), number, I/F state, flag from_group
     """
@@ -2684,6 +2699,18 @@ class Leg(PhysicsObject):
     # See [arXiv:1912.01725] for definitions (fermions,vectors) and
     # [arXiv:2512.10015] for extensions (vectors)
     list_of_allowed_polarizations = [-1, 1, 2,-2, 3,-3, 0, 4, 5, 6, 7, 9, 99]
+
+    # Polarizations that only exist as a piece of the *propagator* numerator
+    # of a massive vector (see aloha/create_aloha.py, the "1X" forms) and that
+    # therefore have no external-wavefunction counterpart. Values are the
+    # brace letters accepted by the process parser.
+    propagator_only_polarizations = {4: 'G',   # -metric
+                                     5: 'H',   # Theta
+                                     6: 'Q',   # q^mu q^nu / q^2
+                                     7: 'W',   # -metric + qq/(M^2-iM*W)
+                                     9: 'S',   # scalar = axial + width
+                                     99: 'A',  # axial/auxiliary
+                                     }
 
     def default_setup(self):
         """Default values for all properties"""
@@ -3803,7 +3830,7 @@ class Process(PhysicsObject):
                 elif leg.get('polarization') == [1]:
                     mystr = mystr + '{R}'
                 else:
-                    mystr = mystr + '{%s}' %','.join([str(p) for p in leg.get('polarization')]) 
+                    mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization')) 
 
             if leg.get('offshell'):
                 mystr = mystr + '*'
@@ -3941,7 +3968,7 @@ class Process(PhysicsObject):
                 elif leg.get('polarization') == [1]:
                     mystr = mystr + '{R}'
                 else:
-                    mystr = mystr + '{%s}' %','.join([str(p) for p in leg.get('polarization')])   
+                    mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization'))   
             if leg.get('offshell'):
                 mystr = mystr + '*'
             mystr = mystr + ' ' 
@@ -4049,7 +4076,7 @@ class Process(PhysicsObject):
                 elif leg.get('polarization') == [1]:
                     mystr = mystr + '{R}'
                 else:
-                    mystr = mystr + '{%s}' %','.join([str(p) for p in leg.get('polarization')])   
+                    mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization'))   
             if leg.get('offshell'):
                 mystr = mystr + '*'
             mystr = mystr + ' ' 
@@ -4460,7 +4487,7 @@ class Process(PhysicsObject):
                         logger.warning(
 '''The process with the squared coupling order (%s^2%s%s) specified can potentially 
 recieve contributions with powers of the coupling %s larger than the maximal 
-value allowed by the model builder (%s). Hence, MG5_aMC sets the amplitude order
+value allowed by the model builder (%s). Hence, MadGraph7 sets the amplitude order
 for that coupling to be this maximal one. '''%(k,self.get('sqorders_types')[k],
                                              self.get('squared_orders')[k],k,v))
                     else:
@@ -4729,11 +4756,10 @@ class ProcessDefinition(Process):
                 elif leg.get('polarization') == [1]:
                     mystr = mystr + '{R}'
                 else:
-                    mystr = mystr + '{%s}' %''.join([str(p) for p in leg.get('polarization')])
+                    mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization'))
             if leg.get('offshell'):
-                mystr += '*'   
-            else:
-                mystr = mystr + ' '
+                mystr += '*'
+            mystr = mystr + ' '
             #mystr = mystr + '(%i) ' % leg['number']
             prevleg = leg
 
