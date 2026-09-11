@@ -720,8 +720,15 @@ namespace mg5amcCpu
         // subprocess whose matrix element is identically zero); 0/0 would turn a zero
         // matrix element into a nan. Floored rather than tested, so that -ffast-math
         // cannot drop the guard -- see process_sigmaKin_function.inc for the reasoning.
-        allMEs[ievt] *= numerators[channelId - 1] /
-                        ( denominator + std::numeric_limits<fptype>::min() );
+        // NB: the floor is the DBL_MIN/FLT_MIN macro rather than std::numeric_limits
+        // <fptype>::min(), which is a __host__ constexpr function and cannot be called
+        // from device code (it needs the experimental '--expt-relaxed-constexpr').
+#if defined MGONGPU_FPTYPE_DOUBLE
+        constexpr fptype fptypeMin = DBL_MIN; // smallest normal double
+#elif defined MGONGPU_FPTYPE_FLOAT
+        constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
+#endif
+        allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
     return;

@@ -11,8 +11,8 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 
+#include <cfloat>
 #include <cmath>
-#include <limits>
 #include <vector>
 #include <array>
 #include <utility>
@@ -40,9 +40,18 @@ namespace
   // must NOT be written as a test for zero -- this is compiled with -ffast-math, and
   // its -ffinite-math-only lets the compiler assume the quotient is finite and drop
   // such a guard as dead code (the trap behind #117 and #516).
-  inline double channel_amp2( double numerator, double denominator )
+  //
+  // This is called from both the host and the device code paths, hence the
+  // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
+  // std::numeric_limits<double>::min(), which is a host function and cannot be
+  // called from device code.
+#ifdef MGONGPUCPP_GPUIMPL
+  __host__ __device__
+#endif
+    inline double
+    channel_amp2( double numerator, double denominator )
   {
-    return numerator / ( denominator + std::numeric_limits<double>::min() );
+    return numerator / ( denominator + DBL_MIN );
   }
 
 
