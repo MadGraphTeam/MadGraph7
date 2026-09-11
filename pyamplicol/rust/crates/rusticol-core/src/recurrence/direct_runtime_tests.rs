@@ -2517,6 +2517,77 @@ fn two_helicity_reused_storage_runtime() -> DirectRecurrenceExecutionRuntime {
 }
 
 #[test]
+fn selected_amplitude_views_match_public_accessors_and_check_active_ranges() {
+    let runtime = two_helicity_reused_storage_runtime();
+    let mut destinations = runtime.plan().amplitude_destinations().to_vec();
+    destinations.push(DirectAmplitudeDestinationDescriptor {
+        id: 2,
+        target_sector_id: 1,
+        ..destinations[0]
+    });
+    let real = (0..12).map(|value| value as f64).collect::<Vec<_>>();
+    let imaginary = real.iter().map(|value| -value).collect::<Vec<_>>();
+    for point_count in [1, 3, 4] {
+        for (representative, selection, expected_ids) in [
+            (None, None, &[0, 1, 2][..]),
+            (Some(0), None, &[0, 1][..]),
+            (Some(1), None, &[2][..]),
+            (Some(0), Some(&[1][..]), &[1][..]),
+            (Some(0), Some(&[][..]), &[][..]),
+        ] {
+            let output = DirectRecurrenceTileOutput {
+                amplitude_re: &real,
+                amplitude_im: &imaginary,
+                amplitude_destinations: &destinations,
+                point_count,
+                point_stride: 4,
+                destination_count: 3,
+                public_flow_id: representative,
+                representative_flow_id: representative,
+                selected_destination_ids: selection,
+            };
+            let views = output
+                .selected_amplitudes()
+                .collect::<crate::RusticolResult<Vec<_>>>()
+                .unwrap();
+            assert_eq!(
+                views
+                    .iter()
+                    .map(|view| view.destination.id)
+                    .collect::<Vec<_>>(),
+                expected_ids
+            );
+            for view in views {
+                let id = view.destination.id;
+                assert_eq!(view.real, output.destination_re(id).unwrap());
+                assert_eq!(view.imaginary, output.destination_im(id).unwrap());
+                assert_eq!(
+                    view.real.as_ptr(),
+                    output.destination_re(id).unwrap().as_ptr()
+                );
+                assert_eq!(
+                    view.imaginary.as_ptr(),
+                    output.destination_im(id).unwrap().as_ptr()
+                );
+                assert_eq!(view.destination, &destinations[id as usize]);
+            }
+        }
+    }
+    let malformed = DirectRecurrenceTileOutput {
+        amplitude_re: &real,
+        amplitude_im: &imaginary[..2],
+        amplitude_destinations: &destinations,
+        point_count: 3,
+        point_stride: 4,
+        destination_count: 3,
+        public_flow_id: Some(0),
+        representative_flow_id: Some(0),
+        selected_destination_ids: Some(&[0]),
+    };
+    assert!(malformed.selected_amplitudes().next().unwrap().is_err());
+}
+
+#[test]
 fn destination_replay_preserves_shared_helicity_currents_and_recycled_storage() {
     let mut runtime = two_helicity_reused_storage_runtime();
     let all = runtime.prepare_replay_selector(0).unwrap();
@@ -2537,6 +2608,16 @@ fn destination_replay_preserves_shared_helicity_currents_and_recycled_storage() 
     let both = runtime
         .prepare_replay_selector_for_destinations(&all, &[0, 1])
         .unwrap();
+    for selector in [&selected[0], &selected[1], &empty, &both] {
+        assert!(
+            selector
+                .destination_program
+                .as_ref()
+                .unwrap()
+                .current_clear_stages
+                .is_empty()
+        );
+    }
     let momenta = external_two_point_momenta();
     let expected = {
         let output = runtime
@@ -2589,6 +2670,263 @@ fn destination_replay_preserves_shared_helicity_currents_and_recycled_storage() 
             .prepare_replay_selector_for_destinations(&all, &[2])
             .is_err()
     );
+}
+
+#[test]
+fn destination_replay_initializers_overwrite_poisoned_recycled_storage_and_tile_tails() {
+    let mut runtime = two_helicity_reused_storage_runtime();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let momenta = [1.25, -3.5, 7.0, 0.125]
+        .into_iter()
+        .flat_map(|energy| [energy, 0.0, 0.0, 0.0, energy * 0.5, 0.0, 0.0, 0.0])
+        .collect::<Vec<_>>();
+    for destination_ids in [&[0][..], &[1][..], &[0, 1][..]] {
+        let selected = runtime
+            .prepare_replay_selector_for_destinations(&all, destination_ids)
+            .unwrap();
+        assert!(
+            selected
+                .destination_program
+                .as_ref()
+                .unwrap()
+                .current_clear_stages
+                .is_empty()
+        );
+        for point_count in [4, 3, 1, 4] {
+            let input = &momenta[..point_count as usize * 8];
+            let expected = {
+                let output = runtime
+                    .execute_replay_tile_from_external(&all, point_count, input)
+                    .unwrap();
+                destination_ids
+                    .iter()
+                    .map(|&id| {
+                        (
+                            output.destination_re(id).unwrap().to_vec(),
+                            output.destination_im(id).unwrap().to_vec(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            for profiled in [true, false] {
+                let (current_re, current_im, _, _) = runtime.arena.split_slices_mut();
+                current_re.fill(f64::NAN);
+                current_im.fill(f64::NAN);
+                let output = if profiled {
+                    runtime.execute_replay_tile_from_external(&selected, point_count, input)
+                } else {
+                    runtime.execute_replay_tile_from_external_unprofiled(
+                        &selected,
+                        point_count,
+                        input,
+                    )
+                }
+                .unwrap();
+                for (&id, (real, imaginary)) in destination_ids.iter().zip(&expected) {
+                    assert_eq!(output.destination_re(id).unwrap(), real);
+                    assert_eq!(output.destination_im(id).unwrap(), imaginary);
+                }
+                let stride = runtime.point_stride() as usize;
+                let (current_re, current_im) = runtime.current_arenas();
+                for plane in current_re
+                    .chunks_exact(stride)
+                    .chain(current_im.chunks_exact(stride))
+                {
+                    assert!(
+                        plane[point_count as usize..]
+                            .iter()
+                            .all(|value| value.is_nan())
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn destination_replay_retains_clear_when_row_selector_omits_the_initializer() {
+    let mut parts = two_helicity_reused_storage_runtime()
+        .plan()
+        .clone()
+        .into_parts();
+    parts.selector_domains.push(DirectSelectorDomainDescriptor {
+        word_start: parts.selector_words.len() as u64,
+        word_count: 1,
+    });
+    parts.selector_words.push(2);
+    let mut additive = parts.contributions[0];
+    additive.flags = 0;
+    parts.contributions[0].selector_domain_id = 1;
+    parts.contributions.insert(1, additive);
+    parts.row_groups[1].row_count = 2;
+    parts.row_groups[3].row_start = 2;
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let selected = runtime
+        .prepare_replay_selector_for_destinations(&all, &[0, 1])
+        .unwrap();
+    let stages = &selected
+        .destination_program
+        .as_ref()
+        .unwrap()
+        .current_clear_stages;
+    assert_eq!(stages.len(), 1);
+    assert_eq!(stages[0].stage, 1);
+    assert_eq!(stages[0].ranges.len(), 1);
+    assert_eq!(stages[0].ranges[0].component_base, 1);
+    assert_eq!(stages[0].ranges[0].component_count, 1);
+    let momenta = external_two_point_momenta();
+    for point_count in [2, 1, 2] {
+        let input = &momenta[..point_count as usize * 8];
+        let expected = {
+            let output = runtime
+                .execute_replay_tile_from_external(&all, point_count, input)
+                .unwrap();
+            [0, 1].map(|id| {
+                (
+                    output.destination_re(id).unwrap().to_vec(),
+                    output.destination_im(id).unwrap().to_vec(),
+                )
+            })
+        };
+        for profiled in [true, false] {
+            let (current_re, current_im, _, _) = runtime.arena.split_slices_mut();
+            current_re.fill(f64::NAN);
+            current_im.fill(f64::NAN);
+            let output = if profiled {
+                runtime.execute_replay_tile_from_external(&selected, point_count, input)
+            } else {
+                runtime.execute_replay_tile_from_external_unprofiled(&selected, point_count, input)
+            }
+            .unwrap();
+            for (id, (real, imaginary)) in expected.iter().enumerate() {
+                assert_eq!(output.destination_re(id as u32).unwrap(), real);
+                assert_eq!(output.destination_im(id as u32).unwrap(), imaginary);
+            }
+        }
+    }
+}
+
+#[test]
+fn destination_replay_self_copy_preserves_clear_for_mutable_zero_factor() {
+    let mut parts = two_helicity_reused_storage_runtime()
+        .plan()
+        .clone()
+        .into_parts();
+    parts.contributions[1].parent0_component_base =
+        parts.contributions[1].destination_component_base;
+    parts.contributions[1].exact_factor_id = parts.exact_factors.len() as u32;
+    parts.exact_factors.push(ExactComplexRational::ZERO);
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let selected = runtime
+        .prepare_replay_selector_for_destinations(&all, &[1])
+        .unwrap();
+    let stages = &selected
+        .destination_program
+        .as_ref()
+        .unwrap()
+        .current_clear_stages;
+    assert_eq!(stages.len(), 1);
+    assert_eq!(stages[0].stage, 2);
+    let momenta = external_two_point_momenta();
+    let factor_id = runtime.plan().contributions()[1].exact_factor_id as usize;
+    for (point_count, factor) in [(2, 0.0), (1, 1.0), (2, 0.0)] {
+        runtime.factors_mut().0[factor_id] = factor;
+        for profiled in [true, false] {
+            runtime.activate_point_layout(point_count).unwrap();
+            let (current_re, current_im, _, _) = runtime.arena.split_slices_mut();
+            current_re.fill(f64::NAN);
+            current_im.fill(f64::NAN);
+            let input = &momenta[..point_count as usize * 8];
+            let output = if profiled {
+                runtime.execute_replay_tile_from_external(&selected, point_count, input)
+            } else {
+                runtime.execute_replay_tile_from_external_unprofiled(&selected, point_count, input)
+            }
+            .unwrap();
+            assert!(
+                output
+                    .destination_re(1)
+                    .unwrap()
+                    .iter()
+                    .all(|&value| value == 0.0)
+            );
+            assert!(
+                output
+                    .destination_im(1)
+                    .unwrap()
+                    .iter()
+                    .all(|&value| value == 0.0)
+            );
+        }
+    }
+}
+
+#[test]
+fn destination_replay_partial_copy_retains_the_entire_target_clear() {
+    let mut parts = two_helicity_reused_storage_runtime()
+        .plan()
+        .clone()
+        .into_parts();
+    // The later current has a wider span than the old source occupying its
+    // first slot. Such a custom copy remains valid, but initializes only the
+    // copied prefix and therefore still needs the full current clear.
+    parts.current_arena_components = 3;
+    parts.currents[1].component_base = 2;
+    parts.currents[2].component_count = 2;
+    parts.contributions[0].destination_component_base = 2;
+    parts.finalizations[0].component_base = 2;
+    parts.closures[0].parent0_component_base = 2;
+    parts.contributions[1].parent0_component_base = 2;
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        direct_executor_handles(),
+    )
+    .unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    runtime.set_parameters(&[3.0], &[1.0]).unwrap();
+    let all = runtime.prepare_replay_selector(0).unwrap();
+    let selected = runtime
+        .prepare_replay_selector_for_destinations(&all, &[1])
+        .unwrap();
+    let stages = &selected
+        .destination_program
+        .as_ref()
+        .unwrap()
+        .current_clear_stages;
+    assert_eq!(stages.len(), 1);
+    assert_eq!(stages[0].stage, 2);
+    assert_eq!(stages[0].ranges[0].component_base, 0);
+    assert_eq!(stages[0].ranges[0].component_count, 2);
+    let (current_re, current_im, _, _) = runtime.arena.split_slices_mut();
+    current_re.fill(f64::NAN);
+    current_im.fill(f64::NAN);
+    runtime
+        .execute_replay_tile_from_external(&selected, 2, &external_two_point_momenta())
+        .unwrap();
+    let stride = runtime.point_stride() as usize;
+    let (current_re, current_im) = runtime.current_arenas();
+    assert_eq!(&current_re[stride..stride + 2], &[0.0, 0.0]);
+    assert_eq!(&current_im[stride..stride + 2], &[0.0, 0.0]);
 }
 
 #[test]

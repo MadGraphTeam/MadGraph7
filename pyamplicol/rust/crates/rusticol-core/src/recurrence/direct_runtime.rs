@@ -27,6 +27,7 @@ use super::direct_backend::{
     execute_direct_plan_unprofiled_with_fanout,
 };
 use super::direct_plan::{
+    DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
     DirectAmplitudeDestinationDescriptor, DirectExecutorRole, DirectRecurrencePlan,
     DirectResolvedHelicityDescriptor, DirectRowGroupDescriptor,
 };
@@ -54,6 +55,15 @@ pub struct DirectRecurrenceTileOutput<'a> {
     public_flow_id: Option<u32>,
     representative_flow_id: Option<u32>,
     selected_destination_ids: Option<&'a [u32]>,
+}
+
+/// One already-selected amplitude and its active point planes. The public
+/// random-access methods retain their independent selector checks; internal
+/// reductions can consume this borrowed view without repeating those checks.
+pub(crate) struct DirectRecurrenceAmplitudeView<'a> {
+    pub(crate) destination: &'a DirectAmplitudeDestinationDescriptor,
+    pub(crate) real: &'a [f64],
+    pub(crate) imaginary: &'a [f64],
 }
 
 impl<'a> DirectRecurrenceTileOutput<'a> {
@@ -117,13 +127,37 @@ impl<'a> DirectRecurrenceTileOutput<'a> {
             )
     }
 
-    pub(crate) fn destination_target_helicity_id_or_sentinel(
+    pub(crate) fn selected_amplitudes(
         &self,
-        destination_id: u32,
-    ) -> Option<u32> {
-        self.amplitude_destinations
-            .get(destination_id as usize)
-            .map(|destination| destination.target_helicity_id_or_sentinel)
+    ) -> impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'_>>> + '_ {
+        self.selected_destination_ids().map(|destination_id| {
+            // Explicit destination selections were checked against the
+            // representative when their selector was prepared. Unrestricted
+            // iteration above already filters by that representative.
+            let destination = self
+                .amplitude_destinations
+                .get(destination_id as usize)
+                .ok_or_else(|| invalid("selected amplitude descriptor is absent"))?;
+            let start = (destination_id as usize)
+                .checked_mul(self.point_stride as usize)
+                .ok_or_else(|| invalid("selected amplitude offset exceeds usize"))?;
+            let end = start
+                .checked_add(self.point_count as usize)
+                .ok_or_else(|| invalid("selected amplitude range exceeds usize"))?;
+            let real = self
+                .amplitude_re
+                .get(start..end)
+                .ok_or_else(|| invalid("selected real amplitude plane is absent"))?;
+            let imaginary = self
+                .amplitude_im
+                .get(start..end)
+                .ok_or_else(|| invalid("selected imaginary amplitude plane is absent"))?;
+            Ok(DirectRecurrenceAmplitudeView {
+                destination,
+                real,
+                imaginary,
+            })
+        })
     }
 
     fn destination<'b>(&self, values: &'b [f64], destination_id: u32) -> Option<&'b [f64]> {
@@ -2337,6 +2371,32 @@ fn selected_replay_destination_program(
     let mut clear_by_stage = BTreeMap::<u16, Vec<Range<u32>>>::new();
     for (id, current) in plan.currents().iter().enumerate() {
         if current_marks[id] == 0 || current.node_kind != DirectNodeKind::Current {
+            continue;
+        }
+        // Dependency closure retains every contribution to a live current in
+        // this flow selection, in its persisted execution order. When that
+        // first retained row overwrites the destination, clearing it would
+        // duplicate the write. Check the already-built row list here rather
+        // than adding a separate analysis or any work to tile execution.
+        // A valid custom plan may select away the global initializer through
+        // a narrower row selector domain; retain its ordinary clear below.
+        if contributions_by_current[id]
+            .first()
+            .is_some_and(|&(row_id, _)| {
+                let row = &plan.contributions()[row_id];
+                if row.flags & DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION == 0 {
+                    return false;
+                }
+                // Retain self-read clears even for a persisted zero factor:
+                // the low-level runtime allows callers to replace factors.
+                // Native output widths were checked during runtime loading;
+                // copy widths live in the row and must cover the full target.
+                row.parent0_component_base != row.destination_component_base
+                    && row.parent1_component_base_or_sentinel != row.destination_component_base
+                    && (row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+                        || row.parent0_momentum_form_id == u32::from(current.component_count))
+            })
+        {
             continue;
         }
         clear_by_stage.entry(current.stage).or_default().push(

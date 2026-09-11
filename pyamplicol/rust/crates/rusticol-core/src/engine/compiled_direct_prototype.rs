@@ -32,7 +32,7 @@ use super::evaluator::symjit_compiled_direct::{
 };
 #[cfg(feature = "f64-symjit")]
 use super::evaluator::{SymjitApplicationMetadata, validate_manifest_metadata};
-use super::sources::RuntimeSourceState;
+use super::sources::{ResolvedSourceWavefunction, RuntimeSourceState};
 use super::*;
 #[cfg(test)]
 use crate::direct_arena::checked_aligned_point_stride;
@@ -909,16 +909,16 @@ impl CompiledDirectEnginePrototype {
                     |state| &state.state,
                 );
                 let output = &mut scratch[..dimension];
+                let wavefunction = ResolvedSourceWavefunction::new(
+                    source,
+                    state,
+                    external_count,
+                    particle_masses,
+                    dimension,
+                )?;
                 for point_index in 0..point_count {
                     let point = batch.point(point_index);
-                    ExecutionRuntime::write_source_wavefunction_with_state(
-                        source,
-                        state,
-                        external_count,
-                        particle_masses,
-                        &point,
-                        output,
-                    )?;
+                    wavefunction.write(&point, output)?;
                     if factor != c64(1.0, 0.0) {
                         for value in output.iter_mut() {
                             *value *= factor;
@@ -1580,25 +1580,38 @@ fn fill_compiled_momentum_planes(
             }
             continue;
         }
-        for (term, label) in slot.external_labels.iter().enumerate() {
-            let external_index = label.checked_sub(1).ok_or_else(|| {
-                RusticolError::integrity("compiled Direct-Arena momentum labels are one-based")
-            })?;
-            if external_index >= batch.external_count() {
-                return Err(RusticolError::integrity(format!(
-                    "compiled Direct-Arena momentum slot {} references absent external leg {}",
-                    slot.momentum_slot_id, label
-                )));
+        if point_count == 1 {
+            // A singleton has no point-plane loop to vectorize. Read all four
+            // components and resolve its public crossing once per term, as in
+            // the original scalar accumulator, after static slot pruning.
+            let point = batch.point(0);
+            let mut value = [0.0; 4];
+            for &label in &slot.external_labels {
+                let (external_index, sign) = compiled_momentum_term(
+                    label,
+                    slot.momentum_slot_id,
+                    batch.external_count(),
+                    external_is_initial,
+                )?;
+                let momentum = point
+                    .momentum(external_index)
+                    .ok_or_else(|| RusticolError::integrity("compiled momentum input is absent"))?;
+                for (sum, component) in value.iter_mut().zip(momentum) {
+                    *sum += sign * component;
+                }
             }
-            let sign = if *external_is_initial.get(external_index).ok_or_else(|| {
-                RusticolError::integrity(
-                    "compiled Direct-Arena external-side metadata is incomplete",
-                )
-            })? {
-                -1.0
-            } else {
-                1.0
-            };
+            for (component, value) in value.into_iter().enumerate() {
+                momenta[(slot.component_start + component) * stride] = value;
+            }
+            continue;
+        }
+        for (term, label) in slot.external_labels.iter().enumerate() {
+            let (external_index, sign) = compiled_momentum_term(
+                *label,
+                slot.momentum_slot_id,
+                batch.external_count(),
+                external_is_initial,
+            )?;
             for component in 0..4 {
                 let start = (slot.component_start + component) * stride;
                 let output = &mut momenta[start..start + point_count];
@@ -1623,6 +1636,31 @@ fn fill_compiled_momentum_planes(
         }
     }
     Ok(())
+}
+
+#[inline]
+fn compiled_momentum_term(
+    label: usize,
+    momentum_slot_id: usize,
+    external_count: usize,
+    external_is_initial: &[bool],
+) -> RusticolResult<(usize, f64)> {
+    let external_index = label.checked_sub(1).ok_or_else(|| {
+        RusticolError::integrity("compiled Direct-Arena momentum labels are one-based")
+    })?;
+    if external_index >= external_count {
+        return Err(RusticolError::integrity(format!(
+            "compiled Direct-Arena momentum slot {momentum_slot_id} references absent external leg {label}"
+        )));
+    }
+    let sign = if *external_is_initial.get(external_index).ok_or_else(|| {
+        RusticolError::integrity("compiled Direct-Arena external-side metadata is incomplete")
+    })? {
+        -1.0
+    } else {
+        1.0
+    };
+    Ok((external_index, sign))
 }
 
 fn canonical_source_layout(
@@ -2961,19 +2999,35 @@ mod tests {
                 ..valid.clone()
             },
         ] {
-            assert!(
-                fill_compiled_momentum_planes(batch, &[slot], &[true; 3], 8, 4, &mut output,)
+            for input in [batch, batch.subview(0, 1).unwrap()] {
+                assert!(
+                    fill_compiled_momentum_planes(
+                        input,
+                        std::slice::from_ref(&slot),
+                        &[true; 3],
+                        8,
+                        4,
+                        &mut output,
+                    )
                     .is_err()
-            );
+                );
+            }
         }
         assert!(
-            fill_compiled_momentum_planes(batch, &[valid.clone()], &[], 8, 4, &mut output,)
-                .is_err()
+            fill_compiled_momentum_planes(
+                batch,
+                std::slice::from_ref(&valid),
+                &[],
+                8,
+                4,
+                &mut output,
+            )
+            .is_err()
         );
         assert!(
             fill_compiled_momentum_planes(
                 batch,
-                &[valid.clone()],
+                std::slice::from_ref(&valid),
                 &[true; 3],
                 8,
                 4,

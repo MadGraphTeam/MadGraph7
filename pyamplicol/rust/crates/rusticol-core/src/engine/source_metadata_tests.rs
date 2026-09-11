@@ -3,6 +3,194 @@
 use super::*;
 use serde_json::{Value, json};
 
+#[test]
+fn resolved_source_inputs_match_formula_bits_for_all_families_and_crossings() {
+    let external_count = 3;
+    let flat = (0..9)
+        .flat_map(|index| [10.0 + index as f64, 1.0, -0.0, 3.0])
+        .collect::<Vec<_>>();
+    let crossing = [
+        InputCrossingMapEntry {
+            target_index: 0,
+            source_index: 2,
+            sign: -1.0,
+        },
+        InputCrossingMapEntry {
+            target_index: 1,
+            source_index: 0,
+            sign: -1.0,
+        },
+        InputCrossingMapEntry {
+            target_index: 2,
+            source_index: 1,
+            sign: 1.0,
+        },
+    ];
+    for (family, dimension, orientation, mass) in [
+        ("scalar", 1, "self-conjugate", 0.0),
+        ("fermion", 2, "particle", 0.0),
+        ("fermion", 2, "antiparticle", 0.0),
+        ("fermion", 4, "particle", 2.0),
+        ("fermion", 4, "antiparticle", 2.0),
+        ("vector", 4, "self-conjugate", 0.0),
+        ("vector", 4, "self-conjugate", 2.0),
+        ("spin2", 16, "self-conjugate", 2.0),
+    ] {
+        let mut source = source_record(900, -900, orientation, family, dimension);
+        source.leg_label = 2;
+        for helicity in [-1, 1] {
+            for chirality in [-1, 1] {
+                let state = GenericSourceStateIrManifest {
+                    helicity,
+                    chirality,
+                    spin_state: helicity,
+                };
+                for phase in [[1.0, 0.0], [0.0, 1.0], [0.6, -0.8]] {
+                    source.applied_crossing.phase = phase;
+                    for transform in [
+                        GenericMomentumTransformManifest::Identity,
+                        GenericMomentumTransformManifest::NegateFourMomentum,
+                    ] {
+                        source.applied_crossing.momentum_transform = transform;
+                        // Re-resolve changed masses, just as each compiled tile does.
+                        for mass in [mass, mass * 1.5] {
+                            let masses = BTreeMap::from([(-900, mass)]);
+                            let resolved = sources::ResolvedSourceWavefunction::new(
+                                &source,
+                                &state,
+                                external_count,
+                                &masses,
+                                dimension,
+                            )
+                            .unwrap();
+                            for lookup in [None, Some(crossing.as_slice())] {
+                                let contiguous =
+                                    F64MomentumBatchView::from_contiguous_prevalidated(
+                                        &flat,
+                                        3,
+                                        external_count,
+                                        lookup,
+                                    )
+                                    .unwrap();
+                                let nested = contiguous.materialize_nested();
+                                let nested_view =
+                                    F64MomentumBatchView::from_nested(&nested, external_count)
+                                        .unwrap();
+                                for batch in [contiguous, nested_view] {
+                                    for (start, stop) in [(0, 3), (1, 2)] {
+                                        let batch = batch.subview(start, stop).unwrap();
+                                        for point_index in 0..batch.point_count() {
+                                            let point = batch.point(point_index);
+                                            let mut momentum = point.momentum(1).unwrap();
+                                            if transform == GenericMomentumTransformManifest::NegateFourMomentum {
+                                                momentum = negate(momentum);
+                                            }
+                                            let mut expected =
+                                                match (family, dimension, orientation) {
+                                                    ("scalar", _, _) => vec![c64(1.0, 0.0)],
+                                                    ("fermion", 2, "particle") => {
+                                                        ext_quark_weyl_array(
+                                                            momentum, helicity, chirality,
+                                                        )
+                                                        .to_vec()
+                                                    }
+                                                    ("fermion", 2, _) => ext_antiquark_weyl_array(
+                                                        momentum, helicity, chirality,
+                                                    )
+                                                    .to_vec(),
+                                                    ("fermion", 4, "particle") => {
+                                                        ext_quark_dirac_massive(
+                                                            momentum, helicity, mass,
+                                                        )
+                                                        .to_vec()
+                                                    }
+                                                    ("fermion", 4, _) => {
+                                                        ext_antiquark_dirac_massive(
+                                                            momentum, helicity, mass,
+                                                        )
+                                                        .to_vec()
+                                                    }
+                                                    ("vector", _, _) if mass == 0.0 => {
+                                                        ext_gluon(momentum, helicity).to_vec()
+                                                    }
+                                                    ("vector", _, _) => {
+                                                        ext_massive_vector(momentum, helicity, mass)
+                                                            .to_vec()
+                                                    }
+                                                    ("spin2", _, _) => {
+                                                        ext_spin2(momentum, helicity, mass)
+                                                            .unwrap()
+                                                            .to_vec()
+                                                    }
+                                                    _ => unreachable!(),
+                                                };
+                                            if phase != [1.0, 0.0] {
+                                                for value in &mut expected {
+                                                    *value *= c64(phase[0], phase[1]);
+                                                }
+                                            }
+                                            let mut observed =
+                                                vec![c64(17.0, -19.0); dimension + 2];
+                                            resolved
+                                                .write(&point, &mut observed[..dimension])
+                                                .unwrap();
+                                            for (observed, expected) in
+                                                observed.iter().zip(expected)
+                                            {
+                                                assert_eq!(
+                                                    observed.re.to_bits(),
+                                                    expected.re.to_bits()
+                                                );
+                                                assert_eq!(
+                                                    observed.im.to_bits(),
+                                                    expected.im.to_bits()
+                                                );
+                                            }
+                                            assert!(
+                                                observed[dimension..]
+                                                    .iter()
+                                                    .all(|&v| v == c64(17.0, -19.0))
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn resolved_source_inputs_reject_invalid_metadata_and_absent_points() {
+    let mut source = source_record(25, 25, "self-conjugate", "scalar", 1);
+    let state = ExecutionRuntime::default_runtime_source_state(&source).unwrap();
+    let masses = BTreeMap::new();
+    assert!(sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 2).is_err());
+    source.leg_label = 0;
+    assert!(sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 1).is_err());
+    source.leg_label = 2;
+    assert!(sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 1).is_err());
+    source.leg_label = 1;
+    source.source_kind = "unsupported".to_owned();
+    assert!(sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 1).is_err());
+    source.source_kind = "external-wavefunction".to_owned();
+    source.source_ir.component_dimension = 3;
+    assert!(sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 3).is_err());
+    source.source_ir.component_dimension = 1;
+    let resolved =
+        sources::ResolvedSourceWavefunction::new(&source, &state, 1, &masses, 1).unwrap();
+    let mut output = [c64(17.0, -19.0)];
+    assert!(
+        resolved
+            .write(&Vec::<[f64; 4]>::new(), &mut output)
+            .is_err()
+    );
+    assert_eq!(output, [c64(17.0, -19.0)]);
+}
+
 fn crossing_value(
     momentum_transform: &str,
     helicity_factor: i32,

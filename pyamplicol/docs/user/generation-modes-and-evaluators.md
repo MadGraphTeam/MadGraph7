@@ -85,6 +85,9 @@ stored in the process output; selecting one helicity does not rebuild or
 optimise the currents. Momentum sums follow their stored term order across a
 batch of points. These arrangements retain the full generated helicity
 coverage and do not introduce an OTF-style first-call preparation step.
+For a selected helicity, a current buffer is not cleared separately when its
+first retained contribution already initializes it. Other selected schedules
+keep the required clears.
 
 ### Compiled
 
@@ -116,6 +119,10 @@ Generation also records which momentum sums the final compiled kernels use.
 Evaluation fills only those sums, directly across the point batch, without
 searching the expressions on the first call. The list covers every helicity
 retained by that compiled output, not just the first runtime selection.
+Source-wavefunction information is resolved once per source and point tile,
+using the current model parameters, and reused across the points in that tile.
+Changing masses or runtime source states therefore remains effective on the
+next evaluation without regenerating the process output.
 
 ### Correlated Born generation
 

@@ -1512,12 +1512,12 @@ impl RecurrenceNativeRuntime {
                     &self.external_momenta[..input_len],
                 )?;
 
-            for destination_id in direct_output.selected_destination_ids() {
-                let helicity_index = replay_output_destination_physics_helicity(
-                    &direct_output,
-                    replay_selector,
+            for amplitude in direct_output.selected_amplitudes() {
+                let amplitude = amplitude?;
+                let helicity_index = replay_destination_physics_helicity(
+                    replay_selector.helicity_map(),
                     direct_helicity_to_physics,
-                    destination_id,
+                    amplitude.destination.target_helicity_id_or_sentinel,
                 )?;
                 let helicity = reduction.helicity(helicity_index);
                 if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0 {
@@ -1528,25 +1528,11 @@ impl RecurrenceNativeRuntime {
                 if helicity_weight == 0.0 {
                     continue;
                 }
-                let values_re = direct_output
-                    .destination_re(destination_id)
-                    .ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
-                let values_im = direct_output
-                    .destination_im(destination_id)
-                    .ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
                 let weight = helicity_weight * color_weight * normalization_factor;
                 accumulate_lc_diagonal_amplitude(
                     point_count,
                     weight,
-                    |point| (values_re[point], values_im[point]),
+                    |point| (amplitude.real[point], amplitude.imaginary[point]),
                     |point, value| output[tile_start + point] += value,
                 );
             }
@@ -1768,12 +1754,12 @@ impl RecurrenceNativeRuntime {
                     )?;
 
                 let reduction_started = Instant::now();
-                for destination_id in output.selected_destination_ids() {
-                    let helicity_index = replay_output_destination_physics_helicity(
-                        &output,
-                        replay_selector,
+                for amplitude in output.selected_amplitudes() {
+                    let amplitude = amplitude?;
+                    let helicity_index = replay_destination_physics_helicity(
+                        replay_selector.helicity_map(),
                         direct_helicity_to_physics,
-                        destination_id,
+                        amplitude.destination.target_helicity_id_or_sentinel,
                     )?;
                     let helicity = reduction_view.helicity(helicity_index);
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
@@ -1785,21 +1771,11 @@ impl RecurrenceNativeRuntime {
                     if helicity_weight == 0.0 {
                         continue;
                     }
-                    let values_re = output.destination_re(destination_id).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
-                    let values_im = output.destination_im(destination_id).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
                     let weight = helicity_weight * color_weight * common.normalization_factor;
                     accumulate_lc_diagonal_amplitude(
                         point_count,
                         weight,
-                        |point| (values_re[point], values_im[point]),
+                        |point| (amplitude.real[point], amplitude.imaginary[point]),
                         |point, value| values[tile_start + point] += value,
                     );
                 }
@@ -1926,28 +1902,18 @@ impl RecurrenceNativeRuntime {
                     )?;
 
                 let reduction_started = Instant::now();
-                for destination_id in output.selected_destination_ids() {
-                    let helicity_index = replay_output_destination_physics_helicity(
-                        &output,
-                        replay_selector,
+                for amplitude in output.selected_amplitudes() {
+                    let amplitude = amplitude?;
+                    let helicity_index = replay_destination_physics_helicity(
+                        replay_selector.helicity_map(),
                         direct_helicity_to_physics,
-                        destination_id,
+                        amplitude.destination.target_helicity_id_or_sentinel,
                     )?;
                     let helicity = reduction_view.helicity(helicity_index);
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
                         continue;
                     }
-                    let values_re = output.destination_re(destination_id).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
-                    let values_im = output.destination_im(destination_id).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence selected amplitude destination is absent",
-                        )
-                    })?;
                     for physical_helicity in reduction_view.helicity_orbit_members(helicity_index) {
                         let Some(helicity_position) = helicity_position[*physical_helicity] else {
                             continue;
@@ -1958,7 +1924,7 @@ impl RecurrenceNativeRuntime {
                         accumulate_lc_diagonal_amplitude(
                             point_count,
                             weight,
-                            |point| (values_re[point], values_im[point]),
+                            |point| (amplitude.real[point], amplitude.imaginary[point]),
                             |point, value| {
                                 let target = output_layout
                                     .index(tile_start + point, helicity_position, color_position)
@@ -4067,24 +4033,6 @@ fn selected_replay_destination_ids(
         }
     }
     Ok(selected)
-}
-
-fn replay_output_destination_physics_helicity(
-    output: &DirectRecurrenceTileOutput<'_>,
-    selector: &DirectReplaySelectorPlan,
-    direct_helicity_to_physics: &[usize],
-    destination_id: u32,
-) -> RusticolResult<usize> {
-    let target_helicity_id_or_sentinel = output
-        .destination_target_helicity_id_or_sentinel(destination_id)
-        .ok_or_else(|| {
-            RusticolError::integrity("recurrence destination-helicity mapping is incomplete")
-        })?;
-    replay_destination_physics_helicity(
-        selector.helicity_map(),
-        direct_helicity_to_physics,
-        target_helicity_id_or_sentinel,
-    )
 }
 
 fn replay_destination_physics_helicity(

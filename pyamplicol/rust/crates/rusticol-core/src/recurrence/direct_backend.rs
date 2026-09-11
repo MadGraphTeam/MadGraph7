@@ -3982,7 +3982,8 @@ pub(crate) struct DirectStageClearRanges {
 
 /// Restricted destination closures are prepared once. Their row runs may cut
 /// through a full-plan fanout step, so execute the authenticated raw rows and
-/// clear only their dependency-closed stage spans, with no current-table scan.
+/// clear only dependency-closed stage spans whose first retained contribution
+/// does not initialize them, with no current-table scan.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_direct_plan_destination_selected<const PROFILE: bool>(
     plan: &DirectRecurrencePlan,
@@ -4053,6 +4054,13 @@ fn execute_direct_plan_with_clears_impl<
     // interaction rewrites and generic fanout scratch/replay while a capture
     // is active so every authenticated row writes its ordinary destination.
     let fanout = if observation_active { None } else { fanout };
+    // The existing dependency-closure preparation omits currents whose first
+    // retained contribution already overwrites their destination. Most fixed-
+    // source selections therefore need no stage clear at all. Unrestricted
+    // selection and all-flow-union retain their existing clearing semantics.
+    let requires_contribution_stage_clear = (selected_sector_id.is_some()
+        || plan.strategy() == RecurrenceStrategy::AllFlowUnion)
+        && (!PREPARED_CLEARS || current_clear_stages.is_none_or(|stages| !stages.is_empty()));
     let mut initialized_contribution_stage = None;
     for (group_index, descriptor) in row_groups.iter().enumerate() {
         if descriptor.role == DirectExecutorRole::Source
@@ -4141,8 +4149,6 @@ fn execute_direct_plan_with_clears_impl<
         // sources are prepared outside this static row schedule and may leave
         // additive destinations relying on the clear even without a selected
         // sector. Selected execution likewise visits only a logical subset.
-        let requires_contribution_stage_clear =
-            selected_sector_id.is_some() || plan.strategy() == RecurrenceStrategy::AllFlowUnion;
         if requires_contribution_stage_clear
             && descriptor.role == DirectExecutorRole::Contribution
             && initialized_contribution_stage != Some(descriptor.stage)
