@@ -3017,10 +3017,13 @@ set boost_choice [6, -6]
         
         self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
 
-        rho_avg_ref =  [[(0.3670142422790588+0j), (1.7429098337870793e-07-3.933851109770078e-05j), (-1.742909833606001e-07+3.9338510968347334e-05j), (0.11514189584464168-0j)],
-                        [(1.7429098337870793e-07+3.933851109770078e-05j), (0.13298575772060628+0j), (0.06344292964491506-0j), (-1.7429098336059725e-07-3.933851096834704e-05j)],
-                        [(-1.742909833606001e-07-3.9338510968347334e-05j), (0.06344292964491506+0j), (0.13298575772060628+0j), (1.7429098337870735e-07+3.9338511097700886e-05j)],
-                        [(0.11514189584464168+0j), (-1.7429098336059725e-07+3.933851096834704e-05j), (1.7429098337870735e-07-3.9338511097700886e-05j), (0.36701424227905893+0j)]]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
+        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
+        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
+        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
+                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
+                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
+                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
 
         #now let's read the average density matrix
         with open(rho_mean_path, 'r') as f:
@@ -3030,10 +3033,14 @@ set boost_choice [6, -6]
                 aux = data[i].strip("\t\n[]").split(",")
                 rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
             
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_user_interface(self):
@@ -3083,10 +3090,13 @@ set boost_choice [6, -6]
         
         self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
 
-        rho_avg_ref =  [[(0.3670142422790588+0j), (1.7429098337870793e-07-3.933851109770078e-05j), (-1.742909833606001e-07+3.9338510968347334e-05j), (0.11514189584464168-0j)],
-                        [(1.7429098337870793e-07+3.933851109770078e-05j), (0.13298575772060628+0j), (0.06344292964491506-0j), (-1.7429098336059725e-07-3.933851096834704e-05j)],
-                        [(-1.742909833606001e-07-3.9338510968347334e-05j), (0.06344292964491506+0j), (0.13298575772060628+0j), (1.7429098337870735e-07+3.9338511097700886e-05j)],
-                        [(0.11514189584464168+0j), (-1.7429098336059725e-07+3.933851096834704e-05j), (1.7429098337870735e-07-3.9338511097700886e-05j), (0.36701424227905893+0j)]]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
+        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
+        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
+        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
+                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
+                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
+                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
 
         #now let's read the average density matrix
         with open(rho_mean_path, 'r') as f:
@@ -3106,10 +3116,14 @@ set boost_choice [6, -6]
                         raise ValueError
             
 
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_ttbar(self):
@@ -3492,7 +3506,14 @@ set run_card use_syst False
 
 
         #Here we replace the lhe file by the reference lhe file (stored in the input_files).
-        os.remove(f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz")
+        # The MG5 run above is not checked for success and its log is not part
+        # of the test output, so a failed generation used to surface only as a
+        # FileNotFoundError on the line below, with the actual error invisible.
+        generated = f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz"
+        if not os.path.exists(generated):
+            self.fail('MG5 did not produce %s. Tail of %s:\n%s'
+                      % (generated, logfile, open(logfile).read()[-3000:]))
+        os.remove(generated)
         shutil.copyfile(pjoin(MG5DIR, "tests/input_files/density_mode/test_density_mode_doublettbar.lhe.gz"), f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz")
 
         #Now we reweight the lhe file through the inline method
