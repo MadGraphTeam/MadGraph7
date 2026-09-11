@@ -483,6 +483,20 @@ class SubProcessGroup(base_objects.PhysicsObject):
             fs_parts = [model.get_particle(l.get('id')) for l in \
                         process.get('legs') if l.get('state')]
 
+            # The processes inside one group are summed over (with their own
+            # PDF weight) in a single DSIGPROC, so two processes which differ
+            # by a polarization restriction must never land in the same
+            # group: adding up 't t~{R}' and 't t~{L}' just rebuilds the
+            # unpolarized cross section, and both would be written into the
+            # directory named after the first of them.
+            # Canonicalised exactly like Process.shell_polarization (which
+            # renders the directory name) and like
+            # helas_objects.IdentifyMETag.link_from_leg; an unpolarized leg
+            # contributes (), so the grouping of unpolarized processes is
+            # strictly unchanged.
+            pols = tuple(tuple(sorted(set(l.get('polarization')))) \
+                         for l in process.get('legs'))
+
             # This is where the requirements for which particles to
             # combine are defined. Include p.get('is_part') in
             # is_parts selection to distinguish between q and qbar,
@@ -496,12 +510,12 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id')]
+                           process.get('id'), pols]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
                             fs_parts],
-                           amplitude.get('process').get('id')]
+                           amplitude.get('process').get('id'), pols]
             
             if (criteria == "gpu"):
               proc_class = [ [(p.is_fermion(),) \
@@ -511,7 +525,7 @@ class SubProcessGroup(base_objects.PhysicsObject):
                              abs(p.get('color')),l.get('onshell')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id')]
+                           process.get('id'), pols]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)

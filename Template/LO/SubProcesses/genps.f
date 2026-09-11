@@ -1808,9 +1808,9 @@ c     find the boost momenta --sum of particles--
             enddo
          endif
       enddo
-      do j=1,3	
+      do j=1,3
           Pboost(j) = -1 * Pboost(j)
-      enddo	    
+      enddo
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo

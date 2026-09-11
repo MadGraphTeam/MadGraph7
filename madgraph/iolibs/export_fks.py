@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import string
 import copy
+import errno
 import platform
 
 import madgraph
@@ -467,6 +468,45 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         
     #===============================================================================
+    # mkdir_born_dir
+    #===============================================================================
+    def mkdir_born_dir(self, borndir, process):
+        """Create the P<shell_string> directory of one born matrix element.
+
+        shell_string() concatenates particle names and polarization labels
+        with no separator, and every FKS born process carries id 0, so two
+        distinct matrix elements can ask for the same name: 'p p > w+ L{-}'
+        and 'p p > w+{-} L' both give 0_uu_wpLL.  Defence in depth -- replace
+        the opaque FileExistsError with one naming both processes.
+        """
+        # lazy rather than in __init__: this class defines none of its own.
+        if not hasattr(self, 'born_dirs'):
+            # directory name -> the process which claimed it
+            self.born_dirs = {}
+        try:
+            os.mkdir(borndir)
+        except OSError as error:
+            if error.errno != errno.EEXIST:
+                raise
+            # low_mem_multicore_nlo_generation forks: each worker has its own
+            # born_dirs copy, so the previous owner may be unknown here.
+            previous = self.born_dirs.get(borndir)
+            msg = ["Cannot create the subprocess directory '%s' in %s: it already exists." \
+                       % (borndir, os.getcwd()),
+                   "Two different matrix elements are asking for the same directory name.",
+                   "  wants it now : %s" % process.nice_string(prefix=False).strip()]
+            if previous is not None:
+                msg.append("  already there: %s" % previous)
+            else:
+                msg.append("  already there: another matrix element of this output "
+                           "(written by a parallel worker; rerun with "
+                           "'set low_mem_multicore_nlo_generation False' to see which one)")
+            msg.append("This is a name clash, not a duplicated process: "
+                       "Process.shell_string() gave both of them the name '%s'." % borndir)
+            raise MadGraph5Error('\n'.join(msg))
+        self.born_dirs[borndir] = process.nice_string(prefix=False).strip()
+
+    #===============================================================================
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
@@ -494,7 +534,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
@@ -608,6 +648,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               matrix_element,
                               fortran_model)
 
+        filename = 'frame_info.inc'
+        self.write_frame_info_file(writers.FortranWriter(filename),
+                              matrix_element)
+
         filename = 'maxconfigs.inc'
         self.write_maxconfigs_file(writers.FortranWriter(filename),
                 max(nconfigs,matrix_element.born_me.get_number_of_amplitudes()))
@@ -711,6 +755,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'weight_lines.f',
                      'genps_fks.f',
                      'boostwdir2.f',
+                     'boost_to_frame.f',
                      'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
@@ -1745,6 +1790,36 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         lines = "integer max_particles, max_branch\n"
         lines += "parameter (max_particles=%d) \n" % maxparticles
         lines += "parameter (max_branch=max_particles-1)"
+        writer.writelines(lines)
+
+
+    def write_frame_info_file(self, writer, matrix_element):
+        """Write frame_info.inc, the bridge between the me_frame entries of the
+        run_card and the leg positions the fortran actually uses.
+
+        me_frame is given in the numbering of the process as the user wrote it,
+        but sort_proc() reorders and renumbers the born legs, so the two do not
+        coincide. frame_map_born(i) is the user number of the born leg sitting
+        at position i.
+
+        No table is needed for the real emissions: the FKS convention fixes the
+        real->born correspondence in terms of i_fks alone (see set_pdg in
+        chooser_functions.f), so get_frame_mask_real derives it at runtime.
+        """
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        nexternal_born = len(born_legs)
+
+        user_order = getattr(matrix_element, 'user_leg_order', [])
+        if len(user_order) != nexternal_born:
+            # No recorded ordering (e.g. a matrix element built by hand in the
+            # tests). Fall back to the identity: correct whenever the FKS sort
+            # left the user's ordering alone, which is the common case.
+            user_order = list(range(1, nexternal_born + 1))
+
+        lines = []
+        lines.append("integer frame_map_born(nexternal-1)")
+        lines.append("data frame_map_born /%s/" % \
+                     ','.join('%d' % n for n in user_order))
         writer.writelines(lines)
 
 
@@ -5122,7 +5197,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 

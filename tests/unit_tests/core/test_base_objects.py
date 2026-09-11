@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 import copy
+import itertools
 import os
 
 import madgraph
@@ -1860,7 +1861,71 @@ class ProcessTest(unittest.TestCase):
         goal_str = "2_cc_cxcc"
 
         self.assertEqual(goal_str, self.myprocess.shell_string())
-    
+
+    def test_shell_string_polarization_injective(self):
+        """The polarization part of a P<...> directory name must identify the
+        polarization *set*, not the order/duplicates the user typed.
+
+        A name moves iff the typed list differs from sorted(set(list)):
+        '{+-}'/'{-+}' and '{+}'/'{++}' are one restriction each, while
+        '{SS}' -> [9,9] and '{A}' -> [99] are two and used to share '99'.
+        """
+        shell_pol = base_objects.Process.shell_polarization
+
+        # unpolarized legs contribute nothing: names are unchanged
+        self.assertEqual('', shell_pol([]))
+
+        # the readable short-hands survive, whatever the spelling
+        self.assertEqual('T', shell_pol([1, -1]))
+        self.assertEqual('T', shell_pol([-1, 1]))
+        self.assertEqual('T', shell_pol([1, -1, 1]))
+        self.assertEqual('R', shell_pol([1]))
+        self.assertEqual('R', shell_pol([1, 1]))
+        self.assertEqual('L', shell_pol([-1]))
+        self.assertEqual('L', shell_pol([-1, -1]))
+
+        # the collision which used to be silent: {S,S} is the set {9},
+        # {A} is the set {99}; they must not share a directory name
+        self.assertEqual('9', shell_pol([9, 9]))
+        self.assertEqual('99', shell_pol([99]))
+        self.assertNotEqual(shell_pol([9, 9]), shell_pol([99]))
+
+        # ... and the same restriction always gives the same name
+        self.assertEqual(shell_pol([9, 99]), shell_pol([99, 9]))
+        self.assertEqual(shell_pol([0, -1, 1]), shell_pol([1, 0, -1]))
+
+        # exhaustive: every distinct set of allowed polarizations gets a
+        # distinct name
+        allowed = base_objects.Leg.list_of_allowed_polarizations
+        names = {}
+        for size in range(1, len(allowed) + 1):
+            for combi in itertools.combinations(sorted(allowed), size):
+                name = shell_pol(list(combi))
+                self.assertNotIn(name, names,
+                    "polarizations %s and %s both render as '%s'" % \
+                        (list(combi), names.get(name), name))
+                names[name] = list(combi)
+
+    def test_shell_string_polarization_in_dirname(self):
+        """The canonicalisation is actually applied by shell_string()."""
+
+        self.myprocess.set('id', 0)
+        legs = self.myprocess.get('legs')
+
+        legs[2].set('polarization', [1, -1])
+        first = self.myprocess.shell_string()
+        legs[2].set('polarization', [-1, 1])
+        self.assertEqual(first, self.myprocess.shell_string())
+        self.assertEqual('0_cc_cTcc', first)
+
+        legs[2].set('polarization', [9, 9])
+        ss = self.myprocess.shell_string()
+        legs[2].set('polarization', [99])
+        self.assertNotEqual(ss, self.myprocess.shell_string())
+        self.assertEqual('0_cc_c9cc', ss)
+        self.assertEqual('0_cc_c99cc', self.myprocess.shell_string())
+
+
     def test_long_shell_string(self):
         """Test Process nice_string representation"""
 
@@ -2165,6 +2230,29 @@ class ProcessDefinitionTest(unittest.TestCase):
                 self.assertEqual(my_new_process_definition[k], testproc[k])
             else:
                 self.assertEqual(myleglist, testproc[k])
+
+    def test_get_process_keeps_polarization(self):
+        """test that get_process carries the polarization of the multi-legs
+        over to the legs of the returned process."""
+
+        my_new_process_definition = copy.deepcopy(self.my_process_definition)
+        # one initial state and one final state leg are polarized
+        my_new_process_definition['legs'][1].set('polarization', [-1])
+        my_new_process_definition['legs'][3].set('polarization', [0])
+
+        testproc = my_new_process_definition.get_process([3, 3], [4, 5, 3])
+
+        self.assertEqual([l.get('id') for l in testproc.get('legs')],
+                         [3, 3, 4, 5, 3])
+        self.assertEqual([l.get('state') for l in testproc.get('legs')],
+                         [False, False, True, True, True])
+        self.assertEqual([l.get('polarization') for l in testproc.get('legs')],
+                         [[], [-1], [], [0], []])
+
+        # the process must not share the polarization list of the multi-leg
+        testproc.get('legs')[1].get('polarization').append(1)
+        self.assertEqual(my_new_process_definition['legs'][1].get('polarization'),
+                         [-1])
 
     def test_values_for_prop(self):
         """Test filters for process properties"""

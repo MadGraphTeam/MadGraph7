@@ -275,7 +275,7 @@ c$$$   read(hel_buf,'(15i5)') (jpart(7,i),i=1,nexternal)
       if (colour_connections(1,1).lt.0) then
          ! colour not yet set: Get color flow that is consistent with
          ! iconfig from Born
-         call sborn(p_born,wgt1)
+         call sborn_frame(p_born,wgt1)
          sumborn=0.d0
          do i=1,max_bcol
             if (icolamp(i,iBornGraph,1)) then
