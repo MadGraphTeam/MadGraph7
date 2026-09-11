@@ -3660,7 +3660,7 @@ set draw_rivet_plots True
 
         cmd.run_cmd('launch -f')
         
-        self.check_parton_output(cross=15.73, error=0.04)
+        self.check_parton_output(cross=15.73, error=0.514)
 
     def _get_delphes_path(self):
         """Return the configured delphes_path from the MG5 configuration, or

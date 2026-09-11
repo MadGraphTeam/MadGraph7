@@ -46,9 +46,9 @@ C   GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
     LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC)
     INTEGER NTRY(MAXFLAVPERPROC)
     common/BLOCK_GOODHEL/NTRY,GOODHEL
-    integer nb_spin_state(2)
-    data  nb_spin_state /%(nb_spin_state1)i,%(nb_spin_state2)i/
-    common /nb_hel_state/ nb_spin_state
+    integer nb_spin_state_in(2)
+    data  nb_spin_state_in /%(nb_spin_state1)i,%(nb_spin_state2)i/
+    common /nb_hel_state/ nb_spin_state_in
 C  
 C LOCAL VARIABLES 
 C  

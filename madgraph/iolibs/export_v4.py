@@ -4319,9 +4319,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         try:
             common_run_interface.CommonRunCmd.update_make_opts_full(
                             make_opts, for_update)
-        except IOError:
+        except (IOError, OSError) as error:
             if root_dir == self.dir_path:
-                logger.info('Fail to set compiler. Trying to continue anyway.')            
+                # Do NOT continue: without DEFAULT_F_COMPILER make falls back to
+                # its builtin $(FC) (f77) and drops $(libext) and
+                # -ffixed-line-length-132 as well, so the build fails much later
+                # with column-72 errors in unrelated Fortran files.
+                raise MadGraph5Error(
+                    'Fail to set the fortran compiler in %s: %s' % (make_opts, error))
+            # For MG5DIR/Template this is only an optimisation, and a shared
+            # install is legitimately read-only.
+            logger.info('Fail to set compiler in %s. Trying to continue anyway.'
+                        % make_opts)
 
     def replace_make_opt_c_compiler(self, compiler, root_dir = ""):
         """Set CXX=compiler in Source/make_opts.
@@ -4358,9 +4367,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         try:
             common_run_interface.CommonRunCmd.update_make_opts_full(
                             make_opts, for_update)
-        except IOError:
+        except (IOError, OSError) as error:
             if root_dir == self.dir_path:
-                logger.info('Fail to set compiler. Trying to continue anyway.')  
+                # see replace_make_opt_f_compiler: silently keeping make's
+                # defaults only moves the failure somewhere unrecognisable.
+                raise MadGraph5Error(
+                    'Fail to set the c++ compiler in %s: %s' % (make_opts, error))
+            logger.info('Fail to set compiler in %s. Trying to continue anyway.'
+                        % make_opts)
     
         return
 
@@ -4455,8 +4469,16 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
                         
         # Add file in Source
-        shutil.copy(pjoin(temp_dir, 'Source', 'make_opts'), 
-                    pjoin(self.dir_path, 'Source'))   
+        # atomic_copy, not shutil.copy: the source is MG5DIR/Template/LO's
+        # make_opts, a file shared by every MadGraph7 process using this
+        # installation and rewritten in place by each of them
+        # (set_fortran_compiler / set_cpp_compiler), so a plain read of it can
+        # come back empty. The destination is then compiled against. This is how
+        # a MadSpin decay-ME directory ends up with an empty
+        # madspin_me/Source/make_opts and a build that silently falls back to
+        # make's builtins.
+        misc.atomic_copy(pjoin(temp_dir, 'Source', 'make_opts'), 
+                         pjoin(self.dir_path, 'Source'))   
 
         # add the makefile 
         filename = pjoin(self.dir_path,'Source','makefile')
@@ -7462,10 +7484,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """
                          DO JJ=1,nincoming
+c NB_SPIN_STATE_IN/2 avoids a double counting
+c of an explicit polarisation in the process
                IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))
+                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
                ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))
+                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
                ENDIF
              ENDDO
             """
@@ -7475,10 +7499,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 if self.beam_polarization[i]:
                     replace_dict['beam_polarization'] = """
                                    ! handling only one beam polarization here. Second beam can be handle via the pdf.
+c NB_SPIN_STATE_IN/2 avoids a double counting
+c of an explicit polarisation in the process
                                    IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))
+                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
                ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))
+                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
                ENDIF """ % {'bid': i+1}
 
 
