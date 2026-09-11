@@ -2666,9 +2666,9 @@ def load_mg5_options(me_dir=None) -> dict:
         'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
     }
     config_files = []
-    if os.environ.get('MADGRAPH_BASE'):
-        config_files.append((os.path.join(os.environ['MADGRAPH_BASE'],
-                                          misc.CONFIG_NAME), mg5dir))
+    base_config = misc.base_config_file()
+    if base_config:
+        config_files.append((base_config, mg5dir))
     user_config = misc.user_config_file()
     if user_config:
         config_files.append((user_config, mg5dir))
