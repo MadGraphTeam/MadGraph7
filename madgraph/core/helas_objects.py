@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -708,6 +708,24 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 if self['state'] == 'final' and self.get('pdg_code') in decay_ids:
                     self.set('decay', True)
                 else:
+                    # Braces that name a piece of the propagator numerator of a
+                    # massive vector have no external wavefunction: the integer
+                    # would end up in the NHEL table and VXXXXX would silently
+                    # return a meaningless vector. The command interface
+                    # already refuses them (validate_propagator_polarization);
+                    # this catches the direct-API path as well.
+                    propagator_only = \
+                        base_objects.Leg.propagator_only_polarizations
+                    for value in leg.get('polarization'):
+                        # 99 ('{A}') keeps its own, pre-existing message below
+                        if value == 99 or value not in propagator_only:
+                            continue
+                        raise InvalidCmd(
+                            "The polarization {%s} is a piece of a massive "
+                            "vector propagator, not a polarization vector: "
+                            "it is only valid on a particle that is decayed "
+                            "further (an internal line), not on an external "
+                            "leg of the process." % propagator_only[value])
                     if 99 in leg.get('polarization'):
                         raise Exception("polarization A only valid for propagator.")
                     
@@ -1394,7 +1412,28 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 # Use the copy in wavefunctions instead.
                 # Remove this copy from diagram_wavefunctions
                 new_wf_number = new_wf.get('number')
-                new_wf = wavefunctions[wavefunctions.index(new_wf)]
+                # HelasWavefunction.__eq__ ignores the pdg code, so for a loop
+                # wavefunction whose particle and antiparticle differ in nothing
+                # else -- a colour singlet, i.e. a lepton -- index() can return
+                # the wrong sign. Match the pdg code explicitly for every loop
+                # wavefunction. See appendix A of arXiv:2108.11404, which
+                # reported this for leptoquark pair production at NLO; the
+                # workaround given there guards only pdg < 0, but nothing makes
+                # the other sign safe, so the check is applied symmetrically.
+                if not new_wf.get('is_loop'):
+                    index_wf = wavefunctions.index(new_wf)
+                else:
+                    for i_wf, wf in enumerate(wavefunctions):
+                        if new_wf == wf and \
+                           wf.get('pdg_code') == new_wf.get('pdg_code'):
+                            index_wf = i_wf
+                            break
+                    else:
+                        # No pdg-matching candidate: same outcome as index()
+                        # finding nothing, i.e. keep the local copy. Caught by
+                        # the 'except ValueError' closing this try block.
+                        raise ValueError
+                new_wf = wavefunctions[index_wf]
                 diagram_wf_numbers = [w.get('number') for w in \
                                                           diagram_wavefunctions]
                 index = diagram_wf_numbers.index(new_wf_number)
@@ -1422,9 +1461,14 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # have this replaced wavefunction in their mothers. This
                     # plays the role of the 'number_to_wavefunction' dictionary
                     # used for tree level.
+                    # Match on object identity rather than on the 'number'
+                    # attribute: numbers are reshuffled by the insertions above
+                    # (and by the renumbering just performed), so an unrelated
+                    # wavefunction can transiently carry new_wf_number and get
+                    # its mother silently overwritten.
                     for wf in diagram_wavefunctions:
                         for i,mother_wf in enumerate(wf.get('mothers')):
-                            if mother_wf.get('number')==new_wf_number:
+                            if mother_wf is self:
                                 wf.get('mothers')[i]=new_wf
 
             except ValueError:
@@ -5511,8 +5555,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         pdgs = []
         pdg_signs = []
+        # L-cut wavefunctions of a loop ME are also motherless, but they are not
+        # external legs of the process (same filter as get_nexternal_ninitial).
         external_wfs = sorted([wf for wf in self.get_all_wavefunctions()
-                               if len(wf.get('mothers')) == 0],
+                               if len(wf.get('mothers')) == 0
+                               and not wf.get('is_loop')],
                               key=lambda w: w['number_external'])
         external_number = 1
         id_to_wf = collections.defaultdict(list)

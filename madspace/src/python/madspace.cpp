@@ -559,6 +559,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"delta_eta", Observable::obs_delta_eta},
             {"delta_phi", Observable::obs_delta_phi},
             {"delta_r", Observable::obs_delta_r},
+            {"pair_mass", Observable::obs_pair_mass},
             {"sqrt_s", Observable::obs_sqrt_s},
         },
         "obs_"
@@ -631,6 +632,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("min", &ObservableHistograms::HistItem::min)
         .def_readonly("max", &ObservableHistograms::HistItem::max)
         .def_readonly("bin_count", &ObservableHistograms::HistItem::bin_count);
+    py::classh<ObservableValues, FunctionGenerator>(m, "ObservableValues")
+        .def(py::init<const std::vector<Observable>&>(), py::arg("observables"))
+        .def_property_readonly("observables", &ObservableValues::observables);
     py::classh<ObservableHistograms, FunctionGenerator>(m, "ObservableHistograms")
         .def(
             py::init<const std::vector<ObservableHistograms::HistItem>&>(),
@@ -842,7 +846,12 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def("input_dim", &MLP::input_dim)
         .def("output_dim", &MLP::output_dim)
-        .def("initialize_globals", &MLP::initialize_globals, py::arg("context"));
+        .def(
+            "initialize_globals",
+            &MLP::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
+        );
 
     py::classh<Flow, Mapping>(m, "Flow")
         .def(
@@ -866,12 +875,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("input_dim", &Flow::input_dim)
         .def("condition_dim", &Flow::condition_dim)
-        .def("initialize_globals", &Flow::initialize_globals, py::arg("context"))
+        .def(
+            "initialize_globals",
+            &Flow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
+        )
         .def(
             "initialize_from_vegas",
             &Flow::initialize_from_vegas,
             py::arg("context"),
-            py::arg("grid_name")
+            py::arg("grid_name"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<PropagatorChannelWeights, FunctionGenerator>(
@@ -927,7 +942,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "initialize_globals",
             &ChannelWeightNetwork::initialize_globals,
-            py::arg("context")
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<DiscreteHistogram, FunctionGenerator>(m, "DiscreteHistogram")
@@ -972,7 +988,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("option_counts", &DiscreteFlow::option_counts)
         .def("condition_dim", &DiscreteFlow::condition_dim)
         .def(
-            "initialize_globals", &DiscreteFlow::initialize_globals, py::arg("context")
+            "initialize_globals",
+            &DiscreteFlow::initialize_globals,
+            py::arg("context"),
+            py::arg("seed") = std::nullopt
         );
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
@@ -1200,6 +1219,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     std::monostate,
                     PdfGrid,
                     DifferentialCrossSection::CachedPdf>&,
+                bool,
                 bool>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
@@ -1208,7 +1228,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pid_options") = nested_vector2<me_int_t>{},
             py::arg("pdf1") = std::monostate{},
             py::arg("pdf2") = std::monostate{},
-            py::arg("input_momentum_fraction") = true
+            py::arg("input_momentum_fraction") = true,
+            py::arg("decay") = false
         )
         .def("pid_options", &DifferentialCrossSection::pid_options)
         .def("matrix_element", &DifferentialCrossSection::matrix_element);
@@ -1376,7 +1397,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
         )
-        .def_readwrite("buffered_steps", &MadnisTraining::Config::buffered_steps)
+        .def_readwrite(
+            "buffered_steps_fraction", &MadnisTraining::Config::buffered_steps_fraction
+        )
+        .def_readwrite(
+            "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
+        )
         .def_readwrite(
             "buffer_unweighting_quantile",
             &MadnisTraining::Config::buffer_unweighting_quantile
@@ -1399,12 +1425,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const MadnisTraining::Config&,
                 const std::vector<std::shared_ptr<Integrand>>&,
-                const std::optional<ChannelWeightNetwork>&>(),
+                const std::optional<ChannelWeightNetwork>&,
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("config"),
             py::arg("integrands"),
-            py::arg("cwnet")
+            py::arg("cwnet"),
+            py::arg("seed") = std::nullopt
         )
         .def("train_step", &MadnisTraining::train_step, py::arg("batch_index"))
         .def("active_channels", &MadnisTraining::active_channels)
@@ -1435,12 +1463,14 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 const std::vector<MultiMadnisTraining::TrainingArgs>&,
                 Verbosity,
-                std::shared_ptr<StatusFile>>(),
+                std::shared_ptr<StatusFile>,
+                std::optional<std::uint64_t>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
             py::arg("training_args"),
             py::arg("verbosity"),
-            py::arg("status_file") = std::shared_ptr<StatusFile>()
+            py::arg("status_file") = std::shared_ptr<StatusFile>(),
+            py::arg("seed") = std::nullopt
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);
@@ -1474,7 +1504,32 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite(
             "cut_efficiency_threshold", &GeneratorConfig::cut_efficiency_threshold
         )
-        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions);
+        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions)
+        .def_readwrite(
+            "finish_remaining_fraction", &GeneratorConfig::finish_remaining_fraction
+        )
+        .def_readwrite("max_batch_fraction", &GeneratorConfig::max_batch_fraction)
+        .def_readwrite(
+            "batch_overshoot_sigma", &GeneratorConfig::batch_overshoot_sigma
+        );
+
+    m.def(
+        "compute_generation_batch_event_count",
+        &compute_generation_batch_event_count,
+        py::arg("count_target"),
+        py::arg("count_unweighted"),
+        py::arg("count_opt"),
+        py::arg("abs_cross_section_count"),
+        py::arg("abs_cross_section_rel_error"),
+        py::arg("config")
+    );
+
+    m.def(
+        "select_combine_channel_index",
+        &select_combine_channel_index,
+        py::arg("cum_counts"),
+        py::arg("random_index")
+    );
 
     py::classh<GeneratorStatus>(m, "GeneratorStatus")
         .def(py::init<>())
@@ -1482,6 +1537,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("name", &GeneratorStatus::name)
         .def_readwrite("mean", &GeneratorStatus::mean)
         .def_readwrite("error", &GeneratorStatus::error)
+        .def_readwrite("mean_abs", &GeneratorStatus::mean_abs)
+        .def_readwrite("error_abs", &GeneratorStatus::error_abs)
         .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
         .def_readwrite("count", &GeneratorStatus::count)
         .def_readwrite("count_opt", &GeneratorStatus::count_opt)
@@ -1622,7 +1679,14 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("scale", &LHEEvent::scale)
         .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
         .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
-        .def_readwrite("particles", &LHEEvent::particles);
+        .def_readwrite("particles", &LHEEvent::particles)
+        .def_readwrite("rwgt_ids", &LHEEvent::rwgt_ids)
+        .def_readwrite("rwgt", &LHEEvent::rwgt)
+        .def("format", [](const LHEEvent& event) {
+            std::string buffer;
+            event.format_to(buffer);
+            return buffer;
+        });
     py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
         .def(
             py::init<
@@ -1662,9 +1726,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "diagram_propagator_pdgs",
             &LHECompleter::SubprocArgs::diagram_propagator_pdgs
         );
-    py::classh<std::mt19937>(m, "RandGen")
+    py::classh<MixMaxRandom>(m, "MixMaxRandom")
         .def(py::init<>())
-        .def(py::init<std::mt19937::result_type>(), py::arg("seed"));
+        .def(py::init<std::uint64_t>(), py::arg("seed"));
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
@@ -1756,16 +1820,322 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("status", &ChannelEventGenerator::status)
         .def("save", &ChannelEventGenerator::save, py::arg("save"));
 
+    py::classh<PdfMemberSpec>(m, "PdfMemberSpec")
+        .def(
+            py::init([](const std::string& set_name,
+                        int set_lhaid,
+                        int member,
+                        const std::string& grid_file,
+                        const std::string& info_file,
+                        const std::string& error_type,
+                        const std::string& description) {
+                return PdfMemberSpec{
+                    set_name,
+                    set_lhaid,
+                    member,
+                    grid_file,
+                    info_file,
+                    error_type,
+                    description
+                };
+            }),
+            py::arg("set_name"),
+            py::arg("set_lhaid"),
+            py::arg("member"),
+            py::arg("grid_file"),
+            py::arg("info_file"),
+            py::arg("error_type") = "",
+            py::arg("description") = ""
+        )
+        .def_readwrite("set_name", &PdfMemberSpec::set_name)
+        .def_readwrite("set_lhaid", &PdfMemberSpec::set_lhaid)
+        .def_readwrite("member", &PdfMemberSpec::member)
+        .def_readwrite("grid_file", &PdfMemberSpec::grid_file)
+        .def_readwrite("info_file", &PdfMemberSpec::info_file)
+        .def_readwrite("error_type", &PdfMemberSpec::error_type)
+        .def_readwrite("description", &PdfMemberSpec::description);
+    py::classh<SystematicsConfig>(m, "SystematicsConfig")
+        .def(py::init<>())
+        .def_readwrite("mur", &SystematicsConfig::mur)
+        .def_readwrite("muf", &SystematicsConfig::muf)
+        .def_readwrite("together", &SystematicsConfig::together)
+        .def_readwrite("dyn_scales", &SystematicsConfig::dyn_scales)
+        .def_readwrite("pdf_members", &SystematicsConfig::pdf_members)
+        .def_readwrite("nominal_set_name", &SystematicsConfig::nominal_set_name)
+        .def_readwrite("nominal_lhaid", &SystematicsConfig::nominal_lhaid)
+        .def_readwrite("nominal_error_type", &SystematicsConfig::nominal_error_type)
+        .def_readwrite("nominal_description", &SystematicsConfig::nominal_description)
+        .def_readwrite("has_pdf", &SystematicsConfig::has_pdf)
+        .def_readwrite("write_inputs", &SystematicsConfig::write_inputs)
+        .def_readwrite("first_id", &SystematicsConfig::first_id)
+        .def(
+            "to_json",
+            [](const SystematicsConfig& config) {
+                return nlohmann::json(config).dump();
+            }
+        )
+        .def_static("from_json", [](const std::string& text) {
+            return nlohmann::json::parse(text).get<SystematicsConfig>();
+        });
+    py::classh<SubprocessSystArgs>(m, "SubprocessSystArgs")
+        .def(
+            py::init([](int qcd_power, const nested_vector2<int>& beam_pdgs) {
+                return SubprocessSystArgs{qcd_power, beam_pdgs};
+            }),
+            py::arg("qcd_power"),
+            py::arg("beam_pdgs")
+        )
+        .def_readwrite("qcd_power", &SubprocessSystArgs::qcd_power)
+        .def_readwrite("beam_pdgs", &SubprocessSystArgs::beam_pdgs)
+        .def(
+            "to_json",
+            [](const SubprocessSystArgs& args) { return nlohmann::json(args).dump(); }
+        )
+        .def_static("from_json", [](const std::string& text) {
+            return nlohmann::json::parse(text).get<SubprocessSystArgs>();
+        });
+    py::classh<Variation>(m, "Variation")
+        .def_readonly("id", &Variation::id)
+        .def_readonly("mur", &Variation::mur)
+        .def_readonly("muf", &Variation::muf)
+        .def_readonly("pdf_index", &Variation::pdf_index)
+        .def_readonly("dyn", &Variation::dyn)
+        .def_property_readonly("is_scale", &Variation::is_scale);
+    py::classh<PdfGroupInfo>(m, "PdfGroupInfo")
+        .def_readonly("set_name", &PdfGroupInfo::set_name)
+        .def_readonly("set_lhaid", &PdfGroupInfo::set_lhaid)
+        .def_readonly("error_type", &PdfGroupInfo::error_type)
+        .def_readonly("members", &PdfGroupInfo::members);
+    py::classh<SystematicsCalculator>(m, "SystematicsCalculator")
+        .def(
+            py::init<
+                const SystematicsConfig&,
+                const std::vector<SubprocessSystArgs>&,
+                const std::optional<PdfGrid>&,
+                const std::optional<AlphaSGrid>&,
+                ContextPtr,
+                const std::vector<std::optional<MatrixElement>>&,
+                const nested_vector2<me_int_t>&>(),
+            py::arg("config"),
+            py::arg("subproc_args"),
+            py::arg("nominal_pdf") = std::nullopt,
+            py::arg("nominal_alpha_s") = std::nullopt,
+            py::arg("context") = nullptr,
+            py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
+            py::arg("me_flavor_remap") = nested_vector2<me_int_t>{}
+        )
+        .def_property_readonly("config", &SystematicsCalculator::config)
+        .def_property_readonly(
+            "scale_variation_indices", &SystematicsCalculator::scale_variation_indices
+        )
+        .def_property_readonly("pdf_groups", &SystematicsCalculator::pdf_groups)
+        .def_static(
+            "pdf_uncertainty",
+            &SystematicsCalculator::pdf_uncertainty,
+            py::arg("error_type"),
+            py::arg("central"),
+            py::arg("member_values")
+        )
+        .def_static(
+            "dynamical_scale",
+            &SystematicsCalculator::dynamical_scale,
+            py::arg("dyn"),
+            py::arg("momenta")
+        )
+        .def_property_readonly("variations", &SystematicsCalculator::variations)
+        .def_property_readonly("weight_count", &SystematicsCalculator::weight_count)
+        .def_property_readonly("weight_ids", &SystematicsCalculator::weight_ids)
+        .def_property_readonly("members", &SystematicsCalculator::members)
+        .def_property_readonly("warnings", &SystematicsCalculator::warnings)
+        .def("initrwgt", &SystematicsCalculator::initrwgt)
+        .def(
+            "summary",
+            [](const SystematicsCalculator& calc) { return calc.summary().dump(); }
+        )
+        .def(
+            "weights",
+            [](const SystematicsCalculator& calc,
+               const std::vector<double>& event_weight,
+               const std::vector<int>& subprocess_index,
+               const std::vector<int>& flavor_index,
+               const std::vector<double>& ren_scale,
+               const std::vector<double>& x1,
+               const std::vector<double>& fact_scale1,
+               const std::vector<double>& x2,
+               const std::vector<double>& fact_scale2,
+               const std::vector<double>& partial_weight_product,
+               const nested_vector3<double>& momenta,
+               const std::vector<double>& alpha_qcd) {
+                // build a combined-layout buffer from columns (testing / scripting)
+                std::size_t count = event_weight.size();
+                std::size_t particle_count = momenta.empty() ? 0 : momenta.at(0).size();
+                DataLayout layout(
+                    EventRecord::layout(
+                        EventRecord::f_weight | EventRecord::f_subproc_index |
+                        EventRecord::f_event_data | EventRecord::f_beam1 |
+                        EventRecord::f_beam2 | EventRecord::f_partial_weights
+                    ),
+                    ParticleRecord::layout(
+                        particle_count > 0 ? ParticleRecord::f_particle_data
+                                           : ParticleRecord::f_none
+                    )
+                );
+                EventBuffer buffer(count, particle_count, layout);
+                for (std::size_t i = 0; i < count; ++i) {
+                    auto event = buffer.event(i);
+                    event.weight() = event_weight.at(i);
+                    event.subprocess_index() = subprocess_index.at(i);
+                    event.flavor_index() = flavor_index.at(i);
+                    event.diagram_index() = 0;
+                    event.color_index() = 0;
+                    event.helicity_index() = 0;
+                    event.ren_scale() = ren_scale.at(i);
+                    event.alpha_qcd() = alpha_qcd.empty() ? 0. : alpha_qcd.at(i);
+                    event.x1() = x1.at(i);
+                    event.fact_scale1() = fact_scale1.at(i);
+                    event.x2() = x2.at(i);
+                    event.fact_scale2() = fact_scale2.at(i);
+                    event.partial_weight_product() = partial_weight_product.at(i);
+                    for (std::size_t j = 0; j < particle_count; ++j) {
+                        auto particle = buffer.particle(i, j);
+                        auto& p = momenta.at(i).at(j);
+                        particle.energy() = p.at(0);
+                        particle.px() = p.at(1);
+                        particle.py() = p.at(2);
+                        particle.pz() = p.at(3);
+                    }
+                }
+                std::vector<double> weights;
+                calc.compute(buffer, weights);
+                nested_vector2<double> result(count);
+                std::size_t var_count = calc.weight_count();
+                for (std::size_t i = 0; i < count; ++i) {
+                    result[i].assign(
+                        weights.begin() + i * var_count,
+                        weights.begin() + (i + 1) * var_count
+                    );
+                }
+                return result;
+            },
+            py::arg("event_weight"),
+            py::arg("subprocess_index"),
+            py::arg("flavor_index"),
+            py::arg("ren_scale"),
+            py::arg("x1"),
+            py::arg("fact_scale1"),
+            py::arg("x2"),
+            py::arg("fact_scale2"),
+            py::arg("partial_weight_product"),
+            py::arg("momenta") = nested_vector3<double>{},
+            py::arg("alpha_qcd") = std::vector<double>{}
+        );
+    py::classh<EventHistogramSpec>(m, "EventHistogramSpec")
+        .def(
+            py::init([](const std::string& name,
+                        double min,
+                        double max,
+                        std::size_t bin_count) {
+                return EventHistogramSpec{name, min, max, bin_count};
+            }),
+            py::arg("name"),
+            py::arg("min"),
+            py::arg("max"),
+            py::arg("bin_count")
+        )
+        .def_readwrite("name", &EventHistogramSpec::name)
+        .def_readwrite("min", &EventHistogramSpec::min)
+        .def_readwrite("max", &EventHistogramSpec::max)
+        .def_readwrite("bin_count", &EventHistogramSpec::bin_count);
+    py::classh<SubprocessObservables>(m, "SubprocessObservables")
+        .def(
+            py::init([](const ObservableValues& values, std::size_t particle_count) {
+                return SubprocessObservables{values, particle_count};
+            }),
+            py::arg("values"),
+            py::arg("particle_count")
+        );
+    py::classh<EventHistograms>(m, "EventHistograms")
+        .def(
+            py::init<
+                ContextPtr,
+                const std::vector<EventHistogramSpec>&,
+                const std::vector<std::optional<SubprocessObservables>>&>(),
+            py::arg("context"),
+            py::arg("specs"),
+            py::arg("observables")
+        )
+        .def_property_readonly("specs", &EventHistograms::specs)
+        .def_property_readonly("weight_count", &EventHistograms::weight_count)
+        .def(
+            "fill",
+            [](EventHistograms& hists,
+               const std::vector<double>& event_weight,
+               const std::vector<int>& subprocess_index,
+               const nested_vector3<double>& momenta,
+               const nested_vector2<double>& syst_weights) {
+                std::size_t count = event_weight.size();
+                std::size_t particle_count = momenta.empty() ? 0 : momenta.at(0).size();
+                DataLayout layout(
+                    EventRecord::layout(
+                        EventRecord::f_weight | EventRecord::f_subproc_index |
+                        EventRecord::f_event_data
+                    ),
+                    ParticleRecord::layout(ParticleRecord::f_particle_data)
+                );
+                EventBuffer buffer(count, particle_count, layout);
+                std::size_t weight_count =
+                    syst_weights.empty() ? 0 : syst_weights.at(0).size();
+                std::vector<double> flat;
+                for (std::size_t i = 0; i < count; ++i) {
+                    auto event = buffer.event(i);
+                    event.weight() = event_weight.at(i);
+                    event.subprocess_index() = subprocess_index.at(i);
+                    event.diagram_index() = 0;
+                    event.color_index() = 0;
+                    event.flavor_index() = 0;
+                    event.helicity_index() = 0;
+                    event.ren_scale() = 0.;
+                    event.alpha_qcd() = 0.;
+                    for (std::size_t j = 0; j < particle_count; ++j) {
+                        auto particle = buffer.particle(i, j);
+                        auto& p = momenta.at(i).at(j);
+                        particle.energy() = p.at(0);
+                        particle.px() = p.at(1);
+                        particle.py() = p.at(2);
+                        particle.pz() = p.at(3);
+                    }
+                    if (weight_count > 0) {
+                        auto& row = syst_weights.at(i);
+                        flat.insert(flat.end(), row.begin(), row.end());
+                    }
+                }
+                hists.fill(buffer, flat, weight_count);
+            },
+            py::arg("event_weight"),
+            py::arg("subprocess_index"),
+            py::arg("momenta"),
+            py::arg("syst_weights") = nested_vector2<double>{}
+        )
+        .def(
+            "to_json",
+            [](const EventHistograms& hists, const SystematicsCalculator* systematics) {
+                return hists.to_json(systematics).dump();
+            },
+            py::arg("systematics") = nullptr
+        );
+
     py::classh<EventGenerator>(m, "EventGenerator")
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
+                std::uint64_t,
                 std::shared_ptr<StatusFile>,
                 const GeneratorConfig&>(),
             py::arg("contexts"),
             py::arg("channels"),
+            py::arg("seed"),
             py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg_v(
                 "config",
@@ -1773,25 +2143,31 @@ PYBIND11_MODULE(_madspace_py, m) {
                 "EventGenerator.default_config"
             )
         )
-        .def("survey", &EventGenerator::survey)
+        .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
         .def("generate", &EventGenerator::generate)
         .def(
             "combine_to_compact_npy",
             &EventGenerator::combine_to_compact_npy,
-            py::arg("file_name")
+            py::arg("file_name"),
+            py::arg("systematics") = nullptr,
+            py::arg("histograms") = nullptr
         )
         .def(
             "combine_to_lhe_npy",
             &EventGenerator::combine_to_lhe_npy,
             py::arg("file_name"),
-            py::arg("lhe_completer")
+            py::arg("lhe_completer"),
+            py::arg("systematics") = nullptr,
+            py::arg("histograms") = nullptr
         )
         .def(
             "combine_to_lhe",
             &EventGenerator::combine_to_lhe,
             py::arg("file_name"),
             py::arg("lhe_completer"),
-            py::arg_v("meta", LHEMeta{}, "LHEMeta()")
+            py::arg_v("meta", LHEMeta{}, "LHEMeta()"),
+            py::arg("systematics") = nullptr,
+            py::arg("histograms") = nullptr
         )
         .def("status", &EventGenerator::status)
         .def("channel_status", &EventGenerator::channel_status)

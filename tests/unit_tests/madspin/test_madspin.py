@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -44,6 +44,7 @@ import madgraph.various.misc as misc
 import MadSpin.decay as madspin
 import madgraph.various.lhe_parser as lhe_parser
 import MadSpin.interface_madspin as interface_madspin
+import models.check_param_card as check_param_card
 import models.import_ufo as import_ufo
 
 
@@ -128,7 +129,12 @@ def _borrow_frame_helpers(namespace):
     """
     for name in ('_beampol', '_frame_boost', '_needs_frame_axis',
                  '_polarization_weight_labels',
-                 '_polarization_weights_enabled'):
+                 '_polarization_weights_enabled',
+                 # the density denominator is taken in the same frame as the
+                 # numerator, so it is guarded by _frame_boost too: with no
+                 # boost it is exactly calculate_matrix_element, which is what
+                 # every stub here provides
+                 '_onshell_production_norm'):
         namespace[name] = inspect.getattr_static(
             interface_madspin.MadSpinInterface, name)
     namespace['InvalidCmd'] = interface_madspin.MadSpinInterface.InvalidCmd
@@ -677,6 +683,164 @@ class TestFrameBoost(unittest.TestCase):
         self.assertEqual((boost.E, boost.px, boost.py, boost.pz),
                          (500., 0., 0., 0.))
         self.assertEqual(stub._boost_momenta(momenta, boost), momenta)
+
+
+class TestOnshellProductionNorm(unittest.TestCase):
+    """``_onshell_production_norm``: |M_prod|^2 on shell, which is the
+    denominator of the offshell mass-set weight (the sequential accept/reject's
+    mass stage) and of the joint density weight.
+
+    The numerator on both paths is a contraction of the production density,
+    and the density modes build that in the ``me_frame``. So as soon as a
+    helicity index is *projected* -- a production brace, polarised beams, a
+    polarisation-weight request, the pure-interference mode -- the denominator
+    cannot be ``calculate_matrix_element``, which hands the matrix element the
+    LAB momenta: a restricted matrix element is not Lorentz invariant, and the
+    two sides of the ratio would then be different projections. The guard is
+    ``_frame_boost``, the same one the numerator goes through, so an
+    unpolarised run has no boost and keeps the matrix-element call bit for bit.
+    """
+
+    # what the density basis carries; only forwarded, never interpreted here
+    STATIC = {'position': [1, 2], 'allowed_hel': [], 'ncomb': 4,
+              'dimension': 4, 'hel_restriction': 'restrict',
+              'hel_restriction_trace': 'trace'}
+
+    ME = 7.0            # what calculate_matrix_element answers ...
+    TRACE = 11.0        # ... and what Tr(rho_on) does, so the two never alias
+
+    class _Rho(object):
+        """The one thing the norm asks a density for. The imaginary part is
+        non-zero on purpose: the trace of a hermitian rho is real, but the
+        stubbed value is not, and taking .real is what the shipped code does."""
+        def __init__(self, value):
+            self.value = value
+        def trace(self):
+            return complex(self.value, 3.0)
+
+    def _stub(self, frame_id=6, **frame):
+        """_FrameStub -- which already carries the frame helpers and the norm --
+        plus the two calls the norm can end on, each counted."""
+        outer = self
+        frame.setdefault('beampol', (0., 0.))
+
+        class Stub(_FrameStub):
+            def __init__(self):
+                _FrameStub.__init__(self, frame_id, **frame)
+                self.me_calls = []
+                self.density_calls = []
+
+            def get_pdir(self, event):
+                # 2 -> 2 in the matrix element's own ordering, which is what
+                # _rambo_event writes out
+                return None, ([21, 21], [6, -6]), None, None, None
+
+            def calculate_matrix_element(self, event):
+                self.me_calls.append(event)
+                return outer.ME
+
+            def get_density(self, event, position, allow_hel, ncomb, dimension,
+                            **opts):
+                self.density_calls.append((event, position, allow_hel, ncomb,
+                                           dimension, opts))
+                return outer._Rho(outer.TRACE)
+
+        return Stub()
+
+    def _production(self):
+        """A genuine LHE event, boosted off the partonic CM so that the frame
+        is something other than the lab and the %.10e round trip below is
+        actually visible."""
+        return _rambo_event(2, 800.0, [173.0, 173.0], random.Random(7),
+                            boost=0.4)
+
+    def test_unpolarised_stays_the_matrix_element(self):
+        """No projection, no boost, and then the denominator is the matrix
+        element it always was -- same call, same event object, same value. This
+        is the claim that the change is inert for every unpolarised run."""
+        stub, production = self._stub(), self._production()
+        self.assertIsNone(stub._frame_boost(production))
+        self.assertEqual(stub._onshell_production_norm(production, self.STATIC),
+                         self.ME)
+        self.assertEqual(len(stub.me_calls), 1)
+        self.assertIs(stub.me_calls[0], production)
+        self.assertEqual(stub.density_calls, [])
+
+    def test_a_projection_takes_the_trace_of_rho_instead(self):
+        """With a production brace the answer is Tr(rho_on) taken in the frame,
+        and the lab-frame matrix element is not consulted at all."""
+        stub = self._stub(prodpol={6: (0,)})
+        production = self._production()
+        self.assertEqual(stub._onshell_production_norm(production, self.STATIC),
+                         self.TRACE)
+        self.assertEqual(stub.me_calls, [])
+        self.assertEqual(len(stub.density_calls), 1)
+        _, position, allow_hel, ncomb, dimension, opts = stub.density_calls[0]
+        self.assertEqual((position, allow_hel, ncomb, dimension),
+                         (self.STATIC['position'], self.STATIC['allowed_hel'],
+                          self.STATIC['ncomb'], self.STATIC['dimension']))
+        # the restriction is what makes the frame observable in the first
+        # place; forwarding the basis but dropping it would put the trace of
+        # the *unrestricted* rho under a restricted numerator
+        self.assertEqual(opts['hel_restriction'],
+                         self.STATIC['hel_restriction'])
+        self.assertEqual(opts['hel_restriction_trace'],
+                         self.STATIC['hel_restriction_trace'])
+        self.assertIsNotNone(opts['frame_boost'])
+
+    def test_the_guard_is_frame_boost(self):
+        """Which branch is taken follows ``_frame_boost`` and nothing else, for
+        each of the four things that switch the frame on. Pinned together so
+        the denominator cannot drift away from the numerator, which goes
+        through the same guard."""
+        for kwargs in (dict(),
+                       dict(beampol=(80., 0.)),
+                       dict(prodpol={6: (0,)}),
+                       dict(vector=['0']),
+                       dict(fermion=['+']),
+                       dict(pure_interference='w+ = 0 T')):
+            stub, production = self._stub(**kwargs), self._production()
+            boosted = stub._frame_boost(production) is not None
+            self.assertEqual(bool(kwargs), boosted, kwargs)
+            got = stub._onshell_production_norm(production, self.STATIC)
+            self.assertEqual(got, self.TRACE if boosted else self.ME, kwargs)
+            self.assertEqual(bool(stub.density_calls), boosted, kwargs)
+            self.assertEqual(bool(stub.me_calls), not boosted, kwargs)
+
+    def test_the_density_runs_on_the_round_tripped_copy(self):
+        """rho_on is taken on ``Event(str(production))``, like
+        ``_upfront_production``'s ``prod_off``, so both sides of the ratio see
+        the same %.10e truncation -- and the frame is re-derived from that copy
+        rather than carried over from the original.
+
+        The re-derivation is not cosmetic. ``frame_id`` selecting a single leg
+        stores that leg's momentum in ``rest_leg_mom``, and it is later matched
+        with ``==`` on floats (``_decay_frame_rest_leg``), so a boost built from
+        the untruncated original would silently stop matching and leave the leg
+        off the branch that forces it exactly to rest.
+        """
+        stub = self._stub(frame_id=8, prodpol={6: (0,)})   # leg 3 alone
+        production = self._production()
+        stub._onshell_production_norm(production, self.STATIC)
+        event, _, _, _, _, opts = stub.density_calls[0]
+        self.assertIsNot(event, production)
+        self.assertEqual(str(event), str(lhe_parser.Event(str(production))))
+
+        rest = opts['frame_boost'].rest_leg_mom
+        copied = [p for p in event if int(p.status) == 1][0]
+        self.assertEqual(rest, (copied.E, copied.px, copied.py, copied.pz))
+        original = [p for p in production if int(p.status) == 1][0]
+        self.assertNotEqual(rest, (original.E, original.px, original.py,
+                                   original.pz))
+
+    def test_the_production_event_is_left_alone(self):
+        """The norm is called on an event the caller goes on to reshuffle, so
+        it may not touch it: the copy is what gets handed to get_density."""
+        stub = self._stub(prodpol={6: (0,)})
+        production = self._production()
+        before = str(production)
+        stub._onshell_production_norm(production, self.STATIC)
+        self.assertEqual(str(production), before)
 
 
 class TestEvent(unittest.TestCase):
@@ -1649,6 +1813,95 @@ class TestStridedEvents(unittest.TestCase):
         self.assertEqual(self._drain(strided), [])
 
 
+class TestReopenDecayPoolFallback(unittest.TestCase):
+    """_reopen_decay_pool drops its own-file fast path when the decay pool does
+    not hold exactly nb_core files (e.g. a phase capped its worker count below
+    the count the pool was written with, see _scan_maxwgt_parallel). That is
+    correct but makes every worker parse every worker's decay events, so it must
+    not happen silently: the fallback logs at debug level, naming both counts."""
+
+    _BANNER = ('<LesHouchesEvents version="1.0">\n<init>\n'
+               '  2212 2212 6.5e+03 6.5e+03 0 0 247000 247000 -4 1\n'
+               '  1.0e+00 1.0e-03 1.0e+00 1\n</init>\n')
+    _EVENT = (
+        '<event>\n'
+        ' 2      0 +1.0000000e+00 1.72500000e+02 7.54677100e-03 1.25643300e-01\n'
+        '        6 -1    0    0  501    0 +0.0000000000e+00 +0.0000000000e+00'
+        ' +0.0000000000e+00 1.7250000000e+02 1.7250000000e+02 0.0000e+00 1.0000e+00\n'
+        '        5  1    1    1  501    0 +0.0000000000e+00 +0.0000000000e+00'
+        ' +0.0000000000e+00 4.7000000000e+00 4.7000000000e+00 0.0000e+00 -1.0000e+00\n'
+        '</event>\n')
+
+    class _Stub(object):
+        """Only what _reopen_decay_pool touches; the own-file branch asks for
+        the channel owner and for the size of the slice it just opened, the
+        fallback branch asks for nothing."""
+        _owner_undersize = 0.0
+        _count_pool_events = staticmethod(
+            interface_madspin.MadSpinInterface._count_pool_events)
+        def _channel_owner(self, pdg, file_nb):
+            return -1          # never this shard: skip the undersize trimming
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, True)
+
+    def _pool(self, nb_file, nb_event=4):
+        paths = []
+        for i in range(nb_file):
+            path = pjoin(self.tmpdir, 'pool_%d.lhe' % i)
+            with open(path, 'w') as fsock:
+                fsock.write(self._BANNER)
+                fsock.write(self._EVENT * nb_event)
+                fsock.write('</LesHouchesEvents>\n')
+            paths.append(path)
+        return {6: {0: interface_madspin._ChainedEvents(paths)}}
+
+    def _reopen(self, evt_decayfile, shard_id, nb_core):
+        return interface_madspin.MadSpinInterface._reopen_decay_pool(
+            self._Stub(), evt_decayfile, shard_id, nb_core)
+
+    @staticmethod
+    def _capture(callback):
+        """Run ``callback`` with a record-collecting handler on the module
+        logger; return (result, [messages])."""
+        import logging
+        records = []
+        class _Collect(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+        logger = logging.getLogger('decay.stdout')
+        handler = _Collect()
+        level, propagate = logger.level, logger.propagate
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        try:
+            return callback(), records
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.propagate = propagate
+
+    def test_matching_count_opens_own_file_and_stays_quiet(self):
+        """len(paths) == nb_core: the fast path, and nothing to report."""
+        pool = self._pool(3)
+        local, records = self._capture(lambda: self._reopen(pool, 1, 3))
+        self.assertNotIsInstance(local[6][0],
+                                 interface_madspin._StridedEvents)
+        self.assertEqual([m for m in records if 'striding' in m], [])
+
+    def test_mismatched_count_strides_and_says_so(self):
+        """len(paths) != nb_core: stride the chained pool, and log both counts
+        so the degradation is visible instead of silent."""
+        pool = self._pool(3)
+        local, records = self._capture(lambda: self._reopen(pool, 0, 2))
+        self.assertIsInstance(local[6][0], interface_madspin._StridedEvents)
+        message = '\n'.join(records)
+        self.assertIn('holds 3 file(s), not 2', message)
+        self.assertIn('striding', message)
+
+
 
 class TestDensityIdentity(unittest.TestCase):
     """DensityMatrix.identity / normalized: the primitives that let the
@@ -1884,6 +2137,120 @@ class TestDrawOneDecay(unittest.TestCase):
                     raise Exception
             out[particle.pdg].append(next(decay_file))
         return out
+
+
+class TestDecaySymmetryFactor(unittest.TestCase):
+    """_decay_symmetry_factor: the prod_k n_k!/N! of the joint weight's
+    denominator, and the tags _draw_one_decay leaves for it.
+
+    The factor compensates a positional DEAL, where the card gives a pdg
+    exactly as many decay channels as the event has identical parents and one
+    generated assignment stands for N!/prod_k n_k! of them. It must therefore
+    be keyed on the channel each parent was dealt, not on the final state that
+    channel happened to produce: one merged decay line (`define lp = e+ mu+` /
+    `decay z > lp lm`) is a single channel whose events carry several different
+    final states, and the parents draw from it independently -- the draw
+    samples the assignments itself, so there is nothing to compensate. Keying
+    the factor on the final state doubled the weight of every trial whose two Z
+    decayed to different flavours and gave `p p > z z` an
+    e+e-mu+mu- : 4e : 4mu composition of 4:1:1 in place of 2:1:1.
+    """
+
+    class _Part(object):
+        def __init__(self, pid):
+            self.pid = pid
+            self.pdg = pid
+            self.status = 1
+
+    class _Decay(object):
+        """A decay event the draw can tag (the pools of TestDrawOneDecay yield
+        plain strings, which have no __dict__)."""
+        def __init__(self, tag):
+            self.tag = tag
+
+    class _Pool(object):
+        def __init__(self, tag, cross=1.0):
+            self.tag = tag
+            self.n = 0
+            self.cross = cross
+        def __next__(self):
+            self.n += 1
+            return TestDecaySymmetryFactor._Decay('%s:%s' % (self.tag, self.n))
+
+    class _Stub(object):
+        get_decay_from_file = interface_madspin.MadSpinInterface.get_decay_from_file
+        _draw_all_decays = interface_madspin.MadSpinInterface._draw_all_decays
+        _draw_one_decay = interface_madspin.MadSpinInterface._draw_one_decay
+        _draw_decay_group = interface_madspin.MadSpinInterface._draw_decay_group
+        efficiency = 0.5
+
+    factor = staticmethod(interface_madspin.MadSpinInterface._decay_symmetry_factor)
+
+    def _draw(self, nb_parents, nb_channels):
+        production = [self._Part(23) for _ in range(nb_parents)]
+        evt_decayfile = {23: dict((i, self._Pool('c%d' % i))
+                                 for i in range(nb_channels))}
+        return self._Stub().get_decay_from_file(production, evt_decayfile, 10)
+
+    def test_one_merged_channel_for_two_parents_takes_no_factor(self):
+        """`decay z > lp lm` with two Z: both draw from the same pool, so the
+        draw already samples (ee,mumu) and (mumu,ee). This is the case the old
+        final-state keying got wrong."""
+        decays = self._draw(2, 1)
+        self.assertEqual([d.ms_channel for d in decays[23]], [0, 0])
+        self.assertEqual([d.ms_positional for d in decays[23]], [False, False])
+        self.assertEqual(self.factor(decays), 1.0)
+
+    def test_two_dealt_channels_for_two_parents_take_one_half(self):
+        """`decay z > e+ e-` + `decay z > mu+ mu-`: parent i is dealt channel i,
+        so only one of the two assignments is ever generated."""
+        decays = self._draw(2, 2)
+        self.assertEqual([d.ms_channel for d in decays[23]], [0, 1])
+        self.assertEqual([d.ms_positional for d in decays[23]], [True, True])
+        self.assertEqual(self.factor(decays), 0.5)
+
+    def test_three_dealt_channels_for_three_parents(self):
+        decays = self._draw(3, 3)
+        self.assertEqual([d.ms_channel for d in decays[23]], [0, 1, 2])
+        self.assertEqual(self.factor(decays), 1 / 6.)
+
+    def test_a_single_parent_never_takes_a_factor(self):
+        for nb_channels in (1, 2):
+            self.assertEqual(self.factor(self._draw(1, nb_channels)), 1.0)
+
+    def test_the_factor_is_keyed_on_the_channel_not_the_final_state(self):
+        """Two parents dealt two channels that happen to produce the same final
+        state still owe the 1/2! -- and two parents drawing repeatedly from one
+        channel owe nothing however different their final states are. Neither
+        is visible to a final-state signature."""
+        dealt = {23: [self._Decay('same'), self._Decay('same')]}
+        for i, dec in enumerate(dealt[23]):
+            dec.ms_channel, dec.ms_positional = i, True
+        self.assertEqual(self.factor(dealt), 0.5)
+
+        drawn = {23: [self._Decay('ee'), self._Decay('mumu')]}
+        for dec in drawn[23]:
+            dec.ms_channel, dec.ms_positional = 0, False
+        self.assertEqual(self.factor(drawn), 1.0)
+
+    def test_two_parents_dealt_the_same_channel_twice_cancel(self):
+        """n_k! / N! = 2!/2! = 1 when both dealt channels are the same one."""
+        decays = {23: [self._Decay('a'), self._Decay('b')]}
+        for dec in decays[23]:
+            dec.ms_channel, dec.ms_positional = 7, True
+        self.assertEqual(self.factor(decays), 1.0)
+
+    def test_an_untagged_decay_takes_no_factor(self):
+        """Anything that did not come from _draw_one_decay was not dealt."""
+        self.assertEqual(self.factor({23: ['a', 'b']}), 1.0)
+
+    def test_several_pdgs_multiply(self):
+        decays = {}
+        for pdg in (23, 6):
+            decays[pdg] = [self._Decay('x'), self._Decay('y')]
+            for i, dec in enumerate(decays[pdg]):
+                dec.ms_channel, dec.ms_positional = i, True
+        self.assertEqual(self.factor(decays), 0.25)
 
 
 class TestDrawOffshellMass(unittest.TestCase):
@@ -10272,7 +10639,7 @@ class TestRefillPoolIsCompleteBeforeItIsPublished(unittest.TestCase):
             # are plain functions, and a plain function in a class body would
             # be handed a ``self`` they do not take
             _refill_pool_dir = staticmethod(interface._refill_pool_dir)
-            _count_lhe_events = staticmethod(interface._count_lhe_events)
+            _count_pool_events = staticmethod(interface._count_pool_events)
             _published_gen = staticmethod(interface._published_gen)
             _publish_gen = staticmethod(interface._publish_gen)
             _decay_dir = staticmethod(interface._decay_dir)
@@ -10477,6 +10844,269 @@ class TestRefillPoolIsCompleteBeforeItIsPublished(unittest.TestCase):
         self.assertFalse(os.path.exists(pool + '.mspool'))
 
 
+def _scan_probe_shard(shard_id, nb_core, events, start, stop, evt_decayfile,
+                      build_worker, out_path):
+    """Stand-in for ``_scan_maxwgt_shard_entry``: reports the worker id and the
+    slice of the probe events it was given, and publishes 'D' on the way out
+    exactly as the real entry does in its ``finally``.
+
+    A second copy of the JSON is left at ``<out_path>.kept`` because
+    ``_scan_maxwgt_parallel`` deletes the shard files once it has read them."""
+    worker = build_worker(shard_id, nb_core)
+    try:
+        payload = {'per_event': [[float(shard_id)]], 'z_samples': {},
+                   'shard_id': shard_id, 'nb_core': nb_core,
+                   'start': start, 'stop': stop}
+        _write_shard_payload(out_path, payload)
+    finally:
+        worker._set_status('D')
+
+
+def _scan_refill_shard(shard_id, nb_core, events, start, stop, evt_decayfile,
+                       build_worker, channel, out_path):
+    """Stand-in worker that runs its decay pool out at once and goes through the
+    REAL ``_worker_refill`` for ``channel``.
+
+    Everything the wait logic consults is the shipped code -- ``_channel_owner``,
+    ``_read_worker_status``, ``_wait_cycle_to_self``, the published-generation
+    marker. Only the two ends are stood in for: generating a pool (a madevent
+    run) and opening the refilled slice, neither of which this is about."""
+    worker = build_worker(shard_id, nb_core)
+    try:
+        worker._worker_refill(channel[0], channel[1], 1000)
+        payload = {'refilled': True, 'why': None}
+    except Exception as exc:
+        payload = {'refilled': False, 'why': str(exc)}
+    payload.update({'per_event': [[float(shard_id)]], 'z_samples': {},
+                    'shard_id': shard_id, 'nb_core': nb_core})
+    try:
+        _write_shard_payload(out_path, payload)
+    finally:
+        worker._set_status('D')
+
+
+def _write_shard_payload(out_path, payload):
+    import json
+    for path in (out_path, out_path + '.kept'):
+        with open(path, 'w') as fsock:
+            json.dump(payload, fsock)
+
+
+class TestMaxWeightScanForksEveryWorkerAnOwnerCanName(unittest.TestCase):
+    """The parallel max-weight scan must fork a worker for every id it lets
+    ``_channel_owner`` name.
+
+    ``nb_core`` reaches the workers as the *pool-addressing* count: the decay
+    pool was split into that many files and a worker opens ``paths[id]``. The
+    same number is the modulus of :meth:`_channel_owner`, so it also fixes which
+    worker is the sole (re)generator of each decay channel.
+
+    The scan used to cut the probe events into ``ceil(N / nb_core)``-sized
+    chunks while still handing out the original ``nb_core``. At the shipped
+    default of 75 probe events the trailing chunks come out empty -- one worker
+    never forked on 16 cores, three on 18, seven on 32 -- and yet those ids stay
+    nameable as owners. A live worker that runs its pool out on such a channel
+    then waits on a process that does not exist, and neither fail-safe rescues
+    it: ``_read_worker_status`` returns ``None`` (which is not ``('D',)``) for a
+    status file nobody ever wrote, and ``_wait_cycle_to_self`` finds no chain to
+    follow. The worker waits out ``MADSPIN_REFILL_WAIT`` -- an hour by default --
+    and takes the scan down with it."""
+
+    NB_EVENT = 75           # the Nevents_for_max_weight default
+    NB_CORE = (16, 18, 32)  # 1, 3 and 7 ids left unforked, respectively
+
+    class _Named(object):
+        """Stands in for the production EventFile, of which the scan only uses
+        the name (to build its shard-file paths)."""
+        def __init__(self, name):
+            self.name = name
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_scan_')
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+
+    # ------------------------------------------------------------- the sides
+
+    def _parent(self):
+        """The parent side of the scan: the real ``_scan_maxwgt_parallel`` and
+        the status-board helpers it uses."""
+        interface = interface_madspin.MadSpinInterface
+
+        class Parent(object):
+            _scan_maxwgt_parallel = interface._scan_maxwgt_parallel
+            _balanced_ranges = staticmethod(interface._balanced_ranges)
+            _clear_worker_status = interface._clear_worker_status
+            _read_worker_status = interface._read_worker_status
+            _status_path = interface._status_path
+
+        parent = Parent()
+        parent.path_me = self.tmpdir
+        return parent
+
+    def _worker_factory(self, channel_keys=()):
+        """The child side: a worker carrying the real owner/waiter machinery,
+        with pool generation and slice opening stood in for."""
+        interface = interface_madspin.MadSpinInterface
+        tmpdir = self.tmpdir
+
+        class Worker(object):
+            # verbatim -- this is what is under test
+            _worker_refill = interface._worker_refill
+            _channel_owner = interface._channel_owner
+            _wait_cycle_to_self = interface._wait_cycle_to_self
+            _read_worker_status = interface._read_worker_status
+            _set_status = interface._set_status
+            _status_path = interface._status_path
+            _published_gen = staticmethod(interface._published_gen)
+            _publish_gen = staticmethod(interface._publish_gen)
+            _decay_dir = staticmethod(interface._decay_dir)
+
+            def _owner_generate(self, pdg, decay_file_nb, target_gen, needed):
+                """madevent's job; here only the marker the waiters poll."""
+                self._publish_gen(self._decay_dir(tmpdir, pdg, decay_file_nb),
+                                  target_gen)
+
+            def _open_refill_slice(self, decay_dir, gen, owner, cross=None):
+                return ('slice', decay_dir, gen)
+
+        def build(shard_id, nb_core):
+            worker = Worker()
+            worker.path_me = tmpdir
+            worker.options = {'ms_dir': None}
+            worker.seed = 11
+            worker._shard_tag = shard_id
+            worker._shard_nb_core = nb_core
+            worker._channel_keys = list(channel_keys)
+            worker._pool_gen = {}
+            worker._owner_undersize = 0.10
+            worker._refill_seed_base = 42
+            worker._set_status('R')
+            return worker
+
+        return build
+
+    def _run_scan(self, parent, nb_core, entry, extra):
+        """Run the real scan; return ``{shard_id: payload}`` over the workers
+        that actually ran."""
+        import json
+        lhe = self._Named(pjoin(self.tmpdir, 'production.lhe'))
+        parent._scan_maxwgt_parallel(lhe, list(range(self.NB_EVENT)), {},
+                                     nb_core, entry, extra)
+        seen = {}
+        for sid in range(nb_core):
+            path = '%s.maxwgt.shard%d.json.kept' % (lhe.name, sid)
+            if os.path.exists(path):
+                with open(path) as fsock:
+                    seen[sid] = json.load(fsock)
+        return seen
+
+    # ------------------------------------------------------------- the split
+
+    def test_the_slices_cover_every_worker_and_every_event(self):
+        """Every worker gets a non-empty contiguous slice, the slices tile the
+        probe events exactly, and no two differ in size by more than one."""
+        for nb_core in self.NB_CORE:
+            ranges = interface_madspin.MadSpinInterface._balanced_ranges(
+                self.NB_EVENT, nb_core)
+            self.assertEqual(len(ranges), nb_core, 'nb_core=%s' % nb_core)
+            self.assertEqual(ranges[0][0], 0)
+            self.assertEqual(ranges[-1][1], self.NB_EVENT)
+            for (_, stop), (start, _) in zip(ranges, ranges[1:]):
+                self.assertEqual(stop, start)
+            sizes = [b - a for a, b in ranges]
+            self.assertTrue(min(sizes) >= 1)
+            self.assertTrue(max(sizes) - min(sizes) <= 1)
+
+    def test_an_even_split_is_diced_exactly_as_it_was_before(self):
+        """Both scans round their probe size up to a multiple of nb_core, so the
+        usual case divides evenly -- and there these are the very slices the
+        ceil-chunking produced. No sample is silently re-diced by the fix."""
+        for nb_core in self.NB_CORE:
+            nb_event = 4 * nb_core
+            chunk = nb_event // nb_core
+            self.assertEqual(
+                interface_madspin.MadSpinInterface._balanced_ranges(
+                    nb_event, nb_core),
+                [(sid * chunk, (sid + 1) * chunk) for sid in range(nb_core)])
+
+    # -------------------------------------------------------- the regression
+
+    def test_every_id_an_owner_can_take_belongs_to_a_worker_that_ran(self):
+        """The parent side of the regression: at the default 75 probe events the
+        scan must fork all 16 / 18 / 32 workers, since any of those ids can come
+        back from ``_channel_owner``."""
+        build = self._worker_factory()
+        for nb_core in self.NB_CORE:
+            seen = self._run_scan(self._parent(), nb_core,
+                                  _scan_probe_shard, (build,))
+            self.assertEqual(sorted(seen), list(range(nb_core)),
+                             'nb_core=%s' % nb_core)
+            covered = []
+            for payload in seen.values():
+                covered.extend(range(payload['start'], payload['stop']))
+            self.assertEqual(sorted(covered), list(range(self.NB_EVENT)))
+
+    def test_no_id_an_owner_can_take_reads_back_as_an_unwritten_status(self):
+        """The waiter's view of the same invariant, and the one that decides
+        whether it hangs: every id ``_channel_owner`` can return has a status
+        file to read. A missing one is exactly what ``_worker_refill`` cannot
+        tell apart from an owner that is simply not finished yet."""
+        build = self._worker_factory()
+        for nb_core in self.NB_CORE:
+            parent = self._parent()
+            self._run_scan(parent, nb_core, _scan_probe_shard, (build,))
+            missing = [wid for wid in range(nb_core)
+                       if parent._read_worker_status(wid) is None]
+            self.assertEqual(missing, [], 'nb_core=%s' % nb_core)
+
+    def test_a_worker_that_runs_out_is_not_left_waiting_on_a_missing_owner(self):
+        """The failure itself, end to end, in a couple of seconds rather than
+        the hour it takes in the field.
+
+        Every worker of a 16-core scan over the default 75 probe events runs its
+        pool out on the one channel whose owner is the last worker id, and goes
+        through the real ``_worker_refill``. With ``MADSPIN_REFILL_WAIT`` cut
+        down, a worker waiting on an owner that was never forked comes back
+        having given up; the scan must instead see every worker refilled."""
+        nb_core = 16
+        keys = [(6, nb) for nb in range(nb_core)]
+        channel = keys[nb_core - 1]   # owner == nb_core-1, the unforked id
+        for pdg, decay_file_nb in keys:
+            os.makedirs(interface_madspin.MadSpinInterface._decay_dir(
+                self.tmpdir, pdg, decay_file_nb))
+        build = self._worker_factory(keys)
+        self.assertEqual(build(0, nb_core)._channel_owner(*channel),
+                         nb_core - 1)
+        previous = os.environ.get('MADSPIN_REFILL_WAIT')
+        os.environ['MADSPIN_REFILL_WAIT'] = '5'
+        try:
+            seen = self._run_scan(self._parent(), nb_core, _scan_refill_shard,
+                                  (build, channel))
+        finally:
+            if previous is None:
+                del os.environ['MADSPIN_REFILL_WAIT']
+            else:
+                os.environ['MADSPIN_REFILL_WAIT'] = previous
+        gave_up = dict((sid, payload['why'])
+                       for sid, payload in seen.items()
+                       if not payload['refilled'])
+        self.assertEqual(gave_up, {})
+        self.assertEqual(sorted(seen), list(range(nb_core)))
+
+    def test_an_unforked_id_is_marked_done_so_nobody_waits_out_the_timeout(self):
+        """Belt and braces. Should a slice ever come back empty anyway, the
+        parent leaves 'D' on that id: a missing status file is indistinguishable
+        from an owner still working, so a waiter would sit out
+        ``MADSPIN_REFILL_WAIT``, whereas 'D' fires the fail-safe at once."""
+        parent = self._parent()
+        lhe = self._Named(pjoin(self.tmpdir, 'production.lhe'))
+        # no probe events at all: nothing to fork, but the ids stay addressable
+        parent._scan_maxwgt_parallel(lhe, [], {}, 4, _scan_probe_shard,
+                                     (self._worker_factory(),))
+        self.assertEqual(parent._read_worker_status(0), ('D',))
+
+
 class TestBreitWignerTruncation(unittest.TestCase):
     """The BW_cut window keeps only part of each resonance's Breit-Wigner, and
     the reported cross-section has to say so.
@@ -10658,3 +11288,1429 @@ class TestBreitWignerTruncation(unittest.TestCase):
         chain = self._chain([6])
         self.assertEqual(self._V1(-1, self.TABLE).bw_truncation_factor(chain),
                          self._V1(15, self.TABLE).bw_truncation_factor(chain))
+
+
+class TestMatrixElementParamCard(unittest.TestCase):
+    """The parameters MadSpin evaluates its matrix elements with.
+
+    ``output standalone`` writes ``<me_dir>/Cards/param_card.dat`` from the
+    *model* -- its default/restriction values -- because it knows nothing about
+    the event file. ``initialise_f2py_module`` then handed exactly that file to
+    the compiled density library, and its only other branch required
+    ``<me_dir>/param_card.dat`` (a file ``output standalone`` never writes) to
+    exist *and* ``<me_dir>/Cards/param_card.dat`` (which it always writes) not
+    to. So the run's own card was unreachable: every production and decay
+    density matrix was evaluated at the model defaults, and a mass, a width or
+    a Wilson coefficient set in the param_card the events were generated with
+    was silently dropped.
+
+    The single source of truth is ``path_me/param_card.dat``: written from
+    ``banner['slha']`` on every run, so it carries the parameters of the input
+    events including the ``import model <MODEL> <CARD>`` override -- the one
+    supported way of asking MadSpin for different parameters, which is checked
+    against the banner before it is accepted.
+    """
+
+    # the run's card and the model's default differ in a mass, a width and a
+    # BSM coefficient -- the three kinds of parameter this used to drop
+    RUN_CARD = (
+        'Block mass\n'
+        '    6 1.500000e+02 # MT\n'
+        '   23 9.118760e+01 # MZ\n'
+        'Block newcoup\n'
+        '    1 -1.000000e+00 # ctg\n'
+        'DECAY   6 5.320000e+00 # WT\n'
+        'DECAY  23 2.495200e+00 # WZ\n'
+    )
+    MODEL_DEFAULT_CARD = (
+        'Block mass\n'
+        '    6 1.727600e+02 # MT\n'
+        '   23 9.118760e+01 # MZ\n'
+        'Block newcoup\n'
+        '    1 0.000000e+00 # ctg\n'
+        'DECAY   6 1.330000e+00 # WT\n'
+        'DECAY  23 2.495200e+00 # WZ\n'
+    )
+    # the process directory's own card: a third source, which path_me points at
+    # when MadSpin is launched from MadEvent, and which may have been edited
+    # after the events were made
+    PROCESS_DIR_CARD = (
+        'Block mass\n'
+        '    6 9.900000e+01 # MT\n'
+        '   23 9.118760e+01 # MZ\n'
+        'Block newcoup\n'
+        '    1 7.000000e+00 # ctg\n'
+        'DECAY   6 9.900000e+00 # WT\n'
+        'DECAY  23 2.495200e+00 # WZ\n'
+    )
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_param_card_')
+        open(pjoin(self.tmpdir, 'param_card.dat'), 'w').write(self.RUN_CARD)
+        for subdir in ('madspin_me', 'madspin_decay'):
+            os.makedirs(pjoin(self.tmpdir, subdir, 'Cards'))
+            os.makedirs(pjoin(self.tmpdir, subdir, 'SubProcesses'))
+            open(pjoin(self.tmpdir, subdir, 'Cards', 'param_card.dat'),
+                 'w').write(self.MODEL_DEFAULT_CARD)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    # ------------------------------------------------------------------
+    # the read site: what the compiled library is actually initialised with
+    # ------------------------------------------------------------------
+
+    class _Module(object):
+        """Stands in for the f2py extension: records the card it is given."""
+        def __init__(self):
+            self.card = None
+        def initialise(self, path):
+            self.card = path
+        def set_madloop_path(self, path):
+            pass
+
+    def _interface(self):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            me_param_card = interface.me_param_card
+            initialise_f2py_module = interface.initialise_f2py_module
+
+            def _set_f2py_beampol(self, mymod):
+                pass  # beam polarisation is not what is under test here
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub.ms_me_subdir = 'madspin_me'
+        stub.ms_me_decay_subdir = 'madspin_decay'
+        return stub
+
+    def _initialised_with(self, prod_or_decay):
+        """The *content* of the card the library is handed -- the path alone
+        does not say whose parameters ended up inside it."""
+        stub = self._interface()
+        mymod = self._Module()
+        subdir = (stub.ms_me_subdir if prod_or_decay == 'prod'
+                  else stub.ms_me_decay_subdir)
+        stub.initialise_f2py_module(
+            mymod, pjoin(self.tmpdir, subdir, 'SubProcesses'), prod_or_decay)
+        self.assertIsNotNone(mymod.card)
+        return open(mymod.card).read()
+
+    def _refresh(self):
+        madspin.decay_all_events_onshell.refresh_me_param_cards(
+            self._generator())
+
+    def _generator(self):
+        class Gen(object):
+            refresh_me_param_cards = \
+                madspin.decay_all_events_onshell.refresh_me_param_cards
+        gen = Gen()
+        gen.path_me = self.tmpdir
+
+        class MsCmd(object):
+            ms_me_subdir = 'madspin_me'
+            ms_me_decay_subdir = 'madspin_decay'
+        gen.mscmd = MsCmd()
+        return gen
+
+    def test_the_production_library_sees_the_runs_parameters(self):
+        """The regression: with the ME directory laid out as ``output
+        standalone`` leaves it, the density library used to be initialised at
+        the model defaults -- MT = 172.76 and no BSM coupling -- whatever the
+        events were generated with."""
+        self._refresh()
+        card = self._initialised_with('prod')
+        self.assertEqual(card, self.RUN_CARD)
+        self.assertNotEqual(card, self.MODEL_DEFAULT_CARD)
+
+    def test_the_decay_library_sees_them_too(self):
+        """The decay side is not a lesser case: MadSpin generates its decay
+        events with the run's card and measures the partial widths there, so a
+        decay density matrix built at other parameters is inconsistent with the
+        kinematics MadSpin itself produced."""
+        self._refresh()
+        self.assertEqual(self._initialised_with('decay'), self.RUN_CARD)
+
+    def test_the_process_directory_card_is_never_read(self):
+        """``path_me`` is the process directory when MadSpin runs under
+        MadEvent, so ``path_me/Cards/param_card.dat`` is right there -- and it
+        may have been edited after the events were generated. Using it would
+        evaluate the production matrix element at parameters the events do not
+        have. (The legacy onshell_v1 read site did exactly that.)"""
+        os.makedirs(pjoin(self.tmpdir, 'Cards'))
+        open(pjoin(self.tmpdir, 'Cards', 'param_card.dat'),
+             'w').write(self.PROCESS_DIR_CARD)
+        self._refresh()
+        for side in ('prod', 'decay'):
+            self.assertEqual(self._initialised_with(side), self.RUN_CARD)
+
+    def test_an_unknown_side_is_still_refused(self):
+        stub = self._interface()
+        self.assertRaises(ValueError, stub.initialise_f2py_module,
+                          self._Module(), self.tmpdir, 'both')
+
+    # ------------------------------------------------------------------
+    # the resolver on its own
+    # ------------------------------------------------------------------
+
+    def test_the_resolver_falls_back_to_the_runs_card(self):
+        """An ME directory without a Cards/ (or an older layout) resolves to
+        the source of truth itself rather than to nothing."""
+        shutil.rmtree(pjoin(self.tmpdir, 'madspin_me', 'Cards'))
+        self.assertEqual(self._interface().me_param_card('madspin_me'),
+                         pjoin(self.tmpdir, 'param_card.dat'))
+
+    def test_the_resolver_without_a_folder_is_the_source_of_truth(self):
+        self.assertEqual(self._interface().me_param_card(),
+                         pjoin(self.tmpdir, 'param_card.dat'))
+
+    # ------------------------------------------------------------------
+    # the writer
+    # ------------------------------------------------------------------
+
+    def test_the_refresh_overwrites_the_model_default(self):
+        for subdir in ('madspin_me', 'madspin_decay'):
+            self.assertEqual(
+                open(pjoin(self.tmpdir, subdir, 'Cards',
+                           'param_card.dat')).read(),
+                self.MODEL_DEFAULT_CARD)
+        self._refresh()
+        for subdir in ('madspin_me', 'madspin_decay'):
+            self.assertEqual(
+                open(pjoin(self.tmpdir, subdir, 'Cards',
+                           'param_card.dat')).read(),
+                self.RUN_CARD)
+
+    def test_it_is_a_copy_and_not_a_link(self):
+        """A copy, not a symlink: these trees get compiled in place, tarred
+        into gridpacks and moved to other machines, and the copy left behind is
+        the record of what the run used -- which a link the next run repoints
+        would destroy."""
+        self._refresh()
+        card = pjoin(self.tmpdir, 'madspin_me', 'Cards', 'param_card.dat')
+        self.assertFalse(os.path.islink(card))
+        os.remove(pjoin(self.tmpdir, 'param_card.dat'))
+        self.assertEqual(open(card).read(), self.RUN_CARD)
+
+    def test_the_refresh_runs_again_on_every_run(self):
+        """Freshness comes from repeating the copy, not from a link: a reused
+        directory whose card was left behind by an earlier run is brought back
+        to this run's parameters."""
+        self._refresh()
+        open(pjoin(self.tmpdir, 'madspin_me', 'Cards', 'param_card.dat'),
+             'w').write(self.MODEL_DEFAULT_CARD)
+        self._refresh()
+        self.assertEqual(self._initialised_with('prod'), self.RUN_CARD)
+
+    def test_a_missing_decay_directory_is_not_an_error(self):
+        """``madspin_decay`` only exists in the density modes."""
+        shutil.rmtree(pjoin(self.tmpdir, 'madspin_decay'))
+        self._refresh()
+        self.assertEqual(self._initialised_with('prod'), self.RUN_CARD)
+
+    def test_nothing_to_copy_is_not_an_error(self):
+        os.remove(pjoin(self.tmpdir, 'param_card.dat'))
+        self._refresh()
+        self.assertEqual(
+            open(pjoin(self.tmpdir, 'madspin_me', 'Cards',
+                       'param_card.dat')).read(),
+            self.MODEL_DEFAULT_CARD)
+
+
+class TestLoopInducedMatrixElementParamCard(TestMatrixElementParamCard):
+    """The same question for a loop-induced production matrix element.
+
+    Loop-induced is the one spinmode family that takes a visibly different
+    route into the density matrix: ``output standalone --density=1`` produces a
+    MadLoop tree rather than a plain standalone one, ``initialise_f2py_module``
+    grows a second branch that rewrites ``MadLoopParams.dat`` and calls
+    ``set_madloop_path``, and MadLoop reads its parameters through
+    ``SubProcesses/MadLoop5_resources/param_card.dat`` -- a symlink
+    ``loop_exporters.py`` points at ``Cards/param_card.dat``.
+
+    None of that changes the answer, and these tests are here to keep it that
+    way. The card still arrives through the one ``mymod.initialise`` call that
+    precedes the MadLoop branch, and the refresh still reaches MadLoop because
+    it overwrites the file the link resolves to. Verified end to end on a
+    ``g g > z z [noborn=QCD]`` run whose events carry MZ = 93, WZ = 2.5: before
+    the fix both matrix-element directories sat at the model's 91.188 /
+    2.441404, and the production matrix element evaluated at a real event of
+    that run moved by 12% (6.845e-04 -> 7.645e-04) between the two cards.
+    """
+
+    def setUp(self):
+        super(TestLoopInducedMatrixElementParamCard, self).setUp()
+        # what a loop-induced ``output standalone`` leaves behind, and which
+        # ``initialise_f2py_module`` keys off to take the MadLoop branch
+        self.ml_path = pjoin(self.tmpdir, 'madspin_me', 'SubProcesses',
+                             'MadLoop5_resources')
+        os.makedirs(self.ml_path)
+        banner.MadLoopParam().write(pjoin(self.ml_path, 'MadLoopParams.dat'))
+        # loop_exporters.py links, rather than copies, the cards into
+        # MadLoop5_resources -- which is why refreshing Cards/ is enough
+        os.symlink(pjoin('..', '..', 'Cards', 'param_card.dat'),
+                   pjoin(self.ml_path, 'param_card.dat'))
+
+    class _Module(TestMatrixElementParamCard._Module):
+        """As the tree-level stand-in, but remembers the MadLoop path so a test
+        can tell that the loop branch was the one that ran."""
+        def __init__(self):
+            super(TestLoopInducedMatrixElementParamCard._Module,
+                  self).__init__()
+            self.madloop_path = None
+
+        def set_madloop_path(self, path):
+            self.madloop_path = path
+
+    def _initialised_module(self, prod_or_decay='prod'):
+        stub = self._interface()
+        mymod = self._Module()
+        subdir = (stub.ms_me_subdir if prod_or_decay == 'prod'
+                  else stub.ms_me_decay_subdir)
+        stub.initialise_f2py_module(
+            mymod, pjoin(self.tmpdir, subdir, 'SubProcesses'), prod_or_decay)
+        return mymod
+
+    def test_the_loop_branch_is_the_one_under_test(self):
+        """Guards the two tests below: if the MadLoop5_resources layout ever
+        stopped being recognised they would silently degenerate into a second
+        copy of the tree-level case and pass for the wrong reason."""
+        self._refresh()
+        self.assertEqual(self._initialised_module().madloop_path, self.ml_path)
+
+    def test_the_loop_induced_library_sees_the_runs_parameters(self):
+        """The regression, on the loop-induced route: the density library is
+        initialised from the run's card, not from the model defaults that
+        ``output standalone`` wrote into ``Cards/``."""
+        self._refresh()
+        card = self._initialised_module().card
+        self.assertEqual(open(card).read(), self.RUN_CARD)
+        self.assertNotEqual(open(card).read(), self.MODEL_DEFAULT_CARD)
+
+    def test_madloop_reads_the_refreshed_card_through_its_own_link(self):
+        """MadLoop does not read the path handed to ``initialise``; it reads
+        ``MadLoop5_resources/param_card.dat``. That is a symlink into
+        ``Cards/``, so overwriting the file there -- rather than pointing the
+        library elsewhere -- is what keeps the two in step."""
+        self._refresh()
+        self.assertEqual(
+            open(pjoin(self.ml_path, 'param_card.dat')).read(),
+            self.RUN_CARD)
+
+    def test_the_madloop_card_is_left_readable(self):
+        """``initialise_f2py_module`` rewrites ``MadLoopParams.dat`` in place
+        (via a temp file and a rename). A run that cannot parse it afterwards
+        would take MadLoop down with a Fortran STOP, i.e. exit code 0."""
+        self._refresh()
+        self._initialised_module()
+        reread = banner.MadLoopParam(pjoin(self.ml_path, 'MadLoopParams.dat'))
+        self.assertEqual(reread['HelicityFilterLevel'], 0)
+
+
+class TestReusedMsDirParameters(unittest.TestCase):
+    """A reused ``ms_dir``/``use_old_dir`` directory caches things computed
+    *from* the param_card -- the decay gridpacks and the events they produce,
+    the partial widths measured while building them, the maximum weights of the
+    unweighting, the branching ratios in ``madspin.pkl`` -- and re-measures
+    none of them on reuse. A run that changes the param_card and reuses the
+    directory therefore decays its events with one card while reporting a
+    cross-section computed from another.
+
+    ``run_from_pickle`` has long carried a narrower version of this check, but
+    it skips every ``decay`` block -- i.e. exactly the widths that drive the
+    branching ratios and the Breit-Wigner sampling.
+    """
+
+    CARD = (
+        'Block mass\n'
+        '    6 1.727600e+02 # MT\n'
+        'Block newcoup\n'
+        '    1 0.000000e+00 # ctg\n'
+        'DECAY   6 1.330000e+00 # WT\n'
+    )
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_reuse_param_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _stub(self, card=None, ms_dir=None, use_old_dir=False, curr_dir=None):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            PARAM_CARD_STAMP = interface.PARAM_CARD_STAMP
+            CACHED_MATERIAL = interface.CACHED_MATERIAL
+            _reused_directory = interface._reused_directory
+            _holds_cached_material = interface._holds_cached_material
+            _check_reused_param_card = interface._check_reused_param_card
+        stub = Stub()
+        stub.options = {'ms_dir': ms_dir, 'use_old_dir': use_old_dir,
+                        'curr_dir': curr_dir}
+        stub.banner = banner.Banner()
+        stub.banner['slha'] = self.CARD if card is None else card
+        return stub
+
+    def _build(self, **opts):
+        """First use of the directory: it gets stamped."""
+        stub = self._stub(**opts)
+        stub._check_reused_param_card()
+        return stub
+
+    def test_a_fresh_directory_is_stamped_with_what_it_is_built_with(self):
+        self._build(ms_dir=self.tmpdir)
+        stamp = pjoin(self.tmpdir, 'ms_param_card.dat')
+        self.assertTrue(os.path.exists(stamp))
+        self.assertEqual(
+            check_param_card.ParamCard(stamp)['mass'].get((6,)).value, 172.76)
+
+    def test_the_directory_is_created_if_it_is_not_there_yet(self):
+        target = pjoin(self.tmpdir, 'not_yet')
+        self._build(ms_dir=target)
+        self.assertTrue(os.path.exists(pjoin(target, 'ms_param_card.dat')))
+
+    def test_reusing_it_with_the_same_card_is_allowed(self):
+        self._build(ms_dir=self.tmpdir)
+        self._stub(ms_dir=self.tmpdir)._check_reused_param_card()
+
+    def test_a_changed_width_stops_the_run(self):
+        """The one ``run_from_pickle`` skips: widths drive the branching ratio
+        and the Breit-Wigner sampling, and the partial widths cached beside the
+        gridpacks were measured with the old one."""
+        self._build(ms_dir=self.tmpdir)
+        stub = self._stub(ms_dir=self.tmpdir,
+                          card=self.CARD.replace('1.330000e+00',
+                                                 '5.320000e+00'))
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          stub._check_reused_param_card)
+
+    def test_a_changed_mass_stops_the_run(self):
+        self._build(ms_dir=self.tmpdir)
+        stub = self._stub(ms_dir=self.tmpdir,
+                          card=self.CARD.replace('1.727600e+02',
+                                                 '1.500000e+02'))
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          stub._check_reused_param_card)
+
+    def test_a_changed_coupling_stops_the_run(self):
+        self._build(ms_dir=self.tmpdir)
+        stub = self._stub(ms_dir=self.tmpdir,
+                          card=self.CARD.replace('1 0.000000e+00 # ctg',
+                                                 '1 -1.000000e+00 # ctg'))
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          stub._check_reused_param_card)
+
+    def test_the_message_names_the_block_and_the_way_out(self):
+        self._build(ms_dir=self.tmpdir)
+        stub = self._stub(ms_dir=self.tmpdir,
+                          card=self.CARD.replace('1.330000e+00',
+                                                 '5.320000e+00'))
+        try:
+            stub._check_reused_param_card()
+        except interface_madspin.MadSpinStaleParameters as error:
+            message = str(error)
+        else:
+            self.fail('a changed width was accepted')
+        self.assertIn('decay', message)
+        self.assertIn(self.tmpdir, message)
+        self.assertIn('ms_dir', message)
+
+    def test_use_old_dir_is_checked_too(self):
+        """``use_old_dir`` reuses the same kind of material (the pickled
+        branching ratios, the matrix-element directories) in the run's own
+        working directory."""
+        self._build(use_old_dir=True, curr_dir=self.tmpdir)
+        stub = self._stub(use_old_dir=True, curr_dir=self.tmpdir,
+                          card=self.CARD.replace('1.330000e+00',
+                                                 '5.320000e+00'))
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          stub._check_reused_param_card)
+
+    def test_nothing_is_reused_nothing_is_checked(self):
+        """A run that builds everything from scratch has no cache to be wrong
+        about, and must not be stopped -- nor leave a stamp behind."""
+        stub = self._stub(curr_dir=self.tmpdir)
+        self.assertIsNone(stub._reused_directory())
+        stub._check_reused_param_card()
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,
+                                              'ms_param_card.dat')))
+
+    def test_ms_dir_wins_over_curr_dir(self):
+        target = pjoin(self.tmpdir, 'gridpack')
+        stub = self._stub(ms_dir=target, use_old_dir=True, curr_dir=self.tmpdir)
+        self.assertEqual(stub._reused_directory(), os.path.realpath(target))
+
+    def test_an_unreadable_stamp_does_not_abort_a_healthy_run(self):
+        """The stamp is a safety net, not a gate: a directory stamped by an
+        older version (or a truncated file) must not stop a run that would
+        otherwise have proceeded exactly as before."""
+        self._build(ms_dir=self.tmpdir)
+        open(pjoin(self.tmpdir, 'ms_param_card.dat'), 'w').write('\x00 junk')
+        self._stub(ms_dir=self.tmpdir,
+                   card=self.CARD.replace('1.330000e+00',
+                                          '5.320000e+00'))._check_reused_param_card()
+
+    def test_a_banner_without_a_card_is_not_checked(self):
+        """hepmc / lhe_no_banner inputs carry no slha to compare."""
+        stub = self._stub(ms_dir=self.tmpdir)
+        del stub.banner['slha']
+        stub._check_reused_param_card()
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,
+                                              'ms_param_card.dat')))
+
+    def test_a_rebuild_refreshes_the_stamp_it_finds(self):
+        """A run that reuses nothing rebuilds the directory from scratch, so a
+        stamp an earlier run left there stops describing what is on disk.
+        Leaving it would stop the *next* reuse over a change that was in fact
+        rebuilt."""
+        self._build(use_old_dir=True, curr_dir=self.tmpdir)
+        rebuilt = self.CARD.replace('1.330000e+00', '5.320000e+00')
+        # same directory, but this run does not reuse anything
+        self._stub(curr_dir=self.tmpdir, card=rebuilt)._check_reused_param_card()
+        self._stub(use_old_dir=True, curr_dir=self.tmpdir,
+                   card=rebuilt)._check_reused_param_card()
+
+    def test_a_plain_run_leaves_no_stamp_behind(self):
+        """...but a directory nothing ever reuses does not get a new file."""
+        self._stub(curr_dir=self.tmpdir)._check_reused_param_card()
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,
+                                              'ms_param_card.dat')))
+
+    def test_an_unstamped_directory_with_content_is_flagged(self):
+        """An ms_dir built by a MadSpin that left no stamp still gets reused.
+        Nothing can vouch for its widths, so say so rather than stamp it with
+        this run's card as if it had been built with it."""
+        open(pjoin(self.tmpdir, 'max_wgt'), 'w').write('1.0\n')
+        warnings = []
+        with misc.TMP_variable(interface_madspin.logger, 'warning',
+                               lambda *a, **k: warnings.append(a)):
+            self._build(ms_dir=self.tmpdir)
+        self.assertTrue(warnings)
+        self.assertIn('param_card', warnings[0][0])
+
+    def test_an_empty_unstamped_directory_is_not_flagged(self):
+        warnings = []
+        with misc.TMP_variable(interface_madspin.logger, 'warning',
+                               lambda *a, **k: warnings.append(a)):
+            self._build(ms_dir=self.tmpdir)
+        self.assertFalse(warnings)
+
+    def test_an_unstamped_cache_does_not_acquire_a_stamp(self):
+        """The absence of a stamp means "unknown", not "matches this run".
+
+        Stamping a legacy cache with whatever card happens to be running would
+        authenticate it: the next run with that same card would match the stamp
+        and reuse decay events, partial widths and maximum weights that may
+        have been built with entirely different parameters, in silence and
+        without the warning. The upgrade boundary is exactly where unstamped
+        directories live, so this is the realistic path, not a corner."""
+        open(pjoin(self.tmpdir, 'max_wgt'), 'w').write('1.0\n')
+        with misc.TMP_variable(interface_madspin.logger, 'warning',
+                               lambda *a, **k: None):
+            self._build(ms_dir=self.tmpdir)
+        self.assertFalse(os.path.exists(pjoin(self.tmpdir,
+                                              'ms_param_card.dat')))
+
+    def test_an_unstamped_cache_is_never_authenticated_by_repetition(self):
+        """The hazard, in the sequence that produces it. A *changed* card was
+        never the danger -- it would meet the stamp the first run wrote and be
+        refused. The danger is the same card again: the second run would match
+        that stamp and reuse a cache of unknown provenance in silence, the
+        first run having vouched for it.
+
+        So the warning must come back every time, and the directory must stay
+        unstamped however often it is used: nothing on disk will ever learn
+        what that cache was built with. Left usable rather than refused --
+        the stamp is missing because the directory predates it, not because
+        anything is known to be wrong."""
+        open(pjoin(self.tmpdir, 'max_wgt'), 'w').write('1.0\n')
+        for run in range(3):
+            warnings = []
+            with misc.TMP_variable(interface_madspin.logger, 'warning',
+                                   lambda *a, **k: warnings.append(a)):
+                self._build(ms_dir=self.tmpdir)
+            self.assertTrue(warnings, 'run %d reused it in silence' % run)
+            self.assertFalse(os.path.exists(pjoin(self.tmpdir,
+                                                  'ms_param_card.dat')))
+
+    def test_a_changed_card_still_stops_a_directory_that_is_stamped(self):
+        """The counterweight to leaving legacy directories usable: a directory
+        whose provenance *is* known is still refused when the card moves."""
+        self._build(ms_dir=self.tmpdir)
+        open(pjoin(self.tmpdir, 'max_wgt'), 'w').write('1.0\n')
+        stub = self._stub(card=self.CARD.replace('1.330000e+00',
+                                                 '5.320000e+00'),
+                          ms_dir=self.tmpdir)
+        self.assertRaises(interface_madspin.MadSpinStaleParameters,
+                          stub._check_reused_param_card)
+
+    def test_every_kind_of_cached_material_counts(self):
+        """A cache this failed to notice would be stamped, i.e. authenticated
+        with a card it may never have been built with -- so the read sites'
+        caches are enumerated rather than approximated by "non-empty"."""
+        import tempfile
+        for name in ('madspin.pkl', 'max_wgt', 'max_wgt_sequential',
+                     'pure_interference_c', 'decay_6_0',
+                     pjoin('production_me', 'all_ME.pkl')):
+            tmpdir = tempfile.mkdtemp(prefix='ms_cached_')
+            try:
+                path = pjoin(tmpdir, name)
+                if name == 'decay_6_0':
+                    os.makedirs(path)
+                else:
+                    if not os.path.isdir(os.path.dirname(path)):
+                        os.makedirs(os.path.dirname(path))
+                    open(path, 'w').write('x')
+                with misc.TMP_variable(interface_madspin.logger, 'warning',
+                                       lambda *a, **k: None):
+                    self._build(ms_dir=tmpdir)
+                self.assertFalse(
+                    os.path.exists(pjoin(tmpdir, 'ms_param_card.dat')),
+                    '%s was not recognised as cached material' % name)
+            finally:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_an_unrelated_file_is_not_cached_material(self):
+        """The counterweight: a directory holding something that is not one of
+        those caches is still a fresh one, and must still get its stamp."""
+        open(pjoin(self.tmpdir, 'README'), 'w').write('x')
+        self._build(ms_dir=self.tmpdir)
+        self.assertTrue(os.path.exists(pjoin(self.tmpdir,
+                                             'ms_param_card.dat')))
+
+
+class TestMg7NumpyPoolCrossesTheGenerationFork(unittest.TestCase):
+    """`set nb_core 1` is what the code tells a user to do to keep
+    ``decay_generator = mg7`` on a multicore box. It did not work.
+
+    ``_generate_decays`` forks one process per *decaying particle* -- that is
+    what nb_core does NOT control -- and the readers it produces cannot come
+    back across the fork, so it marshals them as paths and rebuilds them in the
+    parent with ``_reader_from_paths``. That rebuilt every pool as an LHE
+    ``EventFile``, so on mg7's numpy pool it died reading ``\x93NUMPY`` as
+    utf-8:
+
+        UnicodeDecodeError: 'utf-8' codec can't decode byte 0x93 in position 0
+
+    Two decaying particles is ``p p > t t~`` with both tops decayed, i.e. the
+    flagship configuration, so the documented escape hatch walked straight into
+    a hard crash. A numpy pool also has no banner, so its cross section (the
+    channel's partial width) has to travel with the paths rather than be read
+    back off the file.
+    """
+
+    NB_EVENT = 12
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_npyfork_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    # ------------------------------------------------------------- fixtures
+
+    def _write_npy(self, name, nb_event=None, nb_part=3):
+        """A file with the dtype mg7's ``lhe_npy`` output_format writes, i.e.
+        the one ``NpyDecayPool`` is built to read."""
+        import numpy
+        nb_event = self.NB_EVENT if nb_event is None else nb_event
+        dtype = [('weight', 'f8'), ('scale', 'f8'),
+                 ('alpha_qed', 'f8'), ('alpha_qcd', 'f8')]
+        integral = ('pdg_id', 'status_code', 'mother1', 'mother2',
+                    'color', 'anti_color')
+        for i in range(1, nb_part + 1):
+            for field in interface_madspin._NPY_PARTICLE_FIELDS:
+                dtype.append(('part%d_%s' % (i, field),
+                              'i4' if field in integral else 'f8'))
+        records = numpy.zeros(nb_event, dtype=dtype)
+        records['weight'] = 1.0
+        # 1 -> 2: a decaying parent (status -1) and two decay products
+        records['part1_pdg_id'] = 6
+        records['part1_status_code'] = -1
+        records['part1_energy'] = 173.0
+        records['part1_mass'] = 173.0
+        for i, pdg in ((2, 5), (3, 24)):
+            records['part%d_pdg_id' % i] = pdg
+            records['part%d_status_code' % i] = 1
+            records['part%d_mother1' % i] = 1
+            records['part%d_mother2' % i] = 1
+            records['part%d_energy' % i] = 86.5
+        path = pjoin(self.tmpdir, name)
+        numpy.save(path, records)
+        return path + '.npy' if not path.endswith('.npy') else path
+
+    def _stub(self, widths):
+        """A MadSpin carrying the real ``_generate_decays`` machinery, over a
+        generator that behaves like ``generate_events_mg7``: it returns an
+        ``NpyDecayPool``, and its width comes back beside it rather than out of
+        a banner."""
+        test = self
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _generate_decays = interface._generate_decays
+            _generate_decay_entry = interface._generate_decay_entry
+            _reader_paths = staticmethod(interface._reader_paths)
+            _reader_from_paths = staticmethod(interface._reader_from_paths)
+
+            def _resolve_nb_core(self):
+                # the documented escape hatch
+                return 1
+
+            def generate_events(self, pdg, nb_gen, mg5, cumul=False,
+                                output_width=False, **opts):
+                width = widths[pdg]
+                path = test._write_npy('pool_%s' % str(pdg).replace('-', 'x'))
+                pool = interface_madspin.NpyDecayPool(path, width)
+                return {0: pool}, width, {0: width}
+
+        stub = Stub()
+        stub.path_me = self.tmpdir
+        stub.options = {'seed': 7}
+        stub.seed = 7
+        stub.mg5cmd = None
+        stub.me_int = {}
+        return stub
+
+    def _jobs(self, pdgs):
+        return dict((pdg, {'nb_gen': self.NB_EVENT, 'cumul': False})
+                    for pdg in pdgs)
+
+    # -------------------------------------------------------- the regression
+
+    def test_two_decaying_particles_with_nb_core_1_do_not_crash(self):
+        """The regression proper: p p > t t~, both tops decayed, nb_core = 1,
+        mg7 pools. This raised UnicodeDecodeError."""
+        widths = {6: 1.45, -6: 1.46}
+        out = self._stub(widths)._generate_decays(self._jobs([6, -6]), None)
+        self.assertEqual(sorted(out), sorted(widths))
+        for pdg in widths:
+            readers, width, channel_widths = out[pdg]
+            self.assertEqual(width, widths[pdg])
+            self.assertIsInstance(readers[0], interface_madspin.NpyDecayPool)
+
+    def test_the_partial_width_survives_the_fork(self):
+        """A numpy pool has no <init> block, so the width cannot be re-read on
+        the parent side: it has to be marshalled with the paths. Getting this
+        wrong leaves cross = None, which silently breaks the cross-section
+        weighted choice between a pdg's channels rather than raising."""
+        widths = {6: 1.45, -6: 1.46}
+        out = self._stub(widths)._generate_decays(self._jobs([6, -6]), None)
+        for pdg in widths:
+            self.assertEqual(out[pdg][0][0].cross, widths[pdg])
+            self.assertEqual(out[pdg][2][0], widths[pdg])
+
+    def test_the_pool_still_reads_its_events_in_the_parent(self):
+        """Rebuilt, not merely constructed: the events come back out."""
+        out = self._stub({6: 1.45, -6: 1.46})._generate_decays(
+            self._jobs([6, -6]), None)
+        events = list(out[6][0][0])
+        self.assertEqual(len(events), self.NB_EVENT)
+        self.assertEqual([p.pid for p in events[0]], [6, 5, 24])
+
+    # ------------------------------------------- the unit under the regression
+
+    def test_reader_from_paths_dispatches_on_the_file_format(self):
+        """LHE keeps reading its own cross section; numpy takes the one it is
+        given."""
+        npy = self._write_npy('lone')
+        reader = interface_madspin.MadSpinInterface._reader_from_paths([npy], 2.5)
+        self.assertIsInstance(reader, interface_madspin.NpyDecayPool)
+        self.assertEqual(reader.cross, 2.5)
+        self.assertEqual(len(reader), self.NB_EVENT)
+
+    def test_a_numpy_pool_without_its_width_is_refused_loudly(self):
+        """cross = None would not raise until the channel choice divided by it,
+        far from here and with no hint of why. Refuse at the boundary."""
+        npy = self._write_npy('widthless')
+        self.assertRaises(
+            Exception,
+            interface_madspin.MadSpinInterface._reader_from_paths, [npy])
+
+
+class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
+    """``decay_generator = mg7`` used to be silently moved to madevent whenever
+    nb_core > 1 -- i.e. on any multicore box, which is the usual one -- because
+    the parallel unweighting's refill path splits and reopens a pool as LHE
+    files and mg7 was writing numpy. mg7 writes LHE now, in the per-worker
+    layout the refill path already expects, so that demotion is gone and the
+    generator is what the card says it is.
+
+    Gridpack (ms_dir) is the one case left: it drives the decay directory
+    through run.sh, which the mg7 output does not provide.
+    """
+
+    def _decision(self, spinmode, nb_core, ms_dir='', madspace=True):
+        """Which output format generate_events settles on, without running any
+        generation: replay it over a stub and catch the `output` command.
+
+        ``madspace`` stands in for whether the compiled extension mg7 needs is
+        built; pinned rather than probed so the test says the same thing on a
+        machine that happens to have built it and one that has not."""
+        seen = []
+        interface = interface_madspin.MadSpinInterface
+
+        class _Stop(Exception):
+            pass
+
+        class Stub(object):
+            _split_group_tag = interface._split_group_tag
+            _DECAY_GROUP_TAG = interface._DECAY_GROUP_TAG
+
+            def _resolve_nb_core(self):
+                return nb_core
+
+            def _mg7_available(self):
+                return madspace
+
+        stub = Stub()
+        stub.options = {'decay_generator': 'mg7', 'ms_dir': ms_dir,
+                        'spinmode': spinmode}
+        stub.path_me = '/nonexistent'
+        stub.list_branches = {'t': ['t > b w+']}
+
+        class _P(object):
+            def get_name(self):
+                return 't'
+
+        class _M(object):
+            def get_particle(self, pdg):
+                return _P()
+
+        stub.model = _M()
+
+        class _MG5(object):
+            def exec_cmd(self, cmd):
+                if cmd.startswith('output '):
+                    seen.append(cmd.split()[1])
+                    raise _Stop()
+
+        with misc.TMP_variable(interface_madspin.logger, 'warning',
+                               lambda *a, **k: None):
+            with misc.TMP_variable(interface_madspin.logger, 'info',
+                                   lambda *a, **k: None):
+                try:
+                    interface.generate_events(stub, 6, 10, _MG5())
+                except Exception:
+                    pass
+        return seen[0] if seen else None
+
+    def test_mg7_survives_a_multicore_box_in_every_spinmode(self):
+        for spinmode in ('madspin', 'full', 'PA', 'onshell', 'onshell_v1',
+                         'none', 'madspin_v1'):
+            for nb_core in (1, 2, 18):
+                self.assertEqual(
+                    self._decision(spinmode, nb_core), 'mg7',
+                    'spinmode %s on %s cores' % (spinmode, nb_core))
+
+    def test_gridpack_still_forces_madevent(self):
+        self.assertEqual(self._decision('madspin', 18, ms_dir='/some/ms_dir'),
+                         'madevent')
+
+    def test_madevent_when_madspace_is_not_built(self):
+        """mg7 integrates through a compiled extension MadGraph builds on
+        demand. Where it is not built, the launcher would try to build it mid
+        run and fail the whole run after MadSpin had already generated its
+        matrix elements. Fall back instead -- loudly."""
+        self.assertEqual(self._decision('madspin', 18, madspace=False),
+                         'madevent')
+        self.assertEqual(self._decision('madspin', 1, madspace=False),
+                         'madevent')
+
+    def test_the_probe_looks_for_the_built_extension(self):
+        """Not for the directory: a failed build leaves
+        madspace/install/madspace behind, empty."""
+        import tempfile
+        interface = interface_madspin.MadSpinInterface
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(pjoin(tmp, 'madgraph'))
+            open(pjoin(tmp, 'madgraph', '__init__.py'), 'w').close()
+            install = pjoin(tmp, 'madspace', 'install', 'madspace')
+            os.makedirs(install)
+
+            class _FakeMG(object):
+                __file__ = pjoin(tmp, 'madgraph', '__init__.py')
+
+            import sys as _sys
+            real = _sys.modules['madgraph']
+            _sys.modules['madgraph'] = _FakeMG
+            try:
+                interface._mg7_backend_available = None
+                self.assertFalse(interface._mg7_available())
+                open(pjoin(install, '_madspace_py.cpython-314-darwin.so'),
+                     'w').close()
+                interface._mg7_backend_available = None
+                self.assertTrue(interface._mg7_available())
+            finally:
+                _sys.modules['madgraph'] = real
+        finally:
+            interface._mg7_backend_available = None
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
+    """mg7 writes its decay pool as one ``events.npy`` and nothing splits it.
+
+    The pool is memory-mapped and randomly addressable, so worker i of N reads
+    the rows at positions i, i+N, ... by index arithmetic: no per-worker file to
+    write, no other worker's events to parse past. That is the whole difference
+    from LHE text, where a worker handed a single file has to ``next()`` its way
+    over everybody else's events and the pool therefore has to be dealt out into
+    one file per worker first.
+
+    The objection this reverses was that only LHE carries the channel's partial
+    width with it (in its <init> block), so a .npy pool could not survive being
+    handed to another process by path alone. It survives both hops without
+    anything being published beside it: the generation fork already marshals the
+    width explicitly with the paths, and a refill hands on the width the reader
+    it replaces already had -- a channel's width does not change from one
+    generation of its pool to the next. See
+    TestMg7NumpyPoolCrossesTheGenerationFork and
+    TestNumpyRefillPoolCarriesItsWidthWithoutASidecar.
+
+    The pool still lands under ``Events/<run_name>/`` -- mg7 names its own run
+    directory and MadSpin renames it there -- because for a refill that path IS
+    ``_refill_pool_paths``, so ``_generate_refill_pool`` sees the backend has
+    written the canonical layout and does nothing further.
+    """
+
+    NB_EVENT = 24
+    WIDTH = 1.4586029
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_mg7npy_')
+        self.decay_dir = pjoin(self.tmpdir, 'decay_6_0')
+        os.makedirs(pjoin(self.decay_dir, 'Cards'))
+        os.makedirs(pjoin(self.decay_dir, 'bin'))
+        shutil.copy(pjoin(root_path, '..', 'input_files', 'mg7_run_card.toml'),
+                    pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self._write_launcher()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_launcher(self):
+        """A stand-in for ``bin/generate_events``: makes its own run directory
+        (mg7 names it, MadSpin does not) and writes a numpy pool plus the
+        info.json that reports the partial width, exactly as
+        combine_to_lhe_npy and the launcher do."""
+        fields = list(interface_madspin._NPY_PARTICLE_FIELDS)
+        lines = [
+            '#!/usr/bin/env python3',
+            'import os, json, numpy',
+            'WIDTH = @WIDTH@',
+            'NB = @NB@',
+            'FIELDS = %r' % (fields,),
+            'INTEGRAL = ("pdg_id", "status_code", "mother1", "mother2",',
+            '            "color", "anti_color")',
+            'run = None',
+            'for i in range(1, 100):',
+            '    cand = os.path.join("Events", "run_%02d" % i)',
+            '    if not os.path.isdir(cand):',
+            '        run = cand',
+            '        break',
+            'os.makedirs(run)',
+            'dtype = [("weight", "f8"), ("scale", "f8"),',
+            '         ("alpha_qed", "f8"), ("alpha_qcd", "f8")]',
+            'for i in range(1, 4):',
+            '    for f in FIELDS:',
+            '        dtype.append(("part%d_%s" % (i, f),',
+            '                      "i4" if f in INTEGRAL else "f8"))',
+            'rec = numpy.zeros(NB, dtype=dtype)',
+            'rec["weight"] = 1.0',
+            'rec["part1_pdg_id"] = 6',
+            'rec["part1_status_code"] = -1',
+            'rec["part1_energy"] = 173.0',
+            'rec["part1_mass"] = 173.0',
+            'for i, pdg in ((2, 5), (3, 24)):',
+            '    rec["part%d_pdg_id" % i] = pdg',
+            '    rec["part%d_status_code" % i] = 1',
+            '    rec["part%d_mother1" % i] = 1',
+            '    rec["part%d_mother2" % i] = 1',
+            '    rec["part%d_energy" % i] = 86.5',
+            # a per-event fingerprint, so the stripes can be checked to
+            # partition the pool
+            'rec["part2_pz"] = numpy.arange(NB, dtype="f8")',
+            'numpy.save(os.path.join(run, "events.npy"), rec)',
+            'info = open(os.path.join(run, "info.json"), "w")',
+            'json.dump({"process": {"mean": WIDTH},',
+            '           "run_times": {"integrate": {"wall_time_sec": 2.5}}}, info)',
+            'info.close()',
+        ]
+        script = '\n'.join(lines) \
+            .replace('@WIDTH@', repr(self.WIDTH)) \
+            .replace('@NB@', str(self.NB_EVENT))
+        path = pjoin(self.decay_dir, 'bin', 'generate_events')
+        with open(path, 'w') as fsock:
+            fsock.write(script + '\n')
+        os.chmod(path, 0o755)
+
+    def _stub(self, nb_core):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            generate_events_mg7 = interface.generate_events_mg7
+            _add_phase = interface._add_phase
+            _phase = interface._phase
+            InvalidCmd = interface.InvalidCmd
+            _refill_pool_dir = staticmethod(interface._refill_pool_dir)
+            _refill_pool_paths = interface._refill_pool_paths
+            _reopen_decay_pool = interface._reopen_decay_pool
+            _channel_owner = interface._channel_owner
+            _count_pool_events = staticmethod(interface._count_pool_events)
+
+            def _decay_pool_split(self):
+                return nb_core
+
+        stub = Stub()
+        stub.banner = {'slha': '# param card\n'}
+        stub._shard_nb_core = nb_core
+        stub._channel_keys = [(6, 0)]
+        stub._owner_undersize = 0.0
+        return stub
+
+    @staticmethod
+    def _tags(reader):
+        """The pz of the b in every event the reader yields."""
+        return [int(event[1].pz) for event in reader]
+
+    # ---------------------------------------------------------------- format
+
+    def test_the_run_card_asks_for_the_numpy_event_file(self):
+        self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
+        self.assertEqual(card['run']['output_format'], 'lhe_npy')
+
+    def test_the_partial_width_comes_out_of_info_json(self):
+        """A .npy has no <init> block, so the width comes from the run result
+        the launcher writes -- and it has to arrive, or the branching ratio of
+        the whole run silently collapses."""
+        pool, width = self._stub(1).generate_events_mg7(self.decay_dir,
+                                                        self.NB_EVENT)
+        self.assertAlmostEqual(width, self.WIDTH, places=6)
+        self.assertAlmostEqual(pool.cross, self.WIDTH, places=6)
+        self.assertIsInstance(pool, interface_madspin.NpyDecayPool)
+
+    def test_a_missing_width_is_refused_rather_than_read_as_zero(self):
+        """Without the <init> block there is no second place to find the width,
+        so a run whose info.json does not report one must fail loudly: a width
+        silently read as zero collapses the branching ratio of the whole run."""
+        with open(pjoin(self.decay_dir, 'bin', 'generate_events'), 'a') as fsock:
+            fsock.write('open(os.path.join(run, "info.json"), "w")'
+                        '.write(\'{"run_times": {}}\')\n')
+        self.assertRaises(Exception, self._stub(1).generate_events_mg7,
+                          self.decay_dir, self.NB_EVENT)
+
+    # ------------------------------------------------------------ the layout
+
+    def test_the_pool_is_one_file_whatever_the_core_count(self):
+        """No split, so no per-worker files and nothing to clean up after."""
+        pool, _ = self._stub(18).generate_events_mg7(self.decay_dir,
+                                                     self.NB_EVENT)
+        self.assertFalse(hasattr(pool, 'paths'))
+        run_dir = pjoin(self.decay_dir, 'Events', 'run_01')
+        self.assertEqual(sorted(os.listdir(run_dir)),
+                         ['events.npy', 'info.json'])
+        self.assertEqual(len(pool), self.NB_EVENT)
+
+    def test_the_pool_lands_under_the_run_name_madspin_asked_for(self):
+        """mg7 names its own run directory; MadSpin renames the pool to the one
+        the rest of the code addresses it by."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT,
+                                           run_name='ms_refill_1')
+        self.assertEqual(pool.name,
+                         pjoin(self.decay_dir, 'Events', 'ms_refill_1',
+                               'events.npy'))
+        self.assertTrue(os.path.exists(pool.name))
+
+    def test_a_refill_lands_exactly_on_the_path_the_waiters_open(self):
+        """The payoff of the rename: for a refill, run_name is ms_refill_<gen>
+        and that path IS _refill_pool_paths, so _generate_refill_pool sees the
+        backend has written the canonical layout and does no further work."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT,
+                                           run_name='ms_refill_1')
+        self.assertEqual([pool.name],
+                         stub._refill_pool_paths(self.decay_dir, 1))
+
+    # ----------------------------------------------------------- the striding
+
+    def test_every_worker_gets_a_disjoint_stripe_of_the_one_pool(self):
+        """Worker i reads positions i, i+N, ... -- the same partition the
+        round-robin split used to have to write out as files."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        seen = []
+        for shard in range(4):
+            local = stub._reopen_decay_pool({6: {0: pool}}, shard, 4)
+            tags = self._tags(local[6][0])
+            self.assertEqual(tags, list(range(shard, self.NB_EVENT, 4)))
+            seen.extend(tags)
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+
+    def test_every_stripe_carries_the_width(self):
+        """A worker reads .cross off its own reader to weight the channel
+        choice, so the width has to survive being re-sliced."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        for shard in range(4):
+            local = stub._reopen_decay_pool({6: {0: pool}}, shard, 4)
+            self.assertAlmostEqual(local[6][0].cross, self.WIDTH, places=6)
+
+    def test_a_stripe_that_does_not_divide_the_pool_evenly_is_still_exact(self):
+        """26 events over 4 workers: two workers get 7, two get 6, and between
+        them they hold every event once."""
+        stub = self._stub(4)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        path = pool.name
+        seen = []
+        for shard in range(5):
+            reader = interface_madspin.NpyDecayPool(path, 1.0, offset=shard,
+                                                    stride=5)
+            tags = self._tags(reader)
+            self.assertEqual(len(reader), len(tags))
+            self.assertEqual(tags, list(range(shard, self.NB_EVENT, 5)))
+            seen.extend(tags)
+        self.assertEqual(sorted(seen), list(range(self.NB_EVENT)))
+
+    def test_a_stripe_past_the_end_of_the_pool_is_simply_empty(self):
+        """More workers than events: the extra ones get nothing, and say so
+        through len() as well as by raising StopIteration at once."""
+        stub = self._stub(1)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        reader = interface_madspin.NpyDecayPool(pool.name, 1.0,
+                                                offset=self.NB_EVENT + 3,
+                                                stride=self.NB_EVENT + 8)
+        self.assertEqual(len(reader), 0)
+        self.assertEqual(list(reader), [])
+
+    def test_the_stripe_crosses_the_chunk_boundary_intact(self):
+        """The chunked conversion has to keep the stride across refills of the
+        chunk, not restart the arithmetic at every boundary."""
+        stub = self._stub(1)
+        pool, _ = stub.generate_events_mg7(self.decay_dir, self.NB_EVENT)
+        reader = interface_madspin.NpyDecayPool(pool.name, 1.0, offset=1,
+                                                stride=3)
+        reader.CHUNK = 2
+        self.assertEqual(self._tags(reader), list(range(1, self.NB_EVENT, 3)))
+
+
+class TestTheOwnerUndersizeCanCountANumpyPool(unittest.TestCase):
+    """``_count_pool_events`` sizes the ~10% shortfall that makes a channel's
+    OWNER worker run its slice out -- and so regenerate the pool -- before the
+    workers waiting on it do.
+
+    It counted ``<event`` records by scanning the file as text. A numpy pool
+    contains no such text, so it counted zero, the owner's slice was capped at
+    zero events, and the owner refilled on its very first draw and then again
+    on the next one, forever. Nothing raises: it presents as a refill loop, not
+    as a file-format error, which is why it is worth a test of its own.
+    """
+
+    NB_EVENT = 40
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_count_')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @staticmethod
+    def _npy_dtype():
+        """The event-level columns mg7's lhe_npy file always carries."""
+        return [('weight', 'f8'), ('scale', 'f8'),
+                ('alpha_qed', 'f8'), ('alpha_qcd', 'f8')]
+
+    def _npy(self, nb_event=None):
+        import numpy
+        nb_event = self.NB_EVENT if nb_event is None else nb_event
+        path = pjoin(self.tmpdir, 'events.npy')
+        numpy.save(path, numpy.zeros(nb_event, dtype=self._npy_dtype()))
+        return path
+
+    def _lhe(self, nb_event):
+        path = pjoin(self.tmpdir, 'pool.lhe')
+        with open(path, 'w') as fsock:
+            fsock.write('<LesHouchesEvents version="3.0">\n<init>\n</init>\n')
+            for _ in range(nb_event):
+                fsock.write('<event>\n 0 0\n</event>\n')
+            fsock.write('</LesHouchesEvents>\n')
+        return path
+
+    def test_a_numpy_pool_is_counted_not_read_as_zero(self):
+        """The regression proper."""
+        count = interface_madspin.MadSpinInterface._count_pool_events(self._npy())
+        self.assertEqual(count, self.NB_EVENT)
+
+    def test_an_lhe_pool_is_still_counted_by_its_event_records(self):
+        count = interface_madspin.MadSpinInterface._count_pool_events(
+            self._lhe(17))
+        self.assertEqual(count, 17)
+
+    def test_the_owner_slice_of_a_numpy_pool_is_shorter_than_a_waiters(self):
+        """What the silent zero actually broke: the owner has to get ~90% of
+        its stripe, not 0% of it."""
+        interface = interface_madspin.MadSpinInterface
+        path = self._npy()
+
+        class Stub(object):
+            _open_refill_slice = interface._open_refill_slice
+            _refill_pool_path = interface._refill_pool_path
+            _refill_pool_paths = interface._refill_pool_paths
+            _refill_pool_dir = staticmethod(interface._refill_pool_dir)
+            _count_pool_events = staticmethod(interface._count_pool_events)
+
+        decay_dir = pjoin(self.tmpdir, 'decay_6_0')
+        os.makedirs(interface._refill_pool_dir(decay_dir, 1))
+        shutil.move(path, pjoin(interface._refill_pool_dir(decay_dir, 1),
+                                'events.npy'))
+
+        lengths = {}
+        for shard in range(4):
+            stub = Stub()
+            stub._shard_tag = shard
+            stub._shard_nb_core = 4
+            stub._owner_undersize = 0.10
+            reader = stub._open_refill_slice(decay_dir, 1, owner=0, cross=1.5)
+            lengths[shard] = len(list(reader))
+        self.assertEqual(lengths[0], int(math.floor(0.90 * 10)))
+        self.assertEqual(lengths[1], 10)
+        self.assertLess(lengths[0], lengths[1])
+
+
+class TestNumpyRefillPoolCarriesItsWidthWithoutASidecar(unittest.TestCase):
+    """The second hop a decay pool has to survive: a channel's refill OWNER
+    generates a pool and every waiter opens it by path alone.
+
+    The claim that this needed LHE was that ``_open_refill_slice`` builds an
+    ``EventFile``, which reads the channel's partial width out of the <init>
+    block -- and the decay loop does read ``.cross`` back off that reader, to
+    weight the choice between a pdg's channels. So the width is genuinely used
+    here; it simply does not have to be published beside the pool. A channel's
+    partial width is the same for every generation of its pool, so the reader
+    that just ran dry already has it and ``_worker_refill`` passes it on. The
+    owner->waiter contract on disk stays the single ms_refill.gen marker.
+    """
+
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp(prefix='ms_npyrefill_')
+        self.decay_dir = pjoin(self.tmpdir, 'decay_6_0')
+        interface = interface_madspin.MadSpinInterface
+        pool_dir = interface._refill_pool_dir(self.decay_dir, 1)
+        os.makedirs(pool_dir)
+        import numpy
+        numpy.save(pjoin(pool_dir, 'events.npy'),
+                   numpy.zeros(8, dtype=[('weight', 'f8'), ('scale', 'f8'),
+                                         ('alpha_qed', 'f8'),
+                                         ('alpha_qcd', 'f8')]))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _worker(self, shard):
+        interface = interface_madspin.MadSpinInterface
+
+        class Stub(object):
+            _open_refill_slice = interface._open_refill_slice
+            _refill_pool_path = interface._refill_pool_path
+            _refill_pool_paths = interface._refill_pool_paths
+            _refill_pool_dir = staticmethod(interface._refill_pool_dir)
+            _count_pool_events = staticmethod(interface._count_pool_events)
+
+        stub = Stub()
+        stub._shard_tag = shard
+        stub._shard_nb_core = 4
+        stub._owner_undersize = 0.0
+        return stub
+
+    def test_nothing_is_published_beside_the_pool(self):
+        """The point of the whole exercise: the refill directory holds the pool
+        and nothing else -- no width sidecar, no second marker for a
+        publish/open race to live in."""
+        pool_dir = interface_madspin.MadSpinInterface._refill_pool_dir(
+            self.decay_dir, 1)
+        self.assertEqual(os.listdir(pool_dir), ['events.npy'])
+
+    def test_the_waiter_gets_the_width_it_was_handed(self):
+        reader = self._worker(2)._open_refill_slice(self.decay_dir, 1, owner=0,
+                                                    cross=1.4602897691)
+        self.assertAlmostEqual(reader.cross, 1.4602897691, places=9)
+
+    def test_the_refill_slices_partition_the_pool(self):
+        seen = []
+        for shard in range(4):
+            reader = self._worker(shard)._open_refill_slice(
+                self.decay_dir, 1, owner=None, cross=1.0)
+            seen.append(len(list(reader)))
+        self.assertEqual(seen, [2, 2, 2, 2])
+
+
+class TestANumpyPoolIsNeverHandedToTheLheSplitter(unittest.TestCase):
+    """``_split_pool_round_robin`` is LHE-only. Handed a .npy it used to raise
+    ``UnicodeDecodeError: byte 0x93`` -- the first byte of the \\x93NUMPY magic
+    read as utf-8 -- from three frames inside the LHE parser, which says
+    nothing about what actually went wrong."""
+
+    def test_it_refuses_a_numpy_source_by_name(self):
+        import tempfile
+        import numpy
+        tmpdir = tempfile.mkdtemp(prefix='ms_nosplit_')
+        try:
+            path = pjoin(tmpdir, 'events.npy')
+            numpy.save(path, numpy.zeros(4, dtype=[('weight', 'f8'),
+                                                   ('scale', 'f8')]))
+            interface = interface_madspin.MadSpinInterface
+            try:
+                interface._split_pool_round_robin(
+                    [path], [pjoin(tmpdir, 'a.lhe'), pjoin(tmpdir, 'b.lhe')])
+            except Exception as error:
+                self.assertIn('numpy decay pool', str(error))
+            else:
+                self.fail('a numpy pool was accepted by the LHE splitter')
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class TestDecayGeneratorIsAnOptionAtAll(unittest.TestCase):
+    """`decay_generator` was declared by an add_param that a merge left AFTER
+    the `return` of MadSpinOptions.__setitem__, i.e. as unreachable code.
+
+    That is not a cosmetic misplacement. The option then does not exist:
+    `set decay_generator mg7` in a madspin card is rejected by check_set as an
+    unknown option, and generate_events' `self.options['decay_generator']`
+    raises KeyError, which it catches and turns into 'madevent'. So the whole
+    mg7 decay generator was off, unconditionally and silently, for every run --
+    including the nb_core > 1 demotion that was supposed to be the only thing
+    turning it off.
+    """
+
+    def test_it_is_declared(self):
+        options = interface_madspin.MadSpinOptions()
+        self.assertIn('decay_generator', options)
+        self.assertEqual(options['decay_generator'], 'mg7')
+
+    def test_a_card_can_set_it(self):
+        """check_set accepts what is in self.options; an undeclared parameter
+        raises InvalidCmd and stops the card being read at all."""
+        cmd = interface_madspin.MadSpinInterface()
+        for value in ('madevent', 'mg7'):
+            cmd.do_set('decay_generator %s' % value)
+            self.assertEqual(cmd.options['decay_generator'], value)
+
+    def test_it_is_still_restricted_to_the_two_backends(self):
+        options = interface_madspin.MadSpinOptions()
+        self.assertEqual(sorted(options.allowed_value['decay_generator']),
+                         ['madevent', 'mg7'])
+
+
+class TestDecayChainIdenticalFactor(unittest.TestCase):
+    """_decay_chain_identical_factor: the identical-particle bookkeeping the
+    legacy on-shell mode (`spinmode onshell_v1`) has to undo.
+
+    That mode alone takes its numerator from a separately generated
+    decay-chain matrix element and its denominator from the *undecayed*
+    production one. MG5 divides each by its own IDEN, and the
+    identical-particle parts do not match: `p p > z z` carries a 2 for the two
+    identical Z, while `p p > z z, z > e+ e-, z > mu+ mu-` carries
+    `identical_decay_chain_factor` -- 2 when the two chains are the same
+    process, 1 when they are not (IDEN 72 against 36 in the generated
+    matrix.f). So the mixed-flavour draw came out twice as heavy as the
+    same-flavour one for no physical reason, and a merged decay line
+    (`define lp = e+ mu+` / `decay z > lp lm`) wrote e+e-mu+mu- : 4e : 4mu as
+    4:1:1 where the ratio of decayed cross sections is 2:1:1.
+
+    Keyed on the drawn FINAL STATE -- the opposite of _decay_symmetry_factor,
+    because here MG5's generator really did apply the factor.
+    """
+
+    class _Part(object):
+        def __init__(self, pid, status=1):
+            self.pid = pid
+            self.pdg = pid
+            self.status = status
+
+    factor = staticmethod(
+        interface_madspin.MadSpinInterface._decay_chain_identical_factor)
+
+    @staticmethod
+    def _decay(*pids):
+        """A 1 -> N decay event: the parent (status 2) and its children."""
+        return [TestDecayChainIdenticalFactor._Part(pids[0], status=2)] + \
+               [TestDecayChainIdenticalFactor._Part(p) for p in pids[1:]]
+
+    def _zz(self, first, second):
+        production = [self._Part(2, status=-1), self._Part(-2, status=-1),
+                      self._Part(23), self._Part(23)]
+        decays = {23: [self._decay(23, *first), self._decay(23, *second)]}
+        return self.factor(production, decays)
+
+    def test_two_z_to_different_flavours_take_one_half(self):
+        """IDEN 36 for the chain process against 72 for the production: the
+        raw ratio is 2 too big."""
+        self.assertEqual(self._zz((-11, 11), (-13, 13)), 0.5)
+
+    def test_two_z_to_the_same_flavour_take_nothing(self):
+        """IDEN 72 on both sides -- already consistent."""
+        self.assertEqual(self._zz((-11, 11), (-11, 11)), 1.0)
+
+    def test_the_two_together_restore_the_2_to_1_ratio(self):
+        """The whole point: same-flavour and mixed end up on the same footing,
+        so the merged-line composition is 2:1:1."""
+        self.assertEqual(self._zz((-11, 11), (-13, 13)) /
+                         self._zz((-11, 11), (-11, 11)), 0.5)
+
+    def test_a_single_decaying_particle_takes_nothing(self):
+        """`p p > t t~`: t and t~ are separate keys with one parent each, so
+        no identical-chain factor exists on either side."""
+        production = [self._Part(21, status=-1), self._Part(21, status=-1),
+                      self._Part(6), self._Part(-6)]
+        decays = {6: [self._decay(6, 5, 24, -11, 12)],
+                  -6: [self._decay(-6, -5, -24, 1, -2)]}
+        self.assertEqual(self.factor(production, decays), 1.0)
+
+    def test_intermediate_resonances_separate_two_chains(self):
+        """The signature is the whole decay event, not just its final state:
+        `w+ > l+ vl` and a direct three-body decay to the same leptons are
+        different processes to MG5's check_equal_decay_processes."""
+        production = [self._Part(21, status=-1), self._Part(21, status=-1),
+                      self._Part(6), self._Part(6)]
+        two_step = self._decay(6, 5, 24, -11, 12)
+        three_body = [self._Part(6, status=2), self._Part(5),
+                      self._Part(-11), self._Part(12)]
+        self.assertEqual(self.factor(production, {6: [two_step, two_step]}), 1.0)
+        self.assertEqual(self.factor(production, {6: [two_step, three_body]}),
+                         0.5)
+
+    def test_three_identical_parents(self):
+        production = [self._Part(21, status=-1), self._Part(21, status=-1)] + \
+                     [self._Part(23) for _ in range(3)]
+        ee, mm = self._decay(23, -11, 11), self._decay(23, -13, 13)
+        # 3!/3! : all three the same process
+        self.assertEqual(self.factor(production, {23: [ee, ee, ee]}), 1.0)
+        # 2!1!/3!
+        self.assertEqual(self.factor(production, {23: [ee, ee, mm]}), 1 / 3.)
+
+    def test_an_undecayed_identical_leg_still_counts(self):
+        """MG5's non_chain_factor drops *every* leg whose pdg is decayed, so
+        the production factor to undo is n! over all of them, not over the
+        ones that were drawn a decay."""
+        production = [self._Part(21, status=-1), self._Part(21, status=-1),
+                      self._Part(23), self._Part(23)]
+        decays = {23: [self._decay(23, -11, 11)]}
+        self.assertEqual(self.factor(production, decays), 0.5)
+
+    def test_several_pdgs_multiply(self):
+        production = [self._Part(21, status=-1), self._Part(21, status=-1),
+                      self._Part(23), self._Part(23),
+                      self._Part(24), self._Part(24)]
+        decays = {23: [self._decay(23, -11, 11), self._decay(23, -13, 13)],
+                  24: [self._decay(24, -11, 12), self._decay(24, -13, 14)]}
+        self.assertEqual(self.factor(production, decays), 0.25)

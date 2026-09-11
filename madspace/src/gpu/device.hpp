@@ -15,14 +15,6 @@ inline void check_error(gpublasStatus_t status) {
     }
 }
 
-inline void check_error(gpurandStatus_t status) {
-    if (status != GPURAND_STATUS_SUCCESS) {
-        throw std::runtime_error(
-            std::format("RAND error: error code {}", static_cast<int>(status))
-        );
-    }
-}
-
 inline void check_error(gpuError_t error) {
     if (error != gpuSuccess) {
         const char* error_str = gpuGetErrorString(error);

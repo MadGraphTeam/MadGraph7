@@ -18,7 +18,10 @@ public:
     );
     const std::vector<std::size_t>& option_counts() const { return _option_counts; }
     std::size_t condition_dim() const { return _condition_dim; }
-    void initialize_globals(ContextPtr context) const;
+    // nullopt (the default) initializes non-deterministically.
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
 
 private:
     Result build_forward_impl(

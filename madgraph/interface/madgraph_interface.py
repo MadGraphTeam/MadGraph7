@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features at LO.
+"""A user friendly command line interface to access MadGraph7 features at LO.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -60,6 +60,7 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error
 
 
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_base_objects as loop_base_objects
@@ -180,26 +181,32 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*              M A D G R A P H 5 _ a M C @ N L O           *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*              http://madgraph.phys.ucl.ac.be/             *\n" + \
         "*                            and                           *\n" + \
         "*            http://amcatnlo.web.cern.ch/amcatnlo/         *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
-        "*           Type 'tutorial' to learn how MG5 works         *\n" + \
-        "*    Type 'tutorial aMCatNLO' to learn how aMC@NLO works   *\n" + \
-        "*    Type 'tutorial MadLoop' to learn how MadLoop works    *\n" + \
+        "*       Type 'tutorial' to learn how MadGraph7 works       *\n" + \
         "*                                                          *\n" + \
         "************************************************************"
     
@@ -349,7 +356,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("syntax: save %s FILENAME [OPTIONS]" % "|".join(self._save_opts),'$MG:color:BLUE')
         logger.info("-- save information as file FILENAME",'$MG:BOLD')
         logger.info("   FILENAME is optional for saving 'options'.")
-        logger.info('   By default it uses ./input/mg5_configuration.txt')
+        logger.info('   By default it uses ./input/mg7_configuration.txt')
         logger.info('   If you put "global" for FILENAME it will use the global configuration')
         logger.info('   If this files exists, it is uses by all MG5 on the system but continues')
         logger.info('   to read the local options files.')
@@ -396,7 +403,7 @@ class HelpToCmd(cmd.HelpCmd):
     def help_install(self):
         logger.info("syntax: install " + "|".join(self._install_opts),'$MG:color:BLUE')
         logger.info("-- Download the last version of the program and install it")
-        logger.info("   locally in the current MadGraph5_aMC@NLO version. In order to have")
+        logger.info("   locally in the current MadGraph7 version. In order to have")
         logger.info("   a successful installation, you will need to have an up-to-date")
         logger.info("   F77 and/or C and Root compiler.")
         logger.info(" ")
@@ -404,7 +411,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     %s"%(', '.join(self._advanced_install_opts)))
         logger.info("   The following options are available:")
         logger.info("     --force        Overwrite without asking any existing installation.")
-        logger.info("     --keep_source  Keep a local copy of the sources of the tools MG5_aMC installed from.")
+        logger.info("     --keep_source  Keep a local copy of the sources of the tools MadGraph7 installed from.")
         logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
@@ -417,7 +424,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Install the madspace phase-space library used by the MG7 integrator.")
         logger.info("   Without options an interactive installer is launched. Available options:")
         logger.info("     -y/--yes       Re-install non-interactively using saved settings.")
-        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive).")
+        logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
+        logger.info("                    only guaranteed to match this checkout in a release tarball).")
         logger.info("     --source       Build from source (non-interactive).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
@@ -438,7 +446,13 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Example: display particles e+.",'$MG:color:GREEN')
         logger.info(" > For \"checks\", can specify only to see failed checks.")
         logger.info(" > For \"diagrams\", you can specify where the file will be written.")
+        logger.info("   Add --no_open to save without opening the files (directory required).")
+        logger.info("   Add --merge to merge all .eps files into a single PDF via ghostscript (directory required).")
         logger.info("   Example: display diagrams ./",'$MG:color:GREEN')
+        logger.info("   Example: display diagrams ./ --merge --no_open",'$MG:color:GREEN')
+        logger.info(" > For \"diagrams_text\", you can also specify a directory, --no_open, and --merge.")
+        logger.info("   Add --merge to merge all .txt files into all_diagrams_text.txt (directory required).")
+        logger.info("   Example: display diagrams_text ./ --merge --no_open",'$MG:color:GREEN')
 
 
     def help_launch(self):
@@ -499,7 +513,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info('   If FILE belongs to index.html, param_card.dat, run_card.dat')
         logger.info('   the path to the last created/used directory is used')
         logger.info('   The program used to open those files can be chosen in the')
-        logger.info('   configuration file ./input/mg5_configuration.txt')
+        logger.info('   configuration file ./input/mg7_configuration.txt')
 
     def help_customize_model(self):
         logger.info("syntax: customize_model --save=NAME",'$MG:color:BLUE')
@@ -524,7 +538,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   - If mode is pythia8, output all files needed to generate")
         logger.info("     the processes using Pythia 8. The files are written in")
         logger.info("     the Pythia 8 directory (default).")
-        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg5_configuration.txt")
+        logger.info("     NOTE: The Pythia 8 directory is set in the ./input/mg7_configuration.txt")
         logger.info("   - If mode is aloha: Special syntax output:")
         logger.info("     syntax: aloha [ROUTINE] [--options]" )
         logger.info("     valid options for aloha output are:")
@@ -541,6 +555,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --noeps=True: no jpeg and eps diagrams will be generated.")
         logger.info("      -name: the postfix of the main file in pythia8 mode.")
         logger.info("      --jamp_optim=[True|False]: [madevent(default:True)|standalone_fortran(default:False)] allows a more efficient code computing the color-factor.")
+        logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent] forbids helicity recycling optimization")
         logger.info("      --mask=False: [madevent|standalone_fortran] disable flavor-mask optimization for grouped/merged flavors (default:True).")
@@ -828,6 +843,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > Example: generate p p > z{0} z{T}, z > e+ e-, z > mu+ mu-",'$MG:color:GREEN')
         logger.info(" > '{X}' is a *set* of helicities, so each helicity may be named at most once.")
         logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
+        logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
+        logger.info("   and are only valid on a particle that is decayed further (an internal line).")
         logger.info(" > At LO, users need to set 'group_subprocesses False' and 'me_frame' (run_card).")
         logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
         logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
@@ -1078,7 +1095,7 @@ class CheckValidForCmd(cmd.CheckCmd):
             raise self.InvalidCmd("No model currently active, please import a model!")
 
 # check that either _curr_amps or _fks_multi_proc exists
-        if (args[0] in ['processes', 'diagrams'] and not self._curr_amps and not self._fks_multi_proc):
+        if (args[0] in ['processes', 'diagrams', 'diagrams_text'] and not self._curr_amps and not self._fks_multi_proc):
            raise self.InvalidCmd("No process generated, please generate a process!")
         if args[0] == 'checks' and not self._comparisons and not self._cms_checks:
             raise self.InvalidCmd("No check results to display.")
@@ -1089,17 +1106,17 @@ class CheckValidForCmd(cmd.CheckCmd):
 
     def check_draw(self, args):
         """check the validity of line
-        syntax: draw DIRPATH [option=value]
+        syntax: draw DIRPATH
+        the options have already been removed from args by _draw_parser
         """
 
         if len(args) < 1:
             args.append(tempdir.name)
+        elif not os.path.isdir(args[0]):
+            raise self.InvalidCmd( "%s is not a valid directory for export file" % args[0])
 
         if not self._curr_amps:
             raise self.InvalidCmd("No process generated, please generate a process!")
-
-        if not os.path.isdir(args[0]):
-            raise self.InvalidCmd( "%s is not a valid directory for export file" % args[0])
 
     def check_check(self, args):
         """check the validity of args"""
@@ -1424,7 +1441,7 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Invalid argument for tutorial')
         elif len(args) == 0:
             #this means mg5 tutorial
-            args.append('MadGraph5')
+            args.append('MadGraph7')
         else:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
@@ -1755,16 +1772,10 @@ This will take effect only in a NEW terminal
                 elif arg.startswith('--'):
                     raise self.InvalidCmd('unknow command for \'save options\'')
                 elif arg == 'global':
-                    legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                    if os.path.exists(legacy_config_dir):
-                        config_dir = legacy_config_dir
-                    else:
-                        config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                        if not os.path.exists(config_dir):
-                            os.makedirs(config_dir)
-
-                    config_file = os.path.join(config_dir, 'mg5_configuration.txt')
+                    config_file = misc.user_config_file(create=True)
+                    if not config_file:
+                        raise self.InvalidCmd('no home directory to save the '
+                                              'global configuration into')
                     args.remove('global')
                     args.insert(1, config_file)
 
@@ -1781,7 +1792,7 @@ This will take effect only in a NEW terminal
                         args.insert(1, arg)
                         has_path = True
             if not has_path:
-                args.insert(1, pjoin(MG5DIR,'input','mg5_configuration.txt'))
+                args.insert(1, misc.install_config_file(MG5DIR))
 
 
     def check_set(self, args, log=True):
@@ -2851,7 +2862,7 @@ class CompleteForCmd(cmd.CompleteCmd):
     def complete_output(self, text, line, begidx, endidx,
                         possible_options = ['f', 'noclean', 'nojpeg'],
                         possible_options_full = ['-f', '-noclean', '-nojpeg', '--noeps=True','--hel_recycling=False',
-                                                 '--jamp_optim=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
+                                                 '--jamp_optim=', '--jamp_orbit=', '--t_strategy=', '--vector_size=4', '--nb_warp=1',
                                                  '--mask=False', '--prefix=']):
         "Complete the output command"
 
@@ -3277,7 +3288,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'modellist']
     _add_opts = ['process', 'model']
     _save_opts = ['model', 'processes', 'options']
-    _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph5']
+    _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph7']
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
@@ -3314,9 +3325,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'zerowidth_tchannel',
                     'default_unset_couplings',
                     'nlo_mixed_expansion',
+                    'color_basis',
                     'merge_same_topologies',
                     'merge_quartic_vertices'
                     ]
+    _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
     _valid_sqso_types = ['==','<=','=','>']
     _valid_amp_so_types = ['=','<=', '==', '>']
@@ -3371,6 +3384,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'cluster_temp_path':None,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'cluster_local_path': None,
+                       'cvmfs_lhapdf_path': misc.CVMFS_LHAPDF_PATH,
                        'mg5amc_py8_interface_path': './HEPTools/MG5aMC_PY8_interface',
                        'OLP': 'MadLoop',
                        'cluster_nb_retry':1,
@@ -3399,6 +3413,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
                           'apply_flavor_grouping': True,
+                          'color_basis': 'auto',
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False
                         }
@@ -3457,12 +3472,19 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                 self._mgme_dir = MG4DIR
 
         # check that make_opts exists
+        # This file is shared by every MadGraph7 process running from this
+        # installation: it is copied verbatim into each new output directory and
+        # rewritten in place by set_fortran_compiler/set_cpp_compiler. Replacing
+        # it by rename (atomic_copy) rather than by shutil.copy is what keeps a
+        # concurrent reader from copying out a half-written make_opts -- which
+        # parses fine, drops FC/$(libext)/-ffixed-line-length-132, and surfaces
+        # only as column-72 Fortran errors in a completely unrelated build.
         make_opts = pjoin(MG5DIR, 'Template','LO','Source','make_opts')
         make_opts_source = pjoin(MG5DIR, 'Template','LO','Source','.make_opts')
         if not os.path.exists(make_opts):
-            shutil.copy(make_opts_source, make_opts)
+            misc.atomic_copy(make_opts_source, make_opts)
         elif  os.path.getmtime(make_opts) <  os.path.getmtime(make_opts_source):
-            shutil.copy(make_opts_source, make_opts)
+            misc.atomic_copy(make_opts_source, make_opts)
             
         # Variables to store state information
         self._multiparticles = {}
@@ -3479,7 +3501,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         self._nlo_modes_for_completion = ['all','virt','real','LOonly']
         self._second_exporter = None
 
-        # Load the configuration file,i.e.mg5_configuration.txt
+        # Load the configuration file,i.e.mg7_configuration.txt
         self.set_configuration()
 
     def setup(self):
@@ -3528,7 +3550,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         # The four gluon merging is wanted while the diagrams are generated,
         # which is below the interface, so it travels on the module. Synced
         # here rather than only in the setter, since the option can also
-        # arrive from mg5_configuration.txt.
+        # arrive from mg7_configuration.txt.
         madgraph.merge_quartic_vertices = \
                              self.options.get('merge_quartic_vertices', False)
         # an added process arrives in the generated order whatever an earlier
@@ -3630,7 +3652,12 @@ This implies that with decay chains:
             # existing processes
             if self._curr_amps and self._curr_amps[0].get_ninitial() != \
                myprocdef.get_ninitial() and not standalone_only:
-                raise self.InvalidCmd("Can not mix processes with different number of initial states.")               
+                raise self.InvalidCmd("Can not mix processes with different number of initial states.")
+
+            # Check the propagator-only polarization braces: {G},{H},{Q},{W}
+            # and {S} name a piece of a propagator numerator and are valid on
+            # an internal line only.
+            self.validate_propagator_polarization(myprocdef)
 
             #Check that we do not have situation like z{T} z
             if not myprocdef.check_polarization():
@@ -4027,8 +4054,17 @@ This implies that with decay chains:
                 print(amp.nice_string_processes())
 
         elif args[0] == 'diagrams_text':
+            dirpath, no_open, merge = self._parse_display_output_args(args[1:])
             text = "\n".join([amp.nice_string() for amp in self._curr_amps])
-            pydoc.pager(text)
+            if dirpath:
+                self._write_diagrams_text_files(dirpath, merge=merge)
+            else:
+                if no_open:
+                    raise self.InvalidCmd('--no_open requires an explicit directory path, e.g. display diagrams_text ./ --no_open')
+                if merge:
+                    raise self.InvalidCmd('--merge requires an explicit directory path, e.g. display diagrams_text ./ --merge')
+            if not no_open:
+                pydoc.pager(text)
 
         elif args[0] == 'multiparticles':
             print('Multiparticle labels:')
@@ -4148,7 +4184,7 @@ This implies that with decay chains:
             else:
                 to_print = lambda name: any(poss in name for poss in args[1:])
 
-            outstr = "                          MadGraph5_aMC@NLO Options    \n"
+            outstr = "                          MadGraph7 Options    \n"
             outstr += "                          ----------------    \n"
             keys = list(self.options_madgraph.keys())
             keys.sort()
@@ -4249,7 +4285,7 @@ This implies that with decay chains:
                 if model_name in already_done:
                     continue
                 restrict = [tag for tag in self._online_model[model_name]]
-                comment = 'automatic download from MG5aMC server'
+                comment = 'automatic download from MadGraph7 server'
                 outstr.append(template % (model_name, ','.join(restrict), comment))
                 already_done.append(model_name)
                 
@@ -4267,7 +4303,7 @@ This implies that with decay chains:
                 if 'feynrules' in path:
                     comment = 'automatic download from FeynRules website'
                 elif 'madgraph.phys' in path:
-                     comment = 'automatic download from MG5aMC server'
+                     comment = 'automatic download from MadGraph7 server'
                 else:
                     comment = 'automatic download.'
                 restrict = 'unknown'
@@ -4295,7 +4331,7 @@ This implies that with decay chains:
 
         args = self.split_arg(line)
         self.check_tutorial(args)
-        tutorials = {'MadGraph5': logger_tuto,
+        tutorials = {'MadGraph7': logger_tuto,
                      'aMCatNLO': logger_tuto_nlo,
                      'MadLoop': logger_tuto_madloop}
         try:
@@ -4323,6 +4359,31 @@ This implies that with decay chains:
         Dtype refers to born, real or loop"""
 
         args = self.split_arg(line)
+        # accept the single dash form of the flags. This has to be done before
+        # optparse sees them, since it would read '-no_open' as short options.
+        alias = {'-no_open': '--no_open', '-merge': '--merge'}
+        args = [alias.get(a, a) for a in args]
+
+        # Let the parser consume the options first, so that args only contains
+        # the (optional) output directory afterwards.
+        (parsed_opts, args) = _draw_parser.parse_args(args)
+        no_open = parsed_opts.no_open
+        merge = parsed_opts.merge
+
+        if not args:
+            if no_open:
+                raise self.InvalidCmd('--no_open requires an explicit directory path, e.g. display diagrams ./ --no_open')
+            if merge:
+                raise self.InvalidCmd('--merge requires an explicit directory path, e.g. display diagrams ./ --merge')
+        elif not os.path.isdir(args[0]):
+            # Create the output directory if an explicit path was given and
+            # doesn't exist yet, so check_draw sees it as a valid directory.
+            try:
+                os.makedirs(args[0], exist_ok=True)
+            except OSError as e:
+                raise self.InvalidCmd(
+                    "Cannot create output directory %s: %s" % (args[0], str(e)))
+
         # Check the validity of the arguments
         self.check_draw(args)
 
@@ -4333,17 +4394,14 @@ This implies that with decay chains:
             warn += '\t  The decay processes will be drawn separately'
             logger.warning(warn)
 
-        (options, args) = _draw_parser.parse_args(args)
         if madgraph.iolibs.drawing_eps.EpsDiagramDrawer.april_fool:
-            options.horizontal = True
-            options.external = True  
-            options.max_size = 0.3 
-            options.add_gap = 0.5  
-        options = draw_lib.DrawOption(options)
+            parsed_opts.horizontal = True
+            parsed_opts.external = True  
+            parsed_opts.max_size = 0.3 
+            parsed_opts.add_gap = 0.5  
+        options = draw_lib.DrawOption(parsed_opts)
         start = time.time()
 
-
-            
 
         # Collect amplitudes
         amplitudes = diagram_generation.AmplitudeList()
@@ -4351,9 +4409,11 @@ This implies that with decay chains:
         for amp in self._curr_amps:
             amplitudes.extend(amp.get_amplitudes())
 
+        eps_files = []
         for amp in amplitudes:
             filename = pjoin(args[0], 'diagrams_' + \
                                     amp.get('process').shell_string() + ".eps")
+            eps_files.append(filename)
 
             if selection=='all' and Dtype != 'loop':
                 diags=amp.get('diagrams')
@@ -4378,11 +4438,77 @@ This implies that with decay chains:
                          amp.get('process').nice_string())
             plot.draw(opt=options)
             logger.info("Wrote file " + filename)
-            if not options.generate_only:
+            # --generate_only is the mg7 spelling of --no_open; honour both.
+            if not no_open and not options.generate_only:
                 self.exec_cmd('open %s' % filename)
+
+        if merge and eps_files:
+            output_pdf = pjoin(args[0], 'all_diagrams.pdf')
+            output_pdf_abs = os.path.abspath(output_pdf)
+            eps_files_sorted_abs = sorted(os.path.abspath(f) for f in eps_files)
+            gs_cmd = ['gs', '-dBATCH', '-dNOPAUSE', '-q', '-sDEVICE=pdfwrite',
+                      '-sOutputFile=' + output_pdf_abs] + eps_files_sorted_abs
+            try:
+                subprocess.check_call(gs_cmd, shell=False)
+            except (subprocess.CalledProcessError, OSError) as e:
+                logger.warning("Failed to merge diagrams into PDF with ghostscript: %s" % str(e))
+                logger.warning("Make sure 'gs' (ghostscript) is installed and available in PATH.")
+            else:
+                logger.info("Merged diagrams into " + output_pdf)
+                if not no_open and not options.generate_only:
+                    self.exec_cmd('open %s' % output_pdf)
 
         stop = time.time()
         logger.info('time to draw %s' % (stop - start))
+
+    def _parse_display_output_args(self, line_args):
+        """Extract the optional output directory, --no_open and --merge flags.
+        The directory is created if it does not exist yet, like for 'draw'."""
+
+        # accept the single dash form of the flags. This has to be done before
+        # optparse sees them, since it would read '-no_open' as short options.
+        alias = {'-no_open': '--no_open', '-merge': '--merge'}
+        (options, args) = _display_text_parser.parse_args(
+                                          [alias.get(a, a) for a in line_args])
+
+        if len(args) > 1:
+            raise self.InvalidCmd('Too many arguments: %s' % ' '.join(args))
+        if not args:
+            return None, options.no_open, options.merge
+
+        if not os.path.isdir(args[0]):
+            try:
+                os.makedirs(args[0], exist_ok=True)
+            except OSError as e:
+                raise self.InvalidCmd(
+                    "Cannot create output directory %s: %s" % (args[0], str(e)))
+        return args[0], options.no_open, options.merge
+
+    def _write_diagrams_text_files(self, dirpath, merge=False):
+        """Write one text file per process diagram. If merge=True, also concatenate all into all_diagrams_text.txt."""
+        amplitudes = diagram_generation.AmplitudeList()
+        for amp in self._curr_amps:
+            amplitudes.extend(amp.get_amplitudes())
+
+        txt_files = []
+        for amp in amplitudes:
+            filename = pjoin(dirpath, 'diagrams_' + amp.get('process').shell_string() + '.txt')
+            with open(filename, 'w') as fs:
+                fs.write(amp.nice_string())
+            logger.info('Wrote file ' + filename)
+            txt_files.append(filename)
+
+        if merge and txt_files:
+            merged_file = pjoin(dirpath, 'all_diagrams_text.txt')
+            try:
+                with open(merged_file, 'w') as out_fs:
+                    for f in sorted(txt_files):
+                        with open(f, 'r') as in_fs:
+                            out_fs.write(in_fs.read())
+                            out_fs.write('\n\n')
+                logger.info("Merged diagrams text into " + merged_file)
+            except IOError as e:
+                logger.warning("Failed to merge text files: %s" % str(e))
 
     # Perform checks
     def do_check(self, line):
@@ -4412,6 +4538,9 @@ This implies that with decay chains:
             return lCMS_values
         
         ###### BEGIN do_check
+
+        # No exporter here, so 'auto' means the safe trace basis
+        self.set_color_basis_mode()
 
         args = self.split_arg(line)
         # Check args validity
@@ -5207,6 +5336,73 @@ This implies that with decay chains:
         args.insert(0, 'process')
         self.do_add(" ".join(args))
 
+    # The braces that name a piece of the *propagator* numerator of a massive
+    # vector and nothing else: they have no external-wavefunction counterpart
+    # (there is no VXXXXX helicity for them), so on a genuine external leg the
+    # integer would be written straight into the NHEL table and VXXXXX would
+    # quietly return a meaningless vector. See aloha/create_aloha.py for the
+    # numerators ("1G", "1H", ...) and [arXiv:2512.10015] for the definitions.
+    # '{A}' (99) is deliberately absent: it is already refused on an external
+    # leg by HelasWavefunction and keeps that behaviour unchanged here.
+    PROPAGATOR_ONLY_POLARIZATIONS = {4: ('G', 'the metric piece -g^{mu nu}'),
+                                     5: ('H', 'the Theta projector'),
+                                     6: ('Q', 'the q^mu q^nu / q^2 tensor'),
+                                     7: ('W', 'the Ward-protected full '
+                                              'propagator'),
+                                     9: ('S', 'the scalar piece '
+                                              '(axial + finite width)'),
+                                     }
+
+    def validate_propagator_polarization(self, procdef):
+        """Validate the propagator-only polarization braces of a
+        ProcessDefinition and of its decay chains.
+
+        '{G}', '{H}', '{Q}', '{W}' and '{S}' (pol=4,5,6,7,9) each name a
+        rank-two piece of the propagator numerator of a massive vector,
+        complete with its 1/(q^2-M^2+iM*Gamma) pole; none of them is a
+        polarisation vector, and no external wavefunction for them exists
+        (VXXXXX only knows nhel = -1,0,+1).
+
+        They are therefore allowed on a leg that is handed over to a decay
+        chain -- the propagator use, 't > w+{G} b, w+ > ta+ vt' -- and refused
+        on a genuine external leg of the process, initial or final. There is
+        no option to enable them on an external leg: there is nothing to
+        enable. Without this check the raw integer reached the NHEL table and
+        the generated code silently returned a wrong number.
+
+        Raises InvalidCmd; returns None.
+        """
+        if procdef is None:
+            return
+        # pdgs that this level hands over to a decay chain: those legs become
+        # internal propagators, which is the case these braces were written for.
+        decayed_ids = set()
+        for decay in procdef.get('decay_chains'):
+            for leg in decay.get('legs'):
+                if not leg.get('state'):
+                    decayed_ids.update(leg.get('ids'))
+
+        for leg in procdef.get('legs'):
+            if decayed_ids.intersection(leg.get('ids')):
+                # propagator: the leg is replaced by the decay chain
+                continue
+            for value in leg.get('polarization'):
+                if value not in self.PROPAGATOR_ONLY_POLARIZATIONS:
+                    continue
+                tag, what = self.PROPAGATOR_ONLY_POLARIZATIONS[value]
+                raise self.InvalidCmd(
+                    'The polarization {%s} is %s of a massive vector '
+                    'propagator, not a polarization vector: it exists '
+                    'only for an internal line. It is allowed on a '
+                    'particle that is decayed further (write '
+                    '"t > w+{%s} b, w+ > ta+ vt"), and is not allowed on '
+                    '%s-state particle of the process.'
+                    % (tag, what, tag,
+                       'a final' if leg.get('state') else 'an initial'))
+
+        for decay in procdef.get('decay_chains'):
+            self.validate_propagator_polarization(decay)
+
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):
         """Extract a process definition from a string. Returns
@@ -5794,7 +5990,7 @@ This implies that with decay chains:
                 required_schannel_ids = \
                                self.extract_particle_ids(required_schannels, crash_on_duplication=True)
             except self.InvalidCmd:
-                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MG5aMC, this was allowed but incorectly intrepreted as \"> A >\".")
+                raise self.InvalidCmd("Invalid \"> A A >\" syntax. In old version of MadGraph7, this was allowed but incorectly intrepreted as \"> A >\".")
 
             if required_schannel_ids and not \
                    isinstance(required_schannel_ids[0], list):
@@ -6265,7 +6461,7 @@ This implies that with decay chains:
             self.clean_process()
             # Import model
             if args[0].endswith('_v4'):
-                logger.critical("Support for V4 model is deprecated and known to not be fully working in this version of MG5aMC. Please consider to use an older (Long Term Stable) version if you can not use UFO model")
+                logger.critical("Support for V4 model is deprecated and known to not be fully working in this version of MadGraph7. Please consider to use an older (Long Term Stable) version if you can not use UFO model")
                 self._curr_model, self._model_v4_path = \
                                  import_v4.import_model(args[1], self._mgme_dir)
             else:
@@ -6644,7 +6840,27 @@ This implies that with decay chains:
         line = 'all =' + ' '.join(line)
         self.do_define(line)
 
-    def advanced_install(self, tool_to_install, 
+    @staticmethod
+    def heptools_install_target(heptools_install_dir):
+        """Where 'install <tool>' puts a tool, and which configuration file
+        records the resulting path ('' meaning this installation's own).
+
+        A prefix inside this installation is private to it, so its paths belong
+        in its own configuration; only a prefix explicitly pointed at a shared
+        location is recorded per user. Writing installation-specific absolute
+        paths into the shared file is what makes another MadGraph installation
+        pick up this one's HEPTools.
+        """
+
+        prefix = heptools_install_dir or pjoin(MG5DIR, 'HEPTools')
+        if not os.path.isabs(prefix):
+            prefix = pjoin(MG5DIR, prefix)
+        prefix = os.path.realpath(prefix)
+        if os.path.commonpath([prefix, MG5DIR]) == MG5DIR:
+            return prefix, ''
+        return prefix, misc.user_config_file(create=True) or ''
+
+    def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
         """ Uses the HEPToolsInstaller.py script maintened online to install
@@ -6718,21 +6934,8 @@ This implies that with decay chains:
             compiler_options.append('--fortran_compiler=%s'%
                                                self.options['fortran_compiler'])
 
-        if  self.options['heptools_install_dir']:
-            prefix = self.options['heptools_install_dir']
-            legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-            if os.path.exists(legacy_config_dir):
-                config_dir = legacy_config_dir
-            else:
-                config_dir = os.getenv('XDG_CONFIG_HOME', os.path.join(os.environ['HOME'], '.config'))
-                if not os.path.exists(config_dir):
-                    os.makedirs(config_dir)
-
-            config_file = os.path.join(config_dir, 'mg5_configuration.txt')
-        else:
-            prefix = pjoin(MG5DIR, 'HEPTools')
-            config_file = ''
+        prefix, config_file = self.heptools_install_target(
+                                       self.options['heptools_install_dir'])
 
         # Add the path of pythia8 if known and the MG5 path
         if tool=='mg5amc_py8_interface':
@@ -6867,9 +7070,9 @@ This implies that with decay chains:
                                  ('--no_MA5_further_install' not in add_options):
                 if not __debug__:
                     logger.warning('Default installation of Madanalys5 failed.')
-                    logger.warning("MG5aMC will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
+                    logger.warning("MadGraph7 will now attempt to reinstall it with the options '--no_MA5_further_install --no_root_in_MA5'.")
                     logger.warning("This will however limit MA5 applicability for hadron-level analysis.")
-                    logger.warning("If you would like to prevent MG5aMC to re-attempt MA5 installation, start MG5aMC with './bin/madgraph --debug'.")
+                    logger.warning("If you would like to prevent MadGraph7 to re-attempt MA5 installation, start MadGraph7 with './bin/madgraph --debug'.")
                     for option in ['--no_MA5_further_install', '--no_root_in_MA5', '--force']:
                         if option not in add_options:
                             add_options.append(option)
@@ -6918,9 +7121,9 @@ This implies that with decay chains:
 """Successful installation of Ninja, but without support for quadruple precision
 arithmetics. If you want to enable this (hence improving the treatment of numerically
 unstable points in the loop matrix elements) you can try to reinstall Ninja with:
-  MG5aMC>install ninja
+  MadGraph7>install ninja
 After having made sure to have selected a C++ compiler in the 'cpp' option of
-MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
+MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""")
             self.options['ninja'] = pjoin(prefix,'lib')
             self.exec_cmd('save options %s ninja' % config_file, printcmd=False, log=False)
         elif tool == 'contur':
@@ -6993,18 +7196,18 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
         if len(path_to_be_set)>0:
             shell_type = misc.get_shell_type()
             if shell_type in ['bash',None]:
-                modification_line = r"printf '\n# MG5aMC paths:\n%s\n' >> ~/.bashrc"%\
+                modification_line = r"printf '\n# MadGraph7 paths:\n%s\n' >> ~/.bashrc"%\
                 (r'\n'.join('export %s=%s%s'%
                 (var,path,'%s$%s'%(os.pathsep,var)) for var,path in path_to_be_set))
             elif shell_type=='tcsh':
-                modification_line = r"printf '\n# MG5aMC paths:\n%s\n' >> ~/.cshrc"%\
+                modification_line = r"printf '\n# MadGraph7 paths:\n%s\n' >> ~/.cshrc"%\
                 (r'\n'.join('setenv %s %s%s'%
                 (var,path,'%s$%s'%(os.pathsep,var)) for var,path in path_to_be_set))
 
             logger.debug("==========")
             logger.debug("We recommend that you add to the following paths"+\
              " to your environment variables, so that you are guaranteed that"+\
-             " at runtime, MG5_aMC will use the tools you have just installed"+\
+             " at runtime, MadGraph7 will use the tools you have just installed"+\
              " and not some other versions installed elsewhere on your system.\n"+\
              "You can do so by running the following command in your terminal:"
              "\n   %s"%modification_line) 
@@ -7366,7 +7569,7 @@ MG5aMC that supports quadruple precision (typically g++ based on gcc 4.6+).""")
                 maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
-            logger.info('Plugin %s correctly interfaced. Latest official validition for MG5aMC version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
+            logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
             if new_interface:
                 ff = open(pjoin(MG5DIR, 'bin', '%s.py' % name) , 'w') 
                 if __debug__:
@@ -7391,7 +7594,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 ff.close()
                 import stat
                 os.chmod(pjoin(MG5DIR, 'bin', '%s.py' % name), stat.S_IRWXU)
-                logger.info('To use this module, you need to quit MG5aMC and run the executable bin/%s.py' % name)
+                logger.info('To use this module, you need to quit MadGraph7 and run the executable bin/%s.py' % name)
             status=0
                 
         elif logger.level <= logging.INFO:
@@ -7501,7 +7704,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                      pjoin(MG5DIR,'Template', 'Common', 'Cards', 'delphes_card_ATLAS.dat'))
             
             if not self.options['pythia-pgs_path'] and not self.options['pythia8_path']:
-                logger.warning("We noticed that no parton-shower module are installed/linked. \n In order to use Delphes from MG5aMC please install/link pythia8.")
+                logger.warning("We noticed that no parton-shower module are installed/linked. \n In order to use Delphes from MadGraph7 please install/link pythia8.")
 
         #reset the position of the executable
         options_name = {'Delphes': 'delphes_path',
@@ -7859,9 +8062,8 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                                                                   cwd=MG5DIR)            
             print('new version installed, please relaunch mg5')
             try:
-                os.remove(pjoin(MG5DIR, 'Template','LO','Source','make_opts'))
-                shutil.copy(pjoin(MG5DIR, 'Template','LO','Source','.make_opts'),
-                            pjoin(MG5DIR, 'Template','LO','Source','make_opts'))
+                misc.atomic_copy(pjoin(MG5DIR, 'Template','LO','Source','.make_opts'),
+                                 pjoin(MG5DIR, 'Template','LO','Source','make_opts'))
             except:
                 pass
             sys.exit(0)
@@ -7888,7 +8090,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
     def set_configuration(self, config_path=None, final=True):
         """ assign all configuration variable from file
-            ./input/mg5_configuration.txt. assign to default if not define """
+            ./input/mg7_configuration.txt. assign to default if not define """
 
         if not self.options:
             self.options = dict(self.options_configuration)
@@ -7897,26 +8099,16 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not config_path:
             if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'],'mg5_configuration.txt')
+                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
                 self.set_configuration(config_path, final=False)
-            if 'HOME' in os.environ:
-                legacy_config_dir = os.path.join(os.environ['HOME'], '.mg5')
-
-                if os.path.exists(legacy_config_dir):
-                    config_dir = legacy_config_dir
-                else:
-                    config_dir = os.getenv('XDG_STATE_HOME', os.path.join(os.environ['HOME'], '.config'))
-
-                config_path = os.path.join(config_dir, "mg5_configuration.txt")
-
-                if os.path.exists(config_path):
-                    self.set_configuration(config_path, final=False)
-            config_path = os.path.relpath(pjoin(MG5DIR,'input',
-                                                       'mg5_configuration.txt'))
+            config_path = misc.user_config_file()
+            if config_path and os.path.exists(config_path):
+                self.set_configuration(config_path, final=False)
+            config_path = os.path.relpath(misc.install_config_file(MG5DIR))
             return self.set_configuration(config_path, final)
 
         if not os.path.exists(config_path):
-            files.cp(pjoin(MG5DIR,'input','.mg5_configuration_default.txt'), config_path)
+            files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
         if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
             files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
             files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
@@ -7933,7 +8125,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             try:
                 name, value = line.split('=',1)
             except ValueError:
-                #misc.sprint('ignore line in mg5_configuration.txt: %s' % line)
+                #misc.sprint('ignore line in mg7_configuration.txt: %s' % line)
                 pass
             else:
                 name = name.strip()
@@ -8034,10 +8226,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                                 logger.info('--------')
                                 logger.info(
 """The version of 'samurai' automatically detected seems too old to be compatible
-with MG5aMC and it will be turned off. Ask the authors for the latest version if
+with MadGraph7 and it will be turned off. Ask the authors for the latest version if
 you want to use samurai. 
 If you want to enforce its use as-it-is, then specify directly its library folder
-in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto').""")
+in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').""")
                                 logger.info('--------')
 
             elif key.endswith('path'):
@@ -8101,6 +8293,36 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         if len(path_split) > 2 and path_split[-2] == 'Cards':
             self._export_dir = os.path.sep.join(path_split[:-2])
             return
+
+    def setup_mg7_environment(self):
+        """Export what an mg7 run needs from MG5's configuration.
+
+        These used to be built into the environment of the bin/generate_events
+        subprocess. Running in process, the same values have to reach the tools
+        the run shells out to (the madspace build, the real LHAPDF library used
+        by systematics/MadSpin/reweight), and the only channel those have is
+        os.environ -- so set it here rather than per child process.
+        """
+        # The one-off madspace build picks up a cmake installed through MG5's
+        # 'install cmake' from here (heptools_install_dir may point outside
+        # MG5DIR).
+        heptools_dir = self.options.get('heptools_install_dir')
+        if heptools_dir:
+            if not os.path.isabs(heptools_dir):
+                heptools_dir = pjoin(MG5DIR, heptools_dir)
+            os.environ['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+
+        # The resolved LHAPDF location. The launcher resolves it the same way on
+        # its own (launch.lhapdf_paths), so this only matters for the real
+        # LHAPDF library used by the post-processing tools, which reads
+        # LHAPDF_DATA_PATH natively.
+        lhapdf = misc.resolve_lhapdf(self.options, root=MG5DIR, create=True)
+        search = lhapdf.data_paths or (
+            [lhapdf.download_path] if lhapdf.download_path else [])
+        if search:
+            os.environ['LHAPDF_DATA_PATH'] = os.pathsep.join(search)
+        if lhapdf.config:
+            os.environ['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
 
     def do_launch(self, line):
         """Main commands: Ask for editing the parameter and then
@@ -8212,91 +8434,42 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                                                  options=self.options,**options)            
         elif args[0] == 'mg7':
             me_dir = args[1]
-            # When MG5 runs non-interactively (a command file / piped input),
-            # drive bin/generate_events from the card-editing commands that
-            # follow `launch` in the script. Feeding them on stdin also makes
-            # the subprocess non-interactive, so the one-off madspace install
-            # runs with defaults instead of blocking on a prompt.
-            scripted = not self.use_rawinput
-            feed_lines = []
-            if scripted and self.inputfile is not None:
-                stop_prefixes = ('generate', 'add process', 'define', 'output',
-                                 'launch', 'import', 'quit', 'exit')
-                while True:
-                    try:
-                        nxt = next(self.inputfile)
-                    except (StopIteration, TypeError):
-                        break
-                    stripped = nxt.replace('\n', '').strip()
-                    if not stripped:
-                        continue
-                    if stripped.lower().startswith(stop_prefixes):
-                        self.store_line(nxt)  # belongs to MG5, hand it back
-                        break
-                    feed_lines.append(stripped)
-                    if stripped.lower() in ('done', '0'):
-                        break
+            # An mg7 output runs in this process, exactly like a madevent one:
+            # the run interface becomes a child cmd interface, which gives it
+            # MG5's inputfile (so the launch question reads the same script and
+            # hands back what it does not understand), MG5's error handling and
+            # crash_on_error, and the loggers already configured here.
+            self.setup_mg7_environment()
 
-            # Expose the configured HEPTools location so that the one-off
-            # madspace build can pick up a cmake installed there via MG5's
-            # 'install cmake' (heptools_install_dir may point outside MG5DIR).
-            gen_env = os.environ.copy()
-            heptools_dir = self.options.get('heptools_install_dir')
-            if heptools_dir:
-                if not os.path.isabs(heptools_dir):
-                    heptools_dir = os.path.join(MG5DIR, heptools_dir)
-                gen_env['MADGRAPH_HEPTOOLS_DIR'] = os.path.abspath(heptools_dir)
+            # Install madspace *before* importing the launcher (importing it is
+            # what needs madspace). The bootstrap has to be told whether it may
+            # take over the terminal: in a subprocess it could read that off
+            # sys.argv/sys.stdin, but in process those describe MG5, not the run.
+            from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+            mg7_bootstrap.ensure_madspace(
+                interactive=bool(self.use_rawinput) and not options['force'])
+            from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
 
-            # Point the run at the LHAPDF data directory where PDF sets live
-            # (and where a missing one can be downloaded on the fly), following:
-            #   1. $LHAPDF_DATA_PATH if the user set it;
-            #   2. the data dir of the configured lhapdf (e.g. lhapdf6 installed
-            #      via 'install lhapdf6', which lives inside HEPTools);
-            #   3. a local writable directory otherwise.
-            # The lhapdf-config executable is forwarded (MADGRAPH_LHAPDF_CONFIG)
-            # so the run can download the requested PDF set (see madevent
-            # init_beam / ensure_pdf_set).
-            lhapdf_exe = None
-            for _opt in ('lhapdf', 'lhapdf_py3'):
-                _val = self.options.get(_opt)
-                if not _val:
-                    continue
-                _exe = _val.split()[0]  # strip any '--python=' suffix
-                try:
-                    _datadir = subprocess.check_output(
-                        [_exe, '--datadir'], text=True,
-                        stderr=subprocess.DEVNULL).strip()
-                except Exception:
-                    continue
-                lhapdf_exe = _exe
-                if 'LHAPDF_DATA_PATH' not in gen_env and _datadir and os.path.isdir(_datadir):
-                    gen_env['LHAPDF_DATA_PATH'] = _datadir
-                break
-            if 'LHAPDF_DATA_PATH' not in gen_env:
-                # local fallback (inside HEPTools if configured, else MG5DIR)
-                local_pdf = os.path.join(
-                    gen_env.get('MADGRAPH_HEPTOOLS_DIR', MG5DIR), 'lhapdf_pdfsets')
-                try:
-                    os.makedirs(local_pdf, exist_ok=True)
-                    gen_env['LHAPDF_DATA_PATH'] = local_pdf
-                except OSError:
-                    pass
-            if lhapdf_exe:
-                gen_env['MADGRAPH_LHAPDF_CONFIG'] = lhapdf_exe
+            MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
+            if options['interactive']:
+                stop = self.define_child_cmd_interface(MG7)
+                return stop
+
+            mother = self
 
             class ext_program:
                 @staticmethod
                 def run():
-                    os.chdir(me_dir)
-                    gen = os.path.join("bin", "generate_events")
-                    try:
-                        if scripted:
-                            stdin_text = "\n".join(feed_lines + ["done"]) + "\n"
-                            subprocess.run([gen], input=stdin_text, text=True, env=gen_env)
-                        else:
-                            subprocess.run(gen, env=gen_env)
-                    except KeyboardInterrupt:
-                        pass
+                    child = mother.define_child_cmd_interface(MG7, interface=False)
+                    command = 'generate_events'
+                    if options['force']:
+                        command += ' -f'
+                    if options['name']:
+                        command += ' --name=%s' % options['name']
+                    if options['laststep']:
+                        command += ' --laststep=%s' % options['laststep']
+                    child.run_cmd(command)
+                    child.run_cmd('quit')
 
         else:
             os.chdir(start_cwd) #ensure to go to the initial path
@@ -8521,13 +8694,13 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             if len(args) >1 and not args[1].startswith('--') and args[1] not in self.options:
                 filepath = args[1]
             else:
-                filepath = pjoin(MG5DIR, 'input', 'mg5_configuration.txt')
-            
+                filepath = misc.install_config_file(MG5DIR)
+
             basedir = MG5DIR
             if partial_save and os.path.exists(filepath):
                 basefile = filepath
             else:
-                basefile = pjoin(MG5DIR, 'input', '.mg5_configuration_default.txt')
+                basefile = pjoin(MG5DIR, 'input', misc.CONFIG_TEMPLATE_NAME)
                 
             
 
@@ -8971,7 +9144,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                 logger.info('%s does not seem to correspond to a valid eMELA-config ' % args[1] + \
                 'executable.\n Please set the \'fastjet\'' + \
                 'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).' +
-                    '\n MG5_aMC> set eMELA /PATH/TO/eMELA-config\n')
+                    '\n MadGraph7> set eMELA /PATH/TO/eMELA-config\n')
             self.options[args[0]] = None
             if self.history and 'eMELA' in self.history[-1]:
                 self.history.pop()
@@ -9000,7 +9173,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             logger.info('%s does not seem to correspond to a valid fastjet-config ' % args[1] + \
                 'executable (v3+). We will use fjcore instead.\n Please set the \'fastjet\'' + \
                 'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).' +
-                    '\n MG5_aMC> set fastjet /PATH/TO/fastjet-config\n')
+                    '\n MadGraph7> set fastjet /PATH/TO/fastjet-config\n')
             self.options[args[0]] = None
             if self.history and 'fastjet' in self.history[-1]:
                 self.history.pop()
@@ -9086,7 +9259,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
                         'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
-                        ' MG5_aMC> set lhapdf /PATH/TO/lhapdf-config\n')
+                        ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
     set2_lhapdf_py3 = set2_lhapdf
@@ -9166,6 +9339,20 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self.check_set(args)
         self.options[args[0]] = int(args[1])
 
+    def set2_cvmfs_lhapdf_path(self, args, log=True):
+        """default=/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
+        Directory of the LHAPDF sets mirrored via CVMFS. When that directory is
+        mounted, a PDF set found there is read directly from it: it is neither
+        downloaded nor copied into lib/PDFsets, and therefore not transferred to
+        the cluster nodes (which mount the same read-only filesystem).
+        A path that is not mounted is simply ignored; set the option to None to
+        switch the fallback off.
+        """
+        args = ['cvmfs_lhapdf_path'] + args
+        self.check_set(args)
+        value = args[1].strip()
+        self.options[args[0]] = None if value in ['None', 'none', ''] else value
+
     def set2_cluster_local_path(self, args, log=True):
         """default=None 
         This parameter avoids either to transfer PDF sets to the cluster nodes or 
@@ -9230,7 +9417,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
 
     def set2_OLP(self, args, log=True):
-        """Select the One-Loop Provider (OLP) for NLO computations in MG5_aMC. 
+        """Select the One-Loop Provider (OLP) for NLO computations in MadGraph7. 
         By default, MG5 uses its internal engine MadLoop. 
         This option allows switching to an external OLP via the BLHA interface (e.g., GoSam, OpenLoops).
         Example: set OLP Gosam
@@ -9326,7 +9513,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def set2_auto_convert_model(self, args, log=True):
         """Set whether the code should automatically convert UFO models from
-        python2 format to python3 format when imported in a python3 MG5_aMC session.
+        python2 format to python3 format when imported in a python3 MadGraph7 session.
         Example: set auto_convert_model True [Default]
         Note that the UFO model will be overwritten which might be problematic.
         However, the syntax conversion is usually straightforward and is still python2 compatible.
@@ -9338,7 +9525,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
     def set2_acknowledged_v3_1_syntax(self, args, log=True):
         """Set whether the user acknowledge that he is aware of the new v3.1 UFO syntax.
         This is required to use some specific generate syntax at NLO.
-        Default is set to True since MG5_aMC v3.6.7
+        Default is set to True since MG5aMC v3.6.7
         """
         args = ['acknowledged_v3.1_syntax'] + args
         self.check_set(args)
@@ -9485,14 +9672,12 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         """Set the number of core to be used for parallelized tasks.
         Example: set nb_core 4
         """
-        
         if args[0] in ['None', None, '0', 0]:
             import multiprocessing
             self.options['nb_core'] = multiprocessing.cpu_count()
         else:
             self.options['nb_core'] = int(args[0])
-       
-    
+
     def set2_nb_core_pythia8(self, args, log=True):
         """Set the number of cores/jobs used by the Pythia8 step only.
         Falls back to the global nb_core option when left to None.
@@ -9516,7 +9701,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         return self.set_default('cluster_type', args, log=log)
     
     def set2_text_editor(self, args, log=True):
-        """Set the text editor to be used to open files from the MG5_aMC interface.
+        """Set the text editor to be used to open files from the MadGraph7 interface.
         Example: set text_editor emacs
         Example: set text_editor code
         Example: set text_editor gedit 
@@ -9527,7 +9712,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def set2_run_mode(self, args, log=True):
         """Syntax: set run_mode <mode>
-        Control how MG5_aMC runs the various steps of event generation.
+        Control how MadGraph7 runs the various steps of event generation.
         Modes:
            - 0: sequential execution of all steps
            - 1: use a job scheduler for cluster execution (set via the cluster_type parameter)
@@ -9543,7 +9728,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         return self.set_default('automatic_html_opening', args, log=log)
     
     def set2_web_browser(self, args, log=True):
-        """Set the web browser to be used to open html pages from the MG5_aMC interface.
+        """Set the web browser to be used to open html pages from the MadGraph7 interface.
         Example: set web_browser firefox
         Default is to use the system default browser.
         """
@@ -9570,7 +9755,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
          Implementation for SLURM and HTCondor is provided. 
          Checkpointing is possible only for NLO calculations (any calculation step). 
          Periodic checkpointing is supported, period is set to 24 hours.  
-         This options requires DMTCP to be installed on the cluster. ("install DMTCP" command is available in MG5_aMC).
+         This options requires DMTCP to be installed on the cluster. ("install DMTCP" command is available in MadGraph7).
          Related options: 
            -  cluster_requirement
            -  cluster_vacatetime
@@ -9625,6 +9810,28 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         Default: True
         """
         self.options['apply_flavor_grouping'] = banner_module.ConfigFile.format_variable(args[0], bool, 'apply_flavor_grouping')
+
+    def help_set2_color_basis(self):
+        logger.info("color_basis <value>",'$MG:color:GREEN')
+        logger.info(" > (default: auto) select the color basis used for processes")
+        logger.info("   whose color structure is purely adjoint (multi-gluon).")
+        logger.info(" > trace: the (n-1)! basis of traces of fundamental generators")
+        logger.info(" > ddm:   the (n-2)! Del Duca-Dixon-Maltoni half-ladder basis")
+        logger.info("          (n-1 times fewer JAMPs, (n-1)^2 times smaller color matrix)")
+        logger.info(" > auto:  ddm for the output formats which do not need a color")
+        logger.info("          flow decomposition (standalone), trace otherwise")
+
+    def set2_color_basis(self, args, log=True):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        Example: set color_basis ddm
+        """
+        args = ['color_basis'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value not in self._valid_color_basis:
+            raise self.InvalidCmd('color_basis needs one of %s, got %s' % \
+                                  (self._valid_color_basis, args[1]))
+        self.options['color_basis'] = value
 
     def set2_merge_same_topologies(self, args, log=True):
         """Set whether the mg7 output should merge diagrams sharing the same topology
@@ -9806,7 +10013,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                 logger.info('This option will be the default in any output that you are going to create in this session.')
                 logger.info('In order to keep this changes permanent please run \'save options\'')
         else:
-            #MadGraph5_aMC@NLO configuration
+            #MadGraph7 configuration
             if not self.history or self.history[-1].split() != line.split():
                 self.history.append('set %s' % line)
                 self.avoid_history_duplicate('set %s' % args[0], ['define', 'set'])
@@ -10011,6 +10218,23 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         # merge_quartic_vertices can be resolved -- before anything is built
         self.apply_quartic_diagram_order(options)
 
+        # A loop-induced process is exported by this tree-level do_output (see
+        # create_loop_induced), but only the formats in LOOP_INDUCED_FORMATS
+        # have a loop backend to route it to. Refuse the others here, ahead of
+        # the directory cleaning just below, so that a guaranteed refusal never
+        # deletes an existing output directory first. The factories carry the
+        # same check, but they run after that cleaning.
+        if self._curr_amps and isinstance(self._curr_amps[0],
+                                    loop_diagram_generation.LoopAmplitude):
+            # --me_exporter= writes into the same directory, so it has to be
+            # checked here too
+            for format in [self._export_format,
+                           options['me_exporter'].get('name')]:
+                if format and format not in export_v4.LOOP_INDUCED_FORMATS:
+                    raise self.InvalidCmd(
+                        export_v4.loop_induced_not_supported_msg(
+                            format, self._curr_amps[0].get('process')))
+
         # check
         if os.path.realpath(self._export_dir) == os.getcwd():
             if len(args) == 0:
@@ -10060,9 +10284,9 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         logger.warning("""
 || The loop-induced decay process you have specified contains several
 || subprocesses and, in order to be able to compute individual branching ratios, 
-|| MG5_aMC will *not* group them. Integration channels will also be considered
+|| MadGraph7 will *not* group them. Integration channels will also be considered
 || for each diagrams and as a result integration will be inefficient.
-|| It is therefore recommended to perform this simulation by setting the MG5_aMC
+|| It is therefore recommended to perform this simulation by setting the MadGraph7
 || option 'group_subprocesses' to 'True' (before the output of the process).
 || Notice that when doing so, processes for which one still wishes to compute
 || branching ratios independently can be specified using the syntax:
@@ -10140,10 +10364,47 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         self._export_dir = None
 
     # Export a matrix element
-    def export(self, nojpeg = False, main_file_name = "", group_processes=True, 
+    def set_color_basis_mode(self, *exporters):
+        """Set the color basis used for fully adjoint (multi-gluon) processes.
+        The (n-2)! Del Duca-Dixon-Maltoni basis can only be used by the output
+        formats which never need a color flow decomposition, so in 'auto' mode
+        every exporter involved must support it."""
+
+        mode = self.options.get('color_basis', 'auto')
+        exporters = [exporter for exporter in exporters if exporter]
+        if mode == 'auto':
+            use_ddm = bool(exporters) and \
+                all(getattr(exporter, 'support_ddm_color_basis', False)
+                    for exporter in exporters)
+        else:
+            use_ddm = (mode == 'ddm')
+
+        # An exporter which has to write a color flow per event also needs the
+        # trace basis next to the DDM one
+        with_flow = any(getattr(exporter, 'ddm_needs_flow_basis', False)
+                        for exporter in exporters)
+
+        color_amp.set_ddm_basis(use_ddm, with_flow=with_flow)
+        if use_ddm:
+            logger.debug('Using the Del Duca-Dixon-Maltoni color basis for '
+                         'fully adjoint processes (flow basis: %s)', with_flow)
+
+    def export(self, nojpeg = False, main_file_name = "", group_processes=True,
                                                                        args=[]):
         """Export a generated amplitude to file."""
 
+        self.set_color_basis_mode(self._curr_exporter, self._me_curr_exporter)
+        try:
+            return self._export(nojpeg, main_file_name, group_processes, args)
+        finally:
+            # the color basis is tied to this output, it must not leak to the
+            # next command
+            color_amp.set_ddm_basis(False)
+
+    def _export(self, nojpeg = False, main_file_name = "", group_processes=True,
+                                                                       args=[]):
+        """Export a generated amplitude to file, with the color basis already
+        selected."""
 
         # Define the helas call  writer
         if hasattr(self._curr_exporter, 'helas_exporter') and self._curr_exporter.helas_exporter:
@@ -10589,7 +10850,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
 
     def write_generation_citations(self):
         """Persist, into the generated directory, the references that are
-        already known at generation time: the MadGraph5_aMC@NLO framework, the
+        already known at generation time: the MadGraph7 framework, the
         UFO model format (or HELAS for v4 models), the ALOHA/HELAS helicity
         routines.  Writes citations.log (machine-readable, collected by every
         run) plus a ready-to-use citations.bib and a citations.md summary.
@@ -11163,6 +11424,24 @@ _draw_parser.add_option("", "--non_propagating", default=True, \
                           help="avoid contractions of non propagating lines")
 _draw_parser.add_option("", "--add_gap", default=0, type='float', \
                           help="set the x-distance between external particles")
+_draw_parser.add_option("", "--no_open", default=False,
+                          action='store_true',
+                          help="save diagrams without opening them (requires an explicit directory)")
+_draw_parser.add_option("", "--merge", default=False,
+                          action='store_true',
+                          help="merge all diagram .eps files into a single PDF file using ghostscript (requires an explicit directory)")
+
+_display_text_usage = "display diagrams_text [DIRPATH] [options]\n" + \
+         "-- write the diagrams in text format\n" + \
+         "   Files will be DIRPATH/diagrams_\"process_string\".txt \n" + \
+         "   Example: display diagrams_text . \n"
+_display_text_parser = misc.OptionParser(usage=_display_text_usage)
+_display_text_parser.add_option("", "--no_open", default=False,
+                          action='store_true',
+                          help="save the diagrams without opening the pager (requires an explicit directory)")
+_display_text_parser.add_option("", "--merge", default=False,
+                          action='store_true',
+                          help="merge all diagram .txt files into all_diagrams_text.txt (requires an explicit directory)")
 
 _draw_parser.add_option("", "--generate_only", default=False, action='store_true', \
                           help="forbid to display the generate file and only generate the eps file")

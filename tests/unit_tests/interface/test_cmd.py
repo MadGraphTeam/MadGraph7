@@ -1,12 +1,12 @@
 ##############################################################################
 #
-# Copyright (c) 2010 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2010 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -18,6 +18,7 @@ from __future__ import absolute_import
 import unittest
 import madgraph
 import madgraph.interface.master_interface as cmd
+import madgraph.core.base_objects as base_objects
 import MadSpin.interface_madspin as ms_cmd
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.various.misc as misc
@@ -28,6 +29,9 @@ import tests.parallel_tests.test_aloha as test_aloha
 
 import tempfile
 pjoin = os.path.join
+MG5DIR = madgraph.MG5DIR
+
+
 class TestValidCmd(unittest.TestCase):
     """ check if the ValidCmd works correctly """
     
@@ -552,6 +556,105 @@ class TestValidCmd(unittest.TestCase):
         self.do('generate v{0T} v{0} > w+ w-')
         self.assertEqual(len(cmd._curr_amps), 2)
 
+    @test_aloha.set_global()
+    def test_generate_propagator_only_polarisation(self):
+        """{G},{H},{Q},{W},{S} name a piece of the propagator *numerator* of a
+        massive vector; there is no external wavefunction for them. They stay
+        valid on a leg that is decayed further and are refused everywhere
+        else."""
+        import madgraph.core.helas_objects as helas_objects
+
+        cmd = self.cmd
+        self.do('import model sm')
+        tags = ['G', 'H', 'Q', 'W', 'S']
+        try:
+            for tag in tags:
+                # --- refused on a genuine final state ------------------
+                proc = 'generate p p > z{%s} h' % tag
+                self.assertRaises(madgraph.InvalidCmd, self.do, proc)
+                try:
+                    self.do(proc)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('{%s}' % tag, str(error))
+                    self.assertIn('propagator', str(error))
+                    self.assertIn('decayed further', str(error))
+                    self.assertIn('final-state particle', str(error))
+
+                # --- refused on an initial state ----------------------
+                self.assertRaises(madgraph.InvalidCmd,
+                                  self.do, 'generate z{%s} z > w+ w-' % tag)
+                try:
+                    self.do('generate z{%s} z > w+ w-' % tag)
+                except madgraph.InvalidCmd as error:
+                    self.assertIn('initial-state particle', str(error))
+
+                # --- still fine as a propagator -----------------------
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % tag)
+                self.assertTrue(cmd._curr_amps)
+
+            # the combined '{0S}' brace (pol=[0,9], propagator form P1LS) is
+            # covered by the same rule through its '9' entry
+            self.assertRaises(madgraph.InvalidCmd,
+                              self.do, 'generate p p > z{0S} h')
+            self.do('generate t > w+{0S} b, w+ > ta+ vt')
+            self.assertTrue(cmd._curr_amps)
+
+            # the walk recurses into the decay chains: here the '{G}' sits one
+            # level down, on a w+ that is itself never decayed
+            self.assertRaises(
+                madgraph.InvalidCmd, self.do,
+                'generate p p > t t~, t > w+{G} b, t~ > w- b~')
+
+            # the guard is duplicated one layer down, for the direct-API path
+            # that does not go through the command interface at all
+            legs = base_objects.LegList([
+                base_objects.Leg({'id': 2, 'state': False, 'number': 1}),
+                base_objects.Leg({'id': -2, 'state': False, 'number': 2}),
+                base_objects.Leg({'id': 23, 'state': True, 'number': 3,
+                                  'polarization': [4]}),
+                base_objects.Leg({'id': 25, 'state': True, 'number': 4}),
+                ])
+            try:
+                helas_objects.HelasWavefunction(legs[2], 0,
+                                                cmd._curr_model)
+            except madgraph.InvalidCmd as error:
+                self.assertIn('{G}', str(error))
+                self.assertIn('propagator', str(error))
+            else:
+                self.fail('HelasWavefunction accepted a {G} external leg')
+        finally:
+            cmd.exec_cmd('generate p p > t t~')
+
+    @test_aloha.set_global()
+    def test_propagator_polarisation_round_trip(self):
+        """nice_string()/input_string()/base_string() used to print the raw
+        integer ({4}, {99}, ...), which the parser rejects with "polarization
+        are between -3 and 3" -- so a printed process line could not be read
+        back. They must print the brace letter instead."""
+        cmd = self.cmd
+        self.do('import model sm')
+        try:
+            # the propagator braces print their letter, including the
+            # combined '{0S}' which must not grow a comma (a ',' inside the
+            # brace also breaks the decay-chain split on ',')
+            for tag, expected in (('G', 'w+{G}'), ('H', 'w+{H}'),
+                                  ('Q', 'w+{Q}'), ('W', 'w+{W}'),
+                                  ('S', 'w+{S}'), ('A', 'w+{A}'),
+                                  ('0S', 'w+{0S}')):
+                self.do('generate t > w+{%s} b, w+ > ta+ vt' % tag)
+                proc = cmd._curr_amps[0].get('amplitudes')[0].get('process')
+                self.assertIn(expected, proc.nice_string(prefix=False))
+                self.assertIn(expected, proc.input_string())
+                self.assertIn(expected, proc.base_string())
+                self.assertNotIn(',', proc.input_string())
+                # and the printed string is accepted back by the parser.
+                # 'proc' is the core amplitude, so re-attach the decay that
+                # makes the brace legal in the first place.
+                self.do('generate %s, w+ > ta+ vt' % proc.input_string())
+                self.assertTrue(cmd._curr_amps)
+        finally:
+            cmd.exec_cmd('generate p p > t t~')
+
 
 class TestExtendedCmd(unittest.TestCase):
     """test the extension of cmd interface"""
@@ -584,6 +687,31 @@ class TestExtendedCmd(unittest.TestCase):
         self.assertEqual(main.child, None)
         #ret = main.do_quit('')
         #self.assertEqual(ret, True)        
+
+class TestHepToolsInstallTarget(unittest.TestCase):
+    """'install <tool>' must record its paths in this installation's own
+    configuration, unless HEPTools genuinely lives somewhere shared. Writing
+    installation-specific absolute paths into the per-user file is what made
+    one MadGraph download PDF sets into another one's HEPTools (issue #94)."""
+
+    def target(self, heptools_install_dir):
+        import madgraph.interface.madgraph_interface as mg_cmd
+        return mg_cmd.MadGraphCmd.heptools_install_target(heptools_install_dir)
+
+    def test_default_stays_in_the_installation(self):
+        """The default './HEPTools' is inside MG5DIR, so its paths are private
+        to this installation -- this is the branch that used to be dead."""
+        for value in ['./HEPTools', None, '', os.path.join(MG5DIR, 'HEPTools')]:
+            prefix, config_file = self.target(value)
+            self.assertEqual(prefix, os.path.join(MG5DIR, 'HEPTools'))
+            self.assertEqual(config_file, '')
+
+    def test_external_prefix_uses_the_user_config(self):
+        prefix, config_file = self.target(tempfile.gettempdir())
+        self.assertEqual(prefix, os.path.realpath(tempfile.gettempdir()))
+        self.assertEqual(config_file, misc.user_config_file())
+        self.assertNotIn('.mg5', config_file)
+
 
 class TestMadSpinFCT_in_interface(unittest.TestCase):
     """ check if the ValidCmd works correctly """

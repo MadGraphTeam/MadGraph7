@@ -43,8 +43,10 @@ public:
     const std::vector<double>& outgoing_masses() const { return _outgoing_masses; }
     const std::vector<Propagator>& propagators() const { return _propagators; }
     const std::vector<Vertex>& vertices() const { return _vertices; }
-    const std::array<int, 2>& incoming_vertices() const { return _incoming_vertices; };
+    // One entry per incoming particle: two for a collision, one for a decay.
+    const std::vector<int>& incoming_vertices() const { return _incoming_vertices; };
     const std::vector<int>& outgoing_vertices() const { return _outgoing_vertices; };
+    bool is_decay() const { return _incoming_masses.size() == 1; }
     const std::vector<std::vector<std::size_t>>& propagator_vertices() const {
         return _propagator_vertices;
     }
@@ -54,7 +56,7 @@ private:
     std::vector<double> _outgoing_masses;
     std::vector<Propagator> _propagators;
     std::vector<Vertex> _vertices;
-    std::array<int, 2> _incoming_vertices;
+    std::vector<int> _incoming_vertices;
     std::vector<int> _outgoing_vertices;
     std::vector<std::vector<std::size_t>> _propagator_vertices;
 };
@@ -97,6 +99,15 @@ public:
         return _t_propagator_widths;
     }
     const std::vector<Decay>& decays() const { return _decays; }
+    // Raise a propagator's minimum invariant mass. Used to hand a cut that
+    // bounds the pair this propagator decays into straight to the sampler,
+    // so the region the cut forbids is never generated in the first place.
+    void raise_decay_e_min(std::size_t index, double e_min) {
+        auto& decay = _decays.at(index);
+        if (e_min > decay.e_min) {
+            decay.e_min = e_min;
+        }
+    }
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
     }
@@ -105,6 +116,9 @@ public:
     }
     const std::vector<double>& incoming_masses() const { return _incoming_masses; }
     const std::vector<double>& outgoing_masses() const { return _outgoing_masses; }
+    // A decay (single incoming particle) has no t-channel chain and a root
+    // virtuality fixed by the decaying particle's mass.
+    bool is_decay() const { return _incoming_masses.size() == 1; }
     std::vector<std::tuple<std::vector<int>, double, double>>
     propagator_momentum_terms(bool only_decays = false) const;
     std::string to_string() const;

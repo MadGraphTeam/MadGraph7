@@ -68,8 +68,10 @@ NamedVector<Value> ChannelWeightNetwork::build_function_impl(
     };
 }
 
-void ChannelWeightNetwork::initialize_globals(ContextPtr context) const {
-    _mlp.initialize_globals(context);
+void ChannelWeightNetwork::initialize_globals(
+    ContextPtr context, std::optional<std::uint64_t> seed
+) const {
+    _mlp.initialize_globals(context, seed);
 
     context->define_global(_mask_name, DataType::dt_float, {_channel_count});
     bool is_cpu = context->device() == cpu_device();

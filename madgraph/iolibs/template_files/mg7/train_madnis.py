@@ -62,6 +62,11 @@ def train_madnis(
     elif madevent_device == ms.hip_device():
         device = torch.device("rocm")
 
+    # the python integrator takes the number of buffered steps between two online
+    # steps instead of the fraction, which is clipped to keep the inversion finite
+    buffered_fraction = min(madnis_args["buffered_steps_fraction"], 0.99)
+    buffered_steps = round(buffered_fraction / (1 - buffered_fraction))
+
     integrator = Integrator(
         integrand=madnis_integrand,
         flow=flow,
@@ -78,7 +83,7 @@ def train_madnis(
         batch_size_threshold=madnis_args["batch_size_threshold"],
         buffer_capacity=madnis_args["buffer_capacity"],
         minimum_buffer_size=madnis_args["minimum_buffer_size"],
-        buffered_steps=madnis_args["buffered_steps"],
+        buffered_steps=buffered_steps,
         max_stored_channel_weights=madnis_args["max_stored_channel_weights"],
         channel_dropping_threshold=madnis_args["channel_dropping_threshold"],
         channel_dropping_interval=madnis_args["channel_dropping_interval"],

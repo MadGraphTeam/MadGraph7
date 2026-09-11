@@ -10,7 +10,8 @@ DifferentialCrossSection::DifferentialCrossSection(
     const nested_vector2<me_int_t>& pid_options,
     const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf1,
     const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2,
-    bool input_momentum_fraction
+    bool input_momentum_fraction,
+    bool decay
 ) :
     FunctionGenerator(
         "DifferentialCrossSection",
@@ -60,7 +61,18 @@ DifferentialCrossSection::DifferentialCrossSection(
     _running_coupling(running_coupling),
     _e_cm(cm_energy),
     _energy_scale(energy_scale),
-    _input_momentum_fraction(input_momentum_fraction) {
+    _input_momentum_fraction(input_momentum_fraction),
+    _decay(decay) {
+    if (decay) {
+        if (_has_pdf.at(0) || _has_pdf.at(1)) {
+            throw std::invalid_argument("a decay has no beams, so no PDFs");
+        }
+        if (cm_energy <= 0.) {
+            throw std::invalid_argument(
+                "a decay needs the decaying particle's mass as cm_energy"
+            );
+        }
+    }
     auto init_pdf = [&](auto& pdf, int index) {
         if (std::holds_alternative<PdfGrid>(pdf)) {
             std::vector<int> pids;
@@ -93,8 +105,15 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
         }
     }
 
-    std::array<Value, 2> x1x2;
-    if (_input_momentum_fraction) {
+    std::array<Value, 2> x1x2{1., 1.};
+    if (_decay) {
+        // No beams: nothing to extract momentum fractions from. The declared
+        // argument list still carries x1/x2 when input_momentum_fraction is on,
+        // so consume them and ignore their (unit) values.
+        if (_input_momentum_fraction) {
+            arg_index += 2;
+        }
+    } else if (_input_momentum_fraction) {
         x1x2 = {args.at(arg_index), args.at(arg_index + 1)};
         arg_index += 2;
     } else {
@@ -138,13 +157,23 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
         throw std::runtime_error("matrix element missing in return values");
     }
     std::size_t me_index = search - _matrix_element.outputs().begin();
-    me_result.at(me_index) = fb.diff_cross_section(
-        x1x2.at(0),
-        x1x2.at(1),
-        pdf_outputs.at(0),
-        pdf_outputs.at(1),
-        me_result.at(me_index),
-        _e_cm * _e_cm
-    );
+    if (_decay) {
+        // Differential decay rate: dGamma = |M|^2 dPhi_n / (2 M), in GeV. The
+        // flux is a compile-time constant here (M is fixed by the decaying
+        // particle), so this is a single multiply and needs no dedicated
+        // instruction. Deliberately no GeV^-2 -> pb conversion: a width is not
+        // a cross section.
+        me_result.at(me_index) =
+            fb.mul(me_result.at(me_index), 1. / (2. * _e_cm));
+    } else {
+        me_result.at(me_index) = fb.diff_cross_section(
+            x1x2.at(0),
+            x1x2.at(1),
+            pdf_outputs.at(0),
+            pdf_outputs.at(1),
+            me_result.at(me_index),
+            _e_cm * _e_cm
+        );
+    }
     return me_result;
 }

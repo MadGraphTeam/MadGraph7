@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 
@@ -17,7 +20,10 @@ public:
 
     std::size_t input_dim() const { return _input_dim; }
     std::size_t output_dim() const { return _output_dim; }
-    void initialize_globals(ContextPtr context) const;
+    // nullopt (the default) initializes non-deterministically.
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
     std::string last_layer_bias_name() const {
         return prefixed_name(_prefix, std::format("layer{}.bias", _layers));
     }

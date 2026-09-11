@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -71,6 +71,7 @@ import traceback
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
+import madgraph.various.misc as misc
 
 pjoin = os.path.join
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +81,7 @@ _REFERENCE = pjoin(_HERE, 'check_xsec_processes_reference.json')
 # into every run_card.toml (see _edit_run_card) instead of relying on the
 # template default, so that changing the default PDF of the mg7 run_card does
 # not silently invalidate all ~40 reference values. It is also the set
-# _mg7_datadir_or_skip requires to be installed.
+# _require_mg7_runtime requires to be installed.
 _REFERENCE_PDF = 'NNPDF23_lo_as_0130_qed'
 
 # Environment-tunable knobs (see module docstring). Kept as module globals so
@@ -112,10 +113,13 @@ def _tail(path, n=60):
         return ''
 
 
-def _mg7_datadir_or_skip(test):
-    """Return an LHAPDF data dir that contains the ``_REFERENCE_PDF`` set, or
-    ``skipTest`` (on *test*) when the mg7 runtime stack (madspace + LHAPDF +
-    the PDF set the references were generated with) is unavailable."""
+def _require_mg7_runtime(test):
+    """``skipTest`` (on *test*) when the mg7 runtime stack -- madspace, LHAPDF
+    and the PDF set the references were generated with -- is unavailable.
+
+    Only a skip gate: the run itself must locate LHAPDF from the configuration
+    the way a user's ``bin/generate_events`` does, with no environment help.
+    """
     try:
         import madspace
         has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
@@ -124,21 +128,9 @@ def _mg7_datadir_or_skip(test):
     if not has_mg7:
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
-    candidates = []
-    if os.environ.get('LHAPDF_DATA_PATH'):
-        candidates.extend(os.environ['LHAPDF_DATA_PATH'].split(os.pathsep))
-    try:
-        out = subprocess.check_output(['lhapdf-config', '--datadir'],
-                                      stderr=subprocess.DEVNULL).decode().strip()
-        if out:
-            candidates.append(out)
-    except Exception:
-        pass
-    for d in candidates:
-        if d and os.path.isdir(d) and glob.glob(pjoin(d, '%s*' % _REFERENCE_PDF)):
-            return d
-    test.skipTest('%s LHAPDF data not found (set $LHAPDF_DATA_PATH)'
-                  % _REFERENCE_PDF)
+    if not misc.resolve_lhapdf().find_set(_REFERENCE_PDF):
+        test.skipTest('%s LHAPDF data not found (set the lhapdf option or '
+                      '$LHAPDF_DATA_PATH)' % _REFERENCE_PDF)
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts):
@@ -151,7 +143,7 @@ def _edit_run_card(toml_path, events, disable_jet_cuts):
     pins the configuration back to the one the references were generated with.
     They are load-bearing: drop them and every reference value below goes
     stale. The PDF pin in particular decouples the references from the
-    template default -- ``_mg7_datadir_or_skip`` already guarantees the pinned
+    template default -- ``_require_mg7_runtime`` already guarantees the pinned
     set is the one present on disk."""
     t = open(toml_path).read()
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
@@ -226,7 +218,7 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
             raise
 
     def _run_and_check(self, entry, defines, section):
-        datadir = _mg7_datadir_or_skip(self)
+        _require_mg7_runtime(self)
 
         run_dir = pjoin(self.path, entry['id'])
         mg = MGCmd.MasterCmd()
@@ -240,13 +232,11 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False))
 
-        env = dict(os.environ)
-        env['LHAPDF_DATA_PATH'] = datadir
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
             ret = subprocess.call(
                 [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f'],
-                cwd=run_dir, env=env, stdout=logfh, stderr=subprocess.STDOUT)
+                cwd=run_dir, stdout=logfh, stderr=subprocess.STDOUT)
         if ret != 0:
             message = ('mg7 generate_events failed (exit %d)\n\n%s'
                        % (ret, _tail(log)))

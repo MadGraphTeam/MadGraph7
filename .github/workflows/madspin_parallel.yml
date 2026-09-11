@@ -32,6 +32,9 @@ on:
         required: false
         default: '800'
 
+  # Allows release.yml to run this as part of the release test suite
+  workflow_call:
+
 env:
   MADSPIN_TEST_NEVENTS: ${{ github.event.inputs.nevents || '10000' }}
   MADSPIN_TEST_EFF_TOL: ${{ github.event.inputs.eff_tol || '0.15' }}
@@ -63,6 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      # the LO run_card defaults to pdlabel=lhapdf (NNPDF40_lo_as_01180), so a
+      # madevent run needs an lhapdf-config on this runner
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
 
