@@ -128,7 +128,9 @@ MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
 # The banner (and every easter-egg variant of it in madgraph.various.misc) is
 # written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
 # a closing '*'. On a wider terminal the block is re-centred so that the two
-# columns of '*' sit on the edges of the screen.
+# columns of '*' sit on the edges of the screen. A line built wider than that
+# (the GIT line, with a long tag and a long branch name) is re-centred the same
+# way, from its own length, and is left alone when it does not fit the screen.
 BANNER_WIDTH = 60
 # Width assumed when the output is not a terminal (a log file, a pipe, ...).
 BANNER_FILE_WIDTH = 80
@@ -151,25 +153,29 @@ def get_banner_width():
 def fit_banner_width(text, width=None):
     """Re-centre a BANNER_WIDTH columns banner on a screen of *width* columns.
 
-    Each line of exactly BANNER_WIDTH visible characters delimited by '*' is
+    Each line of at least BANNER_WIDTH visible characters delimited by '*' is
     padded symmetrically (with '*' for the horizontal rules, with spaces
-    otherwise); any other line is returned untouched."""
+    otherwise); any other line, and any line already wider than the screen, is
+    returned untouched."""
 
     if width is None:
         width = get_banner_width()
     if width <= BANNER_WIDTH:
         return text
 
-    left = (width - BANNER_WIDTH) // 2
-    right = width - BANNER_WIDTH - left
-
     out = []
     for line in text.split('\n'):
         plain = BANNER_ANSI.sub('', line)
-        if len(plain) != BANNER_WIDTH or not plain.startswith('*') \
-                                      or not plain.endswith('*'):
+        if len(plain) < BANNER_WIDTH or not plain.startswith('*') \
+                                     or not plain.endswith('*'):
             out.append(line)
             continue
+        extra = width - len(plain)
+        if extra <= 0:
+            out.append(line)
+            continue
+        left = extra // 2
+        right = extra - left
         start = line.index('*')
         end = line.rindex('*')
         inside = line[start+1:end]
@@ -290,14 +296,6 @@ class CmdExtended(cmd.Cmd):
                 branch = branch.decode(errors='ignore').strip()
                 
 
-                # that line is BANNER_WIDTH columns wide, of which 34 are
-                # shared between the tag and the branch name: truncate them
-                # when they do not both fit, otherwise the line sticks out of
-                # the banner (and of the header of the proc_card).
-                if len(tag) > 30:
-                    tag = tag[:27] + '...'
-                if len(tag) + len(branch) > 33:
-                    branch = branch[:33 - len(tag) - 3] + '...'
                 info_line += "#*         GIT %s %s %s         *\n" % \
                                 (tag,
                                 (34 - len(tag) - len(branch)) * ' ',
