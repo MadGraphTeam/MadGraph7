@@ -9,7 +9,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ZERO",
@@ -20,7 +23,10 @@
           3
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ZERO",
@@ -31,7 +37,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.0
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::kappa*UFO::{}::mass_scalar_1^2",
@@ -42,7 +51,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.5
+      ]
     },
     {
       "expression": "1𝑖/32*UFO::{}::kappa^3*UFO::{}::mass_scalar_1^2",
@@ -53,7 +65,10 @@
           3
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.03125
+      ]
     },
     {
       "expression": "1𝑖/8*UFO::{}::kappa^2*UFO::{}::mass_scalar_1^2",
@@ -64,7 +79,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.125
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::kappa*UFO::{}::mass_scalar_2^2",
@@ -75,7 +93,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        2.0
+      ]
     },
     {
       "expression": "1𝑖/32*UFO::{}::kappa^3*UFO::{}::mass_scalar_2^2",
@@ -86,7 +107,10 @@
           3
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.125
+      ]
     },
     {
       "expression": "1𝑖/8*UFO::{}::kappa^2*UFO::{}::mass_scalar_2^2",
@@ -97,7 +121,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.5
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::kappa",
@@ -108,7 +135,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.5
+      ]
     },
     {
       "expression": "1𝑖/8*UFO::{}::kappa^2",
@@ -119,7 +149,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.125
+      ]
     },
     {
       "expression": "1𝑖/32*UFO::{}::kappa^3",
@@ -130,7 +163,10 @@
           3
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.03125
+      ]
     },
     {
       "expression": "1𝑖/8*UFO::{}::kappa",
@@ -141,7 +177,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.125
+      ]
     },
     {
       "expression": "1𝑖/32*UFO::{}::kappa^2",
@@ -152,7 +191,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.03125
+      ]
     }
   ],
   "form_factors": [],
@@ -452,7 +494,10 @@
       "name": "aEW",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.00754677225305414,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aS^(1/2)*𝜋^(1/2)",
@@ -461,7 +506,10 @@
       "name": "G",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        1.2177157847767195,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aEW^(1/2)*𝜋^(1/2)",
@@ -470,7 +518,10 @@
       "name": "ee",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.3079537904849374,
+        0.0
+      ]
     }
   ],
   "particles": [

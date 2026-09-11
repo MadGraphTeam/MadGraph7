@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import tomllib
 from importlib import resources
@@ -169,10 +170,8 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
     assert provenance["source"]["revision"] == (
         "643bc6f99d7b2249af0a85204768df243e612411"
     )
-    assert provenance["generator"]["version"] == "0.1.7"
-    assert provenance["generator"]["revision"] == (
-        "f3fda32c5e6a673075c345d74a11f12b83c00015"
-    )
+    assert provenance["generator"]["version"] == "0.1.8"
+    assert re.fullmatch(r"[0-9a-f]{40}", provenance["generator"]["revision"])
 
     licenses = {entry["id"]: entry for entry in provenance["licenses"]}
     assert set(licenses) == {
@@ -280,6 +279,30 @@ def test_json_restrictions_are_complete_explicit_ufo_cards() -> None:
         assert actual == InputParamCard(
             {name: expected[name] for name in parameter_names}
         ), json_path
+
+
+def test_packaged_jsons_store_evaluated_unrestricted_defaults() -> None:
+    from ufo_model_loader.commands import load_model
+
+    for relative in EXPECTED_MODEL_SHAPES:
+        path = Path(str(_assets_resource().joinpath("json", relative)))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # These values are part of the shipped serialization, not supplied by
+        # a pyAmpliCol loader workaround or filled only after reading the file.
+        for entry in (*payload["parameters"], *payload["couplings"]):
+            assert entry["value"] is not None, (relative, entry["name"])
+            assert all(math.isfinite(value) for value in entry["value"])
+        model, _card = load_model(str(path), "full", True)
+        reloaded = json.loads(model.to_json())
+        for field in ("parameters", "couplings"):
+            recomputed = {entry["name"]: entry["value"] for entry in reloaded[field]}
+            for entry in payload[field]:
+                assert all(
+                    math.isclose(a, b, rel_tol=2e-15, abs_tol=0.0)
+                    for a, b in zip(
+                        entry["value"], recomputed[entry["name"]], strict=True
+                    )
+                ), (relative, entry["name"])
 
 
 def test_scalar_ufo_shape_is_environment_independent() -> None:

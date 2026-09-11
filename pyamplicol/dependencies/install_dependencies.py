@@ -376,12 +376,9 @@ def _managed_symjit_checkout() -> Path:
 
 
 def _local_ufo_loader() -> Path | None:
-    """Use the explicitly supplied extension stack's Python loader, if present."""
+    """Use the dedicated next-version UFO loader checkout, if present."""
 
-    spenso = _root_path_patches().get("spenso")
-    if spenso is None:
-        return None
-    source = spenso.parent.parent / "ufo_model_loader"
+    source = ROOT / "FUTURE_ufo_model_loader"
     return source if (source / "pyproject.toml").is_file() else None
 
 

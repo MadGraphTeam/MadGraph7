@@ -36,13 +36,18 @@ particles and removes its unused interaction-option branch, which referenced
 an undefined variable when enabled.
 
 JSON models and restriction cards were regenerated with
-`ufo-model-loader==0.1.7` at revision
-`f3fda32c5e6a673075c345d74a11f12b83c00015`. Full model serializations use
+`ufo-model-loader==0.1.8` at revision
+`70ddee6b416f8c8b340e0d087646d77095c5d24b`. Full model serializations use
 `restriction="full"`, simplification enabled, and `JSONLook.VERBOSE`.
 `sm_wrapped_indices.json` additionally enables Lorentz-index wrapping. The
 tracked `scalars_2p_3p.json` variant is reserialized from its own canonical
 content and freezes `N_SCALARS=3` with contact valences two and three; it does
 not retain a runtime environment option.
+
+The current JSONs also include the numerical parameter and coupling defaults
+computed by the loader. Their symbolic expressions and model contents are
+unchanged; restriction cards and the frozen scalar variant retain their
+existing serialization when regeneration produces identical contents.
 
 Each JSON restriction card is a complete serialization of its matching UFO
 `restrict_*.dat` card. Zero-valued parameters are therefore explicit. A

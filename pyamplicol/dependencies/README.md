@@ -6,10 +6,19 @@ This experimental branch uses the explicit local Cargo overrides
 `TMP_FIXED_SYMJIT` and `TMP_FIXED_SPENSO`. They are not committed or distributed.
 Prepare these checkouts before running `just dev-install`; the installer uses
 their paths directly instead of cloning replacement SymJIT/GammaLoop sources.
-It also installs `TMP_FIXED_SPENSO/ufo_model_loader` when present. The separate
+It also installs the separate `FUTURE_ufo_model_loader` checkout at version
+0.1.8 when present. The loader's own upstream `main` contains these changes;
+the checkout is not part of this repository, and 0.1.8 is not yet on PyPI. The separate
 upstream compatibility changes are documented in
 `SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES`. This configuration is not ready
 for publication until the fixes are available upstream.
+
+The future Python release requirements are Symbolica 3.0.0 and
+ufo-model-loader 0.1.8. Their release-wheel entries remain empty until publication.
+The pinned Symbolica development source still declares 2.2.0; the existing
+candidate build projects that actual version into its wheel without relabelling
+the CAS. Local checkout installations therefore use `--no-deps` until Symbolica
+publishes 3.0. The loader itself retains its genuine `symbolica>=3.0` requirement.
 
 ## Release Mode
 
@@ -65,9 +74,9 @@ mode is never enabled by the installer itself.
 If a managed checkout belongs to a superseded revision, `--update` moves it to
 the pinned revision; `--reset` archives managed state in the workspace-local
 `.trash` store and recreates it.
-It installs the verified published `ufo-model-loader==0.1.7` wheel directly
-from the hash-locked runtime closure unless the supplied local extension stack
-contains its updated Python loader. Artifacts produced in this mode record
+The dedicated `FUTURE_ufo_model_loader` checkout replaces the older published
+loader in the contributor installation, including the current-CAS compatibility
+adaptations. Artifacts produced in this mode record
 the candidate revisions and are not eligible for PyPI publication.
 
 The temporary SymJIT checkout starts from 2.25.0 at upstream revision
@@ -84,8 +93,9 @@ The build uses Symbolica development revision
 symbolica-community source. No Symbolica source patch is needed. The local
 GammaLoop checkout starts from `simplify-spenso-api` revision
 `5aadd389efabb7b039af74edad02a90d486a1c07` and contains the documented API
-adaptations for that CAS. The same local tree holds the integration and UFO
-loader adaptations. Spynso3 initializes its cached symbolic-parallelism policy in `Auto`
+adaptations for that CAS. The same local tree holds the integration adaptation;
+the independent UFO loader is in `FUTURE_ufo_model_loader`. Spynso3 initializes
+its cached symbolic-parallelism policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users.
 

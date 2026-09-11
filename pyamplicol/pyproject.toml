@@ -54,9 +54,9 @@ dependencies = [
   "prettytable==3.18.0",
   "progressbar2==4.5.0",
   "six==1.17.0",
-  "symbolica==2.2.0",
+  "symbolica==3.0.0",
   "tomli-w==1.2.0",
-  "ufo-model-loader==0.1.7",
+  "ufo-model-loader==0.1.8",
 ]
 
 [project.optional-dependencies]

@@ -72,7 +72,7 @@ version = "1.17.0"
 
 [[python_dependencies]]
 distribution = "symbolica"
-version = "2.2.0"
+version = "3.0.0"
 
 [[python_dependencies]]
 distribution = "tomli-w"
@@ -80,11 +80,11 @@ version = "1.2.0"
 
 [[python_dependencies]]
 distribution = "ufo-model-loader"
-version = "0.1.7"
+version = "0.1.8"
 
 [symbolica]
 python_distribution = "symbolica"
-python_version = "2.2.0"
+python_version = "3.0.0"
 rust_crate = "symbolica"
 rust_version = "2.2.0"
 serialization_abi = "symbolica-bincode2-v1"
@@ -96,4 +96,4 @@ revision = "f1c193d301897149de6609f706297b0c97a4f018"
 
 [ufo_model_loader]
 python_distribution = "ufo-model-loader"
-required_version = "0.1.7"
+required_version = "0.1.8"

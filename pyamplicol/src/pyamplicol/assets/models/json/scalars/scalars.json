@@ -9,7 +9,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        1.0
+      ]
     }
   ],
   "form_factors": [],
@@ -311,7 +314,10 @@
       "name": "aEW",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.00754677225305414,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aS^(1/2)*𝜋^(1/2)",
@@ -320,7 +326,10 @@
       "name": "G",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        1.2177157847767195,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aEW^(1/2)*𝜋^(1/2)",
@@ -329,7 +338,10 @@
       "name": "ee",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.3079537904849374,
+        0.0
+      ]
     }
   ],
   "particles": [

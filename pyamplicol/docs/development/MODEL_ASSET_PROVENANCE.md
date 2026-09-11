@@ -29,7 +29,7 @@ The completed extraction:
 1. Inventories 66 payload files plus `PROVENANCE.toml` from the pinned source.
 2. Excludes caches, interpreter output, symlinks, and host paths.
 3. Freezes scalar model environment switches to their historical defaults.
-4. Regenerates JSON with `ufo-model-loader` 0.1.7 and records both source and
+4. Regenerates JSON with `ufo-model-loader` 0.1.8 and records both source and
    package hashes.
 5. Records each deterministic transformation in
    `model-assets/TRANSFORMATIONS.md` and verifies all package payloads through

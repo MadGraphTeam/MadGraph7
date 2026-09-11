@@ -25,6 +25,7 @@ src/pyamplicol/_rusticol*.pyd
 # Temporary upstream dependency fixes stay local to this development branch.
 /TMP_FIXED_SYMJIT/
 /TMP_FIXED_SPENSO/
+/FUTURE_ufo_model_loader/
 /SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES/
 /IMPLEMENTATION_DOCS/RESULTS/fft-scaling-study/raw/
 /IMPLEMENTATION_DOCS/RESULTS/fft-profiling/runs/

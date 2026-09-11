@@ -9,7 +9,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.10265126349497912
+      ]
     },
     {
       "expression": "2𝑖/3*UFO::{}::ee",
@@ -20,7 +23,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.20530252698995824
+      ]
     },
     {
       "expression": "-1𝑖*UFO::{}::ee",
@@ -31,7 +37,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.3079537904849374
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::ee",
@@ -42,7 +51,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.3079537904849374
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::ee^2",
@@ -53,7 +65,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.0948355370740407
+      ]
     },
     {
       "expression": "2𝑖*UFO::{}::ee^2",
@@ -64,7 +79,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.1896710741480814
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::cw^(-1)*UFO::{}::ee^2",
@@ -75,7 +93,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        -0.053767535985328165,
+        0.0
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::cw^(-1)*UFO::{}::ee^2",
@@ -86,7 +107,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.053767535985328165
+      ]
     },
     {
       "expression": "1/2*UFO::{}::cw^(-1)*UFO::{}::ee^2",
@@ -97,7 +121,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.053767535985328165,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::G",
@@ -108,7 +135,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -1.2177157847767195,
+        0.0
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::G",
@@ -119,7 +149,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        1.2177157847767195
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::G^2",
@@ -130,7 +163,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        1.4828317324943818
+      ]
     },
     {
       "expression": "UFO::{}::I1x31",
@@ -141,7 +177,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        2.9424734175077786e-05,
+        7.601389661895094e-05
+      ]
     },
     {
       "expression": "UFO::{}::I1x32",
@@ -152,7 +191,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0009894125736418036,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I1x33",
@@ -163,7 +205,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.024123686777011728,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x12",
@@ -174,7 +219,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0016434606240936052,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x13",
@@ -185,7 +233,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.007578355147768138,
+        -0.0029772109509089116
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x22",
@@ -196,7 +247,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.007109407543268448,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x23",
@@ -207,7 +261,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0387519924676373,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x32",
@@ -218,7 +275,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.00029917951631549774,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I2x33",
@@ -229,7 +289,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.9448443987662926,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I3x21",
@@ -240,7 +303,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.0016434606240936052,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I3x22",
@@ -251,7 +317,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.007109407543268448,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I3x23",
@@ -262,7 +331,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.00029917951631549774,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I3x31",
@@ -273,7 +345,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.007578355147768138,
+        -0.0029772109509089116
+      ]
     },
     {
       "expression": "UFO::{}::I3x32",
@@ -284,7 +359,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.0387519924676373,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::I3x33",
@@ -295,7 +373,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.9448443987662926,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I4x13",
@@ -306,7 +387,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -2.9424734175077786e-05,
+        7.601389661895094e-05
+      ]
     },
     {
       "expression": "-1*UFO::{}::I4x23",
@@ -317,7 +401,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.0009894125736418036,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::I4x33",
@@ -328,7 +415,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.024123686777011728,
+        0.0
+      ]
     },
     {
       "expression": "-2𝑖*UFO::{}::lam",
@@ -339,7 +429,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.25773821203380554
+      ]
     },
     {
       "expression": "-4𝑖*UFO::{}::lam",
@@ -350,7 +443,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.5154764240676111
+      ]
     },
     {
       "expression": "-6𝑖*UFO::{}::lam",
@@ -361,7 +457,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.7732146361014166
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::ee^2*UFO::{}::sw^(-2)",
@@ -372,7 +471,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.2133566177614792
+      ]
     },
     {
       "expression": "-1𝑖*UFO::{}::ee^2*UFO::{}::sw^(-2)",
@@ -383,7 +485,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.4267132355229584
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::cw^2*UFO::{}::ee^2*UFO::{}::sw^(-2)",
@@ -394,7 +499,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.3318776984489177
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -405,7 +513,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.326616455312251,
+        0.0
+      ]
     },
     {
       "expression": "-1𝑖/2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -416,7 +527,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.326616455312251
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -427,7 +541,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.326616455312251
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -438,7 +555,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.46190542079681124
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM1x1*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -449,7 +569,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.4501822404312442
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM1x2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -460,7 +583,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.10406729130552157
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM1x3*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -471,7 +597,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.001455467036557634,
+        0.0005634065947965036
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM2x1*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -482,7 +611,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.10406729130552157
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM2x2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -493,7 +625,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.4501822404312442
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM2x3*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -504,7 +639,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.01894465947075628
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM3x1*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -515,7 +653,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.001455467036557634,
+        0.003704825183964887
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM3x2*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -526,7 +667,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.01894465947075628
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::CKM3x3*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -537,7 +681,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.46190542079681124
+      ]
     },
     {
       "expression": "-1𝑖/2*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -548,7 +695,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.2880441365697789
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -559,7 +709,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.2880441365697789
+      ]
     },
     {
       "expression": "-1𝑖*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -570,7 +723,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.5760882731395578
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -581,7 +737,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.5760882731395578
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::ee^2*UFO::{}::sw^(-1)",
@@ -592,7 +751,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        -0.10058277544816184,
+        0.0
+      ]
     },
     {
       "expression": "-1𝑖/2*UFO::{}::ee^2*UFO::{}::sw^(-1)",
@@ -603,7 +765,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.10058277544816184
+      ]
     },
     {
       "expression": "1/2*UFO::{}::ee^2*UFO::{}::sw^(-1)",
@@ -614,7 +779,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.10058277544816184,
+        0.0
+      ]
     },
     {
       "expression": "-2𝑖*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-1)",
@@ -625,7 +793,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.35481713473449755
+      ]
     },
     {
       "expression": "-1𝑖/6*UFO::{}::cw^(-1)*UFO::{}::ee*UFO::{}::sw",
@@ -636,7 +807,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.027436633555365665
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::cw^(-1)*UFO::{}::ee*UFO::{}::sw",
@@ -647,7 +821,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.082309900666097
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)+-1/2*UFO::{}::cw^(-1)*UFO::{}::ee*UFO::{}::sw",
@@ -658,7 +835,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.3703540372358759,
+        0.0
+      ]
     },
     {
       "expression": "-1𝑖/2*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)+1𝑖/2*UFO::{}::cw^(-1)*UFO::{}::ee*UFO::{}::sw",
@@ -669,7 +849,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.2057342359036819
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::cw*UFO::{}::ee*UFO::{}::sw^(-1)+1𝑖/2*UFO::{}::cw^(-1)*UFO::{}::ee*UFO::{}::sw",
@@ -680,7 +863,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.3703540372358759
+      ]
     },
     {
       "expression": "-1𝑖*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::sw+1𝑖*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-1)",
@@ -691,7 +877,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.12671327555812228
+      ]
     },
     {
       "expression": "-1𝑖*UFO::{}::ee^2+1𝑖/2*UFO::{}::cw^(-2)*UFO::{}::ee^2*UFO::{}::sw^2+1𝑖/2*UFO::{}::cw^2*UFO::{}::ee^2*UFO::{}::sw^(-2)",
@@ -702,7 +891,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.08465315164574365
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::ee^2+1𝑖/2*UFO::{}::cw^(-2)*UFO::{}::ee^2*UFO::{}::sw^2+1𝑖/2*UFO::{}::cw^2*UFO::{}::ee^2*UFO::{}::sw^(-2)",
@@ -713,7 +905,10 @@
           2
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.27432422579382504
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev",
@@ -724,7 +919,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -13.23855980624142,
+        0.0
+      ]
     },
     {
       "expression": "1/2*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev",
@@ -735,7 +933,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        13.23855980624142,
+        0.0
+      ]
     },
     {
       "expression": "-2𝑖*UFO::{}::lam*UFO::{}::vev",
@@ -746,7 +947,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -63.459905160882585
+      ]
     },
     {
       "expression": "-6𝑖*UFO::{}::lam*UFO::{}::vev",
@@ -757,7 +961,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -190.37971548264773
+      ]
     },
     {
       "expression": "-1/4*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -768,7 +975,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -26.266168725525,
+        0.0
+      ]
     },
     {
       "expression": "-1𝑖/4*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -779,7 +989,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -26.266168725525
+      ]
     },
     {
       "expression": "1𝑖/2*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -790,7 +1003,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        52.53233745105
+      ]
     },
     {
       "expression": "1/4*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -801,7 +1017,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        26.266168725525,
+        0.0
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::ee^2*UFO::{}::sw^(-1)*UFO::{}::vev",
@@ -812,7 +1031,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -24.76533588244763,
+        0.0
+      ]
     },
     {
       "expression": "1/2*UFO::{}::ee^2*UFO::{}::sw^(-1)*UFO::{}::vev",
@@ -823,7 +1045,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        24.76533588244763,
+        0.0
+      ]
     },
     {
       "expression": "-1/4*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev+-1/4*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev",
@@ -834,7 +1059,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -29.78350132701354,
+        0.0
+      ]
     },
     {
       "expression": "-1/4*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev+1/4*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev",
@@ -845,7 +1073,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -16.54494152077212,
+        0.0
+      ]
     },
     {
       "expression": "-1/4*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev+1/4*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -856,7 +1087,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        16.54494152077212,
+        0.0
+      ]
     },
     {
       "expression": "1/4*UFO::{}::cw*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev+1/4*UFO::{}::cw^(-1)*UFO::{}::ee^2*UFO::{}::vev",
@@ -867,7 +1101,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        29.78350132701354,
+        0.0
+      ]
     },
     {
       "expression": "-1𝑖/2*UFO::{}::ee^2*UFO::{}::vev+-1𝑖/4*UFO::{}::cw^(-2)*UFO::{}::ee^2*UFO::{}::sw^2*UFO::{}::vev+-1𝑖/4*UFO::{}::cw^2*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -878,7 +1115,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -33.77184394746505
+      ]
     },
     {
       "expression": "1𝑖*UFO::{}::ee^2*UFO::{}::vev+1𝑖/2*UFO::{}::cw^(-2)*UFO::{}::ee^2*UFO::{}::sw^2*UFO::{}::vev+1𝑖/2*UFO::{}::cw^2*UFO::{}::ee^2*UFO::{}::sw^(-2)*UFO::{}::vev",
@@ -889,7 +1129,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        67.5436878949301
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1*UFO::{}::yb",
@@ -900,7 +1143,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.01705802250724524,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::yb",
@@ -911,7 +1157,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.01705802250724524
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::yc",
@@ -922,7 +1171,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.005158021091476537
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*UFO::{}::yc",
@@ -933,7 +1185,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.005158021091476537,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::ye",
@@ -944,7 +1199,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -2.93504855786976e-06,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ye",
@@ -955,7 +1213,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        2.93504855786976e-06,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1*UFO::{}::ye",
@@ -966,7 +1227,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -2.0753927383815043e-06,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::ye",
@@ -977,7 +1241,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -2.0753927383815043e-06
+      ]
     },
     {
       "expression": "-1*UFO::{}::ym",
@@ -988,7 +1255,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.0006068830344902521,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ym",
@@ -999,7 +1269,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0006068830344902521,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1*UFO::{}::ym",
@@ -1010,7 +1283,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.0004291311090751267,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::ym",
@@ -1021,7 +1297,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.0004291311090751267
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::yt",
@@ -1032,7 +1311,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.6681058815337719
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*UFO::{}::yt",
@@ -1043,7 +1325,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.6681058815337719,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::ytau",
@@ -1054,7 +1339,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.010206617000654722,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ytau",
@@ -1065,7 +1353,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.010206617000654722,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1*UFO::{}::ytau",
@@ -1076,7 +1367,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.007217168094136855,
+        0.0
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*-1𝑖*UFO::{}::ytau",
@@ -1087,7 +1381,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.007217168094136855
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM1x1)",
@@ -1098,7 +1395,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.4501822404312442
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM1x2)",
@@ -1109,7 +1409,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.10406729130552157
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM1x3)",
@@ -1120,7 +1423,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.001455467036557634,
+        0.0005634065947965036
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM2x1)",
@@ -1131,7 +1437,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.10406729130552157
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM2x2)",
@@ -1142,7 +1451,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.4501822404312442
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM2x3)",
@@ -1153,7 +1465,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.01894465947075628
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM3x1)",
@@ -1164,7 +1479,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        -0.001455467036557634,
+        0.003704825183964887
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM3x2)",
@@ -1175,7 +1493,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        -0.01894465947075628
+      ]
     },
     {
       "expression": "(1/2)^(1/2)*1𝑖*UFO::{}::ee*UFO::{}::sw^(-1)*conj(UFO::{}::CKM3x3)",
@@ -1186,7 +1507,10 @@
           1
         ]
       ],
-      "value": null
+      "value": [
+        0.0,
+        0.46190542079681124
+      ]
     }
   ],
   "form_factors": [],
@@ -1857,7 +2181,10 @@
       "name": "CKM1x1",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.974619955,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::lamWS",
@@ -1866,7 +2193,10 @@
       "name": "CKM1x2",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.2253,
+        0.0
+      ]
     },
     {
       "expression": "(-1𝑖*UFO::{}::etaWS+UFO::{}::rhoWS)*UFO::{}::AWS*UFO::{}::lamWS^3",
@@ -1875,7 +2205,10 @@
       "name": "CKM1x3",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.0012197444962317122,
+        -0.0031510066152652563
+      ]
     },
     {
       "expression": "-1*UFO::{}::lamWS",
@@ -1884,7 +2217,10 @@
       "name": "CKM2x1",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.2253,
+        0.0
+      ]
     },
     {
       "expression": "-1/2*UFO::{}::lamWS^2+1",
@@ -1893,7 +2229,10 @@
       "name": "CKM2x2",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.974619955,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::AWS*UFO::{}::lamWS^2",
@@ -1902,7 +2241,10 @@
       "name": "CKM2x3",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.04101415272,
+        0.0
+      ]
     },
     {
       "expression": "(-1*UFO::{}::rhoWS+-1𝑖*UFO::{}::etaWS+1)*UFO::{}::AWS*UFO::{}::lamWS^3",
@@ -1911,7 +2253,10 @@
       "name": "CKM3x1",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.008020744111584288,
+        -0.0031510066152652563
+      ]
     },
     {
       "expression": "-1*UFO::{}::AWS*UFO::{}::lamWS^2",
@@ -1920,7 +2265,10 @@
       "name": "CKM3x2",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.04101415272,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::aEWM1^(-1)",
@@ -1929,7 +2277,10 @@
       "name": "aEW",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.00754677225305414,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aS^(1/2)*𝜋^(1/2)",
@@ -1938,7 +2289,10 @@
       "name": "G",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        1.2177157847767195,
+        0.0
+      ]
     },
     {
       "expression": "(((1/2)^(1/2)*-1*UFO::{}::Gf^(-1)*UFO::{}::MZ^2*UFO::{}::aEW*𝜋+1/4*UFO::{}::MZ^4)^(1/2)+1/2*UFO::{}::MZ^2)^(1/2)",
@@ -1947,7 +2301,10 @@
       "name": "MW",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        80.4190000176632,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::aEW^(1/2)*𝜋^(1/2)",
@@ -1956,7 +2313,10 @@
       "name": "ee",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.3079537904849374,
+        0.0
+      ]
     },
     {
       "expression": "-1*UFO::{}::MW^2*UFO::{}::MZ^(-2)+1",
@@ -1965,7 +2325,10 @@
       "name": "sw2",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.22224653275123984,
+        0.0
+      ]
     },
     {
       "expression": "(-1*UFO::{}::sw2+1)^(1/2)",
@@ -1974,7 +2337,10 @@
       "name": "cw",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.8819033208060622,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::sw2^(1/2)",
@@ -1983,7 +2349,10 @@
       "name": "sw",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.47143030529574553,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::cw^(-1)*UFO::{}::ee",
@@ -1992,7 +2361,10 @@
       "name": "g1",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.3491922336832418,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::ee*UFO::{}::sw^(-1)",
@@ -2001,7 +2373,10 @@
       "name": "gw",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.653232910624502,
+        0.0
+      ]
     },
     {
       "expression": "2*UFO::{}::MW*UFO::{}::ee^(-1)*UFO::{}::sw",
@@ -2010,7 +2385,10 @@
       "name": "vev",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        246.21845810181625,
+        0.0
+      ]
     },
     {
       "expression": "1/2*UFO::{}::MH^2*UFO::{}::vev^(-2)",
@@ -2019,7 +2397,10 @@
       "name": "lam",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.12886910601690277,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::ymb",
@@ -2028,7 +2409,10 @@
       "name": "yb",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.024123686777011728,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::ymc",
@@ -2037,7 +2421,10 @@
       "name": "yc",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.007294543382572593,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::yme",
@@ -2046,7 +2433,10 @@
       "name": "ye",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        2.93504855786976e-06,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::ymm",
@@ -2055,7 +2445,10 @@
       "name": "ym",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.0006068830344902521,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::ymt",
@@ -2064,7 +2457,10 @@
       "name": "yt",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.9448443987662926,
+        0.0
+      ]
     },
     {
       "expression": "2^(1/2)*UFO::{}::vev^(-1)*UFO::{}::ymtau",
@@ -2073,7 +2469,10 @@
       "name": "ytau",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        0.010206617000654722,
+        0.0
+      ]
     },
     {
       "expression": "(UFO::{}::lam*UFO::{}::vev^2)^(1/2)",
@@ -2082,7 +2481,10 @@
       "name": "muH",
       "nature": "internal",
       "parameter_type": "real",
-      "value": null
+      "value": [
+        88.38834764831844,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yb*conj(UFO::{}::CKM1x3)",
@@ -2091,7 +2493,10 @@
       "name": "I1x31",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        2.9424734175077786e-05,
+        7.601389661895094e-05
+      ]
     },
     {
       "expression": "UFO::{}::yb*conj(UFO::{}::CKM2x3)",
@@ -2100,7 +2505,10 @@
       "name": "I1x32",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.0009894125736418036,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yb*conj(UFO::{}::CKM3x3)",
@@ -2109,7 +2517,10 @@
       "name": "I1x33",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.024123686777011728,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yc*conj(UFO::{}::CKM2x1)",
@@ -2118,7 +2529,10 @@
       "name": "I2x12",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.0016434606240936052,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yt*conj(UFO::{}::CKM3x1)",
@@ -2127,7 +2541,10 @@
       "name": "I2x13",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.007578355147768138,
+        0.0029772109509089116
+      ]
     },
     {
       "expression": "UFO::{}::yc*conj(UFO::{}::CKM2x2)",
@@ -2136,7 +2553,10 @@
       "name": "I2x22",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.007109407543268448,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yt*conj(UFO::{}::CKM3x2)",
@@ -2145,7 +2565,10 @@
       "name": "I2x23",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.0387519924676373,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yc*conj(UFO::{}::CKM2x3)",
@@ -2154,7 +2577,10 @@
       "name": "I2x32",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.00029917951631549774,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::yt*conj(UFO::{}::CKM3x3)",
@@ -2163,7 +2589,10 @@
       "name": "I2x33",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.9448443987662926,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM2x1*UFO::{}::yc",
@@ -2172,7 +2601,10 @@
       "name": "I3x21",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.0016434606240936052,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM2x2*UFO::{}::yc",
@@ -2181,7 +2613,10 @@
       "name": "I3x22",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.007109407543268448,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM2x3*UFO::{}::yc",
@@ -2190,7 +2625,10 @@
       "name": "I3x23",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.00029917951631549774,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM3x1*UFO::{}::yt",
@@ -2199,7 +2637,10 @@
       "name": "I3x31",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.007578355147768138,
+        -0.0029772109509089116
+      ]
     },
     {
       "expression": "UFO::{}::CKM3x2*UFO::{}::yt",
@@ -2208,7 +2649,10 @@
       "name": "I3x32",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        -0.0387519924676373,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM3x3*UFO::{}::yt",
@@ -2217,7 +2661,10 @@
       "name": "I3x33",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.9448443987662926,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM1x3*UFO::{}::yb",
@@ -2226,7 +2673,10 @@
       "name": "I4x13",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        2.9424734175077786e-05,
+        -7.601389661895094e-05
+      ]
     },
     {
       "expression": "UFO::{}::CKM2x3*UFO::{}::yb",
@@ -2235,7 +2685,10 @@
       "name": "I4x23",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.0009894125736418036,
+        0.0
+      ]
     },
     {
       "expression": "UFO::{}::CKM3x3*UFO::{}::yb",
@@ -2244,7 +2697,10 @@
       "name": "I4x33",
       "nature": "internal",
       "parameter_type": "complex",
-      "value": null
+      "value": [
+        0.024123686777011728,
+        0.0
+      ]
     }
   ],
   "particles": [

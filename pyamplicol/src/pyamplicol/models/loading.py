@@ -119,61 +119,21 @@ UFO_TENSOR_HEADS = frozenset(
 )
 
 
-def _replace_ufo_sqrt_once(expression: Any) -> Any:
-    """Bound the ufo-model-loader sqrt normalization to one traversal."""
+def _require_ufo_model_loader() -> None:
+    """Reject loaders predating the supported Symbolica expression API."""
 
-    from symbolica import Expression
-    from ufo_model_loader.common import UFOModelLoaderError
-    from ufo_model_loader.symbolica_processing import expression_to_string
-
-    # Symbolica 2.2 also matches x^(1/2), so repetition rewrites its own output.
-    expression = expression.replace(
-        Expression.parse("sqrt(x__)"),
-        Expression.parse("x__^(1/2)"),
-        repeat=False,
+    installed = _distribution_version("ufo-model-loader", "not installed")
+    # The loader publishes three-component release versions. Development and
+    # prerelease builds are not substitutes for the required release interface.
+    release = re.fullmatch(
+        r"(\d+)\.(\d+)\.(\d+)(?:\.post\d+)?(?:\+[\w.-]+)?", installed
     )
-    rendered = expression_to_string(expression)
-    if rendered is None or re.match(r"\^\(\d+/\d+\)", rendered):
-        raise UFOModelLoaderError(
-            "Exponentiation with real arguments not supported in model "
-            f"expressions: {rendered}"
+    if release is None or tuple(map(int, release.groups())) < (0, 1, 8):
+        raise RuntimeError(
+            "UFO model import requires ufo-model-loader release 0.1.8 or newer "
+            f"for the supported Symbolica API; found {installed}. "
+            "Install the updated loader before importing a UFO model."
         )
-    return expression
-
-
-@contextmanager
-def _bounded_ufo_sqrt_normalization() -> Iterator[None]:
-    """Apply scoped ufo-model-loader expression compatibility fixes."""
-
-    from symbolica import Expression
-    from ufo_model_loader import model, symbolica_processing
-
-    original_sqrt = symbolica_processing.replace_from_sqrt
-    original_processing_parse = symbolica_processing.parse_python_expression_safe
-    original_model_parse = model.parse_python_expression_safe
-
-    def parse_standard_cmath(expression: str) -> Any:
-        normalized = expression
-        for name in ("sin", "cos", "asin", "acos"):
-            normalized = normalized.replace(f"cmath.{name}", name)
-        parsed = original_processing_parse(normalized)
-        for name in ("sin", "cos", "asin", "acos"):
-            parsed = parsed.replace(
-                Expression.parse(f"UFO::{name}(x_)"),
-                Expression.parse(f"{name}(x_)"),
-                repeat=True,
-            )
-        return parsed
-
-    symbolica_processing.replace_from_sqrt = _replace_ufo_sqrt_once
-    symbolica_processing.parse_python_expression_safe = parse_standard_cmath
-    model.parse_python_expression_safe = parse_standard_cmath
-    try:
-        yield
-    finally:
-        model.parse_python_expression_safe = original_model_parse
-        symbolica_processing.parse_python_expression_safe = original_processing_parse
-        symbolica_processing.replace_from_sqrt = original_sqrt
 
 
 @dataclass(frozen=True, slots=True)
@@ -789,8 +749,7 @@ def _sanitized_model_environment() -> Iterator[None]:
         for name in removed:
             os.environ.pop(name, None)
         try:
-            with _bounded_ufo_sqrt_normalization():
-                yield
+            yield
         finally:
             sys.dont_write_bytecode = previous_dont_write_bytecode
             for name in tuple(os.environ):
@@ -806,6 +765,7 @@ def _load_external_model(
 ) -> dict[str, object]:
     # These imports intentionally live inside the execution boundary so package
     # import, metadata inspection, and built-in-SM planning stay dependency-light.
+    _require_ufo_model_loader()
     with _sanitized_model_environment():
         from ufo_model_loader.commands import load_model
         from ufo_model_loader.common import JSONLook

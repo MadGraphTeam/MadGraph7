@@ -86,22 +86,22 @@ authorized_by = "docs/development/PHYSICS_EXTRACTION_CONTRACT.md#model-determini
 
 [[transformations]]
 id = "loader-ufo-full-v1"
-description = "Load sanitized UFO with restriction='full', simplify=True, no index wrapping; serialize model with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
+description = "Load sanitized UFO with restriction='full', simplify=True, no index wrapping; serialize model with ufo-model-loader 0.1.8 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[transformations]]
 id = "loader-ufo-full-wrapped-v1"
-description = "Load sanitized UFO with restriction='full', simplify=True, wrap Lorentz indices; serialize with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
+description = "Load sanitized UFO with restriction='full', simplify=True, wrap Lorentz indices; serialize with ufo-model-loader 0.1.8 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[transformations]]
 id = "loader-json-canonical-v1"
-description = "Load the tracked frozen JSON variant without a restriction and reserialize with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
+description = "Load the tracked frozen JSON variant without a restriction and reserialize with ufo-model-loader 0.1.8 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[transformations]]
 id = "loader-restriction-card-v1"
-description = "Parse every external parameter from the matching sanitized UFO restriction card and serialize the complete card, including explicit zeros, with ufo-model-loader 0.1.7 JSONLook.VERBOSE"
+description = "Parse every external parameter from the matching sanitized UFO restriction card and serialize the complete card, including explicit zeros, with ufo-model-loader 0.1.8 JSONLook.VERBOSE"
 authorized_by = "docs/development/MODEL_ASSET_PROVENANCE.md#before-extraction"
 
 [[files]]
@@ -122,8 +122,8 @@ generated_from = "ufo/scalar_gravity/restrict_default.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
-package_sha256 = "b0676be537ce7b2d7bd71ca99efd10dc2c09d92c0bd2b6089703c5ec24cffda1"
-package_size = 224241
+package_sha256 = "3bfc81548466ffc464fa72a3469a9c0c8930970bf048c64c43aee13c8e83bd72"
+package_size = 224817
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
@@ -154,8 +154,8 @@ generated_from = "ufo/scalars/restrict_default.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/scalars/scalars.json"
-package_sha256 = "4656ad2ec58e8f460ae65a5487a8499ee2661df9a5c0b93a34527a2e186856f7"
-package_size = 127590
+package_sha256 = "ca27b8cc228cd03db57556fc1c40298865a75269bf2744bee8c59c013eb28df7"
+package_size = 127756
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/scalars/scalars.json"
@@ -331,8 +331,8 @@ generated_from = "ufo/sm/restrict_zeromass_ckm.dat"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/sm.json"
-package_sha256 = "f13311b6c66af04dde17484ce5b3b57f4e57a55f8a3729f00352105eea5a80bf"
-package_size = 113409
+package_sha256 = "6bec8e6fcd935aa1f56ae99f7ee7a58a947dc5dd3cf5a14b653632f4a3bd6d63"
+package_size = 120661
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/sm.json"
@@ -347,8 +347,8 @@ generated_from = "ufo/sm"
 
 [[files]]
 canonical_package_path = "pyamplicol/assets/models/json/sm/sm_wrapped_indices.json"
-package_sha256 = "d246c1ec3bcd2177404134571adf2f12e8faadb066bc4994f6eef8848fa1b182"
-package_size = 117603
+package_sha256 = "35daa40245321a750e5648a10ab38b3f2f6c54c63e3fe73b62f183cd78316688"
+package_size = 124855
 source_repository = "git@github.com:rikkert-frederix/AmpliCol.git"
 source_revision = "643bc6f99d7b2249af0a85204768df243e612411"
 source_path = "pyAmpliCol/src/pyamplicol/assets/models/json/sm/sm_wrapped_indices.json"
@@ -1120,9 +1120,9 @@ root = "pyAmpliCol/src/pyamplicol/assets/models"
 
 [generator]
 distribution = "ufo-model-loader"
-version = "0.1.7"
+version = "0.1.8"
 repository = "https://github.com/alphal00p/ufo_model_loader.git"
-revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
+revision = "70ddee6b416f8c8b340e0d087646d77095c5d24b"
 license_id = "MIT"
 serialization = "JSONLook.VERBOSE"
 

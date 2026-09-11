@@ -152,11 +152,11 @@ def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
     assert ffi_source.revision == ratatui["ffi_revision"]
 
 
-def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
+def test_ufo_loader_distinguishes_required_and_latest_published_versions() -> None:
     module = _module()
     payload = module._lock()
     loader = payload["ufo_model_loader"]
-    assert loader["required_version"] == "0.1.7"
+    assert loader["required_version"] == "0.1.8"
     assert loader["latest_verified_published_version"] == "0.1.7"
     assert loader["published_revision"] == ("f3fda32c5e6a673075c345d74a11f12b83c00015")
     assert loader["wheel_sha256"] == (
@@ -561,7 +561,9 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _module()
-    monkeypatch.setattr(module, "_local_ufo_loader", lambda: None)
+    monkeypatch.setattr(
+        module, "_local_ufo_loader", lambda: ROOT / "FUTURE_ufo_model_loader"
+    )
     requirements = module._runtime_requirements_text()
     assert "symbolica==" not in requirements
     for requirement in (
@@ -571,19 +573,48 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure(
         "progressbar2==4.5.0",
         "python-utils==4.0.0",
         "typing-extensions==4.16.0",
-        "ufo-model-loader==0.1.7",
         "wcwidth==0.8.2",
     ):
         assert requirements.count(requirement) == 1
     assert requirements.count("--hash=sha256:") > 20
 
 
-def test_local_ufo_loader_replaces_only_its_published_wheel() -> None:
+def test_unpublished_ufo_loader_requires_the_local_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _module()
-    assert module._local_ufo_loader() == ROOT / "TMP_FIXED_SPENSO/ufo_model_loader"
+    monkeypatch.setattr(module, "_local_ufo_loader", lambda: None)
+    with pytest.raises(
+        module.SetupError,
+        match="locked runtime package ufo-model-loader has no wheel artifacts",
+    ):
+        module._runtime_requirements_text()
+
+
+def test_local_ufo_loader_replaces_only_its_published_wheel(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source = tmp_path / "FUTURE_ufo_model_loader"
+    source.mkdir()
+    (source / "pyproject.toml").write_text(
+        '[project]\nname="ufo_model_loader"\nversion="0.1.8"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    assert module._local_ufo_loader() == source
     requirements = module._runtime_requirements_text()
     assert "ufo-model-loader==" not in requirements
     assert "numpy==2.4.2" in requirements
+
+
+def test_local_ufo_loader_requires_the_dedicated_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    assert module._local_ufo_loader() is None
 
 
 def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> None:

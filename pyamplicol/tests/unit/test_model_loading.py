@@ -24,11 +24,11 @@ from pyamplicol.models.contracts import (
 )
 from pyamplicol.models.loading import (
     ModelCompileOptions,
-    _bounded_ufo_sqrt_normalization,
     _classify_external_propagators,
     _load_external_model,
     _loader_restriction_name,
     _model_compiler_source_paths,
+    _require_ufo_model_loader,
     _sanitized_model_environment,
     _source_digest,
 )
@@ -61,9 +61,8 @@ def test_ufo_sqrt_normalization_is_one_shot_and_idempotent(source: str) -> None:
     expression = Expression.parse(source)
     expected = expression.to_canonical_string()
 
-    with _bounded_ufo_sqrt_normalization():
-        normalized = symbolica_processing.replace_from_sqrt(expression)
-        normalized_again = symbolica_processing.replace_from_sqrt(normalized)
+    normalized = symbolica_processing.replace_from_sqrt(expression)
+    normalized_again = symbolica_processing.replace_from_sqrt(normalized)
 
     normalized_text = normalized.to_canonical_string()
     assert "sqrt(" not in normalized_text
@@ -72,13 +71,13 @@ def test_ufo_sqrt_normalization_is_one_shot_and_idempotent(source: str) -> None:
     assert normalized_again.to_canonical_string() == normalized_text
 
 
-def test_ufo_standard_cmath_normalization_is_scoped_and_restored() -> None:
+def test_ufo_standard_cmath_normalization_needs_no_runtime_patch() -> None:
     from ufo_model_loader import model, symbolica_processing
 
     original_processing_parse = symbolica_processing.parse_python_expression_safe
     original_model_parse = model.parse_python_expression_safe
 
-    with _bounded_ufo_sqrt_normalization():
+    with _sanitized_model_environment():
         assert model.parse_python_expression_safe is (
             symbolica_processing.parse_python_expression_safe
         )
@@ -94,7 +93,7 @@ def test_ufo_standard_cmath_normalization_is_scoped_and_restored() -> None:
     assert model.parse_python_expression_safe is original_model_parse
 
     try:
-        with _bounded_ufo_sqrt_normalization():
+        with _sanitized_model_environment():
             raise RuntimeError("scope exit")
     except RuntimeError as error:
         assert str(error) == "scope exit"
@@ -102,6 +101,25 @@ def test_ufo_standard_cmath_normalization_is_scoped_and_restored() -> None:
         symbolica_processing.parse_python_expression_safe is original_processing_parse
     )
     assert model.parse_python_expression_safe is original_model_parse
+
+
+@pytest.mark.parametrize("version", ["0.1.8", "0.1.9", "0.2.0", "1.0.0", "0.1.8+local"])
+def test_ufo_loader_accepts_supported_releases(monkeypatch, version: str) -> None:
+    monkeypatch.setattr(
+        "pyamplicol.models.loading._distribution_version", lambda *_: version
+    )
+    _require_ufo_model_loader()
+
+
+@pytest.mark.parametrize("version", ["not installed", "0.1.7", "0.1.8rc1"])
+def test_ufo_loader_rejects_unsupported_versions_before_loading(
+    monkeypatch, version: str
+) -> None:
+    monkeypatch.setattr(
+        "pyamplicol.models.loading._distribution_version", lambda *_: version
+    )
+    with pytest.raises(RuntimeError, match=r"0\.1\.8 or newer"):
+        _load_external_model(Path("unused.json"), options=ModelCompileOptions())
 
 
 def test_all_packaged_ufo_sm_parameter_expressions_normalize_once() -> None:
