@@ -95,8 +95,8 @@ color_flow_ids = []
 
 [output]
 format = "json"
-color = "auto"
-progress = "off"
+color = "never"
+progress = "log"
 log_level = "info"
 
 [symbolica]
