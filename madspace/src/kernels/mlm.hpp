@@ -45,6 +45,14 @@ constexpr int TRACE_IS_COLORED_IN = 1 << 3;
 // flavour has been sampled.
 constexpr int TRACE_FLAVOR_SHIFT = 4;
 constexpr int TRACE_FLAVOR_MASK = 0xFF;
+// More of the mother's flavour, for isjetvx and the iqjets demotion.
+constexpr int TRACE_IS_OCTET_IN = 1 << 12;
+constexpr int TRACE_MOTHER_IS_DAU1 = 1 << 13;
+constexpr int TRACE_MOTHER_IS_DAU2 = 1 << 14;
+constexpr int TRACE_ALL_COLORLESS = 1 << 15;
+// jet_leg_mask carries is_jet per leg in the low half and is_octet in the high
+// half; n_ext_max is 12, so one word holds both.
+constexpr int LEG_OCTET_SHIFT = 16;
 
 // mT^2 = E^2 - pz^2 (hadronic) or E^2 (lepton collider).
 // based on djb_clus from Template/NLO/SubProcesses/cluster.f
@@ -453,12 +461,23 @@ KERNELSPEC void mlm_clustering(
     // Colour of the line currently in each slot, tracked the same way. Only
     // the two beam slots are ever read back, at the 2 -> 1 root.
     bool slot_is_colored[N_EXT_MAX];
+    // and whether it is an octet, which decides whether an emission counts as
+    // a jet unconditionally: a gluon has a soft singularity the shower has to
+    // be left free to fill.
+    bool slot_is_octet[N_EXT_MAX];
     for (int i = 0; i < n_part; ++i) {
         rep1[i] = i;
         rep2[i] = -1;
         slot_is_jet[i] = (jet_leg_mask >> i) & 1;
         slot_is_colored[i] = i < 2 ? (((beam_flags >> (2 * i)) & 1) != 0) : true;
+        slot_is_octet[i] = (jet_leg_mask >> (i + LEG_OCTET_SHIFT)) & 1;
     }
+    // What the iqjets bookkeeping below needs from each step but cannot
+    // reconstruct afterwards: which slots were still bare external legs, and
+    // where the mother's line ended up. Recorded here rather than walked a
+    // second time.
+    int step_bare[N_EXT_MAX - 3];
+    int step_mother_leg1[N_EXT_MAX - 3], step_mother_leg2[N_EXT_MAX - 3];
 
     bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
     FVal<T> ren_scale_val = 1.0;
@@ -472,7 +491,6 @@ KERNELSPEC void mlm_clustering(
     //
     // is_last_cluster is exactly the "still a bare external leg" bookkeeping
     // the emission scheme already needs, so the two share it.
-    bool passes_xqcut = true;
     int is_last_cluster = 0b11111111'11111111'11111100;
     for (int i = 0; i < cluster_max; ++i) {
         FVal<T> scale = cluster_scales[i];
@@ -482,17 +500,7 @@ KERNELSPEC void mlm_clustering(
         bool is_qcd = (data >> 27) & 1;
         bool is_jet1 = (data >> 28) & 1;
         bool is_jet2 = (data >> 29) & 1;
-        // The vertex has to be a QCD one. madevent gates this on iqjets, which
-        // is only ever set for a leg emitted at a jet vertex, and a leg it does
-        // not set is exempt from the merging cut. Without that test a jet can be
-        // rejected at a vertex that produced no radiation at all - a quark
-        // pairing into the W, say, whose measure is a lepton-side kt with
-        // nothing to do with the jet's own transverse momentum.
-        if (FVal<T>(xqcut) > 0.0 && is_qcd && scale < FVal<T>(xqcut) &&
-            ((is_jet1 && (is_last_cluster & (1 << particle1))) ||
-             (is_jet2 && (is_last_cluster & (1 << particle2))))) {
-            passes_xqcut = false;
-        }
+        step_bare[i] = is_last_cluster;
         if (is_qcd) {
             if (by_production) {
                 // Book this vertex onto every external leg the two daughters'
@@ -566,6 +574,9 @@ KERNELSPEC void mlm_clustering(
         // the merged line takes the mother's flavour
         slot_is_jet[particle1] = (cluster_trace[i] & TRACE_IS_JET_IN) != 0;
         slot_is_colored[particle1] = (cluster_trace[i] & TRACE_IS_COLORED_IN) != 0;
+        slot_is_octet[particle1] = (cluster_trace[i] & TRACE_IS_OCTET_IN) != 0;
+        step_mother_leg1[i] = rep1[particle1];
+        step_mother_leg2[i] = rep2[particle1];
     }
 
     // Any outgoing leg that no QCD clustering booked a scale onto keeps
@@ -591,6 +602,15 @@ KERNELSPEC void mlm_clustering(
     // plus one per beam for the 2 -> 1 root, which sits on both. A slot that
     // no step claims stays inert: its two scales are equal, so its ratio is
     // one, and its weight is one whatever the density comes out as.
+    // Which outgoing legs the merging cut applies to. Filled by madevent's
+    // iqjets walk below where that scale scheme is in use; without it the only
+    // thing available is the leg's own flavour and the vertex's.
+    bool merging_jet[N_EXT_MAX];
+    bool have_merging_jets = false;
+    for (int i = 0; i < n_part; ++i) {
+        merging_jet[i] = false;
+    }
+
     int pdf_slot_count = n_part - 1;
     int rw_flavor[N_EXT_MAX - 1];
     FVal<T> rw_x[N_EXT_MAX - 1];
@@ -664,10 +684,44 @@ KERNELSPEC void mlm_clustering(
         }
         bool use_goodjet = parton_line_scheme == LINE_GOODJET;
 
+        // iqjets of reweight.f: which outgoing legs count as merging jets.
+        // This is the gate on the xqcut check, and the reason a jet emitted
+        // where no radiation happened is exempt from it.
+        //
+        //   1      certainly a jet: emitted while the beam line was still a
+        //          parton line, or a gluon, which has a soft singularity the
+        //          shower must be left free to fill
+        //   jcode  possibly a jet, resolved at the end
+        //   0      not a merging jet
+        //
+        // jcode counts how many times the walk has crossed between QCD and
+        // non-QCD vertices, so that an emission can be placed relative to those
+        // crossings; increasecode makes the first jet vertex after a run of
+        // non-jet ones count as another crossing.
+        int iqjets[N_EXT_MAX];
+        for (int i = 0; i < n_part; ++i) {
+            iqjets[i] = 0;
+        }
+        int jcode = 1;
+        bool increasecode = false;
+        // isjet of the beam line itself as it stands, which is ipdgcl(ida(i))
+        // in the jcode test - the daughter on the beam side, before the vertex
+        // turns it into the mother.
+        bool line_is_jet[2];
+        for (int j = 0; j < 2; ++j) {
+            line_is_jet[j] = ((beam_flags >> (2 * j + 1)) & 1) != 0;
+        }
+
         // One step of the beam-line bookkeeping, for beam j at step i.
-        // is_emitted_jet is goodjet(ida(3-i)), the emitted object; is_jet_in
-        // and is_colored_in are the mother's flavour.
-        auto walk_line = [&](int j, int i, bool is_emitted_jet, bool is_jet_in,
+        // emitted_leg is ipart(1, ida(3-i)), the first external leg of the
+        // emitted line, or -1 where there is none; is_jet_in and is_colored_in
+        // are the mother's flavour.
+        auto walk_line = [&](int j,
+                             int i,
+                             bool is_emitted_jet,
+                             bool emitted_is_octet,
+                             int emitted_leg,
+                             bool is_jet_in,
                              bool is_colored_in) {
             if (partonline[j]) {
                 if (jfirst[j] < 0) {
@@ -683,6 +737,18 @@ KERNELSPEC void mlm_clustering(
                 // it becomes is not a good jet either
                 goodjet[j] = false;
             }
+            if (!is_emitted_jet || !line_is_jet[j] || !is_jet_in) {
+                ++jcode;
+                increasecode = true;
+            } else if (increasecode) {
+                ++jcode;
+                increasecode = false;
+            }
+            if (is_emitted_jet && emitted_leg >= 2) {
+                iqjets[emitted_leg] =
+                    (partonline[j] || emitted_is_octet) ? 1 : jcode;
+            }
+            line_is_jet[j] = is_jet_in;
             if (qcdline[j]) {
                 jcentral[j] = i;
                 qcdline[j] = is_colored_in;
@@ -697,18 +763,81 @@ KERNELSPEC void mlm_clustering(
             int trace = cluster_trace[i];
             bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
             if (particle1 >= 2) {
-                // final-state clustering: no beam line, but the mother's
-                // goodjet has to be worked out for whoever clusters with it
-                // later - including the root, which reads the leftover's.
-                bool is_jet_vertex = (data >> 27) & 1;
-                goodjet[particle1] = is_jet_vertex && is_jet_in &&
-                    goodjet[particle1] && goodjet[particle2];
+                // Final-state clustering. isjetvx() of reweight.f: a QCD
+                // vertex, and one where a jet actually came out - which it did
+                // if a jet daughter sits opposite either a jet mother or a
+                // mother repeating the other daughter's flavour, i.e. an
+                // emission off a line rather than a splitting into something
+                // else.
+                bool is_qcd_vertex = (data >> 27) & 1;
+                bool is_jet1 = (data >> 28) & 1;
+                bool is_jet2 = (data >> 29) & 1;
+                bool mother_is_dau1 = (trace & TRACE_MOTHER_IS_DAU1) != 0;
+                bool mother_is_dau2 = (trace & TRACE_MOTHER_IS_DAU2) != 0;
+                bool is_octet_in = (trace & TRACE_IS_OCTET_IN) != 0;
+                bool is_jet_vertex = is_qcd_vertex &&
+                    ((is_jet1 && (is_jet_in || mother_is_dau2)) ||
+                     (is_jet2 && (is_jet_in || mother_is_dau1)));
+                int mother_leg1 = step_mother_leg1[i];
+                int mother_leg2 = step_mother_leg2[i];
+                if (!is_jet_vertex) {
+                    // "Remove non-gluon jets that lead up to non-jet
+                    // vertices": a quark that was counted as a jet earlier but
+                    // whose line runs into a vertex that made no jet was not a
+                    // merging emission after all. A vertex whose three lines
+                    // all carry colour, or none of them do, is left alone.
+                    if (!is_qcd_vertex && mother_leg1 >= 2) {
+                        bool leg1_octet =
+                            ((jet_leg_mask >> (mother_leg1 + LEG_OCTET_SHIFT)) & 1) != 0;
+                        if (!leg1_octet) {
+                            if ((trace & TRACE_ALL_COLORLESS) != 0) {
+                                // a W W Z or h h h vertex: nothing to demote
+                            } else if (mother_leg2 < 0) {
+                                iqjets[mother_leg1] = 0;
+                            } else if (iqjets[mother_leg1] > 0 &&
+                                       mother_leg2 >= 2 &&
+                                       iqjets[mother_leg2] > 0) {
+                                // both halves of an octet's line are tagged,
+                                // so one of them can go
+                                iqjets[mother_leg1] = 0;
+                            }
+                        } else if (is_octet_in) {
+                            iqjets[mother_leg1] = 0;
+                        }
+                    }
+                    if (mother_leg2 >= 2 && !is_octet_in) {
+                        bool leg2_octet =
+                            ((jet_leg_mask >> (mother_leg2 + LEG_OCTET_SHIFT)) & 1) != 0;
+                        if (!leg2_octet) {
+                            iqjets[mother_leg2] = 0;
+                        }
+                    }
+                    goodjet[particle1] = false;
+                    continue;
+                }
+                // a jet vertex: every daughter that is still a bare external
+                // jet was emitted here
+                if (is_jet1 && particle1 >= 2 &&
+                    (step_bare[i] & (1 << particle1))) {
+                    iqjets[particle1] = 1;
+                }
+                if (is_jet2 && particle2 >= 2 &&
+                    (step_bare[i] & (1 << particle2))) {
+                    iqjets[particle2] = 1;
+                }
+                goodjet[particle1] = is_jet_in && goodjet[particle1] &&
+                    goodjet[particle2];
                 continue;
             }
             bool emitted = use_goodjet ? goodjet[particle2]
                                        : ((data >> 29) & 1) != 0;
             walk_line(
-                particle1, i, emitted, is_jet_in,
+                particle1,
+                i,
+                emitted,
+                slot_is_octet[particle2],
+                rep1[particle2],
+                is_jet_in,
                 (trace & TRACE_IS_COLORED_IN) != 0
             );
         }
@@ -728,11 +857,31 @@ KERNELSPEC void mlm_clustering(
                     j,
                     cluster_max,
                     leftover_jet,
+                    slot_is_octet[leftover],
+                    rep1[leftover],
                     slot_is_jet[1 - j],
                     slot_is_colored[1 - j]
                 );
             }
         }
+        // "Emissions with code 1 are always jets; now take care of possible
+        // jets". Once a beam line has stopped being a parton line, everything
+        // tagged only provisionally and before the last crossing was not a
+        // merging emission.
+        if (!partonline[0] || !partonline[1]) {
+            if (partonline[0] || partonline[1]) {
+                --jcode;
+            }
+            for (int leg = 2; leg < n_part; ++leg) {
+                if (iqjets[leg] > 1 && iqjets[leg] <= jcode) {
+                    iqjets[leg] = 0;
+                }
+            }
+        }
+        for (int leg = 0; leg < n_part; ++leg) {
+            merging_jet[leg] = leg >= 2 && iqjets[leg] > 0;
+        }
+        have_merging_jets = true;
         for (int j = 0; j < 2; ++j) {
             if (jfirst[j] < 0) {
                 jfirst[j] = jlast[j];
@@ -945,6 +1094,40 @@ KERNELSPEC void mlm_clustering(
                         : ((cluster_trace[i] >> TRACE_FLAVOR_SHIFT) &
                            TRACE_FLAVOR_MASK) -
                             1;
+                }
+            }
+        }
+    }
+
+    // The merging cut. A matrix-element jet below xqcut is radiation the parton
+    // shower is meant to produce, so the event is dropped - but only for a leg
+    // that is a merging jet in the first place. madevent decides that with
+    // iqjets, which is only ever set for a leg emitted at a jet vertex; a leg
+    // it leaves at zero is exempt however soft the vertex it sits on. Without
+    // that gate a jet is rejected at vertices that produced no radiation at
+    // all, most visibly a quark pairing into a W, whose measure is a
+    // lepton-side kt with nothing to do with the jet's own transverse
+    // momentum.
+    bool passes_xqcut = true;
+    if (FVal<T>(xqcut) > 0.0) {
+        for (int i = 0; i < cluster_max; ++i) {
+            if (!(cluster_scales[i] < FVal<T>(xqcut))) {
+                continue;
+            }
+            int data = cluster_history[i];
+            int particle1 = data & 0xFF;
+            int particle2 = (data >> 8) & 0xFF;
+            bool is_qcd = (data >> 27) & 1;
+            for (int k = 0; k < 2; ++k) {
+                int slot = k == 0 ? particle1 : particle2;
+                if (slot < 2 || !(step_bare[i] & (1 << slot))) {
+                    continue;
+                }
+                bool counts = have_merging_jets
+                    ? merging_jet[slot]
+                    : (is_qcd && ((data >> (28 + k)) & 1) != 0);
+                if (counts) {
+                    passes_xqcut = false;
                 }
             }
         }

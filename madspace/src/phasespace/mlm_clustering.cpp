@@ -33,6 +33,13 @@ bool is_jet_pdg(int pdg_id, int max_jet_flavor) {
     return (a >= 1 && a <= max_jet_flavor) || a == 21 || a == 81;
 }
 
+// Mirrors is_octet() in Template/LO/SubProcesses/reweight.f: a colour octet,
+// which in the QCD sector means the gluon. The iqjets bookkeeping treats an
+// emitted gluon as a jet unconditionally - it has a soft singularity the shower
+// must be allowed to fill - and uses octet-ness again to decide which leg of a
+// non-jet vertex to demote.
+bool is_octet_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types);
+
 // Mirrors isparton() in Template/LO/SubProcesses/reweight.f: a line that can
 // be a beam parton, i.e. one the pdf reweighting can follow back into a beam.
 // Wider than is_jet_pdg: madevent tests against max(asrwgtflavor, maxjetflavor)
@@ -92,6 +99,10 @@ int color_rep(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
 // splitting, which is what selects the clustering scales entering mu_R/mu_F.
 bool is_colored_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
     return color_rep(pdg_id, pdg_color_types) != 1;
+}
+
+bool is_octet_pdg(int pdg_id, const std::unordered_map<int, int>& pdg_color_types) {
+    return color_rep(pdg_id, pdg_color_types) == 8;
 }
 
 // How the parton line of the mother of a clustering continues into its two
@@ -222,6 +233,16 @@ struct StateItem {
     // a beam's parton line stops being a jet and where it stops being coloured.
     bool is_jet_in;
     bool is_colored_in;
+    // isjetvx() needs to know whether the mother repeats one daughter's
+    // flavour - a gluon emission off a quark line, say - and the iqjets
+    // demotion needs to know whether the mother is an octet.
+    bool is_octet_in;
+    bool mother_is_daughter1;
+    bool mother_is_daughter2;
+    // None of the three lines carries colour - a W W Z or h h h vertex. The
+    // demotion leaves those alone rather than treating them as a QCD vertex
+    // that failed the jet test.
+    bool all_colorless;
     // Flavour class of the mother, i.e. of the beam line as it stands after
     // this clustering. flavor_class_none ends the pdf reweighting chain,
     // which is also what stops madevent following ibeam(j) any further.
@@ -321,6 +342,14 @@ StateItem make_state_item(
         .is_jet_in = !ctx.have_pdg_ids ||
             is_jet_pdg(meta_in.pdg_id, ctx.max_jet_flavor),
         .is_colored_in = !ctx.have_pdg_ids || color_in != 1,
+        .is_octet_in = !ctx.have_pdg_ids ||
+            is_octet_pdg(meta_in.pdg_id, ctx.pdg_color_types),
+        .mother_is_daughter1 =
+            meta_in.pdg_id != 0 && meta_in.pdg_id == meta_1.pdg_id,
+        .mother_is_daughter2 =
+            meta_in.pdg_id != 0 && meta_in.pdg_id == meta_2.pdg_id,
+        .all_colorless = ctx.have_pdg_ids && color_in == 1 && color_1 == 1 &&
+            color_2 == 1,
         .flavor_class_in =
             flavor_class(ctx, meta_in.pdg_id, is_initial ? particle1 : -1),
     };
@@ -413,6 +442,10 @@ void find_clusterings(
                             .trace_mode = trace_first,
                             .is_jet_in = false,
                             .is_colored_in = false,
+                            .is_octet_in = false,
+                            .mother_is_daughter1 = false,
+                            .mother_is_daughter2 = false,
+                            .all_colorless = false,
                             .flavor_class_in = flavor_class_none,
                         });
                     }
@@ -557,6 +590,12 @@ MLMClustering::MLMClustering(
         int pdg = have_pdg_ids ? external_pdg_ids.at(leg) : 21;
         if (is_jet_pdg(pdg, max_jet_flavor)) {
             _jet_leg_mask |= 1 << leg;
+        }
+        // The high half carries octet-ness for the same leg. The kernel needs
+        // both and n_ext_max is 12, so one word holds them without another
+        // kernel argument.
+        if (is_octet_pdg(pdg, pdg_color_types)) {
+            _jet_leg_mask |= 1 << (leg + 16);
         }
     }
 
@@ -762,7 +801,9 @@ MLMClustering::MLMClustering(
                 _cluster_state_machine.push_back(
                     static_cast<int>(item.trace_mode) + (item.is_jet_in << 2) +
                     (item.is_colored_in << 3) +
-                    ((item.flavor_class_in + 1) << 4)
+                    ((item.flavor_class_in + 1) << 4) +
+                    (item.is_octet_in << 12) + (item.mother_is_daughter1 << 13) +
+                    (item.mother_is_daughter2 << 14) + (item.all_colorless << 15)
                 );
             }
         }
