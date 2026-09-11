@@ -2186,7 +2186,7 @@ def project_massless_final_state(momenta, pdgs, model, n_initial=2,
 
 
 def project_massless_partons(momenta, pdgs, model, n_initial=2,
-                             tolerance=1e-6, final_state=True):
+                             tolerance=1e-6, final_state=False):
     """Undo the Monte-Carlo mass shell on both sides of the event.
 
     The initial state gets the exact closed-form inverse of

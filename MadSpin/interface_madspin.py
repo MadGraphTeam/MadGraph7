@@ -12060,8 +12060,21 @@ class MadSpinInterface(extended_cmd.Cmd):
         # event are projected, each by a map that conserves its own half of the
         # total four-momentum exactly.  This returns a new list; the event's own
         # momenta -- the ones that get written back to the LHE -- are untouched.
+        # final_state=True only here.  This is the one call site that goes on
+        # to boost, and the final-state map is what takes the boosted/lab
+        # invariance of Tr(rho) from 0.16% of events above 1e-4 to none at
+        # all.  _onshell_production_norm routes the denominator through this
+        # same function whenever there is a boost, and falls back to
+        # calculate_matrix_element when there is not, so numerator and
+        # denominator stay in one convention either way.  Everywhere else
+        # keeps the default: the initial-state projection alone is the exact
+        # inverse of put_on_MC_mshell_in, while the final-state rescaling
+        # moves an ordinary reweight weight by ~1e-6 -- enough to break a
+        # 6-significant-figure comparison, for no gain where there is no
+        # frame to be consistent with.
         p = lhe_parser.project_massless_partons(
-            p, pdgs, self.model, n_initial=len(orig_order[0]))
+            p, pdgs, self.model, n_initial=len(orig_order[0]),
+            final_state=True)
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
         P = rwgt_interface.ReweightInterface.invert_momenta(p)

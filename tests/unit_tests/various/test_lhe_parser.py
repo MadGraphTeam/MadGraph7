@@ -885,6 +885,10 @@ class TestMasslessProjectionFinalState(unittest.TestCase):
             momenta, pdgs, self.Model(), **opts)
 
     def both(self, momenta, pdgs, **opts):
+        # "both" means both halves.  project_massless_partons now defaults to
+        # the initial state alone, so the final-state map is asked for here;
+        # setdefault keeps the one test that passes final_state=False working.
+        opts.setdefault('final_state', True)
         return lhe_parser.project_massless_partons(
             momenta, pdgs, self.Model(), **opts)
 
