@@ -884,16 +884,9 @@ impl CompiledDirectEnginePrototype {
                         source.source_id
                     )));
                 }
+                // Load-time current-layout validation covers every source;
+                // the physical mapping is immutable across tiles.
                 let physical_components = &self.current_layout.physical_map()[start..stop];
-                if physical_components
-                    .iter()
-                    .any(|&component| component >= self.current_layout.physical_component_count)
-                {
-                    return Err(RusticolError::integrity(format!(
-                        "compiled Direct-Arena source {} has an unmapped component",
-                        source.source_id
-                    )));
-                }
                 let runtime_state = source_states.map(|states| &states[source_index]);
                 let factor = runtime_state.map_or(c64(1.0, 0.0), |state| state.factor);
                 if factor == c64(0.0, 0.0) {
