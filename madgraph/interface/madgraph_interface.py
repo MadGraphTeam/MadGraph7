@@ -128,6 +128,64 @@ MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
 
+# The banner (and every easter-egg variant of it in madgraph.various.misc) is
+# written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
+# a closing '*'. On a wider terminal the block is re-centred so that the two
+# columns of '*' sit on the edges of the screen. A line built wider than that
+# (the GIT line, with a long tag and a long branch name) is re-centred the same
+# way, from its own length, and is left alone when it does not fit the screen.
+BANNER_WIDTH = 60
+# Width assumed when the output is not a terminal (a log file, a pipe, ...).
+BANNER_FILE_WIDTH = 80
+# Escape sequences (the development-version warning is printed in red) do not
+# take any place on screen and must not be counted in the width of a line.
+BANNER_ANSI = re.compile('\\033\\[[0-9;]*m')
+
+def get_banner_width():
+    """Number of columns available for the banner: the width of the terminal,
+    or BANNER_FILE_WIDTH when the output is redirected to a file/pipe."""
+
+    try:
+        if not sys.stdout.isatty():
+            return BANNER_FILE_WIDTH
+        width = shutil.get_terminal_size((BANNER_FILE_WIDTH, 24)).columns
+    except Exception:
+        return BANNER_FILE_WIDTH
+    return max(width, BANNER_WIDTH)
+
+def fit_banner_width(text, width=None):
+    """Re-centre a BANNER_WIDTH columns banner on a screen of *width* columns.
+
+    Each line of at least BANNER_WIDTH visible characters delimited by '*' is
+    padded symmetrically (with '*' for the horizontal rules, with spaces
+    otherwise); any other line, and any line already wider than the screen, is
+    returned untouched."""
+
+    if width is None:
+        width = get_banner_width()
+    if width <= BANNER_WIDTH:
+        return text
+
+    out = []
+    for line in text.split('\n'):
+        plain = BANNER_ANSI.sub('', line)
+        if len(plain) < BANNER_WIDTH or not plain.startswith('*') \
+                                     or not plain.endswith('*'):
+            out.append(line)
+            continue
+        extra = width - len(plain)
+        if extra <= 0:
+            out.append(line)
+            continue
+        left = extra // 2
+        right = extra - left
+        start = line.index('*')
+        end = line.rindex('*')
+        inside = line[start+1:end]
+        fill = '*' if set(BANNER_ANSI.sub('', inside)) == set('*') else ' '
+        out.append(line[:start+1] + fill*left + inside + fill*right + line[end:])
+    return '\n'.join(out)
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -179,11 +237,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...                   7777777           *\n" + \
-        "*                    ....                     7            *\n" + \
-        "*                       .................... 7             *\n" + \
-        "*                                           7              *\n" + \
-        "*                                          7               *\n" + \
+        "*                  ...               7777777               *\n" + \
+        "*                    ....                 7                *\n" + \
+        "*                       ................ 7                 *\n" + \
+        "*                                       7                  *\n" + \
+        "*                                      7                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -261,7 +319,7 @@ class CmdExtended(cmd.Cmd):
             info_line = info_line.replace("#*","*")
             
 
-        logger.info(self.intro_banner % info_line)
+        logger.info(fit_banner_width(self.intro_banner % info_line))
 
         cmd.Cmd.__init__(self, *arg, **opt)
 
