@@ -236,7 +236,7 @@ batch_size = 128
 
 [evaluator.jit]
 optimization_level = 2
-compress = true
+compress = false                # opt in to smaller code at a possible runtime cost
 ```
 
 ### Execution modes

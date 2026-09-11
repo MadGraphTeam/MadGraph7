@@ -707,7 +707,7 @@ class JITConfig:
     optimization_level: Literal[0, 1, 2, 3] = field(
         default=2, metadata=_setting("int", choices=(0, 1, 2, 3))
     )
-    compress: bool = field(default=True, metadata=_setting("bool"))
+    compress: bool = field(default=False, metadata=_setting("bool"))
 
     def __post_init__(self) -> None:
         if isinstance(self.optimization_level, bool) or not isinstance(

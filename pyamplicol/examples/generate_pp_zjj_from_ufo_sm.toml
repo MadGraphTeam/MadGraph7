@@ -36,4 +36,4 @@ execution_mode = "compiled"
 
 [evaluator.jit]
 # Omitted optimization_level uses the portable JIT O2 default.
-compress = true
+compress = false

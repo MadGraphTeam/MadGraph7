@@ -173,6 +173,12 @@ def test_generate_accepts_jit_compression_override(
     assert config.evaluator.jit.compress is expected
 
 
+@pytest.mark.parametrize("mode", ("recurrence", "compiled", "eager", "on-the-fly"))
+def test_generation_modes_default_to_uncompressed_jit(mode: str) -> None:
+    config = parse_cli(("generate", "--execution-mode", mode)).resolve().effective
+    assert config.evaluator.jit.compress is False
+
+
 def test_generate_accepts_recurrence_execution_mode_override() -> None:
     config = (
         parse_cli(("generate", "--execution-mode", "recurrence")).resolve().effective

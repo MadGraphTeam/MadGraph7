@@ -50,7 +50,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         3,
     )
     assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "bool"
-    assert FIELD_REGISTRY["evaluator.jit.compress"].default is True
+    assert FIELD_REGISTRY["evaluator.jit.compress"].default is False
     assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
         EvaluatorExecutionMode.COMPILED,
         EvaluatorExecutionMode.EAGER,
@@ -185,7 +185,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
-    assert config.evaluator.jit.compress is True
+    assert config.evaluator.jit.compress is False
     assert config.evaluator.eager == EagerEvaluatorConfig()
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1

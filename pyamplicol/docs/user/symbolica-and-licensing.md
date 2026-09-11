@@ -206,24 +206,26 @@ license. Release dependency metadata pins the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) source and an
 immutable revision.
 
-SymJIT compression is enabled by default during generation. It factors
-repeated complex instruction sequences into internal applets without changing
-the evaluator ABI or numerical contract:
+SymJIT compression is opt-in. It shares repeated arithmetic sequences to
+reduce generated code size, but the extra calls can increase evaluation time.
+The default prioritizes runtime speed with `compress = false`. To request
+smaller code explicitly:
 
 ```toml
 [evaluator.jit]
 compress = true
 ```
 
-For an intentional diagnostic comparison:
+The equivalent CLI option is:
 
 ```console
-pyamplicol generate --card run.toml --no-jit-compress
+pyamplicol generate --card run.toml --jit-compress
 ```
 
 Prepared model bundles bake their compression/backend choice into the kernel
 pack, so an incompatible request is adjusted to the prepared pack and reported
-in the effective configuration.
+in the effective configuration. To change that choice, regenerate the prepared
+model with `--jit-compress` or `--no-jit-compress`.
 
 ## License and provenance map
 

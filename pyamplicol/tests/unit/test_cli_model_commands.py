@@ -262,6 +262,29 @@ def test_default_model_compile_prepares_one_requested_backend_pack(
     }
 
 
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    (((), False), (("--jit-compress",), True), (("--no-jit-compress",), False)),
+)
+def test_model_compile_jit_compression_selection(
+    tmp_path: Path, flags: tuple[str, ...], expected: bool
+) -> None:
+    config = (
+        parse_cli(
+            (
+                "model",
+                "compile",
+                "built-in-sm",
+                str(tmp_path / "model.pyamplicol-model"),
+                *flags,
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.evaluator.jit.compress is expected
+
+
 def test_model_compile_rejects_evaluator_options_for_ir_output(
     tmp_path: Path,
 ) -> None:

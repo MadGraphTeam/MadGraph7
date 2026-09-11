@@ -36,7 +36,7 @@ cores = 4
 
 [evaluator.jit]
 optimization_level = 2
-compress = true
+compress = false
 
 [evaluation]
 artifact = "artifacts/otf_pp_zjj"

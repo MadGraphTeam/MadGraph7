@@ -168,7 +168,7 @@ Either compile a prepared bundle:
 ```console
 pyamplicol model compile models/json/sm/sm.json \
   models/sm-jit-o2.pyamplicol-model \
-  --backend jit --jit-optimization-level 2 --jit-compress
+  --backend jit --jit-optimization-level 2
 ```
 
 and use it:

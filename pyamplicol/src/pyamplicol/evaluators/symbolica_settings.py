@@ -41,7 +41,7 @@ class SymbolicaEvaluatorSettings:
     direct_translation: bool = True
     jit_direct_translation: bool = False
     jit_optimization_level: int = 2
-    jit_compress: bool = True
+    jit_compress: bool = False
     max_horner_scheme_variables: int = 1000
     max_common_pair_cache_entries: int = 5000000
     max_common_pair_distance: int = 1000

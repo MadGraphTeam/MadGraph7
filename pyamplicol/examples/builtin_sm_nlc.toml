@@ -24,7 +24,7 @@ backend = "jit"
 
 [evaluator.jit]
 optimization_level = 2
-compress = true
+compress = false
 
 [output]
 progress = "log"

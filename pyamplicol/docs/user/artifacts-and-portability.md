@@ -198,7 +198,7 @@ For example:
 ```console
 pyamplicol model compile models/json/sm/sm.json \
   models/ufo-sm-jit-o2.pyamplicol-model \
-  --backend jit --jit-optimization-level 2 --jit-compress
+  --backend jit --jit-optimization-level 2
 
 pyamplicol generate 'd d~ > z g g g' artifacts/ddbar_z3g_eager \
   --model models/ufo-sm-jit-o2.pyamplicol-model \

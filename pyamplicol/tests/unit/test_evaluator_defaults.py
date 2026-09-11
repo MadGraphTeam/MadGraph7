@@ -16,7 +16,7 @@ def test_evaluator_defaults_preserve_production_optimization_policy() -> None:
     assert settings.iterations == 10
     assert settings.cpe_iterations is None
     assert settings.jit_optimization_level == 2
-    assert settings.jit_compress is True
+    assert settings.jit_compress is False
     assert settings.jit_direct_translation is False
     assert settings.max_horner_scheme_variables == 1000
     assert settings.max_common_pair_cache_entries == 5_000_000
@@ -25,7 +25,7 @@ def test_evaluator_defaults_preserve_production_optimization_policy() -> None:
 
 @pytest.mark.parametrize(
     ("compress", "jit_options"),
-    ((True, {"compress": "true"}), (False, {})),
+    ((True, {"compress": "true"}), (False, {"compress": "false"})),
 )
 def test_jit_compression_is_forwarded_to_symbolica(
     compress: bool,

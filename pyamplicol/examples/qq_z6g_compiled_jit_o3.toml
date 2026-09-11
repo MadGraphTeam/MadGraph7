@@ -41,7 +41,7 @@ output_chunk_size = 512
 
 [evaluator.jit]
 optimization_level = 3
-compress = true
+compress = false
 
 [evaluation]
 artifact = "artifacts/qq_z6g_compiled_jit_o3"

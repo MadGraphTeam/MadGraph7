@@ -214,7 +214,7 @@ Create a JIT O2 prepared bundle:
 ```console
 pyamplicol model compile \
   models/json/sm/sm.json models/ufo-sm-jit-o2.pyamplicol-model \
-  --backend jit --jit-optimization-level 2 --jit-compress
+  --backend jit --jit-optimization-level 2
 ```
 
 Use it for eager generation:

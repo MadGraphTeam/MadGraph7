@@ -273,7 +273,7 @@ Prepare a reusable JIT-O2 kernel bundle for eager or recurrence execution:
 ```console
 pyamplicol model compile \
   models/json/sm/sm.json models/ufo-sm-jit-o2.pyamplicol-model \
-  --backend jit --jit-optimization-level 2 --jit-compress
+  --backend jit --jit-optimization-level 2
 ```
 
 Enumerate a broad request without writing a process artifact:

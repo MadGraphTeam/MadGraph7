@@ -53,7 +53,7 @@ collect_factors = "auto"
 
 [evaluator.jit]
 optimization_level = 3
-compress = true
+compress = false
 
 [evaluation]
 artifact = "artifacts/uubar_z6g_generation_specialized_flow_helicity_sum"

@@ -1095,7 +1095,7 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
         result.bundle.kernel_pack.producer["native_build_inputs_sha256"]
         == _NATIVE_BUILD_INPUTS_SHA256
     )
-    assert result.bundle.kernel_pack.optimization_settings["jit_compress"] is True
+    assert result.bundle.kernel_pack.optimization_settings["jit_compress"] is False
     assert result.bundle.kernel_pack.target["portable"] is True
     assert (
         result.bundle.kernel_pack.target["target_triple"]

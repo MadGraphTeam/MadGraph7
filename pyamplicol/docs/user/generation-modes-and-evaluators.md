@@ -211,12 +211,12 @@ for the cache lifecycle and all five API spellings.
 
 ### JIT
 
-The public JIT defaults are optimization level 2 with compression enabled:
+The public JIT defaults are optimization level 2 with compression disabled:
 
 ```toml
 [evaluator.jit]
 optimization_level = 2
-compress = true
+compress = false
 ```
 
 Prepared JIT kernel bundles used by recurrence, eager, and on-the-fly always
@@ -234,12 +234,12 @@ pyamplicol generate --card qq_z6g_compiled_jit_o3.toml
 Those artifacts are target-native. Copying one to another architecture is
 expected to fail compatibility checks rather than silently relower it.
 
-Compression factors repeated complex instruction sequences into internal
-applets without changing the evaluator ABI or numerical contract. Disable it
-only for a deliberate comparison:
+Compression shares repeated arithmetic sequences, reducing code size but
+potentially increasing evaluation time. The default favors runtime speed;
+enable compression explicitly when smaller generated code is preferable:
 
 ```console
-pyamplicol generate ... --no-jit-compress
+pyamplicol generate ... --jit-compress
 ```
 
 ### C++
@@ -284,8 +284,7 @@ Prepare an external JIT-O2 bundle:
 pyamplicol model compile \
   models/json/sm/sm.json models/ufo-sm-jit-o2.pyamplicol-model \
   --backend jit \
-  --jit-optimization-level 2 \
-  --jit-compress
+  --jit-optimization-level 2
 ```
 
 Use it in recurrence or eager generation:
