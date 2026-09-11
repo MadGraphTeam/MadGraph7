@@ -1740,12 +1740,17 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         if self.log:
             logger.info("History written to " + output_file.name)
 
+    def get_nb_core(self):
+        """Number of cores available for parallel tasks: the nb_core option,
+        resolved to the machine's core count when it was left unset."""
+        import multiprocessing
+        if not self.options.get('nb_core') or self.options['nb_core'] == 'None':
+            self.options['nb_core'] = multiprocessing.cpu_count()
+        return int(self.options['nb_core'])
+
     def compile(self, *args, **opts):
         """ """
-        import multiprocessing
-        if not self.options['nb_core'] or self.options['nb_core'] == 'None':
-            self.options['nb_core'] = multiprocessing.cpu_count()
-        return misc.compile(nb_core=self.options['nb_core'], *args, **opts)
+        return misc.compile(nb_core=self.get_nb_core(), *args, **opts)
 
     def avoid_history_duplicate(self, line, no_break=[]):
         """remove all line in history (but the last) starting with line.
