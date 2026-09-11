@@ -16,6 +16,7 @@ PLUGIN_NAME = __name__.rsplit('.',1)[0]
 logger = logging.getLogger('madgraph.%s.model_handling'%PLUGIN_NAME)
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
 
+from madgraph import MadGraph5Error
 from madgraph.iolibs import export_cpp, export_mg7
 from madgraph.iolibs import file_writers as writers
 from madgraph.iolibs import jamp_optimiser
@@ -292,6 +293,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         for type, name in self.declaration.tolist():
             ###print(name) # FOR DEBUGGING
             ###out.write('    %s %s;\n' % ( type, name ) ) # FOR DEBUGGING
+            if type == 'fct':
+                continue # OM an external function name (e.g. 'pow'): nothing to declare in C++
+            if type == 'parameter':
+                out.write(self.get_model_parameter_txt(name)) # OM a model parameter used in the body (custom propagators)
+                continue
             if type.startswith('list'):
                 type = type[5:]
                 if name.startswith('P'):
@@ -333,6 +339,38 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('    %s;\n' % codedict[fullname] ) # AV old behaviour (separate declaration with no initialization)
         ###out.write('    // END DECLARATION\n') # FOR DEBUGGING
         return out.getvalue()
+
+    # OM - the names of the aS-dependent parameters, filled by write_aloha_routines.
+    # They are recomputed event by event from G inside computeDependentCouplings_fromG,
+    # so they have no addressable value a HelAmps routine could read.
+    dependent_params = ()
+
+    # OM - the body of a routine may refer to a model parameter: this happens for
+    # the custom propagators of a UFO model, whose numerator/denominator are
+    # written in terms of model parameters (e.g. the width corrections dWT, dWZ,
+    # dWW and dWH of SMEFTsim). aloha_writers.ALOHAWriterForCPP reads them from
+    # the Parameters singleton; that is host-only code, so on GPUs the value has
+    # to be a compile-time constant, i.e. HRDCOD=1 is required there.
+    def get_model_parameter_txt(self, name):
+        """Define a model parameter which the routine body uses"""
+        # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
+        # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
+        mdlname = '%s%s' % (aloha.aloha_prefix, name)
+        if mdlname in self.dependent_params:
+            raise MadGraph5Error(
+                'The custom propagator used by routine %s needs the model parameter %s, '
+                'which depends on alphaS and is therefore recomputed event by event. '
+                'The C++/CUDA backend can only read alphaS-independent parameters inside '
+                'a HelAmps routine, so this process can only be generated with '
+                '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
+        return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
+                '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
+                '#elif !defined MGONGPUCPP_GPUIMPL\n'
+                '    const auto %(var)s = Parameters::getInstance()->%(mdl)s;\n'
+                '#else\n'
+                '#error Model parameter %(mdl)s is used inside a HelAmps routine '
+                '(custom propagator) and is not available in device code: rebuild with HRDCOD=1\n'
+                '#endif\n') % { 'var': name, 'mdl': mdlname }
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This affects 'V1[0] = ' in HelAmps_sm.cc
@@ -581,6 +619,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );\n' % (name, name))
         return out.getvalue()
 
+    # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
+    # Without this 'pow' falls back to std::pow, which has no overload for the
+    # (possibly SIMD) complex types: cxpow in HelAmps expands the integer power.
+    def get_fct_format(self, fct):
+        """Put the function in the correct format"""
+        if not hasattr(self, 'fct_format'):
+            super().get_fct_format('sqrt') # a known key: builds self.fct_format with no side effect
+            self.fct_format['pow'] = 'cxpow( %s, %s )'
+        return super().get_fct_format(fct)
+
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This is called once per FFV function, i.e. once per WriteALOHA instance?
     # It is called by WriteALOHA.write, after get_header_txt, get_declaration_txt, get_momenta_txt, before get_foot_txt
@@ -605,8 +653,19 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    %s = %s;\n' % (name, self.write_obj(obj))) # AV
                     self.declaration.add(('complex', name))
         for name, (fct, objs) in self.routine.fct.items():
-            format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
-            out.write(format % ','.join([self.write_obj(obj) for obj in objs])) # AV not used in eemumu?
+            # OM the FCTn variable needs to be defined, not only assigned (and
+            # write_combined_parts_cc looks for exactly this 'const <type> FCTn ='
+            # form when it merges the structures of an assembled routine)
+            if self.nodeclare:
+                format = '    const %s %s = %s;\n' % (self.type2def['complex_v'], name, self.get_fct_format(fct))
+            else:
+                format = '    %s = %s;\n' % (name, self.get_fct_format(fct))
+                self.declaration.add(('complex', name))
+            args = [self.write_obj(obj) for obj in objs]
+            try:
+                out.write(format % ','.join(args)) # single-argument formats
+            except TypeError:
+                out.write(format % tuple(args)) # e.g. 'pow', which takes two
         numerator = self.routine.expr
         if self.coup_name:
             # one term of an assembled routine: its own coupling among COUP1, ...
@@ -1547,6 +1606,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Read in the template .h and .cc files, stripped of compiler commands and namespaces
         template_h_files = self.read_aloha_template_files(ext = 'h')
         template_cc_files = self.read_aloha_template_files(ext = 'cc')
+        # OM - the writer needs to know which parameters are alphaS-dependent (they
+        # cannot be read from the Parameters class inside a routine)
+        self.aloha_writer.dependent_params = frozenset(p.name for p in self.params_dep)
         if(fd_gauge):
             aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'), explicit_combine=False)
         else:

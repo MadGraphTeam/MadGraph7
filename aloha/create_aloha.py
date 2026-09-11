@@ -1233,7 +1233,7 @@ class AbstractALOHAModel(dict):
                         self[(lorentzname, outgoing)].add_combine(list_l_name[1:])
                     continue
 
-                builder = CombineRoutineBuilder(l_lorentz)
+                builder = CombineRoutineBuilder(l_lorentz, self.model)
                                
                 for conjg in request[list_l_name[0]]:
                     #ensure that routines are in rising order (for symetries)
