@@ -12674,9 +12674,11 @@ c         segments from -DABS(tiny*Ga) to Ga
                                       write_special=write_special)
 
 # Output formats with a loop backend for a loop-induced ([noborn=]) process
-# coming through the tree-level do_output. Test membership EXACTLY: 'standalone'
-# is a prefix of standalone_cpp / _mg7 / _msP / _msF / _rw, which have none.
-LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone']
+# coming through the tree-level do_output. Test membership EXACTLY: it is the
+# Fortran standalone that has the MadLoop backend, and 'standalone' -- which
+# now names the MadMatrix (C++) output -- is a prefix of it, as it is of
+# standalone_msP / _msF / _rw. None of those has a loop backend.
+LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone_fortran']
 
 def loop_induced_not_supported_msg(format, process=None):
     """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
@@ -12847,8 +12849,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         if format == 'matrix' or format.startswith('standalone'):
             if cmd._curr_amps and isinstance(
                     cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
-                # of the formats sharing this branch only 'standalone' has a
-                # MadLoop backend; ProcessExporterFortranSA has none
+                # of the formats sharing this branch only 'standalone_fortran'
+                # has a MadLoop backend; ProcessExporterFortranSA has none
                 if format not in LOOP_INDUCED_FORMATS:
                     raise InvalidCmd(
                         loop_induced_not_supported_msg(format, curr_proc))
