@@ -444,6 +444,10 @@ class _FrameStub(object):
         self.options['keep_weight_for_polarization_fermion'] = list(fermion)
         self.options['pure_interference'] = pure_interference
         self.model = _PIModelStub()
+        # MadSpinInterface carries this as a class attribute (it is {} unless
+        # flavour grouping is on); _frame_boost passes it to get_momenta as
+        # merged_map, so the stub has to have it too.
+        self._revert_merged = {}
         # what _production_polarization would have parsed out of the banner's
         # proc_card: {} for a brace-free production process
         self._production_polarization_cache = prodpol if prodpol else {}
@@ -473,7 +477,9 @@ class _MomentaEvent(object):
     def __init__(self, momenta):
         self.momenta = momenta
 
-    def get_momenta(self, orig_order):
+    def get_momenta(self, orig_order, merged_map=None):
+        # merged_map mirrors lhe_parser.Event.get_momenta: _frame_boost has
+        # to pass it so the ME ordering resolves under flavour grouping.
         return self.momenta
 
 
@@ -7070,6 +7076,12 @@ class TestPAUpFrontMass(unittest.TestCase):
         stub._slot_of = {index: slot for slot, index in enumerate(slots)}
         # |M_prod|^2 on shell, the denominator of the offshell mass-set weight
         stub.calculate_matrix_element = lambda *args, **opts: 1.0
+        # The mass stage takes that denominator through
+        # _onshell_production_norm, which returns calculate_matrix_element
+        # unchanged when there is no frame boost -- which is this stub's
+        # case, and the only one it can represent.
+        stub._onshell_production_norm = \
+            lambda production, prod_static: stub.calculate_matrix_element(production)
 
         def _no_pool(*args, **opts):
             raise TestPAUpFrontMass._NoDecayPool()
