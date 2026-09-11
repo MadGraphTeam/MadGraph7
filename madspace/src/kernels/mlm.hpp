@@ -605,6 +605,16 @@ KERNELSPEC void mlm_clustering(
     // Which outgoing legs the merging cut applies to. Filled by madevent's
     // iqjets walk below where that scale scheme is in use; without it the only
     // thing available is the leg's own flavour and the vertex's.
+    // The scale each clustering is reweighted at. rewgt reads pt2ijcl *after*
+    // setclscales has overwritten it - at the central vertex with the emitted
+    // object's transverse mass, and at the last one to keep it above the first
+    // - so the coupling does not see the raw clustering measure. Defaults to
+    // that measure for the scheme that has no such table.
+    FVal<T> alphas_step[N_EXT_MAX - 3];
+    for (int i = 0; i < cluster_max; ++i) {
+        alphas_step[i] = cluster_scales[i];
+    }
+
     bool merging_jet[N_EXT_MAX];
     bool have_merging_jets = false;
     for (int i = 0; i < n_part; ++i) {
@@ -927,6 +937,10 @@ KERNELSPEC void mlm_clustering(
                 pt_step[jlast[j]] = pt_step[jfirst[j]];
             }
         }
+        for (int i = 0; i < cluster_max; ++i) {
+            alphas_step[i] = pt_step[i];
+        }
+
         FVal<T> s_last[2], s_central[2];
         for (int j = 0; j < 2; ++j) {
             s_last[j] = jlast[j] < 0 ? 0.0 : pt_step[jlast[j]];
@@ -1161,7 +1175,7 @@ KERNELSPEC void mlm_clustering(
     int reweighted = 0;
     for (int i = 0; i < cluster_max; ++i) {
         if ((cluster_history[i] >> 27) & 1) {
-            FVal<T> scale = cluster_scales[i];
+            FVal<T> scale = alphas_step[i];
             if (!(scale * scale > 4.0)) {
                 alphas_ok = false;
             } else {
@@ -1179,7 +1193,7 @@ KERNELSPEC void mlm_clustering(
         } else if (alphas_scheme == ALPHAS_GEOMETRIC) {
             alphas_scales[i] = mean_scale;
         } else {
-            alphas_scales[i] = cluster_scales[i];
+            alphas_scales[i] = alphas_step[i];
         }
     }
 
