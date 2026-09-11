@@ -54,8 +54,8 @@ def _as_dirac_current(
 class BuiltinSMLoweringMixin:
     def build_tensor_library(self) -> Any:
         from symbolica.community.spenso import (
-            LibraryTensor,
             Representation,
+            Tensor,
             TensorLibrary,
             TensorName,
         )
@@ -79,31 +79,31 @@ class BuiltinSMLoweringMixin:
         )
 
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 two_gluon_to_tensor(mink, mink, antisym),
                 _two_gluon_to_tensor_data(),
             )
         )
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 tensor_gluon_to_gluon(antisym, mink, mink),
                 _tensor_gluon_to_gluon_data(),
             )
         )
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 gluon_tensor_to_gluon(mink, antisym, mink),
                 _gluon_tensor_to_gluon_data(),
             )
         )
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 quark_vector_weyl_plus(weyl, mink, weyl),
                 _quark_vector_weyl_data(chirality=1),
             )
         )
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 quark_vector_weyl_minus(weyl, mink, weyl),
                 _quark_vector_weyl_data(chirality=-1),
             )

@@ -6,10 +6,14 @@ members = [
   "rust/crates/rusticol-python",
   "rust/crates/rusticol-capi",
 ]
+exclude = [
+  "TMP_FIXED_SYMJIT",
+  "TMP_FIXED_SPENSO",
+]
 resolver = "2"
 
 [workspace.package]
-version = "0.4.1"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.89.0"
 license = "0BSD"
@@ -35,10 +39,22 @@ serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
 symbolica = { version = "=2.2.0", default-features = true, features = ["bincode"] }
 thiserror = "2.0"
-wide = "1.3"
+wide = "1.7"
 
 [patch.crates-io]
-symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "f1c193d301897149de6609f706297b0c97a4f018" }
+symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
+numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
+graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
+symjit = { path = "./TMP_FIXED_SYMJIT" }
+spenso = { path = "./TMP_FIXED_SPENSO/crates/spenso" }
+spenso-hep-lib = { path = "./TMP_FIXED_SPENSO/crates/spenso-hep-lib" }
+spenso-macros = { path = "./TMP_FIXED_SPENSO/crates/spenso-macros" }
+spynso3 = { path = "./TMP_FIXED_SPENSO/crates/spynso3" }
+idenso = { path = "./TMP_FIXED_SPENSO/crates/idenso" }
+linnet = { path = "./TMP_FIXED_SPENSO/crates/linnet" }
+symbolica-utils = { path = "./TMP_FIXED_SPENSO/crates/symbolica-utils" }
+vakint = { path = "./TMP_FIXED_SPENSO/crates/vakint" }
+symbolica-integrate = { path = "./TMP_FIXED_SPENSO/symbolica-integrate" }
 
 [profile.release]
 codegen-units = 1

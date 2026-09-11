@@ -347,6 +347,30 @@ def test_partitioned_high_precision_replay_preserves_order_and_width() -> None:
         evaluator.evaluate_complex_with_prec(values, 112)
 
 
+def test_interpreted_stage_converts_complex_float_without_decimal_rounding() -> None:
+    from types import SimpleNamespace
+
+    expected = (
+        Decimal("1.234567890123456789012345678901234567890123456789"),
+        Decimal("-0"),
+    )
+    evaluator = SimpleNamespace(
+        evaluate_complex_with_prec=lambda _values, _precision: [
+            SimpleNamespace(to_decimal_tuple=lambda: expected)
+        ]
+    )
+
+    with localcontext() as context:
+        context.prec = 6
+        result = numerical_current_warmup._evaluate_interpreted_stage(
+            evaluator, (), precision=80
+        )[0]
+
+    assert result[0] is expected[0]
+    assert result[1] is expected[1]
+    assert result[1].is_signed()
+
+
 @pytest.mark.parametrize("ambient_precision", (28, 50, 96))
 @pytest.mark.parametrize(
     ("optimized", "accepted"),

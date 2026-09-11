@@ -10,15 +10,20 @@ symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
 candidate_version = "2.2.0"
-candidate_revision = "77c137481904b8a5531ede86e3ef36b82beed7fd"
+candidate_revision = "0084bc7c1418940fdec652059cd704e00d07e9d1"
 community_url = "https://github.com/symbolica-dev/symbolica-community.git"
 community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
 release_status = "merged-main-candidate"
 
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"
-revision = "fff1d66ee7ca039b9e165fe8d29da91f4c27113c"
+branch = "simplify-spenso-api"
+revision = "5aadd389efabb7b039af74edad02a90d486a1c07"
 release_status = "developer-build-input-only"
+
+[symbolica_integrate]
+source_url = "https://github.com/symbolica-dev/symbolica-integrate.git"
+revision = "92de256f9dcf3bef4bf5d80120c2341de1e0e17b"
 
 [ratatui]
 distribution = "ratatui"

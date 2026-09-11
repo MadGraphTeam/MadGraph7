@@ -18,6 +18,7 @@ from pyamplicol.runtime.symbolica_exact import (
     _diagnostic_schema_mass_bindings,
     _exact_helicity_plan,
     _ExactEvaluator,
+    _ExactExpressionEvaluator,
     _ExactRuntimeSourceState,
     _fill_sources_with_states,
     _lc_replay_plan,
@@ -140,13 +141,14 @@ class _RecordingEvaluator:
     def __init__(self) -> None:
         self.values: object = None
         self.precision: int | None = None
+        self.result = (Decimal("1.25"), Decimal("-0.5"))
 
     def evaluate_complex_with_prec(
         self, values: object, precision: int
-    ) -> list[tuple[Decimal, Decimal]]:
+    ) -> list[SimpleNamespace]:
         self.values = values
         self.precision = precision
-        return [(Decimal("1.25"), Decimal("-0.5"))]
+        return [SimpleNamespace(to_decimal_tuple=lambda: self.result)]
 
 
 def test_upcast_decimal_preserves_value_and_carries_requested_precision() -> None:
@@ -216,6 +218,57 @@ def test_exact_chunked_evaluator_selects_parent_inputs() -> None:
     assert second.values is not None
     assert tuple(value[0] for value in first.values) == (Decimal("1"), Decimal("3"))
     assert tuple(value[0] for value in second.values) == (Decimal("10"),)
+
+
+@pytest.mark.parametrize("precision", (32, 80))
+def test_exact_evaluator_converts_complex_float_without_decimal_rounding(
+    precision: int,
+) -> None:
+    recording = _RecordingEvaluator()
+    recording.result = (
+        Decimal("1.234567890123456789012345678901234567890123456789"),
+        Decimal("-0"),
+    )
+    evaluator = _ExactEvaluator(input_len=0, evaluator=recording)
+
+    with localcontext() as context:
+        context.prec = 6
+        result = evaluator.evaluate((), precision)[0]
+
+    assert result[0] is recording.result[0]
+    assert result[1] is recording.result[1]
+    assert result[1].is_signed()
+
+
+def test_exact_parameter_derivation_converts_complex_float_for_both_arithmetics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import symbolica
+
+    recording = _RecordingEvaluator()
+    recording.result = (
+        Decimal("1.234567890123456789012345678901234567890123456789"),
+        Decimal("-0"),
+    )
+    expression = SimpleNamespace(
+        evaluate=lambda *_args, **_kwargs: SimpleNamespace(
+            to_decimal_tuple=lambda: recording.result
+        ),
+        evaluator=lambda *_args, **_kwargs: recording,
+    )
+    monkeypatch.setattr(symbolica, "E", lambda _text: expression)
+    evaluator = _ExactExpressionEvaluator(("constant",), ())
+
+    with localcontext() as context:
+        context.prec = 6
+        arbitrary = evaluator.evaluate((), 80)[0]
+        double_double = evaluator.evaluate_double_double(())[0]
+
+    for result in (arbitrary, double_double):
+        assert result[0] is recording.result[0]
+        assert result[1] is recording.result[1]
+        assert result[1].is_signed()
+    assert recording.precision == 32
 
 
 def test_exact_amplitude_outputs_follow_plane_arena_bindings() -> None:

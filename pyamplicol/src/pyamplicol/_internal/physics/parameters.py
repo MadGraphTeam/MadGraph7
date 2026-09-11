@@ -105,7 +105,7 @@ class ParamBuilder:
         role: str,
         real_valued: bool = False,
     ) -> tuple[Any, ...]:
-        from symbolica.community.spenso import LibraryTensor, TensorName
+        from symbolica.community.spenso import Tensor, TensorName
 
         parameter_symbols = self.add_parameter_list(
             head,
@@ -115,7 +115,7 @@ class ParamBuilder:
             real_valued=real_valued,
         )
         library.register(
-            LibraryTensor.dense(
+            Tensor.dense(
                 TensorName(tensor_name)(representation),
                 parameter_symbols,
             )

@@ -22,6 +22,10 @@ src/pyamplicol/_rusticol*.so
 src/pyamplicol/_rusticol*.dylib
 src/pyamplicol/_rusticol*.pyd
 .artifacts/
+# Temporary upstream dependency fixes stay local to this development branch.
+/TMP_FIXED_SYMJIT/
+/TMP_FIXED_SPENSO/
+/SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES/
 /IMPLEMENTATION_DOCS/RESULTS/fft-scaling-study/raw/
 /IMPLEMENTATION_DOCS/RESULTS/fft-profiling/runs/
 /IMPLEMENTATION_DOCS/RESULTS/summary_plots_final.pdf

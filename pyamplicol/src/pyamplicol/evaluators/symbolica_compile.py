@@ -149,7 +149,16 @@ def _compile_symbolica_outputs(
         jit_compile=jit_compile,
     )
     alias_kwargs = {"aliases": list(aliases)} if aliases else {}
-    function_kwargs = {"functions": dict(functions)} if functions else {}
+    function_kwargs: dict[str, Any] = {}
+    if functions:
+        from symbolica import FunctionDefinition
+
+        # Process kernels retain one flat instruction program, including bodies
+        # of tagged functions and functions that close over model parameters.
+        function_kwargs["functions"] = [
+            FunctionDefinition(function, arguments, body, inlining="always")
+            for (function, arguments), body in functions.items()
+        ]
     if merge_evaluators_strategy:
         _report_progress(
             progress_callback,

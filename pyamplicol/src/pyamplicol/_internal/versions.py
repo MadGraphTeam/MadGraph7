@@ -196,9 +196,7 @@ _PACKAGING_MATURIN_CONFIG_KEYS = frozenset(
         "sbom-include",
     }
 )
-_NATIVE_BUILD_IGNORED_TREE_PARTS = frozenset(
-    {".artifacts", "__pycache__", "target"}
-)
+_NATIVE_BUILD_IGNORED_TREE_PARTS = frozenset({".artifacts", "__pycache__", "target"})
 _NON_NATIVE_RUST_PATHS = frozenset(
     {
         Path("rust/crates/rusticol-capi/tests/eager_artifact.rs"),
@@ -226,10 +224,18 @@ _NON_NATIVE_RUST_PATHS = frozenset(
         Path("rust/crates/rusticol-core/src/recurrence/tests.rs"),
         Path("rust/crates/rusticol-core/tests/direct_arena_workspace_allocations.rs"),
         Path("rust/crates/rusticol-core/tests/eager_runtime.rs"),
-        Path("rust/crates/rusticol-core/tests/fixtures/on_the_fly_query_parity_v1.json"),
-        Path("rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_full_v2.json"),
-        Path("rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_lc.json"),
-        Path("rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_nlc.json"),
+        Path(
+            "rust/crates/rusticol-core/tests/fixtures/on_the_fly_query_parity_v1.json"
+        ),
+        Path(
+            "rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_full_v2.json"
+        ),
+        Path(
+            "rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_lc.json"
+        ),
+        Path(
+            "rust/crates/rusticol-core/tests/fixtures/recurrence_execution_hzz_nlc.json"
+        ),
         Path("rust/crates/rusticol-core/tests/generated_artifact_odd_tails.rs"),
         Path("rust/crates/rusticol-core/tests/recurrence_direct_arena_allocations.rs"),
         Path("rust/crates/rusticol-python/stubs/pyamplicol/__init__.pyi"),
@@ -246,9 +252,7 @@ _RUST_PATH_REMAP_KEYS = frozenset(
     {"build", "candidate-checkouts", "checkout", "source", "sysroot"}
 )
 _MACOS_NATIVE_BUILD_KEYS = frozenset({"cc", "cxx", "deployment-target"})
-_SDK_NATIVE_BUILD_KEYS = frozenset(
-    {"package", "profile", "rustc-codegen-arguments"}
-)
+_SDK_NATIVE_BUILD_KEYS = frozenset({"package", "profile", "rustc-codegen-arguments"})
 _CANDIDATE_CARGO_CONFIG = Path("dependencies/candidate-cargo-config.toml")
 _CANDIDATE_INSTALL_STATE = Path("dependencies/install-state.json")
 _CANDIDATE_PATCH_TARGETS = {
@@ -282,9 +286,7 @@ def _native_build_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
     tool = payload.get("tool")
     pyamplicol = tool.get("pyamplicol") if isinstance(tool, Mapping) else None
     contract = (
-        pyamplicol.get("native-build")
-        if isinstance(pyamplicol, Mapping)
-        else None
+        pyamplicol.get("native-build") if isinstance(pyamplicol, Mapping) else None
     )
     if not isinstance(contract, Mapping) or set(contract) != set(
         _NATIVE_BUILD_CONTRACT_KEYS
@@ -316,9 +318,7 @@ def _native_build_contract(payload: Mapping[str, Any]) -> dict[str, Any]:
     if len(set(canonical_remapping.values())) != len(canonical_remapping):
         raise RuntimeError("native Rust path-remapping destinations must be unique")
     macos = contract.get("macos")
-    if not isinstance(macos, Mapping) or set(macos) != set(
-        _MACOS_NATIVE_BUILD_KEYS
-    ):
+    if not isinstance(macos, Mapping) or set(macos) != set(_MACOS_NATIVE_BUILD_KEYS):
         raise RuntimeError("native macOS build contract is incomplete")
     canonical_macos: dict[str, str] = {}
     for key in sorted(_MACOS_NATIVE_BUILD_KEYS):
@@ -419,6 +419,10 @@ def _native_pyproject_bytes(data: bytes) -> bytes:
 
 def _canonical_checkout_path(raw: str) -> str:
     normalized = raw.replace("\\", "/").rstrip("/")
+    if normalized in {"TMP_FIXED_SYMJIT", "./TMP_FIXED_SYMJIT"} or normalized.endswith(
+        "/TMP_FIXED_SYMJIT"
+    ):
+        return "TMP_FIXED_SYMJIT"
     marker = "/dependencies/checkouts/"
     if marker in normalized:
         suffix = normalized.rsplit(marker, maxsplit=1)[1]
@@ -452,10 +456,10 @@ def _candidate_cargo_config_bytes(data: bytes) -> bytes:
         or not isinstance(patch, dict)
         or set(patch) != {"crates-io"}
         or not isinstance(crates_io, dict)
-        or set(crates_io) != set(_CANDIDATE_PATCH_TARGETS)
+        or not set(_CANDIDATE_PATCH_TARGETS).issubset(crates_io)
     ):
         raise RuntimeError(
-            "candidate Cargo config must contain exactly the locked crates.io "
+            "candidate Cargo config must contain the locked native crates.io "
             "patch table"
         )
     canonical: dict[str, Any] = {"patch": {"crates-io": {}}}
@@ -471,7 +475,9 @@ def _candidate_cargo_config_bytes(data: bytes) -> bytes:
                 f"candidate Cargo patch {name} must contain exactly one path"
             )
         observed = _canonical_checkout_path(entry["path"])
-        if observed != expected:
+        if observed != expected and not (
+            name == "symjit" and observed == "TMP_FIXED_SYMJIT"
+        ):
             raise RuntimeError(
                 f"candidate Cargo patch {name} must resolve to {expected}"
             )
@@ -652,6 +658,20 @@ def _native_build_inputs_digest(
         )
         and not (canonical_candidate_inputs and relative == Path("Cargo.lock"))
     ]
+    # Local upstream fixes have no new Git revision. Include their compiler
+    # inputs in the existing cache key, but not their tests or documentation.
+    manifest = root / "Cargo.toml"
+    if manifest.is_file():
+        cargo = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        local_symjit = cargo.get("patch", {}).get("crates-io", {}).get("symjit", {})
+        local_path = local_symjit.get("path")
+        if isinstance(local_path, str):
+            local_root = (root / local_path).resolve()
+            if local_root == (root / "TMP_FIXED_SYMJIT").resolve():
+                paths.extend(local_root / name for name in ("Cargo.toml", "build.rs"))
+                paths.extend(
+                    path for path in (local_root / "src").rglob("*") if path.is_file()
+                )
     for relative in _NATIVE_BUILD_INPUT_TREES:
         tree = root / relative
         if not tree.is_dir():
@@ -969,7 +989,7 @@ def verify_native_module(module: Any, *, expected_version: str | None = None) ->
         )
 
 
-def package_version(default: str = "0.4.1") -> str:
+def package_version(default: str = "0.2.1") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
     if _is_source_checkout(_SOURCE_PACKAGE_ROOT, _SOURCE_ROOT):

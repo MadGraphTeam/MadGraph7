@@ -153,12 +153,9 @@ def _sources(
     symbolica = payload["symbolica"]
     symjit = payload["symjit"]
     gammaloop = payload["gammaloop_candidate"]
+    integrate = payload["symbolica_integrate"]
+    overrides = _root_path_patches()
     sources = [
-        Source(
-            "symjit",
-            str(symjit["repository"]),
-            str(symjit["revision"]),
-        ),
         Source(
             "symbolica",
             str(symbolica["source_url"]),
@@ -170,16 +167,32 @@ def _sources(
             str(symbolica["community_revision"]),
         ),
         Source(
-            "gammaloop",
-            str(gammaloop["source_url"]),
-            str(gammaloop["revision"]),
-        ),
-        Source(
             "ratatui-ffi",
             str(payload["ratatui"]["ffi_repository"]),
             str(payload["ratatui"]["ffi_revision"]),
         ),
     ]
+    if "symjit" not in overrides:
+        sources.insert(
+            0, Source("symjit", str(symjit["repository"]), str(symjit["revision"]))
+        )
+    if "spenso" not in overrides:
+        sources.append(
+            Source(
+                "gammaloop",
+                str(gammaloop["source_url"]),
+                str(gammaloop["revision"]),
+                str(gammaloop["branch"]),
+            )
+        )
+    if "symbolica-integrate" not in overrides:
+        sources.append(
+            Source(
+                "symbolica-integrate",
+                str(integrate["source_url"]),
+                str(integrate["revision"]),
+            )
+        )
     if with_legacy:
         legacy = payload["legacy_amplicol"]
         sources.append(
@@ -344,10 +357,32 @@ def _managed_checkout(name: str) -> Path:
     return destination
 
 
-def _managed_symjit_checkout() -> Path:
-    """Return the validated managed SymJIT checkout."""
+def _root_path_patches() -> dict[str, Path]:
+    """Read explicit contributor overrides from the ordinary Cargo manifest."""
 
-    return _managed_checkout("symjit")
+    with (ROOT / "Cargo.toml").open("rb") as stream:
+        patches = tomllib.load(stream).get("patch", {}).get("crates-io", {})
+    return {
+        name: (ROOT / specification["path"]).resolve()
+        for name, specification in patches.items()
+        if isinstance(specification, dict) and "path" in specification
+    }
+
+
+def _managed_symjit_checkout() -> Path:
+    """Use the explicit local SymJIT override, or the pinned managed checkout."""
+
+    return _root_path_patches().get("symjit") or _managed_checkout("symjit")
+
+
+def _local_ufo_loader() -> Path | None:
+    """Use the explicitly supplied extension stack's Python loader, if present."""
+
+    spenso = _root_path_patches().get("spenso")
+    if spenso is None:
+        return None
+    source = spenso.parent.parent / "ufo_model_loader"
+    return source if (source / "pyproject.toml").is_file() else None
 
 
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
@@ -358,10 +393,7 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
             f"superseded-{source.key}-{stamp}",
             workspace_root=ROOT,
         )
-        print(
-            f"$ mv {shlex.quote(str(destination))} "
-            f"{shlex.quote(str(archived))}"
-        )
+        print(f"$ mv {shlex.quote(str(destination))} {shlex.quote(str(archived))}")
         if not runner.dry_run:
             archived.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(destination), str(archived))
@@ -432,10 +464,7 @@ def _require_symjit_rlib_manifest(
     package = manifest.get("package")
     if not isinstance(package, dict) or package.get("name") != "symjit":
         raise SetupError("managed SymJIT source has the wrong package identity")
-    if (
-        expected_version is not None
-        and str(package.get("version")) != expected_version
-    ):
+    if expected_version is not None and str(package.get("version")) != expected_version:
         raise SetupError(
             "managed SymJIT source has the wrong package version: "
             f"expected {expected_version}, got {package.get('version')!r}"
@@ -450,58 +479,62 @@ def _configure_source_manifests(runner: Runner) -> None:
     symbolica = _managed_checkout("symbolica")
     community = _managed_checkout("symbolica-community")
     gammaloop = _managed_checkout("gammaloop")
+    overrides = _root_path_patches()
+    integrate = overrides.get("symbolica-integrate") or _managed_checkout(
+        "symbolica-integrate"
+    )
     if runner.dry_run:
-        print(
-            "# configure candidate Cargo manifests to pinned local paths"
-        )
+        print("# configure community Cargo paths; leave dependency sources unchanged")
         return
     _require_symjit_rlib_manifest(
         symjit / "Cargo.toml",
         expected_version=str(_release_lock()["symjit"]["version"]),
     )
 
-    symbolica_cargo = symbolica / "Cargo.toml"
-    text = symbolica_cargo.read_text(encoding="utf-8")
-    text, count = re.subn(
-        r"(?m)^symjit\s*=.*$",
-        'symjit = { path = "../symjit" }',
-        text,
-        count=1,
+    paths = {
+        "graphica": symbolica / "lib" / "graphica",
+        "numerica": symbolica / "lib" / "numerica",
+        "symbolica": symbolica,
+        "symjit": symjit,
+        "symbolica-integrate": integrate,
+    }
+    paths.update(
+        (name, gammaloop / "crates" / name)
+        for name in (
+            "idenso",
+            "linnet",
+            "spenso",
+            "spenso-hep-lib",
+            "spenso-macros",
+            "spynso3",
+            "symbolica-utils",
+            "vakint",
+        )
     )
-    if count != 1:
-        raise SetupError("could not point Symbolica at managed SymJIT")
-    symbolica_cargo.write_text(text, encoding="utf-8")
-
+    paths.update(overrides)
+    quoted = {name: json.dumps(str(path.resolve())) for name, path in paths.items()}
     dependencies = (
-        """
-example_extension = { path = "example_extension" }
-idenso = { path = "../gammaloop/crates/idenso", features = ["bincode", "python"] }
-spynso3 = { path = "../gammaloop/crates/spynso3" }
-symbolica = { path = "../symbolica", features = ["python_export"] }
-symbolica-integrate = { version = "1.0", features = ["steps"] }
-pyo3 = { version = "0.28", features = ["abi3"] }
+        f"""
+example_extension = {{ path = "example_extension" }}
+idenso = {{ path = {quoted["idenso"]}, features = ["bincode", "python"] }}
+spynso3 = {{ path = {quoted["spynso3"]} }}
+symbolica = {{ path = {quoted["symbolica"]}, features = ["python_export"] }}
+symbolica-integrate = {{ path = {quoted["symbolica-integrate"]}, features = ["steps"] }}
+pyo3 = {{ version = "0.28", features = ["abi3"] }}
+wide = "1.7"
 """
         'pyo3-stub-gen = { version = "0.17", optional = true, '
         'default-features = false, features = ["numpy"] }\n'
-        """
-mimalloc = { version = "0.1", features = ["local_dynamic_tls"] }
-vakint = { path = "../gammaloop/crates/vakint", features = [
+        f"""
+mimalloc = {{ version = "0.1", features = ["local_dynamic_tls"] }}
+vakint = {{ path = {quoted["vakint"]}, features = [
     "symbolica_community_module",
-] }
+] }}
 """
     )
-    patches = """
-graphica = { path = "../symbolica/lib/graphica" }
-idenso = { path = "../gammaloop/crates/idenso" }
-linnet = { path = "../gammaloop/crates/linnet" }
-numerica = { path = "../symbolica/lib/numerica" }
-spenso = { path = "../gammaloop/crates/spenso" }
-spenso-hep-lib = { path = "../gammaloop/crates/spenso-hep-lib" }
-spenso-macros = { path = "../gammaloop/crates/spenso-macros" }
-spynso3 = { path = "../gammaloop/crates/spynso3" }
-symbolica = { path = "../symbolica" }
-symjit = { path = "../symjit" }
-"""
+    patches = "\n".join(
+        f"{name} = {{ path = {path} }}" for name, path in quoted.items()
+    )
     community_cargo = community / "Cargo.toml"
     text = community_cargo.read_text(encoding="utf-8")
     if not re.search(r"(?m)^\[workspace\]\s*$", text):
@@ -511,11 +544,20 @@ symjit = { path = "../symjit" }
         text = "[workspace]\n\n" + text
     text = _replace_section(text, "dependencies", dependencies)
     text = _replace_section(text, "patch.crates-io", patches)
-    text = re.sub(
-        r"(?m)^numerica\s*=\s*\{[^\n]*\}\s*$",
-        'numerica = { path = "../symbolica/lib/numerica" }',
+    text = _replace_section(
         text,
-        count=1,
+        'patch."https://github.com/symbolica-dev/symbolica"',
+        "\n".join(
+            f"{name} = {{ path = {quoted[name]} }}"
+            for name in ("symbolica", "numerica", "graphica")
+        ),
+    )
+    text = _replace_section(
+        text,
+        "build-dependencies",
+        'pyo3-build-config = "*"\n'
+        f"numerica = {{ path = {quoted['numerica']}, default-features = false, "
+        'features = ["integer-gmp", "float-mpfr"] }',
     )
     community_cargo.write_text(text.rstrip() + "\n", encoding="utf-8")
 
@@ -523,58 +565,11 @@ symjit = { path = "../symjit" }
     text = example.read_text(encoding="utf-8")
     text = re.sub(
         r"(?m)^symbolica\s*=\s*\{[^\n]*\}\s*$",
-        'symbolica = { path = "../../symbolica", features = ["python_export"] }',
+        f'symbolica = {{ path = {quoted["symbolica"]}, features = ["python_export"] }}',
         text,
         count=1,
     )
     example.write_text(text.rstrip() + "\n", encoding="utf-8")
-
-    gammaloop_cargo = gammaloop / "Cargo.toml"
-    text = gammaloop_cargo.read_text(encoding="utf-8")
-    text = re.sub(
-        r"(?m)^symbolica\s*=\s*\{[^\n]*\}\s*$",
-        (
-            'symbolica = { path = "../symbolica", '
-            'default-features = false, features = ["gmp"] }'
-        ),
-        text,
-        count=1,
-    )
-    text = _replace_section(
-        text,
-        "patch.crates-io",
-        """
-graphica = { path = "../symbolica/lib/graphica" }
-numerica = { path = "../symbolica/lib/numerica" }
-symbolica = { path = "../symbolica" }
-""",
-    )
-    gammaloop_cargo.write_text(text.rstrip() + "\n", encoding="utf-8")
-
-    workspace_hack = gammaloop / "crates" / "gammaloop-workspace-hack" / "Cargo.toml"
-    text = workspace_hack.read_text(encoding="utf-8")
-    text, symbolica_count = re.subn(
-        r'(?m)^symbolica\s*=\s*\{\s*git\s*=\s*"[^"]+",\s*branch\s*=\s*"main",',
-        'symbolica = { path = "../../../symbolica",',
-        text,
-    )
-    text, numerica_count = re.subn(
-        r'(?m)^numerica\s*=\s*\{\s*git\s*=\s*"[^"]+",\s*branch\s*=\s*"main",',
-        'numerica = { path = "../../../symbolica/lib/numerica",',
-        text,
-    )
-    localized_symbolica = text.count('symbolica = { path = "../../../symbolica",')
-    localized_numerica = text.count(
-        'numerica = { path = "../../../symbolica/lib/numerica",'
-    )
-    if (
-        symbolica_count not in {0, 2}
-        or numerica_count not in {0, 2}
-        or localized_symbolica != 2
-        or localized_numerica != 2
-    ):
-        raise SetupError("could not localize GammaLoop workspace-hack Symbolica inputs")
-    workspace_hack.write_text(text, encoding="utf-8")
 
 
 def _configure_sources(runner: Runner) -> None:
@@ -589,9 +584,8 @@ def _configure_sources(runner: Runner) -> None:
             capture=True,
         ).stdout
         (community / "Cargo.lock").write_text(upstream_lock, encoding="utf-8")
-    # Resolve only the Git-to-path source substitutions from the exact upstream
-    # lock.  This preserves every unrelated version chosen by the release that
-    # the contributor build is intended to simulate.
+    # Resolve source substitutions and the wide >= 1.7 constraint needed by
+    # current Numerica, retaining other compatible upstream lock entries.
     runner.run(
         ["cargo", "metadata", "--format-version", "1"],
         cwd=community,
@@ -613,6 +607,7 @@ def _write_cargo_config(runner: Runner) -> None:
         "symbolica": symbolica,
         "symjit": symjit,
     }
+    entries.update(_root_path_patches())
     text = ["# Generated by dependencies/install_dependencies.py", "[patch.crates-io]"]
     text.extend(
         f"{name} = {{ path = {json.dumps(str(path.resolve()))} }}"
@@ -715,17 +710,15 @@ def _write_candidate_lock(runner: Runner) -> None:
         return
     release_lock = ROOT / "Cargo.lock"
     release_lock_bytes = release_lock.read_bytes()
-    _validate_release_cargo_lock(release_lock)
+    # An explicit local override is a contributor input, not a release claim.
+    # Release validation remains strict for publication builds.
+    if not _root_path_patches():
+        _validate_release_cargo_lock(release_lock)
     with tempfile.TemporaryDirectory(prefix="pyamplicol-candidate-lock-") as raw:
         temporary = Path(raw)
         shutil.copy2(ROOT / "Cargo.toml", temporary / "Cargo.toml")
         shutil.copy2(release_lock, temporary / "Cargo.lock")
         shutil.copytree(ROOT / "rust", temporary / "rust")
-        runner.run(
-            ["cargo", "metadata", "--locked", "--format-version", "1"],
-            cwd=temporary,
-            capture=True,
-        )
         _rewrite_candidate_requirements(temporary)
         config = temporary / ".cargo" / "config.toml"
         config.parent.mkdir(parents=True)
@@ -778,6 +771,8 @@ def _rewrite_candidate_requirements(root: Path) -> None:
 def _runtime_requirements_text() -> str:
     runtime_lock = load_python_runtime_lock(PYTHON_LOCK)
     excluded = {"symbolica"}
+    if _local_ufo_loader() is not None:
+        excluded.add("ufo-model-loader")
     lines: list[str] = []
     for package in runtime_lock.packages:
         if package.name in excluded:
@@ -1148,6 +1143,19 @@ def _build_candidate_dependency_wheels(
             ],
             env=environment,
         )
+        if (loader := _local_ufo_loader()) is not None:
+            runner.run(
+                [
+                    python,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--force-reinstall",
+                    "--no-deps",
+                    loader,
+                ],
+                env=environment,
+            )
         _verify_candidate_python_dependencies(runner, payload)
     _build_ratatui_wheel(runner, payload)
 
@@ -1206,14 +1214,42 @@ def _write_state(
     runner: Runner,
     sources: tuple[Source, ...],
 ) -> None:
-    source_checkouts = {
-        source.key: _managed_checkout(source.key) for source in sources
-    }
+    source_checkouts = {source.key: _managed_checkout(source.key) for source in sources}
     if runner.dry_run:
         print(f"# write {STATE}")
         return
+    selected_sources = list(sources)
+    overrides = _root_path_patches()
+    lock = _lock()
+    local_sources = (
+        (
+            "symjit",
+            "symjit",
+            str(lock["symjit"]["repository"]),
+            str(lock["symjit"]["revision"]),
+            None,
+        ),
+        (
+            "spenso",
+            "gammaloop",
+            str(lock["gammaloop_candidate"]["source_url"]),
+            str(lock["gammaloop_candidate"]["revision"]),
+            str(lock["gammaloop_candidate"]["branch"]),
+        ),
+        (
+            "symbolica-integrate",
+            "symbolica-integrate",
+            str(lock["symbolica_integrate"]["source_url"]),
+            str(lock["symbolica_integrate"]["revision"]),
+            None,
+        ),
+    )
+    for crate, key, url, revision, branch in local_sources:
+        if crate in overrides:
+            selected_sources.append(Source(key, url, revision, branch))
+            source_checkouts[key] = overrides[crate]
     source_state: dict[str, dict[str, str]] = {}
-    for source in sources:
+    for source in selected_sources:
         checkout = source_checkouts[source.key]
         head = _git_head(runner, checkout)
         source_state[source.key] = {
@@ -1280,9 +1316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ensure_just(runner)
     _ensure_venv(
         runner,
-        with_fft_profiling=(
-            args.with_legacy_amplicol or args.with_reference_fft
-        ),
+        with_fft_profiling=(args.with_legacy_amplicol or args.with_reference_fft),
     )
     for source in sources:
         _checkout(runner, source, update=args.update)

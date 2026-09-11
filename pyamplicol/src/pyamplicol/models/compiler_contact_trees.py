@@ -15,6 +15,7 @@ from . import compiler_symbolica as _sym
 from .compiler_contacts import (
     _execute_dense_tensor,
     _normalized_structure_constant_factors,
+    _source_structure_constant_factor_orientations,
     _source_structure_constant_product_coefficient,
 )
 from .compiler_kernels import (
@@ -583,44 +584,12 @@ def _heft_contact_color_topology(
     )
     if coefficient is None:
         return None
-    oriented_factors = _heft_source_factor_orientations(source_factors, factors)
+    oriented_factors = _source_structure_constant_factor_orientations(
+        source_factors, factors
+    )
     if oriented_factors is None:
         return None
     return oriented_factors, coefficient
-
-
-def _heft_source_factor_orientations(
-    source_factors: Sequence[Sequence[str]],
-    normalized_factors: Sequence[tuple[int, int, int]],
-) -> tuple[tuple[int, int, int], ...] | None:
-    """Recover source permutations after normalized tensor authentication."""
-
-    try:
-        source = tuple(
-            tuple(int(argument.strip()) for argument in factor)
-            for factor in source_factors
-        )
-    except ValueError:
-        return None
-    if any(len(factor) != 3 for factor in source):
-        return None
-    source_dummies = {value for factor in source for value in factor if value < 0}
-    normalized_dummies = {
-        value for factor in normalized_factors for value in factor if value < 0
-    }
-    if len(source_dummies) != len(normalized_dummies):
-        return None
-    dummy_map = dict(
-        zip(sorted(source_dummies), sorted(normalized_dummies), strict=True)
-    )
-    oriented = tuple(
-        tuple(dummy_map.get(value, value) for value in factor) for factor in source
-    )
-    if sorted(sorted(factor) for factor in oriented) != sorted(
-        sorted(factor) for factor in normalized_factors
-    ):
-        return None
-    return oriented  # type: ignore[return-value]
 
 
 def _heft_trilinear_color(
@@ -1376,7 +1345,7 @@ def _contact_tree_final_component_expressions(
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
         library.register(
-            _sym.LibraryTensor.dense(
+            _sym.Tensor.dense(
                 _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
                     minkowski
                 ),
@@ -1520,7 +1489,7 @@ def _execute_contact_tensor_staged(
             model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
         )
         library.register(
-            _sym.LibraryTensor.dense(
+            _sym.Tensor.dense(
                 name(*representations),
                 tuple(_as_expression(component) for component in dense),
             )
@@ -1591,7 +1560,7 @@ def eager_color_singlet_vertex_term_components(
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
         library.register(
-            _sym.LibraryTensor.dense(
+            _sym.Tensor.dense(
                 _sym.TensorName(tensor_symbols.ufo_momentum_tensor_name(leg + 1))(
                     minkowski
                 ),
@@ -1667,7 +1636,7 @@ def _contact_tree_physical_tensor_expression(
             raise ValueError("scalar contact input must have one component")
         return components[0]
     name = _sym.TensorName(model_symbols.contact_leg_tensor_name(kind, leg))
-    library.register(_sym.LibraryTensor.dense(name(*representations), components))
+    library.register(_sym.Tensor.dense(name(*representations), components))
     return name(*_spin_slots(spin, leg + 1)).to_expression()
 
 

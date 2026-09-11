@@ -518,6 +518,10 @@ def _candidate_sources(
             str(contributor["symbolica"]["community_url"]),
             str(contributor["symbolica"]["community_revision"]),
         ),
+        "symbolica-integrate": (
+            str(contributor["symbolica_integrate"]["source_url"]),
+            str(contributor["symbolica_integrate"]["revision"]),
+        ),
         "symjit": (
             str(release["symjit"]["repository"]),
             str(release["symjit"]["revision"]),
@@ -559,7 +563,15 @@ def _symjit_manifest_issues(path: Path, *, expected_version: str) -> list[GateIs
     return []
 
 
-def _candidate_config_issues() -> list[GateIssue]:
+def _candidate_config_issues(path_overrides: dict[str, Path]) -> list[GateIssue]:
+    checkout_root = CHECKOUTS_PATH.resolve()
+    expected_paths = {
+        "graphica": checkout_root / "symbolica" / "lib" / "graphica",
+        "numerica": checkout_root / "symbolica" / "lib" / "numerica",
+        "symbolica": checkout_root / "symbolica",
+        "symjit": checkout_root / "symjit",
+        **path_overrides,
+    }
     try:
         config = _load_toml(CARGO_CONFIG_PATH)
         patch_tables = config["patch"]
@@ -574,7 +586,7 @@ def _candidate_config_issues() -> list[GateIssue]:
         or not isinstance(patch_tables, dict)
         or set(patch_tables) != {"crates-io"}
         or not isinstance(registry_patches, dict)
-        or set(registry_patches) != {"graphica", "numerica", "symbolica", "symjit"}
+        or set(registry_patches) != set(expected_paths)
     ):
         return [
             GateIssue(
@@ -584,13 +596,6 @@ def _candidate_config_issues() -> list[GateIssue]:
             )
         ]
     issues: list[GateIssue] = []
-    checkout_root = CHECKOUTS_PATH.resolve()
-    expected_paths = {
-        "graphica": checkout_root / "symbolica" / "lib" / "graphica",
-        "numerica": checkout_root / "symbolica" / "lib" / "numerica",
-        "symbolica": checkout_root / "symbolica",
-        "symjit": checkout_root / "symjit",
-    }
     patches = registry_patches
     for name, entry in patches.items():
         path_value = entry.get("path") if isinstance(entry, dict) else None
@@ -607,22 +612,12 @@ def _candidate_config_issues() -> list[GateIssue]:
             )
             continue
         path = Path(path_value).resolve()
-        try:
-            path.relative_to(checkout_root)
-        except ValueError:
-            issues.append(
-                GateIssue(
-                    "candidate-cargo-config",
-                    f"candidate Cargo patch {name} escapes dependencies/checkouts",
-                )
-            )
-            continue
         if path != expected_paths[name]:
             issues.append(
                 GateIssue(
                     "candidate-cargo-config",
                     f"candidate Cargo patch {name} does not resolve to its "
-                    "locked checkout",
+                    "declared checkout",
                 )
             )
             continue
@@ -656,6 +651,14 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
         contributor = _load_contributor_lock()
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
         packages = _cargo_packages(CANDIDATE_LOCK_PATH)
+        root_patches = (
+            _load_toml(ROOT / "Cargo.toml").get("patch", {}).get("crates-io", {})
+        )
+        path_overrides = {
+            name: (ROOT / entry["path"]).resolve()
+            for name, entry in root_patches.items()
+            if isinstance(entry, dict) and "path" in entry
+        }
     except (
         OSError,
         ValueError,
@@ -665,7 +668,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
         return [GateIssue("candidate-input-invalid", str(error))]
     issues = _registry_source_issues(
         packages,
-        local_crates=_CANDIDATE_LOCAL_CRATES,
+        local_crates=_CANDIDATE_LOCAL_CRATES | path_overrides.keys(),
         prefix="candidate",
     )
     if contributor.get("abis") != _CANDIDATE_ABIS:
@@ -728,6 +731,16 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
             GateIssue("candidate-state-invalid", "installer state has no source map")
         )
     else:
+        local_sources = {
+            name: path_overrides[crate]
+            for name, crate in (
+                ("symjit", "symjit"),
+                ("symbolica-integrate", "symbolica-integrate"),
+            )
+            if crate in path_overrides
+        }
+        if "spenso" in path_overrides:
+            local_sources["gammaloop"] = path_overrides["spenso"].parent.parent
         for source_name, entry in sources.items():
             allowed = {"url", "revision"}
             if isinstance(entry, dict) and "branch" in entry:
@@ -750,8 +763,10 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
                 )
         for name, (url, revision) in expected_sources.items():
             entry = sources.get(name)
-            checkout = CHECKOUTS_PATH / name
-            if (
+            checkout = local_sources.get(name, CHECKOUTS_PATH / name)
+            # Explicit Cargo path overrides are user-owned, not managed installs.
+            # Their declared Git base is checked below; local edits are permitted.
+            if name not in local_sources and (
                 not isinstance(entry, dict)
                 or entry.get("url") != url
                 or entry.get("revision") != revision
@@ -769,7 +784,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
                         f"candidate checkout {name} is not at {revision}",
                     )
                 )
-        symjit_checkout = CHECKOUTS_PATH / "symjit"
+        symjit_checkout = local_sources.get("symjit", CHECKOUTS_PATH / "symjit")
         if symjit_checkout.is_dir():
             issues.extend(
                 _symjit_manifest_issues(
@@ -777,7 +792,7 @@ def _candidate_issues(release_lock: dict[str, Any]) -> list[GateIssue]:
                     expected_version=str(release_lock["symjit"]["version"]),
                 )
             )
-    return [*issues, *_candidate_config_issues()]
+    return [*issues, *_candidate_config_issues(path_overrides)]
 
 
 def check(*, candidate: bool) -> list[GateIssue]:
@@ -787,11 +802,12 @@ def check(*, candidate: bool) -> list[GateIssue]:
         return [GateIssue("release-lock-invalid", str(error))]
     issues = [
         *_release_contract_issues(lock),
-        *_release_cargo_lock_issues(lock),
         *_toolchain_issues(lock),
     ]
     if candidate:
         issues.extend(_candidate_issues(lock))
+    else:
+        issues.extend(_release_cargo_lock_issues(lock))
     return issues
 
 

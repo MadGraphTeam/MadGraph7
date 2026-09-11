@@ -23,10 +23,48 @@ def _module():
     return module
 
 
-def test_release_gate_is_ready_without_network_preflights() -> None:
+def test_release_gate_rejects_local_development_overrides() -> None:
     module = _module()
-    codes = [issue.code for issue in module.check(candidate=False)]
-    assert codes == []
+    codes = {issue.code for issue in module.check(candidate=False)}
+    assert {"release-cargo-patch", "release-cargo-pin"} <= codes
+
+
+@pytest.fixture
+def published_cargo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    module = _module()
+    release = module._load_lock()
+    symjit = release["symjit"]
+    symbolica = release["symbolica"]
+    (tmp_path / "Cargo.toml").write_text(
+        "[workspace.dependencies]\n"
+        f'symbolica = {{ version = "={symbolica["rust_version"]}" }}\n'
+        "[patch.crates-io]\n"
+        f'symjit = {{ git = "{symjit["repository"]}", '
+        f'rev = "{symjit["revision"]}" }}\n',
+        encoding="utf-8",
+    )
+    core = tmp_path / "rust/crates/rusticol-core/Cargo.toml"
+    core.parent.mkdir(parents=True)
+    core.write_text(
+        "[dependencies]\n"
+        f'symbolica = {{ version = "={symbolica["rust_version"]}" }}\n'
+        f'symjit = {{ version = "={symjit["version"]}" }}\n',
+        encoding="utf-8",
+    )
+    cargo_lock = tmp_path / "Cargo.lock"
+    cargo_lock.write_text(
+        'version = 4\n[[package]]\nname = "symbolica"\n'
+        f'version = "{symbolica["rust_version"]}"\n'
+        f'source = "{module._REGISTRY_SOURCE}"\nchecksum = "{"0" * 64}"\n'
+        '[[package]]\nname = "symjit"\n'
+        f'version = "{symjit["version"]}"\n'
+        f'source = "git+{symjit["repository"]}?rev={symjit["revision"]}'
+        f'#{symjit["revision"]}"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "CARGO_LOCK_PATH", cargo_lock)
+    return module
 
 
 def test_release_contract_is_lean_exact_and_schema_8() -> None:
@@ -59,9 +97,12 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
     }
 
 
-def test_release_cargo_lock_contains_registry_crates_and_exact_symjit_git() -> None:
-    module = _module()
-    assert module._release_cargo_lock_issues(module._load_lock()) == []
+def test_release_cargo_lock_accepts_registry_crates_and_exact_symjit_git(
+    published_cargo,
+) -> None:
+    assert (
+        published_cargo._release_cargo_lock_issues(published_cargo._load_lock()) == []
+    )
 
 
 def test_release_toolchain_and_manylinux_image_are_exactly_pinned() -> None:
@@ -72,8 +113,9 @@ def test_release_toolchain_and_manylinux_image_are_exactly_pinned() -> None:
 def test_release_cargo_lock_rejects_candidate_path_resolution(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    published_cargo,
 ) -> None:
-    module = _module()
+    module = published_cargo
     contaminated = tmp_path / "Cargo.lock"
     text = module.CARGO_LOCK_PATH.read_text(encoding="utf-8")
     marker = (
@@ -106,9 +148,27 @@ def test_candidate_gate_fails_closed_before_contributor_install(
     assert "symbolica-unverified" not in codes
 
 
+def test_candidate_gate_uses_candidate_not_publication_cargo_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    publication_issue = module.GateIssue("release-cargo-patch", "local override")
+    monkeypatch.setattr(module, "_release_contract_issues", lambda lock: [])
+    monkeypatch.setattr(module, "_toolchain_issues", lambda lock: [])
+    monkeypatch.setattr(module, "_candidate_issues", lambda lock: [])
+    monkeypatch.setattr(
+        module, "_release_cargo_lock_issues", lambda lock: [publication_issue]
+    )
+
+    assert module.check(candidate=True) == []
+    assert module.check(candidate=False) == [publication_issue]
+
+
+@pytest.mark.parametrize("local_overrides", (False, True))
 def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    local_overrides: bool,
 ) -> None:
     module = _module()
     release = module._load_lock()
@@ -122,11 +182,20 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
     checkouts = dependencies / "checkouts"
     contributor_path.parent.mkdir(parents=True)
     contributor_path.write_bytes(module.CONTRIBUTOR_LOCK_PATH.read_bytes())
-    for name in expected:
-        (checkouts / name).mkdir(parents=True)
+    source_paths = {name: checkouts / name for name in expected}
+    if local_overrides:
+        source_paths.update(
+            {
+                "symjit": tmp_path / "local-symjit",
+                "gammaloop": tmp_path / "local-gammaloop",
+                "symbolica-integrate": tmp_path / "local-integrate",
+            }
+        )
+    for path in source_paths.values():
+        path.mkdir(parents=True)
     for name in ("graphica", "numerica"):
         (checkouts / "symbolica" / "lib" / name).mkdir(parents=True)
-    (checkouts / "symjit" / "Cargo.toml").write_text(
+    (source_paths["symjit"] / "Cargo.toml").write_text(
         f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
@@ -137,6 +206,7 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
         "sources": {
             name: {"url": url, "revision": revision}
             for name, (url, revision) in expected.items()
+            if source_paths[name] == checkouts / name
         },
     }
     state_path.write_text(json.dumps(compact_state), encoding="utf-8")
@@ -144,25 +214,62 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
         'version = 4\n\n[[package]]\nname = "rusticol-core"\nversion = "0.1.0"\n',
         encoding="utf-8",
     )
-    cargo_config.write_text(
+    patches = {
+        "graphica": checkouts / "symbolica/lib/graphica",
+        "numerica": checkouts / "symbolica/lib/numerica",
+        "symbolica": checkouts / "symbolica",
+        "symjit": source_paths["symjit"],
+    }
+    overrides = {}
+    if local_overrides:
+        overrides = {
+            "symjit": source_paths["symjit"],
+            "spenso": source_paths["gammaloop"] / "crates/spenso",
+            "symbolica-integrate": source_paths["symbolica-integrate"],
+        }
+        overrides["spenso"].mkdir(parents=True)
+        patches.update(overrides)
+    (tmp_path / "Cargo.toml").write_text(
         "[patch.crates-io]\n"
-        f'graphica = {{ path = "{checkouts / "symbolica/lib/graphica"}" }}\n'
-        f'numerica = {{ path = "{checkouts / "symbolica/lib/numerica"}" }}\n'
-        f'symbolica = {{ path = "{checkouts / "symbolica"}" }}\n'
-        f'symjit = {{ path = "{checkouts / "symjit"}" }}\n',
+        + "".join(
+            f'{name} = {{ path = "{path}" }}\n' for name, path in overrides.items()
+        ),
         encoding="utf-8",
     )
+    config_text = "[patch.crates-io]\n" + "".join(
+        f'{name} = {{ path = "{path}" }}\n' for name, path in patches.items()
+    )
+    cargo_config.write_text(config_text, encoding="utf-8")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
     monkeypatch.setattr(module, "CONTRIBUTOR_LOCK_PATH", contributor_path)
     monkeypatch.setattr(module, "STATE_PATH", state_path)
     monkeypatch.setattr(module, "CANDIDATE_LOCK_PATH", candidate_lock)
     monkeypatch.setattr(module, "CARGO_CONFIG_PATH", cargo_config)
     monkeypatch.setattr(module, "CHECKOUTS_PATH", checkouts)
-    monkeypatch.setattr(module, "_git_head", lambda path: expected[path.name][1])
+    revisions = {
+        source_paths[name]: revision for name, (_, revision) in expected.items()
+    }
+    monkeypatch.setattr(module, "_git_head", revisions.get)
 
     assert module._candidate_issues(release) == []
 
+    monkeypatch.setattr(module, "_git_head", lambda path: "0" * 40)
+    assert "candidate-source-revision" in {
+        issue.code for issue in module._candidate_issues(release)
+    }
+    monkeypatch.setattr(module, "_git_head", revisions.get)
+
+    cargo_config.write_text(
+        config_text.replace(str(source_paths["symjit"]), str(tmp_path / "undeclared")),
+        encoding="utf-8",
+    )
+    assert "candidate-cargo-config" in {
+        issue.code for issue in module._candidate_issues(release)
+    }
+    cargo_config.write_text(config_text, encoding="utf-8")
+
     heavy_state = copy.deepcopy(compact_state)
-    heavy_state["sources"]["symjit"]["worktree_sha256"] = "0" * 64
+    heavy_state["sources"]["symbolica"]["worktree_sha256"] = "0" * 64
     state_path.write_text(json.dumps(heavy_state), encoding="utf-8")
     assert "candidate-state-invalid" in {
         issue.code for issue in module._candidate_issues(release)
@@ -176,7 +283,7 @@ def test_candidate_gate_uses_compact_exact_git_sources_and_rlib_manifest(
         issue.code for issue in module._candidate_issues(release)
     }
 
-    (checkouts / "symjit" / "Cargo.toml").write_text(
+    (source_paths["symjit"] / "Cargo.toml").write_text(
         f'[package]\nname = "symjit"\nversion = "{release["symjit"]["version"]}"\n\n'
         '[lib]\ncrate-type = ["rlib", "cdylib"]\n',
         encoding="utf-8",

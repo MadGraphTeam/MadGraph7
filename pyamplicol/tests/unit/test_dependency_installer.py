@@ -7,6 +7,7 @@ import io
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -39,10 +40,8 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
     )
 
     assert {item.key for item in without_references} == {
-        "symjit",
         "symbolica",
         "symbolica-community",
-        "gammaloop",
         "ratatui-ffi",
     }
     assert {item.key for item in with_references} == {
@@ -51,14 +50,10 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "reference-fft",
     }
     assert all(len(item.revision) == 40 for item in with_references)
-    legacy = next(
-        item for item in with_references if item.key == "legacy-amplicol"
-    )
+    legacy = next(item for item in with_references if item.key == "legacy-amplicol")
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
     assert legacy.revision == payload["legacy_amplicol"]["revision"]
-    reference = next(
-        item for item in with_references if item.key == "reference-fft"
-    )
+    reference = next(item for item in with_references if item.key == "reference-fft")
     assert reference.url == (
         "https://github.com/rikkert-frederix/AllGluonsMultipletFFT.git"
     )
@@ -74,9 +69,7 @@ def test_profiling_references_require_explicit_cli_opt_in() -> None:
     assert defaults.with_legacy_amplicol is False
     assert defaults.with_reference_fft is False
 
-    selected = parser.parse_args(
-        ["--with-legacy-amplicol", "--with-reference-fft"]
-    )
+    selected = parser.parse_args(["--with-legacy-amplicol", "--with-reference-fft"])
     assert selected.with_legacy_amplicol is True
     assert selected.with_reference_fft is True
     help_text = parser.format_help()
@@ -110,26 +103,23 @@ def test_installer_wires_only_explicit_reference_opt_ins(
     monkeypatch.setattr(
         module,
         "_ensure_venv",
-        lambda *_args, **kwargs: profiling_extras.append(
-            kwargs["with_fft_profiling"]
-        ),
+        lambda *_args, **kwargs: profiling_extras.append(kwargs["with_fft_profiling"]),
     )
 
     assert module.main(["--dry-run", "--no-build"]) == 0
-    assert module.main(
-        ["--dry-run", "--no-build", "--with-legacy-amplicol"]
-    ) == 0
-    assert module.main(
-        ["--dry-run", "--no-build", "--with-reference-fft"]
-    ) == 0
-    assert module.main(
-        [
-            "--dry-run",
-            "--no-build",
-            "--with-legacy-amplicol",
-            "--with-reference-fft",
-        ]
-    ) == 0
+    assert module.main(["--dry-run", "--no-build", "--with-legacy-amplicol"]) == 0
+    assert module.main(["--dry-run", "--no-build", "--with-reference-fft"]) == 0
+    assert (
+        module.main(
+            [
+                "--dry-run",
+                "--no-build",
+                "--with-legacy-amplicol",
+                "--with-reference-fft",
+            ]
+        )
+        == 0
+    )
     assert selections == [
         {"with_legacy": False, "with_reference_fft": False},
         {"with_legacy": True, "with_reference_fft": False},
@@ -198,7 +188,7 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_official_symjit_git_revision_is_pinned_without_local_patches() -> None:
+def test_local_source_overrides_replace_managed_dependency_clones() -> None:
     module = _module()
     payload = module._lock()
     symjit = payload["symjit"]
@@ -208,22 +198,98 @@ def test_official_symjit_git_revision_is_pinned_without_local_patches() -> None:
         "repository": "https://github.com/siravan/symjit-crate.git",
         "revision": "f1c193d301897149de6609f706297b0c97a4f018",
     }
-    source = next(
-        item
+    sources = {
+        item.key
         for item in module._sources(
             payload,
             with_legacy=False,
             with_reference_fft=False,
         )
-        if item.key == "symjit"
-    )
-    assert (source.url, source.revision, source.branch) == (
-        symjit["repository"],
-        symjit["revision"],
-        None,
+    }
+    assert not {"symjit", "gammaloop", "symbolica-integrate"} & sources
+    overrides = module._root_path_patches()
+    assert module._managed_symjit_checkout() == ROOT / "TMP_FIXED_SYMJIT"
+    assert overrides["spenso"] == ROOT / "TMP_FIXED_SPENSO/crates/spenso"
+    assert (
+        overrides["symbolica-integrate"]
+        == ROOT / "TMP_FIXED_SPENSO/symbolica-integrate"
     )
     assert "patches" not in payload
     assert not tuple((module.DEPENDENCIES / "patches" / "symjit").rglob("*.patch"))
+
+
+def test_managed_sources_remain_available_without_explicit_path_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    monkeypatch.setattr(module, "_root_path_patches", dict)
+    sources = {
+        source.key: source
+        for source in module._sources(
+            module._lock(), with_legacy=False, with_reference_fft=False
+        )
+    }
+    assert sources["symjit"].revision == "f1c193d301897149de6609f706297b0c97a4f018"
+    assert sources["gammaloop"].branch == "simplify-spenso-api"
+    assert sources["gammaloop"].revision == "5aadd389efabb7b039af74edad02a90d486a1c07"
+    assert (
+        sources["symbolica-integrate"].revision
+        == "92de256f9dcf3bef4bf5d80120c2341de1e0e17b"
+    )
+
+
+def test_community_wiring_preserves_dependency_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    project = tmp_path / "project"
+    checkouts = project / "dependencies/checkouts"
+    community = checkouts / "symbolica-community"
+    (community / "example_extension").mkdir(parents=True)
+    (community / "Cargo.toml").write_text(
+        '[package]\nname = "symbolica_community"\nversion = "2.2.0"\n'
+        '[dependencies]\nsymbolica = "2.2"\n'
+        '[build-dependencies]\npyo3-build-config = "*"\n',
+        encoding="utf-8",
+    )
+    (community / "example_extension/Cargo.toml").write_text(
+        '[dependencies]\nsymbolica = { version = "2.2" }\n', encoding="utf-8"
+    )
+    symjit = project / "TMP_FIXED_SYMJIT"
+    symjit.mkdir()
+    (symjit / "Cargo.toml").write_text(
+        '[package]\nname = "symjit"\nversion = "2.25.0"\n'
+        '[lib]\ncrate-type = ["rlib"]\n',
+        encoding="utf-8",
+    )
+    symbolica = checkouts / "symbolica"
+    symbolica.mkdir()
+    original = b"unchanged upstream dependency manifest and source\n"
+    (symbolica / "Cargo.toml").write_bytes(original)
+    (symbolica / "source.rs").write_bytes(original)
+    spenso = project / "TMP_FIXED_SPENSO/crates/spenso"
+    spenso.mkdir(parents=True)
+    (spenso / "Cargo.toml").write_bytes(original)
+    (spenso / "source.rs").write_bytes(original)
+    overrides = {"symjit": symjit, "spenso": spenso}
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    monkeypatch.setattr(module, "_root_path_patches", lambda: overrides)
+
+    module._configure_source_manifests(module.Runner(dry_run=False))
+
+    manifest = tomllib.loads((community / "Cargo.toml").read_text())
+    assert manifest["patch"]["crates-io"]["symjit"]["path"] == str(symjit)
+    assert manifest["patch"]["crates-io"]["spenso"]["path"] == str(spenso)
+    git_patch = manifest["patch"]["https://github.com/symbolica-dev/symbolica"]
+    assert git_patch["symbolica"]["path"] == str(symbolica)
+    assert manifest["build-dependencies"]["numerica"]["features"] == [
+        "integer-gmp",
+        "float-mpfr",
+    ]
+    for source in (symbolica, spenso):
+        assert (source / "Cargo.toml").read_bytes() == original
+        assert (source / "source.rs").read_bytes() == original
 
 
 def test_symjit_checkout_uses_exact_git_revision_and_accepts_matching_head(
@@ -298,6 +364,7 @@ def test_compact_install_state_records_only_git_sources(
         (checkouts / source.key).mkdir(parents=True)
     monkeypatch.setattr(module, "CHECKOUTS", checkouts)
     monkeypatch.setattr(module, "STATE", state_path)
+    monkeypatch.setattr(module, "_root_path_patches", lambda: {})
 
     class FakeRunner:
         dry_run = False
@@ -325,6 +392,35 @@ def test_compact_install_state_records_only_git_sources(
             },
         },
     }
+
+
+def test_install_state_includes_selected_local_git_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    state_path = tmp_path / "install-state.json"
+    paths = {
+        "symjit": tmp_path / "TMP_FIXED_SYMJIT",
+        "spenso": tmp_path / "TMP_FIXED_SPENSO" / "crates" / "spenso",
+        "symbolica-integrate": tmp_path / "TMP_FIXED_SPENSO" / "symbolica-integrate",
+    }
+    observed: list[Path] = []
+
+    def git_head(_runner, path):
+        observed.append(path)
+        return "a" * 40
+
+    monkeypatch.setattr(module, "STATE", state_path)
+    monkeypatch.setattr(module, "_root_path_patches", lambda: paths)
+    monkeypatch.setattr(module, "_git_head", git_head)
+    module._write_state(module.Runner(dry_run=False), ())
+    state = module.json.loads(state_path.read_text(encoding="utf-8"))
+    assert set(state["sources"]) == {"symjit", "gammaloop", "symbolica-integrate"}
+    assert observed == list(paths.values())
+    assert all(item["revision"] == "a" * 40 for item in state["sources"].values())
+    assert state["sources"]["gammaloop"]["branch"] == "simplify-spenso-api"
+    assert state["publishable"] is False
 
 
 @pytest.mark.parametrize(
@@ -461,8 +557,11 @@ def test_checkout_update_migrates_origin_before_fetching(
     ]
 
 
-def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> None:
+def test_contributor_runtime_requirements_use_the_full_hash_locked_closure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _module()
+    monkeypatch.setattr(module, "_local_ufo_loader", lambda: None)
     requirements = module._runtime_requirements_text()
     assert "symbolica==" not in requirements
     for requirement in (
@@ -477,6 +576,14 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> 
     ):
         assert requirements.count(requirement) == 1
     assert requirements.count("--hash=sha256:") > 20
+
+
+def test_local_ufo_loader_replaces_only_its_published_wheel() -> None:
+    module = _module()
+    assert module._local_ufo_loader() == ROOT / "TMP_FIXED_SPENSO/ufo_model_loader"
+    requirements = module._runtime_requirements_text()
+    assert "ufo-model-loader==" not in requirements
+    assert "numpy==2.4.2" in requirements
 
 
 def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> None:
@@ -511,9 +618,11 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
     assert "reportlab==4.4.4" in profiling_requirements
 
 
+@pytest.mark.parametrize("with_local_loader", (False, True))
 def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    with_local_loader: bool,
 ) -> None:
     module = _module()
     venv = tmp_path / ".venv"
@@ -536,6 +645,8 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     monkeypatch.setattr(module, "VENV", venv)
     monkeypatch.setattr(module, "CHECKOUTS", checkouts)
     monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
+    loader = tmp_path / "local-loader" if with_local_loader else None
+    monkeypatch.setattr(module, "_local_ufo_loader", lambda: loader)
     ratatui_payloads: list[dict[str, object]] = []
     monkeypatch.setattr(
         module,
@@ -561,12 +672,25 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
         "--no-deps",
         str(wheel),
     ]
-    assert calls[2][0][:3] == [python, "-I", "-c"]
-    assert calls[2][0][-1] == "2.2.0"
-    assert "from symbolica import Expression" in calls[2][0][3]
-    assert "from symbolica.community.idenso import simplify_color" in calls[2][0][3]
-    assert "from symbolica.community.spenso import TensorNetwork" in calls[2][0][3]
-    assert calls[2][2]["SYMBOLICA_HIDE_BANNER"] == "1"
+    probe_index = 2
+    if with_local_loader:
+        assert calls[2][0] == [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--no-deps",
+            str(loader),
+        ]
+        probe_index = 3
+    probe, _, environment = calls[probe_index]
+    assert probe[:3] == [python, "-I", "-c"]
+    assert probe[-1] == "2.2.0"
+    assert "from symbolica import Expression" in probe[3]
+    assert "from symbolica.community.idenso import simplify_color" in probe[3]
+    assert "from symbolica.community.spenso import TensorNetwork" in probe[3]
+    assert environment["SYMBOLICA_HIDE_BANNER"] == "1"
     assert ratatui_payloads == [payload]
 
 
@@ -850,9 +974,10 @@ def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
     assert lock.read_text(encoding="utf-8") == "path-resolved lock\n"
 
 
-def test_canonical_release_lock_has_no_candidate_path_packages() -> None:
+def test_temporary_local_dependency_lock_is_not_publication_resolved() -> None:
     module = _module()
-    module._validate_release_cargo_lock(ROOT / "Cargo.lock")
+    with pytest.raises(module.SetupError, match="symjit has an unexpected source None"):
+        module._validate_release_cargo_lock(ROOT / "Cargo.lock")
 
 
 def test_candidate_lock_is_seeded_without_mutating_canonical_lock(
@@ -882,8 +1007,6 @@ def test_candidate_lock_is_seeded_without_mutating_canonical_lock(
             staged_lock = Path(cwd) / "Cargo.lock"
             if len(calls) == 1:
                 assert staged_lock.read_bytes() == b"canonical release lock\n"
-            elif len(calls) == 2:
-                assert staged_lock.read_bytes() == b"canonical release lock\n"
                 staged_lock.write_bytes(b"candidate path lock\n")
             else:
                 assert staged_lock.read_bytes() == b"candidate path lock\n"
@@ -904,7 +1027,6 @@ def test_candidate_lock_is_seeded_without_mutating_canonical_lock(
     module._write_candidate_lock(FakeRunner())
 
     assert calls == [
-        ["cargo", "metadata", "--locked", "--format-version", "1"],
         ["cargo", "metadata", "--format-version", "1"],
         ["cargo", "metadata", "--locked", "--format-version", "1"],
     ]

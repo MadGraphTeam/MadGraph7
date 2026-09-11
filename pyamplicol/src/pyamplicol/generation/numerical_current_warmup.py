@@ -1316,10 +1316,11 @@ def _evaluate_interpreted_stage(
         ) from error
     return tuple(
         (
-            _decimal(value[0], "numerical current real component"),
-            _decimal(value[1], "numerical current imaginary component"),
+            _decimal(real, "numerical current real component"),
+            _decimal(imaginary, "numerical current imaginary component"),
         )
         for value in raw
+        for real, imaginary in (value.to_decimal_tuple(),)
     )
 
 

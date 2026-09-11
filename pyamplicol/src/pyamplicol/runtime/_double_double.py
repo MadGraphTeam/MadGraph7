@@ -111,7 +111,7 @@ class DoubleDoubleArithmetic:
         # significant digits. Padding inputs does not invent input information.
         result = evaluator.evaluate_with_prec(
             [_upcast_decimal(Decimal(value), 80) for value in values], 32
-        )[0]
+        )[0].to_decimal()
         if not result.is_finite():
             raise EvaluationError(f"non-finite double-double {operation}")
         return Decimal.__new__(self.scalar, result)

@@ -12,12 +12,13 @@ from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from .contracts import validate_color_representation
 
 E: Any = None
-S: Any = None
 Expression: Any = None
 Representation: Any = None
 TensorLibrary: Any = None
 TensorName: Any = None
 TensorNetwork: Any = None
+TensorExpression: Any = None
+as_tensor: Any = None
 simplify_color: Any = None
 simplify_gamma: Any = None
 simplify_metrics: Any = None
@@ -29,8 +30,9 @@ _SYMBOLICA_LOCK = RLock()
 
 
 def _ensure_symbolica() -> None:
-    global E, S, Expression, Representation, TensorLibrary, TensorName
-    global TensorNetwork, simplify_color, simplify_gamma, simplify_metrics
+    global E, Expression, Representation, TensorLibrary, TensorName
+    global TensorNetwork, TensorExpression, as_tensor
+    global simplify_color, simplify_gamma, simplify_metrics
     global _INDEX_PATTERN, _DUMMY_PATTERN, _WILDCARDS, _SYMBOLICA_READY
 
     if _SYMBOLICA_READY:
@@ -40,22 +42,26 @@ def _ensure_symbolica() -> None:
             return
         from symbolica import E as expression_parser
         from symbolica import Expression as expression_type
-        from symbolica import S as symbol
         from symbolica.community.idenso import simplify_color as color_simplifier
         from symbolica.community.idenso import simplify_gamma as gamma_simplifier
         from symbolica.community.idenso import simplify_metrics as metric_simplifier
         from symbolica.community.spenso import Representation as representation_type
+        from symbolica.community.spenso import (
+            TensorExpression as tensor_expression_type,
+        )
         from symbolica.community.spenso import TensorLibrary as tensor_library_type
         from symbolica.community.spenso import TensorName as tensor_name_type
         from symbolica.community.spenso import TensorNetwork as tensor_network_type
+        from symbolica.community.spenso import as_tensor as tensor_converter
 
         E = expression_parser
-        S = symbol
         Expression = expression_type
         Representation = representation_type
         TensorLibrary = tensor_library_type
         TensorName = tensor_name_type
         TensorNetwork = tensor_network_type
+        TensorExpression = tensor_expression_type
+        as_tensor = tensor_converter
         simplify_color = color_simplifier
         simplify_gamma = gamma_simplifier
         simplify_metrics = metric_simplifier
@@ -104,7 +110,7 @@ def normalize_lorentz_expression(
     expression = simplify_metrics(expression)
     return NormalizedTensorExpression(
         source=source,
-        expression=expression.to_canonical_string(),
+        expression=expression.format_plain(),
         tensor_heads=tuple(sorted(_tensor_heads(expression))),
     )
 
@@ -133,7 +139,7 @@ def normalize_color_expression(
     expression = expression if context.expanded_symmetric_invariant else simplified
     return NormalizedTensorExpression(
         source=source,
-        expression=expression.to_canonical_string(),
+        expression=expression.format_plain(),
         tensor_heads=tuple(sorted(_tensor_heads(expression))),
     )
 
@@ -168,17 +174,16 @@ class _LorentzContext:
         self.model_symbols = model_symbols
         self.minkowski = Representation.mink(4)
         self.bispinor = Representation.bis(4)
-        library = TensorLibrary.hep_lib_atom()
-        self.gamma_tensor = library["spenso::gamma"]
-        self.gamma5_tensor = library["spenso::gamma5"]
-        self.projm_tensor = library["spenso::projm"]
-        self.projp_tensor = library["spenso::projp"]
+        self.gamma_tensor = TensorExpression.gamma(4)
+        self.gamma5_tensor = TensorExpression.gamma5(4)
+        self.projm_tensor = TensorExpression.projm(4)
+        self.projp_tensor = TensorExpression.projp(4)
         self._fresh_index = 0
 
     def metric(self, match: Mapping[Expression, Expression]) -> Expression:
         left = self._minkowski_slot(match[_WILDCARDS["a_"]])
         right = self._minkowski_slot(match[_WILDCARDS["b_"]])
-        return TensorName.g()(left, right).to_expression()
+        return TensorExpression.g(self.minkowski)(left, right).to_expression()
 
     def gamma(self, match: Mapping[Expression, Expression]) -> Expression:
         lorentz = self._minkowski_label(match[_WILDCARDS["a_"]])
@@ -210,7 +215,7 @@ class _LorentzContext:
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
         left = self.bispinor(self._bispinor_label(match[_WILDCARDS["a_"]]))
         right = self.bispinor(self._bispinor_label(match[_WILDCARDS["b_"]]))
-        return TensorName.g()(left, right).to_expression()
+        return TensorExpression.g(self.bispinor)(left, right).to_expression()
 
     def sigma(self, match: Mapping[Expression, Expression]) -> Expression:
         mu = self._minkowski_label(match[_WILDCARDS["a_"]])
@@ -241,7 +246,7 @@ class _LorentzContext:
         left = self.minkowski(self._fresh_label("momentum_square"))
         right = self.minkowski(self._fresh_label("momentum_square"))
         return (
-            TensorName.g()(left, right).to_expression()
+            TensorExpression.g(self.minkowski)(left, right).to_expression()
             * self._momentum_tensor(leg, left)
             * self._momentum_tensor(leg, right)
         )
@@ -311,16 +316,34 @@ class _ColorContext:
         self.color_representations = color_representations
         self.fundamental = Representation.cof(3)
         self.adjoint = Representation.coad(8)
-        self.metric_tensor = TensorName.g()
-        self.generator_tensor = S("spenso::t")
-        self.f_tensor = S("spenso::f")
+        self.generator_tensor = TensorExpression.t(8, 3)
+        self.f_tensor = TensorExpression.f(8)
         self.expanded_symmetric_invariant = False
         self._dummy_index = 0
 
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
         left = self._leg_slot(match[_WILDCARDS["a_"]])
         right = self._leg_slot(match[_WILDCARDS["b_"]])
-        return self.metric_tensor(left, right).to_expression()
+        left_leg = int(match[_WILDCARDS["a_"]])
+        right_leg = int(match[_WILDCARDS["b_"]])
+        left_representation = self.color_representations[left_leg - 1]
+        right_representation = self.color_representations[right_leg - 1]
+        if left_representation == right_representation:
+            # Oriented current kernels can have equal input/output colour roles.
+            representation = {
+                8: self.adjoint,
+                3: self.fundamental,
+                -3: self.fundamental.dual(),
+            }[left_representation]
+            return TensorExpression.g(representation)(left, right).to_expression()
+        if left_representation != -right_representation:
+            raise ValueError("UFO color identity requires dual representations")
+        representation = (
+            self.fundamental if right_representation == 3 else self.fundamental.dual()
+        )
+        return representation.id(
+            f"ufo_c_{left_leg}", f"ufo_c_{right_leg}"
+        ).to_expression()
 
     def generator(self, match: Mapping[Expression, Expression]) -> Expression:
         adjoint = self._slot(match[_WILDCARDS["a_"]], expected="adjoint")
@@ -333,20 +356,20 @@ class _ColorContext:
             expected="antifundamental",
         )
         return self.generator_tensor(
-            adjoint.to_expression(),
-            fundamental.to_expression(),
-            antifundamental.to_expression(),
-        )
+            adjoint,
+            fundamental,
+            antifundamental,
+        ).to_expression()
 
     def structure_constant(
         self,
         match: Mapping[Expression, Expression],
     ) -> Expression:
         slots = [
-            self._slot(match[_WILDCARDS[name]], expected="adjoint").to_expression()
+            self._slot(match[_WILDCARDS[name]], expected="adjoint")
             for name in ("a_", "b_", "c_")
         ]
-        return self.f_tensor(*slots)
+        return self.f_tensor(*slots).to_expression()
 
     def symmetric_invariant(
         self,
@@ -354,7 +377,7 @@ class _ColorContext:
     ) -> Expression:
         self.expanded_symmetric_invariant = True
         adjoint = [
-            self._slot(match[_WILDCARDS[name]], expected="adjoint").to_expression()
+            self._slot(match[_WILDCARDS[name]], expected="adjoint")
             for name in ("a_", "b_", "c_")
         ]
         suffix = self._dummy_index
@@ -367,12 +390,12 @@ class _ColorContext:
             for name in ("i", "j", "k")
         ]
 
-        def generator(a: Expression, row: int, column: int) -> Expression:
+        def generator(a: Any, row: int, column: int) -> Expression:
             return self.generator_tensor(
                 a,
-                fundamental[row].to_expression(),
-                antifundamental[column].to_expression(),
-            )
+                fundamental[row],
+                antifundamental[column],
+            ).to_expression()
 
         first = (
             generator(adjoint[0], 0, 1)
@@ -457,7 +480,7 @@ def _replace(
 
 def _ufo_index(expression: Expression) -> tuple[int, int]:
     match = next(
-        iter(expression.match(_INDEX_PATTERN, level_range=(0, 0), partial=False)),
+        iter(expression.match(_INDEX_PATTERN, min_level=0, max_level=0, partial=False)),
         None,
     )
     if match is None:
@@ -468,7 +491,7 @@ def _ufo_index(expression: Expression) -> tuple[int, int]:
 
 def _ufo_lorentz_label(expression: Expression) -> str:
     index_match = next(
-        iter(expression.match(_INDEX_PATTERN, level_range=(0, 0), partial=False)),
+        iter(expression.match(_INDEX_PATTERN, min_level=0, max_level=0, partial=False)),
         None,
     )
     if index_match is not None:
@@ -482,7 +505,7 @@ def _ufo_lorentz_label(expression: Expression) -> str:
 
 def _ufo_dummy(expression: Expression) -> int | None:
     dummy_match = next(
-        iter(expression.match(_DUMMY_PATTERN, level_range=(0, 0), partial=False)),
+        iter(expression.match(_DUMMY_PATTERN, min_level=0, max_level=0, partial=False)),
         None,
     )
     if dummy_match is None:
@@ -702,14 +725,15 @@ def _materialized_color_components(
     colored_legs: Sequence[int],
 ) -> dict[tuple[int, ...], complex]:
     library = TensorLibrary.hep_lib_atom()
-    network = TensorNetwork(E(expression), library)
+    atom = E(expression)
+    network = TensorNetwork(as_tensor(atom) if colored_legs else atom, library)
     network.execute(library=library)
     tensor = network.result_tensor(library)
     tensor.to_dense()
     structure = tensor.structure()
-    structure.set_name(symbols.color_projection_probe_name)
     axes = []
-    for argument in structure.to_expression():
+    for slot in structure.interface:
+        argument = slot.to_expression()
         match = re.search(r"ufo_c_([0-9]+)", argument.to_canonical_string())
         if match is None:
             raise ValueError("materialized color tensor has an unknown open index")

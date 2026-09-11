@@ -2,6 +2,15 @@
 
 pyAmpliCol has two deliberately separate dependency modes.
 
+This experimental branch uses the explicit local Cargo overrides
+`TMP_FIXED_SYMJIT` and `TMP_FIXED_SPENSO`. They are not committed or distributed.
+Prepare these checkouts before running `just dev-install`; the installer uses
+their paths directly instead of cloning replacement SymJIT/GammaLoop sources.
+It also installs `TMP_FIXED_SPENSO/ufo_model_loader` when present. The separate
+upstream compatibility changes are documented in
+`SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES`. This configuration is not ready
+for publication until the fixes are available upstream.
+
 ## Release Mode
 
 Release-equivalent builds use exact versions published on PyPI and crates.io,
@@ -32,11 +41,13 @@ payload hashes—not to a redundant dependency checkout fingerprint.
 
 ## Candidate Development Mode
 
-`just dev-install` uses immutable Symbolica/GammaLoop source revisions and
-clones the exact SymJIT upstream revision from `release-lock.toml` into
-`dependencies/checkouts/symjit`. It checks the detached Git revision and the
-crate name/version/`rlib` manifest, then path-patches both pyAmpliCol and
-Symbolica to that checkout. The official revision carries the generic raw
+`just dev-install` uses the Symbolica source revision in `contributor-lock.toml`
+and the explicit root Cargo path overrides. Without a local override it clones
+the pinned SymJIT or GammaLoop revision into `dependencies/checkouts`.
+Community Cargo manifests resolve the same source paths as pyAmpliCol; the
+installer does not rewrite Symbolica, Spenso, or SymJIT source files or their
+manifests. The SymJIT checkout must expose the matching `rlib` library.
+The official base revision carries the generic raw
 plane-descriptor API; pyAmpliCol contains no local SymJIT patch machinery.
 The change does not alter generated kernel bodies or contain pyAmpliCol
 scheduling policy.
@@ -55,29 +66,32 @@ If a managed checkout belongs to a superseded revision, `--update` moves it to
 the pinned revision; `--reset` archives managed state in the workspace-local
 `.trash` store and recreates it.
 It installs the verified published `ufo-model-loader==0.1.7` wheel directly
-from the hash-locked runtime closure. Artifacts produced in this mode record
+from the hash-locked runtime closure unless the supplied local extension stack
+contains its updated Python loader. Artifacts produced in this mode record
 the candidate revisions and are not eligible for PyPI publication.
 
-The contributor and release builds use SymJIT 2.25.0 at immutable upstream
-revision `f1c193d301897149de6609f706297b0c97a4f018`. Rusticol builds its plane-oriented
+The temporary SymJIT checkout starts from 2.25.0 at upstream revision
+`f1c193d301897149de6609f706297b0c97a4f018`, with the separately recorded local
+compiler fixes. Rusticol builds its plane-oriented
 arena adapter from SymJIT's standard P-kernel interface and owns all
 pyAmpliCol-specific scheduling, factor, overwrite/accumulate, fanout, and
 artifact-binding policies. The pinned upstream P2 contract interprets scalar
 and SIMD indices as actual row numbers and can optionally scale outputs by
 `params`; pyAmpliCol uses row indices and keeps identity output enabled.
 
-The build uses Symbolica and symbolica-community at the immutable
-planned-release revisions recorded in the lock. GammaLoop is pinned to the
-merged main revision that provides Spenso's
-cached symbolic-parallelism policy. Spynso3 initializes that policy in `Auto`
+The build uses Symbolica development revision
+`0084bc7c1418940fdec652059cd704e00d07e9d1` with `wide >= 1.7` and the pinned
+symbolica-community source. No Symbolica source patch is needed. The local
+GammaLoop checkout starts from `simplify-spenso-api` revision
+`5aadd389efabb7b039af74edad02a90d486a1c07` and contains the documented API
+adaptations for that CAS. The same local tree holds the integration and UFO
+loader adaptations. Spynso3 initializes its cached symbolic-parallelism policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users.
 
-Symbolica 2.2.0 is pinned from PyPI and crates.io. SymJIT is pinned through the
-workspace's `[patch.crates-io]` table so Symbolica and Rusticol resolve the
-same immutable Git revision rather than compiling two copies. This is suitable for
-pyAmpliCol's precompiled Python-wheel publication workflow because no Rust
-crate is published to crates.io.
+The workspace's ordinary `[patch.crates-io]` entries keep the selected CAS
+revision and local SymJIT implementation consistent. Contributor builds use
+the matching managed CAS paths through the generated Cargo configuration.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. Enable it with

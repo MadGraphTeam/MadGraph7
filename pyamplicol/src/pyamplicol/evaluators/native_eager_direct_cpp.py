@@ -21,10 +21,9 @@ from .native_direct_cpp import (
     _lower_instruction_program,
     _ParameterAccess,
 )
+from .symbolica_helpers import _symbolica_instruction_program
 
-NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI = (
-    "pyamplicol-eager-native-direct-table-v1"
-)
+NATIVE_EAGER_DIRECT_TABLE_APPLICATION_ABI = "pyamplicol-eager-native-direct-table-v1"
 _MARKER = "// pyAmpliCol genuine native eager DirectTable producer v1"
 _SUPPORTED_LANES = frozenset({2, 4})
 
@@ -80,7 +79,7 @@ def render_native_eager_direct_table_cpp(
             "instructions and evaluator state"
         )
     try:
-        raw_program = get_instructions()
+        raw_program = _symbolica_instruction_program(get_instructions())
         evaluator_state = (
             save() if evaluator_state_bytes is None else evaluator_state_bytes
         )

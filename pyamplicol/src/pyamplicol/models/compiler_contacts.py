@@ -297,7 +297,7 @@ def _contact_auxiliary_tensor_expression(
         slot for leg in open_legs for slot in _spin_slots(particles[leg].spin, leg + 1)
     )
     name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
-    library.register(_sym.LibraryTensor.dense(name(*representations), components))
+    library.register(_sym.Tensor.dense(name(*representations), components))
     return name(*slots).to_expression()
 
 
@@ -313,7 +313,9 @@ def _execute_dense_tensor(
         # A rank-zero expression with no function indeterminates contains no
         # tensor heads to contract. Spenso need not construct a tensor network.
         return (expression,)
-    network = _sym.TensorNetwork(expression, library)
+    network = _sym.TensorNetwork(
+        _sym.as_tensor(expression) if axis_labels else expression, library
+    )
     network.execute(library=library)
     result = network.result_tensor(library)
     return _ordered_dense_tensor_components(result, axis_labels).values
@@ -856,6 +858,13 @@ def _four_point_contact_color_split(
         model_symbols=active_symbols,
     )
     if len(factors) == 2 and color_coefficient is not None:
+        factors = (
+            _source_structure_constant_factor_orientations(
+                _function_arguments(term.color_source, "f"), factors
+            )
+            or ()
+        )
+    if len(factors) == 2 and color_coefficient is not None:
         shared_dummies = set(value for value in factors[0] if value < 0) & set(
             value for value in factors[1] if value < 0
         )
@@ -933,6 +942,44 @@ def _source_structure_constant_product_coefficient(
     if coefficient.get_all_symbols():
         return None
     return str(coefficient.to_canonical_string())
+
+
+def _source_structure_constant_factor_orientations(
+    source_factors: Sequence[Sequence[str]],
+    normalized_factors: Sequence[tuple[int, ...]],
+) -> tuple[tuple[int, int, int], ...] | None:
+    """Recover source permutations after normalized tensor authentication.
+
+    The source scalar coefficient must accompany source f-tensor orientations,
+    independently of antisymmetric permutations chosen by the CAS printer.
+    """
+
+    try:
+        source = tuple(
+            tuple(int(argument.strip()) for argument in factor)
+            for factor in source_factors
+        )
+    except ValueError:
+        return None
+    if any(len(factor) != 3 for factor in source):
+        return None
+    source_dummies = {value for factor in source for value in factor if value < 0}
+    normalized_dummies = {
+        value for factor in normalized_factors for value in factor if value < 0
+    }
+    if len(source_dummies) != len(normalized_dummies):
+        return None
+    dummy_map = dict(
+        zip(sorted(source_dummies), sorted(normalized_dummies), strict=True)
+    )
+    oriented = tuple(
+        tuple(dummy_map.get(value, value) for value in factor) for factor in source
+    )
+    if sorted(sorted(factor) for factor in oriented) != sorted(
+        sorted(factor) for factor in normalized_factors
+    ):
+        return None
+    return oriented  # type: ignore[return-value]
 
 
 def _normalized_structure_constant_factors(

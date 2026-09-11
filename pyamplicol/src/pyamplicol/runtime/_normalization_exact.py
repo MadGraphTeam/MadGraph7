@@ -14,7 +14,7 @@ def _pi(precision: int) -> Decimal:
 
     # Do not construct an optimized evaluator of the constant Pi: that
     # construction requires a target precision in current Symbolica.
-    return Decimal(E("pi").evaluate({}, decimal_digit_precision=precision)[0])
+    return E("pi").evaluate({}, decimal_digit_precision=precision).to_decimal_tuple()[0]
 
 
 def exact_normalization(

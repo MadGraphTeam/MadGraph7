@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from itertools import product
 from pathlib import Path
 
 import pytest
@@ -673,6 +674,76 @@ def test_structure_constant_contact_does_not_duplicate_normalization_sign() -> N
 
     assert split is not None
     assert split[-1] == "1"
+
+
+@pytest.mark.parametrize("spelling", ("plain", "canonical", "permuted"))
+def test_structure_constant_contact_preserves_source_orientations(
+    spelling: str,
+) -> None:
+    from pyamplicol.models.tensors import normalize_color_expression
+
+    source = "-3/2*UFO::{}::f(2,-7,1)*UFO::{}::f(-7,3,4)"
+    normalized = normalize_color_expression(source, (8, 8, 8, 8)).expression
+    _sym._ensure_symbolica()
+    if spelling == "canonical":
+        normalized = _sym.E(normalized).to_canonical_string()
+    elif spelling == "permuted":
+        # An odd permutation changes the normalized scalar, not the source
+        # coefficient or the source tensor orientations used for decomposition.
+        normalized = (
+            "3/2*spenso::f(ufo_c_dummy_7_adjoint,ufo_c_3,ufo_c_4)"
+            "*spenso::f(ufo_c_dummy_7_adjoint,ufo_c_2,ufo_c_1)"
+        )
+    term = _term(color_source=source, color_expression=normalized)
+    particles = tuple(
+        _adjoint(name, 9_450_000 + index, spin=1)
+        for index, name in enumerate(term.particles)
+    )
+    proved = _proof_term(term, particles, model_name="source-oriented-contact")
+    reference = _proof_term(
+        replace(
+            term,
+            color_expression=(
+                "-3/2*spenso::f(ufo_c_2,ufo_c_dummy_7_adjoint,ufo_c_1)"
+                "*spenso::f(ufo_c_dummy_7_adjoint,ufo_c_3,ufo_c_4)"
+            ),
+        ),
+        particles,
+        model_name="source-oriented-contact",
+    )
+    assert proved.contact_decomposition_proof is not None
+    assert reference.contact_decomposition_proof is not None
+    assert proved.contact_decomposition_proof.status == "proven"
+    assert proved.contact_decomposition_proof.splits == (
+        reference.contact_decomposition_proof.splits
+    )
+
+    def epsilon(a: int, b: int, c: int) -> int:
+        return (a - b) * (b - c) * (c - a) // 2
+
+    # Independently reconstruct the colour product in the SU(2) subalgebra,
+    # including every result orientation and all external colour assignments.
+    for split in proved.contact_decomposition_proof.splits:
+        final = next(
+            item
+            for item in split.orientations
+            if item.stage == "final" and item.input_legs[0] == -1
+        )
+        coefficient = _sym.E(final.scalar_prefactor)
+        for indices in product(range(3), repeat=4):
+            expected = _sym.E("-3/2") * sum(
+                epsilon(indices[1], dummy, indices[0])
+                * epsilon(dummy, indices[2], indices[3])
+                for dummy in range(3)
+            )
+            actual = coefficient * sum(
+                epsilon(dummy, indices[split.pair_legs[0]], indices[split.pair_legs[1]])
+                * epsilon(
+                    indices[split.result_leg], dummy, indices[split.remaining_leg]
+                )
+                for dummy in range(3)
+            )
+            assert actual == expected
 
 
 def test_structure_constant_contact_rejects_residual_color_tensor() -> None:

@@ -16,6 +16,17 @@ from .._internal.physics.types import NativeEvaluationError
 ComplexOutput = np.ndarray | tuple[np.ndarray, ...]
 
 
+def _symbolica_instruction_program(exported: Any) -> Any:
+    """Extract the linear program from Symbolica's structured instruction export."""
+    if isinstance(exported, tuple):
+        return exported
+    if exported.sub_evaluators:
+        raise NativeEvaluationError(
+            "native kernels require inlined Symbolica function bodies"
+        )
+    return exported.instructions, exported.temporary_count, exported.constants
+
+
 def _complex128_parameter_rows(parameter_rows: Any) -> np.ndarray:
     if (
         isinstance(parameter_rows, np.ndarray)

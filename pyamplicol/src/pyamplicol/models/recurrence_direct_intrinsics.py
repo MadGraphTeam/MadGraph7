@@ -458,9 +458,9 @@ def _exact_binary64_coefficients(expression: object) -> object:
             continue
         if not math.isfinite(value.real) or not math.isfinite(value.imag):
             continue
-        # Rational atoms and higher-precision floats must not be rounded to
-        # binary64. Symbolica's literal equality includes the numeric kind.
-        if not bool(atom == _sym.Expression.num(value)):
+        # Literal matching retains numeric kind and precision, unlike scalar
+        # equality. Never round rational or higher-precision atoms to binary64.
+        if not bool(atom.matches(_sym.Expression.num(value))):
             continue
         real_n, real_d = value.real.as_integer_ratio()
         imag_n, imag_d = value.imag.as_integer_ratio()

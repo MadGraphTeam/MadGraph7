@@ -42,6 +42,19 @@ def test_certification_preserves_the_exact_binary64_value() -> None:
     assert bool(_exact_binary64_coefficients(E("x/3")) == E("x/3"))
 
 
+def test_certification_preserves_exactly_representable_high_precision_literal() -> None:
+    from symbolica import Expression, S
+
+    coefficient = Expression.num(Decimal("0.5000000000000000000000000000000000"))
+    expression = coefficient * S("literal_kind_x")
+    normalized = _exact_binary64_coefficients(expression)
+
+    # Numeric equality with binary64 0.5 is insufficient: its declared precision
+    # must survive, and it must not become the exact rational 1/2 here.
+    assert normalized.to_canonical_string() == expression.to_canonical_string()
+    assert bool(normalized.matches(expression))
+
+
 @pytest.mark.parametrize("coefficient", ("-1.0", "-1.000000000000001", "(-1+1/10^60)"))
 def test_radical_intrinsic_matching_does_not_round_away_coefficient_changes(
     coefficient: str,
@@ -74,9 +87,11 @@ def test_intrinsic_certification_retains_high_precision_radical(precision: int) 
     serialized = exact_evaluator.save()
     _exact_binary64_coefficients(source)
     assert exact_evaluator.save() == serialized
-    value, imaginary = Evaluator.load(serialized).evaluate_complex_with_prec(
-        (), precision
-    )[0]
+    value, imaginary = (
+        Evaluator.load(serialized)
+        .evaluate_complex_with_prec((), precision)[0]
+        .to_decimal_tuple()
+    )
     with localcontext() as context:
         context.prec = precision
         expected = -(Decimal(1) / Decimal(2)).sqrt()

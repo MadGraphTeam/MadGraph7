@@ -356,10 +356,11 @@ class _ExactEvaluator:
                 ) from exc
             return tuple(
                 (
-                    _decimal(value[0], "evaluator real output"),
-                    _decimal(value[1], "evaluator imaginary output"),
+                    _decimal(real, "evaluator real output"),
+                    _decimal(imaginary, "evaluator imaginary output"),
                 )
                 for value in result
+                for real, imaginary in (value.to_decimal_tuple(),)
             )
 
         outputs: list[_ComplexDecimal] = []
@@ -420,10 +421,11 @@ class _ExactExpressionEvaluator:
             raise EvaluationError(f"exact parameter derivation failed: {exc}") from exc
         return tuple(
             (
-                _decimal(value[0], "derived real parameter"),
-                _decimal(value[1], "derived imaginary parameter"),
+                _decimal(real, "derived real parameter"),
+                _decimal(imaginary, "derived imaginary parameter"),
             )
             for value in outputs
+            for real, imaginary in (value.to_decimal_tuple(),)
         )
 
     def evaluate_double_double(
@@ -439,9 +441,9 @@ class _ExactExpressionEvaluator:
             return tuple(
                 cast(
                     _ComplexDecimal,
-                    expression.evaluator(
-                        self._parameters, iterations=0, n_cores=1
-                    ).evaluate_complex_with_prec(prepared, 32)[0],
+                    expression.evaluator(self._parameters, iterations=0, n_cores=1)
+                    .evaluate_complex_with_prec(prepared, 32)[0]
+                    .to_decimal_tuple(),
                 )
                 for expression in self._expressions
             )

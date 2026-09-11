@@ -38,56 +38,13 @@ from .symbolica_helpers import (
     _evaluate_prepared_complex_profiled,
     _safe_symbol_name,
     _symbolica_evaluator_artifact_manifest,
+    _symbolica_instruction_program,
 )
 from .symbolica_settings import (
     ProgressCallback,
     SymbolicaEvaluatorSettings,
     _report_progress,
 )
-
-
-def _defer_reused_symjit_outputs(program: Any, output_len: int) -> Any:
-    """Keep shared outputs in temporaries until the final output stores.
-
-    SymJIT 2.25 can inline an output's only internal use and then lose the
-    value needed by its final store. Symbolica legitimately reuses output
-    slots as scratch space. Renaming these slots preserves the instruction
-    order and arithmetic, while making their final uses explicit. This is
-    generation-only; programs without output reads are left unchanged.
-    """
-    instructions, temporary_count, constants = program
-
-    def is_output(value: Any) -> bool:
-        return isinstance(value, tuple) and len(value) == 2 and value[0] == "out"
-
-    def contains_output(value: Any) -> bool:
-        return is_output(value) or (
-            isinstance(value, (tuple, list))
-            and any(contains_output(item) for item in value)
-        )
-
-    # All value-producing instructions have their destination in position 1.
-    # The condition of if_else is a read, not a destination.
-    if not any(
-        contains_output(line[1:] if line[0] == "if_else" else line[2:])
-        for line in instructions
-    ):
-        return program
-
-    def rename(value: Any) -> Any:
-        if is_output(value):
-            return ("temp", temporary_count + value[1])
-        if isinstance(value, tuple):
-            return tuple(rename(item) for item in value)
-        if isinstance(value, list):
-            return [rename(item) for item in value]
-        return value
-
-    rewritten = [rename(line) for line in instructions]
-    rewritten.extend(
-        ("assign", ("out", i), ("temp", temporary_count + i)) for i in range(output_len)
-    )
-    return rewritten, temporary_count + output_len, constants
 
 
 class _JITSymbolicaEvaluatorAdapter:
@@ -318,9 +275,7 @@ class _JITSymbolicaEvaluatorAdapter:
                 "pyAmpliCol candidate dependency"
             )
         try:
-            program_repr = repr(
-                _defer_reused_symjit_outputs(instructions(), self.output_len)
-            )
+            program_repr = repr(_symbolica_instruction_program(instructions()))
         except Exception as error:
             raise NativeEvaluationError(
                 "Symbolica could not export structured evaluator instructions "

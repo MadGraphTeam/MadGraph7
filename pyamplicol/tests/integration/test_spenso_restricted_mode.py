@@ -9,8 +9,9 @@ import sys
 _RESTRICTED_MODE_MRE = r"""
 from symbolica import Expression, is_licensed
 from symbolica.community.spenso import (
-    LibraryTensor,
     Representation,
+    Tensor,
+    TensorExpression,
     TensorLibrary,
     TensorName,
     TensorNetwork,
@@ -26,18 +27,18 @@ sigma = minkowski("ufo_l_2_4")
 a = TensorName("spenso_restricted_mode_test::A")
 b = TensorName("spenso_restricted_mode_test::B")
 library.register(
-    LibraryTensor.dense(
+    Tensor.dense(
         a(minkowski, minkowski),
         tuple(Expression.parse(f"a{i}") for i in range(16)),
     )
 )
 library.register(
-    LibraryTensor.dense(
+    Tensor.dense(
         b(minkowski, minkowski),
         tuple(Expression.parse("1" if i == 5 else "0") for i in range(16)),
     )
 )
-metric = TensorName.g()
+metric = TensorExpression.g(minkowski)
 expression = (
     -2 * metric(nu, mu).to_expression() * metric(sigma, rho).to_expression()
     + 2 * metric(mu, rho).to_expression() * metric(nu, sigma).to_expression()

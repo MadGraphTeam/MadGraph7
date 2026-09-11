@@ -144,11 +144,7 @@ def _wheel(
         else:
             target = "x86_64-unknown-linux-gnu"
     assert mode in {"candidate", "release"}
-    version = (
-        "0.1.0.dev0+candidate.testsource"
-        if mode == "candidate"
-        else "0.1.0"
-    )
+    version = "0.1.0.dev0+candidate.testsource" if mode == "candidate" else "0.1.0"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(
             f"pyamplicol-{version}.dist-info/METADATA",
@@ -232,6 +228,67 @@ def test_source_runtime_stages_one_attested_extension(tmp_path: Path) -> None:
     assert not (build_info.parent / ".staging").exists()
 
 
+@pytest.mark.parametrize(
+    ("mode", "bootstrap", "publishable", "failure"),
+    (
+        ("candidate", True, False, None),
+        ("candidate", False, False, "no self-test fixture"),
+        ("candidate", True, True, "not marked candidate"),
+        ("release", True, True, "no self-test fixture"),
+        ("release", False, True, "no self-test fixture"),
+    ),
+)
+def test_source_runtime_allows_missing_fixture_only_for_candidate_bootstrap(
+    tmp_path: Path,
+    mode: str,
+    bootstrap: bool,
+    publishable: bool,
+    failure: str | None,
+) -> None:
+    module = _module()
+    source_root = _source_root(tmp_path)
+    native_digest = module._native_build_inputs_digest(source_root)
+    wheel = tmp_path / "pyamplicol-bootstrap.whl"
+    _wheel(wheel, native_build_inputs_sha256=native_digest, mode=mode)
+    with zipfile.ZipFile(wheel) as archive:
+        members = {
+            info.filename: archive.read(info)
+            for info in archive.infolist()
+            if not info.filename.startswith("pyamplicol/assets/selftest/")
+        }
+    build_info_name = "pyamplicol/_build_info.json"
+    payload = json.loads(members.get(build_info_name, b'{"version": "0.1.0"}'))
+    payload.update(publishable=publishable, selftest_fixture_bootstrap=bootstrap)
+    members[build_info_name] = json.dumps(payload).encode()
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    package = source_root / "src/pyamplicol"
+    build_info = source_root / ".artifacts/source-runtime/_build_info.json"
+    kwargs = {
+        "source_package": package,
+        "source_build_info": build_info,
+        "source_root": source_root,
+        "mode": mode,
+        "audit": False,
+    }
+
+    if failure is not None:
+        with pytest.raises(module.ReleaseError, match=failure):
+            module.stage_runtime(wheel, **kwargs)
+        return
+
+    module.stage_runtime(wheel, **kwargs)
+    assert (package / "_rusticol.abi3.so").read_bytes() == b"extension"
+    assert (package / "_sdk/lib/librusticol_capi.a").read_bytes() == b"archive"
+    assert not (package / "assets/selftest").exists()
+    assert json.loads(build_info.read_text())["selftest_fixture_bootstrap"] is True
+
+    (source_root / "rust/crates/example/src/lib.rs").write_text("changed\n")
+    with pytest.raises(module.ReleaseError, match="different native sources"):
+        module.stage_runtime(wheel, **kwargs)
+
+
 def test_release_source_runtime_uses_the_release_native_identity(
     tmp_path: Path,
 ) -> None:
@@ -267,10 +324,7 @@ def test_release_source_runtime_uses_the_release_native_identity(
     assert payload["publishable"] is True
     assert payload["native_build_inputs_sha256"] == release_digest
     assert payload["source_runtime"]["mode"] == "release"
-    assert (
-        payload["source_runtime"]["native_build_inputs_sha256"]
-        == release_digest
-    )
+    assert payload["source_runtime"]["native_build_inputs_sha256"] == release_digest
     versions._verify_source_runtime(
         payload,
         package_root=package,
@@ -327,7 +381,7 @@ def test_source_runtime_verification_rejects_replaced_binary_and_source(
             "extension_sha256": hashlib.sha256(b"current").hexdigest(),
             "mode": "candidate",
             "native_build_inputs_sha256": native_digest,
-        }
+        },
     }
 
     versions._verify_source_runtime(
@@ -869,9 +923,7 @@ def test_candidate_native_digest_is_stable_across_install_and_relocation(
     _write_candidate_native_inputs(first)
     _write_candidate_native_inputs(
         second,
-        checkout_root=(
-            tmp_path / "relocated" / "dependencies" / "checkouts"
-        ),
+        checkout_root=(tmp_path / "relocated" / "dependencies" / "checkouts"),
         include_legacy=True,
     )
 
@@ -950,6 +1002,46 @@ def test_candidate_native_digest_requires_the_minimal_install_state_schema(
         assert digest(source_root) == expected
 
 
+def test_local_symjit_inputs_invalidate_native_cache_without_extension_noise(
+    tmp_path: Path,
+) -> None:
+    identity = _native_build_identity_module()
+    source_root = _source_root(tmp_path)
+    _write_candidate_native_inputs(source_root)
+    config = source_root / "dependencies/candidate-cargo-config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            str(source_root / "dependencies/checkouts/symjit"),
+            str(source_root / "TMP_FIXED_SYMJIT"),
+        ),
+        encoding="utf-8",
+    )
+    (source_root / "Cargo.toml").write_text(
+        '[patch.crates-io]\nsymjit = { path = "./TMP_FIXED_SYMJIT" }\n',
+        encoding="utf-8",
+    )
+    local = source_root / "TMP_FIXED_SYMJIT"
+    (local / "src").mkdir(parents=True)
+    compiler = local / "src/lib.rs"
+    compiler.write_text("pub fn compiler() {}\n", encoding="utf-8")
+    before = identity.native_build_inputs_digest(source_root)
+    assert versions._native_build_inputs_digest(source_root) == before
+
+    # Spenso is part of the separate community extension, not RustiCol.
+    with config.open("a", encoding="utf-8") as stream:
+        stream.write('spenso = { path = "TMP_FIXED_SPENSO/crates/spenso" }\n')
+    (local / "README.md").write_text("documentation only\n", encoding="utf-8")
+    (local / "tests").mkdir()
+    (local / "tests/check.rs").write_text("// test only\n", encoding="utf-8")
+    assert identity.native_build_inputs_digest(source_root) == before
+    assert versions._native_build_inputs_digest(source_root) == before
+
+    compiler.write_text("pub fn compiler() { let _fixed = true; }\n", encoding="utf-8")
+    after = identity.native_build_inputs_digest(source_root)
+    assert after != before
+    assert versions._native_build_inputs_digest(source_root) == after
+
+
 def test_candidate_native_digest_rejects_wrong_patch_target(tmp_path: Path) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
@@ -1016,11 +1108,7 @@ def test_release_native_digest_hashes_the_git_cargo_lock_verbatim(
         f'version = "{symjit["version"]}"\n'
         f'source = "{source}"\n'
     )
-    replacement = (
-        "[[package]]\n"
-        'name = "symjit"\n'
-        f'version = "{symjit["version"]}"\n'
-    )
+    replacement = f'[[package]]\nname = "symjit"\nversion = "{symjit["version"]}"\n'
     git_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
     assert git_lock.count(marker) == 1
     projected_lock = git_lock.replace(marker, replacement, 1).encode("utf-8")

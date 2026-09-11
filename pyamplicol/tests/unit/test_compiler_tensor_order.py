@@ -26,9 +26,7 @@ SCALAR_GRAVITY_ROOT = (
     / "scalar_gravity"
 )
 _SPIN2_AXIS_PATTERN = re.compile(r"(?<![-0-9])(?P<axis>[12])00(?P<leg>[0-9]+)\b")
-_DUMMY_INDEX_PATTERN = re.compile(
-    r"(?P<prefix>[(,]\s*)-(?P<label>[0-9]+)(?=\s*[,)])"
-)
+_DUMMY_INDEX_PATTERN = re.compile(r"(?P<prefix>[(,]\s*)-(?P<label>[0-9]+)(?=\s*[,)])")
 
 
 class _Argument:
@@ -38,15 +36,16 @@ class _Argument:
     def to_canonical_string(self) -> str:
         return f"spenso::mink(4,{self.label})"
 
+    def to_expression(self) -> _Argument:
+        return self
+
 
 class _Structure:
     def __init__(self) -> None:
         self.coordinates = ((0, 0), (0, 1), (1, 0), (1, 1))
 
-    def set_name(self, _name: str) -> None:
-        pass
-
-    def to_expression(self) -> tuple[_Argument, ...]:
+    @property
+    def interface(self) -> tuple[_Argument, ...]:
         return (_Argument("ufo_l_1_4"), _Argument("ufo_l_1_3"))
 
     def __getitem__(self, index: int) -> tuple[int, int]:
@@ -81,6 +80,26 @@ def test_dense_tensor_components_follow_physical_ufo_axis_order() -> None:
     assert ordered.values == (0, 1, 10, 11)
     assert tuple(axis.extent for axis in ordered.ordering.axes) == (2, 2)
     assert ordered.ordering.component_basis == (0, 1, 2, 3)
+
+
+def test_spenso_tensor_components_preserve_logical_axis_order() -> None:
+    from symbolica import E
+    from symbolica.community.spenso import Representation, Tensor, TensorName
+
+    left = Representation.euc(2)("ufo_l_1_3")
+    right = Representation.euc(3)("ufo_l_1_4")
+    tensor = Tensor.dense(
+        TensorName("tensor_order_actual")(right, left),
+        [
+            E(str(left_index * 10 + right_index))
+            for right_index in range(3)
+            for left_index in range(2)
+        ],
+    )
+    ordered = _ordered_dense_tensor_components(tensor, ("ufo_l_1_3", "ufo_l_1_4"))
+
+    assert ordered.values == tuple(E(str(value)) for value in (0, 1, 2, 10, 11, 12))
+    assert tuple(axis.extent for axis in ordered.ordering.axes) == (2, 3)
 
 
 class _RectangularStructure(_Structure):
@@ -130,10 +149,8 @@ class _Spin2Structure:
             reversed(tuple((right, left) for right in range(4) for left in range(4)))
         )
 
-    def set_name(self, _name: str) -> None:
-        pass
-
-    def to_expression(self) -> tuple[_Argument, ...]:
+    @property
+    def interface(self) -> tuple[_Argument, ...]:
         return (_Argument("ufo_l_2_3"), _Argument("ufo_l_1_3"))
 
     def __getitem__(self, index: int) -> tuple[int, int]:
@@ -154,18 +171,19 @@ def test_spin2_axis_transpose_and_storage_permutation_canonicalize() -> None:
 
     assert ordered.values == tuple(range(16))
     assert ordered.ordering.basis == "lorentz-rank-2"
-    assert ordered.ordering.ordering_id == identity_ordering_for_materialized_axes(
-        labels,
-        (4, 4),
-    ).ordering_id
+    assert (
+        ordered.ordering.ordering_id
+        == identity_ordering_for_materialized_axes(
+            labels,
+            (4, 4),
+        ).ordering_id
+    )
 
 
 def _transpose_spin2_axes(source: str) -> str:
     return _SPIN2_AXIS_PATTERN.sub(
         lambda match: (
-            ("2" if match.group("axis") == "1" else "1")
-            + "00"
-            + match.group("leg")
+            ("2" if match.group("axis") == "1" else "1") + "00" + match.group("leg")
         ),
         source,
     )
@@ -173,9 +191,7 @@ def _transpose_spin2_axes(source: str) -> str:
 
 def _rename_lorentz_dummies(source: str) -> str:
     return _DUMMY_INDEX_PATTERN.sub(
-        lambda match: (
-            match.group("prefix") + f"-{7_000 + int(match.group('label'))}"
-        ),
+        lambda match: match.group("prefix") + f"-{7_000 + int(match.group('label'))}",
         source,
     )
 
@@ -184,9 +200,7 @@ def _kernel_numeric_values(
     model: CompiledUFOModel,
     kernel: CompiledOrientedKernel,
 ) -> tuple[complex, ...]:
-    particles = {
-        particle.name: particle for particle in model.compiled.ir.particles
-    }
+    particles = {particle.name: particle for particle in model.compiled.ir.particles}
 
     def current(name: str, phase: float) -> tuple[complex, ...]:
         pdg = particles[name].pdg_code

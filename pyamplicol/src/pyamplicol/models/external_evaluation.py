@@ -567,28 +567,29 @@ class ExternalModelEvaluationMixin:
         representations = _spin_representations(spin)
         if representations:
             name = _sym.TensorName(symbols.custom_propagator_tensor_name(self.name))
-            library.register(
-                _sym.LibraryTensor.dense(name(*representations), components)
-            )
+            library.register(_sym.Tensor.dense(name(*representations), components))
             expression *= name(*_spin_slots(spin, 1)).to_expression()
         else:
             expression *= components[0]
         minkowski = _sym.Representation.mink(4)
         for leg in (1, 2):
             library.register(
-                _sym.LibraryTensor.dense(
+                _sym.Tensor.dense(
                     _sym.TensorName(self._model_symbols.ufo_momentum_tensor_name(leg))(
                         minkowski
                     ),
                     momenta,
                 )
             )
-        network = _sym.TensorNetwork(expression, library)
+        axis_labels = _spin_axis_labels(spin, 2)
+        network = _sym.TensorNetwork(
+            _sym.as_tensor(expression) if axis_labels else expression, library
+        )
         network.execute(library=library)
         tensor = network.result_tensor(library)
         tensor_components = _ordered_dense_tensor_components(
             tensor,
-            _spin_axis_labels(spin, 2),
+            axis_labels,
         ).values
         expected = self.dimension(particle_id)
         if len(tensor_components) != expected:

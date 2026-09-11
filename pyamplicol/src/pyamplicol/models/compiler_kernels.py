@@ -264,8 +264,7 @@ def _oriented_component_expressions(
         model_symbols=model_symbols,
     )
     left_momentum = tuple(
-        model_symbols.kernel_momentum(kind, "left", component)
-        for component in range(4)
+        model_symbols.kernel_momentum(kind, "left", component) for component in range(4)
     )
     right_momentum = tuple(
         model_symbols.kernel_momentum(kind, "right", component)
@@ -283,19 +282,23 @@ def _oriented_component_expressions(
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
         library.register(
-            _sym.LibraryTensor.dense(
+            _sym.Tensor.dense(
                 _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
                     minkowski
                 ),
                 momentum,
             )
         )
-    network = _sym.TensorNetwork(expression, library)
+    axis_labels = _spin_axis_labels(particles[result_leg].spin, result_leg + 1)
+    # Plain expressions already carry the correct empty scalar interface.
+    network = _sym.TensorNetwork(
+        _sym.as_tensor(expression) if axis_labels else expression, library
+    )
     network.execute(library=library)
     result = network.result_tensor(library)
     ordered_result = _ordered_dense_tensor_components(
         result,
-        _spin_axis_labels(particles[result_leg].spin, result_leg + 1),
+        axis_labels,
     )
     result_components = ordered_result.values
     expected_dimension = _spin_dimension(particles[result_leg].spin)
@@ -429,12 +432,10 @@ def _equivalent_component_scale(
         return None
     if any(
         frozenset(
-            symbol.to_canonical_string()
-            for symbol in dense.get_all_symbols(False)
+            symbol.to_canonical_string() for symbol in dense.get_all_symbols(False)
         )
         != frozenset(
-            symbol.to_canonical_string()
-            for symbol in candidate.get_all_symbols(False)
+            symbol.to_canonical_string() for symbol in candidate.get_all_symbols(False)
         )
         for dense, candidate in zip(materialized, compact, strict=True)
     ):
@@ -507,7 +508,7 @@ def _input_tensor_expression(
             raise ValueError("scalar current must have exactly one component")
         return components[0]
     name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
-    library.register(_sym.LibraryTensor.dense(name(*representations), components))
+    library.register(_sym.Tensor.dense(name(*representations), components))
     slots = _spin_slots(spin, leg)
     return name(*slots).to_expression()
 
@@ -566,8 +567,7 @@ def _ordered_dense_tensor_components(
         )
 
     structure = tensor.structure()
-    structure.set_name(symbols.display_name("tensor_order_probe"))
-    arguments = tuple(structure.to_expression())
+    arguments = tuple(slot.to_expression() for slot in structure.interface)
     actual: list[str] = []
     for argument in arguments:
         source = argument.to_canonical_string()

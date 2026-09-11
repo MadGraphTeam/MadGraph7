@@ -303,7 +303,13 @@ def _stage_runtime_locked(
         or name.startswith(_SDK_PREFIXES)
         or name.startswith(selftest_prefix)
     }
-    if not any(name.startswith(selftest_prefix) for name in selected):
+    has_selftest = any(name.startswith(selftest_prefix) for name in selected)
+    fixture_bootstrap = (
+        mode == "candidate"
+        and build_info.get("publishable") is False
+        and build_info.get("selftest_fixture_bootstrap") is True
+    )
+    if not has_selftest and not fixture_bootstrap:
         raise ReleaseError(
             f"source runtime wheel has no self-test fixture for {target}"
         )
@@ -315,13 +321,14 @@ def _stage_runtime_locked(
             members[member],
             mode=member_modes[member] or 0o644,
         )
-    _stage_selftest_tree(
-        source_package,
-        members,
-        member_modes,
-        prefix=selftest_prefix,
-        target=target,
-    )
+    if has_selftest:
+        _stage_selftest_tree(
+            source_package,
+            members,
+            member_modes,
+            prefix=selftest_prefix,
+            target=target,
+        )
 
     expected_extension = PurePosixPath(extension_names[0]).name
     for path in _native_extension_inventory(source_package):

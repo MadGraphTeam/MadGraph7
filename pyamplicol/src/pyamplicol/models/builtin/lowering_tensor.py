@@ -233,11 +233,14 @@ class _GraphTensorExpressionBuilder:
         execute_between: bool,
         metadata: dict[str, float | int],
     ) -> Any:
-        from symbolica.community.spenso import TensorNetwork
+        from symbolica.community.spenso import TensorNetwork, as_tensor
 
         interactions = self._interactions_by_result.get(_current_key_tuple(current))
         if not interactions:
-            return TensorNetwork(self._current_leaf(current, output_slots), library)
+            expression = self._current_leaf(current, output_slots)
+            return TensorNetwork(
+                as_tensor(expression) if output_slots else expression, library
+            )
 
         needs_propagator = _current_needs_propagator(self.graph, current)
         result_slots = (
@@ -258,8 +261,13 @@ class _GraphTensorExpressionBuilder:
                 interaction.right,
                 self._dummy_prefix(interaction, interaction_index, "right"),
             )
+            expression = self._vertex_tensor(
+                interaction, left_slots, right_slots, result_slots
+            )
             term = TensorNetwork(
-                self._vertex_tensor(interaction, left_slots, right_slots, result_slots),
+                as_tensor(expression)
+                if left_slots or right_slots or result_slots
+                else expression,
                 library,
             )
             term = self._multiply_networks(
@@ -289,9 +297,14 @@ class _GraphTensorExpressionBuilder:
                 metadata=metadata,
             )
             if needs_propagator:
+                expression = self._propagator_tensor(
+                    current, result_slots, output_slots
+                )
                 term = self._multiply_networks(
                     TensorNetwork(
-                        self._propagator_tensor(current, result_slots, output_slots),
+                        as_tensor(expression)
+                        if result_slots or output_slots
+                        else expression,
                         library,
                     ),
                     term,
@@ -631,7 +644,7 @@ def _register_parametric_current_momenta(
     graph: Any,
     builder: ParamBuilder | None = None,
 ) -> ParamBuilder:
-    from symbolica.community.spenso import LibraryTensor, Representation, TensorName
+    from symbolica.community.spenso import Representation, Tensor, TensorName
 
     if builder is None:
         builder = ParamBuilder()
@@ -657,14 +670,14 @@ def _register_parametric_current_momenta(
         pdg = int(current.pdg)
         if pdg == 21:
             library.register(
-                LibraryTensor.dense(
+                Tensor.dense(
                     TensorName(_propagator_tensor_name(current))(mink, mink),
                     model.gluon_propagator_tensor_data(momentum_symbols),
                 )
             )
         elif _is_weyl_fermion_current(current):
             library.register(
-                LibraryTensor.dense(
+                Tensor.dense(
                     TensorName(_propagator_tensor_name(current))(weyl, weyl),
                     model.quark_weyl_propagator_tensor_data(
                         momentum_symbols,
@@ -802,7 +815,12 @@ def _propagator_lowering_ready(graph: Any) -> bool:
 def _build_auxiliary_tensor_probe(
     model: BuiltinSMModel,
 ) -> TensorNetworkProbe:
-    from symbolica.community.spenso import Representation, TensorName, TensorNetwork
+    from symbolica.community.spenso import (
+        Representation,
+        TensorName,
+        TensorNetwork,
+        as_tensor,
+    )
 
     library = model.build_tensor_library()
     mink = Representation.mink(4)
@@ -822,7 +840,7 @@ def _build_auxiliary_tensor_probe(
             mink("rho"),
         ).to_expression()
     )
-    network = TensorNetwork(expression, library)
+    network = TensorNetwork(as_tensor(expression), library)
     network.execute(library=library)
     result = network.result_tensor(library)
     output_size = len(result)

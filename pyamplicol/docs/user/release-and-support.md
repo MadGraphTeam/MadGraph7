@@ -13,8 +13,9 @@ record of the supported release boundary and explains how to report a problem.
 
 ## Current release boundary
 
-The `main` branch prepares version `0.4.1` for the next publication. It is not
-yet published on PyPI; the current published release remains `0.2.0`.
+The `updated_dependencies_and_misc_optimizations` branch prepares version
+`0.2.1`. It is not yet published on PyPI; the current published release
+remains `0.2.0`.
 
 Version `0.2.0` is represented by the immutable
 [`v0.2.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.2.0),
@@ -32,13 +33,17 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.
 Publication uploads these already validated files without rebuilding them.
 
-Release dependencies include Symbolica 2.2.0 and the official
-[`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.25.0 at
-immutable revision `f1c193d301897149de6609f706297b0c97a4f018`.
+The development checkpoint uses Symbolica 2.2.0 development sources and
+GammaLoop's `simplify-spenso-api` branch, with exact source revisions recorded
+in `dependencies/contributor-lock.toml`. The local, untracked
+`TMP_FIXED_SYMJIT` checkout contains two upstream fixes; `TMP_FIXED_SPENSO`
+contains the extension API adaptations for this Symbolica version. These
+directories are not distributed with this branch. Replace the temporary path
+dependencies with fixed upstream revisions before building a release.
 
-## 0.4.1 (unreleased)
+## 0.2.1 (unreleased)
 
-Version `0.4.1` preserves exact model constants, colour weights, and
+Version `0.2.1` preserves exact model constants, colour weights, and
 normalization factors through higher-precision evaluation. It also corrects
 native evaluation and retains the exact next-to-leading-colour generation
 shortcut. The release keeps the same supported platforms and Python versions.

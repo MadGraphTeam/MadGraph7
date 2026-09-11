@@ -32,6 +32,7 @@ from typing import Any
 
 from .._internal.physics.types import NativeEvaluationError
 from .._internal.versions import NATIVE_COMPILED_DIRECT_APPLICATION_ABI
+from .symbolica_helpers import _symbolica_instruction_program
 
 _C_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _DIRECT_MARKER = "// pyAmpliCol genuine native DirectApplication producer v1"
@@ -196,7 +197,7 @@ def render_native_direct_cpp(
             "this Symbolica evaluator exposes no reusable instruction/state API"
         )
     try:
-        raw_program = get_instructions()
+        raw_program = _symbolica_instruction_program(get_instructions())
         evaluator_state = save()
     except Exception as error:
         raise NativeEvaluationError(
