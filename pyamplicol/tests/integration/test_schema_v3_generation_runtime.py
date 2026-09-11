@@ -776,12 +776,13 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
     )
     mixed_batch = (momenta[0], alternate, momenta[0])
     oracle = runtime.evaluate(mixed_batch, precision=80)
-    double_double = runtime.evaluate(
-        mixed_batch, arithmetic="double-double", precision=31
-    )
+    # Public uncorrelated precision requests use Arb; the Symbolica-free
+    # native Python runtime exposes only f64, not its optional Rust DoubleFloat
+    # lane. Check the retained exact chunk maps without mislabelling Arb as DD.
+    higher_precision = runtime.evaluate(mixed_batch, precision=31)
     with localcontext() as context:
         context.prec = 90
-        for value, reference in zip(double_double, oracle, strict=True):
+        for value, reference in zip(higher_precision, oracle, strict=True):
             assert reference > 0
             assert abs(value - reference) / reference < Decimal("1e-27")
     assert runtime.evaluate(mixed_batch) == pytest.approx(
