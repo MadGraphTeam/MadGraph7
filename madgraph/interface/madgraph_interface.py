@@ -3279,6 +3279,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'f2py_compiler_py2':None,
                        'f2py_compiler_py3':None,
                        'cpp_compiler':None,
+                       'min_gcc_version': None,
                        'checkpointing': False,
                        'cluster_type': 'condor',
                        'cluster_queue': None,
@@ -8302,6 +8303,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         warnings = madevent_interface.MadEventCmd.mg5amc_py8_interface_consistency_warning(self.options)
         if warnings:
             logger.warning(warnings)
+
+        if self.options.get('min_gcc_version'):
+            warnings = misc.check_gcc_version(self.options['min_gcc_version'])
+            if warnings:
+                logger.warning(warnings)
 
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)

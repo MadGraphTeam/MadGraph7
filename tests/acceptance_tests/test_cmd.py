@@ -190,6 +190,7 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_temp_path': None, 
                     'fortran_compiler': None, 
                     'cpp_compiler': None,
+                    'min_gcc_version': None,
                     'exrootanalysis_path': './ExRootAnalysis', 
                     'eps_viewer': None, 
                     'automatic_html_opening': True, 

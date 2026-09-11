@@ -742,6 +742,50 @@ def get_gfortran_version(compiler='gfortran'):
         raise error
         return '0'
 
+def get_gcc_version(compiler='gcc'):
+    """ Returns the version of the gcc found in the PATH as a tuple of int,
+        e.g. (13, 2, 1).
+        Returns None if the compiler is not in the PATH, if its version cannot
+        be parsed, or if it is not a real gcc -- on MacOS 'gcc' usually is a
+        clang wrapper, whose version numbering is unrelated to gcc's."""
+    if not which(compiler):
+        return None
+    try:
+        p = Popen([compiler, '--version'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+        output, error = p.communicate()
+        banner = output.decode("utf-8",errors='ignore').split('\n',1)[0]
+        if p.returncode or 'clang' in banner.lower():
+            return None
+        p = Popen([compiler, '-dumpversion'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+        output, error = p.communicate()
+        output = output.decode("utf-8",errors='ignore')
+        version = re.search(r"(?P<version>\d[\d.]*)", output).group('version')
+        return tuple(int(v) for v in version.rstrip('.').split('.'))
+    except Exception:
+        return None
+
+def check_gcc_version(min_version, compiler='gcc'):
+    """ Returns a warning message if the gcc of the PATH is older than
+        min_version (a string such as '12' or '12.2'), None otherwise.
+        This is called at start-up because a too old gcc otherwise only shows
+        up much later, when compiling the generated code or when installing
+        madspace."""
+    try:
+        minimum = tuple(int(v) for v in str(min_version).split('.'))
+    except ValueError:
+        logger.debug('ignoring invalid min_gcc_version: %s' % min_version)
+        return None
+    version = get_gcc_version(compiler)
+    if version is None or version >= minimum:
+        return None
+    return ('The %s found in your PATH is version %s, older than the minimal '
+            'version supported by MadGraph7 (%s). Compiling the generated code '
+            'or installing packages is likely to fail: please put a more recent '
+            'gcc in your PATH.' %
+            (compiler, '.'.join(str(v) for v in version), min_version))
+
 def mod_compilator(directory, new='gfortran', current=None, compiler_type='gfortran'):
     #define global regular expression
     if type(directory)!=list:

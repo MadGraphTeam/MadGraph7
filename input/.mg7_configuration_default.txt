@@ -45,6 +45,12 @@
 #!
 # cpp_compiler = None
 
+#! Minimal version of gcc supported by MadGraph7
+#!  The gcc of the PATH is checked at start-up and a warning is printed if it
+#!  is older than this
+#!  Set it to None to skip the check.
+min_gcc_version = 15
+
 #! Preferred Text Editor
 #!  Default: use the shell default Editor
 #!           or try to find one available on the system
