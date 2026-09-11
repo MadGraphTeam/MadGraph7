@@ -721,6 +721,7 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'loop_sm')
         self.assertEqual(cmd, os.getcwd())
         #change splitevent generation
+        self.set_parton_shower('HERWIG6')
         card = open('%s/Cards/run_card.dat' % self.path).read()
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace(' -1 = nevt_job', ' 1000 = nevt_job'))
         self.do('generate_events aMC@NLO -fp')        
