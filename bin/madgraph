@@ -6,13 +6,13 @@ start = time.time()
 
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -25,7 +25,7 @@ import sys
 import logging
 import logging.config
 if sys.version_info < (3, 12):
-   sys.exit('MadGraph5_aMC@NLO works with python 3.12 or higher.\n\
+   sys.exit('MadGraph7 works with python 3.12 or higher.\n\
               Please upgrade your version of python.')
 
 
@@ -106,7 +106,7 @@ else:
     # charge history file
     try:
         # MG7 keeps its state to itself: nothing is read from or written into
-        # MG5_aMC's ~/.mg5.
+        # MadGraph7's ~/.mg5.
         state_dir = os.getenv('XDG_STATE_HOME')
         if state_dir:
             state_dir = os.path.join(state_dir, 'mg7')
@@ -187,7 +187,7 @@ else:
 try:
     if options.file or args:
         if sys.platform == "darwin" and options.nosleep:
-            logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MG5aMC is running. Run './bin/madgraph -s' to prevent this.")
+            logging.getLogger('madgraph').warning("launching caffeinate to prevent idle sleep when MadGraph7 is running. Run './bin/madgraph -s' to prevent this.")
             pid = os.getpid()
             subprocess.Popen(['caffeinate', '-i', '-w', str(pid)])
         # They are an input file 

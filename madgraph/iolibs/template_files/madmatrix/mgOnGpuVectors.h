@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Nov 2020) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Nov 2020) for the MadGraph7 CUDACPP plugin.
 // Further modified by: S. Roiser, A. Valassi, Z. Wettersten (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -10,6 +10,7 @@
 #include "mgOnGpuCxtypes.h"
 #include "mgOnGpuFptypes.h"
 
+#include <cassert>
 #include <iostream>
 
 //==========================================================================
@@ -370,6 +371,18 @@ namespace mg5amcCpu
     return cxtype_v( a.real() + b, a.imag() );
   }
 
+  inline cxtype_v
+  operator+( const cxtype& a, const cxtype_v& b )
+  {
+    return cxtype_v( a.real() + b.real(), a.imag() + b.imag() );
+  }
+
+  inline cxtype_v
+  operator+( const cxtype_v& a, const cxtype& b )
+  {
+    return cxtype_v( a.real() + b.real(), a.imag() + b.imag() );
+  }
+
   inline const cxtype_v&
   operator+( const cxtype_v& a )
   {
@@ -416,6 +429,18 @@ namespace mg5amcCpu
   operator-( const fptype_v& a, const cxtype& b )
   {
     return cxtype_v( a - b.real(), fptype_v{} - b.imag() ); // IIII=0000-b.imag()
+  }
+
+  inline cxtype_v
+  operator-( const cxtype& a, const cxtype_v& b )
+  {
+    return cxtype_v( a.real() - b.real(), a.imag() - b.imag() );
+  }
+
+  inline cxtype_v
+  operator-( const cxtype_v& a, const cxtype& b )
+  {
+    return cxtype_v( a.real() - b.real(), a.imag() - b.imag() );
   }
 
   inline cxtype_v
@@ -505,6 +530,14 @@ namespace mg5amcCpu
   operator/( const cxtype_v& a, const fptype& b )
   {
     return cxtype_v( a.real() / b, a.imag() / b );
+  }
+
+  inline cxtype_v
+  operator/( const cxtype_v& a, const cxtype& b )
+  {
+    const fptype bnorm = b.real() * b.real() + b.imag() * b.imag();
+    return cxtype_v( ( a.real() * b.real() + a.imag() * b.imag() ) / bnorm,
+                     ( a.imag() * b.real() - a.real() * b.imag() ) / bnorm );
   }
 
 #endif // #ifdef MGONGPU_CPPSIMD
@@ -923,6 +956,22 @@ namespace mg5amcCpu
   cxabs2( const cxtype_sv& c )
   {
     return cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c );
+  }
+
+  // ALOHA raises the denominator of a custom propagator to an integer power (the
+  // squared Breit-Wigner of the SMEFTsim width corrections, for instance). There
+  // is no std::pow overload for cxtype_v, so expand the power by repeated
+  // multiplication: the exponent comes from the UFO propagator and is a small
+  // positive integer.
+  template<class T>
+  inline __host__ __device__ T
+  cxpow( const T& base, const fptype n )
+  {
+    const int k = (int)n;
+    assert( (fptype)k == n && k >= 1 ); // only positive integer powers are supported
+    T out = base;
+    for( int i = 1; i < k; i++ ) out = out * base;
+    return out;
   }
 
   //==========================================================================

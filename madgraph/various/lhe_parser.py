@@ -5910,7 +5910,7 @@ if '__main__' == __name__:
         
         n, bins, patches = ax.hist(data, nbins, histtype='step', label='original')
         ax_c = ax.twinx()
-        ax_c.set_ylabel('MadGraph5_aMC@NLO')
+        ax_c.set_ylabel('MadGraph7')
         ax_c.yaxis.set_label_coords(1.01, 0.25)
         ax_c.set_yticks(ax.get_yticks())
         ax_c.set_yticklabels([])
@@ -5965,7 +5965,7 @@ if '__main__' == __name__:
         ax.legend()
         # add on the right program tag
         ax_c = ax.twinx()
-        ax_c.set_ylabel('MadGraph5_aMC@NLO')
+        ax_c.set_ylabel('MadGraph7')
         ax_c.yaxis.set_label_coords(1.01, 0.25)
         ax_c.set_yticks(ax.get_yticks())
         ax_c.set_yticklabels([])

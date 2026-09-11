@@ -66,17 +66,33 @@ void ThreadPool::submit(std::vector<JobFunc>& jobs) {
     _cv_run.notify_all();
 }
 
+void ThreadPool::rethrow_job_exception(std::unique_lock<std::mutex>& lock) {
+    _job_queue.clear();
+    _cv_done.wait(lock, [&] { return _busy_threads == 0; });
+    auto exception = _exception;
+    _exception = nullptr;
+    _done_queue.clear();
+    _done_buffer.clear();
+    std::rethrow_exception(exception);
+}
+
 bool ThreadPool::fill_done_cache() {
     if (!_done_buffer.empty()) {
         return true;
     }
 
     std::unique_lock<std::mutex> lock(_mutex);
+    if (_exception) {
+        rethrow_job_exception(lock);
+    }
     if (_done_queue.empty()) {
         if (_job_queue.empty() && _busy_threads == 0) {
             return false;
         }
-        _cv_done.wait(lock, [&] { return !_done_queue.empty(); });
+        _cv_done.wait(lock, [&] { return !_done_queue.empty() || _exception; });
+        if (_exception) {
+            rethrow_job_exception(lock);
+        }
     }
     _done_buffer.insert(_done_buffer.begin(), _done_queue.rbegin(), _done_queue.rend());
     _done_queue.clear();
@@ -128,13 +144,31 @@ void ThreadPool::thread_loop(std::size_t index) {
         _job_queue.pop_front();
         ++_busy_threads;
         lock.unlock();
-        std::optional<std::size_t> result = job();
+        std::optional<std::size_t> result;
+        try {
+            result = job();
+        } catch (...) {
+            // A job must never let an exception escape: it would unwind out of
+            // the thread function and terminate the process. Hand the first one
+            // to whoever is waiting, and drop the jobs still queued -- the
+            // waiter is about to unwind and they capture its locals.
+            lock.lock();
+            if (!_exception) {
+                _exception = std::current_exception();
+            }
+            _job_queue.clear();
+            --_busy_threads;
+            _cv_done.notify_all();
+            continue;
+        }
         lock.lock();
         --_busy_threads;
         if (result) {
             _done_queue.push_back(*result);
-            _cv_done.notify_one();
         }
+        // notify_all, not notify_one: rethrow_job_exception() waits here for
+        // _busy_threads to drain, and a job returning nullopt must wake it too.
+        _cv_done.notify_all();
     }
 }
 

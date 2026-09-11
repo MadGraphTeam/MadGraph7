@@ -1,16 +1,16 @@
 // Copyright (C) 2010 The ALOHA Development team and Contributors.
-// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-// Created by: J. Alwall (Sep 2010) for the MG5aMC backend.
+// Copyright (C) 2010 The MadGraph7 development team and contributors.
+// Created by: J. Alwall (Sep 2010) for the MadGraph7 backend.
 //==========================================================================
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
-// Further modified by: J. Teig, A. Valassi (2021-2024) for the MG5aMC CUDACPP plugin.
+// Modified originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
+// Further modified by: J. Teig, A. Valassi (2021-2024) for the MadGraph7 CUDACPP plugin.
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
 // This file has been automatically generated for CUDA/C++ standalone by
-//  MadGraph5_aMC@NLO v. %(version)s, %(date)s
-//  By the MadGraph5_aMC@NLO Development Team
+//  MadGraph7 v. %(version)s, %(date)s
+//  By the MadGraph7 Development Team
 //  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
 //==========================================================================
 
@@ -412,18 +412,33 @@ namespace mg5amcCpu
     {
 #ifdef MGONGPU_CPPSIMD
       volatile fptype_sv p0p3 = fpmax( pvec0 + pvec3, 0 ); // volatile fixes #736
+      // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by it.
+      // Take it from the light-cone identity p+ p- = pT^2 instead.
+      const fptype_sv p0mp3 = pvec0 - pvec3;
+      volatile fptype_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
+      const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                              ( pvec1 * pvec1 + pvec2 * pvec2 ) / (const fptype_v)p0mp3DENOM,
+                                              (const fptype_v)p0p3 );
       volatile fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
-                                             fpsqrt( p0p3 ) * (fptype)nsf );
+                                             fpsqrt( p0p3stable ) * (fptype)nsf );
       volatile fptype_sv sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: dummy sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
       cxtype_sv chi[2] = { cxmake( (fptype_v)sqp0p3, 0. ),
                            cxternary( sqp0p3 == 0,
                                       cxmake( -(fptype)nhel * fpsqrt( 2. * pvec0 ), 0. ),
                                       cxmake( (fptype)nh * pvec1, pvec2 ) / (const fptype_v)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
+      // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by it.
+      // Take it from the light-cone identity p+ p- = pT^2 instead.
+      const fptype_sv p0mp3 = pvec0 - pvec3;
+      const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                              ( pvec1 * pvec1 + pvec2 * pvec2 ) / fpternary( p0mp3 > 0., p0mp3, fptype_sv{ 1 } ),
+                                              fpmax( pvec0 + pvec3, 0. ) );
       const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                           fptype_sv{ 0 },
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+                                          fpsqrt( p0p3stable ) * (fptype)nsf );
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -(fptype)nhel * fpsqrt( 2. * pvec0 ), 0. ) : cxmake( (fptype)nh * pvec1, pvec2 ) / sqp0p3 ) };
 #endif
@@ -553,7 +568,15 @@ namespace mg5amcCpu
     fi.flv_index = flv;
     const int nh = nhel * nsf;
     //const float sqp0p3 = sqrtf( pvec0 + pvec3 ) * nsf; // AV: why force a float here?
-    const fptype_sv sqp0p3 = fpsqrt( pvec0 + pvec3 ) * (fptype)nsf;
+    // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+    // backward-moving massless fermion, and everything below divides by it.
+    // Take it from the light-cone identity p+ p- = pT^2 instead (PT>0 here by
+    // assumption, so no pT==0 branch is needed).
+    const fptype_sv p0mp3 = pvec0 - pvec3;
+    const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                            ( pvec1 * pvec1 + pvec2 * pvec2 ) / fpternary( p0mp3 > 0., p0mp3, fptype_sv{ 1 } ),
+                                            pvec0 + pvec3 );
+    const fptype_sv sqp0p3 = fpsqrt( p0p3stable ) * (fptype)nsf;
     const cxtype_sv chi0 = cxmake( sqp0p3, 0. );
     const cxtype_sv chi1 = cxmake( (fptype)nh * pvec1 / sqp0p3, pvec2 / sqp0p3 );
     if( nh == 1 )
@@ -938,18 +961,33 @@ namespace mg5amcCpu
     {
 #ifdef MGONGPU_CPPSIMD
       volatile fptype_sv p0p3 = fpmax( pvec0 + pvec3, 0 ); // volatile fixes #736
+      // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by it.
+      // Take it from the light-cone identity p+ p- = pT^2 instead.
+      const fptype_sv p0mp3 = pvec0 - pvec3;
+      volatile fptype_sv p0mp3DENOM = fpternary( p0mp3 > 0, p0mp3, 1. ); // hack: dummy p0mp3DENOM[ieppV]=1 if p0mp3[ieppV]<=0
+      const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                              ( pvec1 * pvec1 + pvec2 * pvec2 ) / (const fptype_v)p0mp3DENOM,
+                                              (const fptype_v)p0p3 );
       volatile fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. and pvec2 == 0. and pvec3 < 0. ),
                                              fptype_sv{ 0 },
-                                             fpsqrt( p0p3 ) * (fptype)nsf );
+                                             fpsqrt( p0p3stable ) * (fptype)nsf );
       volatile fptype_v sqp0p3DENOM = fpternary( sqp0p3 != 0, (fptype_sv)sqp0p3, 1. ); // hack: sqp0p3DENOM[ieppV]=1 if sqp0p3[ieppV]==0
       const cxtype_v chi[2] = { cxmake( (fptype_v)sqp0p3, 0. ),
                                 cxternary( ( sqp0p3 == 0. ),
                                            cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ),
                                            cxmake( (fptype)nh * pvec1, -pvec2 ) / (const fptype_sv)sqp0p3DENOM ) }; // hack: dummy[ieppV] is not used if sqp0p3[ieppV]==0
 #else
+      // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+      // backward-moving massless fermion, and everything below divides by it.
+      // Take it from the light-cone identity p+ p- = pT^2 instead.
+      const fptype_sv p0mp3 = pvec0 - pvec3;
+      const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                              ( pvec1 * pvec1 + pvec2 * pvec2 ) / fpternary( p0mp3 > 0., p0mp3, fptype_sv{ 1 } ),
+                                              fpmax( pvec0 + pvec3, 0. ) );
       const fptype_sv sqp0p3 = fpternary( ( pvec1 == 0. ) and ( pvec2 == 0. ) and ( pvec3 < 0. ),
                                           0,
-                                          fpsqrt( fpmax( pvec0 + pvec3, 0. ) ) * (fptype)nsf );
+                                          fpsqrt( p0p3stable ) * (fptype)nsf );
       const cxtype_sv chi[2] = { cxmake( sqp0p3, 0. ),
                                  ( sqp0p3 == 0. ? cxmake( -nhel, 0. ) * fpsqrt( 2. * pvec0 ) : cxmake( (fptype)nh * pvec1, -pvec2 ) / sqp0p3 ) };
 #endif
@@ -1082,7 +1120,15 @@ namespace mg5amcCpu
     fo.flv_index = flv;
     const int nh = nhel * nsf;
     //const float sqp0p3 = sqrtf( pvec0 + pvec3 ) * nsf; // AV: why force a float here?
-    const fptype_sv sqp0p3 = fpsqrt( pvec0 + pvec3 ) * (fptype)nsf;
+    // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
+    // backward-moving massless fermion, and everything below divides by it.
+    // Take it from the light-cone identity p+ p- = pT^2 instead (PT>0 here by
+    // assumption, so no pT==0 branch is needed).
+    const fptype_sv p0mp3 = pvec0 - pvec3;
+    const fptype_sv p0p3stable = fpternary( ( pvec3 < 0. and p0mp3 > 0. ),
+                                            ( pvec1 * pvec1 + pvec2 * pvec2 ) / fpternary( p0mp3 > 0., p0mp3, fptype_sv{ 1 } ),
+                                            pvec0 + pvec3 );
+    const fptype_sv sqp0p3 = fpsqrt( p0p3stable ) * (fptype)nsf;
     const cxtype_sv chi0 = cxmake( sqp0p3, 0. );
     const cxtype_sv chi1 = cxmake( (fptype)nh * pvec1 / sqp0p3, -pvec2 / sqp0p3 );
     if( nh == 1 )
