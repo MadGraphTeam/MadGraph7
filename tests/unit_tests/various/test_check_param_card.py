@@ -14,10 +14,13 @@
 ################################################################################
 from __future__ import division
 from __future__ import absolute_import
+import json
 import random
 import io
 import os
+import shutil
 import sys
+import tempfile
 import tests.unit_tests as unittest
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
@@ -242,10 +245,59 @@ class TestParamCardIterator(unittest.TestCase):
             self.assertIn(choice, all_possibilities)
             all_possibilities.remove(choice)
             
-        self.assertEqual(i, 11)                    
+        self.assertEqual(i, 11)
         self.assertFalse(all_possibilities)
-        
-         
+
+    def test_scan_summary_json(self):
+        """write_summary also writes the same information in a json file"""
+
+        tmpdir = tempfile.mkdtemp()
+        try:
+            events = os.path.join(tmpdir, 'Events')
+            for run in ['run_01', 'run_02']:
+                os.makedirs(os.path.join(events, run))
+            os.makedirs(os.path.join(tmpdir, 'Cards'))
+            with open(os.path.join(tmpdir, 'Cards', 'ident_card.dat'), 'w') as fsock:
+                fsock.write('mass 6 mdl_MT\n')
+
+            itercard = writter.ParamCardIterator()
+            itercard.param_order = ['mass#6']
+            itercard.cross = [
+                {'run_name': 'run_01', 'bench': [170.], 'cross(pb)': 1.5,
+                 'error(pb)': 0.02, 'width#6': 1.3},
+                {'run_name': 'run_02', 'bench': [175.], 'cross(pb)': 1.7,
+                 'error(pb)': 0.03, 'width#6': 1.4},
+            ]
+            path = os.path.join(events, 'scan_run_01.txt')
+            itercard.write_summary(path)
+
+            json_path = os.path.join(events, 'scan_run_01.json')
+            self.assertTrue(os.path.exists(json_path))
+            with open(json_path) as fsock:
+                data = json.load(fsock)
+
+            self.assertEqual(data['scan_parameters'],
+                             [{'id': 'mass#6', 'name': 'mt'}])
+            self.assertEqual(sorted(data['result_keys']),
+                             ['cross(pb)', 'error(pb)', 'width#6'])
+            self.assertEqual([p['run_name'] for p in data['points']],
+                             ['run_01', 'run_02'])
+            self.assertEqual(data['points'][0]['parameters'], {'mass#6': 170.})
+            self.assertEqual(data['points'][1]['results'],
+                             {'cross(pb)': 1.7, 'error(pb)': 0.03, 'width#6': 1.4})
+
+            # the text and the json summary have to agree
+            with open(path) as fsock:
+                lines = [l.split() for l in fsock if not l.startswith('#')]
+            for line, point in zip(lines, data['points']):
+                self.assertEqual(line[0], point['run_name'])
+                values = [point['parameters'][p['id']] for p in data['scan_parameters']]
+                values += [point['results'][k] for k in data['result_keys']]
+                self.assertEqual([float(x) for x in line[1:]], values)
+        finally:
+            shutil.rmtree(tmpdir)
+
+
 class TestParamCardRule(unittest.TestCase):
     """ Test the ParamCardRule Object"""
     

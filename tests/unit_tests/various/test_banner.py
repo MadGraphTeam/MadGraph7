@@ -16,6 +16,8 @@
 
 from __future__ import absolute_import
 import unittest
+import json
+import shutil
 import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
@@ -1430,6 +1432,34 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertIn(e_cm, (7000.0, 13000.0))
             # ren_scale and fact_scale1 share scan-id 1 -> always move together
             self.assertIn((ren, fac), [(91.0, 45.5), (172.0, 86.0)])
+
+    def test_run_card_scan_summary_json(self):
+        """RunCardIterator.write_summary also writes a json summary"""
+        tmpdir = tempfile.mkdtemp()
+        try:
+            events = pjoin(tmpdir, 'Events')
+            for run in ['run_01', 'run_02']:
+                os.makedirs(pjoin(events, run))
+            it = bannermod.RunCardIterator.__new__(bannermod.RunCardIterator)
+            it.param_order = ['run_card#ebeam1']
+            it.cross = [
+                {'run_name': 'run_01', 'bench': [6500.], 'cross(pb)': 2.0, 'error(pb)': 0.1},
+                {'run_name': 'run_02', 'bench': [7000.], 'exception': ValueError('boom')},
+            ]
+            path = pjoin(events, 'scan_run_01.txt')
+            it.write_summary(path)
+            with open(pjoin(events, 'scan_run_01.json')) as fsock:
+                data = json.load(fsock)
+            self.assertEqual(data['scan_parameters'], [{'id': 'run_card#ebeam1'}])
+            self.assertEqual(data['points'][0]['parameters'], {'run_card#ebeam1': 6500.})
+            self.assertEqual(data['points'][0]['results'],
+                             {'cross(pb)': 2.0, 'error(pb)': 0.1})
+            # a point that crashed keeps its error message and has no result
+            self.assertEqual(data['points'][1]['exception'], 'boom')
+            self.assertEqual(data['points'][1]['results'],
+                             {'cross(pb)': None, 'error(pb)': None})
+        finally:
+            shutil.rmtree(tmpdir)
 
     def test_from_LO_conversion(self):
         """RunCardMG7.from_LO ports the supported LO settings and reports the rest"""
