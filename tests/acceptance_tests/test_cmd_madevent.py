@@ -713,7 +713,11 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val2 - val1) / (err1 + err2), 5,
             'grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        target = 1310200.0
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 1310200.0
+        # Now that madevent convolutes with the same LHAPDF set as mg7, this
+        # agrees with the mg7 result for the same process (8.03e+05, see
+        # test_group_subprocess_mg7) instead of sitting a factor ~1.6 above it.
+        target = 801960.0
         self.assertLess(abs(val2 - target) / (err2), 5,
             'u u > u u cross-section %s +- %s far from reference %s'
             % (val2, err2, target))
@@ -730,8 +734,10 @@ class TestMECmdShell(unittest.TestCase):
         run_card.toml defaults (NNPDF40_lo_as_01180 + dynamical HT/2 scale,
         events=2000) ~ 8.03e+05 pb.
 
-        NOTE: this is NOT the madevent reference (1.31e6 pb in
-        test_group_subprocess); but it would be if true lhapdf were used in madevent
+        NOTE: this now AGREES with the madevent reference in
+        test_group_subprocess (8.02e5 pb): that test used to run on madevent's
+        internal nn23lo1 and sit at 1.31e6, and the LO run_card default moving
+        to the same LHAPDF set is what closed the gap.
         """
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
@@ -791,8 +797,8 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # NOT the madevent 1.31e6 value for internal pdf but the one for
-        # lhapdf NNPDF40_lo_as_01180 + dynamical HT/2 scale. The -39% against
+        # The madevent run in test_group_subprocess now lands on the same
+        # value (8.0196e+05 +- 2.6e+03) with lhapdf NNPDF40_lo_as_01180. The -39% against
         # the 1.277e+06 obtained with NNPDF23_lo_as_0130_qed is the PDF change
         # alone: alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
         # Spread over 6 runs at events=2000: 7.96e5-8.15e5, mean 8.03e5.
@@ -1844,7 +1850,15 @@ class TestMECmdShell(unittest.TestCase):
             ('false', 'True'),
         ]
 
-        results = [(5184588.926738217,2971, '3.7.2', 'neventa=150k')]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 5184588.926738217 +- 2971 (measured on v3.7.2 with 150k events).
+        # The shift is only -1.67%, far smaller than for an unmerged process
+        # (u u > u u moves -39%): measured by an A/B on identical code, same
+        # process and MLM settings, 5179400 +- 22594 with nn23lo1 pinned vs
+        # 5092900 +- 19956 with the new default. The nn23lo1 arm sits within
+        # 1 sigma of the stored 3.7.2 number, so the small shift is real and
+        # not a sign that the run ignored the PDF change.
+        results = [(5092900.0, 19956, 'NNPDF40_lo_as_01180', 'nevents=10k')]
         for i, (afg, gsp) in enumerate(settings):
             run_dir = pjoin(self.path, 'MGPROC_fg_%d' % i)
 
@@ -2410,8 +2424,10 @@ C
         self.do('generate_events -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        # 100k value is  165.71 +- 0.06
-        target = 165.71
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 165.71 (a 100k run, +- 0.06)
+        # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
+        target = 124.36
         self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
                         (target, val1, err1))
 
@@ -2456,7 +2472,8 @@ C
         self.cmd_line.exec_cmd('launch -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        target = 440.779
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 440.779
+        target = 313.66
         self.assertTrue(misc.equal(target, val1, 4*err1),
             'g g > t t~ (CMS) cross-section %s +- %s far from reference %s'
             % (val1, err1, target))                
@@ -2483,7 +2500,11 @@ C
         # fitted inside it. That is exactly why it is updated rather than left:
         # a tolerance wide enough to hide a systematic shift is not a check that
         # the shift is right.
-        target = 431.39
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 431.39
+        # Derived, not measured: the -2.13% factor above is the Breit-Wigner
+        # window fraction, which does not depend on the PDF, so the new value is
+        # 313.66 * 0.9786983. CI measures it directly on the next run.
+        target = 306.98
         self.assertTrue(misc.equal(target, val1, 4*err1),
             'MadSpin-decayed cross-section %s +- %s far from reference %s'
             % (val1, err1, target))
