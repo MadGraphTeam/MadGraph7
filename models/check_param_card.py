@@ -6,6 +6,7 @@ import filecmp
 import xml.etree.ElementTree as ET
 import math
 
+import json
 import os
 import re
 import shutil
@@ -930,8 +931,56 @@ class ParamCardMP(ParamCard):
 
   
     
+def get_json_summary_path(path):
+    """returns the path of the machine-readable scan summary associated to the
+       human-readable one written at 'path'"""
+
+    if path.endswith('.txt'):
+        path = path[:-4]
+    return '%s.json' % path
+
+def write_scan_summary_json(path, param_order, keys, entries, ident=None):
+    """write the scan results in a json file (machine-readable counterpart of
+       the summary text file written by write_summary).
+       param_order/keys/entries are the ones used for the text summary and
+       ident (optional) maps a scanned parameter to its model variable name."""
+
+    def jsonify(value):
+        """json only handles the basic types, anything else is kept as text"""
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        return str(value)
+
+    scan_parameters = []
+    for name in param_order:
+        parameter = {'id': name}
+        if ident and name in ident:
+            parameter['name'] = ident[name]
+        scan_parameters.append(parameter)
+
+    points = []
+    for info in entries:
+        point = {'run_name': info['run_name'],
+                 'parameters': dict((name, jsonify(value)) for name, value in
+                                    zip(param_order, info['bench'])),
+                 'results': dict((k, jsonify(info[k]) if k in info else None)
+                                 for k in keys)}
+        if 'exception' in info:
+            point['exception'] = str(info['exception'])
+        points.append(point)
+
+    json_path = get_json_summary_path(path)
+    with open(json_path, 'w') as fsock:
+        json.dump({'scan_parameters': scan_parameters,
+                   'result_keys': list(keys),
+                   'points': points}, fsock, indent=2)
+        fsock.write('\n')
+    logger.info("write scan results in json format in %s" % json_path)
+    return json_path
+
+
 class ParamCardIterator(ParamCard):
-    """A class keeping track of the scan: flag in the param_card and 
+    """A class keeping track of the scan: flag in the param_card and
        having an __iter__() function to scan over all the points of the scan.
     """
 
@@ -1110,11 +1159,13 @@ class ParamCardIterator(ParamCard):
 
         if not path:
             return ff.getvalue()
-        
-         
+        ff.close()
+        write_scan_summary_json(path, self.param_order, keys, to_print, ident=ident)
+
+
     def get_next_name(self, run_name):
         """returns a smart name for the next run"""
-    
+
         if '_' in run_name:
             name, value = run_name.rsplit('_',1)
             if value.isdigit():

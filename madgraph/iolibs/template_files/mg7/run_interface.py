@@ -189,6 +189,18 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         """No Fortran include files to generate for the mg7 output."""
         return
 
+    def get_model(self):
+        """The model of the process, read from ``SubProcesses/model.txt``.
+
+        The inherited version imports ``bin/internal/ufomodel``, the copy a
+        madevent output carries; the mg7 output has none, it records which
+        model it was generated with instead. Same hook, same object -- so the
+        tools this class drives (MadSpin, reweight, the auto widths and the
+        'update dependent' pass of their card questions) work here too.
+        """
+        from madgraph.iolibs.template_files.mg7.launch import load_process_model
+        return load_process_model(self.me_dir)
+
     def do_set(self, line, log=True):
         """Intercept the compiler options: the base handler patches
         ``Source/make_opts`` to switch Fortran/C++ compilers, which does not

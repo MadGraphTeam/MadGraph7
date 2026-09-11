@@ -17,6 +17,7 @@
 
 from __future__ import absolute_import
 import tests.unit_tests as unittest
+import aloha
 import madgraph.interface.master_interface as Cmd
 import madgraph.iolibs.ufo_expression_parsers as parsers
 
@@ -28,9 +29,18 @@ class UFOParserTest(unittest.TestCase):
 
     def setUp(self):
         if not hasattr(UFOParserTest, 'model'):
-            self.cmd = Cmd.MasterCmd()
-            self.cmd.exec_cmd("import model loop_qcd_qed_sm")
-            UFOParserTest.model = self.cmd._curr_model
+            # 'import model' of a loop model switches the gauge to Feynman, and
+            # the gauge is a *global* (aloha.unitary_gauge) that nothing here
+            # switches back: every test running afterwards in this process
+            # inherits it, and any output generated in Feynman gauge keeps the
+            # Goldstones. Put it back once the model is loaded.
+            gauge = aloha.unitary_gauge
+            try:
+                self.cmd = Cmd.MasterCmd()
+                self.cmd.exec_cmd("import model loop_qcd_qed_sm")
+                UFOParserTest.model = self.cmd._curr_model
+            finally:
+                aloha.unitary_gauge = gauge
             
         if not hasattr(self, 'calc'):
             self.calc = parsers.UFOExpressionParserFortran(UFOParserTest.model)

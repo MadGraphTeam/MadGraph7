@@ -222,6 +222,105 @@ class VirtualExporter(object):
         return
 
 #===============================================================================
+# Squared split orders: which components the user's constraint keeps
+#===============================================================================
+def chosen_squared_orders(process, squared_orders):
+    """Which entries of squared_orders the user's '^2' constraint keeps.
+
+    squared_orders is the list of squared split-order tuples actually present
+    in the matrix element, as get_split_orders_mapping returns it; the process
+    carries the constraint. A False entry is a component that contributes to
+    the amplitude but that the user asked *not* to have summed into the total,
+    so a backend which cannot mask it does not compute what was asked for.
+
+    This is the boolean form of what set_chosen_SO_index writes as the Fortran
+    CHOSEN_SO_CONFIGS DATA statement, kept here so that a backend can ask the
+    question without parsing that string.
+    """
+
+    user_squared_orders = process.get('squared_orders')
+    split_orders = process.get('split_orders')
+
+    if len(user_squared_orders)==0:
+        return [True]*len(squared_orders)
+
+    res = []
+    for sqsos in squared_orders:
+        is_a_match = True
+        for user_sqso, value in user_squared_orders.items():
+            if user_sqso == 'WEIGHTED' :
+                logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
+                        'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
+                        (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
+            if user_sqso not in split_orders:
+                is_a_match = False
+            elif (process.get_squared_order_type(user_sqso) =='==' and \
+                    value!=sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) in ['<=','='] and \
+                            value<sqsos[split_orders.index(user_sqso)]) or \
+               (process.get_squared_order_type(user_sqso) == '>' and \
+                            value>=sqsos[split_orders.index(user_sqso)]):
+                is_a_match = False
+                break
+        res.append(is_a_match)
+
+    return res
+
+def split_order_tables(matrix_element):
+    """The squared split-order bookkeeping a backend needs, or None.
+
+    Returns a dict with
+
+      nampso      how many amplitude split orders the amplitudes fall into
+      nsqampso    how many squared orders their pairs produce
+      amp_so      {amplitude number -> amplitude-order index}, 0-based
+      sqsoindex   sqsoindex[m][n] -> squared-order index, 0-based. SYMMETRIC,
+                  because a squared order is the SUM of the two amplitude
+                  orders (Fortran SQSOINDEX), which is what lets a masked sum
+                  stay real: (m,n) and (n,m) are kept or dropped together.
+      chosen      [bool] per squared order, the user's constraint
+      names       ['QED=0', ...] per squared order, for comments
+
+    None when the process has no split orders, i.e. when there is one implicit
+    component and every backend already computes it.
+    """
+
+    process = matrix_element.get('processes')[0]
+    split_orders = process.get('split_orders')
+    if not split_orders:
+        return None
+    squared_orders, amp_orders = matrix_element.get_split_orders_mapping()
+    if not squared_orders:
+        return None
+
+    amp_so = {}
+    for iampso, (_orders, amp_numbers) in enumerate(amp_orders):
+        for namp in amp_numbers:
+            amp_so[namp] = iampso
+
+    # The squared order a pair of amplitude orders lands in: add the two
+    # amplitude orders and look the sum up. A pair whose sum is not in the
+    # list cannot happen (the list is built from exactly these sums), but
+    # guard anyway rather than write a negative index into the generated code.
+    index_of = {tuple(sqso): i for i, sqso in enumerate(squared_orders)}
+    sqsoindex = []
+    for m, (orders_m, _a) in enumerate(amp_orders):
+        row = []
+        for n, (orders_n, _b) in enumerate(amp_orders):
+            key = tuple(om + on for om, on in zip(orders_m, orders_n))
+            row.append(index_of.get(key, -1))
+        sqsoindex.append(row)
+
+    return {'nampso': len(amp_orders),
+            'nsqampso': len(squared_orders),
+            'amp_so': amp_so,
+            'sqsoindex': sqsoindex,
+            'chosen': chosen_squared_orders(process, squared_orders),
+            'names': [' '.join('%s=%d' % (o, v)
+                               for o, v in zip(split_orders, sqso))
+                      for sqso in squared_orders]}
+
+#===============================================================================
 # ProcessExporterFortran
 #===============================================================================
 class ProcessExporterFortran(VirtualExporter,
@@ -2033,34 +2132,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         finds what indices of the squared_orders list the user intends to pick.
         It returns this as a string of comma-separated successive '.true.' or 
         '.false.' for each index."""
-        
-        user_squared_orders = process.get('squared_orders')
-        split_orders = process.get('split_orders')
-        
-        if len(user_squared_orders)==0:
-            return ','.join(['.true.']*len(squared_orders))
-        
-        res = []
-        for sqsos in squared_orders:
-            is_a_match = True
-            for user_sqso, value in user_squared_orders.items():
-                if user_sqso == 'WEIGHTED' :
-                    logger.debug('WEIGHTED^2%s%s encoutered. Please check behavior for' + \
-                            'https://bazaar.launchpad.net/~maddevelopers/mg5amcnlo/3.0.1/revision/613', \
-                            (process.get_squared_order_type(user_sqso), sqsos[split_orders.index(user_sqso)]))
-                if user_sqso not in split_orders:
-                    is_a_match = False
-                elif (process.get_squared_order_type(user_sqso) =='==' and \
-                        value!=sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) in ['<=','='] and \
-                                value<sqsos[split_orders.index(user_sqso)]) or \
-                   (process.get_squared_order_type(user_sqso) == '>' and \
-                                value>=sqsos[split_orders.index(user_sqso)]):
-                    is_a_match = False
-                    break
-            res.append('.true.' if is_a_match else '.false.')
-            
-        return ','.join(res)
+
+        return ','.join('.true.' if keep else '.false.' for keep in
+                        chosen_squared_orders(process, squared_orders))
 
     def get_split_orders_lines(self, orders, array_name, n=5):
         """ Return the split orders definition as defined in the list orders and
@@ -4245,9 +4319,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         try:
             common_run_interface.CommonRunCmd.update_make_opts_full(
                             make_opts, for_update)
-        except IOError:
+        except (IOError, OSError) as error:
             if root_dir == self.dir_path:
-                logger.info('Fail to set compiler. Trying to continue anyway.')            
+                # Do NOT continue: without DEFAULT_F_COMPILER make falls back to
+                # its builtin $(FC) (f77) and drops $(libext) and
+                # -ffixed-line-length-132 as well, so the build fails much later
+                # with column-72 errors in unrelated Fortran files.
+                raise MadGraph5Error(
+                    'Fail to set the fortran compiler in %s: %s' % (make_opts, error))
+            # For MG5DIR/Template this is only an optimisation, and a shared
+            # install is legitimately read-only.
+            logger.info('Fail to set compiler in %s. Trying to continue anyway.'
+                        % make_opts)
 
     def replace_make_opt_c_compiler(self, compiler, root_dir = ""):
         """Set CXX=compiler in Source/make_opts.
@@ -4284,9 +4367,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         try:
             common_run_interface.CommonRunCmd.update_make_opts_full(
                             make_opts, for_update)
-        except IOError:
+        except (IOError, OSError) as error:
             if root_dir == self.dir_path:
-                logger.info('Fail to set compiler. Trying to continue anyway.')  
+                # see replace_make_opt_f_compiler: silently keeping make's
+                # defaults only moves the failure somewhere unrecognisable.
+                raise MadGraph5Error(
+                    'Fail to set the c++ compiler in %s: %s' % (make_opts, error))
+            logger.info('Fail to set compiler in %s. Trying to continue anyway.'
+                        % make_opts)
     
         return
 
@@ -4381,8 +4469,16 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
                         
         # Add file in Source
-        shutil.copy(pjoin(temp_dir, 'Source', 'make_opts'), 
-                    pjoin(self.dir_path, 'Source'))   
+        # atomic_copy, not shutil.copy: the source is MG5DIR/Template/LO's
+        # make_opts, a file shared by every MadGraph7 process using this
+        # installation and rewritten in place by each of them
+        # (set_fortran_compiler / set_cpp_compiler), so a plain read of it can
+        # come back empty. The destination is then compiled against. This is how
+        # a MadSpin decay-ME directory ends up with an empty
+        # madspin_me/Source/make_opts and a build that silently falls back to
+        # make's builtins.
+        misc.atomic_copy(pjoin(temp_dir, 'Source', 'make_opts'), 
+                         pjoin(self.dir_path, 'Source'))   
 
         # add the makefile 
         filename = pjoin(self.dir_path,'Source','makefile')
@@ -7388,10 +7484,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         if self.beam_polarization == [True, True]:
             replace_dict['beam_polarization'] = """
                          DO JJ=1,nincoming
+c NB_SPIN_STATE_IN/2 avoids a double counting
+c of an explicit polarisation in the process
                IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-                 T=T*ABS(POL(JJ))
+                 T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0
                ELSE IF(POL(JJ).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(JJ)))
+                 T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
                ENDIF
              ENDDO
             """
@@ -7401,10 +7499,12 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 if self.beam_polarization[i]:
                     replace_dict['beam_polarization'] = """
                                    ! handling only one beam polarization here. Second beam can be handle via the pdf.
+c NB_SPIN_STATE_IN/2 avoids a double counting
+c of an explicit polarisation in the process
                                    IF(POL(%(bid)i).NE.1d0.AND.NHEL(%(bid)i,I).EQ.INT(SIGN(1d0,POL(%(bid)i)))) THEN
-                 T=T*ABS(POL(%(bid)i))
+                 T=T*ABS(POL(%(bid)i))*NB_SPIN_STATE_IN(%(bid)i)/2d0
                ELSE IF(POL(%(bid)i).NE.1d0)THEN
-                 T=T*(2d0-ABS(POL(%(bid)i)))
+                 T=T*(2d0-ABS(POL(%(bid)i)))*NB_SPIN_STATE_IN(%(bid)i)/2d0
                ENDIF """ % {'bid': i+1}
 
 
@@ -12600,9 +12700,11 @@ c         segments from -DABS(tiny*Ga) to Ga
                                       write_special=write_special)
 
 # Output formats with a loop backend for a loop-induced ([noborn=]) process
-# coming through the tree-level do_output. Test membership EXACTLY: 'standalone'
-# is a prefix of standalone_cpp / _mg7 / _msP / _msF / _rw, which have none.
-LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone']
+# coming through the tree-level do_output. Test membership EXACTLY: it is the
+# Fortran standalone that has the MadLoop backend, and 'standalone' -- which
+# now names the MadMatrix (C++) output -- is a prefix of it, as it is of
+# standalone_msP / _msF / _rw. None of those has a loop backend.
+LOOP_INDUCED_FORMATS = ['madevent', 'plugin', 'standalone_fortran']
 
 def loop_induced_not_supported_msg(format, process=None):
     """Refusal text for a format that cannot write a LoopHelasMatrixElement."""
@@ -12773,8 +12875,8 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         if format == 'matrix' or format.startswith('standalone'):
             if cmd._curr_amps and isinstance(
                     cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
-                # of the formats sharing this branch only 'standalone' has a
-                # MadLoop backend; ProcessExporterFortranSA has none
+                # of the formats sharing this branch only 'standalone_fortran'
+                # has a MadLoop backend; ProcessExporterFortranSA has none
                 if format not in LOOP_INDUCED_FORMATS:
                     raise InvalidCmd(
                         loop_induced_not_supported_msg(format, curr_proc))

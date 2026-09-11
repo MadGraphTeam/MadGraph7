@@ -16,7 +16,7 @@
       if( jamp2_sv ) // disable color choice if nullptr
       {
         for( int icol = 0; icol < ncolor_flow; icol++ )
-          jamp2_sv[ncolor_flow * iParity + icol] += cxabs2( %(jamp_flow)s[icol] ); // may underflow #831
+          jamp2_sv[ncolor_flow * iParity + icol] += cxabs2( %(jamp_flow_col)s ); // may underflow #831
       }
 #else /* clang-format off */
       assert( iParity == 0 ); // sanity check for J2_ACCESS
@@ -25,7 +25,7 @@
       {
         for( int icol = 0; icol < ncolor_flow; icol++ )
           // NB: atomicAdd is needed after moving to cuda streams with one helicity per stream!
-          atomicAdd( &J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ), cxabs2( %(jamp_flow)s[icol] ) );
+          atomicAdd( &J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ), cxabs2( %(jamp_flow_col)s ) );
       }
 #endif /* clang-format on */
 
@@ -35,12 +35,12 @@
       // In CUDA, copy the local jamp to the output global-memory jamp
       constexpr int ihel0 = 0; // the allJamps buffer already points to a specific helicity _within a super-buffer for dcNGoodHel helicities_
       using J_ACCESS = DeviceAccessJamp;
-      for( int icol = 0; icol < ncolor; icol++ )
+      for( int icol = 0; icol < %(jamp_ncolor)s; icol++ )
         J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, ihel0, dcNGoodHel ) = jamp_sv[icol];
 #else
       // In C++, copy the local jamp to the output array passed as function argument
-      for( int icol = 0; icol < ncolor; icol++ )
-        allJamp_sv[iParity * ncolor + icol] = jamp_sv[icol];
+      for( int icol = 0; icol < %(jamp_ncolor)s; icol++ )
+        allJamp_sv[iParity * %(jamp_ncolor)s + icol] = jamp_sv[icol];
 #endif
     }
     // END LOOP ON IPARITY

@@ -149,12 +149,12 @@ class TestCmdShell1(unittest.TestCase):
         self.do('set group_subprocesses False')
         self.do('import model sm')
         self.do('generate e+ e- > e+ e-')
-        self.do('display diagrams . --generate_only')
+        self.do('display diagrams . --no_open')
         self.assertTrue(os.path.exists('./diagrams_0_epem_epem.eps'))
         os.remove('./diagrams_0_epem_epem.eps')
         
         self.do('generate g g > g g')
-        self.do('display diagrams . --generate_only')
+        self.do('display diagrams . --no_open')
         self.assertTrue(os.path.exists('diagrams_0_gg_gg.eps'))
         os.remove('diagrams_0_gg_gg.eps')
         self.do('set group_subprocesses True')
@@ -1335,6 +1335,68 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
+
+    def test_standalone_split_orders_interference(self):
+        """standalone (madmatrix) must return the squared-order contribution asked for.
+
+        The madmatrix jamps carry an amplitude-order index and the color sum
+        pairs them, so a '^2' constraint that keeps only some of the squared
+        orders gets that contribution and not the total. The case that matters
+        is an interference term, which cannot be reached by dropping diagrams
+        at generation: ``u u~ > u u~ QED^2==2`` keeps every diagram and wants
+        the QCD-EW cross term alone, -5.5828746494657265e-02 from the Fortran
+        split-order driver, where a backend with no mask returns the whole
+        +2.7756451199752394.
+
+        The three components are checked to sum back to the unconstrained
+        total *as computed by this same backend*. That comparison is the one
+        that pins the pair loop: it uses one set of momenta and one set of
+        parameters, so it is sensitive to the interference algebra alone --
+        in particular to the fact that the color contraction keeps its
+        doubled triangle while the loop over amplitude-order pairs must run
+        over all ordered pairs, since for two different jamp vectors a pair
+        and its transpose are not each other's conjugate.
+        """
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def value(constraint):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('generate u u~ > u u~ %s' % constraint)
+            self.do('output standalone %s -f' % self.out_dir)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = [d for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+            self.assertTrue(dirs, 'no subprocess for %s' % constraint)
+            proc_dir = pjoin(proc_root, dirs[0])
+            # FPTYPE=d: mixed precision hides and fakes differences here
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'standalone %s did not build' % constraint)
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call('./check_sa.exe 1000', shell=True, cwd=proc_dir,
+                            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+            found = me_re.findall(open(log).read())
+            self.assertTrue(found, 'no matrix element (see %s)' % log)
+            return float(found[0])
+
+        self.do('import model sm')
+        interference = value('QED^2==2')
+        # The Fortran split-order component, to the tolerance this backend is
+        # compared at elsewhere (the EW couplings differ in the last digits)
+        self.assertAlmostEqual(interference, -5.5828746494657265e-02, delta=1e-7)
+        # ... and emphatically not the unmasked total
+        self.assertLess(abs(interference), 1.0)
+
+        components = [value('QED^2==0'), interference, value('QED^2==4')]
+        total = value('QED^2<=4')
+        self.assertAlmostEqual(sum(components), total,
+                               delta=1e-12 * abs(total),
+                               msg='the squared-order components do not add up '
+                                   'to the total this backend computes')
 
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
@@ -2955,10 +3017,13 @@ set boost_choice [6, -6]
         
         self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
 
-        rho_avg_ref =  [[(0.3670142422790588+0j), (1.7429098337870793e-07-3.933851109770078e-05j), (-1.742909833606001e-07+3.9338510968347334e-05j), (0.11514189584464168-0j)],
-                        [(1.7429098337870793e-07+3.933851109770078e-05j), (0.13298575772060628+0j), (0.06344292964491506-0j), (-1.7429098336059725e-07-3.933851096834704e-05j)],
-                        [(-1.742909833606001e-07-3.9338510968347334e-05j), (0.06344292964491506+0j), (0.13298575772060628+0j), (1.7429098337870735e-07+3.9338511097700886e-05j)],
-                        [(0.11514189584464168+0j), (-1.7429098336059725e-07+3.933851096834704e-05j), (1.7429098337870735e-07-3.9338511097700886e-05j), (0.36701424227905893+0j)]]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
+        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
+        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
+        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
+                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
+                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
+                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
 
         #now let's read the average density matrix
         with open(rho_mean_path, 'r') as f:
@@ -2968,10 +3033,14 @@ set boost_choice [6, -6]
                 aux = data[i].strip("\t\n[]").split(",")
                 rho_avg.append([complex(aux[i].strip(" ()")) for i in range(len(aux))])
             
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_user_interface(self):
@@ -3021,10 +3090,13 @@ set boost_choice [6, -6]
         
         self.assertEqual(len(density_check), 10, f"The density matrix is not the correct length: {density_check}")
 
-        rho_avg_ref =  [[(0.3670142422790588+0j), (1.7429098337870793e-07-3.933851109770078e-05j), (-1.742909833606001e-07+3.9338510968347334e-05j), (0.11514189584464168-0j)],
-                        [(1.7429098337870793e-07+3.933851109770078e-05j), (0.13298575772060628+0j), (0.06344292964491506-0j), (-1.7429098336059725e-07-3.933851096834704e-05j)],
-                        [(-1.742909833606001e-07-3.9338510968347334e-05j), (0.06344292964491506+0j), (0.13298575772060628+0j), (1.7429098337870735e-07+3.9338511097700886e-05j)],
-                        [(0.11514189584464168+0j), (-1.7429098336059725e-07+3.933851096834704e-05j), (1.7429098337870735e-07-3.9338511097700886e-05j), (0.36701424227905893+0j)]]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference matrix
+        # [[0.3670142422790588, 1.7429098337870793e-07-3.933851109770078e-05j, ...],
+        #  ... diag(0.36701424, 0.13298576, 0.13298576, 0.36701424), off-diag 0.11514190 / 0.06344293]
+        rho_avg_ref =  [[(0.3688357054745634+0j), (2.488456321669277e-07+8.149451446891586e-05j), (-2.488456322029901e-07-8.149451420327119e-05j), (0.1177535354898135-0j)],
+                        [(2.488456321669277e-07-8.149451446891586e-05j), (0.13116429452559822+0j), (0.0635907988356563-0j), (-2.488456322029923e-07+8.149451420327103e-05j)],
+                        [(-2.488456322029901e-07+8.149451420327119e-05j), (0.0635907988356563+0j), (0.13116429452559822+0j), (2.488456321669272e-07-8.149451446891567e-05j)],
+                        [(0.1177535354898135+0j), (-2.488456322029923e-07-8.149451420327103e-05j), (2.488456321669272e-07+8.149451446891567e-05j), (0.3688357054745633+0j)]]
 
         #now let's read the average density matrix
         with open(rho_mean_path, 'r') as f:
@@ -3044,10 +3116,14 @@ set boost_choice [6, -6]
                         raise ValueError
             
 
+        # On a mismatch print the whole measured matrix, not just the first
+        # element that differs: re-referencing this (a PDF change moves every
+        # entry) otherwise needs one run per element.
+        msg = 'measured rho_avg = %r' % (rho_avg,)
         for i in range(len(rho_avg)):
             for j in range(len(rho_avg[0])):
-                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3) #we ask 3 digits because we only use 50k events
-                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
+                self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
+                self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
 
     def test_density_mode_ttbar(self):
@@ -3430,7 +3506,14 @@ set run_card use_syst False
 
 
         #Here we replace the lhe file by the reference lhe file (stored in the input_files).
-        os.remove(f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz")
+        # The MG5 run above is not checked for success and its log is not part
+        # of the test output, so a failed generation used to surface only as a
+        # FileNotFoundError on the line below, with the actual error invisible.
+        generated = f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz"
+        if not os.path.exists(generated):
+            self.fail('MG5 did not produce %s. Tail of %s:\n%s'
+                      % (generated, logfile, open(logfile).read()[-3000:]))
+        os.remove(generated)
         shutil.copyfile(pjoin(MG5DIR, "tests/input_files/density_mode/test_density_mode_doublettbar.lhe.gz"), f"{self.out_dir}_density5/Events/run_01/unweighted_events.lhe.gz")
 
         #Now we reweight the lhe file through the inline method
@@ -5134,7 +5217,7 @@ class IOTestFDGauge(IOTests.IOTestManager):
         #    different spins (VVV1_VVS1_VSV2_VSS1_0 and
         #    VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), which only exist because a
         #    massive vector and its Goldstone are the same wavefunction here.
-        self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
+        self.generate_fd('standalone_fortran', pjoin(self.IOpath, 'FD_fortran'))
 
     @IOTests.createIOTest()
     def testIO_FDgauge_madmatrix(self):

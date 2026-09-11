@@ -51,9 +51,9 @@ C     GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
       LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC)
       INTEGER NTRY(MAXFLAVPERPROC)
       COMMON/BLOCK_GOODHEL/NTRY,GOODHEL
-      INTEGER NB_SPIN_STATE(2)
-      DATA  NB_SPIN_STATE /2,2/
-      COMMON /NB_HEL_STATE/ NB_SPIN_STATE
+      INTEGER NB_SPIN_STATE_IN(2)
+      DATA  NB_SPIN_STATE_IN /2,2/
+      COMMON /NB_HEL_STATE/ NB_SPIN_STATE_IN
 C     
 C     LOCAL VARIABLES 
 C     
@@ -152,11 +152,13 @@ C      initialized.
             T=MATRIX(P,NHEL(1,I),IFLAV, IVEC)
 
             DO JJ=1,NINCOMING
+C             NB_SPIN_STATE_IN/2 avoids a double counting
+C             of an explicit polarisation in the process
               IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))
      $         )) THEN
-                T=T*ABS(POL(JJ))
+                T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
               ELSE IF(POL(JJ).NE.1D0)THEN
-                T=T*(2D0-ABS(POL(JJ)))
+                T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
               ENDIF
             ENDDO
 
@@ -215,11 +217,13 @@ C        in a common block defined in genps.inc.
         T=MATRIX(P ,NHEL(1,I),IFLAV, IVEC)
 
         DO JJ=1,NINCOMING
+C         NB_SPIN_STATE_IN/2 avoids a double counting
+C         of an explicit polarisation in the process
           IF(POL(JJ).NE.1D0.AND.NHEL(JJ,I).EQ.INT(SIGN(1D0,POL(JJ))))
      $      THEN
-            T=T*ABS(POL(JJ))
+            T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2D0
           ELSE IF(POL(JJ).NE.1D0)THEN
-            T=T*(2D0-ABS(POL(JJ)))
+            T=T*(2D0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2D0
           ENDIF
         ENDDO
 

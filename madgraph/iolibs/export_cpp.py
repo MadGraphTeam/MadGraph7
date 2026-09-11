@@ -3516,20 +3516,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
-            # persist the model so the runtime can compute widths set to 'auto'
-            # in the param_card (and recompute them at each scan point). A hash
-            # of the model's python source is stored on the second line so the
-            # runtime can detect a model that changed since output.
+            # persist the model so the runtime can reload it: to compute the
+            # widths set to 'auto' in the param_card (and recompute them at
+            # each scan point) and to reset the parameters the model derives
+            # from the free ones (launch.MG7Cmd.get_model). A hash of the
+            # model's python source is stored on the second line so the runtime
+            # can detect a model that changed since output.
             try:
                 model = processes[0][0].get('model')
-                model_path = model.get('modelpath')
-                model_ref = model_path or model.get('name')
+                try:
+                    model_path = model.get('modelpath')
+                    model_hash = misc.hash_model_files(model_path)
+                except Exception:
+                    model_path, model_hash = None, None
+                # the restriction is part of the model the process was
+                # generated with ('sm-no_b_mass' is not 'sm'), so store the
+                # reference that reproduces it, not the bare UFO directory.
+                try:
+                    model_ref = model.get('modelpath+restriction')
+                except Exception:
+                    model_ref = model_path or model.get('name')
                 if model_ref:
-                    model_hash = misc.hash_model_files(model_path) if model_path else None
                     with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
                         f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception:
-                pass
+            except Exception as error:
+                logger.debug('could not record the model: %s', error)
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')
