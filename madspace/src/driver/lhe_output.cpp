@@ -277,6 +277,14 @@ void LHECompleter::find_resonant_propagators(
     std::vector<std::tuple<int, int>>& prop_colors,
     std::vector<int>& resonant_prop_indices
 ) {
+    // For each decay, the propagators hanging below it with no propagator in
+    // between. A decay that never becomes a propagator is not written to the
+    // LHE, so what sits under it belongs to the nearest ancestor that is: its
+    // mask passes straight through. Without this a resonance separated from
+    // its parent resonance by a plain internal line keeps mother (1,2) -- the
+    // W of a q q~ > Z > l l(-> l W) diagram, say.
+    std::vector<int> subtree_prop_masks(topo.decays().size(), 0);
+
     // Pass 1: resonance status from mass/width alone, no color involved.
     for (auto& decay : std::views::reverse(topo.decays())) {
         if (decay.child_indices.size() == 0) {
@@ -295,9 +303,12 @@ void LHECompleter::find_resonant_propagators(
             int child_prop_index = resonant_prop_indices.at(child_index);
             if (child_prop_index != -1) {
                 child_prop_mask |= 1 << child_prop_index;
+            } else {
+                child_prop_mask |= subtree_prop_masks.at(child_index);
             }
         }
         if (e_min_item >= decay.mass) {
+            subtree_prop_masks.at(decay.index) = child_prop_mask;
             continue;
         }
 
@@ -603,7 +614,13 @@ void LHECompleter::complete_event_data(
             momentum_mask >>= 1;
         }
         double m2 = e * e - px * px - py * py - pz * pz;
-        double m_min = propagator.mass - _bw_cutoff * propagator.width;
+        // Once bw_cutoff exceeds mass/width the window reaches below zero,
+        // where there is no invariant mass left to exclude. Squaring a
+        // negative m_min would instead turn it into a large positive floor and
+        // reject nearly everything, so a wider window would write *fewer*
+        // resonances than a narrow one.
+        double m_min =
+            std::max(0., propagator.mass - _bw_cutoff * propagator.width);
         double m_max = propagator.mass + _bw_cutoff * propagator.width;
         if (m2 > m_min * m_min && m2 < m_max * m_max) {
             auto [color, anti_color] = prop_color;
@@ -629,6 +646,19 @@ void LHECompleter::complete_event_data(
     event.particles.insert(
         event.particles.begin() + n_in, new_particles.rbegin(), new_particles.rend()
     );
+    // Where each propagator ended up among the ones this event actually wrote,
+    // which is the order they were just inserted in: outermost first. Only the
+    // propagators inside resonant_prop_mask have a row, and child_prop_mask
+    // names them by prop_index, so the two orders have to be related
+    // explicitly -- counting set mask bits instead lands on the wrong row as
+    // soon as a propagator in between is resonant without being a child.
+    std::vector<int> res_index_of_prop(prop_count, -1);
+    for (std::size_t prop_index = prop_count, next_res_index = 0; prop_index-- > 0;) {
+        if (resonant_prop_mask & (1 << prop_index)) {
+            res_index_of_prop.at(prop_index) = static_cast<int>(next_res_index++);
+        }
+    }
+
     for (std::size_t prop_index = prop_count, res_index = 0;
          auto& propagator : std::views::reverse(
              std::span(
@@ -638,16 +668,24 @@ void LHECompleter::complete_event_data(
          )) {
         --prop_index;
         if (resonant_prop_mask & (1 << prop_index)) {
-            int child_prop_mask = propagator.child_prop_mask;
-            for (int child_prop_index = prop_index - 1, child_res_index = res_index + 1;
-                 child_prop_index >= 0;
-                 --child_prop_index) {
-                if (child_prop_mask & (1 << child_prop_index)) {
-                    auto& child_particle = event.particles.at(child_res_index + n_in);
-                    child_particle.mother1 = res_index + n_in + 1;
-                    child_particle.mother2 = res_index + n_in + 1;
-                    ++child_res_index;
+            // Descend through the propagators this event left off shell: they
+            // have no row of their own, so their children attach here.
+            int pending_prop_mask = propagator.child_prop_mask;
+            while (pending_prop_mask != 0) {
+                int child_prop_index = 0;
+                while ((pending_prop_mask & (1 << child_prop_index)) == 0) {
+                    ++child_prop_index;
                 }
+                pending_prop_mask &= ~(1 << child_prop_index);
+                int child_res_index = res_index_of_prop.at(child_prop_index);
+                if (child_res_index == -1) {
+                    pending_prop_mask |=
+                        _propagators.at(prop_offset + child_prop_index).child_prop_mask;
+                    continue;
+                }
+                auto& child_particle = event.particles.at(child_res_index + n_in);
+                child_particle.mother1 = res_index + n_in + 1;
+                child_particle.mother2 = res_index + n_in + 1;
             }
 
             int momentum_mask = propagator.momentum_mask >> n_in;

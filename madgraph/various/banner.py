@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -785,23 +785,31 @@ class ProcCard(list):
     
     history_header = \
         '#************************************************************\n' + \
-        '#*                     MadGraph5_aMC@NLO                    *\n' + \
+        '#*                         MadGraph7                        *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         "%(info_line)s" +\
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         '#*                                                          *\n' + \
         '#************************************************************\n' + \
         '#*                                                          *\n' + \
-        '#*               Command File for MadGraph5_aMC@NLO         *\n' + \
+        '#*                Command File for MadGraph7                *\n' + \
         '#*                                                          *\n' + \
         '#*     run as ./bin/madgraph  filename                      *\n' + \
         '#*                                                          *\n' + \
@@ -2041,7 +2049,7 @@ class PY8Card(ConfigFile):
         # ==================
         self.add_param("Main:numberOfEvents", 0)
         # for MLM merging
-        # -1.0 means that it will be set automatically by MadGraph5_aMC@NLO
+        # -1.0 means that it will be set automatically by MadGraph7
         self.add_param("JetMatching:qCut", -1.0, always_write_to_card=False)
         self.add_param("JetMatching:doShowerKt",False,always_write_to_card=False)
         # -1 means that it is automatically set.
@@ -2088,7 +2096,7 @@ class PY8Card(ConfigFile):
             comment='This allows to turn on/off MPI alltogether.')
         self.add_param("Beams:setProductionScalesFromLHEF", False, hidden=True, 
             always_write_to_card=False,
-            comment='This parameter is automatically set to True by MG5aMC when doing MLM merging with PY8.')
+            comment='This parameter is automatically set to True by MadGraph7 when doing MLM merging with PY8.')
         
         # for MLM merging
         self.add_param("JetMatching:merge", False, hidden=True, always_write_to_card=False,
@@ -2322,7 +2330,7 @@ class PY8Card(ConfigFile):
           or system_set are commented.
         > If 'add_missing' is False then parameters that should be written_out but are absent
         from the template will not be written out.
-        > use_mg5amc_py8_interface is a flag to indicate that the MG5aMC-PY8 interface is used or not
+        > use_mg5amc_py8_interface is a flag to indicate that the MadGraph7-PY8 interface is used or not
           if not used some parameters need to be translated from the old convention to the new one
         """
 
@@ -2479,7 +2487,7 @@ class PY8Card(ConfigFile):
                     else:
                         output.write(line)
                 else:
-                    output.write('! The following parameter was forced to be commented out by MG5aMC.\n')
+                    output.write('! The following parameter was forced to be commented out by MadGraph7.\n')
                     output.write('! %s'%line)
                 # Proceed to next line
                 last_pos = tmpl.tell()
@@ -2514,7 +2522,7 @@ class PY8Card(ConfigFile):
 
             #elif param in self.interface_to_164.values() and not direct_pythia_input:
             #    misc.sprint(use_mg5amc_py8_interface, direct_pythia_input,param)
-            #    raise Exception('The parameter %s is not supported in the MG5aMC-PY8 interface. Please use the new interface.'%param_entry
+            #    raise Exception('The parameter %s is not supported in the MadGraph7-PY8 interface. Please use the new interface.'%param_entry
             output.write(template%(param_entry,
                                   value_entry.replace(value,new_value)))
         
@@ -2551,7 +2559,7 @@ class PY8Card(ConfigFile):
         if len(hidden_output_param)>0 and not template is None:
             output.write(
 """!
-! Additional technical parameters%s set by MG5_aMC.
+! Additional technical parameters%s set by MadGraph7.
 !
 """%(' for subrun %d'%self['Main:subrun'] if 'Main:subrun' in self else ''))
         for param in hidden_output_param:
@@ -2841,6 +2849,10 @@ class RunCard(ConfigFile):
     default_autodef_file = 'run.inc'
     donewarning = []
     include_as_parameter = []
+    # list of the retro-compatibility fixes to apply on the user provided
+    # functions (see retro_compatible_custom_fct). Empty by default: each
+    # RunCard class opts-in for the fixes which make sense for its output.
+    retro_compatible_modes = []
 
     @classmethod
     def fill_post_set_from_blocks(cls):
@@ -3529,9 +3541,13 @@ class RunCard(ConfigFile):
             #avoid to systematically rewrite the file. -> write in tmp place
             fsock = file_writers.FortranWriter(pjoin(outdir, path+'.tmp'),'w')
             starttext = open(pjoin(outdir, path+'.orig')).read()
+            # only apply a retro-compatibility fix if the shipped version of the
+            # file does use the associated include itself. This prevents adding
+            # an include to a file where it is not available (and not needed).
+            mode = [m for m in self.retro_compatible_modes if m in starttext]
             fsock.remove_routine(starttext, to_mod[path][0])
             for text in to_mod[path][1]:
-                text = self.retro_compatible_custom_fct(text)
+                text = self.retro_compatible_custom_fct(text, mode=mode)
                 fsock.writelines(text)
             fsock.close()
             if not filecmp.cmp(pjoin(outdir, path), pjoin(outdir, path+'.tmp')):
@@ -3550,6 +3566,13 @@ class RunCard(ConfigFile):
 
     @staticmethod
     def retro_compatible_custom_fct(lines, mode=None):
+        """update a user provided routine (list of lines) to make it compatible
+           with the current version of the code.
+           mode is the list of fixes to apply, None means "all of them".
+           supported fixes:
+            - 'vector.inc': add the include of vector.inc (needed since 3.6 to
+              be able to include run.inc) if the routine does not have it.
+        """
 
         f77_type = ['real*8', 'integer', 'double precision', 'logical']
         function_pat = re.compile(r'^\s+(?:SUBROUTINE|(?:%(type)s)\s+function)\s+([a-zA-Z]\w*)' \
@@ -3557,9 +3580,9 @@ class RunCard(ConfigFile):
         include_pat = re.compile(r"\s+include\s+[\'\"]([\w\./]*)") 
         
         assert isinstance(lines, list)
-        sol = []
 
         if mode is None or 'vector.inc' in mode:
+            sol = []
             search = True
             for i,line in enumerate(lines[:]):
                 if search and re.search(include_pat, line):
@@ -3572,7 +3595,8 @@ class RunCard(ConfigFile):
                 sol.append(line)
                 if re.search(function_pat, line):
                     search = True
-        return sol
+            lines = sol
+        return lines
 
     def guess_entry_fromname(self, name, value):
         """
@@ -4356,6 +4380,10 @@ class RunCardLO(RunCard):
                       }
     
     include_as_parameter = ['vector.inc']
+    # since 3.6, run.inc dimensions arrays with VECSIZE_MEMMAX which is defined
+    # in vector.inc -> older (<3.6) user functions need that include to be added.
+    # This is meaningless for NLO where vector.inc does not exist at all.
+    retro_compatible_modes = ['vector.inc']
 
     if MG5DIR:
         default_run_card = pjoin(MG5DIR, "internal", "default_run_card_lo.dat")
@@ -4877,7 +4905,7 @@ class RunCardLO(RunCard):
             lpp2 = self['lpp2']
             if abs(lpp1) in (3, 4) or abs(lpp2) in (3, 4):
                 if self['pdlabel'] not in ('none',):
-                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph5_aMC@NLO')
+                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
 
@@ -5361,7 +5389,7 @@ class MadAnalysis5Card(dict):
         """define the default value""" 
         self['mode']      = 'parton'
         self['inputs']    = []
-        # None is the default stdout level, it will be set automatically by MG5aMC
+        # None is the default stdout level, it will be set automatically by MadGraph7
         self['stdout_lvl'] = None
         # These two dictionaries are formated as follows:
         #     {'analysis_name':
@@ -5520,7 +5548,7 @@ class MadAnalysis5Card(dict):
                 
                 else:
                     raise InvalidMadAnalysis5Card(
-               "Unreckognized MG5aMC instruction in MadAnalysis5 card: '%s'"%option)
+               "Unreckognized MadGraph7 instruction in MadAnalysis5 card: '%s'"%option)
                 
                 if option in ['analysis_name','reconstruction_name'] or \
                                                  option.startswith('recasting'):
@@ -5894,7 +5922,7 @@ class RunCardNLO(RunCard):
         self.add_param('flavour_bias',[5,1], hidden=True, comment="Example: '5,100' means that the probability to generate an event with a bottom (or anti-bottom) quark is increased by a factor 100, but the weight of those events is reduced by a factor 100. Requires that the 'event_norm' is set to 'bias'.")
         
         #merging
-        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MG5aMC)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
+        self.add_param('ickkw', 0, allowed=[-1,0,3,4], comment=" - 0: No merging\n - 3:  FxFx Merging :  http://amcatnlo.cern.ch/FxFx_merging.htm\n - 4: UNLOPS merging (No interface within MadGraph7)\n - -1:  NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph]")
         self.add_param('bwcutoff', 15.0)
         #cuts        
         self.add_param('jetalgo', 1.0)
@@ -6160,7 +6188,7 @@ class RunCardNLO(RunCard):
             lpp2 = self['lpp2']
             if abs(lpp1) in (3, 4) or abs(lpp2) in (3, 4):
                 if self['pdlabel'] not in ('none',):
-                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph5_aMC@NLO')
+                    cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
 
@@ -7916,8 +7944,11 @@ class RunCardIterator(object):
 
         if not path:
             return ff.getvalue()
-        
-         
+        ff.close()
+        param_card_reader.write_scan_summary_json(path, self.param_order, keys,
+                                                  to_print)
+
+
     def get_next_name(self, run_name):
         """returns a smart name for the next run"""
     

@@ -14,46 +14,29 @@ from dataclasses import dataclass, field
 from typing import Literal, NamedTuple
 import resource
 
-# Locate the madspace installation bundled alongside MadGraph.
-# madgraph/__init__.py lives one level below the MadGraph root, so .parents[1]
-# reaches the root and then "madspace/install" is the local install prefix.
-import madgraph as _mg_pkg
-_MG_ROOT = Path(_mg_pkg.__file__).parents[1]
-_MADSPACE_DIR = _MG_ROOT / "madspace"
-_INSTALL_DIR = _MADSPACE_DIR / "install"
-if not (_INSTALL_DIR / "madspace").is_dir():
-    print()
-    print("You don't have madspace installed for this madgraph instance")
-    print("Running the madspace installation script")
-    print()
+# Install madspace on first use, then import it. The bootstrap lives in its own
+# module (which must not import madspace) so that an in-process caller can run
+# it *before* importing this one -- see bootstrap.ensure_madspace.
+from madgraph.iolibs.template_files.mg7.bootstrap import (
+    ensure_madspace as _ensure_madspace,
+    drop_install_path as _drop_install_path,
+    MG_ROOT as _MG_ROOT,
+    MADSPACE_DIR as _MADSPACE_DIR,
+    INSTALL_DIR as _INSTALL_DIR,
+)
 
-    _install_cmd = [sys.executable, str(_MADSPACE_DIR / "install.py")]
-    # Expose madgraph on PYTHONPATH so the installer subprocess can import
-    # cmd.ask for its prompts.
-    _noninteractive = "-f" in sys.argv or not sys.stdin.isatty()
-    # When the run is non-interactive (scripted / piped), install
-    # non-interactively with a source build and default options (--source --yes),
-    # and keep the installer away from our stdin (which may carry the run's
-    # scripted card-editing commands); when interactive, let it share the
-    # terminal so the user can answer.
-    _install_stdin = subprocess.DEVNULL if _noninteractive else None
-    if _noninteractive:
-        _install_cmd += ["--source", "--yes"]
-    _install_env = os.environ.copy()
-    _install_env["PYTHONPATH"] = os.pathsep.join(
-        [str(_MG_ROOT)] + ([_install_env["PYTHONPATH"]] if _install_env.get("PYTHONPATH") else [])
-    )
-    _result = subprocess.run(_install_cmd, env=_install_env, stdin=_install_stdin)
-    if _result.returncode != 0:
-        raise RuntimeError("madspace installation failed — see output above")
-if str(_INSTALL_DIR) not in sys.path:
-    sys.path.insert(0, str(_INSTALL_DIR))
+_ensure_madspace()
 
 import madspace as ms
+
+# madspace is imported; stop its install directory from shadowing the caller's
+# yaml/packaging/... for the rest of what is now MG5's own session.
+_drop_install_path()
 from models.check_param_card import ParamCard
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
+from madgraph.interface.extended_cmd import Cmd
 
 _source_hash = subprocess.run(
     [sys.executable, str(_MADSPACE_DIR / "source_hash.py")],
@@ -356,7 +339,16 @@ class MadgraphProcess:
                 break
             except FileExistsError:
                 run_index += 1
-        self.status_file = ms.StatusFile(os.path.join(self.run_path, "info.json"))
+        # Absolute on purpose. StatusFile is a C++ object that finishes its
+        # write from its destructor (rename info.json.tmp -> info.json), and
+        # that destructor runs whenever Python gets round to collecting the
+        # process object. When the launcher runs in MG5's process, an
+        # interrupted run is collected *after* the launch command has restored
+        # the working directory, and a relative path would then resolve
+        # somewhere else -- the rename throws a C++ filesystem_error out of a
+        # destructor, which is an immediate abort.
+        self.status_file = ms.StatusFile(
+            os.path.abspath(os.path.join(self.run_path, "info.json")))
 
     def init_context(self) -> None:
         device_names = self.run_card["run"]["device"]
@@ -2640,7 +2632,7 @@ class MadgraphSubprocess:
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 
-def load_mg5_options() -> dict:
+def load_mg5_options(me_dir=None) -> dict:
     """Read the tool paths from the MadGraph configuration, so the launcher
     knows where LHAPDF and the optional programs (Pythia8/Delphes/MadSpin/
     reweight/analysis) live.
@@ -2650,11 +2642,16 @@ def load_mg5_options() -> dict:
     this process directory has the last word, then this installation, then the
     per-user file. Relative values are resolved against the root of the file
     they came from.
+
+    ``me_dir`` is the process directory whose Cards/me5_configuration.txt has
+    the last word. It defaults to the working directory, which is right for
+    bin/generate_events (it chdirs there first) but not for an in-process
+    caller, which has not moved yet.
     """
 
     import madgraph
     mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
-    me_dir = os.getcwd()
+    me_dir = os.getcwd() if me_dir is None else me_dir
 
     options = {
         'pythia-pgs_path': None, 'pythia8_path': None, 'madanalysis_path': None,
@@ -2715,44 +2712,207 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
     return _LHAPDF
 
 
-def build_selector_cmd():
+class MG7Cmd(Cmd):
+    """The mg7 run interface: the command object that drives a launch.
+
+    It plays two roles, and they are the same object on purpose.
+
+    1. It is the *mother* of the merged switch/card question (the thing
+       ``AskRunEditCard`` calls back into for ``keep_cards``/``do_open``/
+       ``compute_widths``).
+    2. It is the child command interface MG5 registers via
+       ``define_child_cmd_interface`` when you type ``launch`` on an mg7 output.
+
+    Role 2 is what makes role 1 behave. ``Cmd.ask`` resolves a scripted answer
+    through ``self.check_answer_in_input_file``, where ``self`` is the mother --
+    so once MG5 hands us its ``inputfile`` and registers itself as our
+    ``mother``, the question reads the very lines that follow ``launch`` in the
+    user's command file, and any line it does not recognise goes back up to MG5
+    through ``store_line`` instead of being silently consumed. This is exactly
+    how a madevent output already behaves; before this class existed the mg7
+    branch shelled out to ``bin/generate_events`` and had to guess which
+    following lines belonged to the run, which quietly swallowed every ``set``.
+    """
+
+    prompt = 'MG7> '
+
+    def __init__(self, me_dir='.', options=None, *args, **opts):
+        super().__init__(*args, **opts)
+        self.me_dir = os.path.abspath(me_dir) if me_dir != '.' else '.'
+        # The rest of the launcher is written against the process directory as
+        # the working directory, so do_generate_events chdirs there; but at
+        # construction time MG5 has not moved, hence the explicit me_dir.
+        self.options = load_mg5_options(
+            self.me_dir if self.me_dir != '.' else None)
+        if options:
+            # MG5's own resolved tool paths win: they are the ones the user
+            # configured in the session that is doing the launching.
+            self.options.update({k: v for k, v in options.items()
+                                 if k in self.options and v is not None})
+        self.plugin_path = []
+        self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
+        self._model = None  # lazily imported by get_model()
+
+    # ------------------------------------------------------------------
+    # the contract the card question expects from its mother
+    # ------------------------------------------------------------------
+    def keep_cards(self, need_card=[], ignore=[]):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        return CommonRunCmd.keep_cards(self, need_card, ignore)
+
+    def do_open(self, line):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.do_open(self, line)
+
+    def check_open(self, args):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.check_open(self, args)
+
+    def get_model(self):
+        """The model this process was generated with (an ``import_ufo`` model).
+
+        This is the hook the card question goes through for everything that
+        needs the model rather than the card: 'update dependent' (which resets
+        the masses/widths the model computes from the free parameters) and the
+        generic auto-width handler both call ``mother_interface.get_model()``.
+        Without it the launch question could only warn that it had failed to
+        update the dependent parameters, and MadSpin/the shower then read
+        whatever inconsistent values the param_card still held.
+
+        None when the process recorded no model (an output made before
+        SubProcesses/model.txt existed) -- the caller warns in that case.
+        """
+        if self._model is None:
+            me_dir = self.me_dir if self.me_dir != '.' else None
+            # False (not None) so a model that cannot be imported is not
+            # retried at every question.
+            self._model = load_process_model(me_dir) or False
+        return self._model or None
+
+    def do_compute_widths(self, line):
+        # The interactive card editor delegates 'auto' width computation to
+        # the mother interface. Reuse the runtime helper (madgraph subprocess
+        # + the model stored at output time). ``line`` looks like
+        # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
+        m = re.search(r'--path=(\S+)', line or "")
+        path = m.group(1) if m else os.path.join("Cards", "param_card.dat")
+        compute_auto_widths(path)
+        # return an empty mapping: the caller iterates out.items() for the
+        # small-width treatment, which mg7 does not apply.
+        return {}
+
+    # ------------------------------------------------------------------
+    # running
+    # ------------------------------------------------------------------
+    def do_generate_events(self, line):
+        """generate_events [-f] [-n NAME] [--laststep=parton]
+
+        Run the mg7 generation and the selected post-processing tools."""
+
+        opts = self._parse_run_options(line)
+        cwd = os.getcwd()
+        target = self.me_dir if self.me_dir != '.' else cwd
+        try:
+            os.chdir(target)
+            _setup_logging()
+            if opts['name']:
+                self._set_run_name(opts['name'])
+            switch = {}
+            if not opts['force']:
+                switch = ask_edit_cards(mother=self)
+            switch = self._apply_laststep(switch, opts)
+            force_lhe_output_if_needed(switch)
+            _raise_open_file_limit()
+            run_generation(switch)
+        finally:
+            os.chdir(cwd)
+
+    # ``launch`` is the name MG5 users type; keep it working here too.
+    do_launch = do_generate_events
+
+    def do_quit(self, line):
+        """Leave the mg7 run interface."""
+        return super().do_quit(line)
+
+    do_exit = do_quit
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _parse_run_options(self, line):
+        """Understand the subset of MG5's `launch` options that mean something
+        for an mg7 run, and say so out loud for the ones that do not."""
+        out = {'force': False, 'name': '', 'laststep': ''}
+        args = self.split_arg(line)
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            index += 1
+            if arg in ('-f', '--force'):
+                out['force'] = True
+            elif arg in ('-n', '--name') and index < len(args):
+                out['name'] = args[index]
+                index += 1
+            elif arg.startswith(('-n=', '--name=')):
+                out['name'] = arg.split('=', 1)[1]
+            elif arg in ('-s', '--laststep') and index < len(args):
+                out['laststep'] = args[index]
+                index += 1
+            elif arg.startswith(('-s=', '--laststep=')):
+                out['laststep'] = arg.split('=', 1)[1]
+            elif arg.startswith('-'):
+                logger.warning(
+                    "'%s' is not supported by the mg7 output and is ignored; "
+                    "the equivalent settings live in Cards/run_card.toml", arg)
+            elif arg and not out['name']:
+                out['name'] = arg
+        return out
+
+    def _set_run_name(self, name):
+        """Honour `launch -n NAME`: the mg7 run directory is
+        Events/<run.run_name>_NN, so the name is a run_card setting."""
+        path = os.path.join("Cards", "run_card.toml")
+        run_card = RunCardMG7(path, consistency=False)
+        if run_card["run"]["run_name"] != name:
+            run_card["run"]["run_name"] = name
+            run_card.write(path)
+            logger.info("run name set to '%s'", name)
+
+    def _apply_laststep(self, switch, opts):
+        """`--laststep=parton` means: generate the events, run nothing on them.
+
+        The mg7 tool selection is the switch dict the question returns, so
+        stopping at parton level is switching those entries off.
+        """
+        if opts['laststep'] not in ('parton', 'auto', ''):
+            logger.warning(
+                "--laststep=%s is not supported by the mg7 output; "
+                "select the programs to run in the launch question instead",
+                opts['laststep'])
+            return switch
+        if opts['laststep'] != 'parton' or not switch:
+            return switch
+        switch = dict(switch)
+        for key in ('shower', 'detector', 'analysis', 'madspin', 'reweight'):
+            if not _off(switch.get(key, 'OFF')):
+                logger.info("--laststep=parton: not running %s", key)
+                switch[key] = 'OFF'
+        return switch
+
+
+def build_selector_cmd(mother=None):
     """Build the (monkey-patched) mother command + merged switch/card selector
     used by the mg7 output.  Returns the selector *class* and a mother instance
-    understood by AskRun/AskforEditCard."""
+    understood by AskRun/AskforEditCard.
 
-    from madgraph.interface.common_run_interface import CommonRunCmd
-    from madgraph.interface.extended_cmd import Cmd
+    ``mother`` lets an in-process caller supply its own :class:`MG7Cmd` -- the
+    one MG5 registered as its child -- so that the question resolves scripted
+    answers against MG5's own command file (see :class:`MG7Cmd`). When it is
+    omitted a standalone instance is built, which is what ``bin/generate_events``
+    gets.
+    """
+
     from madgraph.interface.madevent_interface import AskRunEditCard
-
-    class MG7Cmd(Cmd):
-
-        def __init__(self):
-            super().__init__(".", {})
-            self.me_dir = "."
-            self.options = load_mg5_options()
-            self.plugin_path = []
-            self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
-
-        def keep_cards(self, need_card=[], ignore=[]):
-            return CommonRunCmd.keep_cards(self, need_card, ignore)
-
-        def do_open(self, line):
-            CommonRunCmd.do_open(self, line)
-
-        def check_open(self, args):
-            CommonRunCmd.check_open(self, args)
-
-        def do_compute_widths(self, line):
-            # The interactive card editor delegates 'auto' width computation to
-            # the mother interface. Reuse the runtime helper (madgraph subprocess
-            # + the model stored at output time). ``line`` looks like
-            # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
-            m = re.search(r'--path=(\S+)', line or "")
-            path = m.group(1) if m else os.path.join("Cards", "param_card.dat")
-            compute_auto_widths(path)
-            # return an empty mapping: the caller iterates out.items() for the
-            # small-width treatment, which mg7 does not apply.
-            return {}
 
     from madgraph.various import banner as _banner_mod
     from madgraph.various import misc as _misc
@@ -2833,6 +2993,28 @@ def build_selector_cmd():
                         self.modified_card.add("run")
                         return
 
+                    # 'iseed' is the madevent spelling of the mg7 run.seed,
+                    # but the two disagree on how to ask for a random seed:
+                    # madevent uses 0, mg7 uses -1 (0 being a perfectly good
+                    # fixed seed there). Translate here rather than in
+                    # _LO_SCALAR_MAP, which also drives the LO -> MG7 run_card
+                    # conversion and would silently pin those runs to seed 0.
+                    if rest and nlow == 'iseed':
+                        value = run_card.evaluate(rest, masses)
+                        try:
+                            value = int(value)
+                        except (TypeError, ValueError):
+                            value = None
+                        if value is None:
+                            logger.warning("ignoring 'set iseed %s': not an integer", rest)
+                            return
+                        seed = -1 if value == 0 else value
+                        run_card.set('run.seed', seed, user=True)
+                        logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
+                                    seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
                     # legacy madevent run_card names -> mg7 "section.key", so a
                     # madevent-style launch script ("set nevents 500", "set
                     # use_syst F", "set bwcutoff 10", ...) edits the mg7
@@ -2856,15 +3038,20 @@ def build_selector_cmd():
                                 line = "%s%s %s" % (prefix, name, resolved)
             return super().do_set(line, *args, **kwargs)
 
-    return MG7Selector, MG7Cmd()
+    return MG7Selector, (mother if mother is not None else MG7Cmd())
 
 
-def ask_edit_cards() -> dict:
+def ask_edit_cards(mother=None) -> dict:
     """Single (MadDM-style) question letting the user both pick which programs
     to run after generation and edit the associated cards.  Returns the switch
-    dict describing the selected tools."""
+    dict describing the selected tools.
 
-    selector_class, mother = build_selector_cmd()
+    ``mother`` is the :class:`MG7Cmd` asking the question. Passing the instance
+    MG5 registered as its child is what lets a scripted ``launch`` answer this
+    question from MG5's own command file.
+    """
+
+    selector_class, mother = build_selector_cmd(mother)
     # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
     # an answer (its "elif path:" branch), so that a scripted launch can hand the
     # question a card/banner path -- as the question itself advertises -- and have
@@ -2944,6 +3131,18 @@ def _off(value) -> bool:
     return value in (None, "OFF", "Not Avail.", "Not Avail. (numpy missing)")
 
 
+def _has_effective_handler(lg) -> bool:
+    """True when ``lg`` (or an ancestor it propagates to) already has a handler,
+    i.e. some other party is already displaying these records."""
+    while lg:
+        if lg.handlers:
+            return True
+        if not lg.propagate:
+            return False
+        lg = lg.parent
+    return False
+
+
 _TOOL_LOGGING_READY = False
 
 
@@ -2958,6 +3157,13 @@ def _setup_logging():
     colored INFO console handler to them (idempotent)."""
     global _TOOL_LOGGING_READY
     if _TOOL_LOGGING_READY:
+        return
+    if _has_effective_handler(logging.getLogger("madgraph")):
+        # Someone already configured logging for us -- in practice MG5, which
+        # now runs the launch in its own process. Its configuration is
+        # authoritative (it owns stdout_level and the tutorial logger); adding
+        # a second handler here would print every line twice.
+        _TOOL_LOGGING_READY = True
         return
     try:
         import madgraph.interface.coloring_logging  # registers ColorFormatter
@@ -3018,6 +3224,15 @@ def run_selected_tools(switch, process) -> None:
         ("MadAnalysis5 (hadron level)", ma5 and showered),
         ("Rivet", switch.get("analysis") == "Rivet"),
     ) if on]
+    if not tools:
+        # `active` above counts any switch that is not off, which is not the
+        # same question: "Not Avail." is not off, and a shower switch set to
+        # something other than Pythia8 selects no driver here either. Without
+        # this a plain generate/output/launch announced a post-processing step
+        # with nothing after the colon, and paid for building the run
+        # interface to do nothing.
+        return
+
     log.info("")
     log.info("Post-processing the generated events with: %s", ", ".join(tools))
 
@@ -3240,6 +3455,98 @@ def run_lhe_postprocessing(process) -> None:
                         os.path.dirname(lhe_path))
 
 
+_model_hash_warned = set()
+_model_cache = {}
+
+
+def read_stored_model(me_dir=None) -> "str | None":
+    """The model this process was generated with, as recorded at output time in
+    ``SubProcesses/model.txt``: a UFO path carrying its restriction (e.g.
+    ``.../models/sm-no_b_mass``) or a model name -- in either case something
+    ``import model`` understands. Returns None when the process was written
+    without that information.
+
+    Warns (once per directory) when the model on disk no longer matches the
+    hash stored on the second line, i.e. it changed since the output was made.
+    """
+    base = me_dir or os.getcwd()
+    model_file = os.path.join(base, "SubProcesses", "model.txt")
+    if not os.path.exists(model_file):
+        return None
+    with open(model_file) as f:
+        lines = f.read().splitlines()
+    model = lines[0].strip() if lines else ""
+    stored_hash = lines[1].strip() if len(lines) > 1 else ""
+    if not model:
+        logger.warning("SubProcesses/model.txt is empty; the model of this "
+                       "process is unknown.")
+        return None
+
+    # verify the model on disk still matches the one used at output time. The
+    # reference may carry a restriction suffix ('sm-no_b_mass'); the hash was
+    # taken on the UFO directory itself ('sm').
+    model_dir = model if os.path.isdir(model) else model.rsplit('-', 1)[0]
+    if stored_hash and os.path.isdir(model_dir) \
+            and model_file not in _model_hash_warned:
+        current_hash = misc.hash_model_files(model_dir)
+        if current_hash and current_hash != stored_hash:
+            _model_hash_warned.add(model_file)
+            logger.warning(
+                "The model at %s has changed since this process was generated "
+                "(hash mismatch); anything computed from it now (the 'auto' "
+                "widths, the dependent masses/widths of the param_card) may be "
+                "inconsistent with the matrix element.", model_dir)
+    return model
+
+
+def _proc_characteristic(me_dir=None) -> dict:
+    """SubProcesses/proc_characteristics as a plain dict (empty when the file is
+    missing or unreadable). Plain, because ProcCharacteristic is a ConfigFile,
+    whose get() is the parameter accessor and takes no default."""
+    from madgraph.various import banner as _banner_mod
+    path = os.path.join(me_dir or os.getcwd(), 'SubProcesses',
+                        'proc_characteristics')
+    if os.path.exists(path):
+        try:
+            return dict(_banner_mod.ProcCharacteristic(path))
+        except Exception as error:
+            logger.debug("could not read %s: %s", path, error)
+    return {}
+
+
+def load_process_model(me_dir=None):
+    """Import the UFO model this process was generated with, as
+    :func:`models.import_ufo.import_model` builds it -- the object every
+    model-level consumer of the param_card expects (see
+    :meth:`MG7Cmd.get_model`). None when the process recorded no model, or when
+    that model no longer imports.
+
+    Cached per (reference, complex-mass-scheme): importing a model is slow and
+    the card question asks for it again at every 'update dependent'."""
+    ref = read_stored_model(me_dir)
+    if not ref:
+        return None
+    cms = _proc_characteristic(me_dir).get('complex_mass_scheme', False)
+    key = (ref, bool(cms))
+    if key not in _model_cache:
+        import models.import_ufo as import_ufo
+        try:
+            with misc.MuteLogger(['madgraph.model'], [50]):
+                _model_cache[key] = import_ufo.import_model(
+                    ref, complex_mass_scheme=bool(cms))
+        except Exception as error:
+            # 'update dependent' calls this under a SIGALRM whose handler
+            # raises a TimeOutError of its own (a class defined inside the
+            # caller, so it can only be recognised by name). Let it through:
+            # the caller then says the model took too long to load and how to
+            # force it, instead of reporting a model that does not import.
+            if type(error).__name__ == 'TimeOutError':
+                raise
+            logger.debug("could not import the model %s: %s", ref, error)
+            _model_cache[key] = None
+    return _model_cache[key]
+
+
 def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
     """Fill any width set to ``auto`` in the param_card, using madgraph and the
     model stored at output time (``SubProcesses/model.txt``), and write the
@@ -3260,29 +3567,12 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
         return
     pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
 
-    model_file = os.path.join("SubProcesses", "model.txt")
-    if not os.path.exists(model_file):
-        logger.warning(
-            "The param_card requests 'auto' width(s) for %s but the model was "
-            "not stored with this process; leaving them as-is.", " ".join(pdgs))
-        return
-    with open(model_file) as f:
-        lines = f.read().splitlines()
-    model = lines[0].strip() if lines else ""
-    stored_hash = lines[1].strip() if len(lines) > 1 else ""
+    model = read_stored_model()
     if not model:
-        logger.warning("SubProcesses/model.txt is empty; 'auto' widths not computed.")
+        logger.warning(
+            "The param_card requests 'auto' width(s) for %s but the model of "
+            "this process is unknown; leaving them as-is.", " ".join(pdgs))
         return
-
-    # verify the model on disk still matches the one used at output time
-    if stored_hash and os.path.isdir(model):
-        current_hash = misc.hash_model_files(model)
-        if current_hash and current_hash != stored_hash:
-            logger.warning(
-                "The model at %s has changed since this process was generated "
-                "(hash mismatch); the 'auto' width(s) will be computed with the "
-                "current model, which may be inconsistent with the matrix "
-                "element.", model)
 
     mg5 = str(_MG_ROOT / "bin" / "madgraph")
     if not os.path.exists(mg5):
@@ -3427,20 +3717,26 @@ def force_lhe_output_if_needed(switch) -> None:
             "output_format set to 'lhe' (required by the selected post-processing).")
 
 
-def main() -> None:
-    _setup_logging()
+def _raise_open_file_limit() -> None:
+    """Remove the soft limit on the number of open files: it can be quite low
+    on some systems and the event-combination step opens one file per channel."""
+    soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
+    except (ValueError, OSError) as error:
+        logger.debug("could not raise the open-file limit: %s", error)
 
+
+def main() -> None:
+    """``bin/generate_events`` entry point.
+
+    It runs the same :class:`MG7Cmd` command MG5's in-process ``launch`` uses,
+    so the two entry points cannot drift apart; the only difference is that
+    nothing here supplies a ``mother``/``inputfile``, so the question falls back
+    to reading this process's own stdin.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
     args = parser.parse_args()
-    switch = {}
 
-    if args.ask_edit_cards:
-        switch = ask_edit_cards()
-        force_lhe_output_if_needed(switch)
-
-    # Remove soft limit on number of open files as it can be quite low on some systems
-    soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
-
-    run_generation(switch)
+    MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

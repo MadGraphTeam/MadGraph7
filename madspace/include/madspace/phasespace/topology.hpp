@@ -99,6 +99,15 @@ public:
         return _t_propagator_widths;
     }
     const std::vector<Decay>& decays() const { return _decays; }
+    // Raise a propagator's minimum invariant mass. Used to hand a cut that
+    // bounds the pair this propagator decays into straight to the sampler,
+    // so the region the cut forbids is never generated in the first place.
+    void raise_decay_e_min(std::size_t index, double e_min) {
+        auto& decay = _decays.at(index);
+        if (e_min > decay.e_min) {
+            decay.e_min = e_min;
+        }
+    }
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
     }

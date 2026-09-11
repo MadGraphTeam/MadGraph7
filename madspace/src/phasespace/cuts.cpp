@@ -1,6 +1,9 @@
 #include "madspace/phasespace/cuts.hpp"
 
 #include "madspace/compgraphs/type.hpp"
+#include "madspace/util.hpp"
+
+#include <algorithm>
 
 using namespace madspace;
 
@@ -119,7 +122,11 @@ std::vector<std::vector<double>> Cuts::pairwise_min(
 }
 
 std::vector<std::vector<double>> Cuts::m_inv_min() const {
-    return pairwise_min(Observable::obs_mass, [](const Observable& o) {
+    // Two ways of asking for the same thing. "mass" with summed momenta is
+    // the mass of the whole selection, which happens to be a pair only when
+    // the selection holds exactly two particles; obs_pair_mass is the genuine
+    // pairwise cut and covers every pair a group can form.
+    auto summed = pairwise_min(Observable::obs_mass, [](const Observable& o) {
         std::vector<std::pair<std::size_t, std::size_t>> pairs;
         const auto& idx = o.indices();
         if (o.sum_momenta() && idx.size() == 1 && idx.at(0).size() == 2) {
@@ -127,6 +134,22 @@ std::vector<std::vector<double>> Cuts::m_inv_min() const {
         }
         return pairs;
     });
+    auto pairwise = pairwise_min(Observable::obs_pair_mass, [](const Observable& o) {
+        std::vector<std::pair<std::size_t, std::size_t>> pairs;
+        const auto& idx = o.indices();
+        if (idx.size() == 2) {
+            for (std::size_t k = 0; k < idx.at(0).size(); ++k) {
+                pairs.emplace_back(idx.at(0).at(k), idx.at(1).at(k));
+            }
+        }
+        return pairs;
+    });
+    for (auto [row_summed, row_pairwise] : zip(summed, pairwise)) {
+        for (auto [a, b] : zip(row_summed, row_pairwise)) {
+            a = std::max(a, b);
+        }
+    }
+    return summed;
 }
 
 std::vector<std::vector<double>> Cuts::dr_min() const {

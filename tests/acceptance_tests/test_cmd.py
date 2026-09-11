@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -149,12 +149,12 @@ class TestCmdShell1(unittest.TestCase):
         self.do('set group_subprocesses False')
         self.do('import model sm')
         self.do('generate e+ e- > e+ e-')
-        self.do('display diagrams . --generate_only')
+        self.do('display diagrams . --no_open')
         self.assertTrue(os.path.exists('./diagrams_0_epem_epem.eps'))
         os.remove('./diagrams_0_epem_epem.eps')
         
         self.do('generate g g > g g')
-        self.do('display diagrams . --generate_only')
+        self.do('display diagrams . --no_open')
         self.assertTrue(os.path.exists('diagrams_0_gg_gg.eps'))
         os.remove('diagrams_0_gg_gg.eps')
         self.do('set group_subprocesses True')
@@ -198,6 +198,9 @@ class TestCmdShell1(unittest.TestCase):
                     'madanalysis5_path': './HEPTools/madanalysis5/madanalysis5',
                     'group_subprocesses': 'Auto',
                     'complex_mass_scheme': False,
+                    # set-option added by the DDM colour-basis work
+                    # (ab161ac8a); this dict has to list every one.
+                    'color_basis': 'auto',
                     'gauge': 'unitary',
                     'output_dependencies': 'external',
                     'dmtcp': None,
@@ -228,6 +231,8 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_size': 100,
                     'loop_color_flows': False,
                     'cluster_local_path': None,
+                    'cvmfs_lhapdf_path':
+                              '/cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current',
                     'max_npoint_for_channel': 0,
                     'low_mem_multicore_nlo_generation': False,
                     'ninja': './HEPTools/lib',
@@ -1330,6 +1335,68 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
+
+    def test_standalone_split_orders_interference(self):
+        """standalone (madmatrix) must return the squared-order contribution asked for.
+
+        The madmatrix jamps carry an amplitude-order index and the color sum
+        pairs them, so a '^2' constraint that keeps only some of the squared
+        orders gets that contribution and not the total. The case that matters
+        is an interference term, which cannot be reached by dropping diagrams
+        at generation: ``u u~ > u u~ QED^2==2`` keeps every diagram and wants
+        the QCD-EW cross term alone, -5.5828746494657265e-02 from the Fortran
+        split-order driver, where a backend with no mask returns the whole
+        +2.7756451199752394.
+
+        The three components are checked to sum back to the unconstrained
+        total *as computed by this same backend*. That comparison is the one
+        that pins the pair loop: it uses one set of momenta and one set of
+        parameters, so it is sensitive to the interference algebra alone --
+        in particular to the fact that the color contraction keeps its
+        doubled triangle while the loop over amplitude-order pairs must run
+        over all ordered pairs, since for two different jamp vectors a pair
+        and its transpose are not each other's conjugate.
+        """
+        devnull = open(os.devnull, 'w')
+        me_re = re.compile(r'Matrix element\s*=\s*([\d.eE+-]+)\s*GeV',
+                           re.IGNORECASE)
+
+        def value(constraint):
+            if os.path.isdir(self.out_dir):
+                shutil.rmtree(self.out_dir)
+            self.do('generate u u~ > u u~ %s' % constraint)
+            self.do('output standalone %s -f' % self.out_dir)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = [d for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))]
+            self.assertTrue(dirs, 'no subprocess for %s' % constraint)
+            proc_dir = pjoin(proc_root, dirs[0])
+            # FPTYPE=d: mixed precision hides and fakes differences here
+            self.assertEqual(0, subprocess.call(['make', 'FPTYPE=d'],
+                                                stdout=devnull, stderr=devnull,
+                                                cwd=proc_dir),
+                             'standalone %s did not build' % constraint)
+            log = pjoin(proc_dir, 'check.log')
+            subprocess.call('./check_sa.exe 1000', shell=True, cwd=proc_dir,
+                            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+            found = me_re.findall(open(log).read())
+            self.assertTrue(found, 'no matrix element (see %s)' % log)
+            return float(found[0])
+
+        self.do('import model sm')
+        interference = value('QED^2==2')
+        # The Fortran split-order component, to the tolerance this backend is
+        # compared at elsewhere (the EW couplings differ in the last digits)
+        self.assertAlmostEqual(interference, -5.5828746494657265e-02, delta=1e-7)
+        # ... and emphatically not the unmasked total
+        self.assertLess(abs(interference), 1.0)
+
+        components = [value('QED^2==0'), interference, value('QED^2==4')]
+        total = value('QED^2<=4')
+        self.assertAlmostEqual(sum(components), total,
+                               delta=1e-12 * abs(total),
+                               msg='the squared-order components do not add up '
+                                   'to the total this backend computes')
 
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
@@ -5150,7 +5217,7 @@ class IOTestFDGauge(IOTests.IOTestManager):
         #    different spins (VVV1_VVS1_VSV2_VSS1_0 and
         #    VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0), which only exist because a
         #    massive vector and its Goldstone are the same wavefunction here.
-        self.generate_fd('standalone', pjoin(self.IOpath, 'FD_fortran'))
+        self.generate_fd('standalone_fortran', pjoin(self.IOpath, 'FD_fortran'))
 
     @IOTests.createIOTest()
     def testIO_FDgauge_madmatrix(self):
