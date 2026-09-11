@@ -27,7 +27,6 @@ import json
 import math
 import os
 
-import madgraph
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
@@ -39,19 +38,62 @@ P = 'MG7>'
 RUN = 'MY_FIRST_LO_RUN'
 
 
-def madspace_is_installed():
-    """True if this MG7 already has a usable madspace build.
+def _mg7_bootstrap():
+    """The mg7 bootstrap module, or None if it cannot be imported.
 
-    Mirrors what the generated bin/generate_events checks before bootstrapping
-    one for itself (see iolibs/template_files/mg7/launch.py).
+    Everything the tutorial wants to know about madspace goes through it, so
+    the tutorial cannot disagree with the launcher about where madspace is or
+    whether it is there (see iolibs/template_files/mg7/bootstrap.py).
     """
 
     try:
-        root = os.path.dirname(os.path.dirname(os.path.abspath(
-            madgraph.__file__)))
+        from madgraph.iolibs.template_files.mg7 import bootstrap
+    except Exception:
+        return None
+    return bootstrap
+
+
+def madspace_is_installed():
+    """True if this MG7 already has a usable madspace build."""
+
+    bootstrap = _mg7_bootstrap()
+    if bootstrap is None:
+        return False
+    try:
+        return bootstrap.madspace_is_installed()
     except Exception:
         return False
-    return os.path.isdir(os.path.join(root, 'madspace', 'install', 'madspace'))
+
+
+def _import_madspace():
+    """This MG7's own compiled madspace, or None if it has none.
+
+    A bare ``import madspace`` here would resolve against whatever happens to
+    be importable -- a system-wide copy, or the repo's own madspace/ source
+    directory as a namespace package -- and cache that wrong module in
+    sys.modules, where mg7/launch.py's ``import madspace as ms`` would then
+    pick it up and fail on the first attribute the real package has. So only
+    import when the bundled build is actually installed, and with its install
+    prefix on sys.path, exactly as the launcher does.
+    """
+
+    bootstrap = _mg7_bootstrap()
+    if bootstrap is None or not madspace_is_installed():
+        return None
+    try:
+        # Already installed, so this only prepends the install directory.
+        bootstrap.ensure_madspace()
+        import madspace
+    except Exception:
+        return None
+    finally:
+        # Same reason launch.py drops it: the install directory also carries
+        # madspace's build dependencies and would shadow the caller's.
+        try:
+            bootstrap.drop_install_path()
+        except Exception:
+            pass
+    return madspace
 
 
 # Shown under the card question `launch` asks, in place of the generic
@@ -149,13 +191,14 @@ def _result_row(info):
         return '503.1(1.4)'
     if not mean:
         return '503.1(1.4)'
-    try:
-        import madspace
-
-        return madspace.format_with_error(mean, error)
-    except Exception:
-        # madspace not importable here: say the same thing the long way
-        return '%.4g +- %.2g' % (mean, error)
+    madspace = _import_madspace()
+    if madspace is not None:
+        try:
+            return madspace.format_with_error(mean, error)
+        except Exception:
+            pass
+    # madspace not importable here: say the same thing the long way
+    return '%.4g +- %.2g' % (mean, error)
 
 
 def _systematics_rows(info):
