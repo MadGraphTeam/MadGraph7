@@ -80,9 +80,8 @@ import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.save_load_object as save_load_object
 
 import madgraph.interface.extended_cmd as cmd
-import madgraph.interface.tutorial_text as tutorial_text
-import madgraph.interface.tutorial_text_nlo as tutorial_text_nlo
-import madgraph.interface.tutorial_text_madloop as tutorial_text_madloop
+import madgraph.interface.tutorials as tutorials
+import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.interface.madevent_interface as madevent_interface
 import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
@@ -115,15 +114,77 @@ logger = logging.getLogger('cmdprint') # -> stdout
 logger_check = logging.getLogger('check') # -> stdout
 logger_mg = logging.getLogger('madgraph.interface') # -> stdout
 logger_stderr = logging.getLogger('fatalerror') # ->stderr
+# Every tutorial writes through this one logger, whatever it teaches: the
+# per-tutorial loggers below are kept alive only because external logging
+# configurations still name them.
 logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
                                             #order to learn MG5
-logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # -> stdout include instruction in
-                                                        #order to learn aMC@NLO
-
-logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # -> stoud for MadLoop tuto
+logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
+logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
 # Central definition of the main interface prompt (bold blue "MG7> ")
 MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+# the same prompt without the colour escapes, for quoting commands inside
+# tutorial text and help messages
+MG7_PROMPT_TEXT = "MG7> "
+
+# The banner (and every easter-egg variant of it in madgraph.various.misc) is
+# written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
+# a closing '*'. On a wider terminal the block is re-centred so that the two
+# columns of '*' sit on the edges of the screen. A line built wider than that
+# (the GIT line, with a long tag and a long branch name) is re-centred the same
+# way, from its own length, and is left alone when it does not fit the screen.
+BANNER_WIDTH = 60
+# Width assumed when the output is not a terminal (a log file, a pipe, ...).
+BANNER_FILE_WIDTH = 80
+# Escape sequences (the development-version warning is printed in red) do not
+# take any place on screen and must not be counted in the width of a line.
+BANNER_ANSI = re.compile('\\033\\[[0-9;]*m')
+
+def get_banner_width():
+    """Number of columns available for the banner: the width of the terminal,
+    or BANNER_FILE_WIDTH when the output is redirected to a file/pipe."""
+
+    try:
+        if not sys.stdout.isatty():
+            return BANNER_FILE_WIDTH
+        width = shutil.get_terminal_size((BANNER_FILE_WIDTH, 24)).columns
+    except Exception:
+        return BANNER_FILE_WIDTH
+    return max(width, BANNER_WIDTH)
+
+def fit_banner_width(text, width=None):
+    """Re-centre a BANNER_WIDTH columns banner on a screen of *width* columns.
+
+    Each line of at least BANNER_WIDTH visible characters delimited by '*' is
+    padded symmetrically (with '*' for the horizontal rules, with spaces
+    otherwise); any other line, and any line already wider than the screen, is
+    returned untouched."""
+
+    if width is None:
+        width = get_banner_width()
+    if width <= BANNER_WIDTH:
+        return text
+
+    out = []
+    for line in text.split('\n'):
+        plain = BANNER_ANSI.sub('', line)
+        if len(plain) < BANNER_WIDTH or not plain.startswith('*') \
+                                     or not plain.endswith('*'):
+            out.append(line)
+            continue
+        extra = width - len(plain)
+        if extra <= 0:
+            out.append(line)
+            continue
+        left = extra // 2
+        right = extra - left
+        start = line.index('*')
+        end = line.rindex('*')
+        inside = line[start+1:end]
+        fill = '*' if set(BANNER_ANSI.sub('', inside)) == set('*') else ' '
+        out.append(line[:start+1] + fill*left + inside + fill*right + line[end:])
+    return '\n'.join(out)
 
 #===============================================================================
 # CmdExtended
@@ -176,11 +237,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...                   7777777           *\n" + \
-        "*                    ....                     7            *\n" + \
-        "*                       .................... 7             *\n" + \
-        "*                                           7              *\n" + \
-        "*                                          7               *\n" + \
+        "*                  ...               7777777               *\n" + \
+        "*                    ....                 7                *\n" + \
+        "*                       ................ 7                 *\n" + \
+        "*                                       7                  *\n" + \
+        "*                                      7                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -258,7 +319,7 @@ class CmdExtended(cmd.Cmd):
             info_line = info_line.replace("#*","*")
             
 
-        logger.info(self.intro_banner % info_line)
+        logger.info(fit_banner_width(self.intro_banner % info_line))
 
         cmd.Cmd.__init__(self, *arg, **opt)
 
@@ -286,43 +347,11 @@ class CmdExtended(cmd.Cmd):
         if stop == False:
             return False
 
-        args=line.split()
-        # Return for empty line
-        if len(args)==0:
-            return stop
-
-        # try to print linked to the first word in command
-        #as import_model,... if you don't find then try print with only
-        #the first word.
-        if len(args)==1:
-            command=args[0]
-        else:
-            command = args[0]+'_'+args[1].split('.')[0]
-
-        try:
-            logger_tuto.info(getattr(tutorial_text, command).replace('\n','\n\t'))
-        except Exception:
-            try:
-                logger_tuto.info(getattr(tutorial_text, args[0]).replace('\n','\n\t'))
-            except Exception:
-                pass
-
-        try:
-            logger_tuto_nlo.info(getattr(tutorial_text_nlo, command).replace('\n','\n\t'))
-        except Exception:
-            try:
-                logger_tuto_nlo.info(getattr(tutorial_text_nlo, args[0]).replace('\n','\n\t'))
-            except Exception:
-                pass
-
-        try:
-            logger_tuto_madloop.info(getattr(tutorial_text_madloop, command).replace('\n','\n\t'))
-        except Exception:
-            try:
-                logger_tuto_madloop.info(getattr(tutorial_text_madloop, args[0]).replace('\n','\n\t'))
-            except Exception:
-                pass
-
+        # The tutorial hook used to live here as three hard-coded
+        # command-name -> text lookups.  It now lives in
+        # madgraph.interface.tutorials.mixin.TutorialMixin.postcmd, which is
+        # only in the MRO while a tutorial is actually running -- so outside
+        # tutorial mode this costs nothing at all.
         return stop
 
 
@@ -486,10 +515,15 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" o Example: launch MyProc aMC@NLO -f -p",'$MG:color:GREEN')
 
     def help_tutorial(self):
-        logger.info("syntax: tutorial [" + "|".join(self._tutorial_opts) + "]",'$MG:color:BLUE')
-        logger.info("-- start/stop the MG5 tutorial mode (or stop any other mode)")
-        logger.info("-- aMCatNLO: start aMC@NLO tutorial mode")
-        logger.info("-- MadLoop: start MadLoop tutorial mode")
+        logger.info("syntax: tutorial [NAME|list|status|stop]",'$MG:color:BLUE')
+        logger.info("-- with no argument, choose a tutorial from a menu")
+        for tutorial in tutorials.all_tutorials():
+            logger.info("-- %-11s %s" % (tutorial.name, tutorial.description))
+        logger.info("-- list        show the tutorials without starting one")
+        logger.info("-- status      show how far you are in the running tutorial")
+        logger.info("-- stop        leave tutorial mode")
+        logger.info("-- help        the commands a running tutorial understands")
+        logger.info("   (while one runs: hint, solution, next, repeat, back, skip)")
 
     def help_open(self):
         logger.info("syntax: open FILE  ",'$MG:color:BLUE')
@@ -1304,16 +1338,20 @@ class CheckValidForCmd(cmd.CheckCmd):
 
     def check_tutorial(self, args):
         """check the validity of the line"""
-        if len(args) == 1:
-            if not args[0] in self._tutorial_opts:
-                self.help_tutorial()
-                raise self.InvalidCmd('Invalid argument for tutorial')
-        elif len(args) == 0:
-            #this means mg5 tutorial
-            args.append('MadGraph7')
-        else:
+        if len(args) == 0:
+            # a bare 'tutorial' opens the menu -- or, with no terminal to ask
+            # on, keeps its historical meaning of "start the first tutorial"
+            args.append(self.ask_tutorial())
+        if len(args) != 1:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
+        if args[0] not in self._tutorial_opts:
+            self.help_tutorial()
+            raise self.InvalidCmd('Invalid argument for tutorial: %s' % args[0])
+        # normalise an alias ('MadGraph5') to the primary name ('lo')
+        tutorial = tutorials.get(args[0])
+        if tutorial is not None:
+            args[0] = tutorial.name
 
 
 
@@ -3157,7 +3195,17 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                      'modellist']
     _add_opts = ['process', 'model']
     _save_opts = ['model', 'processes', 'options']
-    _tutorial_opts = ['aMCatNLO', 'stop', 'MadLoop', 'MadGraph7']
+    # commands the running tutorial provides, also accepted as `tutorial X`:
+    # people reach for `tutorial hint` as readily as `hint`
+    _tutorial_step_cmds = ('hint', 'solution', 'next', 'repeat', 'back', 'skip')
+
+    @property
+    def _tutorial_opts(self):
+        """Names 'tutorial' accepts: every tutorial, its aliases, and the
+        housekeeping sub-commands."""
+        return (tutorials.names(include_aliases=True) +
+                ['stop', 'list', 'status', 'help'] +
+                list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
@@ -4198,28 +4246,179 @@ This implies that with decay chains:
     def do_tutorial(self, line):
         """Activate/deactivate the tutorial mode."""
 
+        self.load_plugin_tutorials()
         args = self.split_arg(line)
         self.check_tutorial(args)
-        tutorials = {'MadGraph7': logger_tuto,
-                     'aMCatNLO': logger_tuto_nlo,
-                     'MadLoop': logger_tuto_madloop}
-        try:
-            tutorials[args[0]].setLevel(logging.INFO)
-            for mode in [m for m in tutorials.keys() if m != args[0]]:
-                tutorials[mode].setLevel(logging.ERROR)
-        except KeyError:
-            logger_tuto.info("\n\tThanks for using the tutorial!")
+        name = args[0]
+
+        if name == 'stop':
+            session = tutorial_mixin.detach(self)
             logger_tuto.setLevel(logging.ERROR)
-            logger_tuto_nlo.info("\n\tThanks for using the aMC@NLO tutorial!")
-            logger_tuto_nlo.setLevel(logging.ERROR)
-            logger_tuto_madloop.info("\n\tThanks for using MadLoop tutorial!")
-            logger_tuto_madloop.setLevel(logging.ERROR)
+            if session is not None:
+                logger.info("Thanks for using the %s tutorial!"
+                            % session.tutorial.name)
+            return
+
+        if name in self._tutorial_step_cmds:
+            # `tutorial hint` is the same as `hint`
+            session = getattr(self, '_tutorial_session', None)
+            if session is None:
+                logger.info("No tutorial is running. Type 'tutorial' to start "
+                            "one, or 'tutorial help'.")
+                return
+            session.suppress_next = True
+            return getattr(self, 'do_%s' % name)('')
+
+        if name in ('list', 'status', 'help'):
+            # informational: never (re)start anything, and never let the
+            # postcmd hook mistake this for the tutorial's intro step
+            session = getattr(self, '_tutorial_session', None)
+            if session is not None:
+                session.suppress_next = True
+            if name == 'list':
+                self.print_tutorial_list()
+            elif name == 'status':
+                self.print_tutorial_status()
+            else:
+                self.print_tutorial_help()
+            return
+
+        session = tutorials.start(name)
+        if session is None:
+            # check_tutorial only lets known names through, so this cannot
+            # normally happen; be explicit rather than fail obscurely
+            raise self.InvalidCmd('Unknown tutorial %s' % name)
+
+        tutorial_mixin.attach(self, session)
+        logger_tuto.setLevel(logging.INFO)
 
         if not self._mgme_dir:
             logger_tuto.info(\
                        "\n\tWarning: To use all features in this tutorial, " + \
                        "please run from a" + \
                        "\n\t         valid MG_ME directory.")
+
+    def load_plugin_tutorials(self):
+        """Let plugins add tutorials, once per session."""
+
+        if getattr(self, '_tutorial_plugins_loaded', False):
+            return
+        self._tutorial_plugins_loaded = True
+        try:
+            tutorials.load_plugin_tutorials(self.plugin_path)
+        except Exception as error:
+            logger.debug('could not load plugin tutorials: %s', error)
+
+    def print_tutorial_help(self):
+        """What `tutorial help` prints: the commands a tutorial understands."""
+
+        running = getattr(self, '_tutorial_session', None)
+
+        logger.info("Commands available while a tutorial is running:",
+                    '$MG:BOLD')
+        logger.info("   hint        a nudge towards the command this step wants")
+        logger.info("   solution    print one right answer -- it is never run "
+                    "for you, you type it")
+        logger.info("   next        same thing: show the command to type next")
+        logger.info("   repeat      print the current step again")
+        logger.info("   back        go back one step")
+        logger.info("   skip        move on without doing this step")
+        logger.info("Anytime:", '$MG:BOLD')
+        logger.info("   tutorial            choose a tutorial from the menu")
+        logger.info("   tutorial NAME       start that one (switches if one is "
+                    "already running)")
+        logger.info("   tutorial list       show the tutorials on offer")
+        logger.info("   tutorial status     how far you have got")
+        logger.info("   tutorial help       this message")
+        logger.info("   tutorial stop       leave tutorial mode")
+        logger.info("A tutorial never blocks a command: anything you type runs "
+                    "normally, and", '$MG:BOLD')
+        logger.info("the tutorial just comments on it. Going off-script is "
+                    "fine.", '$MG:BOLD')
+
+        if running is None:
+            logger.info("No tutorial is running, so the first group above is "
+                        "not active yet.")
+        else:
+            done, total = running.progress()
+            logger.info("Running '%s', step %d of %d."
+                        % (running.tutorial.name, done, total))
+
+    def print_tutorial_list(self, numbered=False):
+        """Show the available tutorials, grouped by section.
+
+        With `numbered`, the rows carry the number the menu accepts as an
+        answer; returns the tutorials in that order so the caller can map a
+        number back.
+        """
+
+        ordered = []
+        for _key, title, group, notice in tutorials.by_section():
+            if notice:
+                logger.info("%s  (%s)" % (title, notice), '$MG:BOLD')
+            else:
+                logger.info("%s" % title, '$MG:BOLD')
+            for tutorial in group:
+                ordered.append(tutorial)
+                if numbered:
+                    logger.info("  %2d. %-12s %s" % (len(ordered), tutorial.name,
+                                                     tutorial.description))
+                else:
+                    logger.info("      %-12s %s" % (tutorial.name,
+                                                    tutorial.description))
+        if not numbered:
+            logger.info("Start one with 'tutorial NAME', or just 'tutorial' "
+                        "to choose.")
+        return ordered
+
+    def print_tutorial_status(self):
+        """Say where the user has got to."""
+
+        session = getattr(self, '_tutorial_session', None)
+        if session is None:
+            logger.info("No tutorial is running. Type 'tutorial' to start one.")
+            return
+        done, total = session.progress()
+        logger.info("Tutorial '%s': step %d of %d" %
+                    (session.tutorial.name, done, total), '$MG:BOLD')
+        for i, step in enumerate(session.tutorial.steps):
+            mark = '>' if i == session.index else ('x' if i in session.seen else ' ')
+            logger.info("  %s %2d. %s" % (mark, i + 1, step.title or step.key))
+
+    def ask_tutorial(self, default=None):
+        """Menu shown by a bare 'tutorial'.  Returns a name.
+
+        Never blocks: without a real terminal (a command file, a pipe, or
+        force mode) it keeps the historical meaning of a bare 'tutorial' and
+        returns `default`.
+        """
+
+        available = tutorials.all_tutorials()
+        if default is None:
+            default = available[0].name
+        # 'force' is set opportunistically (by `import command -f`, say) and is
+        # not an attribute every interface carries, so it has to be read
+        # defensively; isatty() can itself raise on a detached stdin
+        try:
+            interactive = self.use_rawinput and sys.stdin.isatty()
+        except Exception:
+            interactive = False
+        if getattr(self, 'force', False) or not interactive:
+            return default
+
+        logger.info("Which tutorial would you like?", '$MG:BOLD')
+        available = self.print_tutorial_list(numbered=True)
+        choices = [tutorial.name for tutorial in available]
+        choices += [str(i + 1) for i in range(len(available))] + ['stop']
+        # timeout=0 means no time limit.  Everywhere else MG7 times a question
+        # out so an unattended script cannot hang; a tutorial is the opposite
+        # situation -- there is a person at the keyboard by definition, and if
+        # they go and make a coffee while reading the menu we wait for them.
+        answer = self.ask('Enter a number or a name', default, choices=choices,
+                          timeout=0)
+        if answer.isdigit() and 1 <= int(answer) <= len(available):
+            return available[int(answer) - 1].name
+        return answer
 
 
 

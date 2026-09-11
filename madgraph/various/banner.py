@@ -5878,7 +5878,7 @@ class RunCardNLO(RunCard):
         # w contribution included or not in the running of alpha
         self.add_param('w_run', 1, system=True)
         #shower and scale
-        self.add_param('parton_shower', 'HERWIG6', fortran_name='shower_mc')        
+        self.add_param('parton_shower', 'PYTHIA8', fortran_name='shower_mc')        
         self.add_param('shower_scale_factor',1.0)
         self.add_param('mcatnlo_delta', False)
         self.add_param('fixed_ren_scale', False)

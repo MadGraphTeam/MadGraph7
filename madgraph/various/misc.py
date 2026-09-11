@@ -1333,28 +1333,48 @@ class TMP_directory(object):
 class TMP_variable(object):
     """replace an attribute of a class with another value for the time of the
        context manager
+
+       A dict is addressed by key instead: TMP_variable(cmd.options, 'foo', 1)
+       swaps cmd.options['foo'], which is where MG5 keeps its own settings.
+
+       Note that the new value is installed by __init__, not by __enter__, so
+       this can also be driven by hand -- construct it to swap, and call
+       __exit__(None, None, None) to restore -- for a scope that is not a
+       single block.
     """
 
     def __init__(self, cls, attribute, value):
 
         self.cls = cls
-        self.attribute = attribute        
+        self.attribute = attribute
+        self.is_dict = isinstance(cls, dict)
         if isinstance(attribute, list):
             self.old_value = []
             for key, onevalue in zip(attribute, value):
-                self.old_value.append(getattr(cls, key))
-                setattr(self.cls, key, onevalue)
+                self.old_value.append(self._get(key))
+                self._set(key, onevalue)
         else:
-            self.old_value = getattr(cls, attribute)
-            setattr(self.cls, self.attribute, value)
-    
+            self.old_value = self._get(attribute)
+            self._set(attribute, value)
+
+    def _get(self, key):
+        if self.is_dict:
+            return self.cls.get(key)
+        return getattr(self.cls, key)
+
+    def _set(self, key, value):
+        if self.is_dict:
+            self.cls[key] = value
+        else:
+            setattr(self.cls, key, value)
+
     def __exit__(self, ctype, value, traceback ):
         
         if isinstance(self.attribute, list):
             for key, old_value in zip(self.attribute, self.old_value):
-                setattr(self.cls, key, old_value)
+                self._set(key, old_value)
         else:
-            setattr(self.cls, self.attribute, self.old_value)
+            self._set(self.attribute, self.old_value)
         
     def __enter__(self):
         return self.old_value 

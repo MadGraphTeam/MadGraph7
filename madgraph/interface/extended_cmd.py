@@ -40,6 +40,56 @@ logger_stderr = logging.getLogger('fatalerror') # for stderr
 logger_tuto = logging.getLogger('tutorial') # for stdout
 logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 
+# Set by tutorial mode -- madgraph.interface.tutorials.mixin, on attach, and
+# cleared on detach. Module level rather than an attribute on the interface
+# because a question is often asked by a *different* object than the one the
+# tutorial is attached to: the launch card question belongs to the run
+# interface, not to the MG5 command the user typed `launch` at.
+#
+#   question_hint      str, or callable() -> str, shown under a question in
+#                      place of the generic "type 'help'" line
+#   suppress_timeout   answer a question in your own time. Everywhere else MG7
+#                      times a question out so an unattended script cannot hang;
+#                      a tutorial is the opposite case, since there is someone
+#                      reading by definition.
+question_hint = None
+suppress_timeout = False
+
+
+def record_answer_in_history(interface, answer):
+    """Append an answer to the history of `interface` and everything above it.
+
+    A question's mother is often a *child* interface -- the run interface that
+    `launch` created -- while the user types `history` at the one they started
+    from. Recording up the `mother` chain means the file is right wherever it
+    is written, and each interface has its own history so nothing is
+    duplicated within one file.
+    """
+
+    answer = str(answer).strip() if answer is not None else ''
+    if not answer:
+        return
+    seen = set()
+    while interface is not None and id(interface) not in seen:
+        seen.add(id(interface))
+        try:
+            interface.history.append(answer)
+        except Exception:
+            pass
+        interface = getattr(interface, 'mother', None)
+
+
+def get_question_hint():
+    """The line to show under a question. Never empty."""
+
+    hint = question_hint
+    if callable(hint):
+        try:
+            hint = hint()
+        except Exception:
+            hint = None
+    return hint or "Need help here? type 'help'"
+
 try:
     import madgraph.various.misc as misc
     from madgraph import MG5DIR, MadGraph5Error
@@ -1100,10 +1150,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             path_msg = []
             
         if timeout is True:
-            try:
-                timeout = self.options['timeout']
-            except Exception:
-                pass
+            if suppress_timeout:
+                timeout = 0          # a tutorial waits for its reader
+            else:
+                try:
+                    timeout = self.options['timeout']
+                except Exception:
+                    pass
 
         # add choice info to the question
         if choices + path_msg:
@@ -1156,6 +1209,11 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         else:
             answer = self.check_answer_in_input_file(question_instance, default, path_msg)
             if answer is not None:
+                # an answer read out of a script never reaches the question's
+                # cmdloop, so record it here for the same reason
+                # SmartQuestion.precmd records a typed one: `history` has to be
+                # able to reproduce the run either way
+                record_answer_in_history(self, answer)
                 if answer in alias:
                     answer = alias[answer]
                 if ask_class:
@@ -1596,14 +1654,27 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             current_interface = self
         if precmd:
             line = current_interface.precmd(line)
-        if errorhandling or \
-            (hasattr(self, 'options') and 'crash_on_error' in self.options and 
-             self.options['crash_on_error']=='never'):
-            stop = current_interface.onecmd(line, **opt)
-        else:
-            stop = Cmd.onecmd_orig(current_interface, line, **opt)
-        if postcmd:
-            stop = current_interface.postcmd(stop, line)
+        # How deep we are in exec_cmd.  A command MG5 runs for itself (the
+        # 'define p = ...' issued while importing a model, or the 'open' that
+        # 'display diagrams' does) is nested inside the command the user asked
+        # for, so depth tells the two apart.  A user command sits at depth 0 --
+        # typed interactively it never enters exec_cmd at all, and
+        # import_command_file arranges the same for a command file -- so
+        # anything above 0 is MG5 talking to itself.  The tutorial mode uses
+        # this to react to the user's commands only.
+        current_interface.exec_cmd_depth = \
+            getattr(current_interface, 'exec_cmd_depth', 0) + 1
+        try:
+            if errorhandling or \
+                (hasattr(self, 'options') and 'crash_on_error' in self.options and 
+                 self.options['crash_on_error']=='never'):
+                stop = current_interface.onecmd(line, **opt)
+            else:
+                stop = Cmd.onecmd_orig(current_interface, line, **opt)
+            if postcmd:
+                stop = current_interface.postcmd(stop, line)
+        finally:
+            current_interface.exec_cmd_depth -= 1
         return stop      
 
     def run_cmd(self, line):
@@ -1636,6 +1707,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         args = self.split_arg(line)
         # Check arguments validity
         self.check_history(args)
+
+        # precmd has already recorded this command, and a history file that
+        # ends by rewriting itself is noise at best -- replaying it would
+        # overwrite the file being replayed. Drop it, as import_command_file
+        # drops the `import` that brought it in.
+        if self.history and self.history[-1].split()[:1] == ['history']:
+            self.history.pop()
 
         if len(args) == 0:
             logger.info('\n'.join(self.history))
@@ -1714,18 +1792,29 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         # Note using "for line in open(filepath)" is not safe since the file
         # filepath can be overwritten during the run (leading to weird results)
         # Note also that we need a generator and not a list.
+        # The lines of a command file are the user's own commands, so they must
+        # run at the same depth an interactively typed one does, however deep
+        # the `import` that reached them was.  Interactively there is no
+        # exec_cmd at all -- cmdloop calls postcmd directly -- so a typed
+        # command sits at depth 0; exec_cmd increments on entry, hence -1 here.
+        # See exec_cmd, and the guard in tutorials/mixin.py.
+        outer_depth = getattr(self, 'exec_cmd_depth', 0)
         for line in self.inputfile:
             
             #remove pointless spaces and \n
             line = line.replace('\n', '').strip()
             # execute the line
-            if line:
-                self.exec_cmd(line, precmd=True)
-            stored = self.get_stored_line()
-            while stored:
-                line = stored
-                self.exec_cmd(line, precmd=True)
+            self.exec_cmd_depth = -1
+            try:
+                if line:
+                    self.exec_cmd(line, precmd=True)
                 stored = self.get_stored_line()
+                while stored:
+                    line = stored
+                    self.exec_cmd(line, precmd=True)
+                    stored = self.get_stored_line()
+            finally:
+                self.exec_cmd_depth = outer_depth
 
         # If a child was open close it
         if self.child:
@@ -2154,6 +2243,20 @@ class SmartQuestion(BasicCmd):
     # subclasses set this to redraw the question in place instead of reprinting it below
     overwrite_display = False
 
+    def precmd(self, line):
+        """Record the answer in the *mother's* history.
+
+        A question runs its own cmdloop, so what is typed at it -- a `set`, a
+        switch name, the `done` that closes it -- never reached the history of
+        the interface that asked. `history` then wrote a file that could not
+        reproduce the run: replaying it would answer every question with the
+        default. Commands answered from a script are recorded by ask() for the
+        same reason.
+        """
+
+        record_answer_in_history(getattr(self, 'mother_interface', None), line)
+        return BasicCmd.precmd(self, line)
+
     def preloop(self):
         """Initializing before starting the main loop"""
         self.prompt = '>'
@@ -2292,7 +2395,7 @@ class SmartQuestion(BasicCmd):
         try:
             if reprint_opt:
                 self.display_question()
-                logger_tuto.info("Need help here? type 'help'", '$MG:BOLD')
+                logger_tuto.info(get_question_hint(), '$MG:BOLD')
                 logger_plugin.info("Need help here? type 'help'" , '$MG:BOLD')
             return self.cmdloop()
         finally:
