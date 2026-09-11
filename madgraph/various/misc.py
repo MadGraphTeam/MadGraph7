@@ -57,12 +57,32 @@ misc = locals
 # configuration file locations
 #===============================================================================
 CONFIG_NAME = 'mg7_configuration.txt'
+LEGACY_CONFIG_NAME = 'mg5_configuration.txt'
 CONFIG_TEMPLATE_NAME = '.mg7_configuration_default.txt'
 
 def install_config_file(root):
     """The configuration file of the MadGraph installation rooted at *root*."""
 
     return pjoin(root, 'input', CONFIG_NAME)
+
+def base_config_file():
+    """The $MADGRAPH_BASE configuration file, or None if that is not set.
+
+    A base directory set up for MadGraph5_aMC@NLO holds mg5_configuration.txt
+    rather than the MadGraph7 name, so fall back to it when only that one is
+    there. With neither present the MadGraph7 name is returned, which is what
+    the callers that create a missing file need.
+    """
+
+    base = os.environ.get('MADGRAPH_BASE')
+    if not base:
+        return None
+    config_path = pjoin(base, CONFIG_NAME)
+    if not os.path.exists(config_path):
+        legacy_path = pjoin(base, LEGACY_CONFIG_NAME)
+        if os.path.exists(legacy_path):
+            return legacy_path
+    return config_path
 
 def user_config_dir(create=False):
     """MadGraph7's per-user configuration directory.

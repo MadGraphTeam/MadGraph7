@@ -4451,8 +4451,8 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             self.options.update(self.options_madevent)
 
         if not config_path:
-            if 'MADGRAPH_BASE' in os.environ:
-                config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
+            config_path = misc.base_config_file()
+            if config_path:
                 self.set_configuration(config_path=config_path, final=False)
             config_path = misc.user_config_file()
             if config_path and os.path.exists(config_path):

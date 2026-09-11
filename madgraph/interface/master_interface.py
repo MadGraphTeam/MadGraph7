@@ -791,7 +791,11 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
+        config_path = misc.base_config_file()
+        if not config_path:
+            # on the web MADGRAPH_BASE is always set: never silently fall back
+            # to the local configuration files.
+            raise KeyError('MADGRAPH_BASE')
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):
