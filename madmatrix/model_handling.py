@@ -2088,7 +2088,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    bool storeChannelWeights,
                    fptype* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
-                   fptype* colAllJamp2s,              // output: allJamp2s[ncolor][nevt] super-buffer, sum over col/hel (nullptr to disable)
+                   fptype* colAllJamp2s,              // output: allJamp2s[ncolor_flow][nevt] super-buffer, sum over col/hel (nullptr to disable)
                    const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
                    const bool processAllHelicities    // input: if true, use blockIdx.y to index helicities
 #else
@@ -2096,7 +2096,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    bool storeChannelWeights,
                    fptype* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
-                   fptype_sv* jamp2_sv,               // output: jamp2[nParity][ncolor][neppV] for color choice (nullptr if disabled)
+                   fptype_sv* jamp2_sv,               // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
                    const int ievt00                   // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
 #endif
                    )

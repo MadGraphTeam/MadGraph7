@@ -211,7 +211,7 @@ namespace mg5amcCpu
     // The super-buffer of nGoodHel denominator buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelDenominators;
 
-    // The super-buffer of ncolor jamp2 buffers
+    // The super-buffer of ncolor_flow jamp2 buffers
     DeviceBufferSimple m_colJamp2s;
 
 #ifdef MGONGPU_CHANNELID_DEBUG
