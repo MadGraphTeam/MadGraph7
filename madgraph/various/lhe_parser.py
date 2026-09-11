@@ -1851,6 +1851,131 @@ class MultiEventFile(EventFile):
             
         
            
+def _model_leg_is_massless(model, pdg):
+    """True when the model gives this leg a strictly zero mass.
+
+    Scoping is taken from the model, never from a hardcoded PDG list: the same
+    PDG is massless in one restriction and massive in another (b, c, tau...).
+    Merged particles (apply_flavor_grouping, codes 81/82/83) are resolved onto
+    the flavours they stand for.  Anything that cannot be resolved answers
+    False, i.e. is left untouched.
+    """
+    try:
+        pdg = int(pdg)
+    except (TypeError, ValueError):
+        return False
+    merged = None
+    if hasattr(model, 'get'):
+        try:
+            merged = model.get('merged_particles')
+        except Exception:
+            merged = None
+    if merged and abs(pdg) in merged:
+        ids = merged[abs(pdg)]
+        return bool(ids) and all(_model_leg_is_massless(model, i) for i in ids)
+    try:
+        part = model.get_particle(pdg)
+    except Exception:
+        return False
+    if part is None:
+        return False
+    try:
+        if part.get('mass').lower() == 'zero':
+            return True
+    except Exception:
+        pass
+    if hasattr(model, 'get_mass'):
+        try:
+            return float(model.get_mass(pdg)) == 0.
+        except Exception:
+            return False
+    return False
+
+
+def project_massless_initial_state(momenta, pdgs, model, n_initial=2,
+                                   tolerance=1e-6):
+    """Put the initial-state legs the model calls massless back onto p^2 = 0.
+
+    aMC@NLO writes its LHE with the partons on the *Monte-Carlo* mass shell
+    (``Template/NLO/SubProcesses/add_write_info.f``, ``put_on_MC_mshell_in``
+    via ``getxmss_madfks``): in the frame where pz1+pz2 = 0 it replaces
+
+        pz -> +- sqrt( shat - 2(m1^2+m2^2) + (m1^2-m2^2)^2/shat ) / 2
+        E  -> sqrt(m^2 + pz^2)
+
+    with m the Monte-Carlo mass (0.33 GeV for a light quark or a gluon), and
+    then boosts back to the lab.  That map leaves shat and the *total* initial
+    four-momentum exactly invariant, which is why the LHE still balances.
+
+    The matrix element is nevertheless a massless one, and ``ixxxxx``'s
+    massless branch is only accidentally right for a parton pointing exactly
+    along -z (it special-cases px==py==0, pz<0).  Any boost gives the backward
+    parton a transverse component, the branch stops firing and the implicit
+    light-cone projection p~ = p - m^2/(2(p0+p3)) (1,0,0,-1) is evaluated on a
+    cancelling p0+p3: the error is unbounded although m^2/shat is not.
+
+    The exact inverse of the map above, for two purely longitudinal incoming
+    legs, is the light-cone projection onto the total initial momentum
+    P = p1 + p2:
+
+        p1 -> ((P0+Pz)/2) (1,0,0,+1)        p2 -> ((P0-Pz)/2) (1,0,0,-1)
+
+    which is light-like by construction, reproduces shat, and conserves
+    energy-momentum *exactly* -- unlike the naive E := |p|, which silently
+    loses m^2/2E ~ 1e-3 GeV per leg.
+
+    Only the initial state is touched: the final-state light partons carry
+    transverse momentum, so their (equally wrong) O(m^2) treatment is at least
+    frame-independent, and projecting them was measured to buy no invariance
+    at all while moving the matrix element slightly more.
+
+    ``momenta`` is a list of (E,px,py,pz) in matrix-element order, ``pdgs`` the
+    PDG codes in the same order.  A new list is returned; the input is left
+    alone.  Legs that are crossed into the initial block (negative energy),
+    that carry transverse momentum, or that the model gives a mass, are copied
+    through untouched.
+    """
+    out = [tuple(p) for p in momenta]
+    if len(out) < n_initial or len(pdgs) < n_initial:
+        return out
+    idx, todo = [], False
+    for i in range(n_initial):
+        E, px, py, pz = out[i]
+        if E <= 0.:                              # crossed into the initial block
+            return out
+        if abs(px) > tolerance * E or abs(py) > tolerance * E:
+            return out                           # not the longitudinal beam setup
+        if not _model_leg_is_massless(model, pdgs[i]):
+            continue
+        idx.append(i)
+        if E * E - px * px - py * py - pz * pz != 0.:
+            todo = True
+    # a leg that happens to be light-like already is still part of the two-leg
+    # recoil: put_on_MC_mshell_in can give one of the two a mass and not the
+    # other, and the exact inverse then still moves both.
+    if not idx or not todo:
+        return out
+    if len(idx) == n_initial == 2:
+        # exact inverse: the light-cone components of the *total*
+        P0 = out[0][0] + out[1][0]
+        Pz = out[0][3] + out[1][3]
+        plus, minus = 0.5 * (P0 + Pz), 0.5 * (P0 - Pz)
+        if plus <= 0. or minus <= 0.:
+            return out
+        if out[0][3] >= 0.:
+            out[0], out[1] = (plus, 0., 0., plus), (minus, 0., 0., -minus)
+        else:
+            out[0], out[1] = (minus, 0., 0., -minus), (plus, 0., 0., plus)
+    else:
+        # only one of the two legs is massless in the model: drop that leg's
+        # own small light-cone component and leave the partner alone.
+        for i in idx:
+            E, px, py, pz = out[i]
+            h = 0.5 * (E + abs(pz))
+            out[i] = (h, 0., 0., math.copysign(h, pz))
+    return out
+
+
 class Event(list):
     """Class storing a single event information (list of particles + global information)"""
 

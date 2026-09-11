@@ -1684,6 +1684,17 @@ class ReweightInterface(extended_cmd.Cmd):
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
 
+        # aMC@NLO writes its LHE with the incoming partons on the Monte-Carlo
+        # mass shell (add_write_info.f, put_on_MC_mshell_in) while these matrix
+        # elements are massless ones. Undo that before the momenta are handed
+        # over -- and before any boost, which is what turns the O(m^2/shat)
+        # mismatch into an O(1) one. See
+        # lhe_parser.project_massless_initial_state.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_initial_state(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
+
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
         
@@ -3242,6 +3253,14 @@ class DensityInterface(ReweightInterface):
         relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
+
+        # same Monte-Carlo-mass projection as in ReweightInterface, and for the
+        # same reason: this path boosts and rotates the momenta before the
+        # matrix element sees them.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_initial_state(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
 
         #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
         list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]

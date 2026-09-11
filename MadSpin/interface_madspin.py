@@ -12036,14 +12036,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
             assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
             p = all_p[0]
-        if frame_boost is not None:
-            p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
-        P = rwgt_interface.ReweightInterface.invert_momenta(p)
         # f77_density runs `flavormapping` on the pdgs we pass: when the ME
         # legs use merged-particle IDs, we must pass the concrete raw PDGs
         # from the event for this permutation so the flavormapping picks
         # the right per-particle flavor index for GET_DENSITY. Same logic
         # as calculate_matrix_element's pdg_for_call handling.
+        # This has to happen while `p` is still the event's own momenta:
+        # get_pdg identifies particles by exact momentum equality, so it must
+        # run before the projection below and before any frame boost.
         pdg_template = list(orig_order[0]) + list(orig_order[1])
         merged_particles = self.model.get('merged_particles') or {}
         need_raw_pdg = (self._revert_merged and
@@ -12052,6 +12052,16 @@ class MadSpinInterface(extended_cmd.Cmd):
             pdgs = event.get_pdg(p)
         else:
             pdgs = pdg_template
+        # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass
+        # shell while the matrix element is a massless one; undo that here, in
+        # the lab, *before* the frame boost (see
+        # lhe_parser.project_massless_initial_state -- boosting the MC-mass
+        # momenta instead is what makes Tr rho frame dependent).
+        p = lhe_parser.project_massless_initial_state(
+            p, pdgs, self.model, n_initial=len(orig_order[0]))
+        if frame_boost is not None:
+            p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
+        P = rwgt_interface.ReweightInterface.invert_momenta(p)
         n_changing = len(position)
         if n_changing == 0:
             raise ValueError("Error in get_density: 'position' must contain at least one position index")
@@ -12161,8 +12171,10 @@ class MadSpinInterface(extended_cmd.Cmd):
             pdg_template = list(orig_order[0]) + list(orig_order[1])
             need_raw_pdg = (self._revert_merged and
                             any(abs(pid) in merged_particles for pid in pdg_template))
-            momenta[k] = p
             pdgs[k] = event.get_pdg(p) if need_raw_pdg else pdg_template
+            # same Monte-Carlo-mass projection as get_density
+            momenta[k] = lhe_parser.project_massless_initial_state(
+                p, pdgs[k], self.model, n_initial=len(orig_order[0]))
             groups.setdefault((len(p), len(pdgs[k]), module_index), []).append(k)
 
         out = [None] * len(events)
@@ -12318,6 +12330,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             out = 0
             for p in all_p:
                 pdg_for_call = event.get_pdg(p) if need_raw_pdg else pdg_template
+                # undo the Monte-Carlo mass shell aMC@NLO writes its partons on
+                p = lhe_parser.project_massless_initial_state(
+                    p, pdg_for_call, self.model, n_initial=len(orig_order[0]))
                 p_inv = rwgt_interface.ReweightInterface.invert_momenta(p)
                 if event[0].color1 == 599 and event.aqcd==0:
                     new_value = self.all_f2py[pdir](pdg_for_call, p_inv, 0.113, 0)

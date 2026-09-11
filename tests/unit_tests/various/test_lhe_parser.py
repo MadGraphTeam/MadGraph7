@@ -775,6 +775,95 @@ class TestEvent(unittest.TestCase):
         self.assertEqual(nb_identical, [4,4,2,2,2,2])
 
 
+class TestMasslessProjection(unittest.TestCase):
+    """lhe_parser.project_massless_initial_state.
+
+    aMC@NLO writes the incoming partons on the Monte-Carlo mass shell; the
+    matrix element is a massless one. The projection is the exact inverse of
+    put_on_MC_mshell_in (add_write_info.f), so it must be light-like, preserve
+    shat and conserve energy-momentum exactly.
+    """
+
+    class Model(object):
+        """b and Z massive, light quarks and the gluon massless, 81 merged."""
+        MASS = {5: 'MB', 6: 'MT', 23: 'MZ'}
+
+        class Particle(dict):
+            def get(self, name):
+                return self[name]
+
+        def get(self, name):
+            return {81: [1, 2, 3, 4]} if name == 'merged_particles' else None
+
+        def get_particle(self, pdg):
+            return self.Particle(mass=self.MASS.get(abs(int(pdg)), 'ZERO'))
+
+    @staticmethod
+    def m2(p):
+        return p[0]**2 - p[1]**2 - p[2]**2 - p[3]**2
+
+    def project(self, momenta, pdgs, **opts):
+        return lhe_parser.project_massless_initial_state(
+            momenta, pdgs, self.Model(), **opts)
+
+    def test_exact_inverse_is_lightlike_and_conserving(self):
+        """the two-leg light-cone recipe, on real MC-mass momenta"""
+        # E = sqrt(m^2 + pz^2) with m = 0.33, as put_on_MC_mshell_in writes it
+        m = 0.33
+        pz1, pz2 = 146.08470417, -3.7876093631
+        p = [(math.sqrt(m**2 + pz1**2), 0., 0., pz1),
+             (math.sqrt(m**2 + pz2**2), 0., 0., pz2),
+             (-14.85, -17.99, 80.62, 83.93),
+             (14.85, 17.99, 61.67, 65.94)]
+        out = self.project(p, [2, 2, 2, 2])
+        for i in (0, 1):
+            self.assertEqual(self.m2(out[i]), 0.)          # exactly light-like
+            self.assertEqual(out[i][1], 0.)
+            self.assertEqual(out[i][2], 0.)
+        self.assertAlmostEqual(out[0][0] + out[1][0], p[0][0] + p[1][0], 10)
+        self.assertAlmostEqual(out[0][3] + out[1][3], p[0][3] + p[1][3], 10)
+        shat = lambda a, b: self.m2(tuple(x + y for x, y in zip(a, b)))
+        self.assertAlmostEqual(shat(out[0], out[1]) / shat(p[0], p[1]), 1., 10)
+        self.assertEqual(out[2:], [tuple(q) for q in p[2:]])  # final state untouched
+
+    def test_lightlike_input_is_untouched(self):
+        """a MadEvent LO event already has E = |pz|: strict no-op"""
+        p = [(100., 0., 0., 100.), (50., 0., 0., -50.), (150., 0., 0., 50.)]
+        self.assertEqual(self.project(p, [1, -1, 23]), [tuple(q) for q in p])
+
+    def test_scope_is_the_model_mass(self):
+        """a b quark keeps its mass, a merged code is resolved as massless"""
+        p = [(math.sqrt(4.7**2 + 100.**2), 0., 0., 100.),
+             (50., 0., 0., -50.), (0., 0., 0., 0.)]
+        self.assertEqual(self.project(p, [5, -1, 23])[0], tuple(p[0]))
+        merged = [(100.001, 0., 0., 100.), (50.002, 0., 0., -50.), (0., 0., 0., 0.)]
+        out = self.project(merged, [81, -81, 23])
+        self.assertEqual(out[0][0], out[0][3])
+        self.assertEqual(out[1][0], -out[1][3])
+        self.assertAlmostEqual(out[0][0] + out[1][0],
+                               merged[0][0] + merged[1][0], 10)
+
+    def test_one_massless_leg_only(self):
+        """b g: only the gluon moves, and it drops its own small component"""
+        p = [(math.sqrt(4.7**2 + 100.**2), 0., 0., 100.),
+             (50.002, 0., 0., -50.), (0., 0., 0., 0.)]
+        out = self.project(p, [5, 21, 23])
+        self.assertEqual(out[0], tuple(p[0]))
+        self.assertEqual(self.m2(out[1]), 0.)
+
+    def test_untouched_when_the_pattern_does_not_apply(self):
+        """crossed leg (E<0), transverse initial state, 1 -> N decay"""
+        crossed = [(-100.001, 3., 0., 100.), (50.002, 0., 0., -50.), (0., 0., 0., 0.)]
+        self.assertEqual(self.project(crossed, [1, -1, 23]),
+                         [tuple(q) for q in crossed])
+        transverse = [(100.001, 3., 0., 100.), (50.002, 0., 0., -50.), (0., 0., 0., 0.)]
+        self.assertEqual(self.project(transverse, [1, -1, 23]),
+                         [tuple(q) for q in transverse])
+        decay = [(91.188, 10., 0., 20.), (45., 5., 0., 10.), (46., 5., 0., 10.)]
+        self.assertEqual(self.project(decay, [23, 11, -11], n_initial=1),
+                         [tuple(q) for q in decay])
+
+
 from madgraph.various.lhe_parser import FourMomentum
 class TestFourMomentum(unittest.TestCase):
 
