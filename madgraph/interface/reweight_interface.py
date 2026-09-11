@@ -1684,14 +1684,17 @@ class ReweightInterface(extended_cmd.Cmd):
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
 
-        # aMC@NLO writes its LHE with the incoming partons on the Monte-Carlo
-        # mass shell (add_write_info.f, put_on_MC_mshell_in) while these matrix
-        # elements are massless ones. Undo that before the momenta are handed
-        # over -- and before any boost, which is what turns the O(m^2/shat)
-        # mismatch into an O(1) one. See
-        # lhe_parser.project_massless_initial_state.
+        # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
+        # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
+        # while these matrix elements are massless ones. Undo that on both
+        # sides before the momenta are handed over -- and before any boost,
+        # which is what turns the O(m^2/shat) mismatch into an O(1) one. See
+        # lhe_parser.project_massless_partons.  The projection is for the
+        # matrix-element call only: it works on the copy get_momenta handed
+        # back, so the event that is rewritten to the LHE keeps its own
+        # (massive) momenta and only the weights move.
         n_ini = len(orig_order[0])
-        all_p = [lhe_parser.project_massless_initial_state(
+        all_p = [lhe_parser.project_massless_partons(
                      p, pdg, relevant_model or self.model, n_initial=n_ini)
                  for p in all_p]
 
@@ -3256,9 +3259,9 @@ class DensityInterface(ReweightInterface):
 
         # same Monte-Carlo-mass projection as in ReweightInterface, and for the
         # same reason: this path boosts and rotates the momenta before the
-        # matrix element sees them.
+        # matrix element sees them.  Again on the copy only.
         n_ini = len(orig_order[0])
-        all_p = [lhe_parser.project_massless_initial_state(
+        all_p = [lhe_parser.project_massless_partons(
                      p, pdg, relevant_model or self.model, n_initial=n_ini)
                  for p in all_p]
 

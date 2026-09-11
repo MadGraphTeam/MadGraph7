@@ -864,6 +864,207 @@ class TestMasslessProjection(unittest.TestCase):
                          [tuple(q) for q in decay])
 
 
+class TestMasslessProjectionFinalState(unittest.TestCase):
+    """lhe_parser.project_massless_final_state / project_massless_partons.
+
+    The final-state map has no exact inverse to reproduce, so what is tested
+    is the property it is chosen for: the light partons come out exactly
+    light-like, every direction is untouched, the massive legs keep the
+    invariant mass they had *in the event*, and the total final-state
+    four-momentum is conserved.
+    """
+
+    Model = TestMasslessProjection.Model
+
+    @staticmethod
+    def m2(p):
+        return p[0]**2 - p[1]**2 - p[2]**2 - p[3]**2
+
+    def final(self, momenta, pdgs, **opts):
+        return lhe_parser.project_massless_final_state(
+            momenta, pdgs, self.Model(), **opts)
+
+    def both(self, momenta, pdgs, **opts):
+        # "both" means both halves.  project_massless_partons now defaults to
+        # the initial state alone, so the final-state map is asked for here;
+        # setdefault keeps the one test that passes final_state=False working.
+        opts.setdefault('final_state', True)
+        return lhe_parser.project_massless_partons(
+            momenta, pdgs, self.Model(), **opts)
+
+    @staticmethod
+    def _event(masses, spatial, boost_pz=0.):
+        """a balanced 2 -> N event, built from the final state outwards.
+
+        The final-state three-momenta are given in their own rest frame and sum
+        to zero there; the whole thing is then boosted along z by rapidity
+        ``boost_pz`` and the two incoming legs are set light-like so that the
+        event balances exactly and only the final state has anything to do.
+        """
+        fin = []
+        for m, (px, py, pz) in zip(masses, spatial):
+            fin.append((math.sqrt(m*m + px*px + py*py + pz*pz), px, py, pz))
+        if boost_pz:
+            ch, sh = math.cosh(boost_pz), math.sinh(boost_pz)
+            fin = [(ch*E + sh*pz, px, py, sh*E + ch*pz)
+                   for E, px, py, pz in fin]
+        Q0 = sum(p[0] for p in fin)
+        Qz = sum(p[3] for p in fin)
+        a, b = 0.5*(Q0 + Qz), 0.5*(Q0 - Qz)
+        return [(a, 0., 0., a), (b, 0., 0., -b)] + fin
+
+    @staticmethod
+    def _total(momenta, n_initial=2):
+        return [sum(p[k] for p in momenta[n_initial:]) for k in range(4)]
+
+    @staticmethod
+    def _angle(a, b):
+        """angle between the three-momenta of a and b, in radians"""
+        na = math.sqrt(sum(c*c for c in a[1:]))
+        nb = math.sqrt(sum(c*c for c in b[1:]))
+        c = sum(x*y for x, y in zip(a[1:], b[1:])) / (na*nb)
+        return math.acos(max(-1., min(1., c)))
+
+    # -- the map itself ----------------------------------------------------
+    def test_lightlike_directions_masses_and_conservation(self):
+        """Z Z g with the gluon on the 0.33 GeV Monte-Carlo mass shell"""
+        p = self._event([91.2, 88.7, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)],
+                        boost_pz=1.3)
+        out = self.both(p, [2, -2, 23, 23, 21])
+        # the light parton is exactly light-like
+        g = out[4]
+        self.assertLess(abs(self.m2(g)), 1e-9)
+        self.assertNotEqual(g, tuple(p[4]))
+        # the massive legs keep the invariant mass they had in the event
+        for i in (2, 3):
+            self.assertAlmostEqual(math.sqrt(self.m2(out[i])),
+                                   math.sqrt(self.m2(p[i])), 9)
+        # the total final-state four-momentum is conserved
+        for a, b in zip(self._total(out), self._total(p)):
+            self.assertAlmostEqual(a, b, 9)
+        # the lab directions move only by the O(m_MC^2/s) the rescaling costs
+        for i in range(2, 5):
+            self.assertLess(self._angle(p[i], out[i]), 1e-4)
+
+    def test_directions_are_exact_in_the_final_state_rest_frame(self):
+        """the common rescaling is defined there, so there it moves nothing"""
+        p = self._event([91.2, 88.7, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)])
+        # boost_pz = 0: the event is already in the final-state rest frame
+        out = self.both(p, [2, -2, 23, 23, 21])
+        for i in range(2, 5):
+            self.assertEqual(self._angle(p[i], out[i]), 0.)
+
+    def test_the_scale_factor_is_common_not_per_leg(self):
+        """the naive E := |p| loses m^2/2E per leg; this one loses nothing"""
+        p = self._event([91.2, 91.2, 0.33, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.),
+                         (25., -40., -15.), (-5., -3., -17.)])
+        out = self.both(p, [2, -2, 23, 23, 21, 21])
+        naive = sum(math.sqrt(sum(c*c for c in q[1:])) for q in p[2:])
+        exact = sum(q[0] for q in out[2:])
+        self.assertGreater(sum(q[0] for q in p[2:]) - naive, 1e-4)   # the leak
+        self.assertAlmostEqual(exact, sum(q[0] for q in p[2:]), 9)   # not here
+        for i in (4, 5):
+            self.assertLess(abs(self.m2(out[i])), 1e-9)
+
+    def test_lightlike_final_state_is_untouched(self):
+        """a MadEvent LO event has p^2 = 0 already: strict no-op"""
+        p = [(50., 0., 0., 50.), (50., 0., 0., -50.),
+             (50., 30., 40., 0.), (50., -30., -40., 0.)]
+        self.assertEqual(self.final(p, [1, -1, 21, 21]), [tuple(q) for q in p])
+        self.assertEqual(self.both(p, [1, -1, 21, 21]), [tuple(q) for q in p])
+
+    def test_scope_is_the_model_mass(self):
+        """a b quark keeps its mass, a merged code is resolved as massless"""
+        p = self._event([4.7, 4.7, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)])
+        out = self.both(p, [2, -2, 5, -5, 21])
+        for i in (2, 3):
+            self.assertAlmostEqual(math.sqrt(self.m2(out[i])), 4.7, 9)
+        self.assertLess(abs(self.m2(out[4])), 1e-9)
+        # 81 is merged over the light quarks: massless, so it is projected
+        out = self.both(p, [2, -2, 5, -5, 81])
+        self.assertLess(abs(self.m2(out[4])), 1e-9)
+        # ... while a b in that slot is left with its mass
+        out = self.both(p, [2, -2, 21, 21, 5])
+        self.assertAlmostEqual(math.sqrt(self.m2(out[4])), 0.33, 9)
+
+    def test_a_soft_parton_still_converges(self):
+        """|p| << m_MC: the root find leaves x = O(1) territory, and must not
+        fall back silently -- x is ~4 here, and the map is still exact"""
+        p = self._event([91.2, 91.2, 0.33],
+                        [(0.05, 0.02, 0.01), (-0.02, -0.01, 0.),
+                         (-0.03, -0.01, -0.01)])
+        out = self.both(p, [2, -2, 23, 23, 21])
+        self.assertLess(abs(self.m2(out[4])), 1e-12)
+        for a, b in zip(self._total(out), self._total(p)):
+            self.assertAlmostEqual(a, b, 9)
+        # the light leg really did move a lot
+        q = lambda v: math.sqrt(sum(c*c for c in v[1:]))
+        self.assertGreater(q(out[4])/q(p[4]), 3.)
+
+    # -- the guards --------------------------------------------------------
+    def test_guards_return_the_input(self):
+        """every failure mode hands back the momenta it was given"""
+        base = self._event([91.2, 91.2, 0.33],
+                           [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)])
+        # fewer than two final-state legs
+        one = [(100., 0., 0., 100.), (100., 0., 0., -100.), (200., 0., 0., 0.)]
+        self.assertEqual(self.final(one, [1, -1, 21]), [tuple(q) for q in one])
+        # a leg crossed into the final block (E < 0)
+        crossed = list(base)
+        crossed[4] = (-base[4][0], -base[4][1], -base[4][2], -base[4][3])
+        self.assertEqual(self.final(crossed, [2, -2, 23, 23, 21]),
+                         [tuple(q) for q in crossed])
+        # a spacelike leg
+        space = list(base)
+        space[4] = (1., 10., 0., 0.)
+        self.assertEqual(self.final(space, [2, -2, 23, 23, 21]),
+                         [tuple(q) for q in space])
+        # no massless leg at all
+        self.assertEqual(self.final(base, [2, -2, 23, 23, 5]),
+                         [tuple(q) for q in base])
+        # a model-massless leg at rest in the final-state frame: E := x|p|
+        # would annihilate it, so the whole event is left alone
+        rest = [(91.2, 0., 0., 91.2), (91.2, 0., 0., -91.2),
+                (91.2, 0., 0., 0.), (91.2, 0., 0., 0.)]
+        self.assertEqual(self.final(rest, [2, -2, 23, 21]),
+                         [tuple(q) for q in rest])
+
+    # -- the point of the whole exercise -----------------------------------
+    def test_the_input_is_never_mutated(self):
+        """the projection is for the matrix-element call only: whatever the
+        caller holds -- and writes back to the LHE -- must come out unchanged"""
+        p = self._event([91.2, 91.2, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)],
+                        boost_pz=0.7)
+        m = 0.33
+        p[0] = (math.sqrt(m*m + p[0][3]**2), 0., 0., p[0][3])
+        p[1] = (math.sqrt(m*m + p[1][3]**2), 0., 0., p[1][3])
+        keep = [tuple(q) for q in p]
+        original_object = p
+        out = self.both(p, [2, -2, 23, 23, 21])
+        self.assertEqual([tuple(q) for q in p], keep)
+        self.assertIs(p, original_object)
+        self.assertIsNot(out, p)
+        self.assertNotEqual(out, keep)          # it did do something
+
+    def test_final_state_can_be_switched_off(self):
+        """project_massless_partons(final_state=False) is the initial-state
+        helper and nothing else"""
+        p = self._event([91.2, 91.2, 0.33],
+                        [(30., 40., 12.), (-50., 3., 20.), (20., -43., -32.)])
+        m = 0.33
+        p[0] = (math.sqrt(m*m + p[0][3]**2), 0., 0., p[0][3])
+        p[1] = (math.sqrt(m*m + p[1][3]**2), 0., 0., p[1][3])
+        self.assertEqual(
+            self.both(p, [2, -2, 23, 23, 21], final_state=False),
+            lhe_parser.project_massless_initial_state(p, [2, -2, 23, 23, 21],
+                                                      self.Model()))
+
+
 from madgraph.various.lhe_parser import FourMomentum
 class TestFourMomentum(unittest.TestCase):
 
