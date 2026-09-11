@@ -10,6 +10,7 @@ Non-interactive examples:
   python install.py --bin
   python install.py --source
   python install.py --source --cuda --cuda-arch "75;80;86"
+  python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
 """
 
@@ -387,6 +388,39 @@ def add_cmake_to_path(env: dict) -> dict:
     return env
 
 
+def default_jobs() -> int:
+    """Number of compilation jobs to use when none was requested."""
+    try:
+        return len(os.sched_getaffinity(0))  # Linux: respects cgroup/taskset
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def set_build_parallelism(env: dict, jobs: int | None) -> dict:
+    """Tell CMake how many compilation jobs it may run in parallel.
+
+    scikit-build-core calls ``cmake --build`` without any ``-j``, so the job
+    count comes entirely from the environment. With the Ninja generator that
+    goes unnoticed (ninja parallelises on its own), but whenever ninja is
+    missing scikit-build-core falls back to "Unix Makefiles", and make without
+    ``-j`` compiles one file at a time -- which is why a gcc/make build took
+    minutes while the ninja one did not.
+
+    ``CMAKE_BUILD_PARALLEL_LEVEL`` is read by ``cmake --build`` itself, so it
+    works for either generator, and being an environment variable it is also
+    inherited by the nested OpenBLAS build.
+    """
+    if jobs is not None and jobs <= 0:
+        jobs = None  # 0 / negative = "as many as there are cores"
+    if jobs is None:
+        if env.get("CMAKE_BUILD_PARALLEL_LEVEL"):
+            return env  # an explicit setting in the caller's environment wins
+        jobs = default_jobs()
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    print(f"Compiling with {jobs} parallel job(s) (-j to change).")
+    return env
+
+
 # Command execution
 
 
@@ -534,6 +568,16 @@ def main() -> None:
         default=False,
         help="Non-interactive: accept defaults / reuse saved settings, no prompts. "
         "Combine with --source/--bin to force the install mode.",
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of parallel compilation jobs for the source build "
+        f"(default: every available core, {default_jobs()} here). MG5's "
+        "'nb_core' option is forwarded here by 'install madspace'.",
     )
     parser.add_argument(
         "--system",
@@ -796,6 +840,7 @@ def main() -> None:
     cmd.append(f"-Ccmake.build-type={build_type}")
 
     env = install_build_deps(system=args.system)
+    env = set_build_parallelism(env, args.jobs)
     run(cmd, env=env)
     save_settings(
         {

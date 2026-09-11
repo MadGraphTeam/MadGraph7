@@ -29,6 +29,7 @@ madspace is not installed.
 from __future__ import absolute_import
 
 import logging
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -117,9 +118,14 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         # Never run the real madspace bootstrap from a unit test.
         self.bootstrap_calls = []
+        self.bootstrap_jobs = []
         self._saved_ensure = mg7_bootstrap.ensure_madspace
-        mg7_bootstrap.ensure_madspace = \
-            lambda interactive=None: self.bootstrap_calls.append(interactive)
+
+        def fake_ensure(interactive=None, jobs=None):
+            self.bootstrap_calls.append(interactive)
+            self.bootstrap_jobs.append(jobs)
+
+        mg7_bootstrap.ensure_madspace = fake_ensure
 
     def tearDown(self):
         mg7_bootstrap.ensure_madspace = self._saved_ensure
@@ -261,6 +267,20 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.cmd.do_launch(self.me_dir)
         self.assertEqual(self.bootstrap_calls, [True])
 
+    def test_bootstrap_gets_nb_core_for_the_madspace_build(self):
+        """A source build of madspace is only parallel when it is told how many
+        jobs it may use, so the launch path must pass MG5's nb_core on."""
+        self.cmd.options['nb_core'] = 3
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs, [3])
+
+        # left unset, nb_core resolves to the machine's core count
+        self.bootstrap_jobs[:] = []
+        self.cmd.options['nb_core'] = None
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs,
+                         [multiprocessing.cpu_count()])
+
 
 class MG7BootstrapTest(unittest.TestCase):
     """The one-off madspace install that used to be a launch.py import side
@@ -323,6 +343,25 @@ class MG7BootstrapTest(unittest.TestCase):
         # must not eat the caller's stdin, which carries the run's script
         self.assertEqual(opts['stdin'], subprocess.DEVNULL)
 
+    def test_jobs_is_forwarded_to_the_installer(self):
+        """Without a job count the installer's cmake build falls back to a
+        serial make whenever ninja is missing."""
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False, jobs=4)
+        cmd, _ = calls[0]
+        self.assertIn('-j', cmd)
+        self.assertEqual(cmd[cmd.index('-j') + 1], '4')
+
+    def test_no_jobs_leaves_the_installer_default(self):
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False)
+        cmd, _ = calls[0]
+        self.assertNotIn('-j', cmd)
+
     def test_interactive_install_keeps_the_terminal(self):
         self.point_at_empty_install()
         calls = self.record_runs()
@@ -370,6 +409,40 @@ class MG7BootstrapTest(unittest.TestCase):
         with self.quiet():
             self.assertRaises(RuntimeError,
                               mg7_bootstrap.ensure_madspace, interactive=False)
+
+
+class MadspaceInstallCommandTest(unittest.TestCase):
+    """`install madspace` at the MG5 prompt: it runs madspace/install.py."""
+
+    def setUp(self):
+        self.cmd = mgcmd.MasterCmd()
+
+    def installer_args(self, line):
+        with mock.patch('subprocess.run') as run:
+            self.cmd.do_install(line)
+        return [str(a) for a in run.call_args[0][0]]
+
+    def test_nb_core_is_forwarded_as_the_job_count(self):
+        """Without it the installer's cmake build is serial whenever ninja is
+        missing, whatever nb_core says."""
+        self.cmd.options['nb_core'] = 5
+        args = self.installer_args('madspace --source -y')
+        self.assertIn('install.py', args[1])
+        self.assertEqual(args[-2:], ['-j', '5'])
+
+    def test_unset_nb_core_uses_every_core(self):
+        self.cmd.options['nb_core'] = None
+        args = self.installer_args('madspace --source -y')
+        self.assertEqual(args[-2:], ['-j', str(multiprocessing.cpu_count())])
+
+    def test_an_explicit_job_count_is_left_alone(self):
+        self.cmd.options['nb_core'] = 5
+        for line in ('madspace --source -j 2', 'madspace --source -j2',
+                     'madspace --source --jobs=2'):
+            args = self.installer_args(line)
+            self.assertEqual(len([a for a in args if a.startswith('-j')
+                                  or a.startswith('--jobs')]), 1, args)
+            self.assertNotIn('5', args)
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),

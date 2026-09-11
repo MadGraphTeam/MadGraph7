@@ -440,6 +440,8 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --bin          Install pre-compiled package from PyPI (non-interactive;")
         logger.info("                    only guaranteed to match this checkout in a release tarball).")
         logger.info("     --source       Build from source (non-interactive).")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (source build;")
+        logger.info("                    defaults to the 'nb_core' option).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
         logger.info("     --openblas     Build OpenBLAS from source (default on Linux/Windows, source build).")
@@ -7311,7 +7313,14 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             return
         elif args[0] == 'madspace':
             install_script = pjoin(MG5DIR, 'madspace', 'install.py')
-            subprocess.run([sys.executable, install_script] + args[1:])
+            install_args = args[1:]
+            # The source build compiles in parallel only if it is told how many
+            # jobs it may use (see set_build_parallelism in install.py), so hand
+            # it MG5's nb_core unless an explicit -j was given on the line.
+            if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
+                       for a in install_args):
+                install_args = install_args + ['-j', str(self.get_nb_core())]
+            subprocess.run([sys.executable, install_script] + install_args)
             return
 
         plugin = self.install_plugin
@@ -8479,7 +8488,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # sys.argv/sys.stdin, but in process those describe MG5, not the run.
             from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
             mg7_bootstrap.ensure_madspace(
-                interactive=bool(self.use_rawinput) and not options['force'])
+                interactive=bool(self.use_rawinput) and not options['force'],
+                jobs=self.get_nb_core())
             from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
 
             MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
