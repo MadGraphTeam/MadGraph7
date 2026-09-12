@@ -4927,25 +4927,39 @@ def plot_precision(entries, basename):
                     out.write('%s %d %.6e\n' % (entry['mode'], entry['flavor'], err))
         return path
 
+    from matplotlib.lines import Line2D
     path = basename + '.pdf'
     fig, ax = plt.subplots(figsize=(7, 4.5))
-    for entry in entries:
-        logs = [math.log10(max(e, floor)) if math.isfinite(e) else 1.
-                for e in entry['errors']]
-        label = 'FPTYPE=%s' % entry['mode']
-        if nb_flavor > 1:
-            label += ', %s' % entry['process_label']
-        ax.hist(logs, bins=100, histtype='step', log=True,
-                label='%s (%d above 1%%)' % (label, entry['nb_above']))
-    ax.axvline(math.log10(PRECISION_THRESHOLD), color='red', linestyle='--',
-               label='1% relative error')
+    # The line style tells the precision mode, the colour the process (flavour)
+    mode_style = dict(zip(modes, ['-', '--', ':', '-.']))
+    flavor_color = {}
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    all_logs = [[math.log10(max(e, floor)) if math.isfinite(e) else 1.
+                 for e in entry['errors']] for entry in entries]
+    # common bins, so that the curves can be compared bin by bin
+    low = min(min(logs) for logs in all_logs if logs)
+    high = max(max(logs) for logs in all_logs if logs)
+    if high <= low:
+        high = low + 1.
+    bins = [low + (high - low) * i / 100. for i in range(101)]
+    for entry, logs in zip(entries, all_logs):
+        color = flavor_color.setdefault(entry['flavor'],
+                                        colors[len(flavor_color) % len(colors)])
+        ax.hist(logs, bins=bins, histtype='step', log=True, color=color,
+                linestyle=mode_style[entry['mode']])
+    threshold = math.log10(PRECISION_THRESHOLD)
+    ax.axvline(threshold, color='red', linestyle='-.', linewidth=1)
+    handles = [Line2D([], [], color='black', linestyle=mode_style[mode],
+                      label='FPTYPE=%s' % mode) for mode in modes]
+    handles.append(Line2D([], [], color='red', linestyle='-.', linewidth=1,
+                          label='1% relative error'))
     ax.set_xlabel(r'$\log_{10}\,|M^2_{\mathrm{mode}} - M^2_{d}|\,/\,|M^2_{d}|$')
     ax.set_ylabel('events')
     title = '%s: FPTYPE=%s vs FPTYPE=d (%d events)' % (
         entries[0]['process_label'] if nb_flavor == 1 else entries[0]['subprocess'],
         ','.join(modes), entries[0]['nb_event'])
     ax.set_title(title, fontsize='medium')
-    ax.legend(fontsize='small')
+    ax.legend(handles=handles, fontsize='small')
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
