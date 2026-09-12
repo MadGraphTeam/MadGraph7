@@ -9,6 +9,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "MemoryAccessMatrixElements.h"
+#include "mgOnGpuVectors.h"
 
 #ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
@@ -37,8 +38,8 @@ namespace mg5amcCpu
     }
     T value[ncolor * ncolor];
   };
-  // The fptype2 version is the default used by kernels (supporting mixed floating point mode)
-  static __device__ fptype2 s_pNormalizedColorMatrix2[ncolor * ncolor];
+  // The fptype_colour version is the default used by kernels (supporting mixed floating point mode)
+  static __device__ fptype_colour s_pNormalizedColorMatrix2[ncolor * ncolor];
 #endif
 
   //--------------------------------------------------------------------------
@@ -50,8 +51,8 @@ namespace mg5amcCpu
     if( first )
     {
       first = false;
-      constexpr NormalizedColorMatrix<fptype2> normalizedColorMatrix2;
-      gpuMemcpyToSymbol( s_pNormalizedColorMatrix2, normalizedColorMatrix2.value, ncolor * ncolor * sizeof( fptype2 ) );
+      constexpr NormalizedColorMatrix<fptype_colour> normalizedColorMatrix2;
+      gpuMemcpyToSymbol( s_pNormalizedColorMatrix2, normalizedColorMatrix2.value, ncolor * ncolor * sizeof( fptype_colour ) );
     }
   }
 #endif
@@ -61,7 +62,7 @@ namespace mg5amcCpu
 #ifndef MGONGPUCPP_GPUIMPL
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
-                 const cxtype_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
+                 const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
                  const int ievt0 )            // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
   {
     // Pre-compute a constexpr triangular color matrix properly normalized #475
@@ -80,7 +81,7 @@ namespace mg5amcCpu
             value[icol][jcol] = 2 * colorMatrix[icol][jcol] / colorDenom[icol];
         }
       }
-      fptype2 value[ncolor][ncolor];
+      fptype_colour value[ncolor][ncolor];
     };
     static constexpr auto cf2 = TriangularNormalizedColorMatrix();
     // Use the property that M is a real matrix (see #475):
@@ -96,34 +97,34 @@ namespace mg5amcCpu
     // NB in mixed mode the two neppV vectors of allJamp_sv, at icol and at ncolor+icol, are
     // two halves of the event page and not two colors: it is the color index inside each of
     // them which is gathered, and the two are merged into one neppV2 vector.
-    fptype2_sv jampR_sv[ncolor];
-    fptype2_sv jampI_sv[ncolor];
+    fptype_colour_sv jampR_sv[ncolor];
+    fptype_colour_sv jampI_sv[ncolor];
     for( int icol = 0; icol < ncolor; icol++ )
     {
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       jampR_sv[icol] = fpvmerge( cxreal( allJamp_sv[icol] ), cxreal( allJamp_sv[ncolor + icol] ) );
       jampI_sv[icol] = fpvmerge( cximag( allJamp_sv[icol] ), cximag( allJamp_sv[ncolor + icol] ) );
 #else
-      jampR_sv[icol] = (fptype2_sv)( cxreal( allJamp_sv[icol] ) );
-      jampI_sv[icol] = (fptype2_sv)( cximag( allJamp_sv[icol] ) );
+      jampR_sv[icol] = (fptype_colour_sv)( cxreal( allJamp_sv[icol] ) );
+      jampI_sv[icol] = (fptype_colour_sv)( cximag( allJamp_sv[icol] ) );
 #endif
     }
     for( int icol = 0; icol < ncolor; icol++ )
     {
       // Diagonal terms
-      fptype2_sv& jampRi_sv = jampR_sv[icol];
-      fptype2_sv& jampIi_sv = jampI_sv[icol];
-      fptype2_sv ztempR_sv = cf2.value[icol][icol] * jampRi_sv;
-      fptype2_sv ztempI_sv = cf2.value[icol][icol] * jampIi_sv;
+      fptype_colour_sv& jampRi_sv = jampR_sv[icol];
+      fptype_colour_sv& jampIi_sv = jampI_sv[icol];
+      fptype_colour_sv ztempR_sv = cf2.value[icol][icol] * jampRi_sv;
+      fptype_colour_sv ztempI_sv = cf2.value[icol][icol] * jampIi_sv;
       for( int jcol = icol + 1; jcol < ncolor; jcol++ )
       {
         // Off-diagonal terms
-        fptype2_sv& jampRj_sv = jampR_sv[jcol];
-        fptype2_sv& jampIj_sv = jampI_sv[jcol];
+        fptype_colour_sv& jampRj_sv = jampR_sv[jcol];
+        fptype_colour_sv& jampIj_sv = jampI_sv[jcol];
         ztempR_sv += cf2.value[icol][jcol] * jampRj_sv;
         ztempI_sv += cf2.value[icol][jcol] * jampIj_sv;
       }
-      fptype2_sv deltaMEs2 = ( jampRi_sv * ztempR_sv + jampIi_sv * ztempI_sv ); // may underflow #831
+      fptype_colour_sv deltaMEs2 = ( jampRi_sv * ztempR_sv + jampIi_sv * ztempI_sv ); // may underflow #831
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       deltaMEs += fpvsplit0( deltaMEs2 );
       deltaMEs_next += fpvsplit1( deltaMEs2 );
@@ -160,39 +161,39 @@ namespace mg5amcCpu
       allJamps = allJamps + ighel * nevtIfAllHelicities; // Jamps for one specific helicity ighel
     }
     using J_ACCESS = DeviceAccessJamp;
-    fptype jampR[ncolor];
-    fptype jampI[ncolor];
+    fptype_amp jampR[ncolor];
+    fptype_amp jampI[ncolor];
     for( int icol = 0; icol < ncolor; icol++ )
     {
       constexpr int ihel0 = 0; // the input buffer allJamps already points to a specific helicity
-      cxtype jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
+      cxtype_amp jamp = J_ACCESS::kernelAccessIcolIhelNhelConst( allJamps, icol, ihel0, nGoodHel );
       jampR[icol] = jamp.real();
       jampI[icol] = jamp.imag();
     }
     fptype deltaMEs = { 0 };
     for( int icol = 0; icol < ncolor; icol++ )
     {
-      fptype2 ztempR = { 0 };
-      fptype2 ztempI = { 0 };
-      fptype2 jampRi = jampR[icol];
-      fptype2 jampIi = jampI[icol];
+      fptype_colour ztempR = { 0 };
+      fptype_colour ztempI = { 0 };
+      fptype_colour jampRi = jampR[icol];
+      fptype_colour jampIi = jampI[icol];
       // OLD IMPLEMENTATION (ihel3: symmetric square matrix) - Loop over all jcol
       //for( int jcol = 0; jcol < ncolor; jcol++ )
       //{
-      //  fptype2 jampRj = jampR[jcol];
-      //  fptype2 jampIj = jampI[jcol];
-      //  ztempR += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype2 version of color matrix
-      //  ztempI += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype2 version of color matrix
+      //  fptype_colour jampRj = jampR[jcol];
+      //  fptype_colour jampIj = jampI[jcol];
+      //  ztempR += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
+      //  ztempI += s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
       //}
       // NEW IMPLEMENTATION #475 (ihel3p1: triangular lower diagonal matrix) - Loop over jcol < icol
-      ztempR += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampRi; // use fptype2 version of color matrix
-      ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype2 version of color matrix
+      ztempR += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampRi; // use fptype_colour version of color matrix
+      ztempI += s_pNormalizedColorMatrix2[icol * ncolor + icol] * jampIi; // use fptype_colour version of color matrix
       for( int jcol = 0; jcol < icol; jcol++ )
       {
-        fptype2 jampRj = jampR[jcol];
-        fptype2 jampIj = jampI[jcol];
-        ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype2 version of color matrix
-        ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype2 version of color matrix
+        fptype_colour jampRj = jampR[jcol];
+        fptype_colour jampIj = jampI[jcol];
+        ztempR += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampRj; // use fptype_colour version of color matrix
+        ztempI += 2 * s_pNormalizedColorMatrix2[icol * ncolor + jcol] * jampIj; // use fptype_colour version of color matrix
       }
       deltaMEs += ztempR * jampRi;
       deltaMEs += ztempI * jampIi;
@@ -211,8 +212,8 @@ namespace mg5amcCpu
   // Convert the jamps from fptype to fptype2, which is only ever double to float in mixed
   // floating point mode: the color sum reads them where compute_jamps wrote them otherwise.
   __global__ void
-  convertD2F_Jamps( fptype2* allJamps2,     // output: jamp[2][ncolor][ihel][nevt] for one specific helicity ihel
-                    const fptype* allJamps, // input: jamp[2][ncolor][ihel][nevt] for one specific helicity ihel
+  convertD2F_Jamps( fptype_colour* allJamps2, // output: jamp[2][ncolor][ihel][nevt] for one specific helicity ihel
+                    const fptype_amp* allJamps, // input: jamp[2][ncolor][ihel][nevt] for one specific helicity ihel
                     const int nhel )        // input: number of good helicities nGoodHel
   {
     const int nevt = gridDim.x * blockDim.x;
@@ -253,7 +254,7 @@ namespace mg5amcCpu
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
   __global__ void
   convertF2D_MEs( fptype* allMEs,             // output: allMEs[nevt] for one specific helicity
-                  const fptype2* allMEsFpt2 ) // input: allMEs[nevt] for one specific helicity
+                  const fptype_colour* allMEsFpt2 ) // input: allMEs[nevt] for one specific helicity
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
     allMEs[ievt] = allMEsFpt2[ievt];
@@ -268,8 +269,8 @@ namespace mg5amcCpu
 #ifndef MGONGPU_HAS_NO_BLAS
   void
   color_sum_blas( fptype* ghelAllMEs,           // output: allMEs super-buffer[nhel][nevt], add |M|^2 separately for each helicity
-                  const fptype* ghelAllJamps,   // input: allJamps super-buffer[2][ncol][nhel][nevt] for nhel good helicities
-                  fptype2* ghelAllBlasTmp,      // tmp: allBlasTmp super-buffer for nhel good helicities
+                  const fptype_amp* ghelAllJamps,   // input: allJamps super-buffer[2][ncol][nhel][nevt] for nhel good helicities
+                  fptype_colour* ghelAllBlasTmp,      // tmp: allBlasTmp super-buffer for nhel good helicities
                   gpuBlasHandle_t* pBlasHandle, // input: cuBLAS/hipBLAS handle
                   gpuStream_t* ghelStreams,     // input: cuda streams (index is ighel: only the first nhel <= ncomb are non-null)
                   const int nhel,               // input: number of good helicities (nhel == nGoodHel)
@@ -279,7 +280,7 @@ namespace mg5amcCpu
     const int nevt = gpublocks * gputhreads;
 
     // Get the address associated with the normalized color matrix in device memory
-    static fptype2* devNormColMat = nullptr;
+    static fptype_colour* devNormColMat = nullptr;
     if( !devNormColMat ) gpuGetSymbolAddress( (void**)&devNormColMat, s_pNormalizedColorMatrix2 );
 
     // The scratch buffer holds the BLAS intermediate results and, in mixed precision mode,
@@ -289,21 +290,21 @@ namespace mg5amcCpu
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     // Mixed precision mode: the jamps go through a buffer of their own, as they must be
     // converted from double to float on the way
-    fptype2* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * mgOnGpu::nx2 * nhel * nevt;    // start of the second one
-    fptype2* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * mgOnGpu::nx2 * nhel * nevt; // start of the fptype2[nhel*nevt] buffer
-    const fptype2* ghelAllJamps2 = convertD2F_AllJamps( ghelAllJampsBuf, ghelAllJamps, ghelStreams, nhel, gpublocks, gputhreads );
+    fptype_colour* ghelAllJampsBuf = ghelAllBlasTmp + ncolor * mgOnGpu::nx2 * nhel * nevt;    // start of the second one
+    fptype_colour* ghelAllMEsFpt2 = ghelAllBlasTmp + 2 * ncolor * mgOnGpu::nx2 * nhel * nevt; // start of the fptype_colour[nhel*nevt] buffer
+    const fptype_colour* ghelAllJamps2 = convertD2F_AllJamps( ghelAllJampsBuf, ghelAllJamps, ghelStreams, nhel, gpublocks, gputhreads );
 #else
-    static_assert( std::is_same<fptype2, fptype>::value );
-    fptype2* ghelAllMEsFpt2 = ghelAllMEs;
+    static_assert( std::is_same<fptype_colour, fptype>::value );
+    fptype_colour* ghelAllMEsFpt2 = ghelAllMEs;
     // Nothing to convert: read the jamps where compute_jamps wrote them (this is not a
     // cast, the two types are identical)
-    const fptype2* ghelAllJamps2 = ghelAllJamps;
+    const fptype_colour* ghelAllJamps2 = ghelAllJamps;
 #endif
     // Real and imaginary components
-    const fptype2* ghelAllJampsReal = ghelAllJamps2;
-    const fptype2* ghelAllJampsImag = ghelAllJamps2 + ncolor * nhel * nevt;
-    fptype2* ghelAllZtempReal = ghelAllZtempBoth;
-    fptype2* ghelAllZtempImag = ghelAllZtempBoth + ncolor * nhel * nevt;
+    const fptype_colour* ghelAllJampsReal = ghelAllJamps2;
+    const fptype_colour* ghelAllJampsImag = ghelAllJamps2 + ncolor * nhel * nevt;
+    fptype_colour* ghelAllZtempReal = ghelAllZtempBoth;
+    fptype_colour* ghelAllZtempImag = ghelAllZtempBoth + ncolor * nhel * nevt;
 
     // Note: striding for cuBLAS (that of DeviceAccessJamp, over ncolor):
     // - ghelAllJamps2(icol,ihel,ievt).real is ghelAllJamps2[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt]
@@ -311,8 +312,8 @@ namespace mg5amcCpu
 
     // Step 1: Compute Ztemp[ncolor][nhel*nevt] = ColorMatrix[ncolor][ncolor] * JampsVector[ncolor][nhel*nevt] for both real and imag
     // In this case alpha=1 and beta=0: the operation is Ztemp = alpha * ColorMatrix * JampsVector + beta * Ztemp
-    fptype2 alpha1 = 1;
-    fptype2 beta1 = 0;
+    fptype_colour alpha1 = 1;
+    fptype_colour beta1 = 0;
     const int ncolorM = ncolor;
     const int nevtN = nhel*nevt;
     const int ncolorK = ncolor;
@@ -338,8 +339,8 @@ namespace mg5amcCpu
     // Step 2: For each ievt, compute the dot product of JampsVector[ncolor][ievt] dot tmp[ncolor][ievt]
     // In this case alpha=1 and beta=1: the operation is ME = alpha * ( Tmp dot JampsVector ) + beta * ME
     // Use cublasSgemmStridedBatched to perform these batched dot products in one call
-    fptype2 alpha2 = 1;
-    fptype2 beta2 = 1;
+    fptype_colour alpha2 = 1;
+    fptype_colour beta2 = 1;
     checkGpuBlas( gpuBlasTgemmStridedBatched( *pBlasHandle,
                                               GPUBLAS_OP_N,                             // do not transpose JampsV (new1)
                                               GPUBLAS_OP_N,                             // do not transpose Tmp
@@ -366,7 +367,7 @@ namespace mg5amcCpu
     for( int ighel = 0; ighel < nhel; ighel++ )
     {
       fptype* hAllMEs = ghelAllMEs + ighel * nevt;          // MEs for a single helicity ihel
-      fptype2* hAllMEsFpt2 = ghelAllMEsFpt2 + ighel * nevt; // MEs for a single helicity ihel      
+      fptype_colour* hAllMEsFpt2 = ghelAllMEsFpt2 + ighel * nevt; // MEs for a single helicity ihel      
       gpuLaunchKernelStream( convertF2D_MEs, gpublocks, gputhreads, ghelStreams[ighel], hAllMEs, hAllMEsFpt2 );
     }
 #endif
@@ -379,8 +380,8 @@ namespace mg5amcCpu
 #ifdef MGONGPUCPP_GPUIMPL
   void
   color_sum_gpu( fptype* ghelAllMEs,               // output: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
-                 const fptype* ghelAllJamps,       // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
-                 fptype2* ghelAllBlasTmp,          // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities
+                 const fptype_amp* ghelAllJamps,       // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
+                 fptype_colour* ghelAllBlasTmp,          // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities
                  gpuBlasHandle_t* pBlasHandle,     // input: cuBLAS/hipBLAS handle
                  gpuStream_t* ghelStreams,         // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
                  const int nGoodHel,               // input: number of good helicities
@@ -400,7 +401,7 @@ namespace mg5amcCpu
         for( int ighel = 0; ighel < nGoodHel; ighel++ )
         {
           fptype* hAllMEs = ghelAllMEs + ighel * nevt;           // MEs for one specific helicity ighel
-          const fptype* hAllJamps = ghelAllJamps + ighel * nevt; // Jamps for one specific helicity ighel
+          const fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // Jamps for one specific helicity ighel
           gpuStream_t hStream = ghelStreams[ighel];
           gpuLaunchKernelStream( color_sum_kernel, gpublocks, gputhreads, hStream, hAllMEs, hAllJamps, nGoodHel, 0 );
         }
@@ -417,7 +418,7 @@ namespace mg5amcCpu
       } else {
         checkGpu( gpuDeviceSynchronize() ); // do not start the BLAS color sum for all helicities until the loop over helicities has completed
         // Reset the tmp buffer (same size as the one MatrixElementKernelDevice allocated)
-        gpuMemset( ghelAllBlasTmp, 0, blasColorSumTmpSize( nGoodHel, nevt ) * sizeof( fptype2 ) );
+        gpuMemset( ghelAllBlasTmp, 0, blasColorSumTmpSize( nGoodHel, nevt ) * sizeof( fptype_colour ) );
         // Delegate the color sum to BLAS for 
         color_sum_blas( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nGoodHel, gpublocks, gputhreads );
       }

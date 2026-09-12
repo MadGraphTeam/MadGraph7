@@ -25,10 +25,17 @@ else:
     import madgraph.various.banner as banner_mod
     import madgraph.interface.common_run_interface as common_run_interface
 
+
+# run_card floating_type -> madmatrix.mk FPTYPE letter (raw letters pass through)
+FLOATING_TYPE_2_FPTYPE = {'all64': 'd', 'all32': 'f', 'color32': 'm', 'denom64': 'v'}
+def _fptype_letter(v):
+    return FLOATING_TYPE_2_FPTYPE.get(str(v).lower(), str(v).lower())
+
 # The backends accepted by the 'cudacpp_backend' run_card entry. 'auto' is the
 # auto-detecting CPU backend (the makefile resolves it to the widest SIMD flavour
 # available on the host); the other CPU entries pin one explicit SIMD width.
 CUDACPP_SUPPORTED_BACKENDS = [ 'fortran', 'cuda', 'hip', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512', 'auto' ]
+
 
 class CPPMEInterface(madevent_interface.MadEventCmdShell):
     def compile(self, *args, **opts):
@@ -39,7 +46,7 @@ class CPPMEInterface(madevent_interface.MadEventCmdShell):
         if 'cwd' in opts and os.path.basename(opts['cwd']) == 'Source':
             path = pjoin(opts['cwd'], 'make_opts')
             common_run_interface.CommonRunCmd.update_make_opts_full(path,
-                {'override FPTYPE': self.run_card['floating_type'] })
+                {'override FPTYPE': _fptype_letter(self.run_card['floating_type']) })
             misc.sprint('FPTYPE checked')
         cudacpp_supported_backends = CUDACPP_SUPPORTED_BACKENDS
         if args and args[0][0] == 'madevent' and hasattr(self, 'run_card'):
@@ -119,7 +126,7 @@ class CPPRunCard(banner_mod.RunCardLO):
         if not hasattr(self, 'path'):
             raise Exception
         if name == 'floating_type':
-            common_run_interface.CommonRunCmd.update_make_opts_full({'override FPTYPE': new_value})
+            common_run_interface.CommonRunCmd.update_make_opts_full({'override FPTYPE': _fptype_letter(new_value)})
         else:
             raise Exception
         Sourcedir = pjoin(os.path.dirname(os.path.dirname(self.path)), 'Source')
@@ -127,10 +134,10 @@ class CPPRunCard(banner_mod.RunCardLO):
 
     def default_setup(self):
         super().default_setup()
-        self.add_param('floating_type', 'm', include=False, hidden=True,
+        self.add_param('floating_type', 'color32', include=False, hidden=True,
                        fct_mod=(self.reset_makeopts,(),{}),
-                       allowed=['m','d','f'],
-                       comment='floating point precision: f (single), d (double), m (mixed: double for amplitudes, single for colors)'
+                       allowed=['color32','all64','all32','denom64','m','d','f','v'],
+                       comment='precision: all32, all64, color32 (colour fp32, rest fp64), denom64 (momenta+denom fp64, rest fp32; SIMD falls back to color32)'
                        )
         self.add_param('cudacpp_backend', 'auto', include=False, hidden=False,
                        allowed=CUDACPP_SUPPORTED_BACKENDS)

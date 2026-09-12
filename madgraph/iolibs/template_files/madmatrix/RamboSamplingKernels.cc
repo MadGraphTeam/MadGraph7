@@ -68,7 +68,7 @@ namespace mg5amcCpu
     for( size_t ievt = 0; ievt < nevt(); ++ievt )
     {
       // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
-      fptype* ievtMomenta = MemoryAccessMomenta::ieventAccessRecord( m_momenta.data(), ievt );
+      fptype_momenta* ievtMomenta = MemoryAccessMomenta::ieventAccessRecord( m_momenta.data(), ievt );
       getMomentaInitial( m_energy, ievtMomenta );
     }
     // ** END LOOP ON IEVT **
@@ -85,7 +85,7 @@ namespace mg5amcCpu
     {
       // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
       const fptype* ievtRndmom = MemoryAccessRandomNumbers::ieventAccessRecordConst( m_rndmom.data(), ievt );
-      fptype* ievtMomenta = MemoryAccessMomenta::ieventAccessRecord( m_momenta.data(), ievt );
+      fptype_momenta* ievtMomenta = MemoryAccessMomenta::ieventAccessRecord( m_momenta.data(), ievt );
       fptype* ievtWeights = MemoryAccessWeights::ieventAccessRecord( m_weights.data(), ievt );
       getMomentaFinal( m_energy, ievtRndmom, ievtMomenta, ievtWeights );
     }
@@ -147,7 +147,7 @@ namespace mg5amcCpu
         rambo::get_momenta( m_ninitial, (double)m_energy, m_masses, wgt );
       for( int ipar = 0; ipar < npar; ++ipar )
         for( int ip4 = 0; ip4 < 4; ++ip4 )
-          MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype)point[ipar][ip4];
+          MemoryAccessMomenta::ieventAccessIp4Ipar( m_momenta.data(), ievt, ip4, ipar ) = (fptype_momenta)point[ipar][ip4];
       MemoryAccessWeights::ieventAccess( m_weights.data(), ievt ) = (fptype)wgt;
     }
     // ** END LOOP ON IEVT **
@@ -201,7 +201,7 @@ namespace mg5amcCpu
 #ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   getMomentaInitialDevice( const fptype energy,
-                           fptype* momenta )
+                           fptype_momenta* momenta )
   {
     constexpr auto getMomentaInitial = massless_rambo::ramboGetMomentaInitial<DeviceAccessMomenta>;
     return getMomentaInitial( energy, momenta );
@@ -224,7 +224,7 @@ namespace mg5amcCpu
   __global__ void
   getMomentaFinalDevice( const fptype energy,
                          const fptype* rndmom,
-                         fptype* momenta,
+                         fptype_momenta* momenta,
                          fptype* wgts )
   {
     constexpr auto getMomentaFinal = massless_rambo::ramboGetMomentaFinal<DeviceAccessRandomNumbers, DeviceAccessMomenta, DeviceAccessWeights>;

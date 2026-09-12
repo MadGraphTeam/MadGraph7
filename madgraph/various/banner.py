@@ -6532,6 +6532,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
             comment="SIMD width used by the 'cpu' devices; 'auto' detects the widest one supported by the host")
+        self.add_toml_param('run', 'precision', "color32", gridpack=True,
+            allowed=['all64', 'all32', 'color32', 'denom64'],
+            comment="matrix-element floating-point precision: all64 (FP64), all32 (FP32), "
+                    "color32 (colour FP32, rest FP64), "
+                    "denom64 (momenta + propagator denominator FP64, rest FP32)")
         self.add_toml_param('run', 'simd_vector_size', -1,
             comment="-1 chooses automatically; on x86: 1, 4, 8; on Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,

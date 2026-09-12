@@ -4583,6 +4583,437 @@ def check_language(process_definition, param_card=None, options=None,
     return results
 
 
+#===============================================================================
+# check_precision
+#===============================================================================
+# The floating point modes of the madmatrix build (madmatrix.mk FPTYPE letters)
+# that 'check precision' compares against FPTYPE=d.
+PRECISION_MODES = {
+    'm': 'color32: double precision amplitudes, single precision colour algebra',
+    'f': 'all32: single precision everywhere',
+    'v': 'denom64: single precision amplitudes, double precision momenta and denominators',
+}
+
+# An event whose relative error exceeds this counts in the reported rate.
+PRECISION_THRESHOLD = 0.01
+
+# Events per check_sa.exe perf batch (a power of two, so any SIMD width fits).
+PRECISION_BATCH = 1024
+
+
+class PrecisionProgress(object):
+    """Progress bar over the steps of check_precision (builds and runs), drawn
+    with tqdm when it is installed and silently absent otherwise."""
+
+    def __init__(self, total, desc='check precision', stream=None):
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            self.bar = None
+        else:
+            # stream None is tqdm's default (stderr)
+            self.bar = tqdm(total=total, desc=desc, unit='step', leave=True,
+                            dynamic_ncols=True, file=stream)
+
+    def add(self, nb_step):
+        """More steps than first announced (only known once the flavours are)."""
+        if self.bar is not None and nb_step:
+            self.bar.total += nb_step
+            self.bar.refresh()
+
+    @contextlib.contextmanager
+    def step(self, description):
+        """Show *description* while the step runs, count it once it is done."""
+        if self.bar is not None:
+            self.bar.set_postfix_str(description)
+        yield
+        if self.bar is not None:
+            self.bar.update(1)
+
+    def close(self):
+        if self.bar is not None:
+            self.bar.close()
+
+
+def precision_statistics(me_double, me_mode, threshold=PRECISION_THRESHOLD):
+    """Relative error of the matrix elements of a reduced precision build with
+    respect to the double precision ones, event by event.
+
+    The relative error is |me_mode - me_double| / |me_double|. An event with a
+    zero double precision matrix element has no relative error: it is 0 when
+    the other build also gives exactly zero and infinite otherwise, as is a
+    non-finite value from either build. Infinite errors enter the rate above
+    threshold and the maximum, but not the mean (which they would otherwise
+    make meaningless); their number is reported on its own.
+
+    Returns a dict with the keys 'nb_event', 'errors' (list of floats),
+    'mean', 'max', 'nb_above', 'rate' and 'nb_invalid'.
+    """
+    if len(me_double) != len(me_mode):
+        raise MadGraph5Error('The two builds returned %d and %d matrix elements'
+                             % (len(me_double), len(me_mode)))
+    errors = []
+    total = 0.
+    nb_finite = 0
+    nb_above = 0
+    nb_invalid = 0
+    for ref, val in zip(me_double, me_mode):
+        if not (math.isfinite(ref) and math.isfinite(val)):
+            err = float('inf')
+        elif ref == 0.:
+            err = 0. if val == 0. else float('inf')
+        else:
+            err = abs(val - ref) / abs(ref)
+        errors.append(err)
+        if math.isinf(err):
+            nb_invalid += 1
+        else:
+            total += err
+            nb_finite += 1
+        if err > threshold:
+            nb_above += 1
+    nb_event = len(errors)
+    return {'nb_event': nb_event,
+            'errors': errors,
+            'mean': total / nb_finite if nb_finite else float('nan'),
+            'max': max(errors) if errors else float('nan'),
+            'nb_above': nb_above,
+            'rate': nb_above / nb_event if nb_event else float('nan'),
+            'nb_invalid': nb_invalid}
+
+
+def check_precision(process_definition, modes, param_card=None, options=None,
+                    cmd=FakeInterface(), output_path=None):
+    """Compare the matrix elements of the madmatrix standalone output built in
+    each of the floating point *modes* ('m', 'f' and/or 'v', a single letter or
+    a list of them) with the ones of its double precision build (FPTYPE=d), on
+    the same RAMBO phase-space points.
+
+    The points are generated once, in double precision, by the FPTYPE=d build
+    and written to disk, then read back by every build: the comparison sees the
+    precision of the matrix element alone, not the one of the momenta, and
+    each build narrows the points exactly as it would when called from an
+    integrator. The double precision reference is computed only once, however
+    many modes are compared to it.
+
+    Recognised *options*: 'nb_event' (default 10^6) and 'energy' (GeV, default
+    1000). The difference plot, one per subprocess with every mode on it, is
+    written in *output_path* (default: the current directory).
+
+    Returns a list with one dict per subprocess, mode and flavour combination,
+    with the keys 'process_label', 'subprocess', 'flavor', 'mode', the ones of
+    :func:`precision_statistics`, 'time_double', 'time_mode' and 'plot'.
+    """
+    import tempfile
+    import multiprocessing
+    from madmatrix import output as madmatrix_output
+    from madmatrix import model_handling as madmatrix_model_handling
+
+    if isinstance(modes, str):
+        modes = [modes]
+    modes = misc.make_unique(list(modes))
+    if not modes:
+        raise InvalidCmd('check precision needs at least one precision mode (%s)'
+                         % '|'.join(PRECISION_MODES))
+    for mode in modes:
+        if mode not in PRECISION_MODES:
+            raise InvalidCmd('Precision mode must be one of %s, not %s'
+                             % ('|'.join(PRECISION_MODES), mode))
+    if options is None:
+        options = {}
+    nb_event = int(options.get('nb_event', 1000000))
+    if nb_event < 1:
+        raise InvalidCmd('--nb_event must be a positive number of events')
+    energy = float(options.get('energy', 1000.0))
+    if output_path is None:
+        output_path = os.getcwd()
+    if process_definition.get('perturbation_couplings'):
+        raise InvalidCmd('check precision is only available for tree-level processes')
+    for tool in ('make',):
+        if not misc.which(tool):
+            raise InvalidCmd('check precision needs %s' % tool)
+
+    model = process_definition.get('model')
+    nb_core = (cmd.options.get('nb_core') if hasattr(cmd, 'options') else None) \
+              or multiprocessing.cpu_count()
+
+    work_dir = tempfile.mkdtemp(prefix='mg5_precisioncheck_')
+    sa_dir = pjoin(work_dir, 'standalone')
+    logger.info('check precision: writing the standalone output in %s' % sa_dir)
+
+    # Same helas objects as 'generate' + 'output standalone' (not grouped)
+    opt = {'export_format': 'standalone', 'mp': False, 'v5_model': True,
+           'cpp_compiler': cmd.options.get('cpp_compiler') if hasattr(cmd, 'options') else None,
+           'output_options': {}}
+    exporter = madmatrix_output.ProcessExporterMadMatrixStandalone(sa_dir, opt)
+    old_enumerate = helas_objects.HelasMatrixElement.enumerate_all_flavors
+    helas_objects.HelasMatrixElement.enumerate_all_flavors = \
+        not getattr(exporter, 'use_flavor_mask', True)
+    try:
+        ignore_six_quark = cmd.options.get('ignore_six_quark_processes', []) \
+                           if hasattr(cmd, 'options') else []
+        amplitudes = diagram_generation.MultiProcess(process_definition,
+                        ignore_six_quark_processes=ignore_six_quark or []).get('amplitudes')
+        if not amplitudes:
+            raise InvalidCmd('No amplitude generated for %s'
+                             % process_definition.nice_string())
+        multi_me = helas_objects.HelasMultiProcess(amplitudes)
+        matrix_elements = multi_me.get_matrix_elements()
+        for uid, me in enumerate(matrix_elements):
+            me.get('processes')[0].set('uid', uid + 1)
+        writer = madmatrix_model_handling.MadMatrixUFOHelasCallWriter(model)
+        exporter.copy_template(model)
+        for me_number, me in enumerate(matrix_elements):
+            exporter.generate_subprocess_directory(me, writer, me_number)
+        exporter.convert_model(model, multi_me.get_used_lorentz(),
+                               multi_me.get_used_couplings())
+        exporter.finalize({'matrix_elements': matrix_elements}, '', {}, ['nojpeg'])
+    finally:
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = old_enumerate
+    if param_card:
+        cp(param_card, pjoin(sa_dir, 'Cards', 'param_card.dat'))
+
+    proc_root = pjoin(sa_dir, 'SubProcesses')
+    p_dirs = sorted(d for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+    if not p_dirs:
+        raise MadGraph5Error('check precision: no subprocess directory in %s' % proc_root)
+
+    def build(p_dir, fptype):
+        log = pjoin(work_dir, 'build_%s_%s.log' % (os.path.basename(p_dir), fptype))
+        with open(log, 'w') as out:
+            subprocess.call(['make', 'cleanall'], cwd=p_dir, stdout=out,
+                            stderr=subprocess.STDOUT)
+            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype],
+                                     cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
+        if status:
+            raise MadGraph5Error('check precision: FPTYPE=%s build failed, see %s'
+                                 % (fptype, log))
+
+    def run(p_dir, args, tag):
+        log = pjoin(work_dir, 'run_%s_%s.log' % (os.path.basename(p_dir), tag))
+        with open(log, 'w') as out:
+            status = subprocess.call(['./check_sa.exe'] + [str(a) for a in args],
+                                     cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
+        if status:
+            raise MadGraph5Error('check precision: check_sa.exe failed, see %s' % log)
+        return log
+
+    def read_doubles(path):
+        values = array.array('d')
+        with open(path, 'rb') as stream:
+            values.frombytes(stream.read())
+        return values
+
+    def flavor_labels(log):
+        labels = []
+        for line in open(log):
+            if line.strip().startswith('PDG'):
+                pdgs = [int(x) for x in line.split()[1:]]
+                ninitial = process_definition.get_ninitial()
+                names = [model.get_particle(p).get_name() if model.get_particle(p)
+                         else str(p) for p in pdgs]
+                labels.append(' '.join(names[:ninitial]) + ' > ' +
+                              ' '.join(names[ninitial:]))
+        return labels
+
+    niter = (nb_event + PRECISION_BATCH - 1) // PRECISION_BATCH
+    batch = ['1', PRECISION_BATCH]
+    results = []
+    # Steps per subprocess: build d, flavour list, RAMBO, one run per flavour in
+    # d, a build and one run per flavour for each mode, and the analysis. The
+    # number of flavours is only known after the flavour list: count one until then.
+    steps_per_flavor = 1 + len(modes)
+    progress = PrecisionProgress(len(p_dirs) * (4 + len(modes) + steps_per_flavor))
+    try:
+        for p_name in p_dirs:
+            p_dir = pjoin(proc_root, p_name)
+            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s'
+                        % (p_name, nb_event, ','.join(modes)))
+            # Double precision: the points, the flavours and the reference values
+            with progress.step('%s: build FPTYPE=d' % p_name):
+                build(p_dir, 'd')
+            with progress.step('%s: flavours' % p_name):
+                labels = flavor_labels(run(p_dir, ['matrix', energy], 'matrix'))
+            if not labels:
+                raise MadGraph5Error('check precision: no flavour found for %s' % p_name)
+            progress.add((len(labels) - 1) * steps_per_flavor)
+            momenta = pjoin(work_dir, '%s_momenta.bin' % p_name)
+            with progress.step('%s: RAMBO %d events' % (p_name, nb_event)):
+                run(p_dir, ['perf', '--energy', energy, '--dump-momenta', momenta]
+                           + batch + [niter], 'rambo')
+            size = os.path.getsize(momenta)
+            event_size = size // (niter * PRECISION_BATCH)
+            with open(momenta, 'r+b') as stream:
+                stream.truncate(event_size * nb_event)
+
+            def evaluate(fptype):
+                values = []
+                times = []
+                for iflav in range(len(labels)):
+                    dump = pjoin(work_dir, '%s_me_%s_%d.bin' % (p_name, fptype, iflav))
+                    with progress.step('%s: FPTYPE=%s, flavour %d/%d'
+                                       % (p_name, fptype, iflav + 1, len(labels))):
+                        log = run(p_dir, ['perf', '-f', iflav, '--momenta', momenta,
+                                          '--dump-me', dump] + batch + [1],
+                                  '%s_%d' % (fptype, iflav))
+                    values.append(read_doubles(dump))
+                    times.append(matrix_element_time(open(log).read()))
+                return values, times
+
+            me_double, time_double = evaluate('d')
+
+            entries = []
+            for mode in modes:
+                with progress.step('%s: build FPTYPE=%s' % (p_name, mode)):
+                    build(p_dir, mode)
+                me_mode, time_mode = evaluate(mode)
+                for iflav, label in enumerate(labels):
+                    entry = precision_statistics(me_double[iflav], me_mode[iflav])
+                    entry.update({'process_label': label, 'subprocess': p_name,
+                                  'flavor': iflav, 'mode': mode,
+                                  'time_double': time_double[iflav],
+                                  'time_mode': time_mode[iflav]})
+                    entries.append(entry)
+            with progress.step('%s: plot' % p_name):
+                plot = plot_precision(entries, pjoin(output_path,
+                                      'check_precision_%s_%s' % ('_'.join(modes), p_name)))
+            for entry in entries:
+                entry['plot'] = plot
+            results.extend(entries)
+    finally:
+        progress.close()
+
+    shutil.rmtree(work_dir, ignore_errors=True)
+    return results
+
+
+def matrix_element_time(perf_output):
+    """Time spent in the matrix element evaluation, in seconds, as printed by
+    `check_sa.exe perf` (TotalTime[MatrixElems]): the momenta reading and the
+    RAMBO generation are not included. None if the line is missing."""
+    match = re.search(r'TotalTime\[MatrixElems\]\s*\(3\)\s*=\s*\(\s*([-+0-9.eE]+)\s*\)',
+                      perf_output)
+    return float(match.group(1)) if match else None
+
+
+def plot_precision(entries, basename):
+    """Histogram of log10 of the relative error of every event, one curve per
+    precision mode and flavour, written to basename.pdf. Without matplotlib the
+    relative errors are written to basename.dat instead. Returns the path
+    written."""
+    modes = misc.make_unique([entry['mode'] for entry in entries])
+    nb_flavor = len(set(entry['flavor'] for entry in entries))
+    floor = 1e-18
+    # MG5 runs with DEBUG logging, which matplotlib would otherwise flood with
+    # one line per font it considers
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+    except ImportError:
+        path = basename + '.dat'
+        logger.warning('matplotlib is not available: no plot, the relative '
+                       'errors are written to %s instead' % path)
+        with open(path, 'w') as out:
+            out.write('# mode  flavor  relative_error  (FPTYPE=%s vs FPTYPE=d)\n'
+                      % ','.join(modes))
+            for entry in entries:
+                if entry['mode'] == modes[0]:
+                    out.write('# flavor %d: %s\n' % (entry['flavor'], entry['process_label']))
+            for entry in entries:
+                for err in entry['errors']:
+                    out.write('%s %d %.6e\n' % (entry['mode'], entry['flavor'], err))
+        return path
+
+    from matplotlib.lines import Line2D
+    path = basename + '.pdf'
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    # The line style tells the precision mode, the colour the process (flavour)
+    mode_style = dict(zip(modes, ['-', '--', ':', '-.']))
+    flavor_color = {}
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    all_logs = [[math.log10(max(e, floor)) if math.isfinite(e) else 1.
+                 for e in entry['errors']] for entry in entries]
+    # common bins, so that the curves can be compared bin by bin
+    low = min(min(logs) for logs in all_logs if logs)
+    high = max(max(logs) for logs in all_logs if logs)
+    if high <= low:
+        high = low + 1.
+    bins = [low + (high - low) * i / 100. for i in range(101)]
+    for entry, logs in zip(entries, all_logs):
+        color = flavor_color.setdefault(entry['flavor'],
+                                        colors[len(flavor_color) % len(colors)])
+        ax.hist(logs, bins=bins, histtype='step', log=True, color=color,
+                linestyle=mode_style[entry['mode']])
+    threshold = math.log10(PRECISION_THRESHOLD)
+    ax.axvline(threshold, color='red', linestyle='-.', linewidth=1)
+    handles = [Line2D([], [], color='black', linestyle=mode_style[mode],
+                      label='FPTYPE=%s' % mode) for mode in modes]
+    handles.append(Line2D([], [], color='red', linestyle='-.', linewidth=1,
+                          label='1% relative error'))
+    ax.set_xlabel(r'$\log_{10}\,|M^2_{\mathrm{mode}} - M^2_{d}|\,/\,|M^2_{d}|$')
+    ax.set_ylabel('events')
+    title = '%s: FPTYPE=%s vs FPTYPE=d (%d events)' % (
+        entries[0]['process_label'] if nb_flavor == 1 else entries[0]['subprocess'],
+        ','.join(modes), entries[0]['nb_event'])
+    ax.set_title(title, fontsize='medium')
+    ax.legend(handles=handles, fontsize='small')
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def output_precision(results, output='text'):
+    """Present the results of :func:`check_precision`."""
+    if not results:
+        return 'No result'
+    modes = misc.make_unique([r['mode'] for r in results])
+    proc_col = max([len('Process')] + [len(r['process_label']) for r in results]) + 2
+    col = 16
+    text = 'FPTYPE=%s vs FPTYPE=d, %d events per flavour\n' % (
+        ','.join(modes), results[0]['nb_event'])
+    for mode in modes:
+        text += '  %s = %s\n' % (mode, PRECISION_MODES.get(mode, 'unknown mode'))
+
+    def _time(value):
+        return '%.3e' % value if value is not None else 'N/A'
+
+    def _speedup(r):
+        if not r.get('time_double') or not r.get('time_mode'):
+            return 'N/A'
+        return '%.2f' % (r['time_double'] / r['time_mode'])
+
+    text += (fixed_string_length('Process', proc_col) +
+             fixed_string_length('mode', 6) +
+             fixed_string_length('mean error', col) +
+             fixed_string_length('max error', col) +
+             fixed_string_length('rate > 1%', col) +
+             fixed_string_length('non-finite', 12) +
+             fixed_string_length('time d [s]', col) +
+             fixed_string_length('time mode [s]', col) + 'speed-up')
+    for r in results:
+        text += ('\n' + fixed_string_length(r['process_label'], proc_col) +
+                 fixed_string_length(r['mode'], 6) +
+                 fixed_string_length('%.3e' % r['mean'], col) +
+                 fixed_string_length('%.3e' % r['max'], col) +
+                 fixed_string_length('%.3e' % r['rate'], col) +
+                 fixed_string_length('%d' % r['nb_invalid'], 12) +
+                 fixed_string_length(_time(r.get('time_double')), col) +
+                 fixed_string_length(_time(r.get('time_mode')), col) +
+                 _speedup(r))
+    text += ('\n(time: matrix element evaluation only, for the %d events)'
+             % results[0]['nb_event'])
+    for plot in misc.make_unique([r['plot'] for r in results]):
+        if plot.endswith('.dat'):
+            text += '\nRelative errors (no matplotlib, no plot): %s' % plot
+        else:
+            text += '\nPlot of the difference: %s' % plot
+    return text
+
+
 def output_language(comparison_results, output='text'):
     """Present the results of a Fortran SA / C++ SA / MG7 SA / Python cross-check.
 

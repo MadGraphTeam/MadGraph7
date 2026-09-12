@@ -193,6 +193,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - overload the default version: create CMake directory, do not create lib directory
     def copy_template(self, model):
         super().copy_template(model)
+        # Copy Arithmetics headers for the double-word expansion (FPTYPE=e)
+        arithmetics_src = pjoin(self.madmatrix_templates, 'Arithmetics')
+        if os.path.isdir(arithmetics_src):
+            arithmetics_dst = pjoin(self.dir_path, 'src', 'Arithmetics')
+            try:
+                os.makedirs(arithmetics_dst, exist_ok=True)
+            except os.error:
+                pass
+            for f in ['Double.h', 'basicOPs.h', 'errorFreeOPs.h']:
+                files.cp(pjoin(arithmetics_src, f), arithmetics_dst)
+
         # Rename Makefile to makefile
         if self.template_src_make:
             shutil.move(os.path.join(self.dir_path, "src", "Makefile"), os.path.join(self.dir_path, "src", "makefile"))

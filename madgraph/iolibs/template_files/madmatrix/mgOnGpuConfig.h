@@ -178,6 +178,28 @@ namespace mgOnGpu
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
+  // --- Mixed-precision stage types (3 independent precisions) ---
+  // fptype       (== fptype_amp): wavefunctions, helicity amplitudes, ME, vertex
+  //                               and polarization computation (MGONGPU_FPTYPE_*)
+  // fptype_momenta (== fptype_denom): momenta storage and in-vertex denominators
+  //                               (MGONGPU_FPTYPE_MOMENTA_*, default fptype)
+  // fptype2      (== fptype_colour): color algebra alone (MGONGPU_FPTYPE2_*)
+
+#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+  typedef double fptype_momenta;
+#elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
+  typedef float fptype_momenta;
+#else
+  typedef fptype fptype_momenta;
+#endif
+  typedef fptype_momenta fptype_denom; // denominator precision == momenta precision
+  typedef fptype fptype_amp;           // amplitudes/wavefunctions == fptype
+  typedef fptype2 fptype_colour;       // color algebra == fptype2
+
+  // Valid precision ordering: colour <= amp <= momenta (4=fp32, 8=fp64)
+  static_assert( sizeof( fptype_colour ) <= sizeof( fptype_amp ), "colour precision must not exceed amp precision" );
+  static_assert( sizeof( fptype_amp ) <= sizeof( fptype_momenta ), "amp precision must not exceed momenta precision" );
+
   // --- Platform-specific software implementation details
 
   // Maximum number of blocks per grid
@@ -201,6 +223,10 @@ namespace mgOnGpu
 // Expose typedefs and operators outside the namespace
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
+using mgOnGpu::fptype_momenta;
+using mgOnGpu::fptype_denom;
+using mgOnGpu::fptype_amp;
+using mgOnGpu::fptype_colour;
 
 // Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON
@@ -242,6 +268,11 @@ using mgOnGpu::fptype2;
 #endif
 #else // C++ "none" i.e. no SIMD
 #undef MGONGPU_CPPSIMD
+#endif
+
+// macro for computing denom twice to fill rest of SIMD lane for rest
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_FLOAT and defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+#define MGONGPU_SIMD_DENOM64 1
 #endif
 
 /* clang-format off */
