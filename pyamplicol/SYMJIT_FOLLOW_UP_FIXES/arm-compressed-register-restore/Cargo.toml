@@ -1,0 +1,23 @@
+[package]
+name = "symjit-arm-register-restore-mre"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[features]
+default = ["symbolica"]
+symbolica = ["symjit/symbolica"]
+
+[dependencies]
+anyhow = "1"
+symjit = { version = "=2.25.4", default-features = false }
+
+[[test]]
+name = "normal_return"
+path = "mre.rs"
+
+[[test]]
+name = "fast_complex_save_slots"
+path = "fast_complex_mre.rs"

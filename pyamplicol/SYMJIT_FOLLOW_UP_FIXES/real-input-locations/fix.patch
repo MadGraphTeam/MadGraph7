@@ -1,0 +1,48 @@
+diff --git a/src/symjit/complexify.rs b/src/symjit/complexify.rs
+--- a/src/symjit/complexify.rs
++++ b/src/symjit/complexify.rs
+@@ -56,16 +56,10 @@ pub struct Complexifier {
+ 
+ impl Complexifier {
+     pub fn new(reals: &HashSet<Loc>, config: Config) -> Complexifier {
+-        let mut real_locs: HashSet<Loc> = HashSet::new();
+-        for loc in reals {
+-            if let Loc::Param(idx) = loc {
+-                real_locs.insert(Loc::Param(*idx * 2));
+-            }
+-        }
+-
+         Complexifier {
+             mir: Mir::new(config),
+-            real_locs,
++            // Real declarations have the same scalar offsets as MIR loads.
++            real_locs: reals.clone(),
+             real_regs: [false; 32],
+         }
+     }
+diff --git a/src/symjit/composer.rs b/src/symjit/composer.rs
+--- a/src/symjit/composer.rs
++++ b/src/symjit/composer.rs
+@@ -196,7 +196,8 @@ impl DirectTranslator {
+     fn mark_real(&mut self, slot: &Slot, is_real: bool) {
+         if let Slot::Param(idx) = slot {
+             if is_real {
+-                self.reals.insert(Loc::Param(*idx as u32));
++                self.reals
++                    .insert(Loc::Param((self.prog.config().sizeof() * idx) as u32));
+             }
+         }
+     }
+@@ -259,11 +260,7 @@ impl DirectTranslator {
+         let n = args.len();
+         assert!(n <= SLICE_CAP);
+ 
+-        if let Slot::Param(idx) = lhs {
+-            if is_real {
+-                self.reals.insert(Loc::Param(*idx as u32));
+-            }
+-        }
++        self.mark_real(lhs, is_real);
+ 
+         if VirtualTable::from_str(op).is_ok() || op.starts_with("composer_") {
+             if n == 1 {

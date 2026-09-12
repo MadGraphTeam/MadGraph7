@@ -1,0 +1,19 @@
+[package]
+name = "symjit-argument-count-mre"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[features]
+default = ["symbolica"]
+symbolica = ["symjit/symbolica"]
+
+[dependencies]
+anyhow = "1"
+symjit = { version = "=2.25.4", default-features = false }
+
+[[bin]]
+name = "mre"
+path = "mre.rs"

@@ -26,7 +26,7 @@ fn compressed_simd_returns_success() -> Result<()> {
             let mut application = t.compile()?;
             application.prepare_simd();
             let app = application.seal()?;
-            let Some(machine) = app.compiled_simd.as_ref() else { continue; };
+            let machine = app.compiled_simd.as_ref().expect("native SIMD kernel required");
             let lanes = machine.count_lanes();
             let width = if complex { 2 } else { 1 };
             let mut values = vec![vec![0.0; lanes]; 12 * width];

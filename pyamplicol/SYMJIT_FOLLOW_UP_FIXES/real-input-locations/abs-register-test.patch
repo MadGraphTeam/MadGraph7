@@ -1,0 +1,14 @@
+diff --git a/src/symjit/complexify.rs b/src/symjit/complexify.rs
+--- a/src/symjit/complexify.rs
++++ b/src/symjit/complexify.rs
+@@ -49,6 +49,10 @@ enum Types {
+     CC,
+ }
+ 
++#[cfg(test)]
++#[path = "followup_abs_mre.rs"]
++mod abs_register_regression;
++
+ pub struct Complexifier {
+     mir: Mir,
+     real_locs: HashSet<Loc>,

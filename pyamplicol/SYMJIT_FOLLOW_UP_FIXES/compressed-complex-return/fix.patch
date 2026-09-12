@@ -1,0 +1,20 @@
+diff --git a/src/symjit/complexify.rs b/src/symjit/complexify.rs
+--- a/src/symjit/complexify.rs
++++ b/src/symjit/complexify.rs
+@@ -789,10 +789,15 @@ impl Generator for Complexifier {
+     }
+ 
+     fn call_funclet(&mut self, label: &str) {
+-        self.mir.call(label, 0).unwrap()
++        self.mir.call(label, 0).unwrap();
++        // A helper returns a complete complex value, independently of the
++        // caller's prior temporary. Change metadata, not the returned data.
++        self.set_reg_complex(Reg::Ret);
+     }
+ 
+     fn ret(&mut self) {
++        // A real helper result still owes the caller a zero imaginary part.
++        self.ensure_complex(Reg::Ret);
+         self.branch(".ret");
+     }
+ 

@@ -42,6 +42,12 @@ python-release:
 python-integration:
     PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration -q
 
+# Focused compiler regressions only; no pyAmpliCol/Symbolica build is required.
+# Defaults to published SymJIT 2.25.4; select a checkout with
+# PYAMPLICOL_SYMJIT_SOURCE=/absolute/path/to/symjit.
+symjit-regressions:
+    PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 {{python}} -m pytest tests/integration/test_symjit_upstream_regressions.py -q
+
 python-physics:
     PYTHONPATH="$PWD/src" PYAMPLICOL_REQUIRE_NATIVE_TESTS=1 {{python}} -m pytest tests/integration/test_schema_v3_generation_runtime.py tests/unit/test_reference_fixture_v2.py tests/unit/test_tracked_reference_fixture_v2.py tests/unit/test_color_contraction_safety.py -q
 
