@@ -248,6 +248,53 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
         }
     }
+
+    // The same thing one level up: a floor on the total invariant mass of the
+    // final state is a floor on the root propagator, which is the s-hat the
+    // luminosity mapping samples. Handing it over is the difference between
+    // sampling the region the cut allows and sampling everything and throwing
+    // nearly all of it away; the Invariant's Jacobian follows the range it is
+    // given, so the integral is unchanged and only the efficiency moves.
+    //
+    // Two sources of such a floor:
+    //   * a cut on sqrt(s_hat) itself, and
+    //   * a two-particle invariant mass cut that no single propagator carries,
+    //     which still bounds the total: the pair contributes at least the cut
+    //     and everything else at least its mass. The smallest such bound over
+    //     the pairs the cut names is the one that holds whether the cut has to
+    //     be satisfied by all of them or by only one, so it is the safe choice.
+    double sqrt_s_hat_min = _cuts.sqrt_s_min();
+    {
+        const auto& masses = _topology.outgoing_masses();
+        double pair_floor = 0.;
+        for (std::size_t i = 0; i < m_inv_min.size(); ++i) {
+            for (std::size_t j = i + 1; j < m_inv_min.at(i).size(); ++j) {
+                double cut = m_inv_min.at(i).at(j);
+                if (cut <= 0.) {
+                    continue;
+                }
+                double floor = cut;
+                for (std::size_t k = 0; k < masses.size(); ++k) {
+                    if (k != i && k != j) {
+                        floor += masses.at(k);
+                    }
+                }
+                if (pair_floor == 0. || floor < pair_floor) {
+                    pair_floor = floor;
+                }
+            }
+        }
+        sqrt_s_hat_min = std::max(sqrt_s_hat_min, pair_floor);
+    }
+    // Only the luminosity mapping samples the root virtuality. A leptonic
+    // collision has s_hat fixed at s_lab and chili reconstructs it from the
+    // momenta it has already generated, so in neither case is there a range to
+    // narrow -- the cut stays a filter there. A floor at or above the beam
+    // energy leaves nothing to sample at all, and is left to the filter too
+    // rather than handed on as an empty range.
+    if (_map_luminosity && sqrt_s_hat_min > 0. && sqrt_s_hat_min < _sqrt_s_lab) {
+        _topology.raise_decay_e_min(0, sqrt_s_hat_min);
+    }
     for (auto [decay, info] :
          zip(std::views::reverse(_topology.decays()),
              std::views::reverse(decay_info))) {
@@ -289,40 +336,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         }
     }
 
-    double total_mass = 0.;
-    for (std::size_t index : topology.decays().at(0).child_indices) {
-        total_mass += decay_info.at(index).m_min;
-    }
-    double sqrt_s_hat_min = _cuts.sqrt_s_min();
-    // Even when no single propagator carries the pair, the cut still bounds
-    // the total invariant mass: the pair contributes at least the cut and
-    // everything else at least its mass. The smallest such bound over the
-    // pairs the cut names is the one that holds whether the cut has to be
-    // satisfied by all of them or by only one, so it is the safe choice.
-    {
-        const auto& masses = _topology.outgoing_masses();
-        double pair_floor = 0.;
-        for (std::size_t i = 0; i < m_inv_min.size(); ++i) {
-            for (std::size_t j = i + 1; j < m_inv_min.at(i).size(); ++j) {
-                double cut = m_inv_min.at(i).at(j);
-                if (cut <= 0.) {
-                    continue;
-                }
-                double floor = cut;
-                for (std::size_t k = 0; k < masses.size(); ++k) {
-                    if (k != i && k != j) {
-                        floor += masses.at(k);
-                    }
-                }
-                if (pair_floor == 0. || floor < pair_floor) {
-                    pair_floor = floor;
-                }
-            }
-        }
-        sqrt_s_hat_min = std::max(sqrt_s_hat_min, pair_floor);
-    }
-    double s_hat_min =
-        std::max(total_mass * total_mass, sqrt_s_hat_min * sqrt_s_hat_min);
     if (has_t_channel) {
         // Per-child pt_min (and eta_max), ordered to match the mass conditions
         // handed to the t-channel mapping (leaf children carry their pt cut;

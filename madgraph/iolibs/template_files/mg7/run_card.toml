@@ -117,7 +117,10 @@ $multiparticles
 # A pair_mass minimum is also used to bound the integration: where the pair
 # is what a propagator decays into, the cut becomes that propagator's minimum
 # invariant mass, so the forbidden region is never generated rather than
-# generated and thrown away.
+# generated and thrown away. A sqrt_s minimum bounds it the same way, as the
+# minimum partonic energy the luminosity is sampled from, and so does a
+# pair_mass minimum that no single propagator carries. The integral is
+# unaffected either way -- only how much of the sampling is wasted.
 # for all cuts, min or max can be specified
 $cuts
 
