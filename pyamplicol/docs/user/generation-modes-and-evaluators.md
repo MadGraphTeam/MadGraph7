@@ -234,9 +234,11 @@ pyamplicol generate --card qq_z6g_compiled_jit_o3.toml
 Those artifacts are target-native. Copying one to another architecture is
 expected to fail compatibility checks rather than silently relower it.
 
-Compression shares repeated arithmetic sequences, reducing code size but
-potentially increasing evaluation time. The default favors runtime speed;
-enable compression explicitly when smaller generated code is preferable:
+Compression shares repeated arithmetic sequences, trading extra calls for
+smaller generated code. Either setting can be faster: larger evaluators can
+benefit from the smaller instruction footprint, while smaller ones can spend
+more time on those calls. Compare both settings with `profile` for an important
+workload. Enable compression explicitly with:
 
 ```console
 pyamplicol generate ... --jit-compress

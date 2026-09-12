@@ -207,9 +207,10 @@ license. Release dependency metadata pins the official
 immutable revision.
 
 SymJIT compression is opt-in. It shares repeated arithmetic sequences to
-reduce generated code size, but the extra calls can increase evaluation time.
-The default prioritizes runtime speed with `compress = false`. To request
-smaller code explicitly:
+reduce generated code size. The extra calls can increase evaluation time, but
+the smaller instruction footprint can make larger evaluators faster.
+Neither setting is universally faster; use `profile` to compare them for your
+workload. The default is `compress = false`. To enable it explicitly:
 
 ```toml
 [evaluator.jit]

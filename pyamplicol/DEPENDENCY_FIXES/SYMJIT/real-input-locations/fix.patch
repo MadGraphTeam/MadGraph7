@@ -1,0 +1,326 @@
+diff --git a/src/symjit/complexify.rs b/src/symjit/complexify.rs
+index 1078612..cac9dad 100644
+--- a/src/symjit/complexify.rs
++++ b/src/symjit/complexify.rs
+@@ -4,7 +4,7 @@ use std::collections::HashSet;
+ use super::code::Func;
+ use super::config::Config;
+ use super::generator::{Generator, GeneratorType};
+-use super::mir::Mir;
++use super::mir::{Instruction, Mir};
+ use super::symbol::Loc;
+ use super::utils::Reg;
+ 
+@@ -56,22 +56,23 @@ pub struct Complexifier {
+ 
+ impl Complexifier {
+     pub fn new(reals: &HashSet<Loc>, config: Config) -> Complexifier {
+-        let mut real_locs: HashSet<Loc> = HashSet::new();
+-        for loc in reals {
+-            if let Loc::Param(idx) = loc {
+-                real_locs.insert(Loc::Param(*idx * 2));
+-            }
+-        }
+-
+         Complexifier {
+             mir: Mir::new(config),
+-            real_locs,
++            // Markers use the same scalar-address coordinates as MIR loads.
++            real_locs: reals.clone(),
+             real_regs: [false; 32],
+         }
+     }
+ 
+     pub fn complexify(&mut self, mir: &Mir) -> Result<Mir> {
+         self.mir.consts = mir.consts.clone();
++        // A mutable arena slot may be revisited through a backward branch.
++        // Only immutable inputs can retain their initial real declaration.
++        for instruction in mir.code.iter() {
++            if let Instruction::Save { loc: loc @ Loc::Mem(_), .. } = instruction {
++                self.set_loc_complex(loc);
++            }
++        }
+         // self.mir.labels = mir.labels.clone();
+         mir.rerun(self)?;
+         self.mir.populate_labels();
+@@ -194,10 +195,13 @@ impl Generator for Complexifier {
+     }
+ 
+     fn load_mem(&mut self, dst: Reg, idx: u32) {
+-        // self.mir.load_mem(re(dst), idx);
+-        // self.mir.load_mem(im(dst), idx + 1);
+-        self.mir.load_mem_complex(re(dst), im(dst), idx);
+-        self.set_reg_complex(dst);
++        if self.is_real_loc(Loc::Mem(idx)) {
++            self.mir.load_mem(re(dst), idx);
++            self.set_reg_real(dst);
++        } else {
++            self.mir.load_mem_complex(re(dst), im(dst), idx);
++            self.set_reg_complex(dst);
++        }
+     }
+ 
+     fn save_mem(&mut self, s1: Reg, idx: u32) {
+@@ -205,6 +209,7 @@ impl Generator for Complexifier {
+         // self.mir.save_mem(re(s1), idx);
+         // self.mir.save_mem(im(s1), idx + 1);
+         self.mir.save_mem_complex(re(s1), im(s1), idx);
++        self.set_loc_complex(Loc::Mem(idx));
+     }
+ 
+     fn load_param(&mut self, dst: Reg, idx: u32) {
+@@ -306,7 +311,7 @@ impl Generator for Complexifier {
+ 
+     fn abs(&mut self, dst: Reg, s1: Reg) {
+         if self.is_real_reg(s1) {
+-            self.mir.abs(dst, s1);
++            self.mir.abs(re(dst), re(s1));
+             self.set_reg_real(dst);
+         } else {
+             self.mir.times(Self::T0, re(s1), re(s1));
+@@ -834,6 +839,66 @@ impl Generator for Complexifier {
+ 
+ /*  Complex Genetic Functions */
+ 
++#[cfg(test)]
++mod real_location_tests {
++    use super::*;
++    use super::super::mir::UniOp;
++
++    #[test]
++    fn physical_real_locations_specialize_only_the_named_inputs() {
++        let mut config = Config::default();
++        config.set_complex(true);
++        let markers = HashSet::from([Loc::Param(2), Loc::Mem(6)]);
++        let mut source = Mir::new(config.clone());
++        source.load_param(Reg::Gen(0), 2);
++        source.load_param(Reg::Gen(1), 4);
++        source.load_mem(Reg::Gen(2), 6);
++        source.load_mem(Reg::Gen(3), 8);
++        let result = Complexifier::new(&markers, config).complexify(&source).unwrap();
++        let instructions: Vec<_> = result.code.iter().collect();
++        assert!(matches!(instructions[0], Instruction::Load { loc: Loc::Param(2), .. }));
++        assert!(matches!(instructions[1], Instruction::LoadComplex { loc: Loc::Param(4), .. }));
++        assert!(matches!(instructions[2], Instruction::Load { loc: Loc::Mem(6), .. }));
++        assert!(matches!(instructions[3], Instruction::LoadComplex { loc: Loc::Mem(8), .. }));
++    }
++
++    #[test]
++    fn overwritten_arena_input_is_complex_even_before_a_backward_branch() {
++        let mut config = Config::default();
++        config.set_complex(true);
++        let markers = HashSet::from([Loc::Mem(2)]);
++        let mut source = Mir::new(config.clone());
++        source.set_label("again");
++        source.load_mem(Reg::Gen(0), 2);
++        source.load_mem(Reg::Gen(1), 4);
++        source.save_mem(Reg::Gen(1), 2);
++        source.load_mem(Reg::Gen(2), 2);
++        source.branch("again");
++        let result = Complexifier::new(&markers, config.clone()).complexify(&source).unwrap();
++        let loads = result.code.iter().filter(|instruction|
++            matches!(instruction, Instruction::LoadComplex { loc: Loc::Mem(2), .. })).count();
++        assert_eq!(loads, 2, "both visits must read the imaginary component");
++        // Generator-level writes also invalidate the declaration immediately.
++        let mut translator = Complexifier::new(&markers, config);
++        translator.load_mem(Reg::Gen(0), 4);
++        translator.save_mem(Reg::Gen(0), 2);
++        assert!(!translator.is_real_loc(Loc::Mem(2)));
++    }
++
++    #[test]
++    fn real_abs_uses_complexified_register_coordinates() {
++        let mut config = Config::default();
++        config.set_complex(true);
++        let mut translator = Complexifier::new(&HashSet::from([Loc::Param(2)]), config);
++        translator.load_param(Reg::Gen(2), 2);
++        translator.abs(Reg::Gen(3), Reg::Gen(2));
++        let instructions: Vec<_> = translator.mir.code.iter().collect();
++        assert!(matches!(instructions[1], Instruction::Uni {
++            op: UniOp::Abs, dst: Reg::Gen(10), s1: Reg::Gen(8),
++        }));
++    }
++}
++
+ impl Complexifier {
+     pub fn generic_complex_plus(
+         ir: &mut dyn Generator,
+diff --git a/src/symjit/composer.rs b/src/symjit/composer.rs
+index 090a45f..fd39b32 100644
+--- a/src/symjit/composer.rs
++++ b/src/symjit/composer.rs
+@@ -196,7 +196,8 @@ impl DirectTranslator {
+     fn mark_real(&mut self, slot: &Slot, is_real: bool) {
+         if let Slot::Param(idx) = slot {
+             if is_real {
+-                self.reals.insert(Loc::Param(*idx as u32));
++                // Real declarations share the scalar offsets of MIR loads.
++                self.reals.insert(Loc::Param((self.prog.config().sizeof() * idx) as u32));
+             }
+         }
+     }
+@@ -259,11 +260,7 @@ impl DirectTranslator {
+         let n = args.len();
+         assert!(n <= SLICE_CAP);
+ 
+-        if let Slot::Param(idx) = lhs {
+-            if is_real {
+-                self.reals.insert(Loc::Param(*idx as u32));
+-            }
+-        }
++        self.mark_real(lhs, is_real);
+ 
+         if VirtualTable::from_str(op).is_ok() || op.starts_with("composer_") {
+             if n == 1 {
+diff --git a/src/symjit/compiler.rs b/src/symjit/compiler.rs
+index 6f89abc..9c16fd8 100644
+--- a/src/symjit/compiler.rs
++++ b/src/symjit/compiler.rs
+@@ -1104,12 +1112,6 @@ impl IndirectTranslator {
+         let n = args.len();
+         assert!(n <= SLICE_CAP);
+ 
+-        if let Slot::Param(idx) = lhs {
+-            if is_real {
+-                self.reals.insert(Loc::Param(*idx as u32));
+-            }
+-        }
+-
+         let mut v: Vec<Node> = Vec::new();
+         for a in args.iter() {
+             let p = self.expr(a, is_real);
+diff --git a/tests/real_input_locations.rs b/tests/real_input_locations.rs
+new file mode 100644
+index 0000000..7330024
+--- /dev/null
++++ b/tests/real_input_locations.rs
+@@ -0,0 +1,128 @@
++//! Real input markers must address the same scalar slots as generated loads.
++use anyhow::Result;
++use std::io::Cursor;
++use symjit::{Application, Compiled, Complex, Composer, Config, PlaneDescriptor, Slot, Storage, Translator};
++
++fn application(direct: bool, arena: bool, opt: u8, fast: bool, compress: bool) -> Result<Application> {
++    let mut config = Config::default();
++    config.set_symbolica(true);
++    config.set_complex(true);
++    config.set_direct(direct);
++    config.set_direct_arena(arena);
++    config.set_direct_arena_identity_output(arena);
++    config.set_opt_level(opt);
++    config.set_fast_complex(fast);
++    config.set_compress(compress);
++    config.set_simd(true);
++    config.set_threads(false);
++    let mut t = Translator::new(config);
++    t.set_num_params(3);
++    // x1 is real, but neighboring x2 is genuinely complex. x0 is unused.
++    t.append_mul(&Slot::Out(0), &[Slot::Param(1), Slot::Param(1)], 2)?;
++    t.append_mul(&Slot::Out(1), &[Slot::Param(2), Slot::Param(2)], 0)?;
++    t.append_mul(&Slot::Out(2), &[Slot::Param(1), Slot::Param(2)], 1)?;
++    t.append_add(&Slot::Out(3), &[Slot::Param(1), Slot::Param(2)], 1)?;
++    t.append_fun(&Slot::Temp(0), "abs", &[Slot::Param(1)], true)?;
++    t.append_mul(&Slot::Out(4), &[Slot::Temp(0), Slot::Param(2)], 0)?;
++    t.compile()
++}
++
++fn check(mut application: Application, context: &str) -> Result<()> {
++    let inputs = [1.0, 2.0, 3.0, 0.0, 5.0, 7.0];
++    let expected = [9.0, 0.0, -24.0, 70.0, 15.0, 21.0, 8.0, 7.0, 15.0, 21.0];
++    let output_count = expected.len() / 2;
++    let states = application.count_states;
++    if states == 0 {
++        application.params[..inputs.len()].copy_from_slice(&inputs);
++    } else {
++        assert_eq!(states, inputs.len());
++    }
++    application.prepare_simd();
++    let app = application.seal()?;
++    assert!(app.compiled.is_some(), "native scalar compiler unavailable: {context}");
++    if cfg!(any(target_arch = "aarch64", target_arch = "x86_64")) {
++        assert!(app.compiled_simd.is_some(), "native SIMD compiler unavailable: {context}");
++    }
++    let lanes = app.compiled_simd.as_ref().map_or(1, |m| m.count_lanes());
++    if states == 0 {
++        // Ordinary translated programs use the public parameter-matrix API,
++        // not the arena-only raw plane kernel accessor.
++        for count in [1, lanes] {
++            let input: Vec<_> = inputs.chunks_exact(2)
++                .map(|z| Complex::new(z[0], z[1])).collect::<Vec<_>>().repeat(count);
++            let mut output = vec![Complex::new(f64::NAN, f64::NAN); output_count * count];
++            app.evaluate_matrix(&input, &mut output, count);
++            for (row, output) in output.chunks_exact(output_count).enumerate() {
++                for (i, z) in output.iter().enumerate() {
++                    assert_eq!([z.re, z.im], [expected[2*i], expected[2*i+1]],
++                               "{context}, count={count}, row={row}, output={i}");
++                }
++            }
++        }
++        return Ok(());
++    }
++    let mut planes = vec![vec![f64::NAN; lanes]; states + expected.len()];
++    for i in 0..states {
++        planes[i].fill(inputs[i]);
++    }
++    let descriptors: Vec<_> = planes.iter_mut().map(|row| unsafe {
++        PlaneDescriptor::from_raw_parts(row.as_mut_ptr(), lanes)
++    }).collect();
++    for (name, kernel, active_lanes) in [
++        ("scalar", app.scalar_plane_kernel(), 1),
++        ("SIMD", app.simd_plane_kernel(), lanes),
++    ] {
++        let kernel = kernel.expect("native arena kernel missing");
++        for row in &mut planes[states..] { row.fill(f64::NAN); }
++        let status = unsafe {
++            kernel(std::ptr::null(), descriptors.as_ptr(), 0, app.params.as_ptr())
++        };
++        assert_eq!(status, 0, "{context}, {name}");
++        for (i, value) in expected.iter().enumerate() {
++            for lane in 0..active_lanes {
++                assert_eq!(planes[states + i][lane], *value,
++                           "{context}, {name}, output component {i}, lane {lane}");
++            }
++        }
++    }
++    Ok(())
++}
++
++#[test]
++fn real_input_locations_preserve_complex_neighbors_and_roundtrip() -> Result<()> {
++    // DirectTranslator is parameter-based; IndirectTranslator also supports arenas.
++    for (direct, arena) in [(false, false), (true, false), (false, true)] {
++        for opt in [0, 2, 3] {
++            for fast in [false, true] {
++                for compress in [false, true] {
++                    let app = application(direct, arena, opt, fast, compress)?;
++                    let mut storage = Vec::new();
++                    app.save(&mut storage)?;
++                    let restored = Application::load(&mut Cursor::new(storage), &Config::default())?;
++                    let context = format!("direct={direct}, arena={arena}, O{opt}, fast={fast}, compress={compress}");
++                    check(app, &context)?;
++                    check(restored, &format!("roundtrip, {context}"))?;
++                }
++            }
++        }
++    }
++    Ok(())
++}
++
++#[test]
++fn absolute_value_of_a_real_input_uses_the_real_register() -> Result<()> {
++    let mut config = Config::default();
++    config.set_symbolica(true);
++    config.set_complex(true);
++    config.set_fast_complex(false);
++    config.set_direct(true);
++    config.set_compress(false);
++    let mut t = Translator::new(config);
++    t.set_num_params(2);
++    t.append_fun(&Slot::Out(0), "abs", &[Slot::Param(1)], true)?;
++    let app = t.compile()?.seal()?;
++    let mut output = [Complex::new(f64::NAN, f64::NAN)];
++    app.evaluate_matrix(&[Complex::new(1.0, 2.0), Complex::new(-3.0, 0.0)], &mut output, 1);
++    assert_eq!(output, [Complex::new(3.0, 0.0)]);
++    Ok(())
++}
+

@@ -1,0 +1,175 @@
+diff --git a/src/symjit/topology.rs b/src/symjit/topology.rs
+index 9448cfc..d2c979c 100644
+--- a/src/symjit/topology.rs
++++ b/src/symjit/topology.rs
+@@ -11,6 +11,10 @@ use super::symbol::Symbol;
+ use super::utils::reg;
+ use super::utils::Reg;
+ 
++// MIR LoadArgs/SaveArgs pack their count into six bits; the two high bits
++// carry flags. External-function argument slots may have a larger capacity.
++const COMPRESSED_ARGS_CAP: usize = 0x3f;
++
+ #[derive(Clone, Debug)]
+ pub struct Subroutine {
+     topology: String,
+@@ -71,7 +75,7 @@ impl Topology {
+         for (k, v) in self.counts.iter() {
+             let nx = k.chars().filter(|c| *c == 'X').count();
+ 
+-            if (3..=SLICE_CAP).contains(&nx) && *v >= 3 {
++            if (3..=SLICE_CAP.min(COMPRESSED_ARGS_CAP)).contains(&nx) && *v >= 3 {
+                 self.subs.insert(
+                     k.clone(),
+                     Subroutine {
+@@ -125,3 +129,27 @@ impl Topology {
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn compressed_topology_respects_packed_argument_limit() {
++        let mut topology = Topology::new(Config::default(), Vec::new());
++        for arity in [32, 63, 64, 65] {
++            let shape = "X".repeat(arity);
++            for _ in 0..3 {
++                topology.add(&shape);
++            }
++        }
++        topology.prepare();
++        for arity in [32, 63, 64, 65] {
++            assert_eq!(
++                topology.subs.contains_key(&"X".repeat(arity)),
++                arity <= SLICE_CAP.min(COMPRESSED_ARGS_CAP),
++                "arity={arity}"
++            );
++        }
++    }
++}
+diff --git a/tests/compression_arity.rs b/tests/compression_arity.rs
+new file mode 100644
+index 0000000..e57e939
+--- /dev/null
++++ b/tests/compression_arity.rs
+@@ -0,0 +1,117 @@
++//! Compressed repeated expressions must fit the MIR argument-count encoding.
++use anyhow::Result;
++use symjit::{Compiled, Complex, Composer, Config, PlaneDescriptor, Slot, Translator};
++
++fn check_case(arity: usize, complex: bool, fast_complex: bool, opt: u8) -> Result<()> {
++    let mut config = Config::default();
++    config.set_symbolica(true);
++    config.set_opt_level(opt);
++    config.set_complex(complex);
++    config.set_fast_complex(fast_complex);
++    config.set_compress(true);
++    config.set_simd(true);
++    config.set_threads(false);
++    config.set_direct_arena(true);
++    config.set_direct_arena_identity_output(true);
++    let mut translator = Translator::new(config);
++    translator.set_num_params(3 * arity);
++    // A skew tree has low register pressure and is not split into small trees
++    // before topology compression, unlike a balanced sum of this many leaves.
++    for group in 0..3 {
++        let mut value = Slot::Param(group * arity);
++        for j in 1..arity {
++            let output = Slot::Temp(group * arity + j);
++            let args = [value, Slot::Param(group * arity + j)];
++            let real_count = if complex { 0 } else { 2 };
++            if j % 2 == 1 {
++                translator.append_mul(&output, &args, real_count)?;
++            } else {
++                translator.append_add(&output, &args, real_count)?;
++            }
++            value = output;
++        }
++        translator.append_assign(&Slot::Out(group), &value)?;
++    }
++    let mut application = translator.compile()?;
++    application.prepare_simd();
++    let app = application.seal()?;
++    let lanes = app
++        .compiled_simd
++        .as_ref()
++        .map_or(1, |code| code.count_lanes());
++    let width = if complex { 2 } else { 1 };
++    let outputs_start = 3 * arity * width;
++    let mut planes = vec![vec![0.0; lanes]; (3 * arity + 3) * width];
++    let input = |index: usize, lane: usize| {
++        Complex::new(
++            1.0 + ((index + lane) % 5) as f64 / 64.0,
++            if complex {
++                ((index + lane) % 3) as f64 / 64.0
++            } else {
++                0.0
++            },
++        )
++    };
++    for i in 0..3 * arity {
++        for lane in 0..lanes {
++            planes[i * width][lane] = input(i, lane).re;
++            if complex {
++                planes[i * width + 1][lane] = input(i, lane).im;
++            }
++        }
++    }
++    let table: Vec<_> = planes
++        .iter_mut()
++        .map(|plane| unsafe { PlaneDescriptor::from_raw_parts(plane.as_mut_ptr(), lanes) })
++        .collect();
++    for (name, kernel, count) in [
++        ("scalar", app.scalar_plane_kernel(), 1),
++        ("SIMD", app.simd_plane_kernel(), lanes),
++    ] {
++        let Some(kernel) = kernel else {
++            assert_eq!(name, "SIMD", "scalar kernel must exist");
++            continue;
++        };
++        for plane in &mut planes[outputs_start..] {
++            plane.fill(f64::NAN);
++        }
++        let status = unsafe { kernel(std::ptr::null(), table.as_ptr(), 0, app.params.as_ptr()) };
++        assert_eq!(status, 0);
++        for group in 0..3 {
++            for lane in 0..count {
++                let mut expected = input(group * arity, lane);
++                for j in 1..arity {
++                    let x = input(group * arity + j, lane);
++                    expected = if j % 2 == 1 {
++                        expected * x
++                    } else {
++                        expected + x
++                    };
++                }
++                for component in 0..width {
++                    let actual = planes[outputs_start + group * width + component][lane];
++                    let reference = if component == 0 {
++                        expected.re
++                    } else {
++                        expected.im
++                    };
++                    assert!((actual - reference).abs() <= 1e-11 * (1.0 + reference.abs()),
++                        "arity={arity}, complex={complex}, fast={fast_complex}, O{opt}, {name}, lane={lane}: {actual} != {reference}");
++                }
++            }
++        }
++    }
++    Ok(())
++}
++
++#[test]
++fn compressed_argument_count_boundary() -> Result<()> {
++    for arity in [32, 63, 64, 65] {
++        for opt in [2, 3] {
++            for (complex, fast_complex) in [(false, false), (true, false), (true, true)] {
++                check_case(arity, complex, fast_complex, opt)?;
++            }
++        }
++    }
++    Ok(())
++}

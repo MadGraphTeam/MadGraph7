@@ -1,0 +1,12 @@
+diff --git a/src/symjit/arm/vector.rs b/src/symjit/arm/vector.rs
+--- a/src/symjit/arm/vector.rs
++++ b/src/symjit/arm/vector.rs
+@@ -309,7 +309,7 @@ impl Generator for ArmVector {
+             ultra,
+             32,
+             |a, arg| {
+-                emit(a, arm! {str q(arg), [x(STACK), x(8), lsl #4]});
++                emit(a, arm! {ldr q(arg), [x(STACK), x(8), lsl #4]});
+             },
+             |a, arg, dst| {
+                 save_q_to_loc(a, arg, dst);

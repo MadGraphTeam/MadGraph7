@@ -1,0 +1,26 @@
+diff --git a/src/symjit/topology.rs b/src/symjit/topology.rs
+--- a/src/symjit/topology.rs
++++ b/src/symjit/topology.rs
+@@ -103,7 +103,10 @@ impl Topology {
+ 
+     pub fn compile(&self, ir: &mut Mir) -> Result<()> {
+         if !self.subs.is_empty() {
+-            ir.branch("@epilogue");
++            // Resume normal completion after the subroutine bodies. Jumping
++            // directly into the epilogue skips register restoration and the
++            // SIMD success-status initialization preceding its error label.
++            ir.branch("@after_topology");
+         }
+ 
+         for f in self.subs.values() {
+@@ -129,6 +132,10 @@ impl Topology {
+             }
+         }
+ 
++        if !self.subs.is_empty() {
++            ir.set_label("@after_topology");
++        }
++
+         Ok(())
+     }
+ }

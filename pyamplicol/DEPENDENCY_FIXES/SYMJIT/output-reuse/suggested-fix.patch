@@ -1,0 +1,133 @@
+diff --git a/src/symjit/compiler.rs b/src/symjit/compiler.rs
+index 6f89abc..dd266a4 100644
+--- a/src/symjit/compiler.rs
++++ b/src/symjit/compiler.rs
+@@ -640,7 +640,7 @@ pub struct IndirectTranslator {
+     count_outs: usize,
+     count_statics: usize,
+     temps: HashMap<Slot, Slot>,    // Temp/Out Slot => Static Slot
+-    counts: HashMap<usize, usize>, // Static idx => number of usage on the RHS
++    counts: HashMap<usize, usize>, // Static idx => RHS uses, including final output stores
+     //cache: HashMap<usize, Node>,   // cache of Static variables (Static idx => Node)
+     cache: Vec<Option<Node>>,
+     outs: HashMap<usize, Slot>, // cache of Outs (Out idx => Static Slot)
+@@ -893,6 +893,14 @@ impl IndirectTranslator {
+         let ssa = std::mem::take(&mut self.ssa);
+         self.cache = vec![None; self.count_statics];
+ 
++        // Only the last assignment to each output is published. Its final store
++        // is a use, just like any instruction reading the same static value.
++        for slot in self.outs.values() {
++            if let Slot::Static(idx) = slot {
++                *self.counts.get_mut(idx).unwrap() += 1;
++            }
++        }
++
+         for line in ssa.iter() {
+             match line {
+                 Instruction::Add(lhs, args, n) => {
+@@ -938,9 +946,9 @@ impl IndirectTranslator {
+             self.builder.symbol_table().add_mem_loc(name, loc);
+             let out = self.var_node(name);
+ 
+-            match self.outs.get(&k) {
+-                Some(Slot::Static(s)) => {
+-                    let eq = self.var_node(&format!("__Static{}", s));
++            match self.outs.get(&k).copied() {
++                Some(slot @ Slot::Static(_)) => {
++                    let eq = self.expr(&slot, false);
+                     self.builder.add_assign(out, eq).unwrap();
+                 }
+                 _ => {
+@@ -1239,3 +1247,91 @@ impl Compiler {
+         Ok(app)
+     }
+ }
++
++#[cfg(test)]
++mod output_use_tests {
++    use super::*;
++    use crate::CompilerType;
++
++    #[test]
++    fn published_output_reused_by_another_output() -> Result<()> {
++        for opt_level in [0, 2] {
++            let mut config = Config::new(CompilerType::Native, 0)?;
++            config.set_symbolica(true);
++            config.set_opt_level(opt_level);
++            let mut translator = Translator::new(config);
++            translator.set_num_params(2);
++            translator.append_mul(&Slot::Out(0), &[Slot::Param(0), Slot::Param(1)], 2)?;
++            translator.append_add(&Slot::Out(1), &[Slot::Out(0), Slot::Param(0)], 2)?;
++            let app = translator.compile()?;
++
++            for (args, expected) in [([2.0, 3.0], [6.0, 8.0]), ([-1.0, 4.0], [-4.0, -5.0])] {
++                let mut output = [f64::NAN; 2];
++                app.evaluate(&args, &mut output);
++                assert_eq!(output, expected, "optimization level {opt_level}");
++            }
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn overwritten_output_publishes_only_its_last_assignment() -> Result<()> {
++        for reuse_previous in [false, true] {
++            let mut config = Config::new(CompilerType::Native, 0)?;
++            config.set_symbolica(true);
++            config.set_opt_level(2);
++            let mut translator = IndirectTranslator::new(config, "output-overwrite");
++            translator.set_num_params(2);
++            translator.append_mul(&Slot::Out(0), &[Slot::Param(0), Slot::Param(1)], 2)?;
++            translator.append_add(&Slot::Out(1), &[Slot::Out(0), Slot::Param(0)], 2)?;
++            if reuse_previous {
++                translator.append_add(&Slot::Out(0), &[Slot::Out(0), Slot::Param(1)], 2)?;
++            } else {
++                translator.append_mul(&Slot::Out(0), &[Slot::Param(1), Slot::Param(1)], 2)?;
++            }
++            let app = translator.compile()?;
++
++            // The overwritten value gets no publication use, while both final
++            // outputs remain single-use expressions inlined into their stores.
++            assert_eq!(translator.counts[&0], if reuse_previous { 2 } else { 1 });
++            assert_eq!(translator.counts[&1], 1);
++            assert_eq!(translator.counts[&2], 1);
++            assert!(translator.cache.iter().all(Option::is_none));
++
++            for args in [[2.0, 3.0], [-1.0, 4.0]] {
++                let first = if reuse_previous {
++                    args[0] * args[1] + args[1]
++                } else {
++                    args[1] * args[1]
++                };
++                let mut output = [f64::NAN; 2];
++                app.evaluate(&args, &mut output);
++                assert_eq!(output, [first, args[0] * args[1] + args[0]]);
++            }
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn complex_output_reused_by_another_output() -> Result<()> {
++        let mut config = Config::new(CompilerType::Native, 0)?;
++        config.set_symbolica(true);
++        config.set_complex(true);
++        config.set_opt_level(2);
++        let mut translator = Translator::new(config);
++        translator.set_num_params(2);
++        translator.append_mul(&Slot::Out(0), &[Slot::Param(0), Slot::Param(1)], 0)?;
++        translator.append_add(&Slot::Out(1), &[Slot::Out(0), Slot::Param(0)], 0)?;
++        let app = translator.compile()?;
++
++        for args in [
++            [Complex::new(1.0, 2.0), Complex::new(3.0, -1.0)],
++            [Complex::new(-2.0, 1.0), Complex::new(1.0, 4.0)],
++        ] {
++            let mut output = [Complex::new(f64::NAN, f64::NAN); 2];
++            app.evaluate(&args, &mut output);
++            assert_eq!(output, [args[0] * args[1], args[0] * args[1] + args[0]]);
++        }
++        Ok(())
++    }
++}

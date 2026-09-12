@@ -1,0 +1,11 @@
+[package]
+name = "symjit-output-reuse-reproducer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "f1c193d301897149de6609f706297b0c97a4f018" }

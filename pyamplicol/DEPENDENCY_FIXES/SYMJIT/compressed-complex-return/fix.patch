@@ -1,0 +1,128 @@
+diff --git a/src/symjit/complexify.rs b/src/symjit/complexify.rs
+--- a/src/symjit/complexify.rs
++++ b/src/symjit/complexify.rs
+@@ -783,14 +783,19 @@
+         self.mir.call(op, num_args)
+     }
+ 
+-    fn call_funclet(&mut self, label: &str) {
+-        self.mir.call(label, 0).unwrap()
+-    }
+-
+-    fn ret(&mut self) {
+-        self.branch(".ret");
+-    }
+-
++    fn call_funclet(&mut self, label: &str) {
++        self.mir.call(label, 0).unwrap();
++        // The returned value has both components, regardless of the prior
++        // temporary's type. Do not zero a component of the newly returned value.
++        self.set_reg_complex(Reg::Ret);
++    }
++
++    fn ret(&mut self) {
++        // Callers always consume a complete complex return value.
++        self.ensure_complex(Reg::Ret);
++        self.branch(".ret");
++    }
++
+     fn prologue_fast(&mut self, _cap: usize, _count_states: usize, _count_obs: usize) {}
+     fn epilogue_fast(
+         &mut self,
+@@ -839,6 +844,96 @@
+ 
+ /*  Complex Genetic Functions */
+ 
++#[cfg(test)]
++mod compressed_return_tests {
++    use super::*;
++    use super::super::model::{CellModel, Program};
++    use super::super::runnable::Application;
++    use super::super::utils::{Compiled, PlaneDescriptor, Storage};
++    use std::io::Cursor;
++
++    fn application(real_return: bool, compressed: bool) -> Result<Application> {
++        let mut config = Config::default();
++        config.set_complex(true);
++        config.set_fast_complex(false);
++        config.set_direct_arena(true);
++        config.set_direct_arena_identity_output(true);
++        config.set_simd(true);
++        let mut program = Program::new(&CellModel::new(), config.clone())?;
++        program.count_states = 4;
++        program.count_obs = 2;
++        let mut mir = Mir::new(config);
++        // The prior value has the opposite type from the helper's return.
++        mir.load_mem(Reg::Ret, if real_return { 2 } else { 0 });
++        if compressed {
++            mir.call("helper", 0)?;
++            mir.save_mem(Reg::Ret, 4);
++            mir.branch("finished");
++            mir.set_label("helper");
++        }
++        mir.load_mem(Reg::Ret, if real_return { 0 } else { 2 });
++        if compressed {
++            mir.branch(".ret");
++            mir.set_label("finished");
++        } else {
++            mir.save_mem(Reg::Ret, 4);
++        }
++        Application::with_mir(program, HashSet::from([Loc::Mem(0)]), mir)
++    }
++
++    fn check(mut application: Application, real_return: bool, context: &str) -> Result<()> {
++        application.prepare_simd();
++        let app = application.seal()?;
++        let lanes = app.compiled_simd.as_ref().unwrap().count_lanes();
++        let mut data: Vec<Vec<f64>> = [7.0, 0.0, 3.0, 4.0, f64::NAN, f64::NAN]
++            .into_iter().map(|x| vec![x; lanes]).collect();
++        let planes: Vec<_> = data.iter_mut().map(|row| unsafe {
++            PlaneDescriptor::from_raw_parts(row.as_mut_ptr(), lanes)
++        }).collect();
++        for (name, kernel, count) in [
++            ("scalar", app.scalar_plane_kernel().unwrap(), 1),
++            ("SIMD", app.simd_plane_kernel().unwrap(), lanes),
++        ] {
++            data[4].fill(f64::NAN);
++            data[5].fill(f64::NAN);
++            let status = unsafe { kernel(std::ptr::null(), planes.as_ptr(), 0, app.params.as_ptr()) };
++            assert_eq!(status, 0);
++            for lane in 0..count {
++                let expected = if real_return { [7.0, 0.0] } else { [3.0, 4.0] };
++                assert_eq!([data[4][lane], data[5][lane]], expected,
++                           "{context}, {name}, real_return={real_return}");
++            }
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn compressed_complex_return_after_real_temporary() -> Result<()> {
++        check_case(false)
++    }
++
++    #[test]
++    fn compressed_real_return_after_complex_temporary() -> Result<()> {
++        check_case(true)
++    }
++
++    fn check_case(real_return: bool) -> Result<()> {
++        for compressed in [false, true] {
++            let app = application(real_return, compressed)?;
++            let mut storage = Vec::new();
++            app.save(&mut storage)?;
++            if std::env::var_os("SYMJIT_RETURN_MRE_DUMP").is_some() {
++                let hex: String = storage.iter().map(|byte| format!("{byte:02x}")).collect();
++                println!("RETURN_MRE {real_return} {compressed} {hex}");
++            }
++            let restored = Application::load(&mut Cursor::new(storage), &Config::default())?;
++            check(app, real_return, if compressed { "call" } else { "inline" })?;
++            check(restored, real_return, "saved/reloaded")?;
++        }
++        Ok(())
++    }
++}
++
+ #[cfg(test)]
+ mod real_location_tests {
+     use super::*;

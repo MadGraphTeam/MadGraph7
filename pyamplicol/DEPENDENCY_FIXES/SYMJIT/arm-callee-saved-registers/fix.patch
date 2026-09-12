@@ -1,0 +1,614 @@
+diff --git a/src/symjit/arm/complex.rs b/src/symjit/arm/complex.rs
+index 1886fd0..2f9d5c3 100644
+--- a/src/symjit/arm/complex.rs
++++ b/src/symjit/arm/complex.rs
+@@ -14,6 +14,7 @@ const REG_SIZE: u32 = 8;
+ pub struct ArmComplexGenerator {
+     a: Assembler,
+     config: Config,
++    callee_saved_fp: u8,
+ }
+ 
+ impl ArmComplexGenerator {
+@@ -21,6 +22,7 @@ impl ArmComplexGenerator {
+         ArmComplexGenerator {
+             a: Assembler::new(),
+             config,
++            callee_saved_fp: 0,
+         }
+     }
+ 
+@@ -80,6 +82,11 @@ impl ArmComplexGenerator {
+ }
+ 
+ impl Generator for ArmComplexGenerator {
++    fn prepare_callee_saved_registers(&mut self, mir: &Mir) -> bool {
++        self.callee_saved_fp = callee_saved_fp_mask(mir, false);
++        true
++    }
++
+     fn bytes(&mut self) -> Vec<u8> {
+         self.a.bytes()
+     }
+@@ -584,9 +591,11 @@ impl Generator for ArmComplexGenerator {
+     /**************************************************/
+ 
+     fn prologue_fast(&mut self, cap: usize, count_states: usize, count_obs: usize) {
+-        self.emit(arm! {sub sp, sp, #32});
++        let save_size = 32 + fp_save_size(self.callee_saved_fp);
++        self.emit(arm! {sub sp, sp, #save_size});
+         self.emit(arm! {stp lr, x(FP), [sp, #0]});
+         self.emit(arm! {stp x(MEM), x(STACK), [sp, #16]});
++        transfer_fp_callee_saved(&mut self.a, self.callee_saved_fp, 32, false);
+         self.emit(arm! {mov x(FP), sp});
+ 
+         let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+@@ -612,9 +621,11 @@ impl Generator for ArmComplexGenerator {
+         self.emit(arm! {ldr q(0), [x(MEM), #8*idx_ret]});
+ 
+         self.emit(arm! {mov sp, x(FP)});
++        transfer_fp_callee_saved(&mut self.a, self.callee_saved_fp, 32, true);
+         self.emit(arm! {ldp lr, x(FP), [sp, #0]});
+         self.emit(arm! {ldp x(MEM), x(STACK), [sp, #16]});
+-        self.emit(arm! {add sp, sp, #32});
++        let save_size = 32 + fp_save_size(self.callee_saved_fp);
++        self.emit(arm! {add sp, sp, #save_size});
+         self.emit(arm! {eor x(0), x(0), x(0)});
+         self.emit(arm! {ret});
+     }
+@@ -632,7 +643,7 @@ impl Generator for ArmComplexGenerator {
+         count_obs: usize,
+         _count_params: usize,
+     ) {
+-        save_nonvolatile_regs(&mut self.a);
++        save_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+ 
+         self.emit(arm! {tst x(STATES), x(STATES)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+@@ -675,7 +686,7 @@ impl Generator for ArmComplexGenerator {
+ 
+         self.set_label("@done");
+ 
+-        load_nonvolatile_regs(&mut self.a);
++        load_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+         self.emit(arm! {ret});
+     }
+ 
+diff --git a/src/symjit/arm/mod.rs b/src/symjit/arm/mod.rs
+index 04d76e1..9e9eab5 100644
+--- a/src/symjit/arm/mod.rs
++++ b/src/symjit/arm/mod.rs
+@@ -4,6 +4,7 @@ mod macros;
+ use super::assembler::Assembler;
+ use super::code::Func;
+ use super::config::Config;
++use super::mir::{Instruction, Mir};
+ use super::symbol::Loc;
+ use super::utils::Reg;
+ 
+@@ -24,7 +25,7 @@ const COUNTER: u8 = 12;
+ const TEMP: u8 = ϕ(Reg::Temp);
+ 
+ /*
+- * registers v8 to v16 are ABI-preserved
++ * the low 64 bits of registers v8 to v15 are ABI-preserved
+  * registers v29-v31 can be temporary
+  */
+ const FMAP: [u8; 30] = [
+@@ -59,12 +60,158 @@ fn emit(a: &mut Assembler, w: u32) {
+     a.append_word(w);
+ }
+ 
+-fn save_nonvolatile_regs(a: &mut Assembler) {
+-    emit(a, arm! {sub sp, sp, #64});
++fn callee_saved_fp_mask(mir: &Mir, vector: bool) -> u8 {
++    let mut physical = 0u32;
++    for instruction in mir.code.iter() {
++        let mut logical = Mir::get_dst(&instruction);
++        if let Instruction::LoadComplex { xd, yd, .. } | Instruction::ComplexBi { xd, yd, .. } =
++            instruction
++        {
++            for register in [xd, yd] {
++                if let Reg::Gen(index) = register {
++                    logical |= 1 << index;
++                }
++            }
++        }
++        for (i, register) in FMAP.iter().enumerate() {
++            if logical & (1 << i) != 0 {
++                physical |= 1 << register;
++            }
++        }
++        // Compressed calls use physical argument registers independently of
++        // the allocator. SIMD complex arguments occupy two registers each.
++        let arguments = match instruction {
++            Instruction::LoadArgs {
++                locs,
++                complex,
++                ultra: false,
++            } => Some((locs.len(), complex)),
++            Instruction::SaveArgs {
++                num_args,
++                complex,
++                ultra: true,
++            } => Some((num_args as usize, complex)),
++            _ => None,
++        };
++        if let Some((count, complex)) = arguments {
++            let registers = (count * if vector && complex { 2 } else { 1 }).min(32);
++            for register in 0..registers {
++                physical |= 1 << register;
++            }
++        }
++    }
++    ((physical >> 8) & 0xff) as u8
++}
++
++fn fp_save_size(mask: u8) -> u32 {
++    (mask.count_ones() * 8 + 15) & !15
++}
++
++#[cfg(test)]
++mod callee_saved_tests {
++    use super::*;
++
++    #[test]
++    fn fp_mask_tracks_only_touched_registers() {
++        let mut mir = Mir::new(Config::default());
++        assert_eq!(callee_saved_fp_mask(&mir, false), 0);
++        mir.load_const(Reg::Gen(0), 0);
++        assert_eq!(callee_saved_fp_mask(&mir, false), 0);
++        mir.load_const(Reg::Gen(19), 0); // FMAP[19] = d8.
++        assert_eq!(callee_saved_fp_mask(&mir, false), 1);
++        for (count, complex, vector, expected) in [
++            (8, false, false, 0),
++            (9, false, false, 1),
++            (5, true, false, 0),
++            (5, true, true, 3),
++            (16, false, true, 255),
++        ] {
++            let mut mir = Mir::new(Config::default());
++            mir.code.push(&Instruction::LoadArgs {
++                locs: vec![Loc::Stack(0); count],
++                complex,
++                ultra: false,
++            });
++            assert_eq!(callee_saved_fp_mask(&mir, vector), expected);
++        }
++        assert_eq!(fp_save_size(0), 0);
++        assert_eq!(fp_save_size(1), 16);
++        assert_eq!(fp_save_size(3), 16);
++        assert_eq!(fp_save_size(255), 64);
++    }
++
++    #[test]
++    #[cfg(target_arch = "aarch64")]
++    fn fast_entries_preserve_fp_registers() -> anyhow::Result<()> {
++        use super::super::generator::Generator;
++        use super::super::machine::MachineCode;
++        use super::super::utils::Compiled;
++
++        fn check(mut generator: impl Generator, complex: bool) -> anyhow::Result<()> {
++            let mut config = Config::default();
++            config.set_complex(complex);
++            let mut mir = Mir::new(config);
++            for register in 19..27 {
++                mir.load_const(Reg::Gen(register), 0);
++            }
++            mir.save_mem(Reg::Gen(19), 0);
++            generator.prepare_callee_saved_registers(&mir);
++            generator.prologue_fast(16, 0, if complex { 2 } else { 1 });
++            mir.rerun(&mut generator)?;
++            generator.epilogue_fast(16, 0, if complex { 2 } else { 1 }, 0);
++            generator.align();
++            generator.add_consts(&[7.25]);
++            generator.seal();
++            let code =
++                MachineCode::<f64>::new("aarch64", generator.bytes(), Vec::new(), false, 1, false);
++            let sentinel = 0x3ff0000000000001u64;
++            let observed: u64;
++            let result: f64;
++            unsafe {
++                std::arch::asm!(
++                    "fmov d8, x21", "blr x16", "fmov x20, d8",
++                    in("x16") code.func(), in("x21") sentinel,
++                    lateout("x20") observed, lateout("v0") result,
++                    out("v8") _, out("v9") _, out("v10") _, out("v11") _,
++                    out("v12") _, out("v13") _, out("v14") _, out("v15") _,
++                    clobber_abi("C"),
++                );
++            }
++            assert_eq!(observed, sentinel);
++            assert_eq!(result, 7.25);
++            Ok(())
++        }
++        check(ArmGenerator::new(Config::default()), false)?;
++        check(ArmComplexGenerator::new(Config::default()), true)
++    }
++}
++
++fn transfer_fp_callee_saved(a: &mut Assembler, mask: u8, base: u32, load: bool) {
++    let registers: Vec<u8> = (8..16).filter(|r| mask & (1 << (r - 8)) != 0).collect();
++    for (pair, registers) in registers.chunks(2).enumerate() {
++        let offset = base + pair as u32 * 16;
++        if let [first, second] = registers {
++            if load {
++                emit(a, arm! {ldp d(*first), d(*second), [sp, #offset]});
++            } else {
++                emit(a, arm! {stp d(*first), d(*second), [sp, #offset]});
++            }
++        } else if load {
++            emit(a, arm! {ldr d(registers[0]), [sp, #offset]});
++        } else {
++            emit(a, arm! {str d(registers[0]), [sp, #offset]});
++        }
++    }
++}
++
++fn save_nonvolatile_regs(a: &mut Assembler, fp_mask: u8) {
++    let save_size = 64 + fp_save_size(fp_mask);
++    emit(a, arm! {sub sp, sp, #save_size});
+     emit(a, arm! {stp lr, x(FP), [sp, #0]});
+     emit(a, arm! {stp x(MEM), x(STATES), [sp, #16]});
+     emit(a, arm! {stp x(IDX), x(PARAMS), [sp, #32]});
+     emit(a, arm! {stp x(CALL), x(STACK), [sp, #48]});
++    transfer_fp_callee_saved(a, fp_mask, 64, false);
+ 
+     emit(a, arm! {mov x(FP), sp});
+ 
+@@ -74,14 +221,16 @@ fn save_nonvolatile_regs(a: &mut Assembler) {
+     emit(a, arm! {mov x(PARAMS), x(3)});
+ }
+ 
+-fn load_nonvolatile_regs(a: &mut Assembler) {
++fn load_nonvolatile_regs(a: &mut Assembler, fp_mask: u8) {
+     emit(a, arm! {mov sp, x(FP)});
++    transfer_fp_callee_saved(a, fp_mask, 64, true);
+ 
+     emit(a, arm! {ldp lr, x(FP), [sp, #0]});
+     emit(a, arm! {ldp x(MEM), x(STATES), [sp, #16]});
+     emit(a, arm! {ldp x(IDX), x(PARAMS), [sp, #32]});
+     emit(a, arm! {ldp x(CALL), x(STACK), [sp, #48]});
+-    emit(a, arm! {add sp, sp, #64});
++    let save_size = 64 + fp_save_size(fp_mask);
++    emit(a, arm! {add sp, sp, #save_size});
+ }
+ 
+ fn allocate_stack(a: &mut Assembler, size: u32, _with_arena: bool) {
+diff --git a/src/symjit/arm/scalar.rs b/src/symjit/arm/scalar.rs
+index 67d231e..bedc9e6 100644
+--- a/src/symjit/arm/scalar.rs
++++ b/src/symjit/arm/scalar.rs
+@@ -14,6 +14,7 @@ const REG_SIZE: u32 = 8;
+ pub struct ArmGenerator {
+     a: Assembler,
+     config: Config,
++    callee_saved_fp: u8,
+ }
+ 
+ impl ArmGenerator {
+@@ -21,6 +22,7 @@ impl ArmGenerator {
+         ArmGenerator {
+             a: Assembler::new(),
+             config,
++            callee_saved_fp: 0,
+         }
+     }
+ 
+@@ -83,6 +85,11 @@ impl ArmGenerator {
+ }
+ 
+ impl Generator for ArmGenerator {
++    fn prepare_callee_saved_registers(&mut self, mir: &Mir) -> bool {
++        self.callee_saved_fp = callee_saved_fp_mask(mir, false);
++        true
++    }
++
+     fn bytes(&mut self) -> Vec<u8> {
+         self.a.bytes()
+     }
+@@ -549,9 +556,11 @@ impl Generator for ArmGenerator {
+     /**************************************************/
+ 
+     fn prologue_fast(&mut self, cap: usize, count_states: usize, count_obs: usize) {
+-        self.emit(arm! {sub sp, sp, #32});
++        let save_size = 32 + fp_save_size(self.callee_saved_fp);
++        self.emit(arm! {sub sp, sp, #save_size});
+         self.emit(arm! {stp lr, x(FP), [sp, #0]});
+         self.emit(arm! {stp x(MEM), x(STACK), [sp, #16]});
++        transfer_fp_callee_saved(&mut self.a, self.callee_saved_fp, 32, false);
+         self.emit(arm! {mov x(FP), sp});
+ 
+         let frame_size = align_stack((count_states + count_obs) as u32 * REG_SIZE);
+@@ -577,9 +586,11 @@ impl Generator for ArmGenerator {
+         self.emit(arm! {ldr d(0), [x(MEM), #8*idx_ret]});
+ 
+         self.emit(arm! {mov sp, x(FP)});
++        transfer_fp_callee_saved(&mut self.a, self.callee_saved_fp, 32, true);
+         self.emit(arm! {ldp lr, x(FP), [sp, #0]});
+         self.emit(arm! {ldp x(MEM), x(STACK), [sp, #16]});
+-        self.emit(arm! {add sp, sp, #32});
++        let save_size = 32 + fp_save_size(self.callee_saved_fp);
++        self.emit(arm! {add sp, sp, #save_size});
+         self.emit(arm! {eor x(0), x(0), x(0)});
+         self.emit(arm! {ret});
+     }
+@@ -591,7 +602,7 @@ impl Generator for ArmGenerator {
+         count_obs: usize,
+         _count_params: usize,
+     ) {
+-        save_nonvolatile_regs(&mut self.a);
++        save_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+ 
+         self.emit(arm! {tst x(STATES), x(STATES)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+@@ -634,7 +645,7 @@ impl Generator for ArmGenerator {
+ 
+         self.set_label("@done");
+ 
+-        load_nonvolatile_regs(&mut self.a);
++        load_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+         self.emit(arm! {eor x(0), x(0), x(0)});
+         self.emit(arm! {ret});
+     }
+diff --git a/src/symjit/builder.rs b/src/symjit/builder.rs
+index 8630e9f..bdc8d61 100644
+--- a/src/symjit/builder.rs
++++ b/src/symjit/builder.rs
+@@ -375,11 +375,16 @@ impl Builder {
+         count_params: usize,
+     ) -> Result<()> {
+         let cap = self.stack_size();
++        let callee_saved_by_entry = ir.prepare_callee_saved_registers(mir);
+         ir.prologue_indirect(cap, count_states, count_obs, count_params);
+ 
+-        Self::save_registers(mir, ir);
++        if !callee_saved_by_entry {
++            Self::save_registers(mir, ir);
++        }
+         mir.rerun(ir)?;
+-        Self::restore_registers(mir, ir);
++        if !callee_saved_by_entry {
++            Self::restore_registers(mir, ir);
++        }
+ 
+         ir.epilogue_indirect(cap, count_states, count_obs, count_params);
+         ir.align();
+@@ -400,11 +405,16 @@ impl Builder {
+     ) -> Result<()> {
+         self.block().eliminate();
+         let cap = self.stack_size();
++        let callee_saved_by_entry = ir.prepare_callee_saved_registers(mir);
+         ir.prologue_fast(cap, count_states, count_obs);
+ 
+-        Self::save_registers(mir, ir);
++        if !callee_saved_by_entry {
++            Self::save_registers(mir, ir);
++        }
+         mir.rerun(ir)?;
+-        Self::restore_registers(mir, ir);
++        if !callee_saved_by_entry {
++            Self::restore_registers(mir, ir);
++        }
+ 
+         ir.epilogue_fast(cap, count_states, count_obs, idx_ret);
+         ir.align();
+diff --git a/src/symjit/generator.rs b/src/symjit/generator.rs
+index 323942e..84b8466 100644
+--- a/src/symjit/generator.rs
++++ b/src/symjit/generator.rs
+@@ -1,6 +1,7 @@
+ use anyhow::Result;
+ 
+ use super::code::Func;
++use super::mir::Mir;
+ use super::symbol::Loc;
+ use super::utils::Reg;
+ 
+@@ -44,6 +45,11 @@ pub enum GeneratorType {
+ 
+ #[allow(dead_code)]
+ pub trait Generator {
++    /// Return true when entry/exit code handles the complete callee-save set.
++    fn prepare_callee_saved_registers(&mut self, _mir: &Mir) -> bool {
++        false
++    }
++
+     fn count_shadows(&self) -> u8;
+     fn three_address(&self) -> bool;
+     fn bytes(&mut self) -> Vec<u8>;
+diff --git a/src/symjit/arm/vector.rs b/src/symjit/arm/vector.rs
+--- a/src/symjit/arm/vector.rs
++++ b/src/symjit/arm/vector.rs
+@@ -14,6 +14,7 @@ const REG_SIZE: u32 = 16;
+ pub struct ArmSimdGenerator {
+     a: Assembler,
+     config: Config,
++    callee_saved_fp: u8,
+ }
+ 
+ impl ArmSimdGenerator {
+@@ -21,6 +22,7 @@ impl ArmSimdGenerator {
+         ArmSimdGenerator {
+             a: Assembler::new(),
+             config,
++            callee_saved_fp: 0,
+         }
+     }
+ 
+@@ -121,6 +123,11 @@ impl ArmSimdGenerator {
+ }
+ 
+ impl Generator for ArmSimdGenerator {
++    fn prepare_callee_saved_registers(&mut self, mir: &Mir) -> bool {
++        self.callee_saved_fp = callee_saved_fp_mask(mir, true);
++        true
++    }
++
+     fn bytes(&mut self) -> Vec<u8> {
+         self.a.bytes()
+     }
+@@ -823,7 +830,7 @@ impl Generator for ArmSimdGenerator {
+ 
+ impl ArmSimdGenerator {
+     fn prologue_sympy(&mut self, regions: &StackRegions) {
+-        save_nonvolatile_regs(&mut self.a);
++        save_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+ 
+         self.emit(arm! {tst x(STATES), x(STATES)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+@@ -864,12 +871,12 @@ impl ArmSimdGenerator {
+         }
+ 
+         self.set_label("@done");
+-        load_nonvolatile_regs(&mut self.a);
++        load_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+         self.emit(arm! {ret});
+     }
+ 
+     fn prologue_symbolica(&mut self, regions: &StackRegions) {
+-        save_nonvolatile_regs(&mut self.a);
++        save_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+ 
+         self.emit(arm! {tst x(IDX), x(IDX)});
+         self.jump("@main", 0, |offset, _| arm! {b.eq label(offset)});
+@@ -944,7 +951,7 @@ impl ArmSimdGenerator {
+         }
+ 
+         self.set_label("@done");
+-        load_nonvolatile_regs(&mut self.a);
++        load_nonvolatile_regs(&mut self.a, self.callee_saved_fp);
+         self.emit(arm! {ret});
+     }
+ }
+diff --git a/tests/arm_callee_saved.rs b/tests/arm_callee_saved.rs
+new file mode 100644
+index 0000000..8326ddb
+--- /dev/null
++++ b/tests/arm_callee_saved.rs
+@@ -0,0 +1,125 @@
++//! AAPCS64 requires every public kernel to preserve the low 64 bits of v8-v15.
++#![cfg(target_arch = "aarch64")]
++use anyhow::Result;
++use std::arch::asm;
++use symjit::{Compiled, CompiledPlaneFunc, Composer, Config, PlaneDescriptor, Slot, Translator};
++
++const SENTINELS: [u64; 8] = [
++    0x3ff0000000000001,
++    0x4000000000000002,
++    0x4008000000000003,
++    0x4010000000000004,
++    0x4014000000000005,
++    0x4018000000000006,
++    0x401c000000000007,
++    0x4020000000000008,
++];
++
++#[inline(never)]
++unsafe fn observe(
++    function: CompiledPlaneFunc<f64>,
++    planes: *const PlaneDescriptor<f64>,
++    params: *const f64,
++) -> (i32, [u64; 8]) {
++    let mut actual = [0; 8];
++    let status: usize;
++    // Explicit clobbers make this wrapper preserve its caller's original
++    // registers even when the generated function violates the ABI.
++    asm!(
++        "ldp d8, d9, [x20, #0]", "ldp d10, d11, [x20, #16]",
++        "ldp d12, d13, [x20, #32]", "ldp d14, d15, [x20, #48]",
++        "blr x16",
++        "stp d8, d9, [x21, #0]", "stp d10, d11, [x21, #16]",
++        "stp d12, d13, [x21, #32]", "stp d14, d15, [x21, #48]",
++        in("x16") function,
++        inlateout("x0") 0usize => status,
++        in("x1") planes, in("x2") 0usize, in("x3") params,
++        in("x21") actual.as_mut_ptr(), in("x20") SENTINELS.as_ptr(),
++        out("v8") _, out("v9") _, out("v10") _, out("v11") _,
++        out("v12") _, out("v13") _, out("v14") _, out("v15") _,
++        clobber_abi("C"),
++    );
++    (status as i32, actual)
++}
++
++#[test]
++fn public_kernels_preserve_fp_callee_saved_registers() -> Result<()> {
++    let mut failures = Vec::new();
++    for compress in [false, true] {
++        for opt in [0, 2, 3] {
++            for (complex, fast) in [(false, false), (true, false), (true, true)] {
++                for arity in [1, 5, 9, 16] {
++                    let mut config = Config::default();
++                    config.set_symbolica(true);
++                    config.set_compress(compress);
++                    config.set_opt_level(opt);
++                    config.set_complex(complex);
++                    config.set_fast_complex(fast);
++                    config.set_simd(true);
++                    config.set_threads(false);
++                    config.set_direct_arena(true);
++                    config.set_direct_arena_identity_output(true);
++                    let mut translator = Translator::new(config);
++                    translator.set_num_params(3 * arity);
++                    for group in 0..3 {
++                        let mut value = Slot::Param(group * arity);
++                        for j in 1..arity {
++                            let dst = Slot::Temp(group * arity + j);
++                            let args = [value, Slot::Param(group * arity + j)];
++                            if j % 2 == 1 {
++                                translator.append_mul(&dst, &args, if complex { 0 } else { 2 })?;
++                            } else {
++                                translator.append_add(&dst, &args, if complex { 0 } else { 2 })?;
++                            }
++                            value = dst;
++                        }
++                        translator.append_assign(&Slot::Out(group), &value)?;
++                    }
++                    let mut application = translator.compile()?;
++                    application.prepare_simd();
++                    let app = application.seal()?;
++                    let lanes = app.compiled_simd.as_ref().unwrap().count_lanes();
++                    let width = if complex { 2 } else { 1 };
++                    let mut data: Vec<Vec<f64>> = (0..(3 * arity + 3) * width)
++                        .map(|i| vec![if complex && i % 2 == 1 { 0.0 } else { 1.0 }; lanes])
++                        .collect();
++                    let planes: Vec<_> = data
++                        .iter_mut()
++                        .map(|plane| unsafe {
++                            PlaneDescriptor::from_raw_parts(plane.as_mut_ptr(), lanes)
++                        })
++                        .collect();
++                    for (name, kernel, count) in [
++                        ("scalar", app.scalar_plane_kernel().unwrap(), 1),
++                        ("SIMD", app.simd_plane_kernel().unwrap(), lanes),
++                    ] {
++                        let (status, actual) =
++                            unsafe { observe(kernel, planes.as_ptr(), app.params.as_ptr()) };
++                        assert_eq!(status, 0);
++                        for i in 0..3 * width {
++                            for lane in 0..count {
++                                assert_eq!(
++                                    data[3 * arity * width + i][lane],
++                                    if complex && i % 2 == 1 {
++                                        0.0
++                                    } else {
++                                        ((arity + 1) / 2) as f64
++                                    }
++                                );
++                            }
++                        }
++                        if actual != SENTINELS {
++                            failures.push(format!("arity={arity}, compress={compress}, O{opt}, complex={complex}, fast={fast}, {name}: {actual:x?}"));
++                        }
++                    }
++                }
++            }
++        }
++    }
++    assert!(
++        failures.is_empty(),
++        "callee-saved corruption:\n{}",
++        failures.join("\n")
++    );
++    Ok(())
++}
