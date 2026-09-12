@@ -1,10 +1,17 @@
 name: Release
 
 # Fires once a GitHub Release is published (draft -> Publish release), never on
-# a tag push by itself. Runs the full test suite, publishes madspace to PyPI
-# with the same version as the MadGraph release, and attaches the MadGraph
-# tarball to the release. If anything fails, the release is reverted to draft
-# so a half-published version never stays public.
+# a tag push by itself. Checks that main's CI was green for the tagged commit,
+# publishes madspace to PyPI with the same version as the MadGraph release, and
+# attaches the MadGraph tarball to the release. If anything fails, the release
+# is reverted to draft so a half-published version never stays public.
+#
+# The test suites are deliberately NOT re-run here. Every commit on main is
+# already tested by the push-triggered workflows, and the release tag points at
+# one of those commits, so re-running them would test the same tree a second
+# time for ~250 duplicated jobs. require_green_ci below gates on that existing
+# run instead. (The suites also no longer trigger on tag pushes, for the same
+# reason -- see the tags-ignore note in each of them.)
 on:
   release:
     types: [published]
@@ -16,7 +23,7 @@ concurrency:
 permissions:
   contents: write
   id-token: write
-  actions: write
+  actions: read
 
 jobs:
   check_version:
@@ -30,54 +37,113 @@ jobs:
       - name: Check VERSION / madspace/pyproject.toml agree with the release tag
         run: python3 bin/create_release.py --version "${{ steps.version.outputs.value }}" --check-only
 
-  # Warm the HEPTools/UFO/pip caches first: restore_heptools (used throughout
-  # the test suites below) hard-fails on a cache miss, and a release should not
-  # depend on a cache having been kept warm by chance.
-  warm_cache:
+  # The release gate: main's CI for the exact commit being released must have
+  # finished and be green. Waits if it is still running, so publishing a release
+  # straight after a merge works without having to watch CI by hand.
+  require_green_ci:
     needs: check_version
-    uses: ./.github/workflows/warm_cache.yml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # merge-base below needs history
 
-  test_unit:
-    needs: warm_cache
-    uses: ./.github/workflows/unittest.yml
-  test_acceptance:
-    needs: warm_cache
-    uses: ./.github/workflows/acceptancetest.yml
-  test_madevent:
-    needs: warm_cache
-    uses: ./.github/workflows/acceptancetest_madevent.yml
-  test_mg7:
-    needs: warm_cache
-    uses: ./.github/workflows/acceptancetest_mg7.yml
-  test_parallel:
-    needs: warm_cache
-    uses: ./.github/workflows/parralel.yml
-  test_io:
-    needs: warm_cache
-    uses: ./.github/workflows/IOtest.yml
-  test_aloha:
-    needs: warm_cache
-    uses: ./.github/workflows/aloha.yml
-  test_madspin:
-    needs: warm_cache
-    uses: ./.github/workflows/madspin_parallel.yml
-  test_xsec:
-    needs: warm_cache
-    uses: ./.github/workflows/check_xsec_processes_mg7.yml
+      - name: Check the release commit is on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::${GITHUB_REF_NAME} points at $GITHUB_SHA, which is not on main."
+            echo "::error::Releases are gated on main's CI run for the tagged commit, so the tag has to be on main."
+            exit 1
+          fi
+
+      - name: Require main's CI for this commit to be green
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The full suite takes a few hours from cold; stay under the job's
+          # own timeout-minutes so we report which suite hung rather than
+          # having the runner killed out from under us.
+          POLL_TIMEOUT_MINUTES: '330'
+          POLL_INTERVAL_SECONDS: '60'
+        run: |
+          set -uo pipefail
+
+          # Every suite that runs on a push to main. Kept as an explicit list
+          # on purpose: "all runs for this commit were green" is vacuously true
+          # when no run exists at all, which is exactly the failure mode that
+          # let v0.2.0 publish untested.
+          #
+          # madspin_parallel.yml is knowingly absent -- its push filter is
+          # branches: ['3.x'], so it never runs on main and there is nothing to
+          # gate on. See the tracking issue linked in the PR that added this.
+          REQUIRED="
+          .github/workflows/unittest.yml
+          .github/workflows/acceptancetest.yml
+          .github/workflows/acceptancetest_madevent.yml
+          .github/workflows/acceptancetest_mg7.yml
+          .github/workflows/parralel.yml
+          .github/workflows/IOtest.yml
+          .github/workflows/aloha.yml
+          .github/workflows/check_xsec_processes_mg7.yml
+          .github/workflows/madspace.yml
+          "
+
+          deadline=$(( $(date +%s) + POLL_TIMEOUT_MINUTES * 60 ))
+          while :; do
+            runs=$(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&event=push&branch=main&per_page=100" \
+              --jq '.workflow_runs[]' | jq -s '.')
+
+            pending=0 bad=0 total=0 summary=""
+            for wf in $REQUIRED; do
+              total=$((total + 1))
+              # The same commit can have several runs of one workflow (a re-run
+              # of the merge, say), so take the newest; run ids are monotonic.
+              read -r status conclusion url <<<"$(jq -r --arg p "$wf" '
+                [.[] | select(.path == $p)] | sort_by(.id) | last
+                | if . == null then "absent - -"
+                  else "\(.status) \(.conclusion // "-") \(.html_url)" end' <<<"$runs")"
+
+              case "$status:$conclusion" in
+                completed:success) state="ok" ;;
+                absent:*)          state="never ran"; bad=$((bad + 1)) ;;
+                completed:*)       state="$conclusion"; bad=$((bad + 1)) ;;
+                *)                 state="$status"; pending=$((pending + 1)) ;;
+              esac
+              summary+="  $(printf '%-12s' "$state") ${wf##*/}  ${url}"$'\n'
+            done
+
+            # A failed or cancelled run will not become green by waiting.
+            if [ "$bad" -gt 0 ]; then
+              printf '%s' "$summary"
+              echo "::error::main's CI for $GITHUB_SHA is not green -- $bad required workflow(s) failed, were cancelled, or never ran."
+              echo "::error::Re-run the workflow(s) above on main, then re-publish ${GITHUB_REF_NAME}."
+              exit 1
+            fi
+
+            if [ "$pending" -eq 0 ]; then
+              printf '%s' "$summary"
+              echo "main's CI for $GITHUB_SHA is green across all $total required workflows."
+              break
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              printf '%s' "$summary"
+              echo "::error::timed out after ${POLL_TIMEOUT_MINUTES}m waiting for $pending workflow(s) on $GITHUB_SHA."
+              exit 1
+            fi
+
+            echo "waiting on $pending workflow(s) for $GITHUB_SHA..."
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
 
   # Builds the full wheel matrix and publishes to PyPI. madspace is never
   # released standalone, so this is the only path that ever sets publish: true.
+  # This one does have to run here: the CI build on main does not publish.
   madspace:
-    needs:
-      - test_unit
-      - test_acceptance
-      - test_madevent
-      - test_mg7
-      - test_parallel
-      - test_io
-      - test_aloha
-      - test_madspin
-      - test_xsec
+    needs: require_green_ci
     uses: ./.github/workflows/madspace.yml
     with:
       publish: true
@@ -138,19 +204,17 @@ jobs:
   revert_to_draft:
     needs:
       - check_version
-      - warm_cache
-      - test_unit
-      - test_acceptance
-      - test_madevent
-      - test_mg7
-      - test_parallel
-      - test_io
-      - test_aloha
-      - test_madspin
-      - test_xsec
+      - require_green_ci
       - madspace
       - tarball
-    if: failure() || cancelled()
+    # 'skipped' has to count as a failure here: a job whose own guard is false,
+    # or one whose dependency was skipped, is neither failure() nor cancelled(),
+    # so the old condition let a run in which nothing but check_version executed
+    # report success and leave the release published untested.
+    if: >-
+      always() && (contains(needs.*.result, 'failure')
+      || contains(needs.*.result, 'cancelled')
+      || contains(needs.*.result, 'skipped'))
     runs-on: ubuntu-24.04
     steps:
       - name: Revert the release to draft
@@ -159,3 +223,7 @@ jobs:
         run: |
           gh release edit '${{ github.ref_name }}' --draft --repo '${{ github.repository }}'
           echo "::error::Release checks failed -- '${{ github.ref_name }}' was reverted to draft. Fix the issue and re-publish."
+          # An ::error:: annotation does not set an exit code. Without this the
+          # run is still green when the trigger was skipped jobs rather than a
+          # failed one, which is exactly the case this job now catches.
+          exit 1

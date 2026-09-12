@@ -2,8 +2,16 @@ name: MadSpace
 
 on:
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
   pull_request:
-  # Called from release.yml once the full test suite has passed. madspace is
+  # Called from release.yml once main's CI for the tagged commit is green.
+  # This is the one suite release.yml still runs itself, because the CI build
+  # on main produces wheels but never publishes them. madspace is
   # never released on its own -- its version always matches the MadGraph
   # release, so publishing only happens through that call.
   workflow_call:

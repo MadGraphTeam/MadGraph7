@@ -4,6 +4,12 @@
 name: running IOTests
 on:
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -14,9 +20,6 @@ on:
       message:
         description: 'running IOTests'
         required: true
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 env:
   commitmsg: ${{ github.event.head_commit.message }}
