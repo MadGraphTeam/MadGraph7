@@ -1,5 +1,5 @@
 #***********************************************************************
-#                        MadGraph5_aMC@NLO                             *
+#                        MadGraph7                             *
 #                                                                      *
 #                      run_card.dat aMC@NLO                            *
 #                                                                      *
@@ -141,7 +141,7 @@ $ion_pdf
 #      level. After showering an MLM-type merging should be applied as *
 #      well. See http://amcatnlo.cern.ch/FxFx_merging.htm for details. *
 #   4: UNLOPS merging (with pythia8 only). No interface from within    *
-#      MG5_aMC available, but available in Pythia8.                    *
+#      MadGraph7 available, but available in Pythia8.                    *
 #  -1: NNLL+NLO jet-veto computation. See arxiv:1412.8408 [hep-ph].    *
 #***********************************************************************
  %(ickkw)s        = ickkw

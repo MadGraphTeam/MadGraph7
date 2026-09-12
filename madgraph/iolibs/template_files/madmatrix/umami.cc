@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: T. Heimel (Nov 2025) for the MG5aMC CUDACPP plugin.
+// Created originally by: T. Heimel (Nov 2025) for the MadGraph7 CUDACPP plugin.
 // Further modified by: D. Massaro (2026).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -11,6 +11,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 
+#include <cfloat>
 #include <cmath>
 #include <vector>
 #include <array>
@@ -24,6 +25,35 @@ using namespace mg5amcCpu;
 
 namespace
 {
+
+  // The per-diagram channel weight handed to madspace as amp2. A subprocess whose
+  // matrix element is identically zero -- an FCNC channel with every Wilson
+  // coefficient at zero, say -- has all numerators at zero, so their sum, the
+  // denominator, is zero too. Dividing would give 0/0 = nan for every diagram, and
+  // that nan becomes the amp2 madspace builds its channel weights from, turning a
+  // channel that should simply contribute nothing into a non-finite event weight
+  // that aborts the whole integration.
+  //
+  // The denominator is a sum of |amp|^2 and so never negative: adding the smallest
+  // normal double floors it away from zero (0/tiny is 0, no channel preferred) while
+  // leaving every denominator a real amplitude produces bit-for-bit unchanged. This
+  // must NOT be written as a test for zero -- this is compiled with -ffast-math, and
+  // its -ffinite-math-only lets the compiler assume the quotient is finite and drop
+  // such a guard as dead code (the trap behind #117 and #516).
+  //
+  // This is called from both the host and the device code paths, hence the
+  // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
+  // std::numeric_limits<double>::min(), which is a host function and cannot be
+  // called from device code.
+#ifdef MGONGPUCPP_GPUIMPL
+  __host__ __device__
+#endif
+    inline double
+    channel_amp2( double numerator, double denominator )
+  {
+    return numerator / ( denominator + DBL_MIN );
+  }
+
 
   void* initialize_impl(
     const fptype_momenta* momenta,
@@ -146,7 +176,7 @@ namespace
       double denominator = denominators[i_event];
       for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * CPPProcess::ndiagrams + i_diag] / denominator;
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * CPPProcess::ndiagrams + i_diag], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -389,7 +419,9 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
-        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        // The color flow is picked among ncolor_flow structures, which is more than
+        // ncolor when the color sum runs on the DDM basis
+        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
         {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype_amp )},
@@ -611,7 +643,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )
@@ -643,7 +675,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )

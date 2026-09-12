@@ -1,6 +1,6 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
+# Created originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
 # Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi, Z. Wettersten (2021-2024).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -53,6 +53,18 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # If sa_symmetry is true, generate fewer matrix elements
     # AV - keep OM's default for this plugin (using grouped_mode=False, "can decide to merge uu~ and u~u anyway")
     sa_symmetry = True
+
+    # The name this exporter is reached by on the 'output' line, for the error
+    # messages that have to name it back to the user.
+    format_name = 'mg7'
+
+    # The color sum can run on the (n-2)! Del Duca-Dixon-Maltoni basis for a
+    # multi-gluon process, but a color flow still has to be picked among the
+    # (n-1)! trace structures, so the trace basis is built alongside and the
+    # trace jamps are rebuilt from the DDM ones through the Kleiss-Kuijf
+    # relations (see set_color_flow_lines_cpp in model_handling.py).
+    support_ddm_color_basis = True
+    ddm_needs_flow_basis = True
 
     # Below are the class variable that are defined in export_cpp.ProcessExporterGPU
     # AV - keep defaults from export_cpp.ProcessExporterGPU
@@ -166,6 +178,18 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             return val.strip().lower() not in ('false', '0', 'no', 'off')
         return bool(val)
 
+    def get_makefile_replace_dict(self, model):
+        """Add what madmatrix.mk needs to know about a host BLAS for the C++
+        color sum. Whether a given process actually takes it is decided when
+        that process is written out (see cpp_blas_wanted); this only settles
+        whether one could be linked at all."""
+
+        replace_dict = super().get_makefile_replace_dict(model)
+        flags = self.oneprocessclass.blas_available_flags()
+        replace_dict['cpp_blas_default'] = 'hasBlas' if flags else 'hasNoBlas'
+        replace_dict['cpp_blas_libflags'] = flags
+        return replace_dict
+
     # AV - overload the default version: create CMake directory, do not create lib directory
     def copy_template(self, model):
         super().copy_template(model)
@@ -190,20 +214,59 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     def write_p_makefiles(self, model):
         """Render the build rules shared by all the P* directories into
         SubProcesses/ (they are linked from there as each P*/makefile)."""
-        replace_dict = {
-            'model': self.get_model_name(model.get('name')),
-            'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++',
-        }
+        # through the hook, not an inline dict: madmatrix.mk also carries the
+        # host-BLAS placeholders that get_makefile_replace_dict fills in
+        replace_dict = self.get_makefile_replace_dict(model)
         for name in self.p_makefiles:
             rendered = self.read_template_file(pjoin(self.madmatrix_templates, name)) % replace_dict
             open(pjoin(self.dir_path, 'SubProcesses', name), 'w').write(rendered)
 
+    def check_split_orders(self, matrix_element):
+        """Report what a squared-order constraint will produce here.
+
+        Supported: the jamps carry an amplitude-order index and the color sum
+        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        so a '^2' constraint that keeps only some squared orders gets the
+        contribution it asked for rather than the total. That is what makes the
+        interference case work -- `u u~ > t t~ QED^2==2` keeps all three
+        diagrams and wants the QCD-EW cross term alone, which no amount of
+        dropping diagrams at generation can produce.
+
+        Not supported: a GPU build of such a process. The device jamp buffers
+        are sized for one jamp vector per helicity (ncolor, not njampso), and
+        the backend is a make-time choice rather than an output-time one, so
+        the refusal cannot live here: color_sum_splitorders.cc #errors under
+        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the first the user hears of it.
+        """
+
+        so = export_v4.split_order_tables(matrix_element)
+        if not so or so['nampso'] <= 1:
+            return
+        process = matrix_element.get('processes')[0]
+        kept = [n for n, k in zip(so['names'], so['chosen']) if k]
+        dropped = [n for n, k in zip(so['names'], so['chosen']) if not k]
+        logger.info(
+            "%s: '%s' has %d squared-order components (%s); keeping %s%s. "
+            "The jamps are split over %d amplitude orders and the color sum "
+            "pairs them; CPU backends only (a GPU build of this process will "
+            "not compile, by design).",
+            self.__class__.format_name,
+            process.nice_string().replace('Process: ', ''),
+            so['nsqampso'], ', '.join(so['names']),
+            ', '.join(kept) if kept else 'nothing',
+            '' if not dropped else ', dropping %s' % ', '.join(dropped),
+            so['nampso'])
+
     # AV - add debug printouts (in addition to the default one from OM's tutorial)
     def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        self.check_split_orders(matrix_element)
         # Propagate the --mask toggle to the helas call writer that emits the
-        # guarded wavefunction/amplitude calls.
+        # guarded wavefunction/amplitude calls, and the output command line as
+        # a whole for the --jamp_optim toggle of the color-flow optimisation.
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
+            cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
         return out
 
@@ -229,6 +292,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 # an additional wrapper makefile (madmatrix_standalone.mk) on top of madmatrix.mk,
 # so that when running `make` in a P* folder, it builds check_sa.exe as well as the process library (predicatable behaviour)
 class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
+
+    format_name = 'standalone'
 
     # Each P* directory links madmatrix_standalone.mk (which itself includes
     # madmatrix.mk) as its 'makefile'; both have to be rendered in SubProcesses/

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2010 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2010 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -26,7 +26,6 @@ import re
 import shutil
 import sys
 import time
-from madgraph.interface.tutorial_text import output
 
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(root_path)
@@ -1233,7 +1232,7 @@ class AbstractALOHAModel(dict):
                         self[(lorentzname, outgoing)].add_combine(list_l_name[1:])
                     continue
 
-                builder = CombineRoutineBuilder(l_lorentz)
+                builder = CombineRoutineBuilder(l_lorentz, self.model)
                                
                 for conjg in request[list_l_name[0]]:
                     #ensure that routines are in rising order (for symetries)

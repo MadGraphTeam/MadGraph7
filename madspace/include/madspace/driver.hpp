@@ -11,6 +11,8 @@
 #include "driver/logger.hpp"
 #include "driver/madnis_training.hpp"
 #include "driver/status_file.hpp"
+#include "driver/systematics.hpp"
+#include "driver/event_histograms.hpp"
 #include "driver/tensor.hpp"
 #include "driver/thread_pool.hpp"
 #include "driver/vegas_optimizer.hpp"

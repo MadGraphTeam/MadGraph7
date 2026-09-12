@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -1570,7 +1570,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         parser = misc.OptionParser(usage=usage)
         parser.add_option("-n", "--name",
                   default="",
-                  help="When NOT run in standalone instruct MG5aMC where to store the events file")
+                  help="When NOT run in standalone instruct MadGraph7 where to store the events file")
         return parser
     
     def parse_launch(self, line):
@@ -1887,6 +1887,129 @@ class MadSpinInterface(extended_cmd.Cmd):
             out //= math.factorial(repeat)
         return out
 
+    @staticmethod
+    def _decay_symmetry_factor(decays):
+        """The decay symmetry factor of the joint weight's denominator:
+        ``prod_groups prod_k n_k! / N!`` over the parent pdgs whose N identical
+        parents were *dealt* their decay channels, n_k counting the dealt
+        channels.
+
+        It is the reciprocal of :meth:`_assignment_multiplicity`, and it is
+        there for the same reason: a positional deal (``_draw_one_decay``'s
+        middle rule, which fires when the card gives a pdg exactly as many
+        channels as the event has identical parents) generates ONE of the
+        ``N!/prod_k n_k!`` assignments, so the rate owes their number. The same
+        multiplicity is what the branching ratio multiplies in for
+        ``kind == 'mult_split'``.
+
+        It must be keyed on the CHANNEL, and only on a dealt one. When the N
+        parents instead draw independently from one pool -- a single merged
+        decay line, ``define lp = e+ mu+`` / ``decay z > lp lm``, which is
+        ``kind == 'mult_cumul'`` and whose branching ratio carries no
+        multiplicity factor either -- the draw already samples every
+        assignment and there is nothing to compensate. Keying it on the drawn
+        *final state*, as it used to be, cannot tell the two apart: it doubled
+        the weight of every trial whose two Z decayed to different flavours and
+        gave ``p p > z z`` an e+e-mu+mu- : 4e : 4mu composition of 4:1:1 in
+        place of 2:1:1.
+
+        A decay event that did not come from ``_draw_one_decay`` carries no
+        tag; untagged means "not dealt", which leaves the factor at 1.
+        """
+        out = 1.0
+        for decay_event_list in decays.values():
+            nb = len(decay_event_list)
+            if nb < 2:
+                continue
+            if not all(getattr(evt, 'ms_positional', False)
+                       for evt in decay_event_list):
+                continue
+            counts = collections.Counter(getattr(evt, 'ms_channel', None)
+                                         for evt in decay_event_list)
+            sym = 1
+            for repeat in counts.values():
+                sym *= math.factorial(repeat)
+            out *= sym / float(math.factorial(nb))
+        return out
+
+    @staticmethod
+    def _decay_process_signature(decay_event):
+        """A hashable stand-in for "which decay process is this?".
+
+        The multiset of (status, pdg) over the whole decay event, so the
+        intermediate resonances of a multi-step chain count too and
+        ``w+ > l+ vl`` is not confused with a direct three-body decay to the
+        same final state. It is the runtime counterpart of
+        :func:`HelasMatrixElement.check_equal_decay_processes`, which is what
+        MG5 uses when it decides how many of a decay-chain process's chains are
+        identical.
+        """
+        return tuple(sorted((int(p.status), int(p.pid)) for p in decay_event))
+
+    @classmethod
+    def _decay_chain_identical_factor(cls, production, decays):
+        """The identical-particle factor the *legacy on-shell* (``onshell_v1``)
+        weight has to divide out of its production x decay matrix element.
+
+        That mode is the only one that gets its numerator from a separately
+        generated decay-chain matrix element -- ``|M(p p > z z, z > e+ e-,
+        z > mu+ mu-)|^2`` -- while its denominator uses the *undecayed*
+        production matrix element. Both are MG5 matrix elements, so both are
+        already divided by their own ``IDEN``, and the identical-particle part
+        of the two IDENs does not match:
+
+          * the production process ``p p > z z`` has two identical Z, so its
+            IDEN carries a 2 (``S_prod``);
+          * the decay-chain process carries ``identical_decay_chain_factor``
+            (``helas_objects.py``), which is ``n!`` over *identical chains*:
+            2 when both Z were drawn to ``e+ e-``, 1 when one went to ``e+ e-``
+            and the other to ``mu+ mu-``.
+
+        So the raw ratio ``full_me / production_me`` comes out twice as large
+        for a mixed-flavour draw as for a same-flavour one, purely from
+        bookkeeping. With one merged decay line (``define lp = e+ mu+`` /
+        ``decay z > lp lm``) that turns the e+e-mu+mu- : 4e : 4mu composition
+        into 4:1:1 where it must be 2:1:1 -- the ratio of the two decayed cross
+        sections, which is exactly 2.0000 in direct MadGraph (the 6-point
+        amplitude is the same, only ``DATA IDEN`` differs, 36 against 72).
+
+        Returned factor: ``prod_pdg (prod_k n_k! / N_pdg!)``, with ``N_pdg`` the
+        number of production final-state legs of that pdg (which is what MG5's
+        ``non_chain_factor`` drops from the full process, and what the
+        production IDEN keeps) and ``n_k`` the number of chains of that pdg
+        sharing a decay-process signature. Multiplying the numerator by it
+        leaves a weight with no identical-particle factor anywhere -- which is
+        what the density modes have for free, since they build the numerator by
+        contracting the *same* production density they divide by.
+
+        Note that this is keyed on the drawn FINAL STATE, the opposite of
+        :meth:`_decay_symmetry_factor`, and for the opposite reason: there the
+        code was inventing a symmetry factor that the sampling had already
+        taken care of, here it is undoing one that MG5's matrix-element
+        generator really did apply.
+
+        Cases where it is 1 and nothing moves: a single decaying particle of a
+        given pdg (``p p > t t~`` -- ``t`` and ``t~`` are separate keys, N=1
+        each), and any run in which every event draws the same signatures (two
+        explicit decay lines, or a single non-merged one), where it is a
+        constant and cancels against the maximum weight.
+        """
+        out = 1.0
+        for pdg, decay_event_list in decays.items():
+            if not decay_event_list:
+                continue
+            nb_prod = sum(1 for p in production
+                          if int(p.status) == 1 and int(p.pid) == pdg)
+            if nb_prod < 2:
+                continue
+            counts = collections.Counter(cls._decay_process_signature(evt)
+                                         for evt in decay_event_list)
+            iden = 1
+            for repeat in counts.values():
+                iden *= math.factorial(repeat)
+            out *= iden / float(math.factorial(nb_prod))
+        return out
+
     def _resolve_group_rates(self, gen_jobs, channel_widths):
         """Branching ratio of the grouped particles, and each group's share.
 
@@ -2054,7 +2177,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             lhe_parser.reset_lhe_timers()
 
         if options.name:
-            self.me_run_name = options.name # Only use by MG5aMC
+            self.me_run_name = options.name # Only use by MadGraph7
         else:
             self.me_run_name = ''
 
@@ -5002,7 +5125,11 @@ class MadSpinInterface(extended_cmd.Cmd):
     def _read_worker_status(self, worker_id):
         """(state, [target]) tuple for ``worker_id``, or None if unreadable."""
         try:
-            parts = open(self._status_path(worker_id)).read().split()
+            # closed explicitly: this is polled ten times a second for as long
+            # as MADSPIN_REFILL_WAIT, in every worker and once per hop of the
+            # wait-for chain
+            with open(self._status_path(worker_id)) as fsock:
+                parts = fsock.read().split()
         except (IOError, OSError):
             return None
         if not parts:
@@ -6621,6 +6748,31 @@ class MadSpinInterface(extended_cmd.Cmd):
                                base_out, exc)
             logger.info('Done so far. output written in %s' % base_out)
 
+    @staticmethod
+    def _balanced_ranges(nb_item, nb_core):
+        """``nb_core`` contiguous ``(start, stop)`` slices of ``range(nb_item)``
+        whose lengths differ by at most one -- the first ``nb_item % nb_core``
+        get one extra item.
+
+        Contrast ``ceil(nb_item / nb_core)``-sized chunks, which give the last
+        cores nothing whenever the division is uneven: 75 items on 16 cores is
+        fifteen chunks of five and one empty. An empty slice is not merely an
+        idle core, because the shard id doubles as the worker id that
+        :meth:`_channel_owner` deals channels out to -- a worker that is never
+        forked can still be named as a channel's owner, and whoever waits on it
+        waits for ever. Balanced slices keep every id live. When ``nb_item`` is a
+        multiple of ``nb_core`` -- what both max-weight scans arrange, by
+        rounding their probe size up -- this is the same split as before."""
+        nb_core = max(1, int(nb_core))
+        base, extra = divmod(int(nb_item), nb_core)
+        ranges, start = [], 0
+        for sid in range(nb_core):
+            stop = start + base + (1 if sid < extra else 0)
+            if stop > start:
+                ranges.append((start, stop))
+            start = stop
+        return ranges
+
     def _split_production(self, orig_lhe, nb_core, base_out):
         """Split the production event file into up to ``nb_core`` contiguous
         shard files (bannerless: the worker's EventFile tolerates a missing
@@ -6683,6 +6835,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         A single LHE file (e.g. produced before that was in place) has to be
         strided, which is correct but makes every worker parse everything."""
         local = {}
+        strided = []   # (channel, nb of pool files) for every fallback below
         for pdg, channels in evt_decayfile.items():
             local[pdg] = {}
             for file_nb, evtfile in channels.items():
@@ -6699,9 +6852,11 @@ class MadSpinInterface(extended_cmd.Cmd):
                     # split, but not into exactly nb_core files: stride the WHOLE
                     # chained pool. ``evtfile.name`` is only its first file, so
                     # striding that would strand every other file's events.
+                    strided.append(((pdg, file_nb), len(paths)))
                     reader = _StridedEvents(_ChainedEvents(paths), shard_id, nb_core)
                     n = None
                 else:
+                    strided.append(((pdg, file_nb), 1))
                     fresh = lhe_parser.EventFile(evtfile.name)
                     reader = _StridedEvents(fresh, shard_id, nb_core)
                     n = None
@@ -6716,6 +6871,21 @@ class MadSpinInterface(extended_cmd.Cmd):
                         reader = _LimitedEvents(reader,
                                                 int(math.floor((1.0 - frac) * n)))
                 local[pdg][file_nb] = reader
+        if strided:
+            # Say it out loud rather than degrade quietly: from here on this
+            # worker parses the other workers' decay events too. Normally this
+            # means the pool predates the per-worker split; it also fires when a
+            # phase caps its worker count below the count the pool was written
+            # with (see _scan_maxwgt_parallel), which is accepted and cheap.
+            logger.debug(
+                "MadSpin worker %s of %s: decay pool holds %s file(s), not %s "
+                "-- striding the chained pool for %s of %s channel(s) instead "
+                "of opening this worker's own file (correct, but every worker "
+                "then parses every worker's decay events)",
+                shard_id, nb_core,
+                '/'.join(str(n) for n in sorted(set(n for _, n in strided))),
+                nb_core, len(strided),
+                sum(len(c) for c in evt_decayfile.values()))
         return local
 
     def _init_owner_refill(self, evt_decayfile, seed_base):
@@ -7063,12 +7233,24 @@ class MadSpinInterface(extended_cmd.Cmd):
         if nb_decay == 0:
             return None #nothing to do for this particle
         # Determine the file to read in order to get the decay [decay_file]
+        # ``positional`` records which of the three rules below picked the
+        # channel: True only for the middle one, where the card gives this pdg
+        # exactly as many channels as the event has identical parents and the
+        # i-th parent is *dealt* the i-th channel. That is the only case in
+        # which a single assignment stands for several, and the only case whose
+        # rate owes the assignment multiplicity -- see the decay symmetry factor
+        # in calculate_matrix_element_from_density, which reads it back off the
+        # returned event. The other two rules draw (from one merged pool, or
+        # across channels by cross-section) and so sample the assignments
+        # themselves.
+        positional = False
         if nb_decay == 1:
             decay_file_nb = keys[0]
             decay_file = channels[decay_file_nb]
         elif ids.count(particle.pdg) == nb_decay:
             decay_file_nb = keys[ids[:i].count(particle.pdg)]
             decay_file = channels[decay_file_nb]
+            positional = True
         else:
             #need to select the file according to the associate cross-section
             r = random.random()
@@ -7141,8 +7323,21 @@ class MadSpinInterface(extended_cmd.Cmd):
                     self._gen_phase = 'decay_event_generation'
                 decay_file = evt_decayfile[particle.pdg][decay_file_nb]
                 continue
+        # Which channel this decay came from, and whether it was dealt or drawn.
+        # The decay symmetry factor of the joint weight needs the channel, not
+        # the final state the channel happened to produce: one merged line
+        # (`define lp = e+ mu+` / `decay z > lp lm`) is a single channel whose
+        # events carry several different final states.
+        try:
+            decay.ms_channel = decay_file_nb
+            decay.ms_positional = positional
+        except AttributeError:
+            # a decay pool that yields something without a __dict__ (the unit
+            # tests use plain strings). Nothing to tag; the symmetry factor's
+            # getattr default then leaves the factor at 1.
+            pass
         return decay
-        
+
     
     def batch_decay_densities(self, production, trials):
         """boost and evaluate the decay densities of a set of trials at once.
@@ -7757,20 +7952,51 @@ class MadSpinInterface(extended_cmd.Cmd):
         import multiprocessing as mp
         import json
         base = '%s.maxwgt' % orig_lhe.name
-        chunk = int(math.ceil(len(events) / float(nb_core)))
-        # contiguous slices; the last cores get nothing if events < nb_core
-        ranges = [(sid * chunk, min((sid + 1) * chunk, len(events)))
-                  for sid in range(nb_core)]
-        ranges = [(a, b) for (a, b) in ranges if a < b]
-        # Keep the ORIGINAL nb_core as the pool-addressing count: the decay pool
-        # was split into nb_core files, and each worker must address it with that
-        # same count so it opens *its* file (paths[shard_id]). Reducing it to the
-        # number of non-empty ranges made len(paths) != nb_core, which dropped
-        # every worker onto the striding fallback -- reading only the first file.
-        # Trailing empty shards are simply not launched (their files go unused by
-        # the scan, which is fine -- the pool is generated uniformly).
+        # ``nb_core`` is the pool-addressing count -- the decay pool was split
+        # into that many files and each worker must address it with the same
+        # count to open *its* file (paths[shard_id]) instead of falling back to
+        # striding. It is ALSO the modulus of _channel_owner, so every id it can
+        # name has to belong to a worker that is actually forked. Both hold only
+        # if exactly nb_core workers run, which is why the slices are balanced
+        # (below) rather than ceil-chunked, and why nb_core is capped at the
+        # number of probe events here as well as at the call sites.
+        #
+        # The cap has an accepted cost. It only ever bites when the production
+        # file itself holds fewer events than nb_core (both call sites already
+        # round the probe count up to a multiple of nb_core, so len(events) is
+        # otherwise >= nb_core), and when it does, the decay pool has already
+        # been written with _decay_pool_split() == the UNCAPPED count: the pool
+        # then has more files than there are workers, _reopen_decay_pool sees
+        # len(paths) != nb_core, drops the own-file fast path and strides the
+        # chained pool, so every worker parses every worker's decay events.
+        # That is correct (the stripes stay disjoint), one-off (the refills go
+        # through _open_refill_slice, which keys on this post-cap count, so they
+        # are unaffected) and small: measured at 0.04-0.18 s for 16-64 workers
+        # over a scan-sized pool. _reopen_decay_pool logs it at debug level.
+        # It is left alone deliberately. Re-splitting the pool to match would
+        # tie the pool's shape to whichever phase caps first -- it is written
+        # once, before the scan, and shared with the unweighting, which caps to
+        # a different count. Keeping a second, uncapped count just for pool
+        # addressing would reinstate exactly the divergence between "number of
+        # pool files" and "modulus of _channel_owner" that let the scan name an
+        # owner no worker was forked for, i.e. the 3600 s refill hang this cap
+        # exists to prevent. A rounding error is the cheaper of the two.
+        nb_core = max(1, min(int(nb_core), len(events)))
+        ranges = self._balanced_ranges(len(events), nb_core)
 
         self._clear_worker_status(nb_core)   # fresh status board for this phase
+        # Belt and braces: should a slice ever come back empty anyway, mark the
+        # worker that will not be forked as DONE. A missing status file is
+        # indistinguishable from a worker that has not published yet, so a
+        # waiter blocked on such an owner would sit out MADSPIN_REFILL_WAIT
+        # (3600s by default) and then kill the scan; 'D' makes the fail-safe in
+        # _worker_refill fire at once instead.
+        for sid in range(len(ranges), nb_core):
+            try:
+                with open(self._status_path(sid), 'w') as f:
+                    f.write('D')
+            except (IOError, OSError):
+                pass
         mpctx = mp.get_context('fork')
         procs, out_paths = [], []
         for sid, (start, stop) in enumerate(ranges):
@@ -9675,6 +9901,35 @@ class MadSpinInterface(extended_cmd.Cmd):
         parents = {slot: finals[slot_to_index[slot]] for slot in order}
         return rho_off, jac_reshuffle, slot_mass, parents, frame_boost
 
+    def _onshell_production_norm(self, production, prod_static):
+        """|M_prod|^2 on shell, in the frame the density modes quantise in.
+
+        The denominator of the offshell mass-set weight (sequential) and of the
+        joint weight. Without a frame boost this is exactly
+        ``calculate_matrix_element`` -- same value, same normalisation -- so
+        nothing changes there. With one (a polarisation brace, polarised beams,
+        a polarisation-weight request, the pure-interference mode) the
+        *restricted* matrix element is not Lorentz invariant and the lab-frame
+        value is a different projection from the one the numerator is built
+        from, so the trace of the on-shell rho *in that frame* is taken instead.
+
+        Evaluated on a round-tripped copy, like ``_upfront_production``'s
+        ``prod_off``, so the two sides of the ratio see the same %.10e
+        truncation.
+        """
+        frame_boost = self._frame_boost(production)
+        if frame_boost is None:
+            return self.calculate_matrix_element(production)
+        prod_on = lhe_parser.Event(str(production))
+        rho_on = self.get_density(prod_on, prod_static['position'],
+                                  prod_static['allowed_hel'],
+                                  prod_static['ncomb'],
+                                  prod_static['dimension'],
+                                  frame_boost=self._frame_boost(prod_on),
+                                  hel_restriction=prod_static.get('hel_restriction'),
+                                  hel_restriction_trace=prod_static.get('hel_restriction_trace'))
+        return rho_on.trace().real
+
     def _sequential_offshell(self):
         """Whether the sequential accept/reject runs its offshell (madspin/full)
         branch: the production density is evaluated at reshuffled momenta, so the
@@ -10176,6 +10431,14 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if mass is not None:
                     copy[0].new_mass = mass
                     copy[0].reshuffle_info = decay[0].reshuffle_info
+                # which channel the draw dealt this slot, so the joint route
+                # recomputed here gets the same decay symmetry factor the real
+                # joint route would (a constant either way, and this check only
+                # asks for proportionality -- but there is no reason to make it
+                # compare two different weights)
+                for tag in ('ms_channel', 'ms_positional'):
+                    if hasattr(decay, tag):
+                        setattr(copy, tag, getattr(decay, tag))
                 decays_copy[pdg].append(copy)
                 slot += 1
         # the Breit-Wigner sampling jacobians: the joint path folds them in
@@ -10366,7 +10629,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if offshell:
             me_prod_on = getattr(production, 'me_wgt', None)
             if not me_prod_on:
-                me_prod_on = self.calculate_matrix_element(production)
+                # The denominator has to be the same quantity as the numerator,
+                # in the same frame: Tr(rho_off) is built in the me_frame while
+                # calculate_matrix_element hands the matrix element the LAB
+                # momenta, and a helicity-restricted matrix element is not
+                # Lorentz invariant.  Unpolarised runs have no frame boost and
+                # keep the matrix-element call, bit for bit.
+                me_prod_on = self._onshell_production_norm(production,
+                                                           prod_static)
                 production.me_wgt = me_prod_on
             if not me_prod_on:
                 # a production event with no matrix element cannot be normalised
@@ -11016,10 +11286,17 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         # Calculate production*decay ME
         if self.generate_all.mode == 'onshell':
+            # MG5 builds the identical-particle factor of the *decay-chain*
+            # process into its IDEN, and it depends on which final state the
+            # chains were drawn to; the production ME in the denominator
+            # carries the factor of the undecayed process instead. Divide the
+            # mismatch out before the two are combined -- see
+            # _decay_chain_identical_factor.
+            iden_ratio = self._decay_chain_identical_factor(production, decays)
             full_event = lhe_parser.Event(str(production))
             full_event = full_event.add_decays(decays)
             #print(f"full_event = {full_event}")
-            full_me = self.calculate_matrix_element(full_event)
+            full_me = self.calculate_matrix_element(full_event) * iden_ratio
             #print(f"full_me = {full_me}")
         else:
             #offshell mode
@@ -11339,7 +11616,12 @@ class MadSpinInterface(extended_cmd.Cmd):
             if not density_pole_approximation:
                 # compute the denominator and then reshuffle the event before 
                 # computing the numerator 
-                MEdenom_prod = self.calculate_matrix_element(production)  
+                # same frame-consistency fix as on the sequential mass
+                # stage: the numerator is the contraction of the (possibly
+                # restricted) production density built in the me_frame, so the
+                # denominator cannot be the lab-frame matrix element.
+                MEdenom_prod = self._onshell_production_norm(production,
+                                                             prod_static)
                 MEdenom_decay = 1.0              
                 for key in decays:
                     for dec in decays[key]:
@@ -11418,24 +11700,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         else:
             density_prod = prod_density_cached
 
-        # ------------------------------------------------------------------
-        # Symmetry factor:
-        # For each parent-PDG group with N identical parents and decay-channel
-        # multiplicities {n_k}, the factor that belongs to the denominator is:
-        #   sym_group = (Π_k n_k!) / (N!)
-        # and sym_factor_decay = Π_groups sym_group.
-        # ------------------------------------------------------------------
-        sym_factor_decay = 1.0
+        # Decay symmetry factor: Π_k n_k!/N! per parent pdg whose N identical
+        # parents were DEALT their channels, n_k counting the dealt channels.
+        # It compensates the one assignment a positional deal generates out of
+        # N!/Π_k n_k! of them; parents that draw from a single merged pool
+        # sample the assignments themselves and take no factor. Full rationale,
+        # and what keying it on the drawn final state used to cost, in
+        # _decay_symmetry_factor.
+        sym_factor_decay = self._decay_symmetry_factor(decays)
 
-        # Canonical decay-channel signature: sorted final-state PDGs only.
-        def _decay_signature(dec_evt):
-            pdgs = []
-            for p in dec_evt:
-                if p.status == 1:
-                    pdgs.append(int(p.pid))
-            pdgs.sort()
-            return tuple(pdgs)
-        
         # ------------------------------------------------------------------
         # Build total decay density matrix as tensor product
         # ------------------------------------------------------------------
@@ -11444,23 +11717,6 @@ class MadSpinInterface(extended_cmd.Cmd):
 
         for pdg, decay_event_list in decays.items():
             N = len(decay_event_list)
-
-            # decay symmetry for this PDG group
-            if N > 1:
-                # Fast path for N==2 avoids building multiplicity maps.
-                if N == 2:
-                    if _decay_signature(decay_event_list[0]) != _decay_signature(decay_event_list[1]):
-                        sym_factor_decay *= 0.5
-                else:
-                    sig_counts = {}
-                    for evt in decay_event_list:
-                        sig = _decay_signature(evt)
-                        sig_counts[sig] = sig_counts.get(sig, 0) + 1
-                    sym = 1
-                    for nk in sig_counts.values():
-                        if nk > 1:
-                            sym *= math.factorial(nk)
-                    sym_factor_decay *= (sym / float(math.factorial(N)))
 
             # particle properties for this parent PDG
             width = decay_dict[pdg][0]

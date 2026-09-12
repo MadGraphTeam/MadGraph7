@@ -1,9 +1,9 @@
-// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-// Created by: J. Alwall (Oct 2010) for the MG5aMC CPP backend.
+// Copyright (C) 2010 The MadGraph7 development team and contributors.
+// Created by: J. Alwall (Oct 2010) for the MadGraph7 CPP backend.
 //==========================================================================
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Modified originally by: O. Mattelaer (Nov 2020) for the MG5aMC CUDACPP plugin.
+// Modified originally by: O. Mattelaer (Nov 2020) for the MadGraph7 CUDACPP plugin.
 // Further modified by: S. Hageboeck, D. Massaro, O. Mattelaer, S. Roiser, J. Teig, A. Thete, A. Valassi (2020-2026).
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
@@ -529,7 +529,7 @@ namespace
       return p;
     }
 
-    // Auxiliary function changing convention between MadGraph5_aMC@NLO and
+    // Auxiliary function changing convention between MadGraph7 and
     // RAMBO four-momenta (same as get_momenta in the standalone_cpp driver).
     inline std::vector<std::vector<double>>
     get_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
@@ -648,6 +648,8 @@ namespace
     }
     const std::vector<fptype> masses( massesD.begin(), massesD.end() ); // RamboSamplingKernelHost takes vector<fptype>
 
+    // NB: feed the double-precision masses to the classic RAMBO, which works in
+    // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
     std::vector<std::vector<double>> point =
       classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 

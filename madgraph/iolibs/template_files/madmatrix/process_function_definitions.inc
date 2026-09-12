@@ -1,9 +1,9 @@
-! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-! Created by: J. Alwall (Jul 2010) for the MG5aMC CPP backend.
+! Copyright (C) 2010 The MadGraph7 development team and contributors.
+! Created by: J. Alwall (Jul 2010) for the MadGraph7 CPP backend.
 !==========================================================================
 ! Copyright (C) 2020-2026 CERN and UCLouvain.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
+! Modified originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
 ! Further modified by: J. Teig, A. Valassi, Z. Wettersten (2021-2025).
 ! Integrated with the MadGraph7 project in Feb 2026.
 !==========================================================================
@@ -83,7 +83,8 @@ namespace mg5amcCpu
   constexpr int npar = CPPProcess::npar;     // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
   constexpr int ncomb = CPPProcess::ncomb;   // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
   constexpr int ncolor = CPPProcess::ncolor; // the number of leading colors
-  constexpr int nmaxflavor = CPPProcess::nmaxflavor; // the maximum number of flavor combinations
+  constexpr int ncolor_flow = CPPProcess::ncolor_flow; // the color structures the color flow is picked among
+  constexpr int nmaxflavor = CPPProcess::nmaxflavor; // the maximum number of flavor combinations%(jampso_aliases)s
 
   // [NB: I am currently unable to get the right value of nwf in CPPProcess.h - will hardcode it in CPPProcess.cc instead (#644)]
   //using CPPProcess::nwf; // #wavefunctions = #external (npar) + #internal: e.g. 5 for e+ e- -> mu+ mu- (1 internal is gamma or Z)
@@ -575,9 +576,9 @@ namespace mg5amcCpu
         constexpr fptype_amp_sv* jamp2_sv = nullptr; // no need for color selection during helicity filtering
         //std::cout << "sigmaKin_getGoodHel ihel=" << ihel << ( isGoodHel[ihel] ? " true" : " false" ) << std::endl;
 #if defined MGONGPU_CPPSIMD and !(defined MGONGPU_FPTYPE_AMP_FLOAT) and defined MGONGPU_FPTYPE2_FLOAT
-        cxtype_amp_sv jamp_sv[2 * ncolor] = {}; // all zeros
+        cxtype_amp_sv jamp_sv[2 * %(jamp_ncolor)s] = {}; // all zeros
 #else
-        cxtype_amp_sv jamp_sv[ncolor] = {};  // all zeros
+        cxtype_amp_sv jamp_sv[%(jamp_ncolor)s] = {};  // all zeros
 #endif
         calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 ); //maxtry?
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
@@ -715,7 +716,19 @@ namespace mg5amcCpu
       if( mulChannelWeight )
       {
         unsigned int channelId = allChannelIds[ievt];
-        allMEs[ievt] *= numerators[channelId - 1] / denominator;
+        // denominator == 0 means every diagram's |amp|^2 vanishes for this event (a
+        // subprocess whose matrix element is identically zero); 0/0 would turn a zero
+        // matrix element into a nan. Floored rather than tested, so that -ffast-math
+        // cannot drop the guard -- see process_sigmaKin_function.inc for the reasoning.
+        // NB: the floor is the DBL_MIN/FLT_MIN macro rather than std::numeric_limits
+        // <fptype>::min(), which is a __host__ constexpr function and cannot be called
+        // from device code (it needs the experimental '--expt-relaxed-constexpr').
+#if defined MGONGPU_FPTYPE_DOUBLE
+        constexpr fptype fptypeMin = DBL_MIN; // smallest normal double
+#elif defined MGONGPU_FPTYPE_FLOAT
+        constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
+#endif
+        allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
     return;
@@ -764,7 +777,7 @@ namespace mg5amcCpu
                        const fptype* allrndcol,           // input: random numbers[nevt] for color selection
                        const fptype* allrnddiagram,       // input: random numbers[nevt] for diagram selection
                        const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
-                       const fptype_amp_sv* allJamp2s,        // input: jamp2[ncolor][nevt] for color choice (nullptr if disabled)
+                       const fptype_amp_sv* allJamp2s,        // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
                        const fptype_amp* allNumerators,       // input: all numerators
                        const fptype_amp* allDenominators,     // input: all denominators
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
@@ -805,11 +818,11 @@ namespace mg5amcCpu
         assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
       }
       // Determine the jamp2 for this event (TEMPORARY? could do this with a dedicated memory accessor instead...)
-      fptype_amp_sv jamp2_sv[ncolor] = { 0 };
+      fptype_amp_sv jamp2_sv[ncolor_flow] = { 0 };
       assert( allJamp2s != nullptr ); // sanity check
       
       using J2_ACCESS = DeviceAccessJamp2;
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
         jamp2_sv[icolC] = J2_ACCESS::kernelAccessIcolConst( allJamp2s, icolC );
       // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
       // NB (see #917): mgOnGpu::channel2iconfig returns an int (which may be -1), not an unsigned int!
@@ -824,9 +837,9 @@ namespace mg5amcCpu
         printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%%d (invalid SDE iconfig=%%d\n > nconfig=%%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
         assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
       }
-      fptype_amp targetamp[ncolor] = { 0 };
+      fptype_amp targetamp[ncolor_flow] = { 0 };
       // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
         if( icolC == 0 )
           targetamp[icolC] = 0;
@@ -836,9 +849,9 @@ namespace mg5amcCpu
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       //printf( "sigmaKin: ievt=%%4d rndcol=%%f\n", ievt, allrndcol[ievt] );
-      for( int icolC = 0; icolC < ncolor; icolC++ )
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
       {
-        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor - 1] ) )
+        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
           allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
           //printf( "sigmaKin: ievt=%%d icol=%%d\n", ievt, icolC+1 );

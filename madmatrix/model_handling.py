@@ -1,6 +1,6 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: O. Mattelaer (Sep 2021) for the MG5aMC CUDACPP plugin.
+# Created originally by: O. Mattelaer (Sep 2021) for the MadGraph7 CUDACPP plugin.
 # Further modified by: O. Mattelaer, J. Teig, A. Valassi, Z. Wettersten (2021-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -16,8 +16,10 @@ PLUGIN_NAME = __name__.rsplit('.',1)[0]
 logger = logging.getLogger('madgraph.%s.model_handling'%PLUGIN_NAME)
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
 
+from madgraph import MadGraph5Error
 from madgraph.iolibs import export_cpp, export_mg7
 from madgraph.iolibs import file_writers as writers
+from madgraph.iolibs import jamp_optimiser
 
 import aloha
 from aloha import aloha_writers
@@ -304,6 +306,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         for type, name in self.declaration.tolist():
             ###print(name) # FOR DEBUGGING
             ###out.write('    %s %s;\n' % ( type, name ) ) # FOR DEBUGGING
+            if type == 'fct':
+                continue # OM an external function name (e.g. 'pow'): nothing to declare in C++
+            if type == 'parameter':
+                out.write(self.get_model_parameter_txt(name)) # OM a model parameter used in the body (custom propagators)
+                continue
             if type.startswith('list'):
                 type = type[5:]
                 if name.startswith('P'):
@@ -345,6 +352,38 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 out.write('    %s;\n' % codedict[fullname] ) # AV old behaviour (separate declaration with no initialization)
         ###out.write('    // END DECLARATION\n') # FOR DEBUGGING
         return out.getvalue()
+
+    # OM - the names of the aS-dependent parameters, filled by write_aloha_routines.
+    # They are recomputed event by event from G inside computeDependentCouplings_fromG,
+    # so they have no addressable value a HelAmps routine could read.
+    dependent_params = ()
+
+    # OM - the body of a routine may refer to a model parameter: this happens for
+    # the custom propagators of a UFO model, whose numerator/denominator are
+    # written in terms of model parameters (e.g. the width corrections dWT, dWZ,
+    # dWW and dWH of SMEFTsim). aloha_writers.ALOHAWriterForCPP reads them from
+    # the Parameters singleton; that is host-only code, so on GPUs the value has
+    # to be a compile-time constant, i.e. HRDCOD=1 is required there.
+    def get_model_parameter_txt(self, name):
+        """Define a model parameter which the routine body uses"""
+        # ALOHA sees the UFO name ('dWT'), the generated Parameters class uses
+        # the prefixed one ('mdl_dWT'), exactly as in the fortran writer
+        mdlname = '%s%s' % (aloha.aloha_prefix, name)
+        if mdlname in self.dependent_params:
+            raise MadGraph5Error(
+                'The custom propagator used by routine %s needs the model parameter %s, '
+                'which depends on alphaS and is therefore recomputed event by event. '
+                'The C++/CUDA backend can only read alphaS-independent parameters inside '
+                'a HelAmps routine, so this process can only be generated with '
+                '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
+        return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
+                '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
+                '#elif !defined MGONGPUCPP_GPUIMPL\n'
+                '    const auto %(var)s = Parameters::getInstance()->%(mdl)s;\n'
+                '#else\n'
+                '#error Model parameter %(mdl)s is used inside a HelAmps routine '
+                '(custom propagator) and is not available in device code: rebuild with HRDCOD=1\n'
+                '#endif\n') % { 'var': name, 'mdl': mdlname }
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This affects 'V1[0] = ' in HelAmps_sm.cc
@@ -615,6 +654,16 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    %s = C_ACCESS::kernelAccessConst( M%s.value + C_ACCESS::flv_stride*flv_index1 );\n' % (name, name))
         return out.getvalue()
 
+    # OM - add the formats which aloha_writers.ALOHAWriterForCPP is missing.
+    # Without this 'pow' falls back to std::pow, which has no overload for the
+    # (possibly SIMD) complex types: cxpow in HelAmps expands the integer power.
+    def get_fct_format(self, fct):
+        """Put the function in the correct format"""
+        if not hasattr(self, 'fct_format'):
+            super().get_fct_format('sqrt') # a known key: builds self.fct_format with no side effect
+            self.fct_format['pow'] = 'cxpow( %s, %s )'
+        return super().get_fct_format(fct)
+
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This is called once per FFV function, i.e. once per WriteALOHA instance?
     # It is called by WriteALOHA.write, after get_header_txt, get_declaration_txt, get_momenta_txt, before get_foot_txt
@@ -639,8 +688,19 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                     out.write('    %s = %s;\n' % (name, self.write_obj(obj))) # AV
                     self.declaration.add(('complex', name))
         for name, (fct, objs) in self.routine.fct.items():
-            format = ' %s = %s;\n' % (name, self.get_fct_format(fct))
-            out.write(format % ','.join([self.write_obj(obj) for obj in objs])) # AV not used in eemumu?
+            # OM the FCTn variable needs to be defined, not only assigned (and
+            # write_combined_parts_cc looks for exactly this 'const <type> FCTn ='
+            # form when it merges the structures of an assembled routine)
+            if self.nodeclare:
+                format = '    const %s %s = %s;\n' % (self.type2def['complex_v'], name, self.get_fct_format(fct))
+            else:
+                format = '    %s = %s;\n' % (name, self.get_fct_format(fct))
+                self.declaration.add(('complex', name))
+            args = [self.write_obj(obj) for obj in objs]
+            try:
+                out.write(format % ','.join(args)) # single-argument formats
+            except TypeError:
+                out.write(format % tuple(args)) # e.g. 'pow', which takes two
         numerator = self.routine.expr
         if self.coup_name:
             # one term of an assembled routine: its own coupling among COUP1, ...
@@ -1627,6 +1687,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Read in the template .h and .cc files, stripped of compiler commands and namespaces
         template_h_files = self.read_aloha_template_files(ext = 'h')
         template_cc_files = self.read_aloha_template_files(ext = 'cc')
+        # OM - the writer needs to know which parameters are alphaS-dependent (they
+        # cannot be read from the Parameters class inside a routine)
+        self.aloha_writer.dependent_params = frozenset(p.name for p in self.params_dep)
         if(fd_gauge):
             aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'), explicit_combine=False)
         else:
@@ -1723,6 +1786,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     process_wavefunction_template = pjoin('madmatrix', 'cpp_process_wavefunctions.inc')
     process_sigmaKin_function_template = pjoin('madmatrix', 'process_sigmaKin_function.inc')
     single_process_template = pjoin('madmatrix', 'process_matrix.inc')
+    blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
+    blas_helicity_loop_template = pjoin('madmatrix', 'color_sum_blas_loop.inc')
+    # Below this many colors the SYMM call is not worth setting up and the
+    # scalar sum wins (see cpp_blas_wanted_for)
+    blas_min_ncolor = 100
     support_multichannel = False
     multichannel_var = ',fptype& multi_chanel_num, fptype& multi_chanel_denom'
     imaginary_unit = "cxtype_amp(0,1)"
@@ -1746,6 +1814,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_process_class_definitions(self, write=True):
         replace_dict = super().get_process_class_definitions(write=False)
         replace_dict['process_lines'] = replace_dict['process_lines'].replace('\n','\n  ')
+        # ncolor_flow sits next to ncolor in the class, so it has to be known
+        # here as well as in get_process_function_definitions
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
         ###misc.sprint( replace_dict['nwavefuncs'] ) # NB: this (from export_cpp) is the WRONG value of nwf, e.g. 6 for gg_tt (#644)
         ###misc.sprint( self.matrix_elements[0].get_number_of_wavefunctions() ) # NB: this is a different WRONG value of nwf, e.g. 7 for gg_tt (#644)
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # how do I get HERE the right value of nwf, e.g. 5 for gg_tt?
@@ -1755,6 +1826,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams')) # AV FIXME #910: elsewhere matrix_element.get('diagrams') and max(config[0]...
         replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
+        # Only written when the jamps are actually split, so that a process
+        # without squared split orders keeps the header it always had
+        so = self.split_orders_info()
+        replace_dict['split_order_constants'] = '' if not self.split_orders_active() else (
+            '\n    // Squared split orders: the amplitudes fall into nampso amplitude'
+            '\n    // orders, the jamps carry one vector per order (njampso long in total)'
+            '\n    // and the color sum pairs them into nsqampso squared orders'
+            '\n    // (see color_sum.cc, written from color_sum_splitorders.cc).'
+            '\n    static constexpr int nampso = %d;'
+            '\n    static constexpr int njampso = ncolor * nampso; // the jamps of every amplitude order, end to end'
+            '\n    static constexpr int nsqampso = %d;' % (so['nampso'], so['nsqampso']))
         replace_dict['nwave'] = 4
         if (fd_gauge): replace_dict['nwave'] += 1
 
@@ -1777,6 +1859,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """The complete class definition for the process"""
         replace_dict = super().get_process_function_definitions(write=False) # defines replace_dict['initProc_lines']
         replace_dict['hardcoded_initProc_lines'] = replace_dict['initProc_lines'].replace( 'm_pars->', 'Parameters::')
+        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
+        # Only pulled into scope when the jamps are split, so that a process
+        # without split orders keeps exactly the constants it always had
+        replace_dict['jampso_aliases'] = '' if not self.split_orders_active() else (
+            '\n  constexpr int nampso = CPPProcess::nampso;   // the amplitude split orders'
+            '\n  constexpr int njampso = CPPProcess::njampso; // ncolor * nampso: the jamps of every order, end to end')
         couplings2order_indep = []
         ###replace_dict['ncouplings'] = len(self.couplings2order)
         ###replace_dict['ncouplingstimes2'] = 2 * replace_dict['ncouplings']
@@ -1973,6 +2061,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False)
                             for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
         replace_dict['ncolor'] = len(color_amplitudes[0])
+        # The color sum can run on the (n-2)! DDM basis while the color flow
+        # probabilities keep using the (n-1)! trace one
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
         # broken_symmetry_factor function: use the shared decay-aware symmetry
         # data (same as the Fortran / standalone_cpp exporters) instead of the
         # old simple PID-count version, so identical-particle and decay-chain
@@ -1999,6 +2090,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict = super().get_sigmaKin_lines(color_amplitudes, write=False)
         replace_dict['proc_id'] = self.proc_id if self.proc_id>0 else 1
         replace_dict['proc_id_source'] = 'MadMatrix exporter'
+        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
 
         # Extract denominator (avoid to extend size for mirroring)
         den_factors = [str(me.get_denominator_factor()) for me in \
@@ -2013,7 +2105,17 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
 
         replace_dict['nb_channel'] = len(self.multi_channel_map)
-        replace_dict['nb_color'] = max(1, len(self.matrix_elements[0].get('color_basis')))
+        # same meaning as in edit_coloramps: the number of color flows, which
+        # is not the size of the color basis when the color sum runs on the DDM one
+        replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
+
+        replace_dict['cpp_blas_helicity_loop'] = ''
+        replace_dict['cpp_blas_helicity_loop_end'] = ''
+        if self.cpp_blas_wanted():
+            replace_dict['cpp_blas_helicity_loop'] = \
+                self.read_template_file(self.blas_helicity_loop_template)
+            replace_dict['cpp_blas_helicity_loop_end'] = \
+                '\n#endif // MGONGPU_CPP_HAS_BLAS'
 
         if write:
             file = self.read_template_file(self.process_sigmaKin_function_template) % replace_dict
@@ -2026,6 +2128,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
         """Get sigmaKin_process for all subprocesses for CPPProcess.cc"""
         ret_lines = []
+        # The jamps are one vector per amplitude split order, njampso long in
+        # total; 'ncolor' without them, so the default output is unchanged.
+        jamp_dim = 'njampso' if self.split_orders_active() else 'ncolor'
         if self.single_helicities:
             ###misc.sprint(type(self.helas_call_writer))
             ###misc.sprint( 'before get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # WRONG value of nwf, eg 7 for gg_tt
@@ -2070,7 +2175,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    bool storeChannelWeights,
                    fptype_amp* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype_amp* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
-                   fptype_amp* colAllJamp2s,              // output: allJamp2s[ncolor][nevt] super-buffer, sum over col/hel (nullptr to disable)
+                   fptype_amp* colAllJamp2s,              // output: allJamp2s[ncolor_flow][nevt] super-buffer, sum over col/hel (nullptr to disable)
                    const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
                    const bool processAllHelicities    // input: if true, use blockIdx.y to index helicities
 #else
@@ -2078,7 +2183,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                    bool storeChannelWeights,
                    fptype_amp* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel (channel hel amps -> fptype_amp)
                    fptype_amp* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel (channel hel amps -> fptype_amp)
-                   fptype_amp_sv* jamp2_sv,               // output: jamp2[nParity][ncolor][neppV] for color choice (nullptr if disabled)
+                   fptype_amp_sv* jamp2_sv,               // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
                    const int ievt00                   // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
 #endif
                    )
@@ -2158,8 +2263,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             ret_lines.append("""
     // Local variables for the given CUDA event (ievt) or C++ event page (ipagV)
     // [jamp: sum (for one event or event page) of the invariant amplitudes for all Feynman diagrams in a given color combination]
-    cxtype_amp_sv jamp_sv[ncolor] = {}; // all zeros (NB: vector cxtype_v IS initialized to 0, but scalar cxtype is NOT, if "= {}" is missing!)
-
+    cxtype_amp_sv jamp_sv[%s] = {}; // all zeros (NB: vector cxtype_v IS initialized to 0, but scalar cxtype is NOT, if "= {}" is missing!)""" % jamp_dim)
+            # Shared sub-expressions of the color flows, filled in while the
+            # amplitudes go by (see MadMatrixUFOHelasCallWriter.build_jamp_plan).
+            # No "= {}": each one is assigned before it is ever read.
+            nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
+            if nb_tmp_jamp:
+                ret_lines.append("""
+    // [jampTmp: partial sums of amplitudes that several color flows share, so that they are computed only once]
+    cxtype_amp_sv jampTmp_sv[%i];""" % nb_tmp_jamp)
+            ret_lines.append("""
     // === Calculate wavefunctions and amplitudes for all diagrams in all processes         ===
     // === (for one event in CUDA, for one - or two in mixed mode - SIMD event pages in C++ ===
 
@@ -2240,14 +2353,165 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
+    _blas_available = None
+    _blas_flags = ''
+
+    @classmethod
+    def blas_is_available(cls):
+        """Whether a BLAS carrying SYMM can be linked, asked once. The probe
+        goes through gfortran, which is the compiler MG5 already knows it has;
+        the flags it settles on are the ones the C++ link line needs too."""
+
+        if cls._blas_available is None:
+            import subprocess, tempfile, shutil
+            probe = ("      PROGRAM P\n"
+                     "      DOUBLE PRECISION A(1,1),B(1,1),C(1,1)\n"
+                     "      A=1D0\n      B=1D0\n      C=0D0\n"
+                     "      CALL DSYMM('L','U',1,1,1D0,A,1,B,1,0D0,C,1)\n"
+                     "      END\n")
+            work = tempfile.mkdtemp()
+            cls._blas_available = False
+            cls._blas_flags = ''
+            try:
+                src = os.path.join(work, 'p.f')
+                open(src, 'w').write(probe)
+                for flags in ('-framework Accelerate', '-lblas'):
+                    try:
+                        out = subprocess.call(
+                            ['gfortran', src, '-o', os.path.join(work, 'p')]
+                            + flags.split(),
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+                    except OSError:
+                        break
+                    if out == 0:
+                        cls._blas_available = True
+                        cls._blas_flags = flags
+                        break
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        return cls._blas_available
+
+    @classmethod
+    def blas_available_flags(cls):
+        """What a BLAS carrying SYMM needs on the link line, empty when there
+        is none. This only asks whether one is there; whether a given process
+        takes it is cpp_blas_wanted_for."""
+
+        if not cls.blas_is_available():
+            return ''
+        return cls._blas_flags
+
+    # AV - new method (add the split-order holes to process_matrix.inc)
+    def get_matrix_single_process(self, i, matrix_element, color_amplitudes,
+                                  class_name, write=True):
+        replace_dict = super().get_matrix_single_process(
+            i, matrix_element, color_amplitudes, class_name, write=False)
+        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
+        # set_color_flow_lines_cpp fills jamp_flow / jamp_flow_col; it runs from
+        # get_process_class_definitions, before this, but be explicit rather
+        # than rely on the ordering of two independent methods.
+        if 'jamp_flow_col' not in replace_dict:
+            self.set_color_flow_lines_cpp(matrix_element, replace_dict)
+        if write:
+            return self.read_template_file(self.single_process_template) % replace_dict
+        return replace_dict
+
+    # AV - new method
+    def jamp_ncolor(self):
+        """The length of a jamp array: 'ncolor', or 'njampso' (= ncolor*nampso)
+        once the jamps carry an amplitude-order index. Templates spell the size
+        through this hole so that a process without split orders gets exactly
+        the text it got before they existed."""
+        return 'njampso' if self.split_orders_active() else 'ncolor'
+
+    # AV - new method
+    def split_orders_info(self):
+        """The squared split-order tables for this process, or None.
+
+        None means the process has no '^2' constraint, and then every hole this
+        fills reproduces the code that was written before split orders existed
+        -- which is how the default path stays byte-for-byte what it was.
+        """
+        if not hasattr(self, '_split_orders_info'):
+            from madgraph.iolibs.export_v4 import split_order_tables
+            self._split_orders_info = split_order_tables(self.matrix_elements[0])
+        return self._split_orders_info
+
+    def split_orders_active(self):
+        """Whether the jamps carry an amplitude-order index at all.
+
+        A single amplitude order is the same code as none: the pair loop of the
+        color sum has one term, so it is left switched off rather than writing
+        a 1x1 interference matrix."""
+        so = self.split_orders_info()
+        return bool(so) and so['nampso'] > 1
+
+    # AV - new method
+    @classmethod
+    def cpp_blas_wanted_for(cls, ncolor):
+        """Whether the C++ color sum goes through a host BLAS: only when one
+        carrying SYMM can be linked, and when the color matrix is big enough
+        that the call is worth setting up. With BLAS off nothing is written
+        out, so color_sum.cc and CPPProcess.cc are character for character the
+        files written before any of this existed."""
+        if not cls.blas_is_available():
+            return False
+        return ncolor >= cls.blas_min_ncolor
+
+    def cpp_blas_wanted(self):
+        # The BLAS color sum multiplies a single jamp vector per helicity by the
+        # color matrix. With the jamps split by amplitude order the sum is a
+        # pair loop instead, so the scalar color sum is used for those.
+        if self.split_orders_active():
+            return False
+        return self.cpp_blas_wanted_for(
+            max(1, len(self.matrix_elements[0].get('color_basis'))))
+
+    # AV - new method
+    def get_sqso_table_lines(self):
+        """The interference matrix and the squared-order mask, as C++ tables.
+
+        sqSoIndex[m][n] is the Fortran SQSOINDEX: the squared order a pair of
+        amplitude orders lands in. It is symmetric because a squared order is
+        the SUM of the two amplitude orders, which is what lets color_sum_cpu
+        mask on it and still get a real answer."""
+        so = self.split_orders_info()
+        lines = []
+        lines.append('  // The squared order each pair of amplitude orders'
+                     ' contributes to (symmetric)')
+        lines.append('  static constexpr int sqSoIndex[nampso][nampso] = {')
+        lines.append(',\n'.join('    { %s }' % ', '.join(str(i) for i in row)
+                                for row in so['sqsoindex']))
+        lines.append('  };')
+        lines.append('  // The squared orders the process asked for:')
+        for k, (name, keep) in enumerate(zip(so['names'], so['chosen'])):
+            lines.append('  //   %d) %s%s' % (k, name,
+                                              '' if keep else '   [dropped]'))
+        lines.append('  static constexpr bool chosenSqso[nsqampso] = { %s };'
+                     % ', '.join('true' if k else 'false'
+                                 for k in so['chosen']))
+        return '\n'.join(lines)
+
     # AV - new method
     def edit_colorsum(self):
         """Generate color_sum.cc"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
-        template = open(pjoin(self.template_path,'madmatrix','color_sum.cc'),'r').read()
+        # A process whose '^2' constraint leaves more than one amplitude split
+        # order gets the dedicated pair-loop color sum instead (see that file).
+        split = self.split_orders_active()
+        name = 'color_sum_splitorders.cc' if split else 'color_sum.cc'
+        template = open(pjoin(self.template_path,'madmatrix',name),'r').read()
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
+        if split:
+            replace_dict['sqso_tables'] = self.get_sqso_table_lines()
+        replace_dict['cpp_blas_color_sum'] = ''
+        if self.cpp_blas_wanted():
+            replace_dict['cpp_blas_color_sum'] = strip_banner(
+                open(pjoin(self.template_path, self.blas_color_sum_template), 'r').read(),
+                banner_mark='/')
         ff = open(pjoin(self.path, 'color_sum.cc'),'w')
         ff.write(template % replace_dict)
         ff.close()
@@ -2312,7 +2576,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nb_channel'] = len(self.active_color_map)
         # here I can do the conversion in between the active color map and true, false, and obtain a C++ compatible thing immediately
         replace_dict['nb_diag'] = nb_diag
-        nb_color = max(1, len(self.color_basis))
+        # icolamp is the mask of the color flows allowed for a config, and the
+        # selection walks it over ncolor_flow entries, so it is dimensioned on
+        # the flow basis -- which is larger than the color basis itself when
+        # the color sum runs on the DDM one
+        nb_color = max(1, len(self.color_flow_basis))
         replace_dict['nb_color'] = nb_color
         # AV extra formatting (e.g. gg_tt was "{{true,true};,{true,false};,{false,true};};")
         ###misc.sprint(replace_dict['is_LC'])
@@ -2382,29 +2650,103 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return replace_dict
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix fptype and improve formatting)
+    def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
+        """Fill in replace_dict everything the process template needs to know
+        about the color flow basis.
+
+        For a fully adjoint (multi-gluon) process the color sum can be done on
+        the (n-2)! Del Duca-Dixon-Maltoni basis, but a color flow still has to
+        be picked among the (n-1)! trace structures. The trace jamps are then
+        not built from the amplitudes but obtained from the DDM ones through
+        the Kleiss-Kuijf relations, which is (n-1) times cheaper."""
+
+        color_basis = matrix_element.get('color_basis')
+        flow_basis = color_basis.get_flow_basis() if color_basis else None
+
+        # A color flow is picked from the WHOLE amplitude, so when the jamps are
+        # split by amplitude order the flow is built from their sum: the color
+        # flow amplitude of flow i is sum_M jamp_M[i], and squaring that gives
+        # back exactly today's jamp2 when there is a single amplitude order.
+        # (The squared-order mask is deliberately not applied here: this weight
+        # only chooses which color flow to write out, it is not an observable.)
+        so = self.split_orders_info()
+        split = bool(so) and so['nampso'] > 1
+        jamp_src = 'jamp_sv'
+        so_lines = []
+        if split:
+            jamp_src = 'jampso_sv'
+            so_lines = ['',
+                        '      // The color flows of the whole amplitude: the'
+                        ' jamps of every',
+                        '      // amplitude split order summed back together'
+                        ' (see color_sum.cc,',
+                        '      // which instead keeps them apart and pairs'
+                        ' them)',
+                        '      cxtype_sv jampso_sv[ncolor] = {};',
+                        '      for( int icol = 0; icol < ncolor; icol++ )',
+                        '        for( int iao = 0; iao < nampso; iao++ )',
+                        '          jampso_sv[icol] += jamp_sv[iao * ncolor +'
+                        ' icol];']
+
+        if flow_basis is None or flow_basis is color_basis:
+            replace_dict['ncolor_flow'] = replace_dict['ncolor']
+            replace_dict['jampflow_lines'] = '\n'.join(so_lines)
+            replace_dict['jamp_flow'] = jamp_src
+            replace_dict['jamp_flow_col'] = '%s[icol]' % jamp_src
+            return
+
+        projection = color_basis.get_flow_projection()
+        lines = so_lines + ['',
+                 '      // The color flow jamps, rebuilt from the ones entering',
+                 '      // the color sum through the Kleiss-Kuijf relations',
+                 '      cxtype_sv jampf_sv[ncolor_flow] = {};']
+        for i, coeff_list in enumerate(projection):
+            terms = ''.join('%s%s[%d]' % (self.coeff(coefficient[0],
+                                                     coefficient[1],
+                                                     coefficient[2],
+                                                     coefficient[3]),
+                                          jamp_src,
+                                          number - 1)
+                            for coefficient, number in coeff_list)
+            lines.append('      jampf_sv[%d] = %s;' % (i, terms if terms
+                                                       else 'cxzero_sv()'))
+
+        replace_dict['ncolor_flow'] = max(1, len(flow_basis))
+        replace_dict['jampflow_lines'] = '\n'.join(lines)
+        replace_dict['jamp_flow'] = 'jampf_sv'
+        replace_dict['jamp_flow_col'] = 'jampf_sv[icol]'
+
+        logger.debug('Color sum on %d DDM structures, color flow on %d trace '
+                     'structures (%d Kleiss-Kuijf terms)',
+                     replace_dict['ncolor'], replace_dict['ncolor_flow'],
+                     sum(len(row) for row in projection))
+
     def get_color_matrix_lines(self, matrix_element):
         """Return the color matrix definition lines for this matrix element. Split rows in chunks of size n."""
-        import madgraph.core.color_algebra as color
         if not matrix_element.get('color_matrix'):
-            return '\n'.join(['  static constexpr fptype_colour colorDenom[1] = {1.};', 'static const fptype_colour cf[1][1] = {1.};'])
+            return '\n'.join([
+                '  static constexpr fptype_colour colorDenom[1] = {1.};',
+                '  static constexpr fptype_colour colorMatrix[1][1] = {1.};'])
         else:
             color_denominators = matrix_element.get('color_matrix').\
                                                  get_line_denominators()
+            num_lists = [matrix_element.get('color_matrix').
+                             get_line_numerators(index, denominator)
+                         for index, denominator
+                         in enumerate(color_denominators)]
+            ncolor = len(color_denominators)
             denom_string = '  static constexpr fptype_colour colorDenom[ncolor] = { %s }; // 1-D array[%i]' \
-                           % ( ', '.join(['%i' % denom for denom in color_denominators]), len(color_denominators) )
-            matrix_strings = []
-            for index, denominator in enumerate(color_denominators):
-                # Then write the numerators for the matrix elements
-                num_list = matrix_element.get('color_matrix').get_line_numerators(index, denominator)
-                matrix_strings.append('{ %s }' % ', '.join(['%d' % i for i in num_list]))
+                           % ( ', '.join(['%i' % denom for denom in color_denominators]), ncolor )
+            matrix_strings = ['{ %s }' % ', '.join(['%d' % i for i in num_list])
+                              for num_list in num_lists]
             matrix_string = '  static constexpr fptype_colour colorMatrix[ncolor][ncolor] = '
             if len( matrix_strings ) > 1:
                 matrix_string += '{\n    ' + ',\n    '.join(matrix_strings) + ' };'
             else:
                 matrix_string += '{ ' + matrix_strings[0] + ' };'
-            matrix_string += ' // 2-D array[%i][%i]' % ( len(color_denominators), len(color_denominators) )
-            denom_comment = '\n  // The color denominators (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % len(color_denominators)
-            matrix_comment = '\n  // The color matrix (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % len(color_denominators)
+            matrix_string += ' // 2-D array[%i][%i]' % ( ncolor, ncolor )
+            denom_comment = '\n  // The color denominators (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % ncolor
+            matrix_comment = '\n  // The color matrix (initialize all array elements, with ncolor=%i)\n  // [NB do keep \'static\' for these constexpr arrays, see issue #283]\n' % ncolor
             denom_string = denom_comment + denom_string
             matrix_string = matrix_comment + matrix_string
             return '\n'.join([denom_string, matrix_string])
@@ -2495,13 +2837,22 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 
 # AV - define a custom HelasCallWriter
 # (NB: enable this via ProcessExporterMadMatrix.helas_exporter in output.py - this fixes #341)
-class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
+class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
+                                  jamp_optimiser.JampOptimiser):
     """ A Custom HelasCallWriter """
 
     # Flavor-mask optimization: skip wavefunction/amplitude calls that vanish
     # for the selected flavor (see super_get_matrix_element_calls). Toggled by
     # the output command's --mask=True|False; default on.
     use_flavor_mask = True
+    # Write the color flows through the shared sub-expressions the color-flow
+    # optimisation finds, instead of one line per (color flow, amplitude) pair
+    # (see build_jamp_plan). Toggled by --jamp_optim=True|False.
+    jamp_optim = True
+    # Look for those sub-expressions by whole orbits of the permutations
+    # leaving the color basis invariant (see JampOptimiser). Toggled by
+    # --jamp_orbit=True|False.
+    jamp_orbit = True
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -2510,8 +2861,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
     #  - UFOHelasCallWriter(HelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
     #  - CPPUFOHelasCallWriter(UFOHelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
     #  - GPUFOHelasCallWriter(CPPUFOHelasCallWriter) [in madgraph/iolibs/helas_call_writers.py]
-    #  - MadMatrixUFOHelasCallWriter(GPUFOHelasCallWriter)
-    #      This class
+    #  - MadMatrixUFOHelasCallWriter(GPUFOHelasCallWriter, JampOptimiser)
+    #      This class (JampOptimiser is in madgraph/iolibs/jamp_optimiser.py and
+    #      brings the color-flow optimisation shared with the fortran exporter)
 
 
     def __init__(self, *args, **opts):
@@ -2665,6 +3017,187 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
     def format_call(call):
         return call.replace('(','( ').replace(')',' )').replace(',',', ')
 
+    # --- Color flows through shared sub-expressions --------------------------
+    #
+    # Written out as it stands, a color flow is one 'jamp_sv[i] += c*amp_sv[0]'
+    # per (color flow, amplitude) pair: eight thousand of them for g g > g g g
+    # g. The optimisation in jamp_optimiser finds the partial sums that several
+    # flows have in common and returns them as definitions
+    #
+    #     TMP(i) = <operand> + frac * <operand>
+    #
+    # where an operand is either an amplitude or an earlier definition, leaving
+    # the color flows as a much shorter combination of those definitions.
+    #
+    # The fortran output has AMP(NGRAPHS) to read the amplitudes back from, so
+    # it prints the definitions as they come. Here every amplitude passes
+    # through the single slot amp_sv[0] and is gone by the next diagram, so the
+    # definitions are accumulated instead: each amplitude is added into the one
+    # definition that uses it while it is still there, and the definitions of
+    # definitions follow as soon as everything they need has been seen (see
+    # jamp_definition_order).
+
+    @staticmethod
+    def jamp_number(value):
+        """A C++ literal for a real coefficient, kept exact where it can be
+        (an integer, or a ratio the compiler divides out itself)."""
+
+        frac = Fraction(value).limit_denominator(10**9)
+        if float(frac) == float(value):
+            if frac.denominator == 1:
+                return '%d.' % frac.numerator
+            return '%d. / %d.' % (frac.numerator, frac.denominator)
+        text = '%.17g' % value
+        if '.' not in text and 'e' not in text and 'n' not in text:
+            text += '.'
+        return text
+
+    @classmethod
+    def jamp_factor(cls, value):
+        """(sign, factor) of a JAMP coefficient, the factor being the C++ text
+        multiplying the operand (empty when the coefficient is +-1)."""
+
+        number = complex(value)
+        if number.imag == 0:
+            magnitude, imaginary = number.real, False
+        elif number.real == 0:
+            magnitude, imaginary = number.imag, True
+        else:
+            # never seen in practice: a color coefficient is real or imaginary
+            return 1, 'cxtype( %s, %s ) * ' % (cls.jamp_number(number.real),
+                                               cls.jamp_number(number.imag))
+        sign = -1 if magnitude < 0 else 1
+        magnitude = abs(magnitude)
+        if magnitude == 1:
+            return sign, ('cxtype( 0, 1 ) * ' if imaginary else '')
+        if imaginary:
+            return sign, '%s * cxtype( 0, 1 ) * ' % cls.jamp_number(magnitude)
+        return sign, '%s * ' % cls.jamp_number(magnitude)
+
+    @classmethod
+    def jamp_statement(cls, target, terms, assign):
+        """'target = t1 - t2;' (assign) or 'target += t1 - t2;', from a list of
+        (coefficient, operand) terms."""
+
+        pieces = []
+        for pos, (value, name) in enumerate(terms):
+            sign, factor = cls.jamp_factor(value)
+            if pos == 0 and not assign and len(terms) == 1:
+                # the common case: keep the sign on the operator, as the
+                # expanded output does
+                return '%s %s= %s%s;' % (target, '-' if sign < 0 else '+',
+                                         factor, name)
+            if pos == 0:
+                pieces.append('%s%s%s' % ('-' if sign < 0 else '', factor, name))
+            else:
+                pieces.append('%s %s%s' % ('-' if sign < 0 else '+', factor, name))
+        return '%s %s %s;' % (target, '=' if assign else '+=', ' '.join(pieces))
+
+    def split_order_index(self, matrix_element):
+        """{amplitude number -> amplitude-order index}, or None.
+
+        None whenever the jamps are a single vector, i.e. no '^2' constraint or
+        only one amplitude order, in which case every jamp index below is the
+        plain color index it always was."""
+        key = id(matrix_element)
+        if getattr(self, '_so_key', None) != key:
+            from madgraph.iolibs.export_v4 import split_order_tables
+            so = split_order_tables(matrix_element)
+            self._so_key = key
+            self._so_index = so['amp_so'] if so and so['nampso'] > 1 else None
+        return self._so_index
+
+    def build_jamp_plan(self, matrix_element, color_amplitudes):
+        """Work out how the color flows are built from shared sub-expressions,
+        and return (ntmp, captures, combines, final):
+          - captures[n] are the lines to write while amplitude n sits in
+            amp_sv[0], as (line, target, is_first_write) so that a masked
+            amplitude can be told to zero its target first;
+          - combines[n] are the definitions ready once amplitude n has been
+            added, to write just after it;
+          - final are the lines assembling jamp_sv out of the definitions.
+        Returns None when there is nothing to share, so that the caller keeps
+        the expanded output."""
+
+        if not self.jamp_optim_enabled():
+            return None
+        # A shared sub-expression is a partial sum of amplitudes. With the jamps
+        # split by amplitude order, two amplitudes of different orders must not
+        # end up in the same partial sum -- it would be added to one jamp vector
+        # and the order information lost. Write the flows out one amplitude at a
+        # time instead.
+        if self.split_order_index(matrix_element) is not None:
+            return None
+        all_element = self.jamp_matrix(color_amplitudes)
+        if not all_element:
+            return None
+        new_mat, defs = self.optimise_jamp_matrix(all_element,
+                                                  matrix_element=matrix_element)
+        if not defs:
+            return None
+        order, ready = self.jamp_definition_order(defs)
+        definition = {i: (amp1, amp2, frac) for i, amp1, amp2, frac, _nb in defs}
+
+        # what each amplitude has to be added into while it is still in amp_sv
+        captures = defaultdict(list)      # amplitude -> [(target, coefficient)]
+        for i, amp1, amp2, frac, _nb in defs:
+            for amp, coefficient in ((amp1, 1), (amp2, frac)):
+                if amp > 0:
+                    captures[amp].append(('jampTmp_sv[%d]' % (i - 1), coefficient))
+        for (jamp, var), factor in sorted(new_mat.items()):
+            if var > 0 and factor:
+                captures[var].append(('jamp_sv[%d]' % (jamp - 1), factor))
+
+        # the definitions in the order they become available, grouped by the
+        # amplitude they are ready after
+        ready_after = defaultdict(list)
+        for i in order:
+            ready_after[ready[i]].append(i)
+
+        started = set()                   # definitions already assigned to
+        done = set()                      # definitions holding their full value
+        capture_lines = defaultdict(list)
+        combine_lines = defaultdict(list)
+        for amp in sorted(set(list(captures) + list(ready_after))):
+            for target, coefficient in captures.get(amp, []):
+                # jamp_sv is zeroed at the top of the event page, so it is only
+                # the definitions that have to start with an assignment
+                first = target.startswith('jampTmp_sv') and target not in started
+                if first:
+                    started.add(target)
+                capture_lines[amp].append(
+                    (self.jamp_statement(target, [(coefficient, 'amp_sv[0]')],
+                                         first), target, first))
+            for i in ready_after.get(amp, []):
+                amp1, amp2, frac = definition[i]
+                operands = [operand for operand in (amp1, amp2) if operand < 0]
+                assert all(-operand in done for operand in operands), \
+                       'a color-flow definition is used before it is complete'
+                done.add(i)
+                if not operands:
+                    continue      # both operands were amplitudes, already added
+                terms = [(coefficient, 'jampTmp_sv[%d]' % (-operand - 1))
+                         for operand, coefficient in ((amp1, 1), (amp2, frac))
+                         if operand < 0]
+                target = 'jampTmp_sv[%d]' % (i - 1)
+                first = target not in started
+                started.add(target)
+                combine_lines[amp].append(
+                                self.jamp_statement(target, terms, first))
+        assert len(started) == len(defs) == len(done), \
+               'a color-flow definition is never written'
+
+        # what is left of the color flows: a combination of the definitions
+        final = []
+        by_jamp = defaultdict(list)
+        for (jamp, var), factor in sorted(new_mat.items()):
+            if var < 0 and factor:
+                by_jamp[jamp].append((factor, 'jampTmp_sv[%d]' % (-var - 1)))
+        for jamp in sorted(by_jamp):
+            final.append(self.jamp_statement('jamp_sv[%d]' % (jamp - 1),
+                                             by_jamp[jamp], False))
+        return len(defs), capture_lines, combine_lines, final
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def super_get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
@@ -2673,6 +3206,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         assert isinstance(matrix_element, helas_objects.HelasMatrixElement), \
                '%s not valid argument for get_matrix_element_calls' % \
                type(matrix_element)
+        self.nb_tmp_jamp = 0
         # Do not reuse the wavefunctions for loop matrix elements
         if isinstance(matrix_element, loop_helas_objects.LoopHelasMatrixElement):
             return self.get_loop_matrix_element_calls(matrix_element)
@@ -2683,6 +3217,17 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                 if namp not in color:
                     color[namp] = {}
                 color[namp][njamp] = coeff
+        # Color flows through shared sub-expressions (None to write them out
+        # one (color flow, amplitude) pair at a time, as before)
+        jamp_plan = self.build_jamp_plan(matrix_element, color_amplitudes)
+        self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
+        so_index = self.split_order_index(matrix_element)
+        ncolor_jamp = len(color_amplitudes)
+        # 'ncolor' unless the jamps carry an amplitude-order index, so that a
+        # process without split orders gets exactly the text it always got
+        jamp_dim = 'njampso' if so_index is not None else 'ncolor'
+        if jamp_plan is not None:
+            _ntmp, jamp_captures, jamp_combines, jamp_final = jamp_plan
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
         ###misc.sprint(multi_channel_map)
@@ -2751,7 +3296,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
       FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
-      for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
+      for( int i = 0; i < """ + jamp_dim + """; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
 
       // Numerators for the current event (CUDA) or SIMD event page (C++)
       // (denominators are no longer accumulated here: they are derived as the sum of numerators later)
@@ -2864,27 +3409,53 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     amp_block.append("{")
                     amp_block.append("  NUM_ATOMIC_ADD( numerators_sv[%i], cxabs2( amp_sv[0] ) );" % (diagnum-1))
                     amp_block.append("}")
-                for njamp, coeff in color[namp].items():
-                    scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
-                    if scoeff[0] == '+' : scoeff = scoeff[1:]
-                    scoeff = scoeff.replace('(','( ')
-                    scoeff = scoeff.replace(')',' )')
-                    scoeff = scoeff.replace(',',', ')
-                    scoeff = scoeff.replace('*',' * ')
-                    scoeff = scoeff.replace('/',' / ')
-                    if scoeff.startswith('-'): amp_block.append('jamp_sv[%s] -= %samp_sv[0];' % (njamp, scoeff[1:])) # AV
-                    else: amp_block.append('jamp_sv[%s] += %samp_sv[0];' % (njamp, scoeff)) # AV
                 # The amplitude (and the jamp/channel contributions that read its
                 # amp_sv[0]) only contributes for the flavors in the diagram's
                 # mask, so guard the whole block as a unit.
                 gmask = diag_group_mask.get(id(diagram))
+                before_guard = []
+                if jamp_plan is None:
+                    # With split orders the jamps are nampso vectors end to end
+                    # and this amplitude belongs to exactly one of them, so its
+                    # color flows are offset onto that vector. so_index is None
+                    # otherwise and the index is the plain color index.
+                    jamp_offset = 0
+                    if so_index is not None:
+                        jamp_offset = so_index.get(namp, 0) * ncolor_jamp
+                    for njamp, coeff in color[namp].items():
+                        scoeff = OneProcessExporterMadMatrix.coeff(*coeff) # AV
+                        if scoeff[0] == '+' : scoeff = scoeff[1:]
+                        scoeff = scoeff.replace('(','( ')
+                        scoeff = scoeff.replace(')',' )')
+                        scoeff = scoeff.replace(',',', ')
+                        scoeff = scoeff.replace('*',' * ')
+                        scoeff = scoeff.replace('/',' / ')
+                        njamp = njamp + jamp_offset
+                        if scoeff.startswith('-'): amp_block.append('jamp_sv[%s] -= %samp_sv[0];' % (njamp, scoeff[1:])) # AV
+                        else: amp_block.append('jamp_sv[%s] += %samp_sv[0];' % (njamp, scoeff)) # AV
+                else:
+                    for line, target, first in jamp_captures.get(namp, []):
+                        if first and gmask is not None:
+                            # the guard can skip the line that opens this
+                            # sub-expression, so it has to start from zero
+                            before_guard.append('%s = cxzero_sv();' % target)
+                            line = line.replace(' = ', ' += ', 1)
+                        amp_block.append(line)
+                res.extend(before_guard)
                 if gmask is not None:
                     res.append(_guard_open(gmask))
                     res.extend(amp_block)
                     res.append('}')
                 else:
                     res.extend(amp_block)
+                if jamp_plan is not None:
+                    # sub-expressions that have now seen every amplitude they
+                    # need: they always run, whatever the flavor
+                    res.extend(jamp_combines.get(namp, []))
             if len(diagram.get('amplitudes')) == 0 : res.append('// (none)') # AV
+        if jamp_plan is not None:
+            res.append('\n      // *** COLOR FLOWS FROM THE SHARED SUB-EXPRESSIONS ***')
+            res.extend(jamp_final)
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
 

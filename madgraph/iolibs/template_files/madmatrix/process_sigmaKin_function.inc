@@ -1,9 +1,9 @@
-! Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-! Created by: J. Alwall (Jul 2010) for the MG5aMC CPP backend.
+! Copyright (C) 2010 The MadGraph7 development team and contributors.
+! Created by: J. Alwall (Jul 2010) for the MadGraph7 CPP backend.
 !==========================================================================
 ! Copyright (C) 2020-2026 CERN and UCLouvain.
 ! Licensed under the GNU Lesser General Public License (version 3 or later).
-! Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
+! Modified originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
 ! Further modified by: O. Mattelaer, J. Teig, A. Valassi (2021-2024).
 ! Integrated with the MadGraph7 project in Feb 2026.
 !==========================================================================
@@ -16,7 +16,7 @@
     const int nevt = gpublocks * gputhreads;
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
-    gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype_amp ) );
+    gpuMemset( colAllJamp2s, 0, ncolor_flow * nevt * sizeof( fptype_amp ) );
     // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
     // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
     // numerators in normalise_output, so the buffer is just [nevt].
@@ -113,16 +113,16 @@
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
 #endif
       // Running sum of partial amplitudes squared for event by event color selection (#402)
-      // (jamp2[nParity][ncolor][neppV] for the SIMD vector - or the two SIMD vectors - of events processed in calculate_jamps)
-      fptype_amp_sv jamp2_sv[nParity * ncolor] = {};
+      // (jamp2[nParity][ncolor_flow][neppV] for the SIMD vector - or the two SIMD vectors - of events processed in calculate_jamps)
+      fptype_amp_sv jamp2_sv[nParity * ncolor_flow] = {};
       fptype_sv MEs_ighel[ncomb] = {};  // sum of MEs for all good helicities up to ighel (for the first - and/or only - neppV page)
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (for the second neppV page)
 #endif
-      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+%(cpp_blas_helicity_loop)s      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
       {
         const int ihel = cGoodHel[ighel];
-        cxtype_amp_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
+        cxtype_amp_sv jamp_sv[nParity * %(jamp_ncolor)s] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
         // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
         bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
         calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
@@ -131,7 +131,7 @@
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
-      }
+      }%(cpp_blas_helicity_loop_end)s
       // Event-by-event random choice of helicity #403
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
@@ -238,9 +238,9 @@
             printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%%d (invalid SDE iconfig=%%d\n > nconfig=%%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
             assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
           }
-          fptype_amp targetamp[ncolor] = { 0 };
+          fptype_amp targetamp[ncolor_flow] = { 0 };
           // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
-          for( int icolC = 0; icolC < ncolor; icolC++ )
+          for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
             if( icolC == 0 )
               targetamp[icolC] = 0;
@@ -248,17 +248,17 @@
               targetamp[icolC] = targetamp[icolC - 1];
 #ifdef MGONGPU_CPPSIMD
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor * ( ieppV / neppV )][ieppV %% neppV];
+              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV %% neppV];
 #else
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor * ( ieppV / neppV )];
+              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
 #endif
           }
           const int ievt = ievt00 + ieppV;
           //printf( "sigmaKin: ievt=%%4d rndcol=%%f\n", ievt, allrndcol[ievt] );
-          for( int icolC = 0; icolC < ncolor; icolC++ )
+          for( int icolC = 0; icolC < ncolor_flow; icolC++ )
           {
-            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor - 1] ) )
+            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
             {
               allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
               //printf( "sigmaKin: ievt=%%d icol=%%d\n", ievt, icolC+1 );
@@ -312,7 +312,23 @@
         if( mulChannelWeight && allChannelIds != nullptr )
         {
           const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
-          MEs_sv *= numerators_sv[channelId - 1] / denominators_sv;
+          // A vanishing denominator means every diagram's |amp|^2 is zero for this
+          // event, which is what a subprocess whose matrix element is identically zero
+          // looks like (an FCNC channel with all its Wilson coefficients at zero, say).
+          // The channel weight would then be 0/0 = nan, turning a matrix element that
+          // is simply zero into a nan that reaches the event weight and aborts the
+          // integration. Clamping the (non-negative) denominator to the smallest
+          // normal value keeps that division finite -- 0/tiny is 0 -- and is a no-op
+          // for any denominator a real amplitude produces. Note this must NOT be
+          // written as a test for zero: this file is compiled with -ffast-math, whose
+          // -ffinite-math-only lets the compiler assume the quotient is finite and so
+          // drop the guard as dead (the same trap as #117/#516).
+          // (fpmax is SIMD-only, so the floor is added rather than max'ed: the
+          // denominator is a sum of |amp|^2 and so never negative, and adding the
+          // smallest normal leaves every denominator a real amplitude produces
+          // bit-for-bit unchanged.)
+          const fptype_sv safe_den = denominators_sv + std::numeric_limits<fptype>::min();
+          MEs_sv *= numerators_sv[channelId - 1] / safe_den;
         }
       }
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )
