@@ -4,6 +4,11 @@
 name: running IOTests
 on:
   push:
+    # Tags are excluded: a release tag points at a commit that already ran
+    # this suite when it was pushed to main, and release.yml gates on that
+    # main run rather than re-testing the same tree.
+    tags-ignore:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -14,9 +19,6 @@ on:
       message:
         description: 'running IOTests'
         required: true
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 env:
   commitmsg: ${{ github.event.head_commit.message }}

@@ -18,6 +18,11 @@ name: systematic cross-section tests (mg7)
 
 on:
   push:
+    # Tags are excluded: a release tag points at a commit that already ran
+    # this suite when it was pushed to main, and release.yml gates on that
+    # main run rather than re-testing the same tree.
+    tags-ignore:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -39,9 +44,6 @@ on:
         description: 'Events per process (reference used 1M; reduced here for CI)'
         required: false
         default: '100000'
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

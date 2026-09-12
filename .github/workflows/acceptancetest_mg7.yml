@@ -6,6 +6,11 @@ name: running acceptance test (mg7)
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # Tags are excluded: a release tag points at a commit that already ran
+    # this suite when it was pushed to main, and release.yml gates on that
+    # main run rather than re-testing the same tree.
+    tags-ignore:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -19,9 +24,6 @@ on:
       message:
         description: 'running acceptance test'
         required: true
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 env:
   commitmsg: ${{ github.event.head_commit.message }}
@@ -42,7 +44,7 @@ jobs:
   # composite action so it stays in sync with check_xsec_processes_mg7.yml.
   build_madspace:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build_madspace
@@ -50,7 +52,7 @@ jobs:
   acceptancetest_mg7_ufo_aloha:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -68,7 +70,7 @@ jobs:
   acceptancetest_mg7_fd_gauge:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -83,7 +85,7 @@ jobs:
   acceptancetest_mg7_output_directory:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -98,7 +100,7 @@ jobs:
   acceptancetest_mg7_gridpack:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -113,7 +115,7 @@ jobs:
   acceptancetest_mg7_ungroup_decay:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -128,7 +130,7 @@ jobs:
   acceptancetest_mg7_e_p_collision:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -144,7 +146,7 @@ jobs:
     needs: build_madspace
     # xfail: mg7 does not yet generate leshouche.inc (kept on the to-do list)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -163,7 +165,7 @@ jobs:
     # launch command interface. restore_heptools provides LHAPDF and the mg7
     # default PDF set for the u u~ > z g generation.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -181,7 +183,7 @@ jobs:
     # processes (u q > u q must not mirror any flavor; q q > q q must mirror only
     # the mixed one). No event generation, so no madspace runtime needed.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -198,7 +200,7 @@ jobs:
     # reconstruct the LO reweighting info. No event generation, so no madspace
     # runtime needed.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -214,7 +216,7 @@ jobs:
     # question prunes the cards of the unselected tools. Output-level (drives the
     # question twice), so no madspace runtime needed.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -231,7 +233,7 @@ jobs:
     # LHAPDF (incl. NNPDF40MC_lo_as_01180) comes from the heptools cache.
     # The test self-skips if that stack is unavailable.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -256,7 +258,7 @@ jobs:
     # in acceptancetest_madevent.yml. Self-skips if the madspace +
     # LHAPDF(NNPDF23) stack is absent.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -364,7 +366,7 @@ jobs:
     # acceptancetest_mg7_merged_flavor_mirroring, which guards that flag directly.
     # The test self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -385,7 +387,7 @@ jobs:
     # them used to double the result to ~81 pb.
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -405,7 +407,7 @@ jobs:
     # until the mg7 normalisation for the effective ggH coupling is fixed.
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is unavailable.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -429,7 +431,7 @@ jobs:
     # acceptancetest_madevent.yml.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -450,7 +452,7 @@ jobs:
     # Self-skips if the madspace + LHAPDF(NNPDF23) stack is absent.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -484,7 +486,7 @@ jobs:
     # time-of-flight is a pure-python LHE post-processing (no external tool); it
     # only needs the madspace + LHAPDF(NNPDF23) stack.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -500,7 +502,7 @@ jobs:
   acceptancetest_mg7_pythia8:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -516,7 +518,7 @@ jobs:
   acceptancetest_mg7_rivet:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -535,7 +537,7 @@ jobs:
     # the madspace + LHAPDF(NNPDF23) stack (and a Fortran compiler for the
     # standalone reweighting matrix element, which the runner provides).
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -554,7 +556,7 @@ jobs:
     # <mgrwt>, so the LO reweighting info is reconstructed from single_qcd_order.
     # Needs the madspace + LHAPDF(NNPDF23) stack (systematics reads the PDF).
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -572,7 +574,7 @@ jobs:
     # MadSpin ships with MG5 (no external tool); it only needs the madspace +
     # LHAPDF(NNPDF23) stack.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
