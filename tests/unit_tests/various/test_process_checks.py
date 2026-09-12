@@ -1111,5 +1111,141 @@ class TestMultiLanguageComparison(unittest.TestCase):
                       'output_language reported failure for g g > t t~:\n' + text)
 
 
+class TestPrecisionCheck(unittest.TestCase):
+    """check precision: the statistics, the report, and one compiled run."""
+
+    def test_precision_statistics(self):
+        """Relative errors against double precision, with the zero and
+        non-finite reference cases counted apart from the mean."""
+        me_double = [1., 2., 0., 0., 4., 3.]
+        me_mode = [1.001, 2.1, 0., 1e-3, 4., float('nan')]
+        stats = process_checks.precision_statistics(me_double, me_mode)
+        self.assertEqual(stats['nb_event'], 6)
+        self.assertEqual(stats['nb_invalid'], 2)   # 0 -> 1e-3, and the nan
+        self.assertEqual(stats['nb_above'], 3)     # 5% and the two invalid ones
+        self.assertAlmostEqual(stats['rate'], 0.5)
+        self.assertTrue(math.isinf(stats['max']))
+        self.assertAlmostEqual(stats['mean'], (1e-3 + 0.05) / 4)
+        self.assertAlmostEqual(stats['errors'][0], 1e-3)
+        self.assertEqual(stats['errors'][2], 0.)
+
+        self.assertRaises(Exception, process_checks.precision_statistics,
+                          [1., 2.], [1.])
+
+    def test_output_precision(self):
+        """The report quotes the three numbers and where the plot went."""
+        stats = process_checks.precision_statistics([1., 2.], [1.5, 2.])
+        stats.update({'process_label': 'e+ e- > mu+ mu-', 'subprocess': 'P0',
+                      'flavor': 0, 'mode': 'f', 'plot': '/tmp/x.pdf',
+                      'time_double': 0.5, 'time_mode': 0.25})
+        stats_m = process_checks.precision_statistics([1., 2.], [1., 2.])
+        stats_m.update({'process_label': 'e+ e- > mu+ mu-', 'subprocess': 'P0',
+                        'flavor': 0, 'mode': 'm', 'plot': '/tmp/x.pdf',
+                        'time_double': 0.5, 'time_mode': 0.4})
+        text = process_checks.output_precision([stats, stats_m])
+        for word in ('FPTYPE=f,m vs FPTYPE=d', 'mean error', 'max error',
+                     'rate > 1%', 'mode', 'e+ e- > mu+ mu-', '5.000e-01',
+                     'time d [s]', 'time mode [s]', '2.500e-01', '2.00', '1.25',
+                     process_checks.PRECISION_MODES['m']):
+            self.assertIn(word, text)
+        # one plot for both modes, quoted once
+        self.assertEqual(text.count('Plot of the difference: /tmp/x.pdf'), 1)
+        rows = [l for l in text.split('\n') if l.startswith('e+ e- > mu+ mu-')]
+        self.assertEqual([r.split()[5] for r in rows], ['f', 'm'])
+        stats['time_mode'] = None
+        self.assertIn('N/A', process_checks.output_precision([stats]))
+        stats['plot'] = '/tmp/x.dat'
+        self.assertIn('Relative errors (no matplotlib, no plot): /tmp/x.dat',
+                      process_checks.output_precision([stats]))
+
+    def test_precision_progress(self):
+        """The progress bar counts every step, grows when told to, and is a
+        silent no-op when tqdm cannot be imported."""
+        import io
+        try:
+            import tqdm  # noqa: F401
+            has_tqdm = True
+        except ImportError:
+            has_tqdm = False
+        if has_tqdm:
+            stream = io.StringIO()            # keep the test output clean
+            progress = process_checks.PrecisionProgress(2, stream=stream)
+            progress.add(1)
+            for i in range(3):
+                with progress.step('step %d' % i):
+                    pass
+            self.assertEqual((progress.bar.n, progress.bar.total), (3, 3))
+            progress.close()
+            self.assertIn('3/3', stream.getvalue())
+            self.assertIn('step 2', stream.getvalue())
+
+        saved = sys.modules.get('tqdm')
+        sys.modules['tqdm'] = None            # makes 'from tqdm import tqdm' raise
+        try:
+            progress = process_checks.PrecisionProgress(2)
+            self.assertIsNone(progress.bar)
+            progress.add(1)
+            with progress.step('no bar'):
+                pass
+            progress.close()
+        finally:
+            if saved is None:
+                del sys.modules['tqdm']
+            else:
+                sys.modules['tqdm'] = saved
+
+    def test_matrix_element_time(self):
+        """The matrix element time is read from the check_sa.exe perf report."""
+        perf = ('TotalTime[Rambo]        (2) = ( 1.000000e-03 )  sec\n'
+                'TotalTime[MatrixElems]  (3) = ( 2.345678e-02 )  sec\n')
+        self.assertAlmostEqual(process_checks.matrix_element_time(perf), 2.345678e-02)
+        self.assertIsNone(process_checks.matrix_element_time('nothing here'))
+
+    def test_check_precision_epem_mupmum(self):
+        """FPTYPE=f against FPTYPE=d for e+ e- > mu+ mu-: single precision is
+        good to ~1e-7 there, so no event may come anywhere near 1%."""
+        import shutil
+        import tempfile
+        if not (misc.which('g++') and misc.which('make')):
+            self.skipTest('check precision needs g++ and make')
+        try:
+            import madmatrix.output  # noqa: F401
+        except ImportError:
+            self.skipTest('madmatrix is not available')
+
+        model = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+        legs = base_objects.MultiLegList([
+            base_objects.MultiLeg({'ids': [-11], 'state': False}),
+            base_objects.MultiLeg({'ids': [11], 'state': False}),
+            base_objects.MultiLeg({'ids': [-13], 'state': True}),
+            base_objects.MultiLeg({'ids': [13], 'state': True})])
+        procdef = base_objects.ProcessDefinition({'legs': legs, 'model': model})
+
+        output_path = tempfile.mkdtemp(prefix='mg5_test_precision_')
+        try:
+            # two modes (and a duplicate) share one double precision reference
+            results = process_checks.check_precision(
+                procdef, ['f', 'm', 'f'], options={'nb_event': 2000},
+                output_path=output_path)
+            self.assertEqual([r['mode'] for r in results], ['f', 'm'])
+            for entry in results:
+                self.assertEqual(entry['nb_event'], 2000)
+                self.assertEqual(entry['nb_invalid'], 0)
+                self.assertEqual(entry['nb_above'], 0)
+                self.assertLess(entry['max'], 1e-4)
+                self.assertGreater(entry['time_double'], 0.)
+                self.assertGreater(entry['time_mode'], 0.)
+                self.assertTrue(os.path.exists(entry['plot']), entry['plot'])
+            self.assertEqual(results[0]['time_double'], results[1]['time_double'])
+            self.assertEqual(results[0]['plot'], results[1]['plot'])
+            self.assertIn('check_precision_f_m_', results[0]['plot'])
+            # single precision leaves a visible difference, the colour-only
+            # single precision of FPTYPE=m cannot do worse on a colourless process
+            self.assertGreater(results[0]['max'], 0.)
+            self.assertLessEqual(results[1]['max'], results[0]['max'])
+        finally:
+            shutil.rmtree(output_path, ignore_errors=True)
+
+
 if __name__ == '__main__':
     unittest.unittest.main()

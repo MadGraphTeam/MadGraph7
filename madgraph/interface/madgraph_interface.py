@@ -617,6 +617,19 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
         logger.info("   at the same phase-space point.  Requires gfortran / g++.")
         logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("o precision:",'$MG:color:GREEN')
+        logger.info("   syntax: check precision m|f|v [m|f|v ...] process_definition [--nb_event=X] [--energy=]")
+        logger.info("   Evaluate the madmatrix standalone output built in each of the given")
+        logger.info("   floating point modes (m: colour algebra in single precision,")
+        logger.info("   f: single precision everywhere, v: single precision amplitudes")
+        logger.info("   with double precision momenta and denominators) against its")
+        logger.info("   double precision build, on the same X RAMBO phase-space points")
+        logger.info("   (default 10^6). Reports the mean and maximum relative error and")
+        logger.info("   the rate of events with an error above 1%, the time spent in the")
+        logger.info("   matrix element by each of the two builds (and the speed-up), and")
+        logger.info("   writes a plot of the difference. Requires g++ and make.")
+        logger.info("   Several modes share one double precision reference and one plot.")
+        logger.info("   Example: check precision f m v g g > t t~ g --nb_event=100000",'$MG:color:GREEN')
         logger.info("o cms:",'$MG:color:GREEN')
         logger.info("   Check the complex mass scheme consistency by comparing")
         logger.info("   it to the narrow width approximation in the off-shell")
@@ -1108,6 +1121,19 @@ class CheckValidForCmd(cmd.CheckCmd):
                                         not args[0].lower().endswith('options'):
             args.insert(0, 'full')
 
+        # check precision takes one or more floating point modes first
+        precision_mode = None
+        if args[0] == 'precision':
+            modes = []
+            while len(args) > 1 and args[1] in process_checks.PRECISION_MODES:
+                modes.append(args.pop(1))
+            if not modes or len(args) < 2:
+                self.help_check()
+                raise self.InvalidCmd("\"check precision\" requires at least one precision "
+                        "mode (%s) and a process." % '|'.join(process_checks.PRECISION_MODES))
+            # one token, and no ',' which would read as a decay chain below
+            precision_mode = ':'.join(misc.make_unique(modes))
+
         param_card = None
         if args[0] not in ['stability','profile','timing'] and \
                                         len(args)>1 and os.path.isfile(args[1]):
@@ -1118,6 +1144,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                 args.insert(1, '-no_reuse')
         else:
             args.append('-no_reuse')
+
+        if precision_mode:
+            args.insert(2, precision_mode)
 
         if args[0] in ['timing'] and len(args)>2 and os.path.isfile(args[2]):
             param_card = args.pop(2)
@@ -1142,7 +1171,10 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
                    '--events': None,
-                   '--skip_evt':0}  
+                   '--skip_evt':0}
+
+        if args[0] == 'precision':
+            user_options['--nb_event'] = '1000000'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -2460,6 +2492,15 @@ class CompleteForCmd(cmd.CompleteCmd):
         if len(args) == 1:
             return self.list_completion(text, self._check_opts)
 
+        if len(args) >= 2 and args[1] == 'precision' and \
+                all(a in process_checks.PRECISION_MODES for a in args[2:]):
+            remaining = [m for m in process_checks.PRECISION_MODES if m not in args[2:]]
+            if len(args) == 2:
+                return self.list_completion(text, remaining)
+            return self.deal_multiple_categories(
+                {'Precision modes': self.list_completion(text, remaining),
+                 'Process completion': self.model_completion(text, '', line,
+                                                  categories=False)}, formatting)
 
         cms_check_mode = len(args) >= 2 and args[1]=='cms'
 
@@ -2469,6 +2510,8 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] == 'precision':
+            options.append('--nb_event=')
         if cms_options:
             options.extend(cms_options)
 
@@ -3208,7 +3251,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                 list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
-                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language']
+                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
+                   'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'MadAnalysis4', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
@@ -4632,6 +4676,10 @@ This implies that with decay chains:
         if args[0] in ['stability', 'profile']:
             options['npoints'] = int(args[1])
             args = args[:1]+args[2:]
+        # For the precision check the floating point modes come first
+        if args[0] == 'precision':
+            options['precision_mode'] = args[1].split(':')
+            args = args[:1]+args[2:]
         MLoptions={}
         i=-1
         CMS_options = {}
@@ -4648,6 +4696,12 @@ This implies that with decay chains:
                     options['events'] = option[1]
             elif option[0] == '--skip_evt':
                 options['skip_evt']=int(option[1])
+            elif option[0] == '--nb_event':
+                try:
+                    options['nb_event'] = int(float(option[1]))
+                except ValueError:
+                    raise self.InvalidCmd("The value of the 'nb_event' option"+\
+                                       " must be a number, not %s."%option[1])
             elif option[0]=='--split_orders':
                 options['split_orders']=int(option[1])
             elif option[0]=='--helicity':
@@ -4994,6 +5048,7 @@ This implies that with decay chains:
         cms_results = []
         flavor_result = []
         language_result = []
+        precision_result = []
 
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
@@ -5183,6 +5238,15 @@ This implies that with decay chains:
                                           cmd = self)
             nb_processes += len(language_result)
 
+        if args[0] in ['precision']:
+            precision_result = process_checks.check_precision(myprocdef,
+                                          options['precision_mode'],
+                                          param_card = param_card,
+                                          options=options,
+                                          cmd = self,
+                                          output_path = output_path)
+            nb_processes += len(precision_result)
+
         if args[0] in  ['brs', 'full']:
             gauge_result = process_checks.check_gauge(myprocdef,
                                           param_card = param_card,
@@ -5272,7 +5336,7 @@ This implies that with decay chains:
             if self.options['complex_mass_scheme']:
                 text = "Note that Complex mass scheme gives gauge/lorentz invariant\n"
                 text+= "results only for stable particles in final states.\n\ns"
-            elif ((not args or args[0] != 'language') and
+            elif ((not args or args[0] not in ['language', 'precision']) and
                   not myprocdef.get('perturbation_couplings')):
                 text = "Note That all width have been set to zero for those checks\n\n"
             else:
@@ -5304,6 +5368,9 @@ This implies that with decay chains:
         if language_result:
             text += 'Language comparison results (Fortran SA / C++ SA / MG7 SA / Python):\n'
             text += process_checks.output_language(language_result) + '\n'
+        if precision_result:
+            text += 'Floating point precision results (madmatrix standalone):\n'
+            text += process_checks.output_precision(precision_result) + '\n'
         if gauge_result:
             text += 'Gauge results:\n'
             text += process_checks.output_gauge(gauge_result) + '\n'
