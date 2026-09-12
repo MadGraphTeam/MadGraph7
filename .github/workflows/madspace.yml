@@ -2,10 +2,11 @@ name: MadSpace
 
 on:
   push:
-    # Tags are excluded: a release tag points at a commit that already ran
-    # this suite when it was pushed to main, and release.yml gates on that
-    # main run rather than re-testing the same tree.
-    tags-ignore:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
       - '**'
   pull_request:
   # Called from release.yml once main's CI for the tagged commit is green.
