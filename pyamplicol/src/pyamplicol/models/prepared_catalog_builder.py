@@ -17,7 +17,7 @@ from .contact_decomposition import (
     CompiledContactOrbitCertificate,
     CompiledContactOrbitStep,
 )
-from .expressions import _as_expression
+from .expressions import _as_expression, _exact_complex_expression
 from .external import CompiledUFOModel
 from .prepared_catalog import (
     _CATALOG_ABI,
@@ -627,7 +627,7 @@ def _vertex_candidate(
             f"{vertex.particles}, chiralities "
             f"({left_chirality}, {right_chirality}, {result_chirality}): {error}"
         ) from error
-    factor = complex(*equivalence.factor)
+    factor = _exact_complex_expression(complex(*equivalence.factor))
     normalized = tuple(
         _as_expression(expression) / factor for expression in expressions
     )
@@ -905,7 +905,7 @@ def _closure_candidate(
         )
     projected = sum(
         (
-            complex(*coefficient) * expression
+            _exact_complex_expression(complex(*coefficient)) * expression
             for coefficient, expression in zip(
                 contraction.coefficients,
                 source,

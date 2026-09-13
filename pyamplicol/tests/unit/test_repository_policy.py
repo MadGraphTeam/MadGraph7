@@ -47,13 +47,16 @@ def _is_model_asset_root(path: Path) -> bool:
 
 def _working_tree_model_asset_roots() -> set[Path]:
     roots: set[Path] = set()
-    for directory, child_directories, _files in os.walk(ROOT):
-        child_directories[:] = [
-            child for child in child_directories if child not in IGNORED_PARTS
-        ]
-        path = Path(directory)
-        if _is_model_asset_root(path.relative_to(ROOT)):
-            roots.add(path)
+    # Local dependency checkouts are not first-party source. The separate
+    # tracked-path check still rejects misplaced assets anywhere in the repo.
+    for source_root in FIRST_PARTY_ROOTS:
+        for directory, child_directories, _files in os.walk(source_root):
+            child_directories[:] = [
+                child for child in child_directories if child not in IGNORED_PARTS
+            ]
+            path = Path(directory)
+            if _is_model_asset_root(path.relative_to(ROOT)):
+                roots.add(path)
     return roots
 
 
@@ -124,6 +127,25 @@ def test_tracked_model_assets_cannot_hide_below_an_ignored_work_root() -> None:
     assert _tracked_model_asset_roots((tracked_duplicate,)) == {
         ROOT / tracked_duplicate.parent
     }
+
+
+def test_working_tree_assets_are_scoped_to_first_party_roots(
+    tmp_path: Path, monkeypatch
+) -> None:
+    package = tmp_path / "src" / "pyamplicol"
+    tools = tmp_path / "tools"
+    canonical = package / "assets" / "models"
+    misplaced = tools / "assets" / "models"
+    dependency = tmp_path / "foreign-checkout" / "assets" / "models"
+    for path in (canonical, misplaced, dependency):
+        path.mkdir(parents=True)
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    monkeypatch.setitem(globals(), "FIRST_PARTY_ROOTS", (package, tools))
+
+    assert _working_tree_model_asset_roots() == {canonical, misplaced}
+    # A dependency-like name does not exempt mistakenly committed assets.
+    tracked_dependency = dependency.relative_to(tmp_path) / "model.json"
+    assert _tracked_model_asset_roots((tracked_dependency,)) == {dependency}
 
 
 def test_vendored_ufo_sources_are_not_relicensed_as_first_party_code() -> None:

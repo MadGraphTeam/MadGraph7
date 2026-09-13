@@ -9,6 +9,9 @@ from ufo_model_loader.symbolica_processing import wrap_indices
 
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_symbolica as _sym
+from pyamplicol.models.compiler_auxiliary_components import (
+    reduce_contact_auxiliary_components,
+)
 from pyamplicol.models.compiler_contact_trees import (
     _compile_heft_colored_contact_trees,
 )
@@ -261,6 +264,45 @@ def test_heft_contact_identical_gluon_multiplicities_are_applied_once() -> None:
     assert hggg_higgs and hgggg_higgs
     assert all("1/3" in kernel.component_expressions[0] for kernel in hggg_higgs)
     assert all("1/6" in kernel.component_expressions[0] for kernel in hgggg_higgs)
+
+
+def test_all_hgggg_pairings_reduce_exactly_to_antisymmetric_current_components() -> (
+    None
+):
+    terms = tuple(
+        _term(500 + index, color=color, lorentz=lorentz, valence=5)
+        for index, (color, lorentz, _pairs) in enumerate(_HGGGG_PAIRINGS)
+    )
+    auxiliaries, kernels = _compile(*terms)
+    particles, reduced = reduce_contact_auxiliary_components(
+        (_GLUON, _HIGGS, *auxiliaries),
+        kernels,
+        auxiliary_particles=auxiliaries,
+        model_symbols=_MODEL_SYMBOLS,
+    )
+    projected = {
+        particle.name for particle in auxiliaries if particle.component_dimension == 16
+    }
+    assert len(projected) == 9
+    assert all(
+        particle.component_dimension == 6
+        for particle in particles
+        if particle.name in projected
+    )
+    for old, new in zip(kernels, reduced, strict=True):
+        assert replace(new, component_expressions=old.component_expressions) == old
+        if old.particles[2] not in projected:
+            continue
+        expected = tuple(
+            _sym.E(old.component_expressions[4 * left + right])
+            - _sym.E(old.component_expressions[4 * right + left])
+            for left in range(4)
+            for right in range(left + 1, 4)
+        )
+        assert all(
+            (value - _sym.E(actual)).expand().to_canonical_string() == "0"
+            for value, actual in zip(expected, new.component_expressions, strict=True)
+        )
 
 
 @pytest.mark.parametrize(

@@ -330,6 +330,13 @@ after its independent verification pass succeeds; it emits one warning when
 an applied relation has numerical evidence but no structural proof. Malformed,
 non-finite, unstable, or stale evidence fails closed and is never reused.
 
+Discovery and application are reported separately. For contracted NLC/full-colour
+recurrence, independently verified equal and zero-current relations can be
+applied even when the same pass also finds opposite-current relations. The
+opposite relations remain recorded but are not applied in that layout; their
+currents retain their original computation. Existing helicity/flow-selector
+restrictions still apply. No relation search is deferred to the first evaluation.
+
 Keep the unoptimized path for a comparison with:
 
 ```console

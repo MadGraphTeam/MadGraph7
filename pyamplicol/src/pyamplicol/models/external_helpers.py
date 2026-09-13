@@ -9,6 +9,8 @@ from .contracts import (
     CompiledParameterRecord,
 )
 from .expressions import (
+    _exact_complex_expression,
+    _imaginary_unit_for,
     _minkowski_square_expression,
 )
 
@@ -78,23 +80,28 @@ def _expr_spin2_propagator(
     if len(momentum) != 4:
         raise ValueError("spin-2 propagator expects four momentum components")
     tensor = tuple(tuple(value[4 * mu + nu] for nu in range(4)) for mu in range(4))
-    metric = (1.0, -1.0, -1.0, -1.0)
+    metric = (1, -1, -1, -1)
+    imaginary = _imaginary_unit_for((*value, *momentum, mass, width, dimension))
+    one = 1 if isinstance(imaginary, complex) else _exact_complex_expression(1 + 0j)
+    if not isinstance(imaginary, complex) and isinstance(dimension, float | complex):
+        dimension = _exact_complex_expression(complex(dimension))
+    half = one / 2
     denominator = (
-        _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+        _minkowski_square_expression(momentum) - mass * mass + imaginary * mass * width
     )
     if not massive:
         trace = sum(
             (metric[index] * tensor[index][index] for index in range(4)),
-            0.0,
+            0,
         )
-        trace_weight = 1.0 / (dimension - 2.0)
+        trace_weight = one / (dimension - 2)
         projected = tuple(
-            0.5 * (tensor[mu][nu] + tensor[nu][mu])
-            - (metric[mu] * trace * trace_weight if mu == nu else 0.0)
+            half * (tensor[mu][nu] + tensor[nu][mu])
+            - (metric[mu] * trace * trace_weight if mu == nu else 0)
             for mu in range(4)
             for nu in range(4)
         )
-        return tuple(1j * component / denominator for component in projected)
+        return tuple(imaginary * component / denominator for component in projected)
 
     mass_squared = mass * mass
     first_projected = tuple(
@@ -106,7 +113,7 @@ def _expr_spin2_propagator(
                     metric[alpha] * momentum[alpha] * tensor[alpha][nu]
                     for alpha in range(4)
                 ),
-                0.0,
+                0,
             )
             / mass_squared
             for nu in range(4)
@@ -122,7 +129,7 @@ def _expr_spin2_propagator(
                     metric[beta] * momentum[beta] * first_projected[mu][beta]
                     for beta in range(4)
                 ),
-                0.0,
+                0,
             )
             / mass_squared
             for nu in range(4)
@@ -131,17 +138,14 @@ def _expr_spin2_propagator(
     )
     transverse_trace = sum(
         (metric[index] * transverse[index][index] for index in range(4)),
-        0.0,
+        0,
     )
     projected = tuple(
-        0.5 * (transverse[mu][nu] + transverse[nu][mu])
-        - (
-            (metric[mu] if mu == nu else 0.0)
-            - momentum[mu] * momentum[nu] / mass_squared
-        )
+        half * (transverse[mu][nu] + transverse[nu][mu])
+        - ((metric[mu] if mu == nu else 0) - momentum[mu] * momentum[nu] / mass_squared)
         * transverse_trace
-        / 3.0
+        / 3
         for mu in range(4)
         for nu in range(4)
     )
-    return tuple(1j * component / denominator for component in projected)
+    return tuple(imaginary * component / denominator for component in projected)

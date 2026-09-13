@@ -40,6 +40,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
     )
 
     assert {item.key for item in without_references} == {
+        "symjit",
         "symbolica",
         "symbolica-community",
         "ratatui-ffi",
@@ -50,6 +51,8 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "reference-fft",
     }
     assert all(len(item.revision) == 40 for item in with_references)
+    assert "symjit" not in module._root_path_patches()
+    assert module._managed_symjit_checkout() == module.CHECKOUTS / "symjit"
     legacy = next(item for item in with_references if item.key == "legacy-amplicol")
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
     assert legacy.revision == payload["legacy_amplicol"]["revision"]
@@ -188,15 +191,23 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_local_source_overrides_replace_managed_dependency_clones() -> None:
+def test_local_source_overrides_replace_managed_dependency_clones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _module()
+    overrides = {
+        "symjit": ROOT / "TMP_FIXED_SYMJIT",
+        "spenso": ROOT / "TMP_FIXED_SPENSO/crates/spenso",
+        "symbolica-integrate": ROOT / "TMP_FIXED_SPENSO/symbolica-integrate",
+    }
+    monkeypatch.setattr(module, "_root_path_patches", lambda: overrides)
     payload = module._lock()
     symjit = payload["symjit"]
 
     assert symjit == {
-        "version": "2.25.0",
+        "version": "2.25.6",
         "repository": "https://github.com/siravan/symjit-crate.git",
-        "revision": "f1c193d301897149de6609f706297b0c97a4f018",
+        "revision": "3fc04010f69db954463f9666fffb652b244ccc52",
     }
     sources = {
         item.key
@@ -229,7 +240,7 @@ def test_managed_sources_remain_available_without_explicit_path_overrides(
             module._lock(), with_legacy=False, with_reference_fft=False
         )
     }
-    assert sources["symjit"].revision == "f1c193d301897149de6609f706297b0c97a4f018"
+    assert sources["symjit"].revision == "3fc04010f69db954463f9666fffb652b244ccc52"
     assert sources["gammaloop"].branch == "simplify-spenso-api"
     assert sources["gammaloop"].revision == "5aadd389efabb7b039af74edad02a90d486a1c07"
     assert (
@@ -259,7 +270,7 @@ def test_community_wiring_preserves_dependency_sources(
     symjit = project / "TMP_FIXED_SYMJIT"
     symjit.mkdir()
     (symjit / "Cargo.toml").write_text(
-        '[package]\nname = "symjit"\nversion = "2.25.0"\n'
+        '[package]\nname = "symjit"\nversion = "2.25.6"\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
     )
@@ -1005,9 +1016,9 @@ def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
     assert lock.read_text(encoding="utf-8") == "path-resolved lock\n"
 
 
-def test_temporary_local_dependency_lock_is_not_publication_resolved() -> None:
+def test_development_symbolica_lock_is_not_publication_resolved() -> None:
     module = _module()
-    with pytest.raises(module.SetupError, match="symjit has an unexpected source None"):
+    with pytest.raises(module.SetupError, match="symbolica has an unexpected source"):
         module._validate_release_cargo_lock(ROOT / "Cargo.lock")
 
 

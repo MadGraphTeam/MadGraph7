@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import lru_cache
+from numbers import Number
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -12,6 +14,34 @@ def _number(value: complex | float) -> Any:
     from symbolica import Expression
 
     return Expression.num(value)
+
+
+@lru_cache(maxsize=128)
+def _exact_complex_expression(value: complex) -> Any:
+    """Represent a stored binary64 weight without rounding symbolic factors.
+
+    In particular, multiplying a rational coefficient by a Python complex
+    unit must not turn that coefficient into a floating-point approximation.
+    """
+    from symbolica import E
+
+    real_numerator, real_denominator = value.real.as_integer_ratio()
+    imag_numerator, imag_denominator = value.imag.as_integer_ratio()
+    return E(
+        f"({real_numerator}/{real_denominator})"
+        f"+1i*({imag_numerator}/{imag_denominator})"
+    )
+
+
+def _imaginary_unit_for(values: Sequence[Any]) -> Any:
+    """Keep symbolic propagator phases exact without changing numeric inputs."""
+    if all(isinstance(value, Number) for value in values):
+        return 1j
+    from symbolica import Expression
+
+    if any(isinstance(value, Expression) for value in values):
+        return _exact_complex_expression(1j)
+    return 1j
 
 
 def _as_expression(value: Any) -> Any:
@@ -82,11 +112,12 @@ def _expr_fermion_propagator_weyl(
 ) -> tuple[Any, ...]:
     energy, px, py, pz = momentum
     denominator = _minkowski_square_expression(momentum)
-    prefactor = 1j / denominator
+    imaginary = _imaginary_unit_for((*fermion, *momentum))
+    prefactor = imaginary / denominator
     tmp1 = energy + pz
     tmp2 = energy - pz
-    tmp3 = px + 1j * py
-    tmp4 = px - 1j * py
+    tmp3 = px + imaginary * py
+    tmp4 = px - imaginary * py
     f1, f2 = fermion
     if chirality == 1:
         return (
@@ -108,11 +139,12 @@ def _expr_antifermion_propagator_weyl(
 ) -> tuple[Any, ...]:
     energy, px, py, pz = momentum
     denominator = _minkowski_square_expression(momentum)
-    prefactor = 1j / denominator
+    imaginary = _imaginary_unit_for((*antifermion, *momentum))
+    prefactor = imaginary / denominator
     tmp1 = -(energy + pz)
     tmp2 = -(energy - pz)
-    tmp3 = -(px + 1j * py)
-    tmp4 = -(px - 1j * py)
+    tmp3 = -(px + imaginary * py)
+    tmp4 = -(px - imaginary * py)
     a1, a2 = antifermion
     if chirality == 1:
         return (
@@ -136,14 +168,15 @@ def _expr_fermion_propagator_dirac(
     if len(fermion) != 4 or len(momentum) != 4:
         raise ValueError("Dirac fermion propagator expects four components")
     energy, px, py, pz = momentum
+    imaginary = _imaginary_unit_for((*fermion, *momentum, mass, width))
     denominator = (
-        _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+        _minkowski_square_expression(momentum) - mass * mass + imaginary * mass * width
     )
-    prefactor = 1j / denominator
+    prefactor = imaginary / denominator
     tmp1 = energy + pz
     tmp2 = energy - pz
-    tmp3 = px + 1j * py
-    tmp4 = px - 1j * py
+    tmp3 = px + imaginary * py
+    tmp4 = px - imaginary * py
     f1, f2, f3, f4 = fermion
     return (
         (tmp1 * f3 + tmp3 * f4 + mass * f1) * prefactor,
@@ -162,14 +195,15 @@ def _expr_antifermion_propagator_dirac(
     if len(antifermion) != 4 or len(momentum) != 4:
         raise ValueError("Dirac antifermion propagator expects four components")
     energy, px, py, pz = momentum
+    imaginary = _imaginary_unit_for((*antifermion, *momentum, mass, width))
     denominator = (
-        _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+        _minkowski_square_expression(momentum) - mass * mass + imaginary * mass * width
     )
-    prefactor = 1j / denominator
+    prefactor = imaginary / denominator
     tmp1 = -(energy + pz)
     tmp2 = -(energy - pz)
-    tmp3 = -(px + 1j * py)
-    tmp4 = -(px - 1j * py)
+    tmp3 = -(px + imaginary * py)
+    tmp4 = -(px - imaginary * py)
     a1, a2, a3, a4 = antifermion
     return (
         (tmp2 * a3 - tmp4 * a4 + mass * a1) * prefactor,

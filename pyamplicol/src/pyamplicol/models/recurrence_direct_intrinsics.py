@@ -439,37 +439,7 @@ def _exact_binary64_coefficients(expression: object) -> object:
     rational approximation. This also prevents a floating unit from rounding
     away a small rational difference during the algebraic comparison.
     """
-    from symbolica import AtomType
-
-    _sym._ensure_symbolica()
-    pending = [expression]
-    replacements: dict[object, object] = {}
-    while pending:
-        atom = pending.pop()
-        kind = atom.get_type()
-        if kind == AtomType.Var:
-            continue
-        if kind != AtomType.Num:
-            pending.extend(atom)
-            continue
-        try:
-            value = complex(atom)
-        except (TypeError, ValueError, OverflowError):
-            continue
-        if not math.isfinite(value.real) or not math.isfinite(value.imag):
-            continue
-        # Literal matching retains numeric kind and precision, unlike scalar
-        # equality. Never round rational or higher-precision atoms to binary64.
-        if not bool(atom.matches(_sym.Expression.num(value))):
-            continue
-        real_n, real_d = value.real.as_integer_ratio()
-        imag_n, imag_d = value.imag.as_integer_ratio()
-        replacements[atom] = _sym.E(f"({real_n}/{real_d})+1𝑖*({imag_n}/{imag_d})")
-    if not replacements:
-        return expression
-    return expression.replace_multiple(
-        [_sym.Replacement(source, target) for source, target in replacements.items()]
-    )
+    return _sym._exact_binary64_coefficients(expression)
 
 
 def _normalization_candidates(

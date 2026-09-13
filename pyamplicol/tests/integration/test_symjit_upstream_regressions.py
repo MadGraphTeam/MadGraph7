@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 """Opt-in, tiny compiler regressions; no pyAmpliCol native build is required.
 
-PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 enables the tests against published 2.25.4.
+PYAMPLICOL_RUN_SYMJIT_REGRESSIONS=1 enables the tests against published 2.25.6.
 PYAMPLICOL_SYMJIT_SOURCE=/path/to/symjit selects a different source checkout.
 Only test modules are added to a temporary copy: corrective patches are never
 applied. A broken compiler is expected to fail, rather than produce an xfail.
@@ -108,7 +108,7 @@ def symjit_manifests(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Pa
     dependency = (
         f"path={json.dumps(str(Path(selected).expanduser().resolve()))}"
         if selected
-        else 'version="=2.25.4"'
+        else 'version="=2.25.6"'
     )
     harness.write_text(_manifest(dependency))
     metadata = json.loads(_cargo(harness, "metadata", "--format-version", "1"))

@@ -514,3 +514,76 @@ def test_catalog_fails_closed_when_one_admitted_propagator_is_missing() -> None:
         match=r"cannot lower admitted propagator particle=21, chirality=0",
     ):
         build_prepared_kernel_catalog(BrokenBuiltin())
+
+
+def _rational_scalar_candidate(factor):
+    from pyamplicol.models import compiler_symbolica
+    from pyamplicol.models.base import Vertex, VertexEvaluationEquivalence
+    from pyamplicol.models.prepared_catalog_builder import _vertex_candidate
+    from pyamplicol.models.prepared_catalog_helpers import formal_components
+
+    class RationalScalarModel(BuiltinSMModel):
+        def vertex_evaluation_equivalence(self, kind):
+            return VertexEvaluationEquivalence(
+                "rational-scalar", factor=(factor.real, factor.imag)
+            )
+
+        def vertex_component_expression(self, kind, left, right, **kwargs):
+            return (left[0] * right[0] / 3,)
+
+    compiler_symbolica._ensure_symbolica()
+    model = RationalScalarModel()
+    result = _vertex_candidate(
+        model,
+        Vertex(0, (25, 25, 25), (1.0, 0.0)),
+        left_chirality=0,
+        right_chirality=0,
+        result_chirality=0,
+        parameter_indices={},
+        contract_kind="vertex",
+    )
+    original = (
+        formal_components(model, "left-current", 1)[0]
+        * formal_components(model, "right-current", 1)[0]
+        / 3
+    )
+    return result, original
+
+
+@pytest.mark.parametrize("factor", (1 + 0j, -1 + 0j, 1j, 0.1 + 0j, 0.2j))
+def test_prepared_normalization_preserves_exact_rational_coefficients(factor):
+    from fractions import Fraction
+
+    from symbolica import E
+
+    candidate, original = _rational_scalar_candidate(factor)
+    # Preserve the stored binary64 value, not a nearby simple fraction.
+    exact_factor = E(f"({Fraction(factor.real)})+1i*({Fraction(factor.imag)})")
+    normalized = E(candidate.candidate.exact_expressions[0])
+    assert (normalized * exact_factor - original).expand() == 0
+
+
+@pytest.mark.parametrize("coefficient", (1 + 0j, -1 + 0j, 1j, 0.1 + 0j, 0.2j))
+def test_prepared_closure_preserves_exact_rational_coefficients(coefficient):
+    from fractions import Fraction
+
+    from symbolica import E
+
+    from pyamplicol.models._physics_ir import ContractionIR
+    from pyamplicol.models.prepared_catalog_builder import _closure_candidate
+
+    candidate, original = _rational_scalar_candidate(1 + 0j)
+    closure = _closure_candidate(
+        candidate,
+        ContractionIR(
+            "rational-scalar",
+            "scalar",
+            "scalar",
+            ((coefficient.real, coefficient.imag),),
+        ),
+    )
+    exact_coefficient = E(
+        f"({Fraction(coefficient.real)})+1i*({Fraction(coefficient.imag)})"
+    )
+    projected = E(closure.candidate.exact_expressions[0])
+    assert (projected - exact_coefficient * original).expand() == 0

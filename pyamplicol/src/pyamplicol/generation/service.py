@@ -711,6 +711,27 @@ def _recurrence_relation_reporting(
         }
     elif effective_mode in {"diagnostic", "certified-reuse"}:
         expected_applied = certified if effective_mode == "certified-reuse" else 0
+        application_scope = lane_report.get("application_scope")
+        if (
+            effective_mode == "certified-reuse"
+            and isinstance(application_scope, Mapping)
+            and application_scope.get("contracted_opposite_application") == "disabled"
+        ):
+            application = lane_report.get("application")
+            relation_counts = (
+                application.get("relation_kind_counts")
+                if isinstance(application, Mapping)
+                else None
+            )
+            if not isinstance(relation_counts, Mapping):
+                raise GenerationError(
+                    "recurrence numerical application has no relation-kind counts"
+                )
+            expected_applied -= _result_integer(
+                relation_counts.get("opposite"),
+                "recurrence suppressed opposite relation count",
+                minimum=0,
+            )
         expected_state = (
             "no_certified_numerical_relation"
             if certified == 0
@@ -726,7 +747,6 @@ def _recurrence_relation_reporting(
             else "disabled"
         )
         if mode == "certified-reuse" and effective_mode == "diagnostic":
-            application_scope = lane_report.get("application_scope")
             if (
                 effective_mode_reason
                 not in {

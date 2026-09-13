@@ -42,10 +42,10 @@ thiserror = "2.0"
 wide = "1.7"
 
 [patch.crates-io]
-symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
-numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
-graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "0084bc7c1418940fdec652059cd704e00d07e9d1" }
-symjit = { path = "./TMP_FIXED_SYMJIT" }
+symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
+numerica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
+graphica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
+symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "3fc04010f69db954463f9666fffb652b244ccc52" }
 spenso = { path = "./TMP_FIXED_SPENSO/crates/spenso" }
 spenso-hep-lib = { path = "./TMP_FIXED_SPENSO/crates/spenso-hep-lib" }
 spenso-macros = { path = "./TMP_FIXED_SPENSO/crates/spenso-macros" }

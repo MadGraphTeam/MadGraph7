@@ -89,6 +89,13 @@ For a selected helicity, a current buffer is not cleared separately when its
 first retained contribution already initializes it. Other selected schedules
 keep the required clears.
 
+Recurrence outputs generated with `color.contraction = "symmetric-group-fft"`
+also retain exact colour coefficients. Double-double and arbitrary-precision
+evaluation use a direct contraction of those coefficients, streamed from the
+compact FFT representation without constructing a dense matrix. This is an
+exact-precision fallback, not a higher-precision FFT, and can be substantially
+slower than the native binary64 path at high multiplicity.
+
 ### Compiled
 
 Compiled mode lowers a process-wide DAG into evaluator stages while generating
@@ -343,8 +350,9 @@ Generation has three distinct checks; they should not be confused:
 1. **Artifact writing** always validates the schema, confined references,
    declared payload sizes, and digests.
 2. **Current relation discovery** uses deterministic high-precision probes and
-   independent verification to apply certified equal, opposite, or zero-current
-   reuse when structural proof is unavailable.
+   independent verification to apply certified current reuse when structural
+   proof is unavailable, subject to the execution layout's
+   [application restrictions](configuration.md#numerical-current-reuse).
 3. **Post-build validation** optionally reopens the completed artifact and
    compares native f64 optimized and resolved evaluation.
 

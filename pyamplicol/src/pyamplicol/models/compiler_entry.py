@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
+from .compiler_auxiliary_components import reduce_contact_auxiliary_components
 from .compiler_color_flow import (
     compile_lc_color_transition_terms,
     synthesize_fundamental_fierz_auxiliaries,
@@ -251,6 +252,12 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
     )
     particles = (*particles, *heft_particles)
     oriented_kernels = (*oriented_kernels, *heft_kernels)
+    particles, oriented_kernels = reduce_contact_auxiliary_components(
+        particles,
+        oriented_kernels,
+        auxiliary_particles=(*tree_particles, *heft_particles),
+        model_symbols=model_symbols,
+    )
     (
         annotated_terms,
         oriented_kernels,

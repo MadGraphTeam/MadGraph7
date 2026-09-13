@@ -8,6 +8,7 @@ from typing import Any
 
 from ..models._physics_ir import ContractionIR, PropagatorIR
 from ..models.base import Model
+from ..models.expressions import _exact_complex_expression
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
 )
@@ -443,7 +444,7 @@ def _interaction_contribution(
     color_weight = _coupling(interaction.get("color_weight"))
     if color_weight == (1.0, 0.0):
         return components
-    weight = color_weight[0] + 1j * color_weight[1]
+    weight = _exact_complex_expression(complex(*color_weight))
     return tuple(weight * component for component in components)
 
 
@@ -523,18 +524,22 @@ def _compact_interaction_contribution(
                 momentum_slot_by_mask[right_current.index.momentum_mask]
             ],
         )
-        canonical_components = (
-            components
-            if evaluation_factor == 1.0 + 0.0j
-            else tuple(component / evaluation_factor for component in components)
-        )
+        if evaluation_factor == 1.0 + 0.0j:
+            canonical_components = components
+        else:
+            exact_factor = _exact_complex_expression(evaluation_factor)
+            canonical_components = tuple(
+                component / exact_factor for component in components
+            )
         if evaluation_group_id is not None:
             evaluation_cache[evaluation_group_id] = canonical_components
     color_weight = complex(*interaction.color_weight)
-    attachment_weight = color_weight * evaluation_factor
-    if attachment_weight == 1.0 + 0.0j:
+    if color_weight == evaluation_factor == 1.0 + 0.0j:
         return canonical_components
-    return tuple(attachment_weight * component for component in canonical_components)
+    weight = _exact_complex_expression(color_weight) * _exact_complex_expression(
+        evaluation_factor
+    )
+    return tuple(weight * component for component in canonical_components)
 
 
 def _amplitude_root_expression(
@@ -693,7 +698,7 @@ def _apply_amplitude_color_weight(
 ) -> Any:
     if color_weight == (1.0, 0.0):
         return expression
-    return (color_weight[0] + 1j * color_weight[1]) * expression
+    return _exact_complex_expression(complex(*color_weight)) * expression
 
 
 def _interaction_item_id(

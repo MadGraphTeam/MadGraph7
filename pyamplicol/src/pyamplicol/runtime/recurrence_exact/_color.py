@@ -14,6 +14,12 @@ from pathlib import Path, PurePosixPath
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.artifacts.manifest import ArtifactManifest, PayloadRecord
 from pyamplicol.artifacts.security import confined_path, normalize_relative_path
+from pyamplicol.color.symmetric_group import (
+    _inverse_permutation,
+    _lexicographic_permutation_rank,
+    _LexicographicPermutations,
+    _relative_permutation,
+)
 from pyamplicol.runtime.eager_exact._contracts import _mapping
 
 RECURRENCE_COLOR_CONTRACTION_CODEC_ABI = "pyamplicol-recurrence-color-contraction-v3"
@@ -119,6 +125,21 @@ class _RecurrenceColorContraction:
                 group_by_local_component[
                     local_group_id * self.component_count + component_id
                 ] = group_id
+        if self.storage == "convolution-kernels":
+            # Exact coefficients are retained in the FFT payload. Expand only
+            # the iteration, not a dense matrix or a floating-point transform.
+            for entry, left, right in self._convolution_entries():
+                for component in range(self.component_count):
+                    yield self._runtime_entry(
+                        entry,
+                        group_by_local_component[
+                            left * self.component_count + component
+                        ],
+                        group_by_local_component[
+                            right * self.component_count + component
+                        ],
+                    )
+            return
         for component in range(self.component_count):
             for entry in self.entries:
                 left_index = entry.left_group_id * self.component_count + component
@@ -128,6 +149,29 @@ class _RecurrenceColorContraction:
                     group_by_local_component[left_index],
                     group_by_local_component[right_index],
                 )
+
+    def _convolution_entries(self) -> Iterator[tuple[_RawColorEntry, int, int]]:
+        permutations = _LexicographicPermutations(self.factorization_rank)
+        order = len(permutations)
+        offset = 0
+        for left_channel in range(self.factorization_coset_count):
+            for right_channel in range(left_channel, self.factorization_coset_count):
+                for left_index, left in enumerate(permutations):
+                    for right_index, right in enumerate(permutations):
+                        relative = _lexicographic_permutation_rank(
+                            _relative_permutation(left, right)
+                        )
+                        # Same-channel kernels have weight one and use every
+                        # ordered pair. Cross-channel kernels already include
+                        # weight two for their implicit Hermitian partner.
+                        yield (
+                            self.entries[offset + relative],
+                            left_channel * order + left_index,
+                            right_channel * order + right_index,
+                        )
+                offset += order
+        for entry in self.entries[offset:]:
+            yield entry, entry.left_group_id, entry.right_group_id
 
     def _runtime_entry(
         self,
@@ -230,8 +274,7 @@ def _load_recurrence_color_contraction(
         "group_count": contraction.group_count,
         "sector_count": contraction.sector_count,
         "active_sector_count": sum(
-            owner == sector
-            for sector, owner in enumerate(contraction.owner_by_sector)
+            owner == sector for sector, owner in enumerate(contraction.owner_by_sector)
         ),
         "component_count": contraction.component_count,
         "destination_count": contraction.destination_count,
@@ -303,10 +346,7 @@ def _decode_recurrence_color_contraction(
         raise CompatibilityError(
             "unsupported recurrence color-contraction binary header"
         )
-    if (
-        entry_stride != _ENTRY.size
-        or exact_factor_stride != _EXACT_FACTOR_BYTES
-    ):
+    if entry_stride != _ENTRY.size or exact_factor_stride != _EXACT_FACTOR_BYTES:
         raise ArtifactError(
             "recurrence color-contraction fixed-width header is inconsistent"
         )
@@ -318,17 +358,17 @@ def _decode_recurrence_color_contraction(
         raise ArtifactError(
             "recurrence color-contraction payload has invalid color accuracy"
         ) from exc
-    if (
-        storage_id == _STORAGE_CONVOLUTION_KERNELS
-        and factor_kind == _FACTOR_SYMMETRIC_GROUP_FOURIER
-    ):
-        raise CompatibilityError(
-            "symmetric-group FFT recurrence artifacts support native f64 "
-            "evaluation but not the exact/high-precision diagnostic executor"
-        )
-    if storage_id not in {_STORAGE_EXPANDED, _STORAGE_REPEATED}:
+    if storage_id not in {
+        _STORAGE_EXPANDED,
+        _STORAGE_REPEATED,
+        _STORAGE_CONVOLUTION_KERNELS,
+    }:
         raise ArtifactError("recurrence color-contraction payload has invalid storage")
-    storage = "expanded" if storage_id == _STORAGE_EXPANDED else "repeated"
+    storage = {
+        _STORAGE_EXPANDED: "expanded",
+        _STORAGE_REPEATED: "repeated",
+        _STORAGE_CONVOLUTION_KERNELS: "convolution-kernels",
+    }[storage_id]
     if min(group_count, sector_count, component_count, destination_count) <= 0:
         raise ArtifactError("recurrence color-contraction dimensions must be positive")
     if owner_map_count != sector_count:
@@ -491,7 +531,7 @@ def _decode_recurrence_color_contraction(
             )
     else:
         if (
-            component_count < 2
+            (component_count < 2 and storage == "repeated")
             or local_group_count * component_count != group_count
             or logical_entry_count != entry_count * component_count
         ):
@@ -504,21 +544,33 @@ def _decode_recurrence_color_contraction(
             component_count=component_count,
             local_group_count=local_group_count,
         )
-        _validate_factorization(
-            factor_kind=factor_kind,
-            factor_rank=factor_rank,
-            coset_count=coset_count,
-            coset_indices=coset_indices,
-            local_group_count=local_group_count,
-            entries=entries,
-        )
-        factorization_kind = (
-            "klein-four-walsh"
-            if factor_kind == _FACTOR_KLEIN_FOUR
-            else "elementary-abelian-walsh"
-            if factor_kind == _FACTOR_ELEMENTARY_ABELIAN
-            else None
-        )
+        if storage == "convolution-kernels":
+            _validate_symmetric_group_convolution(
+                factor_kind,
+                factor_rank,
+                coset_count,
+                coset_indices,
+                local_group_count,
+                entries,
+                exact_factors,
+            )
+            factorization_kind = "symmetric-group-fourier"
+        else:
+            _validate_factorization(
+                factor_kind=factor_kind,
+                factor_rank=factor_rank,
+                coset_count=coset_count,
+                coset_indices=coset_indices,
+                local_group_count=local_group_count,
+                entries=entries,
+            )
+            factorization_kind = (
+                "klein-four-walsh"
+                if factor_kind == _FACTOR_KLEIN_FOUR
+                else "elementary-abelian-walsh"
+                if factor_kind == _FACTOR_ELEMENTARY_ABELIAN
+                else None
+            )
 
     return _RecurrenceColorContraction(
         color_accuracy=accuracy,
@@ -677,9 +729,7 @@ def _validate_sector_owners(
     active_sector_ids: set[int],
 ) -> None:
     if len(owner_by_sector) != sector_count:
-        raise ArtifactError(
-            "recurrence physical-sector owner map has the wrong length"
-        )
+        raise ArtifactError("recurrence physical-sector owner map has the wrong length")
     fixed_points: set[int] = set()
     for sector_id, owner_id in enumerate(owner_by_sector):
         if owner_id == _ZERO_SECTOR_OWNER:
@@ -728,6 +778,68 @@ def _validate_repeated_group_coordinates(
         raise ArtifactError(
             "repeated recurrence color rows do not identify unique physical sectors"
         )
+
+
+def _validate_symmetric_group_convolution(
+    factor_kind: int,
+    degree: int,
+    channel_count: int,
+    channel_indices: Sequence[int],
+    local_group_count: int,
+    entries: Sequence[_RawColorEntry],
+    factors: Sequence[_ExactColorFactor],
+) -> None:
+    if factor_kind != _FACTOR_SYMMETRIC_GROUP_FOURIER or not 2 <= degree <= 10:
+        raise ArtifactError(
+            "convolution color storage requires symmetric-group metadata"
+        )
+    order = math.factorial(degree)
+    eligible = channel_count * order
+    if (
+        channel_count <= 0
+        or eligible > local_group_count
+        or tuple(channel_indices) != tuple(range(eligible))
+    ):
+        raise ArtifactError("symmetric-group channel coordinates are inconsistent")
+    kernel_count = channel_count * (channel_count + 1) // 2 * order
+    residual_count = (
+        local_group_count * (local_group_count + 1) - eligible * (eligible + 1)
+    ) // 2
+    if len(entries) != kernel_count + residual_count:
+        raise ArtifactError("symmetric-group kernel/residual row count is inconsistent")
+    offset = 0
+    for left in range(channel_count):
+        for right in range(left, channel_count):
+            for relative, permutation in enumerate(_LexicographicPermutations(degree)):
+                entry = entries[offset + relative]
+                if (entry.left_group_id, entry.right_group_id) != (
+                    left * order,
+                    right * order + relative,
+                ) or entry.symmetry_factor != (1.0 if left == right else 2.0):
+                    raise ArtifactError("symmetric-group kernel rows are not canonical")
+                if left == right:
+                    inverse = _lexicographic_permutation_rank(
+                        _inverse_permutation(permutation)
+                    )
+                    if (
+                        factors[entry.exact_factor_id]
+                        != factors[entries[offset + inverse].exact_factor_id]
+                    ):
+                        raise ArtifactError(
+                            "symmetric-group diagonal kernel is not Hermitian"
+                        )
+            offset += order
+    for left in range(local_group_count):
+        for right in range(max(left, eligible), local_group_count):
+            entry = entries[offset]
+            if (entry.left_group_id, entry.right_group_id) != (
+                left,
+                right,
+            ) or entry.symmetry_factor != (1.0 if left == right else 2.0):
+                raise ArtifactError("symmetric-group residual rows are not canonical")
+            offset += 1
+    if any(factors[entry.exact_factor_id].imag_numerator != 0 for entry in entries):
+        raise ArtifactError("symmetric-group color kernels require real coefficients")
 
 
 def _validate_factorization(

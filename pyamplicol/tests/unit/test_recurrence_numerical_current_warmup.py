@@ -428,6 +428,14 @@ def _signed_relation_plan() -> _RecurrenceExactPlan:
     return plan
 
 
+def _contracted_signed_relation_plan() -> _RecurrenceExactPlan:
+    plan = _signed_relation_plan()
+    plan.sections = replace(
+        plan.sections, strategy="contracted-color-union", replay_targets=()
+    )
+    return plan
+
+
 def _points(seed_start: int) -> tuple[ValidationPointRecord, ...]:
     return tuple(
         ValidationPointRecord(
@@ -1963,7 +1971,101 @@ def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations
         sections,
         requested_mode="certified-reuse",
         certificates=certificates,
+    ) == "certified-reuse"
+    eligible = recurrence_warmup._applicable_numerical_certificates(
+        certificates, application_scope=report["application_scope"]
+    )
+    assert {certificate.relation_kind for certificate in eligible} == {"equal", "zero"}
+    assert len(eligible) == 2
+    assert all(
+        any(item is certificate for item in certificates) for certificate in eligible
+    )
+    assert recurrence_warmup._effective_numerical_relation_mode(
+        sections,
+        requested_mode="certified-reuse",
+        certificates=tuple(
+            certificate
+            for certificate in certificates
+            if certificate.relation_kind == "opposite"
+        ),
     ) == "diagnostic"
+
+
+def test_contracted_partial_reuse_preserves_full_native_evidence_and_census() -> None:
+    result = run_recurrence_numerical_current_warmup(
+        _contracted_signed_relation_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="full",
+        precision_digits=80,
+        seed=67,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    try:
+        assert len(result.certificates) == 3
+        assert result.applied_relation_count == 2
+        assert {item.relation_kind for item in result.applied_certificates} == {
+            "equal", "zero"
+        }
+        assert result.effective_mode_reason is None
+        evidence = json.loads(result.evidence_json)
+        assert len(evidence["certificates"]) == len(evidence["mappings"]) == 3
+        assert {item["relation_kind"] for item in evidence["mappings"]} == {
+            "equal", "opposite", "zero"
+        }
+        report = result.to_json_dict()
+        assert report["certified_relation_count"] == 3
+        assert report["applied_relation_count"] == 2
+        assert report["application"]["certified_relation_count"] == 3
+        assert report["application"]["applied_relation_count"] == 2
+        assert len(report["application"]["certificates"]) == 3
+        assert report["persisted_numerical_evidence"]["full_census"][
+            "certificate_set_sha256"
+        ] == evidence["certificate_set_sha256"]
+        assert 4 not in result.candidate_capture.observations
+        assert 5 in result.candidate_capture.observations
+        assert result.warning_required is True
+    finally:
+        result.close()
+
+
+def test_applicable_relation_preserves_a_skipped_opposite_representative() -> None:
+    plan = _contracted_signed_relation_plan()
+    result = run_recurrence_numerical_current_warmup(
+        plan,
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="full",
+        precision_digits=80,
+        seed=67,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    try:
+        opposite = next(
+            item for item in result.certificates if item.relation_kind == "opposite"
+        )
+        # Application filtering does not create certificates or rewrite their
+        # representative. The native mapper keeps skipped currents computed.
+        dependent = replace(
+            result.applied_certificates[0],
+            current_id=opposite.current_id + 2,
+            representative_id=opposite.current_id,
+            execution_representative_id=opposite.current_id,
+            relation_kind="equal",
+        )
+        filtered = recurrence_warmup._applicable_numerical_certificates(
+            (opposite, dependent),
+            application_scope=result.discovery_report["application_scope"],
+        )
+        assert filtered == (dependent,)
+        assert filtered[0] is dependent
+        assert filtered[0].execution_representative_id == opposite.current_id
+    finally:
+        result.close()
 
 
 def test_discovery_reads_each_candidate_current_once_and_reuses_residual_text(
@@ -2178,13 +2280,20 @@ def test_recurrence_raw_evidence_rejects_noncanonical_tolerances_before_capture(
         )
 
 
-def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> None:
+@pytest.mark.parametrize("partial_contracted", (False, True))
+def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out(
+    partial_contracted: bool,
+) -> None:
     result = run_recurrence_numerical_current_warmup(
-        _topology_replay_plan(),
+        (
+            _contracted_signed_relation_plan()
+            if partial_contracted
+            else _topology_replay_plan()
+        ),
         candidate_points=_points(1),
         verification_points=_points(101),
         mode="certified-reuse",
-        color_accuracy="lc",
+        color_accuracy="full" if partial_contracted else "lc",
         precision_digits=80,
         seed=71,
         relative_tolerance=1.0e-60,
@@ -2195,12 +2304,15 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
     application = lane["application"]
     assert isinstance(discovery, dict)
     assert isinstance(application, dict)
+    certified = len(result.certificates)
+    applied = result.applied_relation_count
+    assert (certified, applied) == ((3, 2) if partial_contracted else (1, 1))
     native = {
         "requested_mode": "certified-reuse",
         "state": "native-applied",
-        "exact_certified_relation_count": 1,
-        "applied_relation_count": 1,
-        "certificate_count": 1,
+        "exact_certified_relation_count": certified,
+        "applied_relation_count": applied,
+        "certificate_count": certified,
         "numerical_candidate_count": discovery["numerical_candidate_count"],
         "uncertified_candidate_count": discovery["verification_rejected_count"],
         "rejected_hypothesis_count": discovery["rejected_hypothesis_count"],
@@ -2234,9 +2346,9 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
     )
     assert "relation_discovery" not in runtime_inspection
     assert aggregate["execution_mode"] == "recurrence"
-    assert aggregate["lanes"]["primary"]["applied_relation_count"] == 1
-    assert aggregate["certified_relation_count"] == 1
-    assert aggregate["applied_relation_count"] == 1
+    assert aggregate["lanes"]["primary"]["applied_relation_count"] == applied
+    assert aggregate["certified_relation_count"] == certified
+    assert aggregate["applied_relation_count"] == applied
     assert aggregate["warning"]["required"] is True
     assert aggregate["warning"]["emit"] == "once-per-generated-artifact"
     assert aggregate["native_relation_application"] == native
@@ -2266,6 +2378,19 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
                 mode="certified-reuse",
                 lane_report=lane,
             )
+
+    if partial_contracted:
+        for incorrect_count in (1, 3):
+            with pytest.raises(GenerationError):
+                _recurrence_relation_reporting(
+                    {
+                        "relation_discovery": {
+                            **native, "applied_relation_count": incorrect_count
+                        }
+                    },
+                    mode="certified-reuse",
+                    lane_report={**lane, "applied_relation_count": incorrect_count},
+                )
 
     off_lane = recurrence_numerical_current_opt_out_report(
         _topology_replay_plan().sections,

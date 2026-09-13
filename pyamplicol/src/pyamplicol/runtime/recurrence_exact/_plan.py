@@ -11,6 +11,7 @@ from pathlib import Path
 from pyamplicol._internal.versions import (
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.artifacts.manifest import ArtifactManifest
@@ -710,6 +711,8 @@ def _validate_execution(
     permitted_capabilities = required_capabilities | {
         RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     }
+    if layout == "contracted-color-union":
+        permitted_capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     if not required_capabilities <= actual_capabilities or not (
         actual_capabilities <= permitted_capabilities
     ):

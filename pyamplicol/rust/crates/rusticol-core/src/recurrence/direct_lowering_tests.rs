@@ -1127,6 +1127,37 @@ fn deterministic_lowering_uses_stable_prepared_executor_ids_and_i32_spin() {
 }
 
 #[test]
+fn contribution_fanout_preserves_copy_dependencies_with_recycled_arena_addresses() {
+    let copy = |parent, destination, factor| DirectContributionRow {
+        parent0_component_base: parent,
+        parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+        parent0_momentum_form_id: 4,
+        parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+        destination_component_base: destination,
+        exact_factor_id: factor,
+        selector_domain_id: 5,
+        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+            | DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+    };
+    // A is at 100, B at 10, C at 50. Validated semantic order is A -> B -> C,
+    // but best-fit arena reuse need not assign increasing physical addresses.
+    // Sorting by the parent address would read B before its copy from A.
+    let expected = vec![copy(100, 10, 1), copy(10, 50, 2), copy(5, 5, 0)];
+    let mut rows = expected.clone();
+    order_contributions_for_runtime_fanout_by(&mut rows, |row| {
+        (
+            3,
+            DIRECT_NONE_U32,
+            *row,
+            (row.destination_component_base, row.exact_factor_id),
+        )
+    });
+    // The address-based tie is also used by persisted selected families;
+    // certified zero self-copies must preserve their position as well.
+    assert_eq!(rows, expected);
+}
+
+#[test]
 fn contribution_fanout_order_uses_only_authenticated_kinematic_inputs() {
     fn draft(
         semantic_id: u32,
@@ -1628,10 +1659,7 @@ fn selector_domain_canonicalization_preserves_the_universal_sentinel() {
     assert_eq!(canonical_selector_words(&[u64::MAX, 0, 0]), [u64::MAX, 0]);
 }
 
-#[test]
-fn contracted_replay_uses_dependency_closed_selector_work() {
-    let templates = validated_template();
-    let base = count_fixture_program(&templates, 5, 69, 126, 24, 2);
+fn contracted_fixture_program(base: &RecurrenceProgram) -> RecurrenceProgram {
     let currents = base
         .currents()
         .iter()
@@ -1666,7 +1694,7 @@ fn contracted_replay_uses_dependency_closed_selector_work() {
             .unwrap()
         })
         .collect();
-    let program = RecurrenceProgram::new(
+    RecurrenceProgram::new(
         RecurrenceStrategy::ContractedColorUnion,
         base.physical_sector_count(),
         base.retained_helicity_count(),
@@ -1679,7 +1707,14 @@ fn contracted_replay_uses_dependency_closed_selector_work() {
         base.amplitude_destinations().to_vec(),
         base.closure_terms().to_vec(),
     )
-    .unwrap();
+    .unwrap()
+}
+
+#[test]
+fn contracted_replay_uses_dependency_closed_selector_work() {
+    let templates = validated_template();
+    let base = count_fixture_program(&templates, 5, 69, 126, 24, 2);
+    let program = contracted_fixture_program(&base);
     let parts = lower(&program, &templates, digest(48)).unwrap();
     assert!(parts.selector_domains.len() > 1);
     let plan = DirectRecurrencePlan::new(parts).unwrap();
@@ -2465,6 +2500,37 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
         1
     );
 
+    // Signed numerical reuse remains available outside contracted colour.
+    let mut opposite_options = options.clone();
+    let opposite = &mut opposite_options
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .mappings[0];
+    opposite.relation_kind = "opposite".to_owned();
+    opposite.factor = rational(-1);
+    let (opposite_plan, opposite_report) = lower_recurrence_direct_plan_v2_with_relation_discovery(
+        &program,
+        &templates,
+        &catalog,
+        semantic_digest,
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+        &opposite_options,
+    )
+    .unwrap();
+    assert_eq!(opposite_report.unwrap().applied_relation_count, 1);
+    let opposite_copy = opposite_plan
+        .contributions()
+        .iter()
+        .find(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+        .unwrap();
+    assert_eq!(
+        opposite_plan.exact_factors()[opposite_copy.exact_factor_id as usize],
+        rational(-1)
+    );
+
     let mut zero_options = options.clone();
     let zero_mapping = &mut zero_options.numerical_evidence.as_mut().unwrap().mappings[0];
     zero_mapping.representative_id = None;
@@ -2593,5 +2659,219 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
         .unwrap_err()
         .to_string()
         .contains("exact current contract")
+    );
+}
+
+#[test]
+fn contracted_numerical_reuse_applies_equal_and_zero_without_discarding_signed_evidence() {
+    let templates = validated_template();
+    let base = count_fixture_program(&templates, 4, 31, 34, 12, 1);
+    let program = contracted_fixture_program(&base);
+    let catalog_digest = digest(40);
+    let catalog = direct_catalog(catalog_digest);
+    let semantic_digest = digest(51);
+    let options = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::Diagnostic,
+        96,
+        4,
+        4,
+        1.0e-70,
+        1.0e-80,
+        0x5059_414d,
+        "full",
+    )
+    .unwrap();
+    let lower = |options: &RecurrenceRelationDiscoveryOptions| {
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            options,
+        )
+    };
+    let (baseline, structural) = lower(&options).unwrap();
+    let structural = structural.unwrap();
+    assert!(structural.certificates.len() >= 3);
+    let opposite = &structural.certificates[0];
+    let equal = structural
+        .certificates
+        .iter()
+        .find(|certificate| {
+            certificate.current_id > opposite.current_id
+                && certificate.representative_id == opposite.representative_id
+        })
+        .expect("fixture contains a later equal current with the same original representative");
+    let zero = structural
+        .certificates
+        .iter()
+        .find(|certificate| certificate.current_id > equal.current_id)
+        .expect("fixture contains another later current");
+    let mappings = [opposite, equal, zero]
+        .into_iter()
+        .enumerate()
+        .map(|(index, certificate)| {
+            let zero = index == 2;
+            let representative = if index == 1 {
+                opposite.current_id
+            } else {
+                certificate.representative_id
+            };
+            RecurrenceNumericalCurrentMapping {
+                current_id: certificate.current_id,
+                representative_id: (!zero).then_some(representative),
+                execution_representative_id: if zero {
+                    certificate.current_id
+                } else {
+                    representative
+                },
+                relation_kind: ["opposite", "equal", "zero"][index].to_owned(),
+                factor: [
+                    rational(-1),
+                    ExactComplexRational::ONE,
+                    ExactComplexRational::ZERO,
+                ][index],
+                current_dimension: baseline.currents()[certificate.current_id as usize]
+                    .component_count,
+                certificate_proof_sha256: certificate.proof_sha256.clone(),
+                candidate_observations_sha256: certificate.current_expression_sha256.clone(),
+                verification_observations_sha256: certificate
+                    .representative_expression_sha256
+                    .clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let removed = [1, 2]
+        .into_iter()
+        .map(|index| program.currents()[mappings[index].current_id as usize].fan_in() as usize)
+        .sum::<usize>();
+    let opposite_base = baseline.currents()[mappings[0].current_id as usize].component_base;
+    let evidence = RecurrenceNumericalRelationEvidence {
+        requested_mode: RecurrenceRelationDiscoveryMode::CertifiedReuse,
+        schedule_semantic_digest: semantic_digest.to_string(),
+        baseline_runtime_layout_digest: baseline.runtime_layout_digest().to_string(),
+        source_semantics_sha256: crate::recurrence::recurrence_numerical_source_semantics_sha256(
+            &baseline,
+            "contracted-subset-test",
+        )
+        .unwrap(),
+        runtime_parameter_schema_sha256: digest(60).to_string(),
+        candidate_observation_batch_sha256: digest(61).to_string(),
+        verification_observation_batch_sha256: digest(62).to_string(),
+        decision_sha256: digest(64).to_string(),
+        rejection_decision_sha256: digest(65).to_string(),
+        certificate_algorithm: NUMERICAL_RELATION_CERTIFICATE_ALGORITHM.to_owned(),
+        certificate_set_sha256: digest(63).to_string(),
+        precision_digits: 96,
+        probe_count: 4,
+        verification_probe_count: 4,
+        relative_tolerance: 1.0e-70,
+        absolute_tolerance: 1.0e-80,
+        seed: 0x5059_414d,
+        numerical_candidate_count: 3,
+        verification_rejected_count: 0,
+        rejected_hypothesis_count: 0,
+        tested_hypothesis_count: 3,
+        mappings,
+    };
+    let mut apply = options.clone();
+    apply.mode = RecurrenceRelationDiscoveryMode::CertifiedReuse;
+    apply = apply.with_numerical_evidence(evidence).unwrap();
+    let (plan, report) = lower(&apply).unwrap();
+    let report = report.unwrap();
+    assert_eq!(report.exact_certified_relation_count, 3);
+    assert_eq!(report.certificates.len(), 3);
+    assert_eq!(report.certificates[0].factor, rational(-1));
+    assert_eq!(
+        report.authenticated_certificate_set_sha256,
+        Some(digest(63).to_string())
+    );
+    assert_eq!(report.applied_relation_count, 2);
+    assert_eq!(report.scale_copy_row_count, 2);
+    assert_eq!(
+        report.contribution_count_after,
+        baseline.contributions().len() - removed + 2
+    );
+    assert_eq!(report.contribution_count_after, plan.contributions().len());
+    assert_eq!(
+        report.interaction_evaluation_count_after,
+        baseline.contributions().len() - removed
+    );
+    let copies = plan
+        .contributions()
+        .iter()
+        .filter(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+        .collect::<Vec<_>>();
+    assert_eq!(copies.len(), 2);
+    assert!(copies.iter().all(|row| {
+        let factor = plan.exact_factors()[row.exact_factor_id as usize];
+        factor == ExactComplexRational::ONE || factor == ExactComplexRational::ZERO
+    }));
+    assert_eq!(
+        plan.contributions()
+            .iter()
+            .filter(|row| row.destination_component_base == opposite_base)
+            .count(),
+        baseline
+            .contributions()
+            .iter()
+            .filter(|row| row.destination_component_base == opposite_base)
+            .count(),
+        "the suppressed opposite current keeps its original interactions",
+    );
+    assert!(
+        copies
+            .iter()
+            .all(|row| row.destination_component_base != opposite_base)
+    );
+    assert!(
+        copies.iter().any(|row| {
+            row.parent0_component_base == opposite_base
+                && plan.exact_factors()[row.exact_factor_id as usize] == ExactComplexRational::ONE
+        }),
+        "an applied equal relation may read an opposite current whose original work was retained"
+    );
+
+    // The non-applied certificate is still authenticated, not discarded.
+    let mut invalid = apply.clone();
+    invalid.numerical_evidence.as_mut().unwrap().mappings[0].current_dimension += 1;
+    assert!(
+        lower(&invalid)
+            .unwrap_err()
+            .to_string()
+            .contains("exact current contract")
+    );
+
+    let mut diagnostic = apply.clone();
+    diagnostic.mode = RecurrenceRelationDiscoveryMode::Diagnostic;
+    diagnostic
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .requested_mode = diagnostic.mode;
+    let (unchanged, diagnostic_report) = lower(&diagnostic).unwrap();
+    assert_eq!(unchanged, baseline);
+    let diagnostic_report = diagnostic_report.unwrap();
+    assert_eq!(diagnostic_report.certificates, report.certificates);
+    assert_eq!(diagnostic_report.applied_relation_count, 0);
+
+    let mut opposite_only = apply;
+    let evidence = opposite_only.numerical_evidence.as_mut().unwrap();
+    evidence.mappings = vec![evidence.mappings[0].clone()];
+    evidence.numerical_candidate_count = 1;
+    evidence.tested_hypothesis_count = 1;
+    let (unchanged, suppressed) = lower(&opposite_only).unwrap();
+    let suppressed = suppressed.unwrap();
+    assert_eq!(unchanged, baseline);
+    assert_eq!(suppressed.certificates.len(), 1);
+    assert_eq!(suppressed.state, "diagnostic-only");
+    assert_eq!(suppressed.applied_relation_count, 0);
+    assert_eq!(suppressed.scale_copy_row_count, 0);
+    assert_eq!(
+        suppressed.contribution_count_after,
+        baseline.contributions().len()
     );
 }

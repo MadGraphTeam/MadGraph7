@@ -6,14 +6,16 @@ from __future__ import annotations
 import hashlib
 import struct
 from dataclasses import astuple, replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from fractions import Fraction
+from itertools import permutations
 from pathlib import Path
 
 import pytest
 
 from pyamplicol._internal.versions import (
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.artifacts.manifest import ArtifactManifest, PayloadRecord
@@ -74,7 +76,7 @@ def _contracted_execution_with_capabilities(
     }
 
 
-def test_exact_execution_permits_only_the_ignored_v2_helicity_companion() -> None:
+def test_exact_execution_permits_helicity_companion_and_exact_fft_fallback() -> None:
     core = (
         RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
         RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
@@ -82,6 +84,12 @@ def test_exact_execution_permits_only_the_ignored_v2_helicity_companion() -> Non
     _validate_execution(
         _contracted_execution_with_capabilities(
             (*core, RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
+        ),
+        "synthetic_contracted",
+    )
+    _validate_execution(
+        _contracted_execution_with_capabilities(
+            (*core, SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
         ),
         "synthetic_contracted",
     )
@@ -469,8 +477,19 @@ def test_color_encoder_emits_canonical_symmetric_group_kernel_rows() -> None:
         1,
     )
 
-    with pytest.raises(CompatibilityError, match="native f64 evaluation"):
-        _decode_recurrence_color_contraction(payload)
+    contraction = _decode_recurrence_color_contraction(payload)
+    assert contraction.storage == "convolution-kernels"
+    assert contraction.factorization_kind == "symmetric-group-fourier"
+    assert len(tuple(contraction.runtime_entries())) == 7
+    assert _contract_color_amplitudes(
+        contraction,
+        (
+            (Decimal(1), Decimal(2)),
+            (Decimal(3), Decimal(-1)),
+            (Decimal(-2), Decimal(1)),
+        ),
+        (0, 0, 0),
+    ) == {0: Decimal("76.5")}
 
     with pytest.raises(RecurrenceColorCodecError, match="certified convolution plan"):
         encode_recurrence_color_contraction(
@@ -518,6 +537,137 @@ def test_color_encoder_emits_canonical_symmetric_group_kernel_rows() -> None:
             exact_coefficients=(*exact[:2], exact[3], exact[2], exact[4]),
             destination_count=3,
         )
+
+
+def test_exact_fft_fallback_preserves_cross_channels_residuals_and_helicity_maps() -> (
+    None
+):
+    group = tuple(permutations(range(3)))
+    order = len(group)
+    local_count, component_count = 13, 2
+    ordered = tuple(reversed(range(local_count * component_count)))
+    destinations = tuple((index * 7) % len(ordered) for index in range(len(ordered)))
+    sectors, components = [0] * len(ordered), [0] * len(ordered)
+    for local in range(local_count):
+        for component in range(component_count):
+            group_id = ordered[local * component_count + component]
+            sectors[group_id], components[group_id] = local, component
+    # The diagonal kernels obey inversion symmetry, but the cross kernel
+    # deliberately does not: reversing L^{-1}R would change the answer.
+    kernels = (
+        tuple(Fraction(value, 7) for value in (10, 2, 3, 5, 5, 4)),
+        tuple(Fraction(value, 11) for value in (1, 2, 3, 4, 6, 7)),
+        tuple(Fraction(value, 13) for value in (8, 1, 2, 3, 3, 4)),
+    )
+    channel_pairs = ((0, 0), (0, 1), (1, 1))
+    kernel_entries = tuple(
+        ColorContractionTemplateEntry(
+            left * order,
+            right * order + relative,
+            float(value),
+            symmetry_factor=1.0 if left == right else 2.0,
+        )
+        for (left, right), kernel in zip(channel_pairs, kernels, strict=True)
+        for relative, value in enumerate(kernel)
+    )
+    residual = tuple(Fraction(index + 2, 17) for index in range(local_count))
+    residual_entries = tuple(
+        ColorContractionTemplateEntry(
+            index,
+            12,
+            float(value),
+            symmetry_factor=1.0 if index == 12 else 2.0,
+        )
+        for index, value in enumerate(residual)
+    )
+    weights = tuple(value for kernel in kernels for value in kernel) + residual
+    entries = kernel_entries + residual_entries
+    exact = tuple(
+        ExactComplexRationalV1(value.numerator, value.denominator)
+        for entry, weight in zip(entries, weights, strict=True)
+        for value in (weight * int(entry.symmetry_factor),)
+    )
+    block = SymmetricGroupColorContractionBlock(
+        degree=3,
+        component_count=component_count,
+        component_group_ids=ordered,
+        local_sector_ids=tuple(range(local_count)),
+        channel_cosets=(tuple(range(6)), tuple(range(6, 12))),
+        kernel_entries=kernel_entries,
+        kernel_exact_weights=weights[:18],
+        residual_entries=residual_entries,
+        residual_exact_weights=residual,
+        residual_local_group_indices=(12,),
+        hermiticity_check_mode="full",
+        hermiticity_relative_indices=tuple(range(6)),
+    )
+    payload = encode_recurrence_color_contraction(
+        ColorContractionPlan(
+            color_accuracy="full",
+            supported=True,
+            reason=None,
+            group_count=len(ordered),
+            entries=(),
+            symmetric_group_block=block,
+            destination_by_group=destinations,
+        ),
+        sector_count=local_count,
+        component_count=component_count,
+        ordered_group_ids=ordered,
+        destination_by_group=destinations,
+        group_sector_ids=tuple(sectors),
+        group_component_ids=tuple(components),
+        sector_owner_ids=tuple(range(local_count)),
+        exact_coefficients=exact,
+        destination_count=len(ordered),
+    )
+    contraction = _decode_recurrence_color_contraction(payload)
+    amplitudes = [(Decimal(0), Decimal(0))] * len(ordered)
+    helicities = [0] * len(ordered)
+    expected = {}
+    for component in range(component_count):
+        local_values = tuple(
+            ((-1) ** local * (local + 1), (2 * local + 1) * (component + 1))
+            for local in range(local_count)
+        )
+        for local, value in enumerate(local_values):
+            destination = destinations[ordered[local * component_count + component]]
+            amplitudes[destination] = tuple(Decimal(part) for part in value)
+            helicities[destination] = 10 + component
+
+        def real_product(left, right, values=local_values):
+            a, b = values[left], values[right]
+            return a[0] * b[0] + a[1] * b[1]
+
+        result = Fraction(0)
+        for (left_channel, right_channel), kernel in zip(
+            channel_pairs, kernels, strict=True
+        ):
+            for left_index, left in enumerate(group):
+                for right_index, right in enumerate(group):
+                    relative = group.index(tuple(left.index(value) for value in right))
+                    result += (
+                        kernel[relative]
+                        * (1 if left_channel == right_channel else 2)
+                        * real_product(
+                            left_channel * 6 + left_index,
+                            right_channel * 6 + right_index,
+                        )
+                    )
+        result += sum(
+            weight * (1 if local == 12 else 2) * real_product(local, 12)
+            for local, weight in enumerate(residual)
+        )
+        expected[10 + component] = result
+    with localcontext() as context:
+        context.prec = 70
+        actual = _contract_color_amplitudes(contraction, amplitudes, helicities)
+        for helicity, value in expected.items():
+            reference = Decimal(value.numerator) / Decimal(value.denominator)
+            assert abs(actual[helicity] - reference) < Decimal("1e-60")
+        assert _contract_color_amplitudes(
+            contraction, amplitudes, helicities, {11}
+        ) == {11: actual[11]}
 
 
 def test_color_encoder_rejects_duplicate_group_coordinates() -> None:

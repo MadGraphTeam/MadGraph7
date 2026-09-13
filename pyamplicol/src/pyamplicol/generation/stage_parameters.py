@@ -10,6 +10,7 @@ from .._internal.physics.parameters import ParamBuilder
 from .._internal.physics.symbols import symbols
 from ..models._physics_ir import ContractionIR
 from ..models.base import Model
+from ..models.expressions import _exact_complex_expression
 from .contracts import StageCompilationInput
 from .contracts import (
     runtime_coupling_parameter_names as _runtime_coupling_parameter_names,
@@ -65,7 +66,9 @@ def _apply_contraction_coefficient(
         return expression
     if coefficient == (-1.0, 0.0):
         return -expression
-    return complex(*coefficient) * expression
+    if isinstance(expression, int | float | complex):
+        return complex(*coefficient) * expression
+    return _exact_complex_expression(complex(*coefficient)) * expression
 
 
 def _sum_contraction_terms(terms: Iterable[Any]) -> Any:

@@ -541,13 +541,17 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    with provenance.RELEASE_LOCK.open("rb") as stream:
+        release = tomllib.load(stream)
+    with provenance.CONTRIBUTOR_LOCK.open("rb") as stream:
+        contributor = tomllib.load(stream)
     symbolica_descriptor = {
-        "url": "https://github.com/symbolica-dev/symbolica.git",
-        "revision": "77c137481904b8a5531ede86e3ef36b82beed7fd",
+        "url": contributor["symbolica"]["source_url"],
+        "revision": contributor["symbolica"]["candidate_revision"],
     }
     symjit_descriptor = {
-        "url": "https://github.com/siravan/symjit-crate.git",
-        "revision": "f1c193d301897149de6609f706297b0c97a4f018",
+        "url": release["symjit"]["repository"],
+        "revision": release["symjit"]["revision"],
     }
     state_path = tmp_path / "install-state.json"
     state_path.write_text(
@@ -570,7 +574,7 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
     assert payloads["dependency:symbolica"] == {
         "id": "dependency:symbolica",
         "name": "Symbolica",
-        "version": "2.2.0",
+        "version": contributor["symbolica"]["candidate_version"],
         "revision": symbolica_descriptor["revision"],
         "content_sha256": provenance.canonical_sha256(symbolica_descriptor),
         "serialization_abi": "symbolica-bincode2-v1",
@@ -579,7 +583,7 @@ def test_dependency_snapshot_uses_compact_source_descriptors(
     assert payloads["dependency:symjit"] == {
         "id": "dependency:symjit",
         "name": "Symjit",
-        "version": "2.25.0",
+        "version": release["symjit"]["version"],
         "revision": symjit_descriptor["revision"],
         "content_sha256": provenance.canonical_sha256(symjit_descriptor),
         "serialization_abi": "symjit-application-storage-v3",

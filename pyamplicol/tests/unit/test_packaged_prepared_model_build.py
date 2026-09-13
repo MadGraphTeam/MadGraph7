@@ -234,7 +234,7 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert "native_build_inputs_sha256" not in metadata["producer"]
     assert metadata["producer"]["package_version"] == RELEASE_VERSION
     assert metadata["dependencies"]["symbolica_version"] == "2.2.0"
-    assert metadata["dependencies"]["symjit_version"] == "2.25.0"
+    assert metadata["dependencies"]["symjit_version"] == "2.25.6"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
@@ -302,10 +302,20 @@ def test_release_staging_accepts_older_package_producer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import tomli_w
+
     overlay = _release_overlay(tmp_path)
-    store = overlay / "release_assets" / "prepared_models"
-    shutil.copytree(ROOT / "release_assets" / "prepared_models", store)
-    assert RELEASE_VERSION == "0.2.1"
+    # Isolate producer-version tolerance from the archived publication store.
+    # Use current bundle bytes and a synthetic release contract matching their
+    # actual dependencies; never relabel a binary's dependency versions.
+    store = _release_store(overlay)
+    reference = json.loads(next(store.glob("*.metadata.json")).read_text())
+    lock_path = overlay / "dependencies" / "release-lock.toml"
+    release = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+    release["symbolica"]["python_version"] = reference["dependencies"][
+        "symbolica_version"
+    ]
+    lock_path.write_text(tomli_w.dumps(release), encoding="utf-8")
 
     assert project_release_packaged_prepared_model_store(
         overlay,
@@ -314,6 +324,7 @@ def test_release_staging_accepts_older_package_producer(
     asset_root = overlay / "src/pyamplicol/assets/prepared_models"
     for metadata_path in asset_root.glob("*.metadata.json"):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["build_contract"] = {"mode": "release"}
         metadata["producer"]["package_version"] = "0.1.0"
         metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 

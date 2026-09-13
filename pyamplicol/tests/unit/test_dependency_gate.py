@@ -88,9 +88,9 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "repository",
         "revision",
     }
-    assert lock["symjit"]["version"] == "2.25.0"
+    assert lock["symjit"]["version"] == "2.25.6"
     assert lock["symjit"]["repository"] == "https://github.com/siravan/symjit-crate.git"
-    assert lock["symjit"]["revision"] == "f1c193d301897149de6609f706297b0c97a4f018"
+    assert lock["symjit"]["revision"] == "3fc04010f69db954463f9666fffb652b244ccc52"
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",

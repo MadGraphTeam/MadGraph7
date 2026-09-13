@@ -1051,7 +1051,15 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
                 )
         else:
             assert effective_mode == mode == "certified-reuse"
-            assert applied == certified
+            # Discovery retains the complete verified census, while contracted
+            # colour applies only the supported equal/zero subset.
+            certificates = application["certificates"]
+            expected_applied = sum(
+                certificate["relation_kind"] != "opposite"
+                or color_accuracy == "lc"
+                for certificate in certificates
+            )
+            assert applied == expected_applied
             if applied:
                 assert isinstance(native, dict)
                 assert native["applied_relation_count"] == applied

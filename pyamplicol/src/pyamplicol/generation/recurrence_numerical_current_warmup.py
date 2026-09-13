@@ -758,7 +758,20 @@ class RecurrenceNumericalCurrentWarmupResult:
 
     @property
     def applied_relation_count(self) -> int:
-        return len(self.certificates) if self.effective_mode == "certified-reuse" else 0
+        return len(self.applied_certificates)
+
+    @property
+    def applied_certificates(self) -> tuple[RecurrenceNumericalCurrentCertificate, ...]:
+        """Keep discovery complete while applying only supported relations."""
+
+        if self.effective_mode != "certified-reuse":
+            return ()
+        return _applicable_numerical_certificates(
+            self.certificates,
+            application_scope=cast(
+                Mapping[str, object], self.discovery_report["application_scope"]
+            ),
+        )
 
     @property
     def warning_required(self) -> bool:
@@ -820,7 +833,7 @@ class RecurrenceNumericalCurrentWarmupResult:
         applied_current_ids = (
             tuple(
                 current_id
-                for certificate in self.certificates
+                for certificate in self.applied_certificates
                 for current_id in (
                     certificate.current_id,
                     certificate.representative_id,
@@ -1300,7 +1313,12 @@ def run_recurrence_numerical_current_warmup(
         replay_current_ids = (
             tuple(
                 current_id
-                for certificate in certificates
+                for certificate in _applicable_numerical_certificates(
+                    certificates,
+                    application_scope=cast(
+                        Mapping[str, object], discovery["application_scope"]
+                    ),
+                )
                 for current_id in (
                     certificate.current_id,
                     certificate.representative_id,
@@ -2161,11 +2179,35 @@ def _effective_numerical_relation_mode(
     scope = _numerical_relation_application_scope(sections)
     if cast(Sequence[int], scope["suppressed_selector_domain_ids"]):
         return "diagnostic"
-    if sections.strategy == "contracted-color-union" and any(
-        certificate.relation_kind == "opposite" for certificate in certificates
+    if certificates and not _applicable_numerical_certificates(
+        certificates, application_scope=scope
     ):
         return "diagnostic"
     return requested_mode
+
+
+def _applicable_numerical_certificates(
+    certificates: Sequence[RecurrenceNumericalCurrentCertificate],
+    *,
+    application_scope: Mapping[str, object],
+) -> tuple[RecurrenceNumericalCurrentCertificate, ...]:
+    """Mirror native application containment without changing its evidence.
+
+    A skipped opposite relation keeps its original current evaluation. Equal
+    relations may therefore still refer to that current; no representative is
+    rewritten and no relation depends on applying a skipped certificate.
+    """
+
+    if application_scope["suppressed_selector_domain_ids"]:
+        return ()
+    suppress_opposite = (
+        application_scope["contracted_opposite_application"] == "disabled"
+    )
+    return tuple(
+        certificate
+        for certificate in certificates
+        if not (suppress_opposite and certificate.relation_kind == "opposite")
+    )
 
 
 def _discover_relations(

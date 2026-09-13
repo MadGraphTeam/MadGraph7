@@ -361,6 +361,8 @@ fn contribution_fanout_order_key(draft: &ContributionDraft) -> ContributionFanou
 /// destination still receives every exact-factor-scaled contribution once,
 /// with its first row initialized and all later rows added. Exact/high-
 /// precision execution remains driven by the semantic schedule.
+/// Certified copies retain their incoming topological order within each
+/// stage/executor/domain: recycled arena addresses are not dependency ranks.
 pub(crate) fn order_contributions_for_runtime_fanout_by<T, Tie>(
     drafts: &mut [T],
     parts: impl Fn(&T) -> (u32, u32, DirectContributionRow, Tie),
@@ -381,20 +383,23 @@ pub(crate) fn order_contributions_for_runtime_fanout_by<T, Tie>(
     drafts.sort_by_key(|draft| {
         let (stage, executor_id, row, tie) = parts(draft);
         let key = contribution_fanout_order_key_parts(stage, executor_id, row);
+        let certified_copy = row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0;
         let reusable = executor_id != DIRECT_NONE_U32
-            && row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE == 0
+            && !certified_copy
             && multiplicity.get(&key).copied().unwrap_or(0) > 1;
         (
             stage,
             executor_id,
             row.selector_domain_id,
             !reusable,
-            key.parent0_component_base,
-            key.parent1_component_base_or_sentinel,
-            key.parent0_momentum_form_id,
-            key.parent1_momentum_form_id_or_sentinel,
-            row.exact_factor_id,
-            tie,
+            (!certified_copy).then_some((
+                key.parent0_component_base,
+                key.parent1_component_base_or_sentinel,
+                key.parent0_momentum_form_id,
+                key.parent1_momentum_form_id_or_sentinel,
+                row.exact_factor_id,
+                tie,
+            )),
         )
     });
 }
@@ -2321,19 +2326,36 @@ fn apply_recurrence_relation_discovery(
             (outcome, relation_certificate_algorithm().to_owned(), 0, 0)
         };
 
-    let removed_contribution_count = if options.mode.applies_reuse()
-        && !outcome.relations.is_empty()
-    {
-        let relation_by_current = outcome
-            .relations
-            .iter()
+    // Keep the complete independently verified evidence and report, including
+    // signed relations. Only their application is restricted: numerical
+    // opposite-current reuse is not enabled for contracted binary64 colour
+    // sums. Equal and zero currents do not require that signed rewrite, and
+    // must not be disabled merely because another certificate is opposite.
+    // Exact symbolic relations and diagnostic projections remain unchanged.
+    let restrict_numerical_sign = options.mode.applies_reuse()
+        && options.numerical_evidence.is_some()
+        && program.strategy() == RecurrenceStrategy::ContractedColorUnion;
+    let projected_relations = outcome.relations.iter().filter(|certificate| {
+        !restrict_numerical_sign
+            || certificate.factor == ExactComplexRational::ONE
+            || certificate.factor == ExactComplexRational::ZERO
+    });
+    let projected_relation_count = projected_relations.clone().count();
+    let applied_relation_count = if options.mode.applies_reuse() {
+        projected_relation_count
+    } else {
+        0
+    };
+    let removed_contribution_count = if applied_relation_count != 0 {
+        let relation_by_current = projected_relations
+            .clone()
             .map(|certificate| (certificate.current_id, certificate))
             .collect::<BTreeMap<_, _>>();
         let original_len = contribution_drafts.len();
         contribution_drafts
             .retain(|draft| !relation_by_current.contains_key(&draft.semantic_result_current_id));
         let removed_contribution_count = original_len - contribution_drafts.len();
-        for certificate in &outcome.relations {
+        for certificate in projected_relations.clone() {
             let current = program
                 .currents()
                 .get(certificate.current_id as usize)
@@ -2384,9 +2406,8 @@ fn apply_recurrence_relation_discovery(
         }
         removed_contribution_count
     } else {
-        outcome
-            .relations
-            .iter()
+        projected_relations
+            .clone()
             .try_fold(0usize, |total, certificate| {
                 let count = usize::try_from(
                     program
@@ -2404,12 +2425,12 @@ fn apply_recurrence_relation_discovery(
 
     let projected_contribution_count = contribution_count_before
         .checked_sub(removed_contribution_count)
-        .and_then(|count| count.checked_add(outcome.relations.len()))
+        .and_then(|count| count.checked_add(projected_relation_count))
         .ok_or_else(|| invalid("relation contribution count overflows usize"))?;
     let projected_interaction_count = contribution_count_before
         .checked_sub(removed_contribution_count)
         .ok_or_else(|| invalid("relation interaction count underflows"))?;
-    let applied = options.mode.applies_reuse() && !outcome.relations.is_empty();
+    let applied = applied_relation_count != 0;
     Ok(Some(RecurrenceRelationDiscoveryReport {
         requested_mode: options.mode,
         state: if applied {
@@ -2452,7 +2473,7 @@ fn apply_recurrence_relation_discovery(
         numerical_candidate_count: outcome.numerical_candidate_count,
         uncertified_candidate_count: outcome.uncertified_candidate_count,
         exact_certified_relation_count: outcome.relations.len(),
-        applied_relation_count: if applied { outcome.relations.len() } else { 0 },
+        applied_relation_count,
         current_count_before: program.currents().len(),
         // Direct-plan-v2 requires dense semantic current IDs and exact
         // closure-proof bindings. Scale-copy reuse removes interaction work
@@ -2462,7 +2483,7 @@ fn apply_recurrence_relation_discovery(
         contribution_count_after: projected_contribution_count,
         interaction_evaluation_count_before: contribution_count_before,
         interaction_evaluation_count_after: projected_interaction_count,
-        scale_copy_row_count: if applied { outcome.relations.len() } else { 0 },
+        scale_copy_row_count: applied_relation_count,
         certificates: outcome.relations,
         rejected_candidates: outcome.rejected_candidates,
     }))

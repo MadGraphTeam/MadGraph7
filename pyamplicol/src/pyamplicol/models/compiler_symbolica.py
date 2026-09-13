@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from threading import RLock
 from typing import Any
 
@@ -51,3 +52,40 @@ def _ensure_symbolica() -> None:
         TensorNetwork = tensor_network_type
         as_tensor = tensor_expression
         _SYMBOLICA_READY = True
+
+
+def _exact_binary64_coefficients(expression: Any) -> Any:
+    """Replace binary64 atoms by rationals with exactly their stored value.
+
+    Literal matching preserves the numeric kind and precision: rational and
+    higher-precision atoms must never be rounded through Python's ``complex``.
+    """
+    from symbolica import AtomType
+
+    _ensure_symbolica()
+    pending = [expression]
+    replacements: dict[Any, Any] = {}
+    while pending:
+        atom = pending.pop()
+        kind = atom.get_type()
+        if kind == AtomType.Var:
+            continue
+        if kind != AtomType.Num:
+            pending.extend(atom)
+            continue
+        try:
+            value = complex(atom)
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if not math.isfinite(value.real) or not math.isfinite(value.imag):
+            continue
+        if not bool(atom.matches(Expression.num(value))):
+            continue
+        real_n, real_d = value.real.as_integer_ratio()
+        imag_n, imag_d = value.imag.as_integer_ratio()
+        replacements[atom] = E(f"({real_n}/{real_d})+1i*({imag_n}/{imag_d})")
+    if not replacements:
+        return expression
+    return expression.replace_multiple(
+        [Replacement(source, target) for source, target in replacements.items()]
+    )

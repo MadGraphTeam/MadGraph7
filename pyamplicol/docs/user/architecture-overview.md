@@ -63,6 +63,22 @@ Two model products have different roles:
 - a `.pyamplicol-model` bundle adds one prepared local-kernel backend for
   recurrence or eager execution.
 
+When higher-point interactions are split into smaller kernels, model compilation
+also reduces their internal auxiliary currents. It examines every consuming
+kernel and both input orientations: unused components are removed, while
+components with identical or opposite coefficient columns are replaced by the
+corresponding signed sum of producer components. These are exact symbolic
+relations valid for all model parameters, not numerical approximations.
+Physical currents and externally prescribed bases are unchanged. The reduced
+kernels are stored in the compiled/prepared model, so this work is not repeated
+at the first process evaluation.
+
+Symbolic current weights, propagator phases and projector fractions are kept
+exact during this construction. In particular, multiplying an exact coefficient
+by a complex unit does not round it to binary64. This preserves cancellations
+when the same process output is evaluated with double-double or arbitrary
+precision.
+
 The hand-written built-in Standard Model is a compatibility model. Its aliases
 and optimized kernels do not define generic UFO/JSON behavior. Unsupported
 model features fail during preflight with structured diagnostics rather than

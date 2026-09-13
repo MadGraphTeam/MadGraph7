@@ -2,16 +2,23 @@
 
 pyAmpliCol has two deliberately separate dependency modes.
 
-This experimental branch uses the explicit local Cargo overrides
-`TMP_FIXED_SYMJIT` and `TMP_FIXED_SPENSO`. They are not committed or distributed.
-Prepare these checkouts before running `just dev-install`; the installer uses
-their paths directly instead of cloning replacement SymJIT/GammaLoop sources.
+This experimental branch now uses unmodified upstream SymJIT **2.25.6**
+(`3fc04010f69db954463f9666fffb652b244ccc52`). All 15 reported-bug regression
+checks pass against the published crate; `TMP_FIXED_SYMJIT` is no longer used.
+Symbolica, Numerica and Graphica follow upstream `main`, with the tested
+revision recorded in `Cargo.lock` and `contributor-lock.toml`.
+
+The community Python build still uses the explicit local Cargo overrides in
+`TMP_FIXED_SPENSO`, which is not committed or distributed. Prepare this checkout
+before running `just dev-install`; the installer uses its paths instead of
+cloning replacement GammaLoop and symbolica-integrate sources.
 It also installs the separate `FUTURE_ufo_model_loader` checkout at version
 0.1.8 when present. The loader's own upstream `main` contains these changes;
 the checkout is not part of this repository, and 0.1.8 is not yet on PyPI. The separate
 upstream compatibility changes are documented in
 `SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES`. This configuration is not ready
-for publication until the fixes are available upstream.
+for publication until the remaining community API adaptations are available
+upstream.
 
 The future Python release requirements are Symbolica 3.0.0 and
 ufo-model-loader 0.1.8. Their release-wheel entries remain empty until publication.
@@ -79,9 +86,9 @@ loader in the contributor installation, including the current-CAS compatibility
 adaptations. Artifacts produced in this mode record
 the candidate revisions and are not eligible for PyPI publication.
 
-The temporary SymJIT checkout starts from 2.25.0 at upstream revision
-`f1c193d301897149de6609f706297b0c97a4f018`, with the separately recorded local
-compiler fixes. Rusticol builds its plane-oriented
+The managed SymJIT checkout uses the unmodified source of published 2.25.6 at
+upstream revision `3fc04010f69db954463f9666fffb652b244ccc52`.
+Rusticol builds its plane-oriented
 arena adapter from SymJIT's standard P-kernel interface and owns all
 pyAmpliCol-specific scheduling, factor, overwrite/accumulate, fanout, and
 artifact-binding policies. The pinned upstream P2 contract interprets scalar
@@ -89,8 +96,10 @@ and SIMD indices as actual row numbers and can optionally scale outputs by
 `params`; pyAmpliCol uses row indices and keeps identity output enabled.
 
 The build uses Symbolica development revision
-`0084bc7c1418940fdec652059cd704e00d07e9d1` with `wide >= 1.7` and the pinned
-symbolica-community source. No Symbolica source patch is needed. The local
+`ba3737137c2a2ccd7bb39f0441837d38ec867e78` from upstream `main`, with
+`wide >= 1.7` and the pinned symbolica-community source. No Symbolica source
+patch is needed. Rusticol explicitly enables the `native_code_generation`
+feature required for Symbolica's JIT evaluator API. The local
 GammaLoop checkout starts from `simplify-spenso-api` revision
 `5aadd389efabb7b039af74edad02a90d486a1c07` and contains the documented API
 adaptations for that CAS. The same local tree holds the integration adaptation;
@@ -100,8 +109,9 @@ mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users.
 
 The workspace's ordinary `[patch.crates-io]` entries keep the selected CAS
-revision and local SymJIT implementation consistent. Contributor builds use
-the matching managed CAS paths through the generated Cargo configuration.
+revision and unmodified upstream SymJIT implementation consistent. Contributor
+builds use the matching managed CAS paths through the generated Cargo
+configuration.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. Enable it with

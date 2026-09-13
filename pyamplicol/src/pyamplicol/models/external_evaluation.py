@@ -23,6 +23,7 @@ from .expressions import (
     _expr_fermion_propagator_dirac,
     _expr_fermion_propagator_weyl,
     _expr_minkowski_dot,
+    _imaginary_unit_for,
     _minkowski_square_expression,
 )
 from .tensors import (
@@ -277,13 +278,16 @@ class ExternalModelEvaluationMixin:
         else:
             mass = self.mass(particle_id)
             width = self.width(particle_id)
+        imaginary = _imaginary_unit_for((*value, *momentum, mass, width))
         if metadata.kind == "scalar":
             if len(value) != 1:
                 raise ValueError("scalar propagator expects one current component")
             denominator = (
-                _minkowski_square_expression(momentum) - mass * mass + 1j * mass * width
+                _minkowski_square_expression(momentum)
+                - mass * mass
+                + imaginary * mass * width
             )
-            return (1j * value[0] / denominator,)
+            return (imaginary * value[0] / denominator,)
         if metadata.kind == "dirac-fermion":
             components = tuple(value)
             current_momentum = tuple(momentum)
@@ -309,7 +313,9 @@ class ExternalModelEvaluationMixin:
             current_momentum = tuple(momentum)
             if metadata.gauge == "feynman":
                 denominator = _minkowski_square_expression(current_momentum)
-                return tuple(-1j * component / denominator for component in current)
+                return tuple(
+                    -imaginary * component / denominator for component in current
+                )
             if metadata.gauge != "unitary":
                 raise ValueError(
                     f"unsupported vector propagator gauge {metadata.gauge!r}"
@@ -317,13 +323,13 @@ class ExternalModelEvaluationMixin:
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
-                + 1j * mass * width
+                + imaginary * mass * width
             )
             longitudinal = _expr_minkowski_dot(current, current_momentum) / (
                 mass * mass
             )
             return tuple(
-                -1j
+                -imaginary
                 * (current[index] - current_momentum[index] * longitudinal)
                 / denominator
                 for index in range(4)

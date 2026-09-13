@@ -156,11 +156,19 @@ jobs:
             tests/unit/test_api_bundle.py \
             tests/unit/test_benchmarking.py \
             tests/unit/test_compiler_kernel_scale.py \
+            tests/unit/test_compiler_auxiliary_components.py \
+            tests/unit/test_heft_contact_trees.py \
+            tests/unit/test_sm_heft_model.py \
+            tests/unit/test_recurrence_numerical_current_warmup.py \
+            tests/unit/test_recurrence_exact_contracted_color.py \
+            tests/unit/test_recurrence_direct_intrinsics.py \
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
             tests/unit/test_exact_parameter_precision.py \
             tests/unit/test_exact_color_weight.py \
+            tests/unit/test_exact_symbolic_propagators.py \
+            tests/unit/test_stage_exact_weights.py \
             tests/unit/test_color_connection_catalogue.py \
             tests/unit/test_color_connections.py \
             tests/unit/test_color_correlator_matrices.py \
@@ -192,6 +200,8 @@ jobs:
           tests/integration/test_spenso_restricted_mode.py
           tests/integration/test_schema_v3_generation_runtime.py
           tests/integration/test_exact_precision_normalization.py
+          tests/integration/test_sm_heft_backends.py
+          tests/integration/test_heft_correlated_precision.py
           tests/integration/test_compiled_exact_color.py
           tests/integration/test_correlators.py
           tests/integration/test_correlator_colour_accuracy.py
