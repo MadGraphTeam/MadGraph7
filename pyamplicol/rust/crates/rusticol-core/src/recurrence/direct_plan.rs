@@ -51,7 +51,7 @@ impl TryFrom<u16> for DirectNodeKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, bincode::Encode, bincode::Decode)]
 #[repr(u16)]
 pub enum DirectExecutorRole {
     Source = 0,
@@ -118,7 +118,7 @@ pub struct DirectCurrentDescriptor {
     pub finalization_row_or_sentinel: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 #[repr(C)]
 pub struct DirectSourceRow {
     pub source_slot: u32,
@@ -130,7 +130,7 @@ pub struct DirectSourceRow {
     pub selector_domain_id: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 #[repr(C)]
 pub struct DirectContributionRow {
     pub parent0_component_base: u32,
@@ -143,7 +143,7 @@ pub struct DirectContributionRow {
     pub flags: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 #[repr(C)]
 pub struct DirectFinalizationRow {
     pub component_base: u32,
@@ -154,7 +154,7 @@ pub struct DirectFinalizationRow {
     pub flags: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 #[repr(C)]
 pub struct DirectClosureRow {
     pub parent0_component_base: u32,

@@ -43,6 +43,12 @@ def exercise_native_runtime(artifact: Path) -> None:
     assert_type(runtime.take_warnings(), list[str])
 
 
+def exercise_native_otf_cache(artifact: Path, cache: Path) -> None:
+    runtime = rusticol.Runtime.load(artifact)
+    assert_type(runtime.save(cache), None)
+    assert_type(runtime.load_cache(str(cache)), None)
+
+
 def exercise_native_metadata() -> None:
     assert_type(rusticol.abi_version(), int)
     assert_type(rusticol.package_version(), str)

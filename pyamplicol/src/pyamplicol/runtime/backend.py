@@ -670,6 +670,28 @@ class RusticolRuntimeBackend:
             result["supported_precisions"] = (16,)
         return result
 
+    def save(self, path: os.PathLike[str] | str) -> None:
+        """Save the retained native on-the-fly structural cache."""
+
+        self._cache_operation("save", path)
+
+    def load_cache(self, path: os.PathLike[str] | str) -> None:
+        """Replace the retained native on-the-fly cache after validation."""
+
+        self._cache_operation("load_cache", path)
+
+    def _cache_operation(self, name: str, path: os.PathLike[str] | str) -> None:
+        if self._execution_mode != "on-the-fly":
+            raise CompatibilityError(
+                "saving and restoring caches is available only for on-the-fly runtimes"
+            )
+        operation = getattr(self._runtime, name, None)
+        if not callable(operation):
+            raise CompatibilityError(
+                f"installed native runtime has no on-the-fly {name} binding"
+            )
+        _invoke(self._native_module, operation, path)
+
     def _on_the_fly_benchmark_context(
         self,
         color_flow_ids: Sequence[str],

@@ -184,6 +184,29 @@ Source bounds are checked once when the immutable family workspace is prepared;
 each point retains the original momentum-term summation order. Only active
 lanes are refreshed, with no warmed reallocation.
 
+### Completed-cache snapshots
+
+`NativeRuntime::save(path)` streams the completed retained OTF structure to a
+snapshot; `load_cache(path)` restores it against a matching loaded process.
+The Python facade and C/C++/Fortran/Rust SDKs expose the same operations and
+format. This is independent of explicit warm-up: an ordinary successful
+evaluation also leaves saveable state.
+
+The snapshot retains process preparation, grouped current rows, exact factors,
+momentum forms, semantic executor references, and the public-selection and
+amplitude-reduction mappings. Restoring the resolved coupling policy avoids
+repeating its process-global topology sweep. Prepared kernels are rebound
+from the original process output, while numeric workspaces are created afresh
+and the receiving runtime's parameters remain in effect. No machine addresses
+or evaluated currents are serialized. Successful restoration replaces the
+previous cache transactionally; rejection leaves it unchanged.
+
+Snapshot compatibility is tied to the existing process/seed/prepared-kernel
+identities and a snapshot format version. A saved family follows the same
+warmed execution path as one constructed in memory. The last-family retention
+policy is unchanged: this is neither a history of evicted selections nor a
+checkpoint of a partially constructed family.
+
 ### Prepared executors, source binding, and checked resources
 
 The prepared executor pool is model/catalog-owned. At artifact load, source

@@ -511,6 +511,46 @@ pub unsafe extern "C" fn rusticol_runtime_load(
     })
 }
 
+/// Saves the completed, retained OTF recursion cache to a file.
+///
+/// # Safety
+///
+/// `handle` must be a live runtime handle, and `path` must reference a readable
+/// NUL-terminated UTF-8 string. No other call on this handle may overlap this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_save(
+    handle: *const RusticolRuntimeHandle,
+    path: *const c_char,
+) -> c_int {
+    guard(|| {
+        // SAFETY: The handle and string follow the ABI contract above.
+        let runtime = unsafe { required_handle(handle) }?;
+        let path = unsafe { required_c_string(path, "cache path") }?;
+        runtime.runtime.save(path)?;
+        Ok(())
+    })
+}
+
+/// Restores a saved OTF recursion cache into an already-loaded matching process.
+///
+/// # Safety
+///
+/// `handle` must be a live runtime handle, and `path` must reference a readable
+/// NUL-terminated UTF-8 string. No other call on this handle may overlap this call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_load_cache(
+    handle: *mut RusticolRuntimeHandle,
+    path: *const c_char,
+) -> c_int {
+    guard(|| {
+        // SAFETY: The handle and string follow the ABI contract above.
+        let runtime = unsafe { required_handle_mut(handle) }?;
+        let path = unsafe { required_c_string(path, "cache path") }?;
+        runtime.runtime.load_cache(path)?;
+        Ok(())
+    })
+}
+
 /// Releases a Rusticol runtime handle.
 ///
 /// # Safety
@@ -1590,6 +1630,20 @@ mod tests {
 
         assert_eq!(status, RUSTICOL_STATUS_RUNTIME_ERROR);
         assert!(output.is_null());
+    }
+
+    #[test]
+    fn cache_calls_reject_null_handles() {
+        let path = CString::new("cache.bin").unwrap();
+        // SAFETY: A null handle is explicitly validated by both entry points.
+        assert_eq!(
+            unsafe { rusticol_runtime_save(ptr::null(), path.as_ptr()) },
+            RUSTICOL_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { rusticol_runtime_load_cache(ptr::null_mut(), path.as_ptr()) },
+            RUSTICOL_STATUS_INVALID_ARGUMENT
+        );
     }
 
     #[test]

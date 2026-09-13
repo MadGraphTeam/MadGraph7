@@ -4,8 +4,14 @@
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from functools import lru_cache
+from typing import Protocol, cast
 
 from pyamplicol.api.errors import ArtifactError
+
+
+class _DecimalComplexResult(Protocol):
+    # Symbolica returns ComplexFloat here; its current stubs still say tuple.
+    def to_decimal_tuple(self) -> tuple[Decimal, Decimal]: ...
 
 
 @lru_cache(maxsize=8)
@@ -14,7 +20,8 @@ def _pi(precision: int) -> Decimal:
 
     # Do not construct an optimized evaluator of the constant Pi: that
     # construction requires a target precision in current Symbolica.
-    return E("pi").evaluate({}, decimal_digit_precision=precision).to_decimal_tuple()[0]
+    value = E("pi").evaluate({}, decimal_digit_precision=precision)
+    return cast(_DecimalComplexResult, value).to_decimal_tuple()[0]
 
 
 def exact_normalization(

@@ -49,6 +49,10 @@ use crate::recurrence::{
 };
 use std::time::{Duration, Instant};
 
+#[path = "on_the_fly_lane_cache.rs"]
+mod cache;
+pub(super) use cache::OnTheFlyLaneSnapshotV1;
+
 #[cfg(feature = "on-the-fly-test-support")]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct OnTheFlyExecutionDiagnosticCurrentV1 {

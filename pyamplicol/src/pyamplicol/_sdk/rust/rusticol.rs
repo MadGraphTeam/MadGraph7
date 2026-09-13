@@ -481,6 +481,21 @@ impl Runtime {
         })
     }
 
+    /// Save the completed, retained OTF recursion cache without warming new selections.
+    /// The cache file complements, rather than replaces, the generated process output.
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path_cstring(path.as_ref(), "cache path")?;
+        // SAFETY: The owning handle and NUL-terminated path remain live for the call.
+        check(unsafe { ffi::runtime_save(self.handle.as_ptr(), path.as_ptr()) })
+    }
+
+    /// Restore a saved OTF cache into this already-loaded matching process.
+    pub fn load_cache(&mut self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path_cstring(path.as_ref(), "cache path")?;
+        // SAFETY: The uniquely borrowed handle and path remain live for the call.
+        check(unsafe { ffi::runtime_load_cache(self.handle.as_ptr(), path.as_ptr()) })
+    }
+
     pub fn process(&self) -> Result<String> {
         self.get_string(ffi::runtime_process)
     }
@@ -1552,6 +1567,14 @@ mod ffi {
             output: *mut *mut RuntimeHandle,
         ) -> c_int;
         pub(super) fn rusticol_runtime_free(handle: *mut RuntimeHandle) -> c_int;
+        pub(super) fn rusticol_runtime_save(
+            handle: *const RuntimeHandle,
+            path: *const c_char,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_load_cache(
+            handle: *mut RuntimeHandle,
+            path: *const c_char,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_metadata_json(
             handle: *const RuntimeHandle,
             buffer: *mut c_char,
@@ -1777,6 +1800,7 @@ mod ffi {
     pub(super) use rusticol_runtime_helicity_id as runtime_helicity_id;
     pub(super) use rusticol_runtime_helicity_vector as runtime_helicity_vector;
     pub(super) use rusticol_runtime_load as runtime_load;
+    pub(super) use rusticol_runtime_load_cache as runtime_load_cache;
     pub(super) use rusticol_runtime_load_kinematics_json as runtime_load_kinematics_json;
     pub(super) use rusticol_runtime_metadata_json as runtime_metadata_json;
     pub(super) use rusticol_runtime_model_parameter_count as runtime_model_parameter_count;
@@ -1787,6 +1811,7 @@ mod ffi {
     pub(super) use rusticol_runtime_process_key as runtime_process_key;
     pub(super) use rusticol_runtime_representative_process_key as runtime_representative_process_key;
     pub(super) use rusticol_runtime_resolved_shape as runtime_resolved_shape;
+    pub(super) use rusticol_runtime_save as runtime_save;
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;

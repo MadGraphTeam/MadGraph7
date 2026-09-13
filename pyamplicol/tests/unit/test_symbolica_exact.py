@@ -9,6 +9,7 @@ from types import MethodType, SimpleNamespace
 import pytest
 
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
+from pyamplicol.runtime._normalization_exact import _pi
 from pyamplicol.runtime.symbolica_exact import (
     SymbolicaExactExecutor,
     _apply_lc_replay_input_mapping,
@@ -269,6 +270,31 @@ def test_exact_parameter_derivation_converts_complex_float_for_both_arithmetics(
         assert result[1] is recording.result[1]
         assert result[1].is_signed()
     assert recording.precision == 32
+
+
+def test_exact_pi_converts_complex_float_without_decimal_rounding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import symbolica
+
+    expected = Decimal("3.14159265358979323846264338327950288419716939937510")
+    calls: list[tuple[object, int]] = []
+
+    def evaluate(constants: object, *, decimal_digit_precision: int) -> SimpleNamespace:
+        calls.append((constants, decimal_digit_precision))
+        return SimpleNamespace(to_decimal_tuple=lambda: (expected, Decimal(0)))
+
+    monkeypatch.setattr(
+        symbolica, "E", lambda _text: SimpleNamespace(evaluate=evaluate)
+    )
+    _pi.cache_clear()
+    try:
+        with localcontext() as context:
+            context.prec = 6
+            assert _pi(80) is expected
+        assert calls == [({}, 80)]
+    finally:
+        _pi.cache_clear()
 
 
 def test_exact_amplitude_outputs_follow_plane_arena_bindings() -> None:

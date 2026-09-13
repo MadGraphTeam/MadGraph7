@@ -496,6 +496,40 @@ stages through a fixed-layout optional callback; see
 [Native APIs](native-apis.md) and the complete
 [OTF lifecycle walkthrough](lc-workloads-and-execution-modes.md#the-otf-warm-state-lifecycle).
 
+## Saving an OTF warm cache
+
+After a successful `evaluate(...)` or `warm_up(...)`, save the retained
+recursion and restore it in another loaded runtime:
+
+```python
+runtime.save("zjj.otf-cache")
+
+restored = Runtime.load("artifacts/otf_pp_zjj", process="d d~ > g z g")
+restored.load_cache("zjj.otf-cache")
+values = restored.evaluate(new_points, color_flows=(flow,))
+```
+
+Both methods are OTF-only. The same operations are available through the
+[native APIs](native-apis.md#saving-and-restoring-an-otf-cache).
+The snapshot contains the retained structural calculation, including its
+helicity/colour selection and reduction mappings. It supports selected LC
+requests, helicity/flow sums, and contracted NLC/full-colour families, with
+either direct colour contraction or FFT where the original process supports it.
+
+Restoration skips current construction and binds the saved schedule to the
+prepared kernels in the matching process output. It does not save evaluated
+currents, native pointers or numeric workspaces. New momenta and batch sizes
+are supported, and the receiving runtime keeps its current model parameters.
+The original process output is still required; the cache is not a standalone
+process export. Incompatible process outputs or snapshot formats are rejected
+without replacing the receiving runtime's existing cache.
+
+Saving does not change the running handle or its warmed evaluation path.
+It saves the state currently retained, not a history of evicted selections.
+A different selection after restoration follows the usual OTF construction
+and replacement rules. This is a completed-state snapshot, not a checkpoint
+of an unfinished warm-up.
+
 ## Precision
 
 For ordinary evaluation, `precision=16` uses the native f64 RustiCol runtime. Direct JIT artifacts load

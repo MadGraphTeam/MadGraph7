@@ -65,6 +65,12 @@ MOMENTA: Momenta = (((10.0, 0.0, 0.0, 10.0),),)
 PARAMETERS: ModelParameters = {"normalization.alpha_s_me_check": 0.118}
 
 
+def exercise_otf_cache(artifact: Path, cache: Path) -> None:
+    runtime = Runtime.load(artifact)
+    assert_type(runtime.save(cache), None)
+    assert_type(runtime.load_cache(str(cache)), None)
+
+
 def exercise_generator(artifact: Path) -> None:
     processes = ProcessSet.from_expressions(("d d~ > z",), names=("ddbar_z",))
     assert_type(processes, ProcessSet)

@@ -83,6 +83,25 @@ def test_native_sdk_wrappers_expose_structured_one_point_otf_warm_up() -> None:
     assert "FnMut(&WarmUpProgress) -> bool" in rust
 
 
+def test_native_sdk_wrappers_expose_otf_cache_save_and_load() -> None:
+    header = _read("rust/crates/rusticol-capi/include/rusticol.h")
+    cpp = _read("rust/crates/rusticol-capi/include/rusticol.hpp")
+    fortran = _read("rust/crates/rusticol-capi/fortran/rusticol.f90")
+    rust = _read("src/pyamplicol/_sdk/rust/rusticol.rs")
+
+    for symbol in ("rusticol_runtime_save", "rusticol_runtime_load_cache"):
+        assert symbol in header
+        assert symbol in cpp
+        assert f'bind(C, name="{symbol}")' in fortran
+        assert symbol in rust
+    assert "void save(const std::string &path) const" in cpp
+    assert "void load_cache(const std::string &path)" in cpp
+    assert "procedure, public :: save => rusticol_save" in fortran
+    assert "procedure, public :: load_cache => rusticol_load_cache" in fortran
+    assert "pub fn save(&self, path: impl AsRef<Path>)" in rust
+    assert "pub fn load_cache(&mut self, path: impl AsRef<Path>)" in rust
+
+
 def test_generated_native_drivers_share_total_and_resolved_entrypoints() -> None:
     templates = {
         "cpp": _read("src/pyamplicol/assets/api_templates/cpp/check_standalone.cpp"),

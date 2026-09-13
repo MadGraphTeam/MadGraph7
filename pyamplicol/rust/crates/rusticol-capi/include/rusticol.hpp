@@ -287,6 +287,22 @@ public:
         return *this;
     }
 
+    // Save the completed, retained OTF cache, without warming new selections.
+    void save(const std::string &path) const {
+        if (path.find('\0') != std::string::npos) {
+            throw std::invalid_argument("cache path contains a NUL byte");
+        }
+        check(rusticol_runtime_save(handle_, path.c_str()));
+    }
+
+    // Restore an OTF cache after loading the matching process output normally.
+    void load_cache(const std::string &path) {
+        if (path.find('\0') != std::string::npos) {
+            throw std::invalid_argument("cache path contains a NUL byte");
+        }
+        check(rusticol_runtime_load_cache(handle_, path.c_str()));
+    }
+
     std::string process() const { return get_string(rusticol_runtime_process); }
     std::string process_key() const { return get_string(rusticol_runtime_process_key); }
     std::string representative_process_key() const {

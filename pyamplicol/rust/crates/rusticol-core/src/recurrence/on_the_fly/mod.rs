@@ -116,6 +116,7 @@ pub(crate) use coupling_policy::OnTheFlyResolvedCouplingPolicyV1;
 pub use family::OnTheFlyQueryFamilyCensusV1;
 #[cfg(feature = "on-the-fly-test-support")]
 pub use family::on_the_fly_query_family_census_v1;
+pub(crate) use family::snapshot::{OnTheFlyFamilySnapshotRefV1, OnTheFlyFamilySnapshotV1};
 pub(crate) use family::{
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
     OnTheFlyQueryFamilyHandleV1, QueryFamilyTraceInput, build_streamed_query_family_candidate_v1,
@@ -235,6 +236,24 @@ pub(crate) fn prepare_on_the_fly_process_v1(
         templates, seed, &grammar,
     )?;
     Ok((grammar, policy))
+}
+
+/// Recreate model-only grammar while retaining the saved process-global
+/// coupling decision; in particular, do not repeat the topology sweep.
+pub(crate) fn restore_on_the_fly_grammar_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    seed: &OnTheFlyProcessSeedV1,
+    policy: &OnTheFlyResolvedCouplingPolicyV1,
+) -> RusticolResult<PreparedOnTheFlyGrammarV1> {
+    if policy.seed_digest() != seed.semantic_digest()
+        || policy.effective_limits().len() != seed.explicit_coupling_limits().len()
+    {
+        return Err(integrity(
+            "saved on-the-fly coupling policy belongs to a different process",
+        ));
+    }
+    let catalog = validate_seed_against_templates(templates, seed)?;
+    prepare_on_the_fly_grammar_v1(templates, &catalog, seed)
 }
 
 fn resolve_indexed_query_results<T>(outcomes: Vec<RusticolResult<T>>) -> RusticolResult<Vec<T>> {

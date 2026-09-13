@@ -192,6 +192,16 @@ process preparation, query-family construction, family finalization, and first
 evaluation. LC accepts helicity/flow selectors; contracted NLC/full accepts
 helicity selectors only.
 
+`Runtime.save(path) -> None` and `Runtime.load_cache(path) -> None` are
+optional facade capabilities implemented by the native OTF backend. They
+write and restore the currently retained completed structural cache, including
+its selection and reduction mappings. Restoration requires a compatible
+loaded process, rebinds its prepared kernels, and preserves its current model
+parameters. Invalid snapshots leave the existing cache unchanged. Snapshots
+contain neither evaluated currents nor native addresses, and do not resume
+an unfinished construction. Ordinary non-OTF evaluation is unchanged.
+The Rust core and C/C++/Fortran/Rust SDKs expose the same operations.
+
 `Runtime.evaluate_resolved(momenta, *, helicities=None, color_flows=None,
 precision=16) -> ResolvedEvaluation` returns LC values with shape `(point,
 physical_helicity, physical_color_flow)` and NLC/full values with shape

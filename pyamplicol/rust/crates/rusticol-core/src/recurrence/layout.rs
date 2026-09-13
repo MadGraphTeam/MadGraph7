@@ -10,8 +10,19 @@ fn invalid(message: impl Into<String>) -> RusticolError {
 }
 
 /// A nonzero SHA-256 semantic digest.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, bincode::Encode)]
 pub struct SemanticDigest([u8; 32]);
+
+impl<Context> bincode::Decode<Context> for SemanticDigest {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Self::new(bincode::Decode::decode(decoder)?)
+            .map_err(|error| bincode::error::DecodeError::OtherString(error.to_string()))
+    }
+}
+
+bincode::impl_borrow_decode!(SemanticDigest);
 
 impl SemanticDigest {
     pub fn new(bytes: [u8; 32]) -> RusticolResult<Self> {
@@ -431,15 +442,28 @@ impl TryFrom<u32> for RecurrenceNodeKind {
 }
 
 /// One canonical term in a momentum linear form.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, bincode::Encode, bincode::Decode,
+)]
 pub struct MomentumTerm {
     pub source_slot: u32,
     pub coefficient: i32,
 }
 
 /// Canonical source-slot-ordered momentum linear form.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, bincode::Encode)]
 pub struct CanonicalMomentumLinearForm(Box<[MomentumTerm]>);
+
+impl<Context> bincode::Decode<Context> for CanonicalMomentumLinearForm {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Self::new(bincode::Decode::decode(decoder)?)
+            .map_err(|error| bincode::error::DecodeError::OtherString(error.to_string()))
+    }
+}
+
+bincode::impl_borrow_decode!(CanonicalMomentumLinearForm);
 
 impl CanonicalMomentumLinearForm {
     pub fn new(terms: Vec<MomentumTerm>) -> RusticolResult<Self> {

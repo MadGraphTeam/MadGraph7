@@ -362,6 +362,49 @@ convenience: close/free/drop and reload to start fully cold. See the
 [OTF lifecycle walkthrough](lc-workloads-and-execution-modes.md#the-otf-warm-state-lifecycle)
 for the corresponding C++, Fortran, and Rust call fragments.
 
+## Saving and restoring an OTF cache
+
+All native APIs can save the completed structural cache of an OTF handle and
+restore it into a handle loaded from the matching process output. For example,
+after warming or evaluating `runtime` and loading `restored` normally:
+
+```c
+int status = rusticol_runtime_save(runtime, "process.otf-cache");
+if (status == RUSTICOL_STATUS_OK)
+    status = rusticol_runtime_load_cache(restored, "process.otf-cache");
+```
+
+```cpp
+runtime.save("process.otf-cache");
+restored.load_cache("process.otf-cache");
+```
+
+```fortran
+call runtime%save("process.otf-cache", ierr=status)
+call restored%load_cache("process.otf-cache", ierr=status)
+```
+
+```rust
+runtime.save("process.otf-cache")?;
+restored.load_cache("process.otf-cache")?;
+```
+
+The Rust core's `NativeRuntime` exposes the same `save` and `load_cache`
+methods as the dependency-free Rust SDK. C, C++, Fortran, Rust and Python
+use the same snapshot format, so a compatible runtime can restore a cache
+written through another API. Usual SDK status/exception handling applies.
+
+The snapshot covers the currently retained selection, including LC sums and
+contracted NLC/full-colour direct or FFT families. It stores structural rows
+and reduction mappings, not machine addresses or evaluated currents. Loading
+rebinds the original prepared kernels and allocates numeric workspaces;
+the receiving handle's model parameters remain unchanged. The same saved
+selection can then run at new phase-space points and batch sizes without
+reconstructing its currents. Selecting a different family still follows OTF's
+normal cache-replacement behavior. Non-OTF handles reject these operations.
+See [Runtime and Selectors](runtime-and-selectors.md#saving-an-otf-warm-cache)
+for the Python example and snapshot scope.
+
 ## Selector support
 
 The C, C++, Fortran, and Rust total-evaluation entry points accept optional

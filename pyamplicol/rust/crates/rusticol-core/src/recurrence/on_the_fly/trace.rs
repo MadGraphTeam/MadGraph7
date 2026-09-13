@@ -9,7 +9,7 @@ use super::*;
 pub(crate) const ON_THE_FLY_WORK_CENSUS_BASIS_V1: &str = "fully-resident-query-local-trace-v1";
 
 /// Authenticated model operation addressed by one semantic executor key.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, bincode::Encode, bincode::Decode)]
 #[repr(u8)]
 pub(crate) enum OnTheFlyOperationKindV1 {
     Source = 0,
@@ -20,7 +20,7 @@ pub(crate) enum OnTheFlyOperationKindV1 {
 }
 
 /// Plan-independent semantic address of one prepared Direct-Arena executor.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, bincode::Encode, bincode::Decode)]
 pub(crate) enum OnTheFlyExecutorKeyV1 {
     PreparedOperation {
         direct_catalog_digest: SemanticDigest,

@@ -172,6 +172,10 @@ kernels instead of materializing a reusable process schedule during
 generation. The first explicit `warm_up(...)` or evaluation constructs the
 requested query family; later evaluations on the same loaded handle reuse it.
 Selecting a different family replaces the previous one.
+After construction completes, `runtime.save(path)` and
+`runtime.load_cache(path)` can carry that warm state between loaded runtimes
+without reconstructing its currents; see
+[Saving an OTF warm cache](runtime-and-selectors.md#saving-an-otf-warm-cache).
 
 This trade is designed around LC with one selected flow summed over all
 helicities. The same artifact can also build the all-flow sum for one selected

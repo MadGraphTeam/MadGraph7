@@ -4,8 +4,8 @@
 //!
 //! Independently constructed query-local traces are merged into stable boxed
 //! Direct-Arena rows, one shared numeric workspace, and an ordered grouped
-//! invocation schedule.  This remains a private lane: it does not serialize a
-//! new plan or introduce a public evaluation API.  Release/default builds do
+//! invocation schedule. Optional cache snapshots persist these same rows,
+//! without introducing a different evaluation plan. Release/default builds do
 //! not retain the cold contribution identities consumed here.
 
 use super::trace::{OnTheFlyTraceContributionProofRowV1, OnTheFlyTraceOperationV1};
@@ -14,6 +14,8 @@ use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::construct::current_key_with_dynamic_color;
 use sha2::{Digest, Sha256};
 use std::ops::Range;
+
+pub(crate) mod snapshot;
 
 const STREAMED_QUERY_FAMILY_IDENTITY_DOMAIN: &[u8] =
     b"pyamplicol-on-the-fly-streamed-query-family-v1\0";
@@ -84,6 +86,9 @@ pub(crate) struct QueryFamilyTraceInput<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum QueryFamilyCacheIdentityV1 {
+    /// A restored family is addressed by its retained lane handle. A new
+    /// selection always obtains its ordinary exact or streamed identity.
+    Restored,
     Exact {
         direct_catalog: PreparedDirectExecutorCatalog,
         queries: Box<
@@ -102,7 +107,7 @@ enum QueryFamilyCacheIdentityV1 {
     },
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 enum OnTheFlyFamilyRowsV1 {
     Source(Box<[DirectSourceRow]>),
     Contribution(Box<[DirectContributionRow]>),
@@ -121,7 +126,7 @@ impl OnTheFlyFamilyRowsV1 {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 struct OnTheFlyFamilyRowGroupV1 {
     seed_digest: SemanticDigest,
     stage: u32,
@@ -254,7 +259,7 @@ impl FamilyCurrentDefinition {
 
 /// Cold projection of both today's serialized-query execution and a
 /// proof-identical query-family union.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 #[doc(hidden)]
 pub struct OnTheFlyQueryFamilyCensusV1 {
     pub query_count: u32,
@@ -2194,6 +2199,7 @@ impl OnTheFlyFamilyWorkspaceV1 {
 
 struct BoundOnTheFlyQueryFamilyV1 {
     identity: QueryFamilyCacheIdentityV1,
+    strategy: RecurrenceStrategy,
     // Single ownership keeps every row address stable for prepared descriptor caches.
     family: OnTheFlyBuiltQueryFamilyV1,
     workspace: OnTheFlyFamilyWorkspaceV1,
@@ -2716,6 +2722,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         }
         let candidate = BoundOnTheFlyQueryFamilyV1 {
             identity,
+            strategy: RecurrenceStrategy::TopologyReplay,
             family,
             workspace,
             resolved_groups,
@@ -2808,6 +2815,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         }
         let candidate = BoundOnTheFlyQueryFamilyV1 {
             identity,
+            strategy: RecurrenceStrategy::ContractedColorUnion,
             family,
             workspace,
             resolved_groups,
@@ -3982,6 +3990,7 @@ mod tests {
                 query_count: 1,
                 ordered_query_digest: SemanticDigest::new([0x84; 32]).unwrap(),
             },
+            strategy: RecurrenceStrategy::ContractedColorUnion,
             family,
             workspace,
             resolved_groups,
@@ -4207,6 +4216,7 @@ mod tests {
                 query_count: 1,
                 ordered_query_digest: SemanticDigest::new([0x94; 32]).unwrap(),
             },
+            strategy: RecurrenceStrategy::ContractedColorUnion,
             family,
             workspace,
             resolved_groups,
@@ -4855,6 +4865,77 @@ mod tests {
                 .point_stride,
             checked_aligned_point_stride(2).unwrap()
         );
+    }
+
+    #[test]
+    fn query_family_snapshot_reuses_rows_with_new_inputs_and_ignores_pending_candidate() {
+        let catalog = direct_catalog();
+        let (first, projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let mut source =
+            OnTheFlyQueryFamilyExecutorV1::new(ProbeResolver::packed_singleton(catalog.clone()));
+        assert!(source.snapshot().unwrap().is_none());
+        source
+            .prepare(
+                &catalog,
+                &[QueryFamilyTraceInput {
+                    trace: &first,
+                    projection,
+                }],
+                1,
+            )
+            .unwrap();
+        // A constructed but unevaluated candidate is not a completed cache.
+        assert!(source.snapshot().unwrap().is_none());
+        let mut first_output = [(0.0, 0.0)];
+        source
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut first_output)
+            .unwrap();
+        assert_eq!(first_output, [(46.0, 0.0)]);
+        let (second, second_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(2));
+        source
+            .prepare(
+                &catalog,
+                &[QueryFamilyTraceInput {
+                    trace: &second,
+                    projection: second_projection,
+                }],
+                1,
+            )
+            .unwrap();
+        let bytes = bincode::encode_to_vec(source.snapshot().unwrap(), bincode::config::standard())
+            .unwrap();
+        let (saved, used): (Option<snapshot::OnTheFlyFamilySnapshotV1>, usize) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).unwrap();
+        assert_eq!(used, bytes.len());
+        let mut restored =
+            OnTheFlyQueryFamilyExecutorV1::new(ProbeResolver::packed_singleton(catalog));
+        let handle = restored.restore_snapshot(saved.unwrap(), 1).unwrap();
+        assert!(restored.activate_retained_family(handle, 2).unwrap());
+        let mut outputs = [(0.0, 0.0); 2];
+        let report = restored
+            .execute_into(
+                &source_major_momenta(&[2.0, 4.0], &[3.0, 5.0]),
+                2,
+                &mut outputs,
+            )
+            .unwrap();
+        assert!(report.cache_hit);
+        assert_eq!(outputs, [(46.0, 0.0), (180.0, 0.0)]);
+        assert!(restored.snapshot().unwrap().is_some());
+
+        // Even the counter-exhaustion boundary preserves the old cache.
+        let (saved, _): (Option<snapshot::OnTheFlyFamilySnapshotV1>, usize) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard()).unwrap();
+        restored.family_generation = u64::MAX;
+        assert!(restored.restore_snapshot(saved.unwrap(), 1).is_err());
+        assert!(restored.pending.is_none());
+        let report = restored
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut first_output)
+            .unwrap();
+        assert!(report.cache_hit);
+        assert_eq!(first_output, [(46.0, 0.0)]);
     }
 
     #[test]

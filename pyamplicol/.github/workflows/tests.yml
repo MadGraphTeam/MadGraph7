@@ -75,6 +75,7 @@ jobs:
           tests/unit/test_public_import_laziness.py
           tests/unit/test_repository_policy.py
           tests/unit/test_sdk_config.py
+          tests/unit/test_otf_cache.py
           tests/release
           --deselect
           tests/unit/test_api_requests.py::test_public_compiled_model_uses_the_canonical_schema
@@ -145,6 +146,7 @@ jobs:
           .venv/bin/python -m pytest
           tests/integration/test_multilanguage_api.py
           tests/integration/test_correlated_native_sdk.py
+          tests/integration/test_otf_cache_native_sdk.py
           -q -s
       - name: Run focused Python unit checks (30 GiB RSS limit)
         run: |
@@ -193,6 +195,7 @@ jobs:
           tests/integration/test_compiled_exact_color.py
           tests/integration/test_correlators.py
           tests/integration/test_correlator_colour_accuracy.py
+          tests/integration/test_otf_cache.py
           tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
           -q
       - name: Check Rust workspace (30 GiB RSS limit)

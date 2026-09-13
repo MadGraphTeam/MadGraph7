@@ -51,6 +51,9 @@ Equivalent exact and floating-point coefficients are again recognized when
 selecting optimized recurrence kernels, including in the bundled SM and HEFT models.
 Batched recurrence evaluations now fill the already allocated SIMD-aligned
 workspace, avoiding unnecessarily small batches at higher multiplicities.
+Completed on-the-fly caches can be saved and restored through Python and every
+native SDK, without reconstructing the retained currents. See
+[saving an OTF warm cache](runtime-and-selectors.md#saving-an-otf-warm-cache).
 
 ## 0.2.0 release
 

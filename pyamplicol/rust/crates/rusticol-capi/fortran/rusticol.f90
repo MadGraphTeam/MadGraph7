@@ -113,6 +113,8 @@ module rusticol
   contains
     final :: rusticol_finalize
     procedure, public :: load => rusticol_load
+    procedure, public :: save => rusticol_save
+    procedure, public :: load_cache => rusticol_load_cache
     procedure, public :: close => rusticol_close
     procedure, public :: is_loaded => rusticol_is_loaded
     procedure, public :: process => rusticol_process
@@ -175,6 +177,19 @@ module rusticol
       type(c_ptr), value :: handle
       integer(c_int) :: status
     end function c_rusticol_runtime_free
+
+    function c_rusticol_runtime_save(handle, path) bind(C, name="rusticol_runtime_save") result(status)
+      import :: c_ptr, c_int
+      type(c_ptr), value :: handle, path
+      integer(c_int) :: status
+    end function c_rusticol_runtime_save
+
+    function c_rusticol_runtime_load_cache(handle, path) &
+        bind(C, name="rusticol_runtime_load_cache") result(status)
+      import :: c_ptr, c_int
+      type(c_ptr), value :: handle, path
+      integer(c_int) :: status
+    end function c_rusticol_runtime_load_cache
 
     function c_rusticol_runtime_metadata_json(handle, buffer, capacity, required) &
         bind(C, name="rusticol_runtime_metadata_json") result(status)
@@ -634,6 +649,34 @@ contains
     status = c_rusticol_runtime_load(c_loc(dir_c(1)), key_ptr, model_ptr, self%handle)
     if (.not. status_ok(status, ierr)) self%handle = c_null_ptr
   end subroutine rusticol_load
+
+  ! Save completed OTF cache entries; the generated process output is still required.
+  subroutine rusticol_save(self, path, ierr)
+    class(rusticol_runtime), intent(in) :: self
+    character(len=*), intent(in) :: path
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: path_c(:)
+    integer(c_int) :: status
+
+    if (.not. argument_ok(index(path, achar(0)) == 0, "cache path contains a NUL byte", ierr)) return
+    call build_c_string(path, path_c)
+    status = c_rusticol_runtime_save(self%handle, c_loc(path_c(1)))
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_save
+
+  ! Load a saved OTF cache into an already-loaded matching process output.
+  subroutine rusticol_load_cache(self, path, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    character(len=*), intent(in) :: path
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: path_c(:)
+    integer(c_int) :: status
+
+    if (.not. argument_ok(index(path, achar(0)) == 0, "cache path contains a NUL byte", ierr)) return
+    call build_c_string(path, path_c)
+    status = c_rusticol_runtime_load_cache(self%handle, c_loc(path_c(1)))
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_load_cache
 
   subroutine rusticol_close(self)
     class(rusticol_runtime), intent(inout) :: self

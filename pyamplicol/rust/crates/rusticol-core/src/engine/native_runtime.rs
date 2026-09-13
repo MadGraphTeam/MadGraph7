@@ -4,6 +4,10 @@ use super::*;
 
 use std::sync::OnceLock;
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[path = "on_the_fly_cache.rs"]
+mod cache;
+
 enum DeferredProcessPhysicsV1 {
     #[expect(
         dead_code,
@@ -140,7 +144,7 @@ fn validate_representative_physics(
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 struct OnTheFlySelectionIdentityV1 {
     helicity_ordinals: Option<Box<[usize]>>,
     color_ordinals: Option<Box<[usize]>>,
@@ -1410,6 +1414,34 @@ fn ensure_selected_runtime_capabilities_supported(capabilities: &[String]) -> Ru
 
 impl NativeRuntime {
     pub const ABI_VERSION: u32 = crate::C_ABI_VERSION;
+
+    /// Save the currently retained, completed on-the-fly cache to a file.
+    /// The original process output is still required to load its kernels.
+    /// Numeric momenta, parameters, and workspaces are not serialized.
+    pub fn save(&self, path: impl AsRef<Path>) -> RusticolResult<()> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
+            return cache::save(self, runtime, path.as_ref());
+        }
+        let _ = path;
+        Err(RusticolError::compatibility(
+            "save() requires an on-the-fly runtime",
+        ))
+    }
+
+    /// Restore completed on-the-fly structural work against this loaded
+    /// process. The runner's current model parameters are kept. A failed load
+    /// leaves the previously usable cache intact.
+    pub fn load_cache(&mut self, path: impl AsRef<Path>) -> RusticolResult<()> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if matches!(self.execution_lane, NativeExecutionLane::OnTheFly(_)) {
+            return cache::load(self, path.as_ref());
+        }
+        let _ = path;
+        Err(RusticolError::compatibility(
+            "load_cache() requires an on-the-fly runtime",
+        ))
+    }
 
     /// Content identity of the authenticated artifact manifest that supplied
     /// this in-memory runtime.

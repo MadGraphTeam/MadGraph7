@@ -590,6 +590,22 @@ impl Runtime {
         self.runtime.metadata_json().map_err(python_error)
     }
 
+    fn save(&mut self, py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<()> {
+        let path = path_from_python(path)?;
+        let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
+        py.detach(move || runtime.run(|runtime| runtime.save(path)))
+            .and_then(|result| result)
+            .map_err(python_error)
+    }
+
+    fn load_cache(&mut self, py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<()> {
+        let path = path_from_python(path)?;
+        let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
+        py.detach(move || runtime.run(|runtime| runtime.load_cache(path)))
+            .and_then(|result| result)
+            .map_err(python_error)
+    }
+
     #[pyo3(signature=(color_flow_ids=None))]
     fn _on_the_fly_benchmark_context_json(
         &self,

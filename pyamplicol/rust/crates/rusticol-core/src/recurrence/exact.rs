@@ -48,11 +48,24 @@ fn checked_divisor(value: u128, context: &str) -> RusticolResult<i128> {
 /// Operations never round.  Values or intermediate results outside this
 /// domain fail closed; callers must not replace such failures with binary64
 /// arithmetic.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, bincode::Encode)]
 pub struct ExactRational {
     numerator: i128,
     denominator: i128,
 }
+
+impl<Context> bincode::Decode<Context> for ExactRational {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        let numerator = bincode::Decode::decode(decoder)?;
+        let denominator = bincode::Decode::decode(decoder)?;
+        Self::new(numerator, denominator)
+            .map_err(|error| bincode::error::DecodeError::OtherString(error.to_string()))
+    }
+}
+
+bincode::impl_borrow_decode!(ExactRational);
 
 impl ExactRational {
     pub const ZERO: Self = Self {
@@ -282,7 +295,9 @@ impl FromStr for ExactRational {
 }
 
 /// Canonical exact complex rational used by recurrence proof coefficients.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, bincode::Encode, bincode::Decode,
+)]
 pub struct ExactComplexRational {
     real: ExactRational,
     imag: ExactRational,

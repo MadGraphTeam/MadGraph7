@@ -41,7 +41,10 @@ from pyamplicol.runtime._native_selection import (
     native_process_selection,
     remap_reduction,
 )
-from pyamplicol.runtime._normalization_exact import exact_normalization
+from pyamplicol.runtime._normalization_exact import (
+    _DecimalComplexResult,
+    exact_normalization,
+)
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ZERO = Decimal(0)
@@ -425,7 +428,9 @@ class _ExactExpressionEvaluator:
                 _decimal(imaginary, "derived imaginary parameter"),
             )
             for value in outputs
-            for real, imaginary in (value.to_decimal_tuple(),)
+            for real, imaginary in (
+                cast(_DecimalComplexResult, value).to_decimal_tuple(),
+            )
         )
 
     def evaluate_double_double(
@@ -440,11 +445,11 @@ class _ExactExpressionEvaluator:
         try:
             return tuple(
                 cast(
-                    _ComplexDecimal,
-                    expression.evaluator(self._parameters, iterations=0, n_cores=1)
-                    .evaluate_complex_with_prec(prepared, 32)[0]
-                    .to_decimal_tuple(),
-                )
+                    _DecimalComplexResult,
+                    expression.evaluator(
+                        self._parameters, iterations=0, n_cores=1
+                    ).evaluate_complex_with_prec(prepared, 32)[0],
+                ).to_decimal_tuple()
                 for expression in self._expressions
             )
         except Exception as exc:

@@ -126,6 +126,17 @@ int rusticol_runtime_load(
 );
 int rusticol_runtime_free(RusticolRuntimeHandle *handle);
 
+/*
+ * Save/restore the completed, retained on-the-fly recursion cache. These calls
+ * apply only to on-the-fly runtimes; load_cache requires an already-loaded
+ * matching process output. The cache file does not replace that process output.
+ * Saving does not warm new selections and cannot checkpoint an in-progress call.
+ * A later evaluation may populate selections not present in the saved cache.
+ * path must be non-null, NUL-terminated UTF-8; relative paths use the working directory.
+ */
+int rusticol_runtime_save(const RusticolRuntimeHandle *handle, const char *path);
+int rusticol_runtime_load_cache(RusticolRuntimeHandle *handle, const char *path);
+
 int rusticol_runtime_metadata_json(
     const RusticolRuntimeHandle *handle,
     char *buffer,

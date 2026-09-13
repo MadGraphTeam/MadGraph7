@@ -436,6 +436,37 @@ class Runtime:
             raise EvaluationError("runtime backend returned invalid runtime inspection")
         return dict(result)
 
+    def save(self, path: os.PathLike[str] | str) -> None:
+        """Save the retained on-the-fly recursion after completed evaluations.
+
+        This saves structural warm-up work, not momenta, evaluated matrix
+        elements, or model-parameter values. Load the same process normally,
+        then use :meth:`load_cache` to restore it. Only the currently retained
+        selector family is saved; other selectors keep their usual cold path.
+        """
+
+        operation = getattr(self._backend, "save", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not support saving on-the-fly caches"
+            )
+        operation(Path(os.fspath(path)).expanduser().resolve(strict=False))
+
+    def load_cache(self, path: os.PathLike[str] | str) -> None:
+        """Restore a saved on-the-fly recursion into the same loaded process.
+
+        The current model parameters remain unchanged. A failed restore leaves
+        the existing cache intact. Restoring does not specialize the process:
+        new momenta, batch sizes and selector families remain supported.
+        """
+
+        operation = getattr(self._backend, "load_cache", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not support restoring on-the-fly caches"
+            )
+        operation(Path(os.fspath(path)).expanduser().resolve(strict=False))
+
     def evaluate(
         self,
         momenta: Momenta,

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use super::*;
 use crate::recurrence::contact_orbit_owner::ContactOrbitParentTopologyDomain;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 pub(crate) struct OnTheFlyCouplingPolicyCensusV1 {
     pub(crate) source_topology_count: u64,
     pub(crate) retained_topology_count: u64,
@@ -25,7 +25,7 @@ pub(crate) struct OnTheFlyCouplingPolicyCensusV1 {
     pub(crate) viable_total_order_count: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, bincode::Encode, bincode::Decode)]
 pub(crate) struct OnTheFlyResolvedCouplingPolicyV1 {
     seed_digest: SemanticDigest,
     effective_limits: Box<[Option<u32>]>,

@@ -1220,6 +1220,59 @@ impl NativeOnTheFlyPreparedExecutorResolver {
         self.pending_resolved = Some(resolved);
         Ok(())
     }
+
+    /// Bind saved semantic operations to this runner's own prepared kernels.
+    /// Saved rows already include the authenticated parent permutation; no
+    /// trace or query reconstruction is involved here.
+    pub(super) fn bind_on_the_fly_saved_family(
+        &mut self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        keys: impl IntoIterator<Item = OnTheFlyExecutorKeyV1>,
+    ) -> RusticolResult<()> {
+        self.begin_on_the_fly_family_binding(templates, direct)?;
+        let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
+        let mut resolved = BTreeMap::new();
+        for key in keys {
+            if resolved.contains_key(&key) {
+                continue;
+            }
+            let expected = authenticate(key)?;
+            let (direct_executor_id, handle, parent_permutation) =
+                if let Some(binding_id) = key.evaluator_binding_id() {
+                    self.pool
+                        .resolve_handle(&self.sources, key.role(), binding_id)?
+                } else {
+                    let (id, handle) = self.pool.identity_finalizer_handle()?;
+                    (id, handle, [0, 1])
+                };
+            if direct_executor_id != expected.direct_executor_id
+                || parent_permutation != expected.parent_permutation
+            {
+                return Err(RusticolError::integrity(
+                    "saved on-the-fly operation differs from its prepared kernel",
+                ));
+            }
+            resolved.insert(
+                key,
+                ResolvedOnTheFlyExecutor {
+                    direct_executor_id,
+                    handle,
+                    parent_permutation,
+                    packed_singleton_capable: self.pool.packed_singleton_capability(
+                        &self.sources,
+                        direct_executor_id,
+                        handle,
+                    )?,
+                    interaction_capability: self
+                        .pool
+                        .interaction_capability(direct_executor_id, handle)?,
+                },
+            );
+        }
+        self.pending_resolved = Some(resolved);
+        Ok(())
+    }
 }
 
 impl OnTheFlySourceDomainBinding {

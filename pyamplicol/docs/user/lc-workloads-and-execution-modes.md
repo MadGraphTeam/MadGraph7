@@ -482,6 +482,8 @@ One loaded OTF runtime follows this lifecycle:
 | Evaluate selection A again | Reuses A's structural family; ordinary numerical execution remains |
 | Successfully warm or evaluate selection B | B replaces A; only the most recent selected family is retained |
 | Change model parameters, then evaluate the retained selection | The same structure is retained, and its numerical workspace is refreshed with the latest parameter values before execution |
+| `runtime.save(path)` | The completed retained cache is written to disk; the current handle is unchanged |
+| Load a matching process, then `runtime.load_cache(path)` | The saved family is restored without repeating current construction; numeric workspaces are initialized for the receiving handle |
 | Python `runtime.clear()` | Cold again while the process output and current model parameters remain loaded |
 | Close/free/drop the native handle | All state owned by that handle is released; a later load starts cold |
 
@@ -489,7 +491,10 @@ The in-memory family cache is **handle-local and last-family-only**. A handle
 is simply one loaded `Runtime` object (or its C/Fortran/Rust/C++ equivalent).
 A second `pyamplicol` CLI command starts a new process and loads a new handle,
 so it does not inherit warm state from the first command. Keep one Python or
-native runtime alive when same-selection reuse matters.
+native runtime alive when same-selection reuse matters, or explicitly
+[save and restore its cache](runtime-and-selectors.md#saving-an-otf-warm-cache)
+between runs. A snapshot retains the current family, not previously evicted
+selections, and does not checkpoint an unfinished cold construction.
 
 There is no public setting for retaining several OTF families: the most recent
 successful family replaces the previous one. `evaluator.optimization.cores`
