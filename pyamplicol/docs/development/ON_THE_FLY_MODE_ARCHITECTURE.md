@@ -191,6 +191,9 @@ snapshot; `load_cache(path)` restores it against a matching loaded process.
 The Python facade and C/C++/Fortran/Rust SDKs expose the same operations and
 format. This is independent of explicit warm-up: an ordinary successful
 evaluation also leaves saveable state.
+Small usage examples are maintained in
+[Runtime and Selectors](../user/runtime-and-selectors.md#saving-an-otf-warm-cache)
+and [Native APIs](../user/native-apis.md#saving-and-restoring-an-otf-cache).
 
 The snapshot retains process preparation, grouped current rows, exact factors,
 momentum forms, semantic executor references, and the public-selection and

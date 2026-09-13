@@ -498,16 +498,48 @@ stages through a fixed-layout optional callback; see
 
 ## Saving an OTF warm cache
 
-After a successful `evaluate(...)` or `warm_up(...)`, save the retained
-recursion and restore it in another loaded runtime:
+`save(path)` writes the completed OTF cache; `load_cache(path)` restores it
+into a runtime loaded from the matching process output. Both return `None`.
+For a small example, generate a four-gluon process with generic helicity and
+flow coverage:
+
+```console
+pyamplicol generate "g g > g g" artifacts/otf_gg_gg \
+  --model built-in-sm --color-accuracy lc --execution-mode on-the-fly
+```
+
+Then warm one LC flow, summed over all helicities, and save it:
 
 ```python
-runtime.save("zjj.otf-cache")
+from pyamplicol import Runtime
 
-restored = Runtime.load("artifacts/otf_pp_zjj", process="d d~ > g z g")
-restored.load_cache("zjj.otf-cache")
-values = restored.evaluate(new_points, color_flows=(flow,))
+point = (
+    (500.0, 0.0, 0.0, 500.0),
+    (500.0, 0.0, 0.0, -500.0),
+    (500.0, 300.0, 0.0, 400.0),
+    (500.0, -300.0, 0.0, -400.0),
+)
+runtime = Runtime.load("artifacts/otf_gg_gg")
+flow = runtime.physics.color_flows[0].id
+selection = {"color_flows": (flow,)}  # no helicity selector: sum helicities
+runtime.warm_up((point,), **selection)
+runtime.save("gg.otf-cache")
+
+# This can instead be done in a later Python session.
+restored = Runtime.load("artifacts/otf_gg_gg")
+restored.load_cache("gg.otf-cache")
+report = restored.warm_up((point,), **selection)
+assert report.already_warm and report.warmed_query_count == 0
+values = restored.evaluate((point, point), **selection)
+print(values)
 ```
+
+The example repeats its point only to keep the two-point batch short; a later
+batch may contain different momenta. A successful ordinary `evaluate(...)`
+also leaves saveable state, so explicit `warm_up(...)` is optional. The extra
+warm-up after restoration above demonstrates cache reuse and can be omitted.
+Keep the same selectors when reusing the saved family: `load_cache` restores
+cached work, not new defaults for subsequent `evaluate` calls.
 
 Both methods are OTF-only. The same operations are available through the
 [native APIs](native-apis.md#saving-and-restoring-an-otf-cache).
@@ -523,6 +555,10 @@ are supported, and the receiving runtime keeps its current model parameters.
 The original process output is still required; the cache is not a standalone
 process export. Incompatible process outputs or snapshot formats are rejected
 without replacing the receiving runtime's existing cache.
+
+The cache path names a file (its parent directory must already exist). Saving
+again replaces that file; a failed save leaves any previous complete file
+intact. Empty caches and completed zero-valued selections are also saveable.
 
 Saving does not change the running handle or its warmed evaluation path.
 It saves the state currently retained, not a history of evicted selections.

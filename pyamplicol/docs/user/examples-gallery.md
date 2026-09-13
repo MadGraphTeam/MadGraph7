@@ -163,6 +163,12 @@ steady-state batch. See
 [LC workloads and execution modes](lc-workloads-and-execution-modes.md#the-otf-warm-state-lifecycle)
 for the cache lifecycle and native-language equivalents.
 
+Completed OTF preparation can also be retained between programs with
+`runtime.save(path)` and `runtime.load_cache(path)`. The
+[four-gluon save/restore example](runtime-and-selectors.md#saving-an-otf-warm-cache)
+shows generation, a complete input point, and a cache-reuse check; the
+[native examples](native-apis.md#saving-and-restoring-an-otf-cache) cover every SDK.
+
 ## LC selector-layout examples
 
 The two reusable-selector cards retain complete helicity and physical-flow

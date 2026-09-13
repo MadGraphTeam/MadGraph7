@@ -131,6 +131,16 @@ colored human benchmark tables. Its 128-point batches are throughput and
 benchmark-capacity measurements; they do not change the explicit
 `warm_up(...)` API's one-point contract.
 
+To reuse completed OTF preparation in another Python session or native program,
+call `runtime.save("process.otf-cache")` on the warmed handle. Load the same
+process output normally in the new program, then call
+`runtime.load_cache("process.otf-cache")` before evaluating with the same
+selectors. This is explicit API functionality: the separate CLI `profile`
+command above does not automatically read a saved cache. Small Python and
+C/C++/Fortran/Rust examples are in the online manual's
+[save/restore guide](https://mg5amcnlo.github.io/pyamplicol/user/runtime-and-selectors/#saving-an-otf-warm-cache)
+and [native API guide](https://mg5amcnlo.github.io/pyamplicol/user/native-apis/#saving-and-restoring-an-otf-cache).
+
 The smaller single-process card remains useful for quick inspection and a CLI
 profile without multiprocess expansion:
 

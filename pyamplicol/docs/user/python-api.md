@@ -226,6 +226,20 @@ Input shape is:
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
 the color dimension has length one because color is contracted.
 
+## Retain completed OTF preparation
+
+For an on-the-fly runtime, `runtime.save(path)` writes the completed cache
+left by evaluation or explicit warm-up. In a later program, load the original
+process output with `Runtime.load(...)`, then call `runtime.load_cache(path)`
+before evaluating with the same selectors. Both methods return `None`; the
+restored calculation accepts new momenta and batch sizes while retaining the
+receiving runtime's model parameters.
+
+See the [complete four-gluon example](runtime-and-selectors.md#saving-an-otf-warm-cache)
+for generation, saving and restoring, and a check that no queries are rebuilt.
+The cache supplements the original process output; it does not replace it or
+checkpoint an unfinished cold construction.
+
 ## Evaluate Born correlations
 
 Correlations require an explicit `Generator.generate(..., correlators=...)`

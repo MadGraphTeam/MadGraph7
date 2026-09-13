@@ -365,29 +365,75 @@ for the corresponding C++, Fortran, and Rust call fragments.
 ## Saving and restoring an OTF cache
 
 All native APIs can save the completed structural cache of an OTF handle and
-restore it into a handle loaded from the matching process output. For example,
-after warming or evaluating `runtime` and loading `restored` normally:
+restore it into a handle loaded from the matching process output. The following
+fragments use an OTF output for `g g > g g` at `artifacts/otf_gg_gg`; the
+[Python example](runtime-and-selectors.md#saving-an-otf-warm-cache) gives the
+generation command and explicit four-vector input.
+Here `point` and `next_point` are two flattened binary64 phase-space points,
+each containing 16 components in `[particle][E,px,py,pz]` order. They are arrays
+in C/Fortran and vectors in C++/Rust. The first evaluation constructs the
+recursion; after reopening, the second reuses it at different momenta.
+
+In C, `check(status)` denotes the application's usual error handler: stop on
+a nonzero status and retrieve the message with `rusticol_last_error_message`.
 
 ```c
-int status = rusticol_runtime_save(runtime, "process.otf-cache");
-if (status == RUSTICOL_STATUS_OK)
-    status = rusticol_runtime_load_cache(restored, "process.otf-cache");
+RusticolRuntimeHandle *runtime = NULL;
+double value;
+check(rusticol_runtime_load("artifacts/otf_gg_gg", NULL, NULL, &runtime));
+check(rusticol_runtime_evaluate_f64(runtime, point, 16, 1, &value, 1));
+check(rusticol_runtime_save(runtime, "gg.otf-cache"));
+check(rusticol_runtime_free(runtime));
+
+check(rusticol_runtime_load("artifacts/otf_gg_gg", NULL, NULL, &runtime));
+check(rusticol_runtime_load_cache(runtime, "gg.otf-cache"));
+check(rusticol_runtime_evaluate_f64(runtime, next_point, 16, 1, &value, 1));
+check(rusticol_runtime_free(runtime));
 ```
 
 ```cpp
-runtime.save("process.otf-cache");
-restored.load_cache("process.otf-cache");
+{
+    rusticol::Runtime runtime("artifacts/otf_gg_gg");
+    runtime.evaluate(point, 1);
+    runtime.save("gg.otf-cache");
+} // The original handle is closed.
+rusticol::Runtime restored("artifacts/otf_gg_gg");
+restored.load_cache("gg.otf-cache");
+auto values = restored.evaluate(next_point, 1);
 ```
 
 ```fortran
-call runtime%save("process.otf-cache", ierr=status)
-call restored%load_cache("process.otf-cache", ierr=status)
+! Within a procedure using iso_c_binding and the rusticol module:
+type(rusticol_runtime) :: runtime
+real(c_double), allocatable :: values(:)
+call runtime%load("artifacts/otf_gg_gg")
+call runtime%evaluate(point, 1_c_size_t, values)
+call runtime%save("gg.otf-cache")
+call runtime%close()
+
+call runtime%load("artifacts/otf_gg_gg")
+call runtime%load_cache("gg.otf-cache")
+call runtime%evaluate(next_point, 1_c_size_t, values)
+call runtime%close()
 ```
 
 ```rust
-runtime.save("process.otf-cache")?;
-restored.load_cache("process.otf-cache")?;
+{
+    let mut runtime = rusticol::Runtime::load("artifacts/otf_gg_gg", None, None)?;
+    runtime.evaluate_f64(&point, 1)?;
+    runtime.save("gg.otf-cache")?;
+} // The original handle is dropped.
+let mut restored = rusticol::Runtime::load("artifacts/otf_gg_gg", None, None)?;
+restored.load_cache("gg.otf-cache")?;
+let values = restored.evaluate_f64(&next_point, 1)?;
 ```
+
+The reopening block can run in a later invocation of the application. Unlike
+the one-flow Python example, these examples use the default helicity/colour
+sum; selected evaluations and explicit
+`warm_up(...)` calls can be saved in exactly the same way. Reuse the same
+selectors after loading to benefit from the saved family. Fortran reports
+errors by stopping unless an optional `ierr=status` argument is supplied.
 
 The Rust core's `NativeRuntime` exposes the same `save` and `load_cache`
 methods as the dependency-free Rust SDK. C, C++, Fortran, Rust and Python
@@ -431,8 +477,8 @@ See [Runtime and Selectors](runtime-and-selectors.md) for the same behavior in P
 
 The C header exposes C ABI v1 as an opaque runtime handle, typed status codes,
 metadata getters, parameter updates, warning access, explicit OTF warm-up,
-total evaluation, and resolved evaluation. Use `rusticol-config` rather than
-hard-coding include or library paths:
+OTF cache save/restore, total evaluation, and resolved evaluation. Use
+`rusticol-config` rather than hard-coding include or library paths:
 
 ```console
 eval "set -- $(rusticol-config --cflags) $(rusticol-config --libs)"
@@ -445,8 +491,8 @@ vector and preserves SDK paths containing spaces.
 ## C++17
 
 `rusticol.hpp` is a header-only RAII wrapper over C ABI v1. It exposes metadata,
-parameters, selectors, warnings, one-point OTF warm-up, and total/resolved f64
-evaluation:
+parameters, selectors, warnings, one-point OTF warm-up, cache save/restore,
+and total/resolved f64 evaluation:
 
 ```cpp
 #include <rusticol.hpp>
@@ -486,15 +532,16 @@ gfortran -std=f2008 "$RUSTICOL_FORTRAN" my_runtime.f90 "$@" -o my_runtime
 ```
 
 `type(rusticol_runtime)` owns load/close, metadata, parameter, warning,
-one-point OTF warm-up, and total/resolved f64 methods. Resolved Fortran storage
-is `(color, helicity, point)`, the column-major view of the C ABI sequence
-`(point, helicity, color)`.
+one-point OTF warm-up, cache save/restore, and total/resolved f64 methods.
+Resolved Fortran storage is `(color, helicity, point)`, the column-major view
+of the C ABI sequence `(point, helicity, color)`.
 
 ## Rust 2021
 
 `rusticol.rs` is a dependency-free safe wrapper over C ABI v1. It owns the
-handle, frees it on drop, exposes typed metadata, selectors, and explicit
-one-point OTF warm-up, and remains bound to its creating thread.
+handle, frees it on drop, exposes typed metadata, selectors, explicit
+one-point OTF warm-up and cache save/restore, and remains bound to its creating
+thread.
 
 The generated driver is compiled directly with `rustc`:
 

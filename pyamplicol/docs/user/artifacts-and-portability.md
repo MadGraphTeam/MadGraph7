@@ -27,6 +27,15 @@ models are exceptions because wheels already ship their portable JIT O2 packs.
 See [Models and Processes](models-and-processes.md) and [Generation Modes and Evaluators](generation-modes-and-evaluators.md) for producing each
 object.
 
+An optional **OTF cache file**, written by `runtime.save(path)`, is different
+from all three: it retains completed current-construction work for the loaded
+process. Keep the original process directory, load it normally, then call
+`runtime.load_cache(path)`. The cache contains no evaluated currents or model
+parameter values and cannot be loaded as a standalone process output. Its
+compatibility follows the matching process output and cache format, rather
+than providing a separate portability guarantee. See the
+[small save/restore example](runtime-and-selectors.md#saving-an-otf-warm-cache).
+
 ## Process-artifact layout
 
 A generated root resembles:

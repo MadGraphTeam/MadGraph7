@@ -582,6 +582,14 @@ the following table reports the selected flow, warm-up time, query counts,
 memory, and matrix element. The independent `profile` command then measures
 128-point throughput.
 
+You can keep completed preparation between programs: save it with
+`runtime.save("process.otf-cache")`, then load the original process output in
+the next program and call `runtime.load_cache("process.otf-cache")`. Continue
+with the same helicity/flow selectors to reuse the saved work. This is explicit
+API functionality, not an automatic cache shared by separate CLI commands.
+See the [small Python example](runtime-and-selectors.md#saving-an-otf-warm-cache)
+and [native SDK examples](native-apis.md#saving-and-restoring-an-otf-cache).
+
 OTF NLC and full-colour calculation are available for low multiplicity, but
 their contracted family grows rapidly and is not intended here as a
 high-multiplicity performance route. The detailed differences among recurrence,

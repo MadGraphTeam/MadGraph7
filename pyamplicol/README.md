@@ -186,6 +186,11 @@ schedule, its helicity-support masks, and precomputed per-helicity row groups;
 loading binds those groups once, so warmed evaluation does not rescan the
 masks. On-the-fly execution instead constructs and caches the requested family
 on first use, which is why that warm-up belongs to its plotted setup time.
+Completed OTF work can be retained between programs with `runtime.save(path)`
+and restored with `runtime.load_cache(path)` after loading the original process
+output. Python and every native SDK expose these operations; see the
+[small save/restore example](docs/user/runtime-and-selectors.md#saving-an-otf-warm-cache)
+and [native equivalents](docs/user/native-apis.md#saving-and-restoring-an-otf-cache).
 
 The public C ABI is version 1. Every generated artifact can include standalone
 Python, C11, C++17, Fortran 2008, and dependency-free Rust 2021 drivers backed

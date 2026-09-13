@@ -35,8 +35,9 @@ Here are the few computing terms needed on this page:
   constructs the requested plan after the output is loaded.
 - The **runtime** is the loaded numerical calculator, and a **selector** is a
   request for particular helicity or colour-flow components. “Cache” below
-  simply means state retained in the runtime's memory for reuse; it is not a
-  second process output on disk.
+  simply means state retained in the runtime's memory for reuse. An OTF cache
+  can also be saved to a file, but that file supplements the original process
+  output rather than replacing it.
 
 ## Two useful slices through an LC result
 
@@ -485,7 +486,7 @@ One loaded OTF runtime follows this lifecycle:
 | `runtime.save(path)` | The completed retained cache is written to disk; the current handle is unchanged |
 | Load a matching process, then `runtime.load_cache(path)` | The saved family is restored without repeating current construction; numeric workspaces are initialized for the receiving handle |
 | Python `runtime.clear()` | Cold again while the process output and current model parameters remain loaded |
-| Close/free/drop the native handle | All state owned by that handle is released; a later load starts cold |
+| Close/free/drop the native handle | In-memory state is released; a later load starts cold unless a saved cache is explicitly restored |
 
 The in-memory family cache is **handle-local and last-family-only**. A handle
 is simply one loaded `Runtime` object (or its C/Fortran/Rust/C++ equivalent).
@@ -495,6 +496,13 @@ native runtime alive when same-selection reuse matters, or explicitly
 [save and restore its cache](runtime-and-selectors.md#saving-an-otf-warm-cache)
 between runs. A snapshot retains the current family, not previously evicted
 selections, and does not checkpoint an unfinished cold construction.
+
+For a small complete Python example, including generation and a check that no
+queries are rebuilt, see
+[Saving an OTF warm cache](runtime-and-selectors.md#saving-an-otf-warm-cache).
+The [native examples](native-apis.md#saving-and-restoring-an-otf-cache) show
+`save` and `load_cache` in C, C++, Fortran and Rust. Restore the cache before
+the first evaluation and use the same selectors as when it was saved.
 
 There is no public setting for retaining several OTF families: the most recent
 successful family replaces the previous one. `evaluator.optimization.cores`
