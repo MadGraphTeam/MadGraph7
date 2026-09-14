@@ -707,10 +707,6 @@ def _write_candidate_lock(runner: Runner) -> None:
         return
     release_lock = ROOT / "Cargo.lock"
     release_lock_bytes = release_lock.read_bytes()
-    # An explicit local override is a contributor input, not a release claim.
-    # Release validation remains strict for publication builds.
-    if not _root_path_patches():
-        _validate_release_cargo_lock(release_lock)
     with tempfile.TemporaryDirectory(prefix="pyamplicol-candidate-lock-") as raw:
         temporary = Path(raw)
         shutil.copy2(ROOT / "Cargo.toml", temporary / "Cargo.toml")

@@ -44,6 +44,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "symbolica",
         "symbolica-community",
         "symbolica-integrate",
+        "gammaloop",
         "ratatui-ffi",
     }
     assert {item.key for item in with_references} == {
@@ -52,8 +53,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "reference-fft",
     }
     assert all(len(item.revision) == 40 for item in with_references)
-    assert "symjit" not in module._root_path_patches()
-    assert "symbolica-integrate" not in module._root_path_patches()
+    assert module._root_path_patches() == {}
     assert module._managed_symjit_checkout() == module.CHECKOUTS / "symjit"
     legacy = next(item for item in with_references if item.key == "legacy-amplicol")
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
@@ -244,7 +244,7 @@ def test_managed_sources_remain_available_without_explicit_path_overrides(
     }
     assert sources["symjit"].revision == "3fc04010f69db954463f9666fffb652b244ccc52"
     assert sources["gammaloop"].branch == "simplify-spenso-api"
-    assert sources["gammaloop"].revision == "ab00e4917295883add11f9855734aaee1d56926f"
+    assert sources["gammaloop"].revision == "436f9ff52587582686db6aefd4ecd715b5693f90"
     assert (
         sources["symbolica-integrate"].revision
         == "9220f57f3c744c3ee83c4df5efdd6233788222ce"
@@ -1059,7 +1059,12 @@ def test_candidate_lock_is_seeded_without_mutating_canonical_lock(
     monkeypatch.setattr(module, "ROOT", project)
     monkeypatch.setattr(module, "CARGO_CONFIG", cargo_config)
     monkeypatch.setattr(module, "CANDIDATE_LOCK", candidate_lock)
-    monkeypatch.setattr(module, "_validate_release_cargo_lock", lambda _path: None)
+    monkeypatch.setattr(module, "_root_path_patches", dict)
+    monkeypatch.setattr(
+        module,
+        "_validate_release_cargo_lock",
+        lambda _path: pytest.fail("candidate resolution is not release validation"),
+    )
     monkeypatch.setattr(module, "_validate_candidate_cargo_lock", lambda _path: None)
     projected: list[Path] = []
     monkeypatch.setattr(

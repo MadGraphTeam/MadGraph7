@@ -1511,26 +1511,32 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 [[patch.unused]]
 name = "idenso"
 version = "0.3.0"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "linnet"
 version = "0.17.0"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "spenso"
 version = "0.6.0"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "spenso-hep-lib"
 version = "0.1.7"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "spenso-macros"
 version = "0.3.2"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "spynso3"
 version = "0.1.2"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "symbolica-integrate"
@@ -1540,7 +1546,9 @@ source = "git+https://github.com/symbolica-dev/symbolica-integrate.git?rev=9220f
 [[patch.unused]]
 name = "symbolica-utils"
 version = "0.1.0"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
 
 [[patch.unused]]
 name = "vakint"
 version = "0.1.2"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=436f9ff52587582686db6aefd4ecd715b5693f90#436f9ff52587582686db6aefd4ecd715b5693f90"
