@@ -1032,7 +1032,13 @@ class MadgraphProcess:
 
     def generate_events(self) -> None:
         start_time = get_start_time()
-        self.event_generator.generate()
+        # dumping only in the generation phase - flag file
+        open("invp2_dump.go", "w").close()
+        try:
+            self.event_generator.generate()
+        finally:
+            if os.path.exists("invp2_dump.go"):
+                os.remove("invp2_dump.go")
         output_format = self.run_card["run"]["output_format"]
         if output_format == "compact_npy":
             self.lhe_completer = None
@@ -1608,6 +1614,9 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    return_invariants=self.process.run_card["phasespace"][
+                        "pass_invariants_to_matrix_element"
+                    ],
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -1668,6 +1677,9 @@ class MadgraphSubprocess:
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.process.leptonic,
+            return_invariants=self.process.run_card["phasespace"][
+                "pass_invariants_to_matrix_element"
+            ],
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
@@ -2132,24 +2144,48 @@ class MadgraphSubprocess:
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
 
+        pass_invariants = self.process.run_card["phasespace"][
+            "pass_invariants_to_matrix_element"
+        ]
+        matrix_element_inputs = list(ms.Integrand.matrix_element_inputs)
+        # invariant_count is a fixed stride shared by every channel's MatrixElement
+        # buffer (padded to the widest channel; the per-event actual count is passed
+        # separately as UMAMI_IN_INVARIANT_COUNT), so one max over all channels covers
+        # every channel using this cross_sections list, regardless of topology.
+        invariant_count = 0
+        if pass_invariants:
+            matrix_element_inputs += [
+                ms.MatrixElement.invariant_count_in,
+                ms.MatrixElement.invariant_pids_and_masks_in,
+                ms.MatrixElement.invariant_masses_in,
+                ms.MatrixElement.invariant_virtualities_in,
+            ]
+            invariant_count = max(
+                (channel.phasespace_mapping.invariant_count()
+                 for channel in phasespace.channels),
+                default=0,
+            )
+
         cross_sections = []
         for matrix_element in self.matrix_elements:
             if matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    ms.Integrand.matrix_element_inputs,
+                    matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
+                    invariant_count,
                 )
             else:
                 #TODO: not working in merged mode
                 mat = ms.MatrixElement(
                     0xBADCAFE,
                     self.particle_count,
-                    ms.Integrand.matrix_element_inputs,
+                    matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,
+                    invariant_count,
                 )
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
