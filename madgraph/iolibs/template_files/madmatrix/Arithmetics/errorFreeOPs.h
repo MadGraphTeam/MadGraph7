@@ -1,8 +1,5 @@
-
 #ifndef ERRORFREEOPS_H
 #define ERRORFREEOPS_H
-
-#pragma once
 
 #include "basicOPs.h"
 
@@ -14,8 +11,6 @@ struct rne
    T sum;
    T error;
 };
-
-
 
 
 namespace spliting_detail {
@@ -35,7 +30,7 @@ static constexpr float FLOAT_SPLIT_THRESH = 0x1p115f;    // 2^115 ≈ 4.15383748
 }
 
 template< typename T, typename U, std::enable_if_t< std::is_floating_point_v< T >, int > = 0 >
-__tnl_inline__ __cuda_callable__
+__mgDWA_inline__ __cuda_callable__
 constexpr rne< U >
 split( T value )
 {
@@ -77,9 +72,9 @@ split( T value )
    }
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-constexpr __tnl_inline__ rne< T >
+constexpr __mgDWA_inline__ rne< T >
 quick_two_sum( const T a, const T b )
 {
   const T s = add_rn(a, b);
@@ -88,9 +83,9 @@ quick_two_sum( const T a, const T b )
   return {s, err};
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-constexpr __tnl_inline__ rne< T >
+constexpr __mgDWA_inline__ rne< T >
 quick_two_diff( const T a, const T b )
 {
   const T s = add_rn(a, -b);
@@ -100,9 +95,9 @@ quick_two_diff( const T a, const T b )
 }
 
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-constexpr __tnl_inline__ rne< T >
+constexpr __mgDWA_inline__ rne< T >
 two_sum( const T a, const T b )
 {
   const T s = add_rn(a, b);
@@ -115,9 +110,9 @@ two_sum( const T a, const T b )
 }
 
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-constexpr __tnl_inline__ rne< T >
+constexpr __mgDWA_inline__ rne< T >
 two_diff( const T a, const T b )
 {
    const T s  = add_rn(a, -b);
@@ -129,9 +124,9 @@ two_diff( const T a, const T b )
    return {s, err};
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-constexpr __tnl_inline__ rne< T >
+constexpr __mgDWA_inline__ rne< T >
 two_prod( const T a, const T b )
 {
 #ifdef __CUDA_ARCH__
@@ -168,57 +163,6 @@ two_prod( const T a, const T b )
 
 #endif
 }
-
-/*template< typename T, std::enable_if_t< std::is_floating_point_v< T >, int > = 0 >
-__cuda_callable__
-constexpr rne< T >
-two_sqr( const T a )
-{
-#ifdef __CUDA_ARCH__
-   const T p = mul_rn( a, a );
-   const T err = fma_rn( a, a, -p );
-   return { p, err };
-
-#else
-   #ifdef FP_FAST_FMA
-
-   const T p = mul_rn( a, a );
-   const T err = fma_rn( a, a, -p );
-   return { p, err };
-
-   #else
-
-   const T q = mul_rn( a, a );
-   auto sp = split< T, T >( a );
-   T temp = mul_rn( sp.sum, sp.sum );
-   temp = add_rn( temp, -q );
-   T err = mul_rn( static_cast<T>(2.0), mul_rn( sp.sum, sp.error ) );
-   err = add_rn( err, temp );
-   err = add_rn(mul_rn( sp.error, sp.error), err);
-   // ( ( hi * hi - q ) + 2.0F * hi * lo ) + lo * lo;
-   return { q, err };
-   #endif
-#endif
-}*/
-
-/*template< typename T, std::enable_if_t< std::is_floating_point_v< T >, int > = 0 >
-__cuda_callable__
-__tnl_inline__ constexpr T
-nint( const T d )
-{
-   if( d == std::floor( d ) )
-      return d;
-   return std::floor( d + 0.5F );
-}
-
-template< typename T, std::enable_if_t< std::is_floating_point_v< T >, int > = 0 >
-__cuda_callable__
-__tnl_inline__ constexpr T
-aint( const T d )
-{
-   return ( d >= 0.0F ) ? std::floor( d ) : std::ceil( d );
-}*/
-
 
 }
 

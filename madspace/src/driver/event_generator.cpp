@@ -569,22 +569,26 @@ void EventGenerator::update_counts() {
     _status.done = done;
 }
 
-void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
+void EventGenerator::combine_to_compact_npy(
+    const std::string& file_name,
+    SystematicsCalculator* systematics,
+    EventHistograms* histograms
+) {
     reset_start_time();
+    _systematics = systematics;
+    _event_histograms = histograms;
     MixMaxRandom select_rng(DerivedSeed(_seed, DerivedSeed::combine_select));
     auto [channel_data, particle_count, norm_factor] = init_combine();
-    DataLayout layout(
-        EventRecord::layout(
-            EventRecord::f_weight | EventRecord::f_subproc_index |
-            EventRecord::f_event_data | _channels.at(0)->event_layout_extra_flags()
-        ),
-        ParticleRecord::layout(
-            ParticleRecord::f_particle_data |
-            _channels.at(0)->particle_layout_extra_flags()
-        )
+    DataLayout layout = combined_layout();
+    DataLayout out_layout = output_layout(
+        EventRecord::f_weight | EventRecord::f_subproc_index |
+            EventRecord::f_event_data,
+        ParticleRecord::f_particle_data
     );
     EventBuffer buffer(0, particle_count, layout);
-    EventFile event_file(file_name, layout, particle_count, EventFile::create);
+    EventBuffer buffer_out(0, particle_count, out_layout);
+    EventFile event_file(file_name, out_layout, particle_count, EventFile::create);
+    std::vector<double> syst_weights;
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     print_combine_init();
@@ -595,47 +599,44 @@ void EventGenerator::combine_to_compact_npy(const std::string& file_name) {
             break;
         }
         event_count += buffer.event_count();
+        process_combined_batch(buffer, syst_weights);
+        buffer_out.resize(buffer.event_count());
+        for (std::size_t i = 0; i < buffer.event_count(); ++i) {
+            copy_event_fields(buffer, i, buffer_out, i, syst_weights);
+        }
         if (event_count - last_update_count > 10000) {
             print_combine_update(event_count);
             last_update_count = event_count;
         }
-        event_file.write(buffer);
+        event_file.write(buffer_out);
     }
     print_combine_update(_config.target_count);
+    _systematics = nullptr;
+    _event_histograms = nullptr;
 }
 
 void EventGenerator::combine_to_lhe_npy(
-    const std::string& file_name, LHECompleter& lhe_completer
+    const std::string& file_name,
+    LHECompleter& lhe_completer,
+    SystematicsCalculator* systematics,
+    EventHistograms* histograms
 ) {
     reset_start_time();
+    _systematics = systematics;
+    _event_histograms = histograms;
     std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     MixMaxRandom rand_gen(DerivedSeed(seed, DerivedSeed::lhe_complete));
     auto [channel_data, particle_count, norm_factor] = init_combine();
-    DataLayout in_layout(
-        EventRecord::layout(
-            EventRecord::f_weight | EventRecord::f_subproc_index |
-            EventRecord::f_event_data | _channels.at(0)->event_layout_extra_flags()
-        ),
-        ParticleRecord::layout(
-            ParticleRecord::f_particle_data |
-            _channels.at(0)->particle_layout_extra_flags()
-        )
-    );
-    DataLayout out_layout(
-        EventRecord::layout(
-            EventRecord::f_lhe_event | _channels.at(0)->event_layout_extra_flags()
-        ),
-        ParticleRecord::layout(
-            ParticleRecord::f_lhe_particle |
-            _channels.at(0)->particle_layout_extra_flags()
-        )
-    );
+    DataLayout in_layout = combined_layout();
+    DataLayout out_layout =
+        output_layout(EventRecord::f_lhe_event, ParticleRecord::f_lhe_particle);
     EventBuffer buffer(0, particle_count, in_layout);
     EventBuffer buffer_out(0, lhe_completer.max_particle_count(), out_layout);
     EventFile event_file(
         file_name, out_layout, lhe_completer.max_particle_count(), EventFile::create
     );
+    std::vector<double> syst_weights;
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     LHEEvent lhe_event;
@@ -647,10 +648,12 @@ void EventGenerator::combine_to_lhe_npy(
             break;
         }
         event_count += buffer.event_count();
+        process_combined_batch(buffer, syst_weights);
         buffer_out.resize(buffer.event_count());
         for (std::size_t i = 0; i < buffer.event_count(); ++i) {
             fill_lhe_event(lhe_completer, lhe_event, buffer, i, rand_gen);
             buffer_out.event(i).from_lhe_event(lhe_event);
+            copy_event_fields(buffer, i, buffer_out, i, syst_weights);
             std::size_t j = 0;
             for (; j < lhe_event.particles.size(); ++j) {
                 buffer_out.particle(i, j).from_lhe_particle(lhe_event.particles[j]);
@@ -666,33 +669,51 @@ void EventGenerator::combine_to_lhe_npy(
         }
     }
     print_combine_update(_config.target_count);
+    _systematics = nullptr;
+    _event_histograms = nullptr;
 }
 
 void EventGenerator::combine_to_lhe(
-    const std::string& file_name, LHECompleter& lhe_completer, const LHEMeta& meta
+    const std::string& file_name,
+    LHECompleter& lhe_completer,
+    const LHEMeta& meta,
+    SystematicsCalculator* systematics,
+    EventHistograms* histograms
 ) {
     reset_start_time();
+    _systematics = systematics;
+    _event_histograms = histograms;
     std::uint64_t seed = _seed;
     MixMaxRandom select_rng(DerivedSeed(seed, DerivedSeed::combine_select));
     ThreadPool pool(_config.combine_thread_count);
     auto [channel_data, particle_count, norm_factor] = init_combine();
-    std::vector<std::pair<EventBuffer, std::string>> buffers;
+    struct CombineBuffers {
+        EventBuffer in_buffer;
+        std::string out_buffer;
+        std::vector<double> syst_weights;
+    };
+    std::vector<CombineBuffers> buffers;
     std::vector<std::size_t> idle_buffers;
-    DataLayout layout(
-        EventRecord::layout(
-            EventRecord::f_weight | EventRecord::f_subproc_index |
-            EventRecord::f_event_data | _channels.at(0)->event_layout_extra_flags()
-        ),
-        ParticleRecord::layout(
-            ParticleRecord::f_particle_data |
-            _channels.at(0)->particle_layout_extra_flags()
-        )
-    );
+    DataLayout layout = combined_layout();
     for (std::size_t i = 0; i < 2 * pool.thread_count(); ++i) {
-        buffers.push_back({{0, particle_count, layout}, {}});
+        buffers.push_back({{0, particle_count, layout}, {}, {}});
         idle_buffers.push_back(i);
     }
-    LHEFileWriter event_file(file_name, meta);
+    std::vector<int> syst_ids;
+    LHEMeta full_meta = meta;
+    if (_systematics) {
+        syst_ids = _systematics->weight_ids();
+        bool has_initrwgt = false;
+        for (auto& header : full_meta.headers) {
+            if (header.name == "initrwgt") {
+                has_initrwgt = true;
+            }
+        }
+        if (!has_initrwgt && !syst_ids.empty()) {
+            full_meta.headers.push_back({"initrwgt", _systematics->initrwgt(), false});
+        }
+    }
+    LHEFileWriter event_file(file_name, full_meta);
     std::size_t event_count = 0;
     std::size_t last_update_count = 0;
     bool done = false;
@@ -707,7 +728,7 @@ void EventGenerator::combine_to_lhe(
         _abort_check_function();
         while (idle_buffers.size() > 0 && !done) {
             std::size_t slot = idle_buffers.back();
-            auto& [in_buffer, out_buffer] = buffers.at(slot);
+            auto& [in_buffer, out_buffer, syst_weights] = buffers.at(slot);
             read_and_combine(channel_data, in_buffer, norm_factor, select_rng);
             if (in_buffer.event_count() == 0) {
                 done = true;
@@ -717,15 +738,27 @@ void EventGenerator::combine_to_lhe(
             std::size_t batch_seq = next_batch_seq++;
             slot_batch_seq.at(slot) = batch_seq;
             pool.submit(
-                [slot, batch_seq, seed, this, &in_buffer, &out_buffer, &lhe_completer] {
+                [slot,
+                 batch_seq,
+                 seed,
+                 this,
+                 &in_buffer,
+                 &out_buffer,
+                 &syst_weights,
+                 &lhe_completer,
+                 &syst_ids] {
                     MixMaxRandom rand_gen(
                         DerivedSeed(seed, DerivedSeed::lhe_complete, batch_seq)
                     );
                     LHEEvent lhe_event;
                     out_buffer.clear();
+                    process_combined_batch(in_buffer, syst_weights);
                     for (std::size_t i = 0; i < in_buffer.event_count(); ++i) {
                         fill_lhe_event(
                             lhe_completer, lhe_event, in_buffer, i, rand_gen
+                        );
+                        fill_systematics(
+                            lhe_event, in_buffer, i, syst_weights, syst_ids
                         );
                         lhe_event.format_to(out_buffer);
                     }
@@ -741,7 +774,7 @@ void EventGenerator::combine_to_lhe(
         for (auto it = ready_slots.find(write_cursor); it != ready_slots.end();
              it = ready_slots.find(write_cursor)) {
             std::size_t slot = it->second;
-            auto& [in_buffer, out_buffer] = buffers.at(slot);
+            auto& [in_buffer, out_buffer, syst_weights] = buffers.at(slot);
             event_file.write_string(out_buffer);
             event_count += in_buffer.event_count();
             idle_buffers.push_back(slot);
@@ -757,6 +790,149 @@ void EventGenerator::combine_to_lhe(
         }
     }
     print_combine_update(_config.target_count);
+    _systematics = nullptr;
+    _event_histograms = nullptr;
+}
+
+DataLayout EventGenerator::combined_layout() const {
+    return DataLayout(
+        EventRecord::layout(
+            EventRecord::f_weight | EventRecord::f_subproc_index |
+            EventRecord::f_event_data | _channels.at(0)->event_layout_extra_flags()
+        ),
+        ParticleRecord::layout(
+            ParticleRecord::f_particle_data |
+            _channels.at(0)->particle_layout_extra_flags()
+        )
+    );
+}
+
+DataLayout
+EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const {
+    int extra_flags = _channels.at(0)->event_layout_extra_flags();
+    std::vector<int> syst_ids;
+    if (_systematics) {
+        if (!_systematics->config().write_inputs) {
+            extra_flags &=
+                ~(EventRecord::f_beam1 | EventRecord::f_beam2 |
+                  EventRecord::f_partial_weights);
+        }
+        syst_ids = _systematics->weight_ids();
+        if (!syst_ids.empty()) {
+            extra_flags |= EventRecord::f_syst_weights;
+        }
+    }
+    return DataLayout(
+        EventRecord::layout(event_flags | extra_flags, syst_ids),
+        ParticleRecord::layout(
+            particle_flags | _channels.at(0)->particle_layout_extra_flags()
+        )
+    );
+}
+
+void EventGenerator::copy_event_fields(
+    EventBuffer& in_buffer,
+    std::size_t in_index,
+    EventBuffer& out_buffer,
+    std::size_t out_index,
+    const std::vector<double>& syst_weights
+) {
+    // the output layouts are fixed: weight/subprocess/event data and the raw
+    // momenta are present in the compact layout, absent in the LHE layout
+    auto& out_fields = out_buffer.layout().event_layout();
+    auto contains = [&](const std::string& name) {
+        for (auto& field : out_fields) {
+            if (field.name == name) {
+                return true;
+            }
+        }
+        return false;
+    };
+    auto event_in = in_buffer.event(in_index);
+    auto event_out = out_buffer.event(out_index);
+    if (contains("diagram_index")) {
+        event_out.weight() = event_in.weight();
+        event_out.subprocess_index() = event_in.subprocess_index();
+        event_out.diagram_index() = event_in.diagram_index();
+        event_out.color_index() = event_in.color_index();
+        event_out.flavor_index() = event_in.flavor_index();
+        event_out.helicity_index() = event_in.helicity_index();
+        event_out.ren_scale() = event_in.ren_scale();
+        event_out.alpha_qcd() = event_in.alpha_qcd();
+        std::size_t i = 0;
+        for (; i < in_buffer.particle_count(); ++i) {
+            auto particle_in = in_buffer.particle(in_index, i);
+            auto particle_out = out_buffer.particle(out_index, i);
+            particle_out.energy() = particle_in.energy();
+            particle_out.px() = particle_in.px();
+            particle_out.py() = particle_in.py();
+            particle_out.pz() = particle_in.pz();
+        }
+        for (; i < out_buffer.particle_count(); ++i) {
+            auto particle_out = out_buffer.particle(out_index, i);
+            particle_out.energy() = 0.;
+            particle_out.px() = 0.;
+            particle_out.py() = 0.;
+            particle_out.pz() = 0.;
+        }
+    }
+    if (contains("fact_scale1")) {
+        event_out.x1() = event_in.x1();
+        event_out.fact_scale1() = event_in.fact_scale1();
+    }
+    if (contains("fact_scale2")) {
+        event_out.x2() = event_in.x2();
+        event_out.fact_scale2() = event_in.fact_scale2();
+    }
+    if (contains("partial_weight_product")) {
+        event_out.partial_weight_product() = event_in.partial_weight_product();
+    }
+    if (_systematics) {
+        std::size_t count = _systematics->weight_count();
+        for (std::size_t k = 0; k < count; ++k) {
+            event_out.syst_weight(k) = syst_weights.at(in_index * count + k);
+        }
+    }
+}
+
+void EventGenerator::fill_systematics(
+    LHEEvent& lhe_event,
+    EventBuffer& buffer,
+    std::size_t event_index,
+    const std::vector<double>& syst_weights,
+    const std::vector<int>& syst_ids
+) {
+    lhe_event.rwgt_ids.clear();
+    lhe_event.rwgt.clear();
+    lhe_event.lo_info.reset();
+    if (!_systematics) {
+        return;
+    }
+    std::size_t count = _systematics->weight_count();
+    lhe_event.rwgt_ids = syst_ids;
+    lhe_event.rwgt.assign(
+        syst_weights.begin() + event_index * count,
+        syst_weights.begin() + (event_index + 1) * count
+    );
+    if (_systematics->config().write_inputs) {
+        lhe_event.lo_info = _systematics->reweight_info(buffer, event_index);
+    }
+}
+
+void EventGenerator::process_combined_batch(
+    EventBuffer& buffer, std::vector<double>& syst_weights
+) {
+    std::size_t weight_count = 0;
+    if (_systematics) {
+        _systematics->compute(buffer, syst_weights);
+        _systematics->accumulate(buffer, syst_weights);
+        weight_count = _systematics->weight_count();
+    } else {
+        syst_weights.clear();
+    }
+    if (_event_histograms) {
+        _event_histograms->fill(buffer, syst_weights, weight_count);
+    }
 }
 
 void EventGenerator::reset_start_time() {
@@ -885,11 +1061,11 @@ void EventGenerator::read_and_combine(
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
-        auto sampled_chan = std::lower_bound(
+        auto sampled_chan = select_combine_channel(
             channel_data.begin(),
             channel_data.end(),
             random_index,
-            [](auto& chan, std::size_t val) { return chan.cum_count < val; }
+            [](const CombineChannelData& chan) { return chan.cum_count; }
         );
         std::for_each(sampled_chan, channel_data.end(), [](auto& chan) {
             --chan.cum_count;
@@ -1017,6 +1193,12 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"run_times", _timing_data},
         {"histograms", histograms()},
     };
+    if (_systematics) {
+        j["systematics"] = _systematics->summary();
+    }
+    if (_event_histograms) {
+        j["event_histograms"] = _event_histograms->to_json(_systematics);
+    }
     _status_file->write(j, force_write);
 }
 

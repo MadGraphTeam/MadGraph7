@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access all MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access all MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 
@@ -106,7 +106,22 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         of the Loop interface."""
         
         mg_interface.MadGraphCmd.check_display(self,args)
-        
+
+        # The output options of the LO 'display diagrams' are not supported here:
+        # the born, real and loop amplitudes are handled by separate calls, so
+        # --merge would have each diagram type overwrite the previous one, and
+        # 'diagrams_text' has its own (pager only) implementation which would
+        # silently ignore both the directory and the flags.
+        forbidden = [a for a in args[1:] \
+                     if a in ['--no_open','-no_open','--merge','-merge']]
+        if forbidden and args[0] in ['diagrams', 'diagrams_text']:
+            raise self.InvalidCmd("%s: option not supported for NLO processes."%\
+                                                          ' '.join(forbidden))
+
+        if args[0] == 'diagrams_text' and len(args)>=2 \
+                and args[1] not in ['born','loop','virt','real']:
+            raise self.InvalidCmd("Can only display born, loop (virt) or real diagrams, not %s."%args[1])
+
         if args[0] in ['diagrams', 'processes'] and len(args)>=3 \
                 and args[1] not in ['born','loop','virt','real']:
             raise self.InvalidCmd("Can only display born, loop (virt) or real diagrams, not %s."%args[1])
@@ -131,10 +146,10 @@ class CheckFKS(mg_interface.CheckValidForCmd):
     def check_tutorial(self, args):
         """check the validity of the line"""
         if len(args) == 0:
-            #this means mg5 tutorial
-            args.append('aMCatNLO')
-        else:
-            return mg_interface.CheckValidForCmd.check_tutorial(self,args)
+            # a bare 'tutorial' still opens the menu, but from the aMC@NLO
+            # interface the NLO tutorial is the natural default
+            args.append(self.ask_tutorial(default='nlo'))
+        return mg_interface.CheckValidForCmd.check_tutorial(self, args)
 
     def check_output(self, args):
         """ check the validity of the line"""

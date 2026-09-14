@@ -1,18 +1,18 @@
 ###############################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -121,7 +121,7 @@ class CmdExtended(common_run.CommonRunCmd):
 
 
     keyboard_stop_msg = """stopping all operation
-            in order to quit MadGraph5_aMC@NLO please enter exit"""
+            in order to quit MadGraph7 please enter exit"""
     
     # Define the Error
     InvalidCmd = InvalidCmd
@@ -154,18 +154,26 @@ class CmdExtended(common_run.CommonRunCmd):
         # Remember to fill in time at writeout time!
         self.history_header = \
         '#************************************************************\n' + \
-        '#*               MadGraph5_aMC@NLO/MadEvent                 *\n' + \
+        '#*                    MadGraph7/MadEvent                    *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         '#*                                                          *\n' + \
         '#************************************************************\n' + \
@@ -183,18 +191,26 @@ class CmdExtended(common_run.CommonRunCmd):
         "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                      W E L C O M E to                    *\n" + \
-        "*             M A D G R A P H 5 _ a M C @ N L O            *\n" + \
+        "*                    M A D G R A P H 7                     *\n" + \
         "*                      M A D E V E N T                     *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
@@ -2499,7 +2515,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
         cite = common_run.citation
         if cite is not None:
             cite.cite('Alwall:2014hca',
-                'core matrix-element generation (MadGraph5_aMC@NLO)')
+                'core matrix-element generation (MadGraph7)')
             if self.proc_characteristics['loop_induced']:
                 cite.cite('Hirschi:2015iia', 'loop-induced process generation')
             try:
@@ -2687,7 +2703,7 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
             # We therefore emulate it with multi-core mode with one core
             logger.warning(
 """Single-core mode not supported for loop-induced processes.
-Beware that MG5aMC now changes your runtime options to a multi-core mode with only one active core.""")
+Beware that MadGraph7 now changes your runtime options to a multi-core mode with only one active core.""")
             self.do_set('run_mode 2')
             self.do_set('nb_core 1')
 
@@ -4473,7 +4489,7 @@ Beware that this can be dangerous for local multicore runs.""")
 
     #===============================================================================
     # Return a warning (if applicable) on the consistency of the current Pythia8
-    # and MG5_aMC version specified. It is placed here because it should be accessible
+    # and MadGraph7 version specified. It is placed here because it should be accessible
     # from both madgraph5_interface and madevent_interface
     #===============================================================================
     @staticmethod
@@ -4491,8 +4507,8 @@ Beware that this can be dangerous for local multicore runs.""")
     A Pythia8 path is specified via the option 'pythia8_path' but no path for option
     'mg5amc_py8_interface_path' is specified. This means that Pythia8 cannot be used
     leading order simulations with MadEvent.
-    Consider installing the MG5_aMC-PY8 interface with the following command:
-     MG5_aMC>install mg5amc_py8_interface
+    Consider installing the MadGraph7-PY8 interface with the following command:
+     MadGraph7>install mg5amc_py8_interface
     """
        
         mg5amc_py8_interface_path = options['mg5amc_py8_interface_path']
@@ -4530,10 +4546,10 @@ Beware that this can be dangerous for local multicore runs.""")
             if MG5_version_on_install != MG5_curr_version:
                 return \
     """
-    The current version of MG5_aMC (v%s) is different than the one active when
-    installing the 'mg5amc_py8_interface_path' (which was MG5aMC v%s). 
+    The current version of MadGraph7 (v%s) is different than the one active when
+    installing the 'mg5amc_py8_interface_path' (which was MadGraph7 v%s). 
     Please consider refreshing the installation of this interface with the command:
-     MG5_aMC>install mg5amc_py8_interface
+     MadGraph7>install mg5amc_py8_interface
     """%(MG5_curr_version, MG5_version_on_install)
     
         if not PY8_version_on_install is None and not PY8_curr_version is None:
@@ -4543,7 +4559,7 @@ Beware that this can be dangerous for local multicore runs.""")
     The current version of Pythia8 (v%s) is different than the one active when
     installing the 'mg5amc_py8_interface' tool (which was Pythia8 v%s). 
     Please consider refreshing the installation of this interface with the command:
-     MG5_aMC>install mg5amc_py8_interface
+     MadGraph7>install mg5amc_py8_interface
     """%(PY8_curr_version,PY8_version_on_install)
     
         return None
@@ -4891,8 +4907,8 @@ already exists and is not a fifo file."""%fifo_path)
                                                         'MG5aMC_PY8_interface')):
                 raise self.InvalidCmd(
     """The MG5aMC_PY8_interface tool cannot be found, so that MadEvent cannot steer Pythia8 shower.
-    Please install this tool with the following MG5_aMC command:
-    MG5_aMC> install mg5amc_py8_interface_path""")
+    Please install this tool with the following MadGraph7 command:
+    MadGraph7> install mg5amc_py8_interface_path""")
             else:
                 pythia_main = pjoin(self.options['mg5amc_py8_interface_path'],
                                                             'MG5aMC_PY8_interface')
@@ -4994,7 +5010,7 @@ already exists and is not a fifo file."""%fifo_path)
         st = os.stat(wrapper_path)
         os.chmod(wrapper_path, st.st_mode | stat.S_IEXEC)
 
-        # If the target HEPMC output file is a fifo, don't hang MG5_aMC and let
+        # If the target HEPMC output file is a fifo, don't hang MadGraph7 and let
         # it proceed.
         is_HepMC_output_fifo = False if not HepMC_event_output else \
                               ( os.path.exists(HepMC_event_output) and \
@@ -5605,6 +5621,27 @@ tar -czf split_$1.tar.gz split_$1
         if not split_hepmc:
             return False
 
+        # Before (re-)running Delphes on the splits, remove any leftover
+        # per-split ROOT / log file from a previous (possibly crashed) run.
+        # Delphes opens its output with ROOT's CREATE mode and refuses to
+        # overwrite an existing file, and a surviving stale ROOT also
+        # satisfies the required_output check of the job below: the split
+        # would be reported as done and the old file silently hadd-ed into
+        # the final sample. A stale output we cannot remove is therefore a
+        # hard failure, not something to run through.
+        for split_dir, _hepmc in split_hepmc:
+            for stale in (pjoin(split_dir, 'delphes_events.root'),
+                          pjoin(split_dir, 'delphes.log')):
+                if not os.path.isfile(stale):
+                    continue
+                try:
+                    os.remove(stale)
+                except OSError as error:
+                    logger.warning('Could not remove the stale Delphes output '
+                                   '%s (%s); running the standard Delphes step '
+                                   'instead.' % (stale, error))
+                    return False
+
         card = pjoin(self.me_dir, 'Cards', 'delphes_card.dat')
         self.update_status('Running Delphes on Pythia8 splits', level=None)
 
@@ -5683,6 +5720,126 @@ tar -czf split_$1.tar.gz split_$1
         # the natural pythia8 -> delphes order.
         return True
 
+    def _try_run_delphes_on_splits_recovery(self, tag):
+        """Recovery-path override of the CommonRunCmd hook. Called when the
+        standalone 'delphes' command cannot find a merged HEPMC event file
+        for the current run but leftover Pythia8 parallelization splits
+        (PY8_parallelization/split_*/events.hepmc) are present.
+
+        Runs Delphes on each split in parallel, merges the ROOT outputs with
+        hadd and (when the original pythia8 HEPMC setting requested it)
+        cleans up the split directory afterwards. This lets a user recover
+        from a crash during the parallel-Delphes fused path without
+        re-running Pythia8."""
+
+        parallelization_dir = pjoin(self.me_dir, 'Events', self.run_name,
+                                    'PY8_parallelization')
+        if not os.path.isdir(parallelization_dir):
+            return False
+        split_dirs = sorted(glob.glob(pjoin(parallelization_dir, 'split_*')))
+        split_dirs = [d for d in split_dirs if os.path.isdir(d) and
+                      os.path.isfile(pjoin(d, 'events.hepmc'))]
+        if not split_dirs:
+            return False
+
+        try:
+            import madgraph
+        except ImportError:
+            import internal.misc as misc
+        else:
+            import madgraph.various.misc as misc
+
+        # If nb_core_delphes is not explicitly set we still want the user's
+        # recovery run to benefit from parallelism on the splits: fall back
+        # to the same concurrency Pythia8 used (i.e. number of splits), but
+        # cap at the global nb_core / available CPUs.
+        if not hasattr(self, 'to_store'):
+            self.to_store = []
+
+        # Parse the pythia8 card HEPMC:output setting so we know later
+        # whether to remove/compress the split HEPMC files after success.
+        hepmc_output_setting = None
+        py8_card_path = pjoin(self.me_dir, 'Cards', 'pythia8_card.dat')
+        if os.path.isfile(py8_card_path):
+            for line in open(py8_card_path, 'r'):
+                if line.strip().startswith('HEPMCoutput:file'):
+                    if '=' in line:
+                        hepmc_output_setting = line.split('=', 1)[1].strip().lower()
+                    else:
+                        hepmc_output_setting = line.split(None, 1)[1].strip().lower()
+                    break
+        if hepmc_output_setting is None:
+            # Fall back to the parallelization copy written for the splits
+            py8_card0 = pjoin(parallelization_dir, 'PY8Card.dat')
+            if os.path.isfile(py8_card0):
+                for line in open(py8_card0, 'r'):
+                    if line.strip().startswith('HEPMCoutput:file'):
+                        if '=' in line:
+                            hepmc_output_setting = line.split('=', 1)[1].strip().lower()
+                        else:
+                            hepmc_output_setting = line.split(None, 1)[1].strip().lower()
+                        break
+
+        # This path bypasses is_delphes_fusion_active(), which is what
+        # normally guarantees that a Delphes card is present: mirror what
+        # do_delphes does instead of crashing inside run_delphes_on_splits.
+        delphes_card = pjoin(self.me_dir, 'Cards', 'delphes_card.dat')
+        if not os.path.exists(delphes_card):
+            default_card = pjoin(self.me_dir, 'Cards', 'delphes_card_default.dat')
+            if not os.path.exists(default_card):
+                logger.warning('No delphes_card.dat (and no default one) found; '
+                               'cannot run Delphes on the Pythia8 splits.')
+                return False
+            files.cp(default_card, delphes_card)
+            logger.info('No delphes card found. Take the default one.')
+
+        # Run the existing parallel-Delphes-on-splits implementation
+        # directly (bypassing is_delphes_fusion_active, which requires an
+        # explicit nb_core_delphes override — during interactive recovery
+        # the user already confirmed they want to run Delphes by typing
+        # the command, so that extra gate is not needed).
+        #
+        # Note: the final merged ROOT/log are deliberately *not* removed
+        # here. hadd is called with '-f' and the log is opened for writing,
+        # so both are recreated on success anyway, while deleting them up
+        # front would throw away a previously recovered (complete) result
+        # whenever this run fails. Recovery stays reachable for the whole
+        # life of the run directory (the merged HepMC is never recreated),
+        # so that would otherwise happen on every repeated 'delphes <run>'.
+        ok = self.run_delphes_on_splits(split_dirs, parallelization_dir, tag)
+        if not ok:
+            return False
+
+        # Record the delphes-finished status the same way the normal path
+        # (do_delphes via the fused route) does.
+        self.update_status('delphes done', level='delphes', makehtml=False)
+
+        # Handle the original HEPMC storage directive from the pythia8 card.
+        # After a successful recovery the user typically wants the same
+        # cleanup that the standard path would have performed.
+        if hepmc_output_setting is not None:
+            spec = hepmc_output_setting.split('@')[0]
+            if spec.endswith('remove') or spec == 'hepmcremove':
+                # The original pythia8 run would have removed the merged HEPMC
+                # right after producing it; we already skipped the HEPMC merge
+                # earlier if the fused path was used, so in recovery simply
+                # drop the (now useless) split parallelization directory.
+                logger.info('HEPMC output configured for removal on the '
+                            'Pythia8 card; cleaning up the leftover split '
+                            'HEPMC parallelization directory.')
+                if os.path.isdir(parallelization_dir):
+                    shutil.rmtree(parallelization_dir)
+            elif spec.endswith('.gz'):
+                # In recovery the merged HEPMC was never written so there is
+                # nothing to compress; leave the split files alone in case the
+                # user wants them for a later re-processing.
+                pass
+            else:
+                # Plain 'hepmc' / 'auto' -> keep everything as-is.
+                pass
+
+        return True
+
     def parse_PY8_log_file(self, log_file_path):
         """ Parse a log file to extract number of event and cross-section. """
         pythiare = re.compile(r"Les Houches User Process\(es\)\s*\d+\s*\|\s*(?P<tried>\d+)\s*(?P<selected>\d+)\s*(?P<generated>\d+)\s*\|\s*(?P<xsec>[\d\.e\-\+]+)\s*(?P<xsec_error>[\d\.e\-\+]+)")
@@ -5711,7 +5868,7 @@ tar -czf split_$1.tar.gz split_$1
                         Ntry = int(info.group('tried'))
                     if Nacc==0:
                         raise self.InvalidCmd('Pythia8 shower failed since it'+\
-                          ' did not accept any event from the MG5aMC event file.')
+                          ' did not accept any event from the MadGraph7 event file.')
                     return sigma_m, Nacc, Ntry
                 except ValueError:
                     return None,None,None
@@ -6308,8 +6465,11 @@ tar -czf split_$1.tar.gz split_$1
                 required_output = []
                 
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
                         
                 #Find the correct ajob
                 Gre = re.compile(r"\s*j=(G[\d\.\w]+)")
@@ -6349,8 +6509,11 @@ tar -czf split_$1.tar.gz split_$1
                     input_files.append(pjoin(self.me_dir,'SubProcesses', 
                                                    'MadLoop5_resources.tar.gz'))
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
 
 
                 output_files = []
@@ -6402,8 +6565,11 @@ tar -czf split_$1.tar.gz split_$1
                     input_files.append(pjoin(self.me_dir,'SubProcesses', 
                                                    'MadLoop5_resources.tar.gz'))
 
-                #Find the correct PDF input file
-                input_files.append(self.get_pdf_input_filename())
+                #Find the correct PDF input file ('' when the node reads it
+                # on its own -- CVMFS/cluster_local_path -- so nothing to send)
+                pdfinput = self.get_pdf_input_filename()
+                if pdfinput.strip():
+                    input_files.append(pdfinput)
 
 
                 output_files = [argument[0]]
@@ -6538,13 +6704,22 @@ tar -czf split_$1.tar.gz split_$1
 
 
         # set  lhapdf.
-        if self.run_card['pdlabel'] == "lhapdf":
+        # A 1->N directory never initialises a PDF (alpha_s comes from the
+        # param card), so it must not be built against the LHAPDF alpha_s
+        # either: alphas_ would call alphasPDF on an uninitialised LHAGLUE set
+        # and LHAPDF would abort the process. The run_card alone cannot decide
+        # this -- MadSpin writes the *production* card (lpp!=0, pdlabel=lhapdf)
+        # into the decay directories it builds -- so key it on the directory's
+        # own proc_characteristics.
+        use_lhapdf = self.run_card['pdlabel'] == "lhapdf" and \
+                     self.proc_characteristics['ninitial'] != 1
+        if use_lhapdf:
             self.make_opts_var['lhapdf'] = 'True'
             self.link_lhapdf(pjoin(self.me_dir,'lib'))
             pdfsetsdir = self.get_lhapdf_pdfsetsdir()
             lhaid_list = [int(self.run_card['lhaid'])]
             self.copy_lhapdf_set(lhaid_list, pdfsetsdir)
-        if self.run_card['pdlabel'] != "lhapdf":
+        if not use_lhapdf:
             self.pdffile = None
             self.make_opts_var['lhapdf'] = ""
 

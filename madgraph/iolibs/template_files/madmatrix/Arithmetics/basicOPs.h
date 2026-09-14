@@ -1,7 +1,10 @@
+// Copyright (C) 2020-2026 CERN and UCLouvain.
+// Licensed under the GNU Lesser General Public License (version 3 or later).
+// Created originally by: F.Stloukal (May 2026) for the MadGraph7 MadMatrix.
+// Further modified by: F.Stloukal  
+
 #ifndef BASICOPS_H
 #define BASICOPS_H
-
-#pragma once
 
 #include <limits>
 
@@ -10,18 +13,16 @@
 #endif
 
 
-
-
 namespace MG_ARITHM{
 
 #if defined( __CUDACC__ )
-#define __tnl_inline__ __forceinline__
+#define __mgDWA_inline__ __forceinline__
 #elif defined( _MSC_VER )
-#define __tnl_inline__ __forceinline
+#define __mgDWA_inline__ __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define __tnl_inline__ __attribute__( ( always_inline ) ) inline
+#define __mgDWA_inline__ __attribute__( ( always_inline ) ) inline
 #else
-#define __tnl_inline__ inline
+#define __mgDWA_inline__ inline
 #endif
 
 #if defined( __CUDACC__ )
@@ -33,23 +34,25 @@ __host__
 #endif
 
 #ifdef __CADNA__
-   template <typename T>
-     constexpr bool is_special_fp_v =
-         std::is_same_v<T, double_st> || std::is_same_v<T, float_st>;
-#endif
-
-#ifdef __CADNA__
-#define FLOAT_TEMPLATE_GUARD \
-template< typename T, std::enable_if_t< is_special_fp_v< T >, int > = 0 >
+template <typename T>
+concept GoodFloatType = std::is_same_v<T, double_st> || std::is_same_v<T, float_st>;
+template <typename T>
+concept SingleFloatType = std::is_same_v<T, float_st>;
+template <typename T>
+concept DoubleFloatType = std::is_same_v<T, double_st>;
 #else
-#define FLOAT_TEMPLATE_GUARD \
-template< typename T, std::enable_if_t< std::is_floating_point_v< T >, int > = 0 >
+template <typename T>
+concept GoodFloatType = std::is_same_v<T, double> || std::is_same_v<T, float>;
+template <typename T>
+concept SingleFloatType = std::is_same_v<T, float>;
+template <typename T>
+concept DoubleFloatType = std::is_same_v<T, double>;
 #endif
 
 
-FLOAT_TEMPLATE_GUARD
+template <GoodFloatType T>
 __cuda_callable__
-static constexpr __tnl_inline__ T
+static constexpr __mgDWA_inline__ T
 add_rn( const T x, const T y )
 {
 #if defined __CUDA_ARCH__
@@ -64,9 +67,9 @@ add_rn( const T x, const T y )
 #endif
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-static constexpr __tnl_inline__ T
+static constexpr __mgDWA_inline__ T
 mul_rn( const T x, const T y )
 {
 #if defined __CUDA_ARCH__
@@ -81,9 +84,9 @@ mul_rn( const T x, const T y )
 #endif
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-static constexpr __tnl_inline__ T
+static constexpr __mgDWA_inline__ T
 div_rn( const T x, const T y )
 {
 #if defined __CUDA_ARCH__
@@ -98,9 +101,9 @@ div_rn( const T x, const T y )
 #endif
 }
 
-FLOAT_TEMPLATE_GUARD
+template<GoodFloatType T>
 __cuda_callable__
-static constexpr __tnl_inline__ T
+static constexpr __mgDWA_inline__ T
 fma_rn( const T x, const T y, const T z )
 {
 #if defined __CUDA_ARCH__

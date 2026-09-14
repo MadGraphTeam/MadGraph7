@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -791,14 +791,14 @@ class OneProcessExporterCPP(object):
         info = misc.get_pkg_info()
         info_lines = ""
         if info and 'version' in info and  'date' in info:
-            info_lines = "//  MadGraph5_aMC@NLO v. %s, %s\n" % \
+            info_lines = "//  MadGraph7 v. %s, %s\n" % \
                          (info['version'], info['date'])
             info_lines = info_lines + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"
         else:
-            info_lines = "//  MadGraph5_aMC@NLO\n" + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+            info_lines = "//  MadGraph7\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"        
 
         return info_lines
@@ -1664,6 +1664,10 @@ class OneProcessExporterCPP(object):
                                      
         replace_dict['jamp_lines'] = self.get_jamp_lines(color_amplitudes)
 
+        # The color sum may run on a smaller basis than the one the color flow
+        # is picked among (see the madmatrix override)
+        self.set_color_flow_lines_cpp(matrix_element, replace_dict)
+
         replace_dict['amp2_lines'] = self.get_amp2_lines(matrix_element)
 
         #specific exporter hack
@@ -1816,6 +1820,15 @@ class OneProcessExporterCPP(object):
 
 
             
+    def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
+        """Tell the process template that the color sum and the color flow use
+        the same basis. Overridden by the backends which can put the color sum
+        on a smaller one."""
+
+        replace_dict['ncolor_flow'] = replace_dict['ncolor']
+        replace_dict['jampflow_lines'] = ''
+        replace_dict['jamp_flow'] = 'jamp_sv'
+
     def get_jamp_lines(self, color_amplitudes):
         """Return the jamp = sum(fermionfactor * amp[i]) lines"""
 
@@ -2687,16 +2700,20 @@ class ProcessExporterCPP(VirtualExporter):
             if self.template_src_make:
                 # Copy src Makefile
                 makefile = self.read_template_file(self.template_src_make) % \
-                               {'model': self.get_model_name(model.get('name')),
-                                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('src', 'Makefile'), 'w').write(makefile)
 
             if self.template_Sub_make:
                 # Copy SubProcesses Makefile
                 makefile = self.read_template_file(self.template_Sub_make) % \
-                                        {'model': self.get_model_name(model.get('name')),
-                                         'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('SubProcesses', 'Makefile'), 'w').write(makefile)
+
+    def get_makefile_replace_dict(self, model):
+        """Template replacements for the src and SubProcesses makefiles."""
+
+        return {'model': self.get_model_name(model.get('name')),
+                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
 
     #===========================================================================
     # Helper functions
@@ -3231,7 +3248,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
             plot.draw()
 
         me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
-        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path)
+        # Store the path relative to the process directory (like me_path): an
+        # absolute path would break as soon as the process directory is moved.
+        rel_dirpath = pjoin('SubProcesses', proc_dir_name)
+        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(rel_dirpath, me_lib_path)
         self.merged_subprocesses[subproc_class].append(
             (len(self.process_info), diagram_tags)
         )
@@ -3496,20 +3516,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
-            # persist the model so the runtime can compute widths set to 'auto'
-            # in the param_card (and recompute them at each scan point). A hash
-            # of the model's python source is stored on the second line so the
-            # runtime can detect a model that changed since output.
+            # persist the model so the runtime can reload it: to compute the
+            # widths set to 'auto' in the param_card (and recompute them at
+            # each scan point) and to reset the parameters the model derives
+            # from the free ones (launch.MG7Cmd.get_model). A hash of the
+            # model's python source is stored on the second line so the runtime
+            # can detect a model that changed since output.
             try:
                 model = processes[0][0].get('model')
-                model_path = model.get('modelpath')
-                model_ref = model_path or model.get('name')
+                try:
+                    model_path = model.get('modelpath')
+                    model_hash = misc.hash_model_files(model_path)
+                except Exception:
+                    model_path, model_hash = None, None
+                # the restriction is part of the model the process was
+                # generated with ('sm-no_b_mass' is not 'sm'), so store the
+                # reference that reproduces it, not the bare UFO directory.
+                try:
+                    model_ref = model.get('modelpath+restriction')
+                except Exception:
+                    model_ref = model_path or model.get('name')
                 if model_ref:
-                    model_hash = misc.hash_model_files(model_path) if model_path else None
                     with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
                         f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception:
-                pass
+            except Exception as error:
+                logger.debug('could not record the model: %s', error)
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')

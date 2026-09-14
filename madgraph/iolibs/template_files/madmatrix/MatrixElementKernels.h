@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Jan 2022) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Jan 2022) for the MadGraph7 CUDACPP plugin.
 // Further modified by: D. Massaro, J. Teig, A. Thete, A. Valassi, Z. Wettersten (2022-2025).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -211,7 +211,7 @@ namespace mg5amcCpu
     // The super-buffer of nGoodHel denominator buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelDenominators;
 
-    // The super-buffer of ncolor jamp2 buffers
+    // The super-buffer of ncolor_flow jamp2 buffers
     DeviceBufferAmp m_colJamp2s;
 
 #ifdef MGONGPU_CHANNELID_DEBUG

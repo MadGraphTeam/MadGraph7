@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -203,6 +203,20 @@ class IOExportMadLoopUnitTest(IOTests.IOTestManager):
                                        exporters = 'default',
                                        orders = {'QCD': 2, 'QED': 2} )
 
+    # The references were recorded in the default (unitary) gauge, and the
+    # gauge is a global: without this decorator the test exports whatever gauge
+    # an earlier test happened to leave behind -- in Feynman gauge loop_sm
+    # keeps the charged Goldstone, and get_color.f then starts at CASE(-251)
+    # instead of the ghost CASE(-82). That is how it passed alone and failed
+    # in the full suite, after tests/unit_tests/iolibs/test_ufo_parsers.
+    #
+    # It does NOT cover every way an earlier test can move this output:
+    # tests/unit_tests/fks/test_ewsudakov imports loop_qcd_qed_sm_Gmu_forSudakov
+    # and a later import_ufo.import_model('loop_sm') then groups mdl_MW under
+    # ('aEWM1', 'Gf') instead of ('aEWM1',), which reorders
+    # mp_intparam_definition.inc. That is a leak between UFO model imports, not
+    # a gauge one, and it is still open.
+    @IOTests.set_global()
     def testIO_UnitProcOutputIOTests(self, load_only=False):
       """ Run the iotests """
       
