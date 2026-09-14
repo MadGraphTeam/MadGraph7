@@ -6,6 +6,7 @@
 #define MemoryAccessInvariants_H 1
 
 #include "mgOnGpuConfig.h"
+#include "mgOnGpuVectors.h"
 
 #include "CPPProcess.h" // for CPPProcess::npar
 
@@ -55,13 +56,21 @@ namespace mg5amcCpu
     }
 
     // p^2 of the propagator built from external legs `mask` (0 if not sampled).
-    static __host__ __device__ inline fptype_invmass
+    // `record` is filled (see model_handling.py) from a single event (ievt00, the
+    // first in the current SIMD page), not per-lane, so in CPPSIMD builds this
+    // broadcasts that one value to every lane rather than gathering distinct
+    // per-event values across the page.
+    static __host__ __device__ inline fptype_invmass_sv
     kernelAccessConst( const fptype_invmass* record, const int mask )
     {
 #ifdef MGONGPU_INVP2_DEBUG
       if( s_invUsed != nullptr ) s_invUsed[mask] = true;
 #endif
+#ifndef MGONGPU_CPPSIMD
       return record[mask];
+#else
+      return fptype_invmass_sv{ 0 } + record[mask]; // broadcast (see mgOnGpuVectors.h fptype_denom_sv ctor)
+#endif
     }
 
 #ifdef MGONGPU_INVP2_DEBUG

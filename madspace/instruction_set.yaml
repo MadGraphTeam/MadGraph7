@@ -221,7 +221,7 @@ sub:
 
 neg:
   inputs:
-    - name: in
+    - name: in1
       type: [float, ...]
       desc: input
   outputs:

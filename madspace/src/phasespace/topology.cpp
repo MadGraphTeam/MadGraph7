@@ -390,9 +390,20 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             0
         );
     } else {
-        topo._decays.push_back(
-            {0, 0, {}, 0., 0., 0., 0., 0, false, false, Topology::no_propagator}
-        );
+        topo._decays.push_back({
+            .index = 0,
+            .parent_index = 0,
+            .child_indices = {},
+            .mass = 0.,
+            .width = 0.,
+            .e_min = 0.,
+            .e_max = 0.,
+            .pdg_id = 0,
+            .momentum_mask = 0,
+            .on_shell = false,
+            .on_shell_boundary = false,
+            .flat_propagator_index = Topology::no_propagator,
+        });
         decay_indices.push_back(0);
         integration_order.push_back(0);
         for (auto [t_vertex, line] : zip(t_vertices, lines_after_t)) {

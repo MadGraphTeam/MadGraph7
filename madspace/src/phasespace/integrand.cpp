@@ -711,7 +711,7 @@ NamedVector<Value> Integrand::build_common_part(
     if (_mapping.return_invariants()) {
         // only forward the invariant data if the matrix element actually
         // declared inputs for it
-        auto external_inputs = _diff_xs.matrix_element().external_inputs();
+        auto external_inputs = _diff_xs.at(0).matrix_element().external_inputs();
         bool wants_invariants =
             std::find(
                 external_inputs.begin(),

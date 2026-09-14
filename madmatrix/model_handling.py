@@ -749,7 +749,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['mi'] = 'static_cast<fptype_invmass>( M%(i)s )' % mydict
                         mydict['wi'] = 'static_cast<fptype_invmass>( W%(i)s )' % mydict
                         mydict['p2mom'] = '( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] )' % mydict
-                        out.write('    const cxtype_denom_sv cId( 0., 1. );\n')
+                        out.write('    const cxtype_denom cId( 0., 1. );\n')
                         out.write('#ifdef MGONGPU_CPPSIMD\n')
                         out.write('    %(declnamedenom)s = %(normden)s;\n' % mydict)
                         out.write('#else\n')
