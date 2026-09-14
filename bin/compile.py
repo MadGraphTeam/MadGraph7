@@ -57,8 +57,8 @@ class Compile_MG5:
 
         # important to uclclus
         if self.overwrite_configuration:
-            files.cp(pjoin(MG5DIR,'input','.mg5_configuration_default.txt'),
-                     pjoin(MG5DIR,'input','mg5_configuration.txt'))
+            files.cp(pjoin(MG5DIR,'input','.mg7_configuration_default.txt'),
+                     pjoin(MG5DIR,'input','mg7_configuration.txt'))
             
         self.cmd = interface.MasterCmd()                
 

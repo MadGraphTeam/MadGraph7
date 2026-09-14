@@ -26,11 +26,11 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "hepmc3_path = /home/runner/.cache/HEPtools/hepmc3" >>  input/mg5_configuration.txt
-        echo "rivet_path = /home/runner/.cache/HEPtools/rivet" >>  input/mg5_configuration.txt
-        echo "yoda_path = /home/runner/.cache/HEPtools/yoda" >>  input/mg5_configuration.txt
-        echo "contur_path = /home/runner/.cache/HEPtools/contur" >>  input/mg5_configuration.txt
-        echo "fastjet = /home/runner/.cache/HEPtools/fastjet/bin/fastjet-config" >>  input/mg5_configuration.txt
+        echo "hepmc3_path = /home/runner/.cache/HEPtools/hepmc3" >>  input/mg7_configuration.txt
+        echo "rivet_path = /home/runner/.cache/HEPtools/rivet" >>  input/mg7_configuration.txt
+        echo "yoda_path = /home/runner/.cache/HEPtools/yoda" >>  input/mg7_configuration.txt
+        echo "contur_path = /home/runner/.cache/HEPtools/contur" >>  input/mg7_configuration.txt
+        echo "fastjet = /home/runner/.cache/HEPtools/fastjet/bin/fastjet-config" >>  input/mg7_configuration.txt
       shell: bash
 
     - name: set pythonpath for ubuntu22

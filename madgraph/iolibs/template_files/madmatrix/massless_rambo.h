@@ -41,12 +41,12 @@ namespace massless_rambo {
   // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
   template<class M_ACCESS>
   __host__ __device__ void
-  ramboGetMomentaInitial( const fptype energy, // input: energy
-                          fptype* momenta )    // output: momenta for one event or for a set of events
+  ramboGetMomentaInitial( const fptype energy,      // input: energy
+                          fptype_momenta* momenta ) // output: momenta for one event or for a set of events
   {
-    const fptype energy1 = energy / 2;
-    const fptype energy2 = energy / 2;
-    const fptype mom = energy / 2;
+    const fptype_momenta energy1 = (fptype_momenta)energy / 2;
+    const fptype_momenta energy2 = (fptype_momenta)energy / 2;
+    const fptype_momenta mom = (fptype_momenta)energy / 2;
     M_ACCESS::kernelAccessIp4Ipar( momenta, 0, 0 ) = energy1;
     M_ACCESS::kernelAccessIp4Ipar( momenta, 1, 0 ) = 0;
     M_ACCESS::kernelAccessIp4Ipar( momenta, 2, 0 ) = 0;
@@ -63,10 +63,10 @@ namespace massless_rambo {
   // [NB: the output buffer includes both initial and final momenta, but only initial momenta are filled in]
   template<class R_ACCESS, class M_ACCESS, class W_ACCESS>
   __host__ __device__ void
-  ramboGetMomentaFinal( const fptype energy,  // input: energy
-                        const fptype* rndmom, // input: random numbers in [0,1] for one event or for a set of events
-                        fptype* momenta,      // output: momenta for one event or for a set of events
-                        fptype* wgts )        // output: weights for one event or for a set of events
+  ramboGetMomentaFinal( const fptype energy,     // input: energy
+                        const fptype* rndmom,    // input: random numbers in [0,1] for one event or for a set of events
+                        fptype_momenta* momenta, // output: momenta for one event or for a set of events
+                        fptype* wgts )           // output: weights for one event or for a set of events
   {
     /****************************************************************************
      *                       rambo                                              *
@@ -118,25 +118,25 @@ namespace massless_rambo {
     }
 
     // initialization step: factorials for the phase space weight
-    const fptype twopi = 8. * atan( 1. );
-    const fptype po2log = log( twopi / 4. );
-    fptype z[nparf];
+    const fptype_momenta twopi = 8. * atan( 1. );
+    const fptype_momenta po2log = log( twopi / 4. );
+    fptype_momenta z[nparf];
     if constexpr( nparf > 1 ) // avoid build warning on clang (related to #358)
       z[1] = po2log;
-    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = z[kpar - 1] + po2log - 2. * log( fptype( kpar - 1 ) );
-    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = ( z[kpar] - log( fptype( kpar ) ) );
+    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = z[kpar - 1] + po2log - 2. * log( fptype_momenta( kpar - 1 ) );
+    for( int kpar = 2; kpar < nparf; kpar++ ) z[kpar] = ( z[kpar] - log( fptype_momenta( kpar ) ) );
 
     // generate n massless momenta in infinite phase space
-    fptype q[nparf][np4];
+    fptype_momenta q[nparf][np4];
     for( int iparf = 0; iparf < nparf; iparf++ )
     {
-      const fptype r1 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 0, iparf );
-      const fptype r2 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 1, iparf );
-      const fptype r3 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 2, iparf );
-      const fptype r4 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 3, iparf );
-      const fptype c = 2. * r1 - 1.;
-      const fptype s = sqrt( 1. - c * c );
-      const fptype f = twopi * r2;
+      const fptype_momenta r1 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 0, iparf );
+      const fptype_momenta r2 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 1, iparf );
+      const fptype_momenta r3 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 2, iparf );
+      const fptype_momenta r4 = R_ACCESS::kernelAccessIp4IparfConst( rndmom, 3, iparf );
+      const fptype_momenta c = 2. * r1 - 1.;
+      const fptype_momenta s = sqrt( 1. - c * c );
+      const fptype_momenta f = twopi * r2;
       q[iparf][0] = -log( r3 * r4 );
       q[iparf][3] = q[iparf][0] * c;
       q[iparf][2] = q[iparf][0] * s * cos( f );
@@ -144,23 +144,23 @@ namespace massless_rambo {
     }
 
     // calculate the parameters of the conformal transformation
-    fptype r[np4];
-    fptype b[np4 - 1];
+    fptype_momenta r[np4];
+    fptype_momenta b[np4 - 1];
     for( int i4 = 0; i4 < np4; i4++ ) r[i4] = 0.;
     for( int iparf = 0; iparf < nparf; iparf++ )
     {
       for( int i4 = 0; i4 < np4; i4++ ) r[i4] = r[i4] + q[iparf][i4];
     }
-    const fptype rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
+    const fptype_momenta rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
     for( int i4 = 1; i4 < np4; i4++ ) b[i4 - 1] = -r[i4] / rmas;
-    const fptype g = r[0] / rmas;
-    const fptype a = 1. / ( 1. + g );
-    const fptype x0 = energy / rmas;
+    const fptype_momenta g = r[0] / rmas;
+    const fptype_momenta a = 1. / ( 1. + g );
+    const fptype_momenta x0 = (fptype_momenta)energy / rmas;
 
     // transform the q's conformally into the p's (i.e. the 'momenta')
     for( int iparf = 0; iparf < nparf; iparf++ )
     {
-      fptype bq = b[0] * q[iparf][1] + b[1] * q[iparf][2] + b[2] * q[iparf][3];
+      fptype_momenta bq = b[0] * q[iparf][1] + b[1] * q[iparf][2] + b[2] * q[iparf][3];
       for( int i4 = 1; i4 < np4; i4++ )
       {
         M_ACCESS::kernelAccessIp4Ipar( momenta, i4, iparf + npari ) = x0 * ( q[iparf][i4] + b[i4 - 1] * ( q[iparf][0] + a * bq ) );

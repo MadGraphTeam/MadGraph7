@@ -1013,9 +1013,12 @@ class L_Metric(aloha_lib.LorentzObject):
                                              self.lorentz_ind,self.spin_ind)     
 
 class Metric(aloha_lib.FactoryLorentz):
-         
+
     object_class = L_Metric
-    
+    # g^{mu nu} is symmetric by definition -- which is why get_unique_name
+    # below sorts its two indices.
+    is_symmetric = True
+
     @classmethod
     def get_unique_name(cls,l1,l2):
 

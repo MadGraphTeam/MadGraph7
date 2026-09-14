@@ -1,5 +1,6 @@
 #include "madspace/driver/madnis_training.hpp"
 
+#include "madspace/driver/random.hpp"
 #include "madspace/phasespace/batch_sampler.hpp"
 
 using namespace madspace;
@@ -9,13 +10,17 @@ MadnisTraining::MadnisTraining(
     ContextPtr optimizer_context,
     const Config& config,
     const std::vector<std::shared_ptr<Integrand>>& integrands,
-    const std::optional<ChannelWeightNetwork>& cwnet
+    const std::optional<ChannelWeightNetwork>& cwnet,
+    std::optional<std::uint64_t> seed,
+    std::size_t channel_index_offset
 ) :
     _generator_context(generator_context),
     _optimizer_context(optimizer_context),
     _config(config),
     _channels(integrands.size()),
-    _cwnet(cwnet) {
+    _cwnet(cwnet),
+    _seed(seed),
+    _channel_index_offset(channel_index_offset) {
     for (std::size_t index = 0;
          auto [integrand, channel] : zip(integrands, _channels)) {
         channel.index = index;
@@ -27,7 +32,12 @@ MadnisTraining::MadnisTraining(
             _arg_permutation.push_back(integ_args.at("adaptive_prob"));
             if (cwnet) {
                 _arg_permutation.push_back(integ_args.at("cwnet_input"));
-                _arg_permutation.push_back(integ_args.at("channel_weights"));
+                if (integ_args.contains("channel_weight_values")) {
+                    _arg_permutation.push_back(integ_args.at("channel_weight_values"));
+                    _arg_permutation.push_back(integ_args.at("channel_weight_indices"));
+                } else {
+                    _arg_permutation.push_back(integ_args.at("channel_weights"));
+                }
                 _arg_permutation.push_back(integ_args.at("channel_index"));
             }
             for (auto key : channel.integrand_prob->arg_types().keys()) {
@@ -49,15 +59,23 @@ MadnisTraining::MadnisTraining(
 void MadnisTraining::train_step(std::size_t batch_index) {
     auto& gen_thread_pool = _generator_context->thread_pool();
     _abort_check_function();
+    _batch_index = batch_index;
     std::vector<std::size_t> channel_sizes = compute_channel_sizes();
-    bool try_buffered =
-        _config.buffer_capacity > 0 && batch_index % (_config.buffered_steps + 1) != 0;
+    // delta-sigma modulation: accumulate the target fraction and spend one
+    // quantum per buffered step, which spreads them out evenly
+    _buffered_step_accumulator += buffered_step_target();
+    bool try_buffered = _buffered_step_accumulator >= _buffered_step_scale;
+    if (try_buffered) {
+        _buffered_step_accumulator -= _buffered_step_scale;
+    }
     TensorVec training_batch;
+    bool used_buffered = false;
     while (true) {
-        start_generator_jobs(channel_sizes);
+        maybe_start_generator_jobs(channel_sizes, !try_buffered);
         if (try_buffered) {
             if (check_buffered_training_batch(channel_sizes)) {
                 training_batch = build_buffered_training_batch(channel_sizes);
+                used_buffered = true;
                 break;
             }
             try_buffered = false;
@@ -67,25 +85,39 @@ void MadnisTraining::train_step(std::size_t batch_index) {
         }
         process_job_results(gen_thread_pool.wait_multiple());
     }
+    double learning_rate = _optimizer->learning_rate();
     TensorVec results = _optimizer->step(training_batch);
-    update_history(results, channel_sizes);
+    update_history(results, channel_sizes, learning_rate, used_buffered);
+    if ((batch_index + 1) % _config.log_interval == 0) {
+        _status_batches.push_back(batch_index + 1);
+        _status_losses.push_back(average_loss());
+        _status_channel_counts.push_back(active_channel_count());
+        _status_learning_rates.push_back(average_learning_rate());
+        _status_buffered_fractions.push_back(buffered_fraction());
+        _status_generated_events.push_back(_generated_event_count);
+        _status_buffer_sizes.push_back(buffer_event_count());
+    }
     if (_channels.size() > 0 && _cwnet &&
         (batch_index + 1) % _config.channel_dropping_interval == 0) {
-        std::vector<std::size_t> job_ids;
-        while ((job_ids = gen_thread_pool.wait_multiple()).size() != 0) {
-            process_job_results(job_ids);
-        }
-        drop_channels();
+        process_all_jobs();
+        drop_channels(batch_index + 1);
     }
     if (batch_index ==
         static_cast<std::size_t>(
             (1 - _config.fixed_cwnet_fraction) * _config.batches
         )) {
-        std::vector<std::size_t> job_ids;
-        while ((job_ids = gen_thread_pool.wait_multiple()).size() != 0) {
-            process_job_results(job_ids);
-        }
+        process_all_jobs();
         freeze_cwnet();
+    }
+    if (batch_index + 1 == _config.batches) {
+        process_all_jobs();
+    }
+}
+
+void MadnisTraining::process_all_jobs() {
+    std::vector<std::size_t> job_ids;
+    while ((job_ids = _generator_context->thread_pool().wait_multiple()).size() != 0) {
+        process_job_results(job_ids);
     }
 }
 
@@ -111,6 +143,59 @@ double MadnisTraining::average_loss() const {
     return loss_sum / loss_count;
 }
 
+double MadnisTraining::average_learning_rate() const {
+    if (_lr_history.size() == 0) {
+        return 0.;
+    }
+    double lr_sum = 0;
+    for (double lr : _lr_history) {
+        lr_sum += lr;
+    }
+    return lr_sum / _lr_history.size();
+}
+
+double MadnisTraining::buffered_fraction() const {
+    if (_buffered_history.size() == 0) {
+        return 0.;
+    }
+    std::size_t buffered_count = 0;
+    for (bool buffered : _buffered_history) {
+        buffered_count += buffered;
+    }
+    return static_cast<double>(buffered_count) / _buffered_history.size();
+}
+
+// Target fraction of buffered steps in units of _buffered_step_scale, ramped up
+// linearly between minimum_buffer_size and buffer_capacity of the least filled buffer
+std::size_t MadnisTraining::buffered_step_target() const {
+    if (_config.buffer_capacity == 0 || _config.buffered_steps_fraction <= 0.) {
+        return 0;
+    }
+    std::size_t buffer_size = _config.buffer_capacity;
+    for (auto& channel : _channels) {
+        buffer_size = std::min(buffer_size, channel.buffer.size);
+    }
+    if (buffer_size <= _config.minimum_buffer_size) {
+        return 0;
+    }
+    std::size_t range = _config.buffer_capacity > _config.minimum_buffer_size
+        ? _config.buffer_capacity - _config.minimum_buffer_size
+        : 1;
+    std::size_t filled = std::min(buffer_size - _config.minimum_buffer_size, range);
+    std::size_t max_target = static_cast<std::size_t>(
+        _buffered_step_scale * std::min(_config.buffered_steps_fraction, 1.)
+    );
+    return max_target * filled / range;
+}
+
+std::size_t MadnisTraining::buffer_event_count() const {
+    std::size_t count = 0;
+    for (auto& channel : _channels) {
+        count += channel.buffer.size;
+    }
+    return count;
+}
+
 void MadnisTraining::build_runtimes_and_optimizer() {
     std::vector<std::shared_ptr<FunctionGenerator>> functions;
     functions.reserve(_channels.size());
@@ -120,7 +205,13 @@ void MadnisTraining::build_runtimes_and_optimizer() {
         channel.generator_runtime.reset();
     }
     Function madnis_func =
-        MadnisLoss(functions, _cwnet, _config.softclip_threshold).function();
+        MadnisLoss(
+            functions,
+            _cwnet,
+            _config.softclip_threshold,
+            _config.compressed_channel_weight_count
+        )
+            .function();
     if (_optimizer) {
         _optimizer->replace_function(madnis_func);
     } else {
@@ -132,7 +223,9 @@ void MadnisTraining::build_runtimes_and_optimizer() {
             _config.batches,
             _config.adam_beta1,
             _config.adam_beta2,
-            _config.adam_eps
+            _config.adam_eps,
+            _config.grad_clip_threshold,
+            _config.adam_weight_decay
         );
     }
     _generator_params =
@@ -262,9 +355,16 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
     if (_running_jobs.size() > 0) {
         return;
     }
+    bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
+    // flush buffer samples staged since the last round (see process_job_results)
+    for (auto& channel : _channels) {
+        for (auto& pending : channel.pending_buffer_samples) {
+            buffer_store(channel, pending);
+        }
+        channel.pending_buffer_samples.clear();
+    }
     _generator_params.copy_from(_optimizer->parameters());
     std::size_t chan_count = counts.size();
-    bool is_gpu = _generator_context->device()->device_type() != DeviceType::cpu;
     std::size_t batch_size = is_gpu
         ? _config.gpu_generator_batch_granularity
         : _config.cpu_generator_batch_size;
@@ -280,14 +380,21 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
             ? (target_count - channel.sample_count + batch_size - 1) / batch_size
             : 0;
     }
-    std::size_t available_jobs = _generator_context->thread_pool().thread_count();
-    std::vector<std::size_t> channel_sizes;
     std::size_t gpu_subbatches =
         (_config.gpu_generator_batch_size + _config.gpu_generator_batch_granularity -
          1) /
         _config.gpu_generator_batch_granularity;
+    // dispatch exactly what this round needs, uncapped by thread count, so
+    // round contents don't depend on thread count
+    std::size_t available_jobs = 0;
+    for (auto count : missing_batch_counts) {
+        available_jobs += count;
+    }
+    for (auto count : target_batch_counts) {
+        available_jobs += count;
+    }
+    std::vector<std::size_t> channel_sizes;
     if (is_gpu) {
-        available_jobs *= gpu_subbatches;
         channel_sizes.resize(chan_count, 0);
     }
 
@@ -349,6 +456,31 @@ void MadnisTraining::start_generator_jobs(const std::vector<std::size_t>& counts
     }
 }
 
+// Requires an online attempt and the online cache to be exhausted or about to
+// be, both deterministic conditions, so round contents don't depend on thread
+// scheduling.
+void MadnisTraining::maybe_start_generator_jobs(
+    const std::vector<std::size_t>& counts, bool is_online_attempt
+) {
+    if (_running_jobs.size() > 0) {
+        return;
+    }
+    if (!is_online_attempt) {
+        return;
+    }
+    bool depletion_imminent = false;
+    for (auto [channel, count] : zip(_channels, counts)) {
+        if (count >= channel.sample_count) {
+            depletion_imminent = true;
+            break;
+        }
+    }
+    if (!depletion_imminent) {
+        return;
+    }
+    start_generator_jobs(counts);
+}
+
 TensorVec MadnisTraining::permute_tensors(const TensorVec& tensors) const {
     TensorVec ret;
     ret.reserve(tensors.size());
@@ -358,20 +490,46 @@ TensorVec MadnisTraining::permute_tensors(const TensorVec& tensors) const {
     return ret;
 }
 
+// Seed depends only on channel index and channel-local sequence, not on which
+// worker thread runs the job.
 void MadnisTraining::start_single_job(
     std::size_t channel_index, std::size_t batch_size
 ) {
     std::size_t job_id = _job_id;
     ++_job_id;
+    auto& channel = _channels.at(channel_index);
+    std::size_t channel_seq = channel.next_dispatch_seq++;
+    std::size_t global_channel_index = _channel_index_offset + channel_index;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
+    job.dispatch_seq = channel_seq;
+    // captured by value: reading _batch_index inside the job would make the
+    // buffer content depend on thread scheduling
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
     _generator_context->thread_pool().submit(
-        [this, channel_index, batch_size, job_id, &job]() {
+        [this, channel_index, global_channel_index, batch_size, job_id, store_buffer,
+         &job]() {
             auto& channel = _channels.at(channel_index);
+            if (_seed) {
+                channel.generator_runtime->set_seed(DerivedSeed(
+                    _seed,
+                    DerivedSeed::madnis_generate,
+                    job.dispatch_seq,
+                    global_channel_index
+                ));
+            }
             auto samples = channel.generator_runtime->run({Tensor({batch_size})});
             job.samples.tensors = permute_tensors(samples);
             job.samples.size = samples.at(0).size(0);
             job.samples.channel_index = channel_index;
-            if (channel.unweighter_runtime) {
+            if (channel.unweighter_runtime && store_buffer) {
+                if (_seed) {
+                    channel.unweighter_runtime->set_seed(DerivedSeed(
+                        _seed,
+                        DerivedSeed::madnis_unweight,
+                        job.dispatch_seq,
+                        global_channel_index
+                    ));
+                }
                 auto unw_samples = channel.unweighter_runtime->run(samples);
                 job.unweighted_samples.tensors = permute_tensors(unw_samples);
                 job.unweighted_samples.size = unw_samples.at(0).size(0);
@@ -382,21 +540,44 @@ void MadnisTraining::start_single_job(
     );
 }
 
+// Dispatch sequence is global (not per-channel), since one job spans all channels.
 void MadnisTraining::start_multi_job(const std::vector<std::size_t> batch_sizes) {
     std::size_t job_id = _job_id;
     ++_job_id;
+    std::size_t dispatch_seq = _multi_job_next_dispatch_seq++;
     auto& job = std::get<0>(_running_jobs.emplace(job_id, SampleJob{}))->second;
-    _generator_context->thread_pool().submit([this, batch_sizes, job_id, &job]() {
-        auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
-        job.samples.tensors = permute_tensors(samples);
-        job.samples.channel_sizes = samples.back().batch_sizes();
-        if (_multi_channel_unweighter) {
-            auto unw_samples = _multi_channel_unweighter->run(samples);
-            job.unweighted_samples.tensors = permute_tensors(unw_samples);
-            job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+    job.dispatch_seq = dispatch_seq;
+    // see start_single_job
+    bool store_buffer = _batch_index >= _config.buffer_skip_batches;
+    _generator_context->thread_pool().submit(
+        [this, batch_sizes, job_id, store_buffer, &job]() {
+            if (_seed) {
+                _multi_channel_generator->set_seed(DerivedSeed(
+                    _seed,
+                    DerivedSeed::madnis_generate,
+                    job.dispatch_seq,
+                    _channel_index_offset
+                ));
+            }
+            auto samples = _multi_channel_generator->run({Tensor(batch_sizes)});
+            job.samples.tensors = permute_tensors(samples);
+            job.samples.channel_sizes = samples.back().batch_sizes();
+            if (_multi_channel_unweighter && store_buffer) {
+                if (_seed) {
+                    _multi_channel_unweighter->set_seed(DerivedSeed(
+                        _seed,
+                        DerivedSeed::madnis_unweight,
+                        job.dispatch_seq,
+                        _channel_index_offset
+                    ));
+                }
+                auto unw_samples = _multi_channel_unweighter->run(samples);
+                job.unweighted_samples.tensors = permute_tensors(unw_samples);
+                job.unweighted_samples.channel_sizes = unw_samples.back().batch_sizes();
+            }
+            return job_id;
         }
-        return job_id;
-    });
+    );
 }
 
 bool MadnisTraining::check_online_training_batch(
@@ -502,54 +683,89 @@ MadnisTraining::build_buffered_training_batch(const std::vector<size_t>& counts)
         }
     }
     args.emplace_back(counts);
+    std::size_t batch_seq = _buffered_batch_seq++;
+    if (_seed) {
+        _multi_channel_sampler->set_seed(DerivedSeed(
+            _seed, DerivedSeed::madnis_sample_buffer, batch_seq, _channel_index_offset
+        ));
+    }
     return _multi_channel_sampler->run(args);
 }
 
 void MadnisTraining::process_job_results(const std::vector<std::size_t>& job_ids) {
     for (auto job_id : job_ids) {
-        auto job = std::move(_running_jobs.extract(job_id).mapped());
+        auto& job = _running_jobs.at(job_id);
+        // mark ready, committed below strictly in dispatch order
         if (job.samples.channel_sizes.size() == 0) {
-            auto& channel = _channels.at(job.samples.channel_index);
-            channel.sample_count += job.samples.size;
-            channel.sample_batches.push_back(std::move(job.samples));
-            if (job.unweighted_samples.size > 0) {
-                buffer_store(channel, job.unweighted_samples);
-            }
+            _channels.at(job.samples.channel_index)
+                .ready_job_ids.emplace(job.dispatch_seq, job_id);
         } else {
-            std::size_t offset = 0, unw_offset = 0, chan_index = 0;
-            SampleBatch chan_unweighted_samples;
-            for (auto [channel, chan_size] :
-                 zip(_channels, job.samples.channel_sizes)) {
-                if (chan_size == 0) {
-                    ++chan_index;
-                    continue;
-                }
-                channel.sample_count += chan_size;
-                channel.sample_batches.emplace_back();
-                auto& batch = channel.sample_batches.back();
-                batch.tensors.reserve(job.samples.tensors.size());
-                for (auto& tensor : job.samples.tensors) {
-                    batch.tensors.push_back(
-                        tensor.slice(0, offset, offset + chan_size)
+            _multi_job_ready_job_ids.emplace(job.dispatch_seq, job_id);
+        }
+    }
+
+    // commit each channel's ready single-channel jobs strictly in dispatch order
+    for (auto& channel : _channels) {
+        for (auto it = channel.ready_job_ids.find(channel.commit_cursor);
+             it != channel.ready_job_ids.end();
+             it = channel.ready_job_ids.find(channel.commit_cursor)) {
+            auto committed_job = std::move(_running_jobs.extract(it->second).mapped());
+            channel.ready_job_ids.erase(it);
+            ++channel.commit_cursor;
+            channel.sample_count += committed_job.samples.size;
+            _generated_event_count += committed_job.samples.size;
+            channel.sample_batches.push_back(std::move(committed_job.samples));
+            if (committed_job.unweighted_samples.size > 0) {
+                // flushed into buffer at the start of the next round (see
+                // start_generator_jobs)
+                channel.pending_buffer_samples.push_back(
+                    std::move(committed_job.unweighted_samples)
+                );
+            }
+        }
+    }
+
+    // commit ready multi-channel (GPU) jobs strictly in dispatch order
+    for (auto it = _multi_job_ready_job_ids.find(_multi_job_commit_cursor);
+         it != _multi_job_ready_job_ids.end();
+         it = _multi_job_ready_job_ids.find(_multi_job_commit_cursor)) {
+        auto multi_job = std::move(_running_jobs.extract(it->second).mapped());
+        _multi_job_ready_job_ids.erase(it);
+        ++_multi_job_commit_cursor;
+        std::size_t offset = 0, unw_offset = 0, chan_index = 0;
+        SampleBatch chan_unweighted_samples;
+        for (auto [channel, chan_size] :
+             zip(_channels, multi_job.samples.channel_sizes)) {
+            if (chan_size == 0) {
+                ++chan_index;
+                continue;
+            }
+            channel.sample_count += chan_size;
+            _generated_event_count += chan_size;
+            channel.sample_batches.emplace_back();
+            auto& batch = channel.sample_batches.back();
+            batch.tensors.reserve(multi_job.samples.tensors.size());
+            for (auto& tensor : multi_job.samples.tensors) {
+                batch.tensors.push_back(tensor.slice(0, offset, offset + chan_size));
+            }
+            if (multi_job.unweighted_samples.channel_sizes.size() > 0) {
+                std::size_t unw_chan_size =
+                    multi_job.unweighted_samples.channel_sizes.at(chan_index);
+                chan_unweighted_samples.tensors.clear();
+                chan_unweighted_samples.size = unw_chan_size;
+                for (auto& tensor : multi_job.unweighted_samples.tensors) {
+                    chan_unweighted_samples.tensors.push_back(
+                        tensor.slice(0, unw_offset, unw_offset + unw_chan_size)
                     );
                 }
-                if (job.unweighted_samples.channel_sizes.size() > 0) {
-                    std::size_t unw_chan_size =
-                        job.unweighted_samples.channel_sizes.at(chan_index);
-                    chan_unweighted_samples.tensors.clear();
-                    chan_unweighted_samples.size = unw_chan_size;
-                    for (auto& tensor : job.unweighted_samples.tensors) {
-                        chan_unweighted_samples.tensors.push_back(
-                            tensor.slice(0, unw_offset, unw_offset + unw_chan_size)
-                        );
-                    }
-                    buffer_store(channel, chan_unweighted_samples);
-                    unw_offset += unw_chan_size;
-                }
-                batch.size = chan_size;
-                offset += chan_size;
-                ++chan_index;
+                channel.pending_buffer_samples.push_back(
+                    std::move(chan_unweighted_samples)
+                );
+                unw_offset += unw_chan_size;
             }
+            batch.size = chan_size;
+            offset += chan_size;
+            ++chan_index;
         }
     }
 }
@@ -589,16 +805,31 @@ void MadnisTraining::buffer_store(ChannelData& channel, SampleBatch& samples) {
 }
 
 void MadnisTraining::update_history(
-    const TensorVec& results, const std::vector<std::size_t>& counts
+    const TensorVec& results,
+    const std::vector<std::size_t>& counts,
+    double learning_rate,
+    bool buffered
 ) {
     Tensor loss_cpu = results.at(0).cpu();
     Tensor abs_means_cpu = results.at(1).cpu();
     Tensor variances_cpu = results.at(2).cpu();
     double loss = loss_cpu.view<double, 1>()[0];
+    if (loss > 1e6) {
+        ++_diverged_batch_count;
+        if (_diverged_batch_count > 10) {
+            throw std::runtime_error("MadNIS training diverged. Please restart");
+        }
+    } else {
+        _diverged_batch_count = 0;
+    }
     if (_loss_history.size() < _config.log_interval) {
         _loss_history.push_back(loss);
+        _lr_history.push_back(learning_rate);
+        _buffered_history.push_back(buffered);
     } else {
         _loss_history.at(_loss_history_index) = loss;
+        _lr_history.at(_loss_history_index) = learning_rate;
+        _buffered_history.at(_loss_history_index) = buffered;
     }
     if (++_loss_history_index == _config.log_interval) {
         _loss_history_index = 0;
@@ -624,7 +855,7 @@ void MadnisTraining::update_history(
     }
 }
 
-void MadnisTraining::drop_channels() {
+void MadnisTraining::drop_channels(std::size_t batch) {
     std::vector<double> abs_means;
     abs_means.reserve(_channels.size());
     double abs_mean_sum = 0.;
@@ -642,7 +873,8 @@ void MadnisTraining::drop_channels() {
     }
     std::vector<std::size_t> indices(_channels.size());
     std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&](auto i, auto j) {
+    // stable_sort: exact ties (e.g. charge-conjugate channels) must break consistently
+    std::stable_sort(indices.begin(), indices.end(), [&](auto i, auto j) {
         return abs_means.at(i) < abs_means.at(j);
     });
 
@@ -651,10 +883,12 @@ void MadnisTraining::drop_channels() {
     auto mask_view = active_mask.view<double, 2>()[0];
 
     double drop_sum = 0.;
+    double drop_threshold =
+        _config.channel_dropping_threshold * std::min(1000. / batch, 1.);
     std::size_t drop_count = 0;
     for (std::size_t chan_index : indices) {
         drop_sum += abs_means.at(chan_index);
-        if (drop_sum / abs_mean_sum > _config.channel_dropping_threshold) {
+        if (drop_sum / abs_mean_sum > drop_threshold) {
             break;
         }
         auto& channel = _channels.at(chan_index);
@@ -668,8 +902,7 @@ void MadnisTraining::drop_channels() {
                         return _active_flavors_count.at(flav_index) == 0;
                     }
                 )) {
-                // cannot drop this channel because one of its flavors is not
-                // available in any other channel
+                // a flavor of this channel has no other channel to fall back to
                 continue;
             }
             for (std::size_t flav_index : active_flavors) {
@@ -717,15 +950,29 @@ void MadnisTraining::freeze_cwnet() {
 MultiMadnisTraining::MultiMadnisTraining(
     ContextPtr generator_context,
     ContextPtr optimizer_context,
-    const MadnisTraining::Config& config,
-    const nested_vector2<std::shared_ptr<Integrand>>& integrands,
-    const std::vector<std::optional<ChannelWeightNetwork>>& cwnets
+    const std::vector<TrainingArgs>& training_args,
+    Verbosity verbosity,
+    std::shared_ptr<StatusFile> status_file,
+    std::optional<std::uint64_t> seed
 ) :
-    _config(config) {
-    _subprocesses.reserve(integrands.size());
-    for (auto [integ, cwnet] : zip(integrands, cwnets)) {
-        _subprocesses.emplace_back(
-            generator_context, optimizer_context, config, integ, cwnet
+    _generator_context(generator_context),
+    _optimizer_context(optimizer_context),
+    _training_args(training_args),
+    _verbosity(verbosity),
+    _seed(seed),
+    _status_file(status_file) {
+    _trainings_status = nlohmann::json::array();
+    for (std::size_t i = 0; i < _training_args.size(); ++i) {
+        _trainings_status.push_back(
+            {{"subprocess", i},
+             {"batch", nlohmann::json::array()},
+             {"batch_count", _training_args.at(i).config.batches},
+             {"losses", nlohmann::json::array()},
+             {"channel_counts", nlohmann::json::array()},
+             {"learning_rates", nlohmann::json::array()},
+             {"buffered_fractions", nlohmann::json::array()},
+             {"generated_events", nlohmann::json::array()},
+             {"buffer_sizes", nlohmann::json::array()}}
         );
     }
 }
@@ -734,37 +981,49 @@ void MultiMadnisTraining::train() {
     print_progress_init();
     _start_time = std::chrono::steady_clock::now();
     _start_cpu_microsec = cpu_time_microsec();
-    for (std::size_t subproc_index = 0; auto& subproc : _subprocesses) {
-        for (std::size_t batch_index = 0; batch_index < _config.batches;
+    _active_channels.reserve(_training_args.size());
+    // each subprocess gets its own channel_index slice so their derived seed
+    // streams don't collide
+    std::size_t channel_index_offset = 0;
+    for (std::size_t subproc_index = 0; subproc_index < _training_args.size();
+         ++subproc_index) {
+        auto& args = _training_args.at(subproc_index);
+        _generator_context->reset_cache();
+        _optimizer_context->reset_cache();
+        MadnisTraining subproc(
+            _generator_context,
+            _optimizer_context,
+            args.config,
+            args.integrands,
+            args.cwnet,
+            _seed,
+            channel_index_offset
+        );
+        for (std::size_t batch_index = 0; batch_index < subproc.config().batches;
              ++batch_index) {
             subproc.train_step(batch_index);
             double loss = subproc.average_loss();
             std::size_t chan_count = subproc.active_channel_count();
             print_progress_update(subproc_index, batch_index, loss, chan_count);
+            bool done = subproc_index == _training_args.size() - 1 &&
+                batch_index + 1 == subproc.config().batches;
+            write_status(subproc, subproc_index, batch_index, done);
         }
-        ++subproc_index;
+        _active_channels.push_back(subproc.active_channels());
+        channel_index_offset += args.integrands.size();
     }
-}
-
-nested_vector2<std::size_t> MultiMadnisTraining::active_channels() const {
-    nested_vector2<std::size_t> ret;
-    ret.reserve(_subprocesses.size());
-    for (auto& subproc : _subprocesses) {
-        ret.push_back(subproc.active_channels());
-    }
-    return ret;
 }
 
 void MultiMadnisTraining::print_progress_init() {
     _last_print_time = std::chrono::steady_clock::now();
-    if (_config.verbosity != Verbosity::pretty) {
+    if (_verbosity != Verbosity::pretty) {
         Logger::info("training started");
         return;
     }
 
-    if (_subprocesses.size() > 1) {
+    if (_training_args.size() > 1) {
         _pretty_box_lower =
-            PrettyBox("Subprocesses", _subprocesses.size() + 1, {12, 12, 12, 0});
+            PrettyBox("Subprocesses", _training_args.size() + 1, {12, 12, 12, 0});
         _pretty_box_lower.set_row(0, {"Subprocess", "Loss", "Channels", "Batch"});
         _pretty_box_upper =
             PrettyBox("MadNIS training", 2, {18, 0}, _pretty_box_lower.line_count());
@@ -785,8 +1044,14 @@ void MultiMadnisTraining::print_progress_update(
     std::size_t chan_count
 ) {
     using namespace std::chrono_literals;
-    if (_config.verbosity == Verbosity::log) {
-        if ((batch_index + 1) % _config.log_interval != 0) {
+    std::size_t subproc_count = _training_args.size();
+    std::size_t subproc_batches = _training_args.at(subproc_index).config.batches;
+    bool is_last_batch = batch_index + 1 == subproc_batches;
+    bool is_done = is_last_batch && subproc_index == subproc_count - 1;
+
+    if (_verbosity == Verbosity::log) {
+        if ((batch_index + 1) % _training_args.at(subproc_index).config.log_interval !=
+            0) {
             return;
         }
         auto now = std::chrono::steady_clock::now();
@@ -795,15 +1060,15 @@ void MultiMadnisTraining::print_progress_update(
                 "training, subproc: {} / {}, batch: {} / {}, loss: {:.4f}, channels: "
                 "{}, time: {:%H:%M:%S}",
                 subproc_index + 1,
-                _subprocesses.size(),
+                subproc_count,
                 batch_index + 1,
-                _config.batches,
+                subproc_batches,
                 loss,
                 chan_count,
                 std::chrono::round<std::chrono::seconds>(now - _start_time)
             )
         );
-        if (batch_index + 1 == _config.batches) {
+        if (is_done) {
             double wall_time_sec = (now - _start_time) / 1.0s;
             double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
             Logger::info(
@@ -812,16 +1077,12 @@ void MultiMadnisTraining::print_progress_update(
                 )
             );
         }
-    } else if (_config.verbosity == Verbosity::pretty) {
+    } else if (_verbosity == Verbosity::pretty) {
         auto now = std::chrono::steady_clock::now();
-        if (now - _last_print_time < 0.1s && batch_index + 1 != _config.batches) {
+        if (now - _last_print_time < 0.1s && !is_last_batch) {
             return;
         }
         _last_print_time = now;
-
-        std::size_t subproc_count = _subprocesses.size();
-        bool is_last_batch = batch_index + 1 == _config.batches;
-        bool is_done = is_last_batch && subproc_index == subproc_count - 1;
 
         std::string time_str;
         if (is_done) {
@@ -835,13 +1096,13 @@ void MultiMadnisTraining::print_progress_update(
             );
         }
         std::string batch_str =
-            std::format("{} / {}", batch_index + 1, _config.batches);
+            std::format("{} / {}", batch_index + 1, subproc_batches);
 
         if (subproc_count == 1) {
             std::string progress_bar = is_done
                 ? ""
                 : format_progress(
-                      static_cast<double>(batch_index + 1) / _config.batches, 52
+                      static_cast<double>(batch_index + 1) / subproc_batches, 52
                   );
             _pretty_box_upper.set_column(
                 1,
@@ -852,23 +1113,34 @@ void MultiMadnisTraining::print_progress_update(
             );
             _pretty_box_upper.print_update();
         } else {
+            // Weight each subprocess's contribution to the global progress bar by its
+            // own batch count, since subprocesses no longer share a single batch count.
+            std::size_t total_batches = 0;
+            std::size_t batches_before = 0;
+            for (std::size_t i = 0; i < subproc_count; ++i) {
+                std::size_t batches = _training_args.at(i).config.batches;
+                total_batches += batches;
+                if (i < subproc_index) {
+                    batches_before += batches;
+                }
+            }
+
             std::string progress_bar, progress_bar_all;
             std::string subproc_str =
-                std::format("{} / {}", subproc_index, subproc_count);
+                std::format("{} / {}", subproc_index + 1, subproc_count);
             if (!is_last_batch) {
                 progress_bar = format_progress(
-                    static_cast<double>(batch_index + 1) / _config.batches, 34
+                    static_cast<double>(batch_index + 1) / subproc_batches, 34
                 );
                 progress_bar_all = format_progress(
-                    static_cast<double>(
-                        subproc_index * _config.batches + batch_index + 1
-                    ) / (subproc_count * _config.batches),
+                    static_cast<double>(batches_before + batch_index + 1) /
+                        total_batches,
                     52
                 );
             } else if (!is_done) {
                 progress_bar_all = format_progress(
-                    static_cast<double>((subproc_index + 1) * _config.batches + 1) /
-                        (subproc_count * _config.batches),
+                    static_cast<double>(batches_before + subproc_batches + 1) /
+                        total_batches,
                     52
                 );
             }
@@ -886,4 +1158,43 @@ void MultiMadnisTraining::print_progress_update(
             _pretty_box_lower.print_update();
         }
     }
+}
+
+void MultiMadnisTraining::write_status(
+    MadnisTraining& subproc,
+    std::size_t subproc_index,
+    std::size_t batch_index,
+    bool done
+) {
+    if (!_status_file) {
+        return;
+    }
+    if (!done && (batch_index + 1) % _training_args.at(0).config.log_interval != 0) {
+        return;
+    }
+    using namespace std::chrono_literals;
+    auto now = std::chrono::steady_clock::now();
+
+    _trainings_status.at(subproc_index) = {
+        {"subprocess", subproc_index},
+        {"batch", subproc.status_batches()},
+        {"batch_count", subproc.config().batches},
+        {"losses", subproc.status_losses()},
+        {"channel_counts", subproc.status_channel_counts()},
+        {"learning_rates", subproc.status_learning_rates()},
+        {"buffered_fractions", subproc.status_buffered_fractions()},
+        {"generated_events", subproc.status_generated_events()},
+        {"buffer_sizes", subproc.status_buffer_sizes()}
+    };
+
+    nlohmann::json j{
+        {"status", done ? "done" : "training"},
+        {"madnis_trainings", _trainings_status},
+        {"run_times",
+         {{"training",
+           {{"wall_time_sec", (now - _start_time) / 1.0s},
+            {"cpu_time_sec", (cpu_time_microsec() - _start_cpu_microsec) / 1e6}}}}},
+    };
+    bool force_write = done || (subproc_index == 0 && batch_index == 0);
+    _status_file->write(j, force_write);
 }

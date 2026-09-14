@@ -18,9 +18,22 @@ two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<
     // used in MG5 (aloha_functions.f)
     auto ed = (m1 - m2) * (m1 + m2) / m0_clip;
     auto pp2 = ed * ed - 2. * (m1 * m1 + m2 * m2) + m0 * m0;
-    auto pp = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
+    auto pp_open = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
+    auto e1_open = 0.5 * (m0 + ed);
+
+    // Below threshold (m0 < m1 + m2) the decay has no phase space, but the formulas
+    // above return a spurious positive weight: pp goes negative and e1 gets clamped
+    // to 0 while the spatial components don't, producing a spacelike p1 that blows
+    // up downstream (e.g. in boost()) into NaNs. pp2 > 0 is the exact Kaellen-function
+    // threshold test; pp_open > 0 also excludes it since the massless shortcut can
+    // return a negative pp there. Below threshold we substitute a valid
+    // massless-massless splitting so the kinematics stay physical, and force det = 0
+    // so it contributes nothing to the integral.
+    auto open = (pp2 > 0.) & (pp_open > 0.);
+    auto pp = where(open, pp_open, 0.5 * m0_clip);
+    auto e1 = where(open, e1_open, 0.5 * m0_clip);
+
     auto sin_theta = sqrt((1. - cos_theta) * (1 + cos_theta));
-    auto e1 = 0.5 * (m0 + ed);
     FourMom<T> p1{
         max(e1, 0.),
         pp * sin_theta * cos(phi),
@@ -28,7 +41,7 @@ two_body_decay(FVal<T> r_phi, FVal<T> r_cos_theta, FVal<T> m0, FVal<T> m1, FVal<
         pp * cos_theta
     };
 
-    auto det = PI * pp / m0_clip;
+    auto det = where(open, PI * pp_open / m0_clip, FVal<T>(0.));
     return {p1, det};
 }
 

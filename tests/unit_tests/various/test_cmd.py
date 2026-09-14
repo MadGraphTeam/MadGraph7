@@ -63,12 +63,12 @@ class TestInstall(unittest.TestCase):
         #perform this test only for .bzr repository
         if not os.path.exists(pjoin(MG5DIR, '.bzr')):
             return
-        if not os.path.exists(pjoin(MG5DIR, 'input','mg5_configuration.txt')):
+        if not os.path.exists(pjoin(MG5DIR, 'input','mg7_configuration.txt')):
             return        
         
-        text1 = open(pjoin(MG5DIR,'input','.mg5_configuration_default.txt')).read()
-        text2 = open(pjoin(MG5DIR,'input','mg5_configuration.txt')).read()
-        warning = """WARNING: Your file mg5_configuration.txt and .mg5_configuration_default.txt
+        text1 = open(pjoin(MG5DIR,'input','.mg7_configuration_default.txt')).read()
+        text2 = open(pjoin(MG5DIR,'input','mg7_configuration.txt')).read()
+        warning = """WARNING: Your file mg7_configuration.txt and .mg7_configuration_default.txt
         are different. This probably fine but please check it before any release."""
         if text1 != text2:
             print(warning)

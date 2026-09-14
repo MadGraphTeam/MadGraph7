@@ -776,7 +776,11 @@ class DecayChainSubProcessGroup(SubProcessGroup):
 
         assert isinstance(decay_chain_amps, diagram_generation.DecayChainAmplitudeList), \
                   "Argument to group_amplitudes must be DecayChainAmplitudeList"
-        if criteria in ['matrix', 'standalone','pythia8','standalone_cpp', False]:
+        # `criteria` is an exporter's grouped_mode, not an output format name:
+        # the only values ever passed are False, 'madevent' and 'madweight'
+        # ('gpu' is mapped to 'madevent' by the caller). Normalise the falsy
+        # case the same way SubProcessGroup.group_amplitudes does.
+        if not criteria:
             criteria = 'madevent'
         assert criteria in ['madevent', 'madweight']
         

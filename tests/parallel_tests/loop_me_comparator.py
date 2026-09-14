@@ -236,7 +236,7 @@ class LoopMG5Runner(me_comparator.MG5Runner):
             v5_string += 'add process ' + proc + ' ' + born_couplings + \
                          ' [virt=' + perturbations + '] ' + squared_couplings + \
                          (' @%i\n'%i)
-        v5_string += "output standalone %s -f\n"%\
+        v5_string += "output standalone_fortran %s -f\n"%\
                      os.path.join(self.mg5_path, self.temp_dir_name)
         return v5_string
 
@@ -448,7 +448,7 @@ class LoopMG5Runner_gauge(LoopMG5Runner):
             v5_string += 'add process ' + proc + ' ' + born_couplings + \
                          ' [virt=' + perturbations + '] ' + squared_couplings + \
                          (' @%i\n'%i)
-        v5_string += "output standalone %s -f\n"%\
+        v5_string += "output standalone_fortran %s -f\n"%\
                      os.path.join(self.mg5_path, self.temp_dir_name)
                      
         v5_string += 'set complex_mass_scheme False \n'

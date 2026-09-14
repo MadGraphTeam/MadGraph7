@@ -31,7 +31,7 @@ b) How to create the corresponding output for MadGraph5_aMC@NLO
 c) How to run this output for computing NLO corrections
 
 If you have FastJet (v3 or later) installed on your computer and you wish
-to link it, please update the mg5_configuration file or type
+to link it, please update the mg7_configuration file or type
 MG5_aMC>set fastjet /path/to/fastjet-config
 Otherwise the basic fastjet functionalities included in FJcore (shipped
 with MadGraph5_aMC@NLO) will be used.

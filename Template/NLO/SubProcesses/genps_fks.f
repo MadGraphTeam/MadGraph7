@@ -295,7 +295,7 @@ c
      &     ,virtgranny_red,MC_sum_factor,xmbe2hatlow,xmbe2hatupp
      &     ,xmbe2inv,xmbe2inv_temp,xinv_redvirtgranny,xinv_virtgranny
       external derivative,ran2,virtgranny,xinv_redvirtgranny
-     &     ,xinv_virtgranny
+     &     ,xinv_virtgranny,virtgranny_red
 c     granny stuff
       double precision tiny,granny_m2(-1:1),step,granny_m2_red_local(
      &     -1:1)

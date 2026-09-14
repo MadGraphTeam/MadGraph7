@@ -231,18 +231,128 @@ class HelasCallWriter(base_objects.PhysicsObject):
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
 
+        # A current sum has to be written out once both currents are there.
+        # Doing it as soon as the later of the two is made keeps them alive:
+        # a slot is only handed on after its last use, and the cubic one is
+        # still needed by the amplitude the sum is for.
+        sums, uses, folded = self.get_quartic_current_sums(matrix_element)
+        slots = matrix_element.get_quartic_sum_me_ids()
+        after = {}
+        for i, (cubic, quartic, coeff) in enumerate(sums):
+            after.setdefault(max(cubic.get('number'), quartic.get('number')),
+                             []).append(i)
+
+        # The AMP array is recycled the same way, where the writer knows how
+        # to. A merge is written as soon as both of its amplitudes are there,
+        # which is what frees the source's entry, see get_amplitude_slots.
+        amp_slots = self.get_amplitude_slots(matrix_element)
+        position = [0]
+
         res = []
+        written = set()
         for diagram in matrix_element.get('diagrams'):
-            
-            
-            res.extend([ self.get_wavefunction_call(wf) for \
-                         wf in diagram.get('wavefunctions') ])
+
+
+            for wf in diagram.get('wavefunctions'):
+                res.append(self.get_wavefunction_call(wf))
+                for i in after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram, and the sum must only be written once
+                    if i in written:
+                        continue
+                    written.add(i)
+                    cubic, quartic, coeff = sums[i]
+                    res.extend(self.get_current_sum_lines(
+                        slots[i], cubic, quartic, coeff))
             res.append("# Amplitude(s) for diagram number %d" % \
                        diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
-                res.append(self.get_amplitude_call(amplitude))
+                if amplitude.get('number') in folded:
+                    # summed into another amplitude through a current sum
+                    continue
+                res.append(self.get_amplitude_call_on_slot(
+                    amplitude, uses.get(amplitude.get('number')), slots,
+                    amp_slots))
+                if amp_slots is not None:
+                    res.extend(self.get_amplitude_merge_lines_at(
+                        amp_slots, position[0]))
+                    position[0] += 1
+
+        if amp_slots is None:
+            res.extend(self.get_amplitude_merge_lines(matrix_element))
 
         return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, or None to leave AMP indexed by amplitude
+        number. Only the Fortran writer has an AMP array to recycle."""
+
+        return None
+
+    def get_amplitude_call_on_slot(self, amplitude, substitution, slots,
+                                   amp_slots):
+        """The amplitude call, written into its recycled AMP entry.
+
+        The slot is swapped onto the amplitude's number and put straight back,
+        the same way get_amplitude_call_on_sums does it for the mothers: the
+        call is formatted from `out`, which is that number."""
+
+        if amp_slots is None:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        number = amplitude.get('number')
+        amplitude.set('number', amp_slots[0][number])
+        try:
+            return self.get_amplitude_call_on_sums(amplitude, substitution,
+                                                   slots)
+        finally:
+            amplitude.set('number', number)
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges due just after this amplitude. Fortran only."""
+
+        return []
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums to write out. Only the Fortran writer knows how to
+        emit one, see FortranUFOHelasCallWriter."""
+
+        return [], {}, set()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Lines building one current sum. Fortran only."""
+
+        raise NotImplementedError
+
+    def get_amplitude_call_on_sums(self, amplitude, substitution, slots):
+        """The amplitude call, reading the current sums in place of the cubic
+        currents they were built from.
+
+        The slot is swapped on the mother itself and put back straight away,
+        the same way get_loop_amplitude_helas_calls relabels its externals."""
+
+        if not substitution:
+            return self.get_amplitude_call(amplitude)
+
+        original = []
+        for mother in amplitude.get('mothers'):
+            index = substitution.get(mother.get('number'))
+            if index is None:
+                continue
+            original.append((mother, mother.get('me_id')))
+            mother.set('me_id', slots[index])
+        try:
+            return self.get_amplitude_call(amplitude)
+        finally:
+            for mother, me_id in original:
+                mother.set('me_id', me_id)
+
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Lines summing the quartic contributions into the amplitude which
+        carries the same colour factor. Only the Fortran writer implements
+        this, see FortranUFOHelasCallWriter."""
+
+        return []
 
     def get_wavefunction_calls(self, wavefunctions):
         """Return a list of strings, corresponding to the Helas calls
@@ -1027,6 +1137,86 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
 
     mp_prefix = check_param_card.ParamCard.mp_prefix
 
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Sum every quartic contribution into the amplitude carrying the
+        same colour factor.
+
+        The two share a colour factor up to a rational coefficient, so adding
+        them here lets the JAMPs run over the cubic diagrams only, which is
+        what the JAMP optimiser then has to work with. The amplitudes summed
+        away are dropped from the colour amplitudes by
+        HelasMatrixElement.get_color_amplitudes."""
+
+        merges = matrix_element.get_quartic_amplitude_merges()
+        if not merges:
+            return []
+        # these were never computed: their current was summed instead
+        folded = self.get_quartic_current_sums(matrix_element)[2]
+
+        res = ['# Sum the quartic contributions into their cubic partner']
+        for source in sorted(merges):
+            if source in folded:
+                continue
+            target, coeff = merges[source]
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' %
+                           (target, target, source))
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' %
+                           (target, target, source))
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (target, target, float(coeff), source))
+        return res
+
+    def get_amplitude_slots(self, matrix_element):
+        """The recycled AMP array, see
+        HelasMatrixElement.get_amplitude_slots."""
+
+        if not matrix_element.get_quartic_amplitude_merges():
+            return None
+        return matrix_element.get_amplitude_slots()
+
+    def get_amplitude_merge_lines_at(self, amp_slots, position):
+        """The merges whose two amplitudes are both there as of this
+        position, written into the slots they were given."""
+
+        slots, nslots, folds_at = amp_slots
+        res = []
+        for target, source, coeff in folds_at.get(position, []):
+            args = (slots[target], slots[target], slots[source])
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' % args)
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' % args)
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (slots[target], slots[target], float(coeff),
+                            slots[source]))
+        return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums, see HelasMatrixElement.get_quartic_current_sums"""
+
+        return matrix_element.get_quartic_current_sums()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Sum the quartic current into the cubic one carrying the same colour
+        factor, so that the amplitude reading the sum gets both at once.
+
+        Written as a call rather than as two assignments so that everything
+        reading these files -- the helicity recycling in particular, which
+        rebuilds the DAG from the calls alone -- sees an ordinary internal
+        wavefunction taking two mothers. sumw_1 and subw_1 live in
+        aloha_functions.f; the coefficient is always +-1, see
+        HelasMatrixElement.compute_quartic_current_sums."""
+
+        return ['CALL %s(%s,%s,%s)' % (
+            'SUMW_1' if coeff == 1 else 'SUBW_1',
+            self.format_helas_object('W(', '%d') % cubic.get('me_id'),
+            self.format_helas_object('W(', '%d') % quartic.get('me_id'),
+            self.format_helas_object('W(', '%d') % number)]
+
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument
         specifies if amplitude and wavefunctions must be stored specifying the
@@ -1199,7 +1389,7 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             if argument.get('spin') != 1:
                 # For non-scalars, need mass and helicity
                 if argument.get('offshell'):
-                    call = call + "DSQRT(P(0,%(number_external)d)**2-P(1,%(number_external)d)**2-P(2,%(number_external)d)**2-P(3,%(number_external)d)**2),"
+                    call = call + "SQRT(P(0,%(number_external)d)**2-P(1,%(number_external)d)**2-P(2,%(number_external)d)**2-P(3,%(number_external)d)**2),"
                 else:
                     call = call + "%(mass)s,"
                 call = call + "NHEL(%(number_external)d),"

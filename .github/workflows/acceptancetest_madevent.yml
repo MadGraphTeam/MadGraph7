@@ -459,9 +459,9 @@ jobs:
       - name: test one of the test test_eft_running
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             echo "install RunningCoupling" > cmd
-            ./bin/mg5_aMC cmd
+            ./bin/madgraph cmd
             ./tests/test_manager.py test_eft_running -pA -t0 -l INFO
 
 
@@ -817,7 +817,7 @@ jobs:
       - name: test flavor consistency and decay-chain symmetry factor
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             ./tests/test_manager.py test_flavor_grouping_consistency_mlm test_flavor_grouping_consistency test_decay_chain_symmetry_factor -pA -t0 -l INFO
 
 
@@ -979,13 +979,13 @@ jobs:
       - name: test one of the test test_density_mode_doublettbar
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+            cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
             ./tests/test_manager.py test_density_mode_doublettbar -pA -t0 -l INFO
 
   acceptancetest_mssm_gogo:
     # Fortran madevent supports MSSM p p > go go (merged-flavor squark/gluino
     # vertices); the mg7/madmatrix counterpart now also supports it and is
-    # checked per-flavor (test_standalone_mg7_mssm_gogo in acceptancetest_mg7.yml).
+    # checked per-flavor (test_madmatrix_mssm_gogo in acceptancetest_mg7.yml).
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:

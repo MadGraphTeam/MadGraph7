@@ -12,6 +12,7 @@
 #include "mgOnGpuFptypes.h"
 
 #include <iostream>
+#include <type_traits>
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) HEADERS
@@ -333,40 +334,30 @@ namespace mg5amcCpu
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
 #if defined MGONGPU_CUCXTYPE_THRUST
   typedef thrust::complex<fptype_momenta> cxtype_momenta;
-  typedef thrust::complex<fptype_polarization> cxtype_polarization;
-  typedef thrust::complex<fptype_vertex> cxtype_vertex;
-  typedef thrust::complex<fptype_denom> cxtype_denom;
+  typedef cxtype_momenta cxtype_denom;
   typedef thrust::complex<fptype_amp> cxtype_amp;
   typedef thrust::complex<fptype_colour> cxtype_colour;
 #elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
   // NB: cucomplex is not templated; use cxsmpl for stage-specific types
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
-  typedef cxsmpl<fptype_polarization> cxtype_polarization;
-  typedef cxsmpl<fptype_vertex> cxtype_vertex;
-  typedef cxsmpl<fptype_denom> cxtype_denom;
+  typedef cxtype_momenta cxtype_denom;
   typedef cxsmpl<fptype_amp> cxtype_amp;
   typedef cxsmpl<fptype_colour> cxtype_colour;
 #else
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
-  typedef cxsmpl<fptype_polarization> cxtype_polarization;
-  typedef cxsmpl<fptype_vertex> cxtype_vertex;
-  typedef cxsmpl<fptype_denom> cxtype_denom;
+  typedef cxtype_momenta cxtype_denom;
   typedef cxsmpl<fptype_amp> cxtype_amp;
   typedef cxsmpl<fptype_colour> cxtype_colour;
 #endif
 #else // c++
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype_momenta> cxtype_momenta;
-  typedef std::complex<fptype_polarization> cxtype_polarization;
-  typedef std::complex<fptype_vertex> cxtype_vertex;
-  typedef std::complex<fptype_denom> cxtype_denom;
+  typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
   typedef std::complex<fptype_colour> cxtype_colour;
 #else
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
-  typedef cxsmpl<fptype_polarization> cxtype_polarization;
-  typedef cxsmpl<fptype_vertex> cxtype_vertex;
-  typedef cxsmpl<fptype_denom> cxtype_denom;
+  typedef cxtype_momenta cxtype_denom;
   typedef cxsmpl<fptype_amp> cxtype_amp;
   typedef cxsmpl<fptype_colour> cxtype_colour;
 #endif
@@ -374,9 +365,6 @@ namespace mg5amcCpu
 
   // SANITY CHECKS
   static_assert( sizeof( cxtype_momenta ) == mgOnGpu::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
-  static_assert( sizeof( cxtype_polarization ) == mgOnGpu::nx2 * sizeof( fptype_polarization ), "sizeof(cxtype_polarization) is not 2*sizeof(fptype_polarization)" );
-  static_assert( sizeof( cxtype_vertex ) == mgOnGpu::nx2 * sizeof( fptype_vertex ), "sizeof(cxtype_vertex) is not 2*sizeof(fptype_vertex)" );
-  static_assert( sizeof( cxtype_denom ) == mgOnGpu::nx2 * sizeof( fptype_denom ), "sizeof(cxtype_denom) is not 2*sizeof(fptype_denom)" );
   static_assert( sizeof( cxtype_amp ) == mgOnGpu::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
   static_assert( sizeof( cxtype_colour ) == mgOnGpu::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
 }
@@ -444,8 +432,7 @@ namespace mg5amcCpu
     return c;
   }
 
-  // Template versions for multi-precision complex types (cxsmpl-based)
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline __host__ __device__ cxsmpl<FP>
   cxmake( const FP& r, const FP& i ) { return cxsmpl<FP>( r, i ); }
 
@@ -471,7 +458,13 @@ namespace mg5amcCpu
   // CUDA - using thrust::complex
   //------------------------------
 
-  template<typename FP>
+  inline __host__ __device__ cxtype
+  cxmake( const fptype& r, const fptype& i )
+  {
+    return cxtype( r, i ); // thrust::complex<fptype> constructor
+  }
+
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline __host__ __device__ thrust::complex<FP>
   cxmake( const FP& r, const FP& i )
   {
@@ -716,7 +709,7 @@ namespace mg5amcCpu
     return cxmake( cxreal( c ), -cximag( c ) );
   }
 
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline __host__ __device__ cxsmpl<FP>
   cxmake( const FP& r, const FP& i )
   {
@@ -803,8 +796,7 @@ namespace mg5amcCpu
   }
 #endif
 
-  // Template versions for multi-precision complex types (std::complex-based)
-  template<typename FP>
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
   inline std::complex<FP>
   cxmake( const FP& r, const FP& i ) { return std::complex<FP>( r, i ); }
 

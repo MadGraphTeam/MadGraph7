@@ -78,6 +78,41 @@ jobs:
       # Provides the NNPDF23 grid + LHAPDF_DATA_PATH the mg7 runtime needs.
       - uses: ./.github/actions/install_lhapdf_pdfset
       - name: run systematic cross-section test (${{ matrix.section }})
+        env:
+          MG7_XSEC_RESULTS_DIR: ${{ github.workspace }}/xsec_results/${{ matrix.section }}
         run: |
           cd $GITHUB_WORKSPACE
+          mkdir -p "$MG7_XSEC_RESULTS_DIR"
           ./tests/test_manager.py "test_${{ matrix.section }}_.*_mg7" -pA -t0 -l INFO
+
+      # Runs even if the test step above failed, so a crashed/timed-out
+      # section still contributes whatever per-process results it managed to
+      # record before dying.
+      - name: upload cross-section results (${{ matrix.section }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xsec-results-${{ matrix.section }}
+          path: xsec_results/${{ matrix.section }}/*.json
+          if-no-files-found: warn
+
+  xsec_summary:
+    needs: check_xsec_processes
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: download cross-section results
+        uses: actions/download-artifact@v5
+        with:
+          pattern: xsec-results-*
+          path: xsec_results
+          merge-multiple: true
+      - name: build job summary
+        run: |
+          python3 .github/scripts/build_xsec_summary.py \
+            tests/acceptance_tests/check_xsec_processes_reference.json \
+            xsec_results \
+            --tolerance "${{ inputs.tolerance || '0.01' }}" \
+            --events "${{ inputs.events || '100000' }}" \
+            >> "$GITHUB_STEP_SUMMARY"

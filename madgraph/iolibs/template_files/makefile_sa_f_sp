@@ -32,7 +32,7 @@ driver.f: nexternal.inc pmass.inc ngraphs.inc coupl.inc
 $(LIBDIR)/libdhelas.$(libext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS"
 $(LIBDIR)/libmodel.$(libext):
-	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS"
+	$(MAKE) -C "$(LIBDIR)/../Source/MODEL"
 $(LIBDIR)/libdhelas.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
 $(LIBDIR)/libmodel.$(dylibext):

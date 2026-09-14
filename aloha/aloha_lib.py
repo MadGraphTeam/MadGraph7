@@ -1061,11 +1061,16 @@ class LorentzObject(object):
         return '%s' % self.name
 
 class FactoryLorentz(FactoryVar):
-    """ A symbolic Object for All Helas object. All Helas Object Should 
+    """ A symbolic Object for All Helas object. All Helas Object Should
     derivated from this class"""
-    
+
     mult_class = MultLorentz # The class for the multiplication
     object_class = LorentzObject # Define How to create the basic object.
+    # True when the arguments of the structure commute, so that writing them in
+    # any order denotes the same object (Metric(1,2) == Metric(2,1)). Consumers
+    # use it to tell a mere reordering apart from a real difference; see
+    # models.import_ufo.canonicalize_lorentz_structure.
+    is_symmetric = False
     
     def __new__(cls, *args):
         name = cls.get_unique_name(*args)

@@ -26,5 +26,5 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "eMELA = /home/runner/.cache/HEPtools/bin/eMELA-config" >>       input/mg5_configuration.txt
+        echo "eMELA = /home/runner/.cache/HEPtools/bin/eMELA-config" >>       input/mg7_configuration.txt
       shell: bash

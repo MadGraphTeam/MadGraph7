@@ -26,14 +26,14 @@ namespace
 {
 
   void* initialize_impl(
-    const fptype* momenta,
+    const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
     fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
+    fptype_amp* numerators,
     fptype_amp* denominators,
     std::size_t count )
   {
@@ -50,14 +50,14 @@ namespace
   }
 
   void initialize(
-    const fptype* momenta,
+    const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
     fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
+    fptype_amp* numerators,
     fptype_amp* denominators,
     std::size_t count )
   {
@@ -75,7 +75,7 @@ namespace
   __device__
 #endif
     void
-    transpose_momenta( const double* momenta_in, fptype* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
+    transpose_momenta( const double* momenta_in, fptype_momenta* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
   {
     std::size_t page_size = MemoryAccessMomentaBase::neppM;
     std::size_t i_page = i_event_out / page_size;
@@ -102,7 +102,7 @@ namespace
     const unsigned int* flavor_indices_in,
     const int* invariant_masks_in,
     const double* invariant_masses_in,
-    fptype* momenta,
+    fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
     fptype* diagram_random,
@@ -137,7 +137,7 @@ namespace
 
   __global__ void copy_outputs(
     fptype_amp* denominators,
-    fptype* numerators,
+    fptype_amp* numerators,
     fptype* matrix_elements,
     unsigned int* diagram_index,
     int* color_index,
@@ -398,9 +398,11 @@ extern "C"
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
     std::size_t rounded_count = n_blocks * n_threads;
 
-    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
-    fptype *matrix_elements, *numerators, *ghel_matrix_elements;
+    fptype_momenta* momenta;
+    fptype_amp* numerators;
     fptype_amp* denominators;
+    fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
+    fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
@@ -420,7 +422,7 @@ extern "C"
     std::array<std::pair<void**, std::size_t>, 18> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&inv_masks), rounded_count * ninvar_alloc * sizeof( int )},
         {reinterpret_cast<void**>(&inv_masses), rounded_count * ninvar_alloc * sizeof( fptype_invmass )},
-        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&flavor_indices), rounded_count * sizeof( unsigned int )},
@@ -430,15 +432,17 @@ extern "C"
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype_amp )},
+        // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
+        // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
+        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max(sizeof(fptype), sizeof(int));
+    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
         std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
         total_size += aligned_size;
@@ -570,7 +574,7 @@ extern "C"
       rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
     }
 
-    HostBufferBase<fptype, false> momenta( rounded_count * CPPProcess::npar * 4 );
+    HostBufferBase<fptype_momenta, false> momenta( rounded_count * CPPProcess::npar * 4 );
     HostBufferBase<fptype, false> couplings( rounded_count * mg5amcCpu::Parameters_dependentCouplings::ndcoup * 2 );
     HostBufferBase<fptype, false> g_s( rounded_count );
     HostBufferBase<fptype, false> helicity_random( rounded_count );
@@ -578,7 +582,7 @@ extern "C"
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
-    HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
+    HostBufferBase<fptype_amp, false> numerators( rounded_count * CPPProcess::ndiagrams );
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );

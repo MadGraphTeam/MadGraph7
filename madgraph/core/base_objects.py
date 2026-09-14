@@ -2980,7 +2980,7 @@ class Vertex(PhysicsObject):
     """
     
     sorted_keys = ['id', 'legs']
-    
+
     # This sets what are the ID's of the vertices that must be ignored for the
     # purpose of the multi-channeling. 0 and -1 are ID's of various technical
     # vertices which have no relevance from the perspective of the diagram 
@@ -3014,7 +3014,6 @@ class Vertex(PhysicsObject):
         #       that it can be easily identified when constructing the DiagramChainLinks.
         self['id'] = 0
         self['legs'] = LegList()
-
     def filter(self, name, value):
         """Filter for valid vertex property values."""
 
@@ -4262,6 +4261,40 @@ class Process(PhysicsObject):
             else:
                 return [-1*abs(f) for f in legs[0].get('flavor')]
         
+    def get_initial_leg_signature(self, number):
+        """Return a flavor signature for one initial leg: the (sorted) content of
+        its multiparticle definition when it has one, else its concrete pdg.
+
+        The pdgs are kept *signed*. A beam that can only be an e+ does not span
+        the same flavors as one that can only be an e-, so "e+ e- > e+ e-" must
+        not be seen as having two interchangeable beams -- taking abs() here made
+        both beams look like "an electron", the e+ e- flavor got mirrored and the
+        cross-section came out twice too large."""
+
+        flavor = self.get_initial_flavor(number)
+        if flavor:
+            return tuple(sorted(flavor))
+        pdg = self.get_initial_pdg(number)
+        if pdg is None:
+            return tuple()
+        return (pdg,)
+
+    def has_same_initial_multiparticle(self):
+        """True when both initial legs range over the *same* set of flavors.
+
+        This is what decides whether the beam-swapped (mirror) initial state is
+        part of the process: only then was the swapped flavor combination
+        collapsed into this one and does it have to be recovered by a mirror
+        call. It must be derived from the process definition (per-beam
+        multiparticle content), not from the pdg of the matrix-element legs: with
+        flavor merging both initial legs of e.g. "u q > u q" (q = u d) carry the
+        same merged pdg, yet leg 1 is fixed to u, so "d u > u d" is *not* part of
+        the process and mirroring the u d flavor would double count it."""
+
+        return (self.get_ninitial() == 2 and
+                self.get_initial_leg_signature(1) ==
+                self.get_initial_leg_signature(2))
+
     def get_initial_final_ids(self):
         """return a tuple of two tuple containing the id of the initial/final
            state particles. Each list is ordered"""

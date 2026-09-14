@@ -14,6 +14,15 @@ runs:
       with:
         path: ~/.cache/HEPtools
         key: ${{ env.CACHE_KEY }}
+        # Crash loudly (naming the missing key) instead of silently continuing
+        # with an empty HEPtools dir: a missing combined cache otherwise leaves
+        # the tool paths configured but the binaries absent, so downstream tests
+        # self-skip and (because test_manager.py treats a skip as a failure)
+        # fail for an opaque reason. This makes it obvious that the
+        # heptools-<os> cache itself needs to be rebuilt (run 'warm cache').
+        # Safe: warm_cache.yml builds the caches without this action, and jobs
+        # that currently pass already have the cache present.
+        fail-on-cache-miss: true
 
     - name: validate cache content
       id: validate-cache

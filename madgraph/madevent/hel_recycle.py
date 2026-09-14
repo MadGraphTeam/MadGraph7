@@ -497,8 +497,12 @@ class HelicityRecycler():
     def add_indices(self, line):
         '''Add loop_var index to amp and output variable. 
            Also update name of output variable.'''
-        # Doesnt work if the AMP arguments contain brackets
-        new_line = re.sub(r'\WAMP\(.*?\)', self.add_amp_index, line)
+        # Doesnt work if the AMP arguments contain brackets.
+        # The character in front is looked at rather than eaten, so that an
+        # AMP( opening the statement is indexed too -- which is what a line
+        # like "AMP(31) = AMP(31) + AMP(1)" needs.
+        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\(.*?\)',
+                          self.add_amp_index, line)
         new_line = re.sub(r'MATRIX\d+', 'TS(K)', new_line)
         return new_line
 
