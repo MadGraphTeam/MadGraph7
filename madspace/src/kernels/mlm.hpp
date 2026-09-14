@@ -291,6 +291,12 @@ KERNELSPEC void mlm_clustering(
     // zcl in cluster.f, zero for a final-state one. The pdf reweighting walks
     // the beam's momentum fraction down the ladder with it.
     FVal<T> cluster_z[N_EXT_MAX - 3];
+    // sqrt(mT(d1) mT(d2)) of the last clustering if that one is a final-state
+    // clustering, zero otherwise. mt2last in cluster.f, kept unsquared like
+    // every other scale here: "If last clustering is FS, store also average
+    // transverse mass of the particles combined (for use if QCD vertex, e.g.
+    // tt~ or qq~)".
+    FVal<T> mt_last = 0.0;
 
     for (int i = 0; i < n_part; ++i) {
         for (int j = 0; j < 4; ++j) {
@@ -378,6 +384,16 @@ KERNELSPEC void mlm_clustering(
             cluster_mt[cluster_count] = p1_win < 2
                 ? sqrt(djb_clus<T>(momenta_tmp[p2_win], hadronic))
                 : FVal<T>(0.0);
+            // cluster.f sets mt2last when the clustering leaves only the two
+            // beams and one object (nleft <= 3) and was a final-state one
+            // (iwin > 2), from pcl as it stands then: after any earlier
+            // initial-state boosts, before this clustering merges the pair.
+            if (cluster_count == cluster_max - 1 && p1_win >= 2) {
+                mt_last = sqrt(sqrt(
+                    djb_clus<T>(momenta_tmp[p1_win], hadronic) *
+                    djb_clus<T>(momenta_tmp[p2_win], hadronic)
+                ));
+            }
             // zclus() of Template/LO/Source/kin_functions.f: the ratio of the
             // partonic invariants before and after the emission is taken back
             // out of the beam, both measured against the other beam. Taken
@@ -906,6 +922,23 @@ KERNELSPEC void mlm_clustering(
             pt_step[i] = i == cluster_max ? extra_scale : cluster_scales[i];
         }
 
+        // "If last clustering is s-channel QCD (e.g. ttbar) use mt2last
+        // instead" (setclscales in reweight.f): when the last recorded
+        // clustering joined two coloured final-state lines into a coloured
+        // one, and both beam lines are still parton lines at the root, the
+        // root's transverse mass becomes that average mT of the pair. Without
+        // it the root keeps the mT of the whole final state, which for
+        // q q~ > t t~ is sqrt(shat) - on average 2.3 times mT(t). reweight.f
+        // also writes it onto mt2ij of the last recorded clustering, but that
+        // one is final-state and jcentral only ever lands on an initial-state
+        // clustering or the root, so the root is the only place it is read.
+        FVal<T> root_mt = 0.0;
+        if (mt_last > 2.0 && cluster_max >= 1 && jlast[0] == cluster_max &&
+            jlast[1] == cluster_max &&
+            ((cluster_history[cluster_max - 1] >> 27) & 1) != 0) {
+            root_mt = mt_last;
+        }
+
         // "Set central scale to mT2": at an initial-state clustering the
         // relevant scale is not the clustering measure but the transverse mass
         // of what was emitted there. For Drell-Yan the central vertex is where
@@ -917,8 +950,8 @@ KERNELSPEC void mlm_clustering(
             }
             // At the root cluster.f takes mt2ij from daughter 2, which there
             // is the second beam's parton: mT of a beam parton is zero, so
-            // the root vertex never gets overridden.
-            FVal<T> mt = jcentral[j] == cluster_max ? FVal<T>(0.0)
+            // the root is only overridden through mt2last above.
+            FVal<T> mt = jcentral[j] == cluster_max ? root_mt
                                                     : cluster_mt[jcentral[j]];
             if (mt > 0.0) {
                 pt_step[jcentral[j]] = mt;

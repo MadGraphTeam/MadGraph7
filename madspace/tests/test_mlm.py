@@ -1671,3 +1671,91 @@ def test_a_jet_emitted_at_the_w_vertex_is_not_a_merging_jet():
             "xqcut = %g vetoed %d events whose jet is not a QCD emission"
             % (xqcut, int((weight != 1.0).sum()))
         )
+
+
+# --------------------------------------------------------------------------
+# mt2last: an s-channel QCD root takes the mean transverse mass of the pair
+# --------------------------------------------------------------------------
+
+
+def s_channel_ttbar_diagram(propagator):
+    """u u~ > t t~ through one s-channel propagator: a gluon, which is the only
+    diagram q q~ > t t~ has, or a Z as the colourless control.
+
+    The last recorded clustering is then the final-state (t, t~) pair and the
+    root is the only other step, so this is exactly the case setclscales'
+    mt2last rule exists for."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, M_TOP],
+            "propagators": [propagator],
+            "vertices": [["i0", "i1", "p0"], ["o0", "o1", "p0"]],
+            "permutations": [[0, 1, 2, 3]],
+        }
+    ]
+
+
+S_CHANNEL_TTBAR_PDGS = [2, -2, 6, -6]
+
+
+def s_channel_ttbar_clustering(propagator):
+    diagrams = s_channel_ttbar_diagram(propagator)
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=S_CHANNEL_TTBAR_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+    )
+
+
+def transverse_mass(p):
+    return np.sqrt(np.maximum(p[..., 0] ** 2 - p[..., 3] ** 2, 0.0))
+
+
+def test_an_s_channel_qcd_root_uses_the_mean_transverse_mass_of_the_pair():
+    """q q~ > g > t t~ is reported at sqrt(mT(t) mT(t~)), madevent's mt2last,
+    for both scales. Before this rule the root kept the mT of the whole final
+    state, sqrt(shat), which made q q~ > t t~ 18% low against madevent at
+    0 jets."""
+    gluon = (0.0, 0.0, 21)
+    momenta = sample_momenta(s_channel_ttbar_diagram(gluon), batch_size=500)
+    ren, fac1, fac2, _, _ = run(s_channel_ttbar_clustering(gluon), momenta)
+
+    expected = np.sqrt(
+        transverse_mass(momenta[:, 2]) * transverse_mass(momenta[:, 3])
+    )
+    shat_mt = transverse_mass(momenta[:, 2] + momenta[:, 3])
+    assert ren == pytest.approx(expected, rel=1e-9)
+    assert fac1 == pytest.approx(expected, rel=1e-9)
+    assert fac2 == pytest.approx(expected, rel=1e-9)
+    # and it is a different answer from the one the root would otherwise give
+    assert np.all(expected <= 0.5 * shat_mt * (1.0 + 1e-9))
+
+
+def test_a_colourless_s_channel_root_keeps_the_transverse_mass_of_the_final_state():
+    """The rule needs the last clustering to be a QCD one. Through a Z the pair
+    joins into a colourless line, so the root keeps mT of the final state - the
+    Drell-Yan-like answer, and the reason W and Z + 0 jets never needed it."""
+    z = (M_Z, W_Z, 23)
+    momenta = sample_momenta(s_channel_ttbar_diagram(z), batch_size=500)
+    ren, fac1, fac2, _, _ = run(s_channel_ttbar_clustering(z), momenta)
+
+    shat_mt = transverse_mass(momenta[:, 2] + momenta[:, 3])
+    assert ren == pytest.approx(shat_mt, rel=1e-9)
+    assert fac1 == pytest.approx(shat_mt, rel=1e-9)
+    assert fac2 == pytest.approx(shat_mt, rel=1e-9)
+
