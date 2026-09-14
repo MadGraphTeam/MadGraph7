@@ -890,6 +890,7 @@ class RusticolRuntimeBackend:
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
         progress: ProgressSink | None = None,
+        n_cores: int | None = None,
     ) -> WarmUpResult:
         """Warm one compact OTF selector family from exactly one f64 point."""
 
@@ -938,6 +939,7 @@ class RusticolRuntimeBackend:
                 helicity_ids=helicities,
                 color_flow_ids=color_flows,
                 progress_callback=reporter,
+                n_cores=n_cores,
             )
             result = _warm_up_result(raw)
         except Exception as exc:

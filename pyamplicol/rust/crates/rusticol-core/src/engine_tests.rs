@@ -4932,7 +4932,7 @@ fn on_the_fly_warm_up_reports_ordered_phases_and_reuses_the_committed_family() {
     };
     let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
     let first = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None, Some(observer))
         .unwrap();
     assert!(!first.already_warm);
     assert!(first.first_evaluation_completed);
@@ -4962,7 +4962,7 @@ fn on_the_fly_warm_up_reports_ordered_phases_and_reuses_the_committed_family() {
     assert!(stage_ordinals.windows(2).all(|pair| pair[0] <= pair[1]));
 
     let repeated = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None, None)
         .unwrap();
     assert!(repeated.already_warm);
     assert_eq!(repeated.query_count, first.query_count);
@@ -4986,7 +4986,7 @@ fn on_the_fly_lc_warm_up_streams_intermediate_progress_and_matches_ordinary_eval
     };
     let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
     let result = warmed
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None, Some(observer))
         .unwrap();
     assert!(result.query_count > 1);
     assert!(events.iter().any(|event| {
@@ -5028,6 +5028,133 @@ fn on_the_fly_lc_warm_up_streams_intermediate_progress_and_matches_ordinary_eval
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
+fn on_the_fly_warm_up_core_override_preserves_nonzero_results_and_cache() {
+    for color_accuracy in ["lc", "nlc", "full"] {
+        let make_runtime = || {
+            let contraction = (color_accuracy != "lc").then(|| {
+                super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
+                    plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+                    destination_by_owner_ordinal: vec![0].into_boxed_slice(),
+                    point_tile_size: 1,
+                }
+            });
+            let mut runtime = scalar_on_the_fly_native_runtime_with_color_contraction(contraction);
+            runtime.runtime.color_accuracy = color_accuracy.to_string();
+            runtime
+        };
+        let momenta = [0.0; 2 * 4];
+        let mut serial = make_runtime();
+        serial
+            .warm_up_f64(&momenta, None, None, Some(1), None)
+            .unwrap();
+        let expected = serial
+            .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+            .unwrap();
+        assert!(
+            expected
+                .iter()
+                .all(|value| value.is_finite() && *value > 0.0)
+        );
+
+        let mut parallel = make_runtime();
+        let effective = super::on_the_fly_load::effective_query_construction_threads(4);
+        let caller = std::thread::current().id();
+        let mut events = Vec::new();
+        let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+            assert_eq!(std::thread::current().id(), caller);
+            assert_eq!(event.workers, effective as u64);
+            events.push(event.clone());
+            Ok(true)
+        };
+        let first = parallel
+            .warm_up_f64(&momenta, None, None, Some(4), Some(&mut observer))
+            .unwrap();
+        assert!(!first.already_warm);
+        assert_eq!(first.query_count, 4);
+        assert!(!events.is_empty());
+        let actual = parallel
+            .evaluate_f64_with_selectors(&momenta, 1, None, None, None, None)
+            .unwrap();
+        assert_eq!(actual, expected);
+        let NativeExecutionLane::OnTheFly(serial_lane) = &serial.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        let NativeExecutionLane::OnTheFly(parallel_lane) = &parallel.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        assert_eq!(
+            parallel_lane.active_family_prepared_census(),
+            serial_lane.active_family_prepared_census(),
+        );
+        if color_accuracy != "lc" {
+            assert_eq!(
+                parallel_lane.contracted_max_live_query_outcomes_for_test(),
+                effective.min(4),
+            );
+        }
+        let metadata = parallel.metadata();
+        assert_eq!(
+            metadata.on_the_fly_requested_query_construction_threads,
+            Some(1)
+        );
+        assert_eq!(
+            metadata.on_the_fly_effective_query_construction_threads,
+            Some(1)
+        );
+
+        // A different override and then the process default must both reuse
+        // the exact committed family, rather than reconstructing it.
+        for n_cores in [Some(1), None] {
+            let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
+                assert_eq!(event.workers, 1);
+                Ok(true)
+            };
+            let repeated = parallel
+                .warm_up_f64(&momenta, None, None, n_cores, Some(&mut observer))
+                .unwrap();
+            assert!(repeated.already_warm);
+            assert_eq!(repeated.warmed_query_count, 0);
+        }
+    }
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn on_the_fly_warm_up_rejects_zero_cores_without_changing_cache() {
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let momenta = [0.0; 2 * 4];
+    let cold = runtime.on_the_fly_runtime_state_census_json().unwrap();
+    let error = runtime
+        .warm_up_f64(&momenta, None, None, Some(0), None)
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+    assert!(error.to_string().contains("n_cores must be positive"));
+    assert_eq!(
+        runtime.on_the_fly_runtime_state_census_json().unwrap(),
+        cold
+    );
+
+    runtime
+        .warm_up_f64(&momenta, None, None, Some(2), None)
+        .unwrap();
+    let warm = runtime.on_the_fly_runtime_state_census_json().unwrap();
+    let error = runtime
+        .warm_up_f64(&momenta, None, None, Some(0), None)
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+    assert_eq!(
+        runtime.on_the_fly_runtime_state_census_json().unwrap(),
+        warm
+    );
+    let repeated = runtime
+        .warm_up_f64(&momenta, None, None, None, None)
+        .unwrap();
+    assert!(repeated.already_warm);
+    assert_eq!(repeated.warmed_query_count, 0);
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
 fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_selection() {
     let contraction = super::on_the_fly_load::LoadedOnTheFlyColorContractionV1 {
         plan: crate::recurrence::RecurrenceColorContraction::expanded_identity_for_runtime_test(),
@@ -5039,7 +5166,7 @@ fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_s
     let momenta = vec![0.0; 2 * 4];
     let retained_helicity = ["h:+0,+0".to_string()];
     runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&retained_helicity), None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&retained_helicity), None, None, None)
         .unwrap();
     let expected = runtime
         .evaluate_f64_with_selectors(&momenta, 1, Some(&retained_helicity), None, None, None)
@@ -5058,7 +5185,7 @@ fn on_the_fly_contracted_midstream_warm_up_cancellation_rolls_back_to_retained_s
     };
     let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut observer;
     let error = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(2), Some(observer))
         .unwrap_err();
     assert!(error.to_string().contains("cancelled"));
     assert!(saw_midstream.get());
@@ -5093,7 +5220,7 @@ fn on_the_fly_warm_up_terminal_notification_is_non_cancellable_after_commit() {
     };
     let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut failing_terminal;
     let first = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None, Some(observer))
         .unwrap();
     assert!(first.first_evaluation_completed);
     assert_eq!(terminal_delivery_count.get(), 1);
@@ -5104,7 +5231,7 @@ fn on_the_fly_warm_up_terminal_notification_is_non_cancellable_after_commit() {
     };
     let observer: &mut NativeOnTheFlyWarmUpObserver<'_> = &mut rejecting_terminal;
     let repeated = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, Some(observer))
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, None, None, Some(observer))
         .unwrap();
     assert!(repeated.already_warm);
     assert_eq!(repeated.warmed_query_count, 0);
@@ -5116,7 +5243,7 @@ fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
     let mut compiled = zero_native_runtime();
     let compiled_momenta = vec![0.0; compiled.external_count() * 4];
     let error = compiled
-        .warm_up_on_the_fly_f64_with_selectors(&compiled_momenta, None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&compiled_momenta, None, None, None, None)
         .unwrap_err();
     assert_eq!(
         error.kind(),
@@ -5133,14 +5260,14 @@ fn on_the_fly_warm_up_native_boundary_rejects_invalid_lane_and_selectors() {
     let momenta = vec![0.0; contracted.external_count() * 4];
     let color = ["color:contracted".to_string()];
     let error = contracted
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, Some(&color), None)
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, None, Some(&color), None, None)
         .unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
 
     let mut lc = scalar_on_the_fly_native_runtime();
     let unknown_helicity = ["h:not-a-helicity".to_string()];
     let error = lc
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&unknown_helicity), None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&unknown_helicity), None, None, None)
         .unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
 }
@@ -5154,7 +5281,13 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
     let selection_a = ["h:+0,+0".to_string()];
     let selection_b = ["h:+1,+1".to_string()];
     runtime
-        .warm_up_on_the_fly_f64_with_selectors(&momenta, Some(&selection_a), Some(&color), None)
+        .warm_up_on_the_fly_f64_with_selectors(
+            &momenta,
+            Some(&selection_a),
+            Some(&color),
+            None,
+            None,
+        )
         .unwrap();
     let expected = runtime
         .evaluate_f64_with_selectors(&momenta, 1, Some(&selection_a), Some(&color), None, None)
@@ -5170,6 +5303,7 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
             &momenta,
             Some(&selection_b),
             Some(&color),
+            None,
             Some(observer),
         )
         .unwrap_err();
@@ -5190,7 +5324,7 @@ fn on_the_fly_warm_up_cancellation_preserves_the_last_committed_selection() {
 fn on_the_fly_warm_up_rejects_more_than_one_point() {
     let mut runtime = scalar_on_the_fly_native_runtime();
     let error = runtime
-        .warm_up_on_the_fly_f64_with_selectors(&[0.0; 2 * 2 * 4], None, None, None)
+        .warm_up_on_the_fly_f64_with_selectors(&[0.0; 2 * 2 * 4], None, None, None, None)
         .unwrap_err();
     assert!(error.to_string().contains("exactly one point"));
 }

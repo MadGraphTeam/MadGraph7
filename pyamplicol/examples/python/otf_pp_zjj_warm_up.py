@@ -30,6 +30,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--momenta", type=Path, default=DEFAULT_MOMENTA)
     parser.add_argument("--process", default=DEFAULT_PROCESS)
     parser.add_argument(
+        "--n-cores",
+        type=int,
+        default=None,
+        metavar="N",
+        help="warm-up construction workers (default: process output setting)",
+    )
+    parser.add_argument(
         "--color-flow",
         type=int,
         default=1,
@@ -73,6 +80,7 @@ def _warm_and_evaluate(
     point: PhaseSpacePoint,
     flow: ColorFlow,
     progress: ProgressSink,
+    n_cores: int | None = None,
 ) -> tuple[WarmUpResult, complex]:
     # The structural warm-up contract is deliberately one point in native f64.
     # Omitting ``helicities`` requests the complete physical helicity sum.
@@ -82,6 +90,7 @@ def _warm_and_evaluate(
         precision=16,
         color_flows=(flow,),
         progress=progress,
+        n_cores=n_cores,
     )
     values = runtime.evaluate(one_point, precision=16, color_flows=(flow,))
     if len(values) != 1:
@@ -179,7 +188,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         color=progress_color,
     )
     try:
-        warmed, value = _warm_and_evaluate(runtime, point, flow, sink)
+        warmed, value = _warm_and_evaluate(runtime, point, flow, sink, args.n_cores)
     finally:
         close_progress_sink(sink)
 

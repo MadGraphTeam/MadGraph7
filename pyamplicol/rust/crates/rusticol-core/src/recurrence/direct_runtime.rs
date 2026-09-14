@@ -2301,12 +2301,14 @@ fn selected_replay_destination_program(
                 }
             }
             DirectExecutorRole::Closure => {
-                for row_id in start..end {
-                    let row = &plan.closures()[row_id];
+                for (row, mark) in plan.closures()[start..end]
+                    .iter()
+                    .zip(&mut closure_marks[start..end])
+                {
                     if amplitude_marks[row.amplitude_destination_id as usize] == 0 {
                         continue;
                     }
-                    closure_marks[row_id] = 1;
+                    *mark = 1;
                     pending.push(index.parent(plan, group.stage, row.parent0_component_base)?);
                     if row.parent1_component_base_or_sentinel != DIRECT_NONE_U32 {
                         pending.push(index.parent(

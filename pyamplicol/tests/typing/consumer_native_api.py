@@ -45,6 +45,7 @@ def exercise_native_runtime(artifact: Path) -> None:
 
 def exercise_native_otf_cache(artifact: Path, cache: Path) -> None:
     runtime = rusticol.Runtime.load(artifact)
+    assert_type(runtime._on_the_fly_warm_up_f64_json(MOMENTA, n_cores=4), str)
     assert_type(runtime.save(cache), None)
     assert_type(runtime.load_cache(str(cache)), None)
 

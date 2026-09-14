@@ -7,7 +7,7 @@ use rusticol_capi::{
     rusticol_runtime_color_count, rusticol_runtime_color_id, rusticol_runtime_evaluate_f64,
     rusticol_runtime_evaluate_resolved_f64, rusticol_runtime_evaluate_selected_f64,
     rusticol_runtime_free, rusticol_runtime_helicity_count, rusticol_runtime_helicity_id,
-    rusticol_runtime_load, rusticol_runtime_warm_up_f64,
+    rusticol_runtime_load, rusticol_runtime_warm_up_f64, rusticol_runtime_warm_up_f64_with_cores,
 };
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
@@ -102,6 +102,7 @@ fn repeated_momenta(root: &Path, point_count: usize) -> Vec<f64> {
 struct WarmUpTrace {
     event_count: usize,
     saw_terminal_first_evaluation: bool,
+    max_workers: u64,
 }
 
 unsafe extern "C" fn record_warm_up_progress(
@@ -116,6 +117,7 @@ unsafe extern "C" fn record_warm_up_progress(
     // SAFETY: Rusticol supplies a borrowed event for the callback invocation.
     let event = unsafe { &*event };
     trace.event_count += 1;
+    trace.max_workers = trace.max_workers.max(event.workers);
     trace.saw_terminal_first_evaluation |= event.kind == RUSTICOL_WARM_UP_EVENT_END
         && event.stage == RUSTICOL_WARM_UP_STAGE_FIRST_EVALUATION;
     1
@@ -421,7 +423,7 @@ fn otf_warm_up_c_boundary_reports_progress_and_completes_one_f64_point() {
     // SAFETY: Every pointer refers to live storage for this synchronous call;
     // null selector arrays request the complete retained axes.
     let status = unsafe {
-        rusticol_runtime_warm_up_f64(
+        rusticol_runtime_warm_up_f64_with_cores(
             handle,
             point.as_ptr(),
             point.len(),
@@ -429,6 +431,7 @@ fn otf_warm_up_c_boundary_reports_progress_and_completes_one_f64_point() {
             0,
             ptr::null(),
             0,
+            2,
             Some(record_warm_up_progress),
             (&mut trace as *mut WarmUpTrace).cast(),
             &mut result,
@@ -441,6 +444,29 @@ fn otf_warm_up_c_boundary_reports_progress_and_completes_one_f64_point() {
     assert!(result.warmed_query_count <= result.query_count);
     assert!(trace.event_count >= 2);
     assert!(trace.saw_terminal_first_evaluation);
+    assert!((1..=2).contains(&trace.max_workers));
+
+    // Changing construction cores back to the process-output default must
+    // reuse the same warm family instead of changing its cache identity.
+    let mut repeated = RusticolWarmUpResult::default();
+    // SAFETY: The handle, point, and result storage remain live.
+    let status = unsafe {
+        rusticol_runtime_warm_up_f64(
+            handle,
+            point.as_ptr(),
+            point.len(),
+            ptr::null(),
+            0,
+            ptr::null(),
+            0,
+            None,
+            ptr::null_mut(),
+            &mut repeated,
+        )
+    };
+    assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
+    assert_eq!(repeated.already_warm, 1);
+    assert_eq!(repeated.warmed_query_count, 0);
 
     let mut value = f64::NAN;
     // SAFETY: The same exactly-one-point input and scalar output remain live.

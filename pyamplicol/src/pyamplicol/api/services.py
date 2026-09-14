@@ -550,6 +550,7 @@ class Runtime:
         helicities: Sequence[str | HelicityConfiguration] | None = None,
         color_flows: Sequence[str | ColorFlow] | None = None,
         progress: ProgressSink | None = None,
+        n_cores: int | None = None,
     ) -> WarmUpResult:
         """Warm one on-the-fly selector family using exactly one f64 point.
 
@@ -557,8 +558,16 @@ class Runtime:
         batches and high-precision execution are intentionally rejected. LC
         accepts the same helicity and color-flow selectors as :meth:`evaluate`;
         contracted NLC/full execution accepts only helicity selectors.
+        ``n_cores`` overrides the process's query-construction worker count for
+        this call only; omitted, it uses the generation-time setting. Changing
+        the count neither discards a warm family nor changes evaluation threads.
         """
 
+        if n_cores is not None:
+            if isinstance(n_cores, bool) or not isinstance(n_cores, int):
+                raise TypeError("n_cores must be a positive integer or None")
+            if n_cores < 1:
+                raise ValueError("n_cores must be a positive integer or None")
         try:
             point_count = len(momenta)
         except TypeError as exc:
@@ -599,6 +608,7 @@ class Runtime:
             ),
             precision=precision,
             progress=progress,
+            n_cores=n_cores,
         )
         if not isinstance(result, WarmUpResult):
             raise EvaluationError("runtime backend returned an invalid WarmUpResult")

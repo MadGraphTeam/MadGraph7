@@ -795,13 +795,17 @@ impl Runtime {
     /// Construct and retain one selected OTF family, then evaluate exactly one
     /// binary64 point. The optional callback receives throttled progress and
     /// may return `false` to cancel at the next cold-path boundary.
+    /// `n_cores=None` uses the process-output construction default; `Some(n)`
+    /// requires `n > 0` and overrides construction workers for this call only.
+    /// Evaluation defaults and structural cache identity are unchanged.
     pub fn warm_up(
         &mut self,
         point: &[f64],
         selectors: &Selectors,
+        n_cores: Option<usize>,
         progress: Option<&mut dyn FnMut(&WarmUpProgress) -> bool>,
     ) -> Result<WarmUpResult> {
-        self.warm_up_f64(point, selectors, progress)
+        self.warm_up_f64(point, selectors, n_cores, progress)
     }
 
     /// Binary64-explicit alias for [`Runtime::warm_up`].
@@ -813,8 +817,16 @@ impl Runtime {
         &mut self,
         point: &[f64],
         selectors: &Selectors,
+        n_cores: Option<usize>,
         progress: Option<&mut dyn FnMut(&WarmUpProgress) -> bool>,
     ) -> Result<WarmUpResult> {
+        if n_cores == Some(0) {
+            return Err(Error::new(
+                ErrorKind::InvalidArgument,
+                "warm-up n_cores must be positive",
+            ));
+        }
+        let n_cores = n_cores.unwrap_or(0);
         self.validate_momenta(point, 1)?;
         let helicity_strings = cstring_list(&selectors.helicity_ids, "helicity selector")?;
         let color_strings = cstring_list(&selectors.color_ids, "color selector")?;
@@ -833,7 +845,7 @@ impl Runtime {
             // SAFETY: Every input and selector allocation remains live. The
             // callback state is stack-owned for this synchronous call.
             let status = unsafe {
-                ffi::runtime_warm_up_f64(
+                ffi::runtime_warm_up_f64_with_cores(
                     self.handle.as_ptr(),
                     point.as_ptr(),
                     point.len(),
@@ -841,6 +853,7 @@ impl Runtime {
                     helicity_count,
                     color_pointer,
                     color_count,
+                    n_cores,
                     Some(warm_up_progress_trampoline),
                     (&mut state as *mut WarmUpCallbackState<'_>).cast(),
                     &mut result,
@@ -857,7 +870,7 @@ impl Runtime {
             // SAFETY: Every input and selector allocation remains live; both
             // callback pointers are null together.
             unsafe {
-                ffi::runtime_warm_up_f64(
+                ffi::runtime_warm_up_f64_with_cores(
                     self.handle.as_ptr(),
                     point.as_ptr(),
                     point.len(),
@@ -865,6 +878,7 @@ impl Runtime {
                     helicity_count,
                     color_pointer,
                     color_count,
+                    n_cores,
                     None,
                     ptr::null_mut(),
                     &mut result,
@@ -1702,7 +1716,7 @@ mod ffi {
             output_helicity_count: *mut usize,
             output_color_count: *mut usize,
         ) -> c_int;
-        pub(super) fn rusticol_runtime_warm_up_f64(
+        pub(super) fn rusticol_runtime_warm_up_f64_with_cores(
             handle: *mut RuntimeHandle,
             momenta: *const f64,
             momentum_count: usize,
@@ -1710,6 +1724,7 @@ mod ffi {
             helicity_count: usize,
             color_ids: *const *const c_char,
             color_count: usize,
+            n_cores: usize,
             progress_callback: WarmUpProgressCallback,
             progress_user_data: *mut c_void,
             output: *mut WarmUpResult,
@@ -1816,6 +1831,6 @@ mod ffi {
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;
     pub(super) use rusticol_runtime_take_warnings_json as runtime_take_warnings_json;
-    pub(super) use rusticol_runtime_warm_up_f64 as runtime_warm_up_f64;
+    pub(super) use rusticol_runtime_warm_up_f64_with_cores as runtime_warm_up_f64_with_cores;
     pub(super) use rusticol_supported_runtime_capabilities_json as supported_runtime_capabilities_json;
 }

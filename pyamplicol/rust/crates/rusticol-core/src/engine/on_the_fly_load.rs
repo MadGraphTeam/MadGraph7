@@ -71,6 +71,13 @@ fn clamp_query_construction_threads(requested: usize, available: usize) -> usize
     requested.min(available.max(1))
 }
 
+pub(super) fn effective_query_construction_threads(requested: usize) -> usize {
+    let available = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    clamp_query_construction_threads(requested, available)
+}
+
 fn validate_recurrence_companion_process_digest(
     primary_process_digest: &str,
     companion_process_digest: &str,
@@ -194,13 +201,8 @@ pub(super) fn load_on_the_fly_native_runtime(
         usize::try_from(manifest.runtime_options.query_construction_threads).map_err(|_| {
             RusticolError::artifact("on-the-fly query construction thread count exceeds usize")
         })?;
-    let available_query_construction_threads = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    let effective_query_construction_threads = clamp_query_construction_threads(
-        requested_query_construction_threads,
-        available_query_construction_threads,
-    );
+    let effective_query_construction_threads =
+        effective_query_construction_threads(requested_query_construction_threads);
     let mut lane = OnTheFlyNativeRuntime::new(
         templates,
         direct_catalog,

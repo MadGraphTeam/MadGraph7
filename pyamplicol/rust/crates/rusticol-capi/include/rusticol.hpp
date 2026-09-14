@@ -491,12 +491,13 @@ public:
         const std::vector<double> &point,
         const std::vector<std::string> &helicity_ids = {},
         const std::vector<std::string> &color_ids = {},
-        const std::function<bool(const WarmUpProgress &)> &progress = {}) {
+        const std::function<bool(const WarmUpProgress &)> &progress = {},
+        std::size_t n_cores = 0) {
         const auto helicity_ptrs = c_string_pointers(helicity_ids);
         const auto color_ptrs = c_string_pointers(color_ids);
         RusticolWarmUpResult result{};
         detail::WarmUpCallbackState callback_state{progress ? &progress : nullptr, {}};
-        const int status = rusticol_runtime_warm_up_f64(
+        const int status = rusticol_runtime_warm_up_f64_with_cores(
             handle_,
             point.data(),
             point.size(),
@@ -504,6 +505,7 @@ public:
             helicity_ptrs.size(),
             color_ptrs.empty() ? nullptr : color_ptrs.data(),
             color_ptrs.size(),
+            n_cores,
             progress ? detail::warm_up_progress_callback : nullptr,
             progress ? static_cast<void *>(&callback_state) : nullptr,
             &result);

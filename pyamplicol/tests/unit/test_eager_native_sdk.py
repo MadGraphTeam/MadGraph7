@@ -73,14 +73,27 @@ def test_native_sdk_wrappers_expose_structured_one_point_otf_warm_up() -> None:
     assert "RusticolWarmUpProgressCallback" in header
     assert "RusticolWarmUpProgressEvent" in header
     assert "RusticolWarmUpResult" in header
+    original_signature = header.split("int rusticol_runtime_warm_up_f64(", 1)[1].split(
+        ");", 1
+    )[0]
+    assert "n_cores" not in original_signature
+    assert "rusticol_runtime_warm_up_f64_with_cores" in header
+    assert "size_t n_cores,\n    RusticolWarmUpProgressCallback" in header
     assert "WarmUpResult warm_up(" in cpp
     assert "std::function<bool(const WarmUpProgress &)>" in cpp
+    assert "std::size_t n_cores = 0" in cpp
+    assert "rusticol_runtime_warm_up_f64_with_cores(" in cpp
     assert "procedure, public :: warm_up => rusticol_warm_up" in fortran
-    assert 'bind(C, name="rusticol_runtime_warm_up_f64")' in fortran
+    assert 'bind(C, name="rusticol_runtime_warm_up_f64_with_cores")' in fortran
     assert "type, bind(C), public :: rusticol_warm_up_progress_event" in fortran
+    assert "integer, intent(in), optional :: n_cores" in fortran
+    assert "argument_ok(n_cores > 0" in fortran
     assert "pub fn warm_up(" in rust
     assert "pub fn warm_up_f64(" in rust
     assert "FnMut(&WarmUpProgress) -> bool" in rust
+    assert "n_cores: Option<usize>" in rust
+    assert "n_cores == Some(0)" in rust
+    assert "rusticol_runtime_warm_up_f64_with_cores" in rust
 
 
 def test_native_sdk_wrappers_expose_otf_cache_save_and_load() -> None:

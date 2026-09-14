@@ -165,10 +165,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert benchmark.benchmark.helicity_ids == ()
     assert benchmark.benchmark.color_flow_ids == ("1",)
     examples_readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
-    assert (
-        "--momenta data/pp_zjj_momenta.json \\\n  --color-flow 1"
-        in examples_readme
-    )
+    assert "--momenta data/pp_zjj_momenta.json \\\n  --color-flow 1" in examples_readme
 
 
 def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:
@@ -268,6 +265,8 @@ def test_otf_pp_zjj_example_pins_one_flow_f64_warm_up_and_profile() -> None:
     assert "precision=16" in script
     assert "color_flows=(flow,)" in script
     assert "progress=progress" in script
+    assert "n_cores=n_cores" in script
+    assert '"--n-cores"' in script
     assert "PrettyTable" in script
 
 

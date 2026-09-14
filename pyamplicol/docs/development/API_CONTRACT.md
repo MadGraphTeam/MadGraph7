@@ -183,7 +183,7 @@ only `precision=16` (native f64); every other precision fails before selector
 resolution or dense metadata access.
 
 `Runtime.warm_up(momenta, *, precision=16, helicities=None,
-color_flows=None, progress=None) -> WarmUpResult` is available only for OTF
+color_flows=None, progress=None, n_cores=None) -> WarmUpResult` is available only for OTF
 runtimes. `momenta` must contain exactly one binary64 phase-space point. The
 operation transactionally constructs and retains the selected family, performs
 its first evaluation, and reports elapsed time, total/new query counts, cache
@@ -191,6 +191,11 @@ reuse, and optional current/peak RSS. The optional `ProgressSink` observes
 process preparation, query-family construction, family finalization, and first
 evaluation. LC accepts helicity/flow selectors; contracted NLC/full accepts
 helicity selectors only.
+`n_cores` is a positive integer overriding the process's construction-worker
+setting for this call; `None` retains that setting. Booleans, nonintegers, and
+nonpositive counts are rejected. Query traces are constructed with bounded
+parallelism, then merged serially. The override is not persisted and does not
+change cache identity, family reuse, or later evaluation threading.
 
 `Runtime.save(path) -> None` and `Runtime.load_cache(path) -> None` are
 optional facade capabilities implemented by the native OTF backend. They

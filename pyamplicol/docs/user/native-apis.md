@@ -330,7 +330,7 @@ needs the source `.pyamplicol-model` bundle used during generation.
 ## OTF warm-up from native APIs
 
 OTF callers can make cold-path work explicit with
-`rusticol_runtime_warm_up_f64` in C, `rusticol::Runtime::warm_up` in C++,
+`rusticol_runtime_warm_up_f64_with_cores` in C, `rusticol::Runtime::warm_up` in C++,
 `runtime%warm_up` in Fortran, or `Runtime::warm_up`/`warm_up_f64` in the safe
 Rust wrapper. Each call accepts exactly one flattened binary64 point and
 optional global helicity/color ID subsets, constructs and retains that family,
@@ -341,11 +341,24 @@ In C the entry point is:
 ```c
 const char *one_flow[] = {flow_id};
 RusticolWarmUpResult result = {0};
-int status = rusticol_runtime_warm_up_f64(
+int status = rusticol_runtime_warm_up_f64_with_cores(
     handle, point, momentum_count,
     NULL, 0, one_flow, 1,
-    report_progress, user_data, &result);
+    2, report_progress, user_data, &result);
 ```
+
+The construction-core override is per call: C takes `size_t n_cores` before
+the callback, with zero selecting the process-output default. The original
+`rusticol_runtime_warm_up_f64` keeps its signature without `n_cores` and uses
+that default. C++ takes a
+trailing `std::size_t n_cores = 0`; Fortran accepts optional integer `n_cores`
+and rejects an explicitly supplied value below one; Rust takes
+`Option<usize>` before the callback, with `None` selecting the default and
+`Some(0)` rejected. Positive values bound independent query-trace construction;
+shared-cache merging and family finalization remain serial. The override does
+not change later evaluation defaults or structural cache identity. Generated
+API bundles use these same SDKs; their standalone drivers retain ordinary lazy
+evaluation unless the caller explicitly invokes warm-up.
 
 The optional fixed-layout callback reports stage, completed and total query
 counts, elapsed time, construction workers, and current/peak RSS when the

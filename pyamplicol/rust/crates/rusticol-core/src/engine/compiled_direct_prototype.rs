@@ -1156,6 +1156,9 @@ impl CompiledDirectEnginePrototype {
                 continue;
             };
             let [pr, pi] = source.applied_crossing.phase;
+            // Traverse Lorentz components in arena order, not the outer batch
+            // axis: each point below selects its own vector (or broadcasts it).
+            #[allow(clippy::needless_range_loop)]
             for component in 0..4 {
                 let physical = self
                     .current_layout

@@ -110,6 +110,24 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "rusticol_runtime_external_permutation" in c_source
     assert "rusticol_runtime_load_kinematics_json" in c_source
 
+    # Emitted drivers import the installed SDK instead of duplicating its
+    # warm-up ABI; updating construction options must not change lazy defaults.
+    cpp_source = next(
+        payload.content.decode("utf-8")
+        for payload in payloads
+        if payload.path == "API/cpp/check_standalone.cpp"
+    )
+    fortran_source = next(
+        payload.content.decode("utf-8")
+        for payload in payloads
+        if payload.path == "API/fortran/check_standalone.f90"
+    )
+    assert "#include <rusticol.hpp>" in cpp_source
+    assert "use rusticol" in fortran_source
+    for source in (c_source, cpp_source, fortran_source, rust_source):
+        assert "warm_up(" not in source
+        assert "warm_up_f64(" not in source
+
     for payload in payloads:
         if "check_standalone" in payload.path:
             assert b"--kinematics" in payload.content

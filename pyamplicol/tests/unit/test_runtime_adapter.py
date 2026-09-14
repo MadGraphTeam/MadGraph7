@@ -264,11 +264,13 @@ class _NativeRuntime:
         helicity_ids: tuple[str, ...] | None = None,
         color_flow_ids: tuple[str, ...] | None = None,
         progress_callback: object = None,
+        n_cores: int | None = None,
     ) -> str:
         type(self).last_warm_up_options = {
             "momenta": momenta,
             "helicity_ids": helicity_ids,
             "color_flow_ids": color_flow_ids,
+            "n_cores": n_cores,
         }
         if callable(progress_callback):
             for kind, stage, completed, total in (
@@ -1058,6 +1060,7 @@ def test_on_the_fly_warm_up_maps_native_progress_without_dense_physics(
             helicities=("h0",),
             color_flows=("c0",),
             progress=CallbackProgressSink(events.append),
+            n_cores=4,
         )
 
         assert result == WarmUpResult(
@@ -1072,6 +1075,7 @@ def test_on_the_fly_warm_up_maps_native_progress_without_dense_physics(
             "momenta": ((),),
             "helicity_ids": ("h0",),
             "color_flow_ids": ("c0",),
+            "n_cores": 4,
         }
         assert backend._runtime.physics_access_count == 0
         assert (

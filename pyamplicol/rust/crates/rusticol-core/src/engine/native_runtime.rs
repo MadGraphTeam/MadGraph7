@@ -523,6 +523,7 @@ impl OnTheFlyExecutionRuntime {
         &mut self,
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
+        query_construction_threads: usize,
         progress: &mut super::on_the_fly_warm_up::OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<OnTheFlyWarmUpPreparedSelectionV1> {
         if self.uses_contracted_color() && selected_colors.is_some() {
@@ -547,6 +548,7 @@ impl OnTheFlyExecutionRuntime {
                 color_ordinals,
             },
             1,
+            Some(query_construction_threads),
             Some(progress),
         )
     }
@@ -556,7 +558,7 @@ impl OnTheFlyExecutionRuntime {
         identity: OnTheFlySelectionIdentityV1,
         point_count: usize,
     ) -> RusticolResult<(usize, usize)> {
-        let prepared = self.prepare_selection_identity_impl(identity, point_count, None)?;
+        let prepared = self.prepare_selection_identity_impl(identity, point_count, None, None)?;
         Ok((prepared.helicity_count, prepared.color_count))
     }
 
@@ -564,6 +566,7 @@ impl OnTheFlyExecutionRuntime {
         &mut self,
         identity: OnTheFlySelectionIdentityV1,
         point_count: usize,
+        query_construction_threads: Option<usize>,
         mut progress: Option<&mut super::on_the_fly_warm_up::OnTheFlyWarmUpProgress<'_>>,
     ) -> RusticolResult<OnTheFlyWarmUpPreparedSelectionV1> {
         let family_point_capacity = self.family_point_capacity(point_count)?;
@@ -643,6 +646,7 @@ impl OnTheFlyExecutionRuntime {
                     self.lane.prepare_lc_queries_for_warm_up(
                         &requests,
                         family_point_capacity,
+                        query_construction_threads.expect("warm-up worker count is absent"),
                         progress,
                     )?;
                 } else {
@@ -671,6 +675,7 @@ impl OnTheFlyExecutionRuntime {
                         structural_color_count,
                         &plan.destination_by_owner_ordinal,
                         family_point_capacity,
+                        query_construction_threads.expect("warm-up worker count is absent"),
                         progress,
                     )?;
                 } else {
@@ -783,12 +788,14 @@ impl OnTheFlyExecutionRuntime {
         Ok((prepared.helicity_ids.to_vec(), prepared.color_ids.to_vec()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn warm_up_f64<'observer>(
         &mut self,
         common: &ExecutionRuntime,
         batch: F64MomentumBatchView<'_>,
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
+        n_cores: Option<usize>,
         observer: Option<
             &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
         >,
@@ -798,15 +805,27 @@ impl OnTheFlyExecutionRuntime {
                 "on-the-fly warm-up requires exactly one binary64 phase-space point",
             ));
         }
+        let query_construction_threads = match n_cores {
+            Some(0) => {
+                return Err(RusticolError::invalid_argument(
+                    "on-the-fly warm-up n_cores must be positive",
+                ));
+            }
+            Some(requested) => {
+                super::on_the_fly_load::effective_query_construction_threads(requested)
+            }
+            None => self.lane.effective_query_construction_threads(),
+        };
         let mut progress = super::on_the_fly_warm_up::OnTheFlyWarmUpProgress::new(
             observer,
-            self.lane.effective_query_construction_threads(),
+            query_construction_threads,
         )?;
         let result = (|| {
             self.lane.prepare_process_for_warm_up(&mut progress)?;
             let prepared = self.prepare_selection_for_warm_up(
                 selected_helicities,
                 selected_colors,
+                query_construction_threads,
                 &mut progress,
             )?;
             let input_len = self.fill_point_major(batch)?;
@@ -2525,17 +2544,27 @@ impl NativeRuntime {
     /// Explicitly construct and retain one selected OTF family, then execute
     /// exactly one binary64 point before committing its selector identity.
     /// Progress callbacks run only on the coordinating caller thread.
+    /// `n_cores` overrides cold query construction for this call only; `None`
+    /// uses the process-output default. Positive overrides are capped by host
+    /// availability and do not invalidate an already retained family.
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     pub fn warm_up_f64<'observer>(
         &mut self,
         momenta: &[f64],
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
+        n_cores: Option<usize>,
         observer: Option<
             &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
         >,
     ) -> RusticolResult<super::on_the_fly_warm_up::NativeOnTheFlyWarmUpResult> {
-        self.warm_up_on_the_fly_f64_with_selectors(momenta, helicity_ids, color_ids, observer)
+        self.warm_up_on_the_fly_f64_with_selectors(
+            momenta,
+            helicity_ids,
+            color_ids,
+            n_cores,
+            observer,
+        )
     }
 
     /// Explicitly named alias for [`Self::warm_up_f64`], retained for bindings
@@ -2546,6 +2575,7 @@ impl NativeRuntime {
         momenta: &[f64],
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
+        n_cores: Option<usize>,
         observer: Option<
             &'observer mut super::on_the_fly_warm_up::NativeOnTheFlyWarmUpObserver<'observer>,
         >,
@@ -2585,6 +2615,7 @@ impl NativeRuntime {
                 batch,
                 selected_helicities,
                 selected_colors,
+                n_cores,
                 observer,
             )
         })();

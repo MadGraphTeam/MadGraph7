@@ -377,17 +377,18 @@ module rusticol
       integer(c_int) :: status
     end function c_rusticol_runtime_resolved_shape
 
-    function c_rusticol_runtime_warm_up_f64(handle, momenta, momentum_count, helicity_ids, &
-        helicity_count, color_ids, color_count, progress_callback, progress_user_data, output) &
-        bind(C, name="rusticol_runtime_warm_up_f64") result(status)
+    function c_rusticol_runtime_warm_up_f64_with_cores(handle, momenta, momentum_count, &
+        helicity_ids, helicity_count, color_ids, color_count, n_cores, &
+        progress_callback, progress_user_data, output) &
+        bind(C, name="rusticol_runtime_warm_up_f64_with_cores") result(status)
       import :: c_ptr, c_funptr, c_size_t, c_int, rusticol_warm_up_result
       type(c_ptr), value :: handle, momenta, helicity_ids, color_ids
-      integer(c_size_t), value :: momentum_count, helicity_count, color_count
+      integer(c_size_t), value :: momentum_count, helicity_count, color_count, n_cores
       type(c_funptr), value :: progress_callback
       type(c_ptr), value :: progress_user_data
       type(rusticol_warm_up_result) :: output
       integer(c_int) :: status
-    end function c_rusticol_runtime_warm_up_f64
+    end function c_rusticol_runtime_warm_up_f64_with_cores
 
     function c_rusticol_color_correlation_count(handle, output) &
         bind(C, name="rusticol_runtime_color_correlation_count") result(status)
@@ -1167,7 +1168,7 @@ contains
   end subroutine rusticol_evaluate
 
   subroutine rusticol_warm_up(self, point, result, helicity_ids, color_ids, &
-      progress_callback, progress_user_data, ierr)
+      progress_callback, progress_user_data, ierr, n_cores)
     class(rusticol_runtime), intent(inout) :: self
     real(c_double), intent(in), target :: point(:)
     type(rusticol_warm_up_result), intent(out) :: result
@@ -1175,17 +1176,24 @@ contains
     procedure(rusticol_warm_up_progress_callback), optional :: progress_callback
     type(c_ptr), intent(in), optional :: progress_user_data
     integer(c_int), intent(out), optional :: ierr
+    integer, intent(in), optional :: n_cores
     character(kind=c_char), allocatable, target :: helicity_storage(:, :), color_storage(:, :)
     type(c_ptr), allocatable, target :: helicity_pointers(:), color_pointers(:)
     type(c_ptr) :: helicity_pointer, color_pointer, user_data_pointer
     type(c_funptr) :: callback_pointer
     integer(c_int) :: status
+    integer(c_size_t) :: construction_cores
 
     result = rusticol_warm_up_result( &
         0_c_int32_t, 0_c_int32_t, 0.0_c_double, 0_c_int64_t, 0_c_int64_t, &
         0_c_int64_t, 0_c_int64_t, 0_c_int32_t, 0_c_int32_t, 0_c_int32_t, 0_c_int32_t)
     if (.not. argument_ok(size(point) > 0, &
         "Rusticol warm_up requires exactly one non-empty binary64 point", ierr)) return
+    construction_cores = 0_c_size_t
+    if (present(n_cores)) then
+      if (.not. argument_ok(n_cores > 0, "Rusticol warm_up n_cores must be positive", ierr)) return
+      construction_cores = int(n_cores, c_size_t)
+    end if
 
     call build_c_string_array(helicity_ids, helicity_storage, helicity_pointers)
     call build_c_string_array(color_ids, color_storage, color_pointers)
@@ -1199,11 +1207,11 @@ contains
     user_data_pointer = c_null_ptr
     if (present(progress_user_data)) user_data_pointer = progress_user_data
 
-    status = c_rusticol_runtime_warm_up_f64( &
+    status = c_rusticol_runtime_warm_up_f64_with_cores( &
         self%handle, c_loc(point(1)), size(point, kind=c_size_t), &
         helicity_pointer, size(helicity_pointers, kind=c_size_t), &
         color_pointer, size(color_pointers, kind=c_size_t), &
-        callback_pointer, user_data_pointer, result)
+        construction_cores, callback_pointer, user_data_pointer, result)
     if (.not. status_ok(status, ierr)) return
   end subroutine rusticol_warm_up
 

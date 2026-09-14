@@ -200,9 +200,16 @@ result = runtime.warm_up(
     (point,),
     precision=16,
     color_flows=(runtime.physics.color_flows[0],),
+    n_cores=4,
     progress=progress,
 )
 ```
+
+`n_cores` is an optional positive integer limiting parallel query construction
+for this call. Omit it to use `evaluator.optimization.cores` from generation.
+Cache merging and finalization remain serial; the override changes neither
+future evaluation threading nor cache identity. See the
+[warm-up contract](runtime-and-selectors.md#explicit-otf-warm-up) for details.
 
 The optional progress observer reports process preparation, query-family
 construction, family finalization, first evaluation, elapsed time, workers,

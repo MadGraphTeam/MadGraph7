@@ -314,6 +314,7 @@ def test_runtime_warm_up_is_one_point_native_f64_only() -> None:
             "color_flows": ("c0",),
             "precision": 16,
             "progress": None,
+            "n_cores": None,
         },
     )
     with pytest.raises(ValueError, match="exactly one"):
@@ -325,6 +326,33 @@ def test_runtime_warm_up_is_one_point_native_f64_only() -> None:
     backend.execution_mode = "compiled"
     with pytest.raises(CompatibilityError, match="only for on-the-fly"):
         runtime.warm_up((point,))
+
+
+def test_runtime_warm_up_forwards_per_call_core_override() -> None:
+    backend = _WarmUpRuntimeBackend()
+    runtime = Runtime(backend)
+    point = ((1.0, 0.0, 0.0, 1.0),)
+
+    runtime.warm_up((point,), n_cores=4)
+    assert backend.warm_up_call[1]["n_cores"] == 4
+    runtime.warm_up((point,))
+    assert backend.warm_up_call[1]["n_cores"] is None
+
+
+@pytest.mark.parametrize("n_cores", [True, False, 1.5, "4"])
+def test_runtime_warm_up_rejects_noninteger_core_count(n_cores: object) -> None:
+    backend = _WarmUpRuntimeBackend()
+    with pytest.raises(TypeError, match="n_cores must be a positive integer"):
+        Runtime(backend).warm_up(((),), n_cores=n_cores)  # type: ignore[arg-type]
+    assert not hasattr(backend, "warm_up_call")
+
+
+@pytest.mark.parametrize("n_cores", [0, -1])
+def test_runtime_warm_up_rejects_nonpositive_core_count(n_cores: int) -> None:
+    backend = _WarmUpRuntimeBackend()
+    with pytest.raises(ValueError, match="n_cores must be a positive integer"):
+        Runtime(backend).warm_up(((),), n_cores=n_cores)
+    assert not hasattr(backend, "warm_up_call")
 
 
 def test_runtime_normalizes_empty_selector_sequences_to_omitted_axes() -> None:

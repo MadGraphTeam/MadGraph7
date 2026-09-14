@@ -15,7 +15,7 @@ use pyo3::IntoPyObjectExt;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyTuple};
+use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyInt, PyList, PyTuple};
 use rusticol_core::__private::{
     build_recurrence_bootstrap_image_v1, compile_symbolica_program_to_plane_application_bytes,
 };
@@ -634,7 +634,7 @@ impl Runtime {
             .map_err(python_error)
     }
 
-    #[pyo3(signature=(momenta, helicity_ids=None, color_flow_ids=None, progress_callback=None))]
+    #[pyo3(signature=(momenta, helicity_ids=None, color_flow_ids=None, progress_callback=None, *, n_cores=None))]
     fn _on_the_fly_warm_up_f64_json(
         &mut self,
         py: Python<'_>,
@@ -642,7 +642,23 @@ impl Runtime {
         helicity_ids: Option<Vec<String>>,
         color_flow_ids: Option<Vec<String>>,
         progress_callback: Option<Py<PyAny>>,
+        n_cores: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<String> {
+        let n_cores = n_cores
+            .map(|value| {
+                if value.is_instance_of::<PyBool>() || !value.is_instance_of::<PyInt>() {
+                    return Err(PyTypeError::new_err(
+                        "n_cores must be a positive integer or None",
+                    ));
+                }
+                match value.extract::<usize>() {
+                    Ok(count) if count > 0 => Ok(count),
+                    _ => Err(PyValueError::new_err(
+                        "n_cores must be a positive integer fitting the platform's usize",
+                    )),
+                }
+            })
+            .transpose()?;
         let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
         if momenta.point_count() != 1 {
             return Err(PyValueError::new_err(format!(
@@ -677,6 +693,7 @@ impl Runtime {
                             &momenta,
                             helicity_ids.as_deref(),
                             color_flow_ids.as_deref(),
+                            n_cores,
                             Some(observer),
                         )
                     } else {
@@ -684,6 +701,7 @@ impl Runtime {
                             &momenta,
                             helicity_ids.as_deref(),
                             color_flow_ids.as_deref(),
+                            n_cores,
                             None,
                         )
                     }

@@ -217,6 +217,8 @@ class Runtime:
         helicity_ids: Sequence[str] | None = None,
         color_flow_ids: Sequence[str] | None = None,
         progress_callback: Callable[[str], bool | None] | None = None,
+        *,
+        n_cores: int | None = None,
     ) -> str: ...
     def evaluate(
         self,

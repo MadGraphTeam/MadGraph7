@@ -37,6 +37,7 @@ from pyamplicol import (
     ResolvedEvaluation,
     RunConfig,
     Runtime,
+    WarmUpResult,
     benchmark,
     generate,
     load,
@@ -67,6 +68,8 @@ PARAMETERS: ModelParameters = {"normalization.alpha_s_me_check": 0.118}
 
 def exercise_otf_cache(artifact: Path, cache: Path) -> None:
     runtime = Runtime.load(artifact)
+    assert_type(runtime.warm_up(MOMENTA, n_cores=4), WarmUpResult)
+    assert_type(runtime.warm_up(MOMENTA, n_cores=None), WarmUpResult)
     assert_type(runtime.save(cache), None)
     assert_type(runtime.load_cache(str(cache)), None)
 

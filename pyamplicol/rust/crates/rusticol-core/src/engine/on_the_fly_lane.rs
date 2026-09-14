@@ -593,6 +593,7 @@ impl OnTheFlyNativeRuntime {
         &mut self,
         requests: &[OnTheFlyLcQueryRequestV1],
         logical_point_capacity: u32,
+        query_construction_threads: usize,
         progress: &mut OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<(bool, PreparedOnTheFlyLcFamilyV1)> {
         let enable_cyclic_trace_reflection = self.symmetric_group_color_workspace.is_some();
@@ -602,10 +603,7 @@ impl OnTheFlyNativeRuntime {
         let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
             RusticolError::internal("on-the-fly grammar disappeared after preparation")
         })?;
-        let worker_count = self
-            .effective_query_construction_threads
-            .min(requests.len())
-            .max(1);
+        let worker_count = query_construction_threads.min(requests.len()).max(1);
         let query_pool = OnTheFlyQueryConstructionPoolV1::new(worker_count)?;
         let mut amplitude_destinations = Vec::new();
         amplitude_destinations
@@ -816,22 +814,29 @@ impl OnTheFlyNativeRuntime {
         requests: &[OnTheFlyLcQueryRequestV1],
         logical_point_capacity: u32,
     ) -> RusticolResult<bool> {
-        self.prepare_lc_queries_impl(requests, logical_point_capacity, None)
+        self.prepare_lc_queries_impl(requests, logical_point_capacity, None, None)
     }
 
     pub(super) fn prepare_lc_queries_for_warm_up(
         &mut self,
         requests: &[OnTheFlyLcQueryRequestV1],
         logical_point_capacity: u32,
+        query_construction_threads: usize,
         progress: &mut OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<bool> {
-        self.prepare_lc_queries_impl(requests, logical_point_capacity, Some(progress))
+        self.prepare_lc_queries_impl(
+            requests,
+            logical_point_capacity,
+            Some(query_construction_threads),
+            Some(progress),
+        )
     }
 
     fn prepare_lc_queries_impl(
         &mut self,
         requests: &[OnTheFlyLcQueryRequestV1],
         logical_point_capacity: u32,
+        query_construction_threads: Option<usize>,
         mut progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
     ) -> RusticolResult<bool> {
         if requests.is_empty() || logical_point_capacity == 0 {
@@ -943,6 +948,7 @@ impl OnTheFlyNativeRuntime {
                 return self.prepare_streamed_lc_candidate_for_warm_up(
                     requests,
                     logical_point_capacity,
+                    query_construction_threads.expect("warm-up worker count is absent"),
                     progress,
                 );
             }
@@ -1104,6 +1110,7 @@ impl OnTheFlyNativeRuntime {
             destination_by_owner_ordinal,
             logical_point_capacity,
             None,
+            None,
         )
     }
 
@@ -1115,6 +1122,7 @@ impl OnTheFlyNativeRuntime {
         structural_color_count: usize,
         destination_by_owner_ordinal: &[u32],
         logical_point_capacity: u32,
+        query_construction_threads: usize,
         progress: &mut OnTheFlyWarmUpProgress<'_>,
     ) -> RusticolResult<bool> {
         self.prepare_contracted_queries_impl(
@@ -1123,6 +1131,7 @@ impl OnTheFlyNativeRuntime {
             structural_color_count,
             destination_by_owner_ordinal,
             logical_point_capacity,
+            Some(query_construction_threads),
             Some(progress),
         )
     }
@@ -1135,6 +1144,7 @@ impl OnTheFlyNativeRuntime {
         structural_color_count: usize,
         destination_by_owner_ordinal: &[u32],
         logical_point_capacity: u32,
+        query_construction_threads: Option<usize>,
         mut progress: Option<&mut OnTheFlyWarmUpProgress<'_>>,
     ) -> RusticolResult<bool> {
         if helicity_ordinals.is_empty()
@@ -1259,8 +1269,9 @@ impl OnTheFlyNativeRuntime {
             let grammar = self.prepared_grammar.as_ref().ok_or_else(|| {
                 RusticolError::internal("on-the-fly grammar disappeared after preparation")
             })?;
-            let query_pool =
-                OnTheFlyQueryConstructionPoolV1::new(self.effective_query_construction_threads)?;
+            let query_pool = OnTheFlyQueryConstructionPoolV1::new(
+                query_construction_threads.unwrap_or(self.effective_query_construction_threads),
+            )?;
             let mut amplitude_destinations = Vec::new();
             amplitude_destinations
                 .try_reserve_exact(query_count)

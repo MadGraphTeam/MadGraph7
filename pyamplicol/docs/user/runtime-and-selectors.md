@@ -467,6 +467,7 @@ try:
         (point,),
         precision=16,
         color_flows=(flow,),
+        n_cores=4,
         progress=progress,
     )
 finally:
@@ -479,6 +480,15 @@ retains it on this runtime handle, and genuinely evaluates the supplied point.
 Repeating the same request reuses the family but still performs that required
 one-point evaluation. The returned `WarmUpResult` records elapsed time, total
 and newly built query counts, cache reuse, and sampled memory.
+
+The optional positive integer `n_cores` bounds the workers constructing query
+traces in parallel. Completed traces are merged into the shared cache serially;
+family finalization and the first evaluation also remain serial. More workers
+use additional temporary memory, and the speed-up depends on the selected
+family. Omit `n_cores` (or pass `None`) to use the process output's
+`evaluator.optimization.cores` setting. This override applies only to this
+warm-up call: it is not saved in the cache, does not change subsequent
+evaluation threading, and does not rebuild an already-warm family.
 
 The optional progress stream separates process preparation, query-family
 construction, family finalization, and first evaluation. It includes completed

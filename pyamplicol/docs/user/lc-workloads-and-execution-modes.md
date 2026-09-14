@@ -508,7 +508,11 @@ There is no public setting for retaining several OTF families: the most recent
 successful family replaces the previous one. `evaluator.optimization.cores`
 controls how many CPU workers may help with the initial construction; it does
 not change this one-family retention rule or promise that later numerical
-evaluation uses that many threads.
+evaluation uses that many threads. `warm_up(..., n_cores=4)` overrides that
+construction setting for one call, without discarding an already-warm family
+or persisting the override in a saved cache. Query traces can be built in
+parallel, with a bounded number of temporary traces; their shared-cache merge
+and family finalization remain serial.
 
 ### Explicit warm-up means exactly one binary64 point
 
@@ -522,6 +526,7 @@ result = runtime.warm_up(
     one_point,
     precision=16,
     color_flows=(flow,),
+    n_cores=4,
     progress=progress,
 )
 ```
@@ -556,7 +561,7 @@ table:
 pyamplicol examples copy ./pyamplicol-examples
 cd ./pyamplicol-examples
 pyamplicol generate --card otf_pp_zjj.toml
-python python/otf_pp_zjj_warm_up.py
+python python/otf_pp_zjj_warm_up.py --n-cores 4
 pyamplicol profile --card otf_pp_zjj.toml
 ```
 
@@ -578,10 +583,10 @@ In C, warm one flow and all helicities:
 ```c
 const char *one_flow[] = {flow_id};
 RusticolWarmUpResult result = {0};
-int status = rusticol_runtime_warm_up_f64(
+int status = rusticol_runtime_warm_up_f64_with_cores(
     handle, point, momentum_count,
     NULL, 0, one_flow, 1,
-    report_progress, user_data, &result);
+    2, report_progress, user_data, &result);
 ```
 
 The callback has this signature and returns nonzero to continue:
@@ -595,20 +600,28 @@ int report_progress(
 The wrappers preserve the same selector order:
 
 ```cpp
-auto result = runtime.warm_up(point, {}, {flow_id}, report_progress);
+auto result = runtime.warm_up(point, {}, {flow_id}, report_progress, 2);
 ```
 
 ```fortran
 call runtime%warm_up(point, result, color_ids=flow_ids, &
-    progress_callback=report_progress, progress_user_data=user_data, ierr=ierr)
+    progress_callback=report_progress, progress_user_data=user_data, ierr=ierr, n_cores=2)
 ```
 
 ```rust
 let selectors = Selectors::all().with_colors([flow_id]);
 let result = runtime.warm_up_f64(
-    &point, &selectors, Some(&mut report_progress),
+    &point, &selectors, Some(2), Some(&mut report_progress),
 )?;
 ```
+
+These examples request up to two construction workers for this call only.
+Use zero in C/C++, omit `n_cores` in Fortran, or pass `None` in Rust to retain
+the process-output default. The original C `rusticol_runtime_warm_up_f64`
+entry point keeps its argument list without `n_cores` and selects that default.
+Explicit Fortran values below one and Rust
+`Some(0)` are rejected. The override neither changes evaluation defaults nor
+invalidates an existing warm family or saved structural cache.
 
 For all flows at one helicity, put one helicity ID in the helicity argument and
 leave the colour argument empty. Passing no callback is valid. C++ releases at

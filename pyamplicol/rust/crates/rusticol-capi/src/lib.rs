@@ -1159,6 +1159,46 @@ pub unsafe extern "C" fn rusticol_runtime_resolved_shape(
     })
 }
 
+/// Warms one binary64 point using the process-output construction default.
+///
+/// This preserves the original C ABI and forwards to
+/// [`rusticol_runtime_warm_up_f64_with_cores`] with `n_cores=0`.
+///
+/// # Safety
+///
+/// The same pointer, storage, and callback requirements as
+/// [`rusticol_runtime_warm_up_f64_with_cores`] apply.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    helicity_ids: *const *const c_char,
+    helicity_count: size_t,
+    color_ids: *const *const c_char,
+    color_count: size_t,
+    progress_callback: RusticolWarmUpProgressCallback,
+    progress_user_data: *mut c_void,
+    output: *mut RusticolWarmUpResult,
+) -> c_int {
+    // SAFETY: This forwards the caller's storage and callback unchanged.
+    unsafe {
+        rusticol_runtime_warm_up_f64_with_cores(
+            handle,
+            momenta,
+            momentum_count,
+            helicity_ids,
+            helicity_count,
+            color_ids,
+            color_count,
+            0,
+            progress_callback,
+            progress_user_data,
+            output,
+        )
+    }
+}
+
 /// Explicitly warms one binary64 point for an on-the-fly runtime selection.
 ///
 /// This constructs and retains the selected OTF query family, performs exactly one evaluation,
@@ -1167,6 +1207,8 @@ pub unsafe extern "C" fn rusticol_runtime_resolved_shape(
 /// reported only from the coordinating caller thread and is throttled by the core runtime.
 /// Returning zero from the callback requests cancellation at a cancellable cold-path boundary.
 /// The terminal first-evaluation `END` event is post-commit and informational.
+/// A zero `n_cores` uses the process-output construction default; a positive value overrides
+/// construction workers for this warm-up only, without changing evaluation or cache identity.
 ///
 /// # Safety
 ///
@@ -1178,7 +1220,7 @@ pub unsafe extern "C" fn rusticol_runtime_resolved_shape(
 /// for the duration of this function and may use `progress_user_data`; it must not call the same
 /// runtime handle recursively.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
+pub unsafe extern "C" fn rusticol_runtime_warm_up_f64_with_cores(
     handle: *mut RusticolRuntimeHandle,
     momenta: *const c_double,
     momentum_count: size_t,
@@ -1186,6 +1228,7 @@ pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
     helicity_count: size_t,
     color_ids: *const *const c_char,
     color_count: size_t,
+    n_cores: size_t,
     progress_callback: RusticolWarmUpProgressCallback,
     progress_user_data: *mut c_void,
     output: *mut RusticolWarmUpResult,
@@ -1204,6 +1247,7 @@ pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
         let helicities =
             unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity ids") }?;
         let colors = unsafe { read_selector_ids(color_ids, color_count, "color ids") }?;
+        let n_cores = (n_cores != 0).then_some(n_cores);
 
         let result = if let Some(callback) = progress_callback {
             let mut observer = |event: &NativeOnTheFlyWarmUpEvent| {
@@ -1216,12 +1260,17 @@ pub unsafe extern "C" fn rusticol_runtime_warm_up_f64(
                 momenta,
                 helicities.as_deref(),
                 colors.as_deref(),
+                n_cores,
                 Some(&mut observer),
             )
         } else {
-            handle
-                .runtime
-                .warm_up_f64(momenta, helicities.as_deref(), colors.as_deref(), None)
+            handle.runtime.warm_up_f64(
+                momenta,
+                helicities.as_deref(),
+                colors.as_deref(),
+                n_cores,
+                None,
+            )
         }
         .map_err(AbiError::from)?;
 

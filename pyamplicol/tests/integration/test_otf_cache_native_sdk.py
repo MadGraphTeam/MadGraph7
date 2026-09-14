@@ -95,6 +95,9 @@ _PROBES = {
                 rusticol_runtime_load_cache(runtime, NULL) != RUSTICOL_STATUS_INVALID_ARGUMENT ||
                 rusticol_runtime_save(runtime, invalid_utf8) != RUSTICOL_STATUS_INVALID_ARGUMENT ||
                 rusticol_runtime_load_cache(runtime, invalid_utf8) != RUSTICOL_STATUS_INVALID_ARGUMENT) return 5;
+            RusticolWarmUpResult cold={0};
+            check(rusticol_runtime_warm_up_f64_with_cores(runtime, momenta, 16, NULL, 0, NULL, 0, 2, NULL, NULL, &cold));
+            if (!cold.first_evaluation_completed) return 6;
             check(rusticol_runtime_evaluate_f64(runtime, momenta, 16, 1, &before, 1));
             check(rusticol_runtime_save(runtime, argv[2]));
             check(rusticol_runtime_free(runtime));
@@ -122,6 +125,8 @@ _PROBES = {
             double before;
             {
                 rusticol::Runtime runtime(argv[1]);
+                auto cold=runtime.warm_up(point, {}, {}, {}, 2);
+                if (!cold.first_evaluation_completed) return 6;
                 before=runtime.evaluate(point, 1).at(0);
                 runtime.save(argv[2]);
                 const std::string invalid_path=std::string(argv[2])+std::string("\0suffix", 7);
@@ -160,6 +165,12 @@ _PROBES = {
             read(arg, *) momenta(i)
           end do
           call runtime%load(trim(artifact))
+          call runtime%warm_up(momenta(:16), warm, n_cores=0, ierr=status)
+          if (status /= RUSTICOL_STATUS_INVALID_ARGUMENT) stop 6
+          call runtime%warm_up(momenta(:16), warm, n_cores=-1, ierr=status)
+          if (status /= RUSTICOL_STATUS_INVALID_ARGUMENT) stop 6
+          call runtime%warm_up(momenta(:16), warm, n_cores=2)
+          if (warm%first_evaluation_completed == 0) stop 6
           call runtime%evaluate(momenta(:16), 1_c_size_t, values)
           before=values(1)
           call runtime%save(trim(cache))
@@ -190,6 +201,9 @@ _PROBES = {
             let momenta: Vec<f64> = args[3..].iter().map(|s| s.parse()).collect::<Result<_,_>>()?;
             let before = {
                 let mut runtime = Runtime::load(&args[1], None, None)?;
+                assert!(runtime.warm_up(&momenta[..16], &Selectors::default(), Some(0), None).is_err());
+                let cold = runtime.warm_up_f64(&momenta[..16], &Selectors::default(), Some(2), None)?;
+                assert!(cold.first_evaluation_completed);
                 let value = runtime.evaluate_f64(&momenta[..16], 1)?[0];
                 runtime.save(&args[2])?;
                 let invalid_path = format!("{}\0suffix", args[2]);
@@ -199,7 +213,7 @@ _PROBES = {
             };
             let mut restored = Runtime::load(&args[1], None, None)?;
             restored.load_cache(&args[2])?;
-            let warm = restored.warm_up(&momenta[..16], &Selectors::default(), None)?;
+            let warm = restored.warm_up(&momenta[..16], &Selectors::default(), None, None)?;
             assert!(warm.already_warm);
             assert_eq!(warm.warmed_query_count, 0);
             let after = restored.evaluate_f64(&momenta, 2)?;

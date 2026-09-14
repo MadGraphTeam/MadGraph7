@@ -607,7 +607,7 @@ int main(int argc, char **argv) {
         double start_to_first_warm_wall_seconds = 0.0;
         const double first_warm_start = process_cpu_seconds();
         if (execution_mode == "on-the-fly") {
-            check_rusticol(rusticol_runtime_warm_up_f64(
+            check_rusticol(rusticol_runtime_warm_up_f64_with_cores(
                 handle,
                 events.front().momenta.data(),
                 events.front().momenta.size(),
@@ -615,6 +615,7 @@ int main(int argc, char **argv) {
                 arguments.sum_helicities ? 0 : 1,
                 evaluation_color_ids,
                 evaluation_color_count,
+                0,
                 nullptr,
                 nullptr,
                 &warm_up));

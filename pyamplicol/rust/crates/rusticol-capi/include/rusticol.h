@@ -276,6 +276,7 @@ int rusticol_runtime_resolved_shape(
  * Construct and retain one selected OTF query family, then evaluate exactly
  * one binary64 point. Momenta use [external particle][E, px, py, pz]. Global
  * selector IDs are optional; a null pointer with zero count sums that axis.
+ * Uses the process-output construction default.
  * Progress callbacks run on this coordinating caller thread. The terminal
  * FIRST_EVALUATION/END event is post-commit and cannot cancel the result.
  */
@@ -287,6 +288,24 @@ int rusticol_runtime_warm_up_f64(
     size_t helicity_count,
     const char *const *color_ids,
     size_t color_count,
+    RusticolWarmUpProgressCallback progress_callback,
+    void *progress_user_data,
+    RusticolWarmUpResult *output
+);
+
+/* Same warm-up contract, with an explicit construction-core override.
+ * n_cores=0 uses the process-output default; a positive value overrides it
+ * for this call only, without changing evaluation or cache identity.
+ */
+int rusticol_runtime_warm_up_f64_with_cores(
+    RusticolRuntimeHandle *handle,
+    const double *momenta,
+    size_t momentum_count,
+    const char *const *helicity_ids,
+    size_t helicity_count,
+    const char *const *color_ids,
+    size_t color_count,
+    size_t n_cores,
     RusticolWarmUpProgressCallback progress_callback,
     void *progress_user_data,
     RusticolWarmUpResult *output
