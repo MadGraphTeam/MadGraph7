@@ -43,6 +43,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "symjit",
         "symbolica",
         "symbolica-community",
+        "symbolica-integrate",
         "ratatui-ffi",
     }
     assert {item.key for item in with_references} == {
@@ -52,6 +53,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
     }
     assert all(len(item.revision) == 40 for item in with_references)
     assert "symjit" not in module._root_path_patches()
+    assert "symbolica-integrate" not in module._root_path_patches()
     assert module._managed_symjit_checkout() == module.CHECKOUTS / "symjit"
     legacy = next(item for item in with_references if item.key == "legacy-amplicol")
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
@@ -242,10 +244,10 @@ def test_managed_sources_remain_available_without_explicit_path_overrides(
     }
     assert sources["symjit"].revision == "3fc04010f69db954463f9666fffb652b244ccc52"
     assert sources["gammaloop"].branch == "simplify-spenso-api"
-    assert sources["gammaloop"].revision == "5aadd389efabb7b039af74edad02a90d486a1c07"
+    assert sources["gammaloop"].revision == "ab00e4917295883add11f9855734aaee1d56926f"
     assert (
         sources["symbolica-integrate"].revision
-        == "92de256f9dcf3bef4bf5d80120c2341de1e0e17b"
+        == "9220f57f3c744c3ee83c4df5efdd6233788222ce"
     )
 
 

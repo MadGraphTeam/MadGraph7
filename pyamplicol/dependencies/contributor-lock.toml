@@ -18,12 +18,13 @@ release_status = "merged-main-candidate"
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"
 branch = "simplify-spenso-api"
-revision = "5aadd389efabb7b039af74edad02a90d486a1c07"
+revision = "ab00e4917295883add11f9855734aaee1d56926f"
 release_status = "developer-build-input-only"
 
 [symbolica_integrate]
 source_url = "https://github.com/symbolica-dev/symbolica-integrate.git"
-revision = "92de256f9dcf3bef4bf5d80120c2341de1e0e17b"
+# Unmodified upstream dev branch; includes the Symbolica-main matcher update.
+revision = "9220f57f3c744c3ee83c4df5efdd6233788222ce"
 
 [ratatui]
 distribution = "ratatui"

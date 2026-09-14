@@ -11,14 +11,21 @@ revision recorded in `Cargo.lock` and `contributor-lock.toml`.
 The community Python build still uses the explicit local Cargo overrides in
 `TMP_FIXED_SPENSO`, which is not committed or distributed. Prepare this checkout
 before running `just dev-install`; the installer uses its paths instead of
-cloning replacement GammaLoop and symbolica-integrate sources.
+cloning replacement GammaLoop sources. It clones unmodified upstream
+symbolica-integrate from the `dev` branch at
+`9220f57f3c744c3ee83c4df5efdd6233788222ce` into
+`dependencies/checkouts/symbolica-integrate`.
 It also installs the separate `FUTURE_ufo_model_loader` checkout at version
 0.1.8 when present. The loader's own upstream `main` contains these changes;
 the checkout is not part of this repository, and 0.1.8 is not yet on PyPI. The separate
-upstream compatibility changes are documented in
-`SPENSO_LATEST_SYMBOLICA_COMPATIBILITY_FIXES`. This configuration is not ready
-for publication until the remaining community API adaptations are available
-upstream.
+remaining GammaLoop build fix is documented in
+`SPENSO_SIMPLIFY_API_FOLLOW_UP_FIXES`: ordinary ABI3 builds must not pull in
+the optional Python stub generator through the workspace build-dependency
+configuration. The earlier Spenso/Idenso/Vakint API adaptations are now upstream.
+The symbolica-integrate matcher adaptation is included in its pinned upstream
+revision; no local integration patch is needed. Only the GammaLoop build fix
+remains locally patched. This configuration is not ready for publication until
+that fix and the dependency releases are available upstream.
 
 The future Python release requirements are Symbolica 3.0.0 and
 ufo-model-loader 0.1.8. Their release-wheel entries remain empty until publication.
@@ -101,9 +108,9 @@ The build uses Symbolica development revision
 patch is needed. Rusticol explicitly enables the `native_code_generation`
 feature required for Symbolica's JIT evaluator API. The local
 GammaLoop checkout starts from `simplify-spenso-api` revision
-`5aadd389efabb7b039af74edad02a90d486a1c07` and contains the documented API
-adaptations for that CAS. The same local tree holds the integration adaptation;
-the independent UFO loader is in `FUTURE_ufo_model_loader`. Spynso3 initializes
+`ab00e4917295883add11f9855734aaee1d56926f`, with only the documented optional
+stub-generator build fix. Symbolica-integrate uses its unmodified managed
+checkout; the independent UFO loader is in `FUTURE_ufo_model_loader`. Spynso3 initializes
 its cached symbolic-parallelism policy in `Auto`
 mode, checking the license once and keeping symbolic tensor reductions serial
 for restricted users or parallel for licensed users.

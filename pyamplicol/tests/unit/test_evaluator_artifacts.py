@@ -171,7 +171,7 @@ def test_symjit_plane_export_preserves_shared_outputs_and_matching_digest(
         source
     )._export_symjit_plane_application(optimization_level=2)
 
-    assert received == [(expected, 3, 2, 2, True)]  # Default JIT compression.
+    assert received == [(expected, 3, 2, 2, False)]  # JIT compression is opt-in.
     assert application == b"unmodified-plane"
     assert digest == hashlib.sha256(expected.encode()).hexdigest()
     assert source.get_instructions() is exported

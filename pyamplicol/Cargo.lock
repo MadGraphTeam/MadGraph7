@@ -1535,6 +1535,7 @@ version = "0.1.2"
 [[patch.unused]]
 name = "symbolica-integrate"
 version = "1.0.0"
+source = "git+https://github.com/symbolica-dev/symbolica-integrate.git?rev=9220f57f3c744c3ee83c4df5efdd6233788222ce#9220f57f3c744c3ee83c4df5efdd6233788222ce"
 
 [[patch.unused]]
 name = "symbolica-utils"
