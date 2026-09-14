@@ -5235,6 +5235,11 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
             self.mg5cmd = self
 
         def extract_process(self, line):
+            if '[' in line:
+                # like MadSpin's tree-level mg5cmd on an NLO process line
+                raise self.InvalidCmd('Perturbation order QCD is not among the '
+                                      'perturbation orders allowed for by the '
+                                      'loop model')
             legs = []
             initial, final = line.split('>')
             for state, part in ([(False, p) for p in initial.split()] +
@@ -5271,6 +5276,20 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
         """'z{0} z': the second Z has no brace and stays summed over."""
         self.assertEqual(self.polarization('generate p p > z{0} z'),
                          {23: ((0,), None)})
+
+    def test_nlo_perturbation_bracket_is_ignored(self):
+        """'p p > z{0} z{0} [QCD]': the tree-level parser refuses the bracket,
+        which used to leave every NLO polarised production unrestricted (with
+        only a warning). The bracket says nothing about the braces on the legs,
+        so the restriction must be the bracket-free line's."""
+        for bracket in ('[QCD]', '[virt=QCD]', '[noborn=QCD]'):
+            self.assertEqual(
+                self.polarization('generate p p > z{0} z{0} %s' % bracket),
+                {23: ((0,),)})
+            self.assertEqual(
+                self.polarization('generate p p > w+{0} w+{T} %s' % bracket,
+                                  'add process p p > w+{0} w+{T} j %s' % bracket),
+                {24: ((0,), (-1, 1))})
 
     def test_broadcast_survives_extra_subprocesses(self):
         """The multiplicity of a broadcast pdg does not have to match between

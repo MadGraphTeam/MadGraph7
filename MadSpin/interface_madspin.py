@@ -9925,16 +9925,9 @@ class MadSpinInterface(extended_cmd.Cmd):
         ``prod_off``, so the two sides of the ratio see the same %.10e
         truncation.
 
-        With the boost left out (``frame_boost=None``) this trace reproduces
-        ``calculate_matrix_element`` to 1.4e-7 at worst over 600 `p p > z z
-        [QCD]` production events -- the same helicity sum through two entry
-        points. The *boosted* trace is a separate, open question: with no
-        helicity restriction at all it is analytically that same Lorentz
-        invariant sum, yet it comes back <= the lab value, by more than 1e-3
-        on 5.8% of production events. That deficit is in the boosted density
-        evaluation, not in this choice of denominator -- it is already inside
-        the *numerator* of every ``me_frame`` run, and taking the denominator
-        in the same frame is what makes it cancel. See FINDINGS.md.
+        Any residual inaccuracy of the boosted density evaluation is already
+        inside the numerator of every ``me_frame`` run; taking the denominator
+        in the same frame is what makes it cancel.
         """
         frame_boost = self._frame_boost(production)
         if frame_boost is None:
@@ -10643,33 +10636,19 @@ class MadSpinInterface(extended_cmd.Cmd):
         # the production density and by every decay contracted against it. The
         # offshell branch gets its own from _upfront_production, derived from
         # the reshuffled production rho is evaluated at.
-        #
-        # It has to be the *same* quantity as the numerator, in the *same*
-        # frame. calculate_matrix_element hands the matrix element the LAB
-        # momenta, and a polarised matrix element is not Lorentz invariant: for
-        # a braced production (p p > z{0} z{0}) the lab-frame projection is a
-        # different object from the me_frame one Tr(rho_off) is built from, and
-        # it can be six orders of magnitude smaller on a boosted event (measured
-        # on p p > z{0} z{0} [QCD], 25 probe events: Tr(rho) in the lab spans
-        # 1.8e7 against 1.4e4 in the me_frame, with single events at 4.4e-10
-        # against 2.2e-3 in the frame). The probe's single bound is then set by
-        # those events -- 8.1e6 against a median mass-set weight of 29 -- and the
-        # mass stage of every ordinary event accepts at ~4e-6, i.e. ~1e5 redraws
-        # and ~450 s per decayed event. Taking the trace of the on-shell rho in
-        # the frame instead makes w_mass exactly the offshell/onshell ratio.
-        # Unpolarised runs have no frame boost (_frame_boost returns None) and
-        # keep the matrix-element call, so they are bit-for-bit unchanged.
         frame_boost = None
         me_prod_on = 1.0
         if offshell:
             me_prod_on = getattr(production, 'me_wgt', None)
             if not me_prod_on:
                 # The denominator has to be the same quantity as the numerator,
-                # in the same frame: Tr(rho_off) is built in the me_frame while
-                # calculate_matrix_element hands the matrix element the LAB
-                # momenta, and a helicity-restricted matrix element is not
-                # Lorentz invariant.  Unpolarised runs have no frame boost and
-                # keep the matrix-element call, bit for bit.
+                # in the same frame: Tr(rho_off) is built in the me_frame, and a
+                # helicity-restricted matrix element is not Lorentz invariant,
+                # so the lab-frame calculate_matrix_element is a different
+                # projection (on a boosted polarised event, by orders of
+                # magnitude -- which then sets the mass-stage bound).
+                # Unpolarised runs have no frame boost and keep the
+                # matrix-element call, bit for bit.
                 me_prod_on = self._onshell_production_norm(production,
                                                            prod_static)
                 production.me_wgt = me_prod_on
@@ -11652,32 +11631,15 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # compute the denominator and then reshuffle the event before
                 # computing the numerator
                 #
-                # The denominator has to be the same quantity as the numerator,
-                # in the same frame: the numerator is the contraction of the
-                # (possibly helicity-restricted) production density built in the
-                # me_frame, and a *restricted* matrix element is not Lorentz
-                # invariant, so the lab-frame calculate_matrix_element is a
-                # different projection. _onshell_production_norm returns exactly
-                # calculate_matrix_element when there is no frame boost, and the
-                # trace of the on-shell rho in the frame when there is. Same fix
-                # as on the sequential mass stage.
+                # The denominator has to be taken in the same frame as the
+                # numerator (see _onshell_production_norm), as on the
+                # sequential mass stage.
                 #
-                # This call site is NOT polarised-only: an unpolarised
-                # production that only asks for keep_weight_for_polarization_*
-                # still switches the frame axis on, and 'unweighting = auto'
-                # sends an unbraced production here. That case is safe, and
-                # measured to be so rather than assumed. The denominator is a
-                # per-production-event constant either way (checked directly:
-                # over 5414 production events of `p p > z z [QCD]` the value was
-                # bit-identical across every joint trial of the same event), and
-                # a constant factor cancels out of an accept/reject -- so the
-                # accepted decay distribution is unchanged in law. End to end,
-                # redecaying 150000 production events of one such sample here
-                # gave f0 = 0.18199 +- 0.00054, f00 0.05857, fTT 0.69460, Ckk
-                # -0.57691 against 0.18176 +- 0.00054 / 0.05830 / 0.69478 /
-                # -0.57706 from the pre-fix run on the SAME production events;
-                # and a seed-matched 45000-event pair decayed both ways cost
-                # 10.09 against 10.15 accept/reject trials per event.
+                # Not polarised-only: keep_weight_for_polarization_* or
+                # 'unweighting = auto' can bring an unbraced production here with
+                # the frame axis on. That is safe: the denominator is a constant
+                # per production event, identical across its joint trials, so it
+                # cancels out of the accept/reject.
                 MEdenom_prod = self._onshell_production_norm(production,
                                                              prod_static)
                 MEdenom_decay = 1.0
@@ -12095,7 +12057,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         else: #in any case, we need tag to differentiate between production and decay
             tag = getattr(event, '_ms_tag_for_density', None)
             if tag is None:
-                tag, _ = event.get_tag_and_order(self._revert_merged or None)
+                tag, _ = event.get_tag_and_order(
+                    merged_particle=self._revert_merged or None)
 
 
         # Fast path: single-point momentum extraction without permutation
@@ -12111,8 +12074,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
             p = all_p[0]
         # get_pdg below identifies the particles by EXACT momentum equality
-        # against the event record, so it has to see the lab-frame momenta:
-        # keep them before the frame boost rewrites every component.
+        # against the event record, so it has to see the lab-frame momenta.
+        # _boost_momenta builds new tuples and never touches its input, so
+        # keeping a reference is enough -- no copy needed.
         p_lab = p
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
