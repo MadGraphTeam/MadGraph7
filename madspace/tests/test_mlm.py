@@ -1836,3 +1836,28 @@ def test_each_end_of_a_t_channel_chain_gets_its_own_flavour():
     assert first[(0, 4)] == (0, 1), "beam 0 + jet should leave a massless jet line"
     assert first[(1, 3)] == (1, 0), "beam 1 + t~ should leave a massive, non-jet line"
 
+
+def test_a_jet_emitted_before_the_tops_does_not_set_the_renormalisation_scale():
+    """setclscales carries a beam's parton line on past a jet emission to the
+    vertex where the top attaches, so when the jet is clustered into a beam and
+    the tops make up the rest, all four scales in the mu_R average are central
+    ones and mu_R equals mu_F. The jet's own scale entering mu_R is exactly the
+    symptom of the swapped chain, whose kernel gave mu_R == mu_F on no point.
+    It also needs the root measured where cluster.f measures it: not boosted
+    after the last clustering, and in the current frame after an initial-state
+    one. Taking it in the lab left mu_R a few per cent below mu_F."""
+    clustering = gg_ttbar_g_chain_clustering()
+    momenta = sample_momenta(gg_ttbar_g_chain_diagram(), batch_size=4000)
+    ren, fac1, fac2, outgoing, _ = run(clustering, momenta)
+    jet = momenta[:, 4, :]
+    jet_pt = np.sqrt(jet[:, 1] ** 2 + jet[:, 2] ** 2)
+    # the jet went into a beam: its clustering scale is its transverse momentum
+    jet_into_beam = np.abs(outgoing[:, 2] / jet_pt - 1.0) < 1e-9
+    assert jet_into_beam.sum() > 500, "too few jet-into-beam histories to test"
+    # the root is measured in the frame the boost after the jet left behind,
+    # where t and t~ balance, so the equality holds up to rounding
+    same = np.abs(ren / fac1 - 1.0) < 1e-6
+    assert np.mean(same[jet_into_beam]) > 0.5, (
+        "mu_R == mu_F on only %.1f%% of jet-into-beam points"
+        % (100 * np.mean(same[jet_into_beam]))
+    )

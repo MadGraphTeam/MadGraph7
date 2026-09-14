@@ -183,7 +183,8 @@ KERNELSPEC void update_momenta(
     int& alive,
     int i_remove,
     int i_keep,
-    bool resonant
+    bool resonant,
+    bool allow_boost
 ) {
     alive &= ~(1 << i_remove);
 
@@ -203,7 +204,10 @@ KERNELSPEC void update_momenta(
             -(momenta[i_keep][2] + momenta[j_other][2]),
             -(momenta[i_keep][3] + momenta[j_other][3]),
         };
-        if (lsquare<T>(com_boost_vector) > 100.0) {
+        // cluster.f skips the boost at the last clustering ("Don't boost if boost
+        // vector too lightlike or last vertex", nleft > 4), so the frame the
+        // 2 -> 1 root is measured in is the one left by the previous step.
+        if (allow_boost && lsquare<T>(com_boost_vector) > 100.0) {
             // boost j_keep to COM frame to define the rotation axis, then apply to all
             // alive particles
             auto jkeep_cm = boost<T>(momenta[i_keep], com_boost_vector, 1.0);
@@ -274,10 +278,16 @@ KERNELSPEC void mlm_clustering(
     int n_part = momenta.size();
     FourMom<T> momenta_tmp[N_EXT_MAX];
     // The same clustering tracked in the lab frame, without the boosts and
-    // rotations update_momenta applies. Only the 2 -> 1 root needs it: cluster.f
-    // boosts and rotates back before taking that vertex's scale, so it is a
-    // transverse mass in the lab and not in whatever frame the walk ended up in.
+    // rotations update_momenta applies. Only the 2 -> 1 root needs it, and only
+    // when the last clustering was a final-state one: cluster.f then boosts and
+    // rotates the remaining object back before taking the root's transverse
+    // mass. It undoes only the most recent boost; this copy undoes all of them,
+    // which is the same thing whenever at most one boosting initial-state
+    // clustering came before. After an initial-state last clustering cluster.f
+    // takes the root in the current frame instead, see last_is_initial.
     FourMom<T> momenta_lab[N_EXT_MAX];
+    // Whether the last recorded clustering was an initial-state one.
+    bool last_is_initial = false;
     FVal<T> masses_tmp[N_EXT_MAX];
     int alive = (1 << n_part) - 1;
     int cluster_history[N_EXT_MAX - 3];
@@ -428,8 +438,18 @@ KERNELSPEC void mlm_clustering(
                     ? momenta_lab[p1_win][k] - momenta_lab[p2_win][k]
                     : momenta_lab[p1_win][k] + momenta_lab[p2_win][k];
             }
+            if (cluster_count == cluster_max - 1) {
+                last_is_initial = p1_win < 2;
+            }
             update_momenta<T>(
-                n_part, momenta_tmp, masses_tmp, alive, p2_win, p1_win, win_resonant
+                n_part,
+                momenta_tmp,
+                masses_tmp,
+                alive,
+                p2_win,
+                p1_win,
+                win_resonant,
+                cluster_count < cluster_max - 1
             );
             state = win_next_state;
             cluster_history[cluster_count] = win_data;
@@ -676,9 +696,17 @@ KERNELSPEC void mlm_clustering(
                 break;
             }
         }
+        // cluster.f's pt2ijcl(n+1) = djb(pcl(imap(3,2))): the lab frame after a
+        // final-state last clustering (it boosts back first), the current frame
+        // after an initial-state one. In t t~ + jet with the jet taken into a
+        // beam first, that current frame is the one where t and t~ balance, so
+        // the root and the top's vertex carry the same scale and mu_R == mu_F.
         FVal<T> extra_scale = leftover < 0
             ? FVal<T>(0.0)
-            : sqrt(djb_clus<T>(momenta_lab[leftover], hadronic));
+            : sqrt(djb_clus<T>(
+                  last_is_initial ? momenta_tmp[leftover] : momenta_lab[leftover],
+                  hadronic
+              ));
         // Follow each beam's parton line through the clustering, exactly as
         // setclscales does in Template/LO/SubProcesses/reweight.f.
         //
