@@ -1759,3 +1759,80 @@ def test_a_colourless_s_channel_root_keeps_the_transverse_mass_of_the_final_stat
     assert fac1 == pytest.approx(shat_mt, rel=1e-9)
     assert fac2 == pytest.approx(shat_mt, rel=1e-9)
 
+
+# --------------------------------------------------------------------------
+# t-channel propagator flavours along the chain
+# --------------------------------------------------------------------------
+
+
+def gg_ttbar_g_chain_diagram():
+    """g g > t t~ g through a t-channel chain whose two propagators differ:
+
+        beam 0 --emits the jet--> gluon --emits t--> top --meets beam 1--> t~
+
+    A chain with a single propagator reads the same from both ends, so only a
+    chain like this one can tell whether each end of it got its own flavour and
+    mass. Legs: (g, g, t, t~, g)."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, M_TOP, 0.0],
+            "propagators": [(0.0, 0.0, 21), (M_TOP, 0.0, 6)],
+            "vertices": [["i0", "o2", "p0"], ["p0", "o0", "p1"], ["p1", "o1", "i1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+GG_TTBAR_G_PDGS = [21, 21, 6, -6, 21]
+
+
+def gg_ttbar_g_chain_clustering():
+    diagrams = gg_ttbar_g_chain_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=GG_TTBAR_G_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+    )
+
+
+def first_initial_state_transitions(clustering, n_ext):
+    """{(beam, leg): (massive_in, is_jet_in)} for the clusterings the walk can
+    take first, which are the ones whose mother is the propagator next to a
+    beam."""
+    machine = np.asarray(clustering.cluster_state_machine)
+    out = {}
+    for data, _, trace in decode_transitions(machine, 0):
+        p1, p2 = field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)
+        if p1 < 2:
+            out[(p1, p2)] = (
+                field(data, BIT_MASSIVE_IN),
+                int(bool(trace & TRACE_IS_JET_IN)),
+            )
+    return out
+
+
+def test_each_end_of_a_t_channel_chain_gets_its_own_flavour():
+    """Beam 0 emitting the jet leaves the gluon propagator, massless and a jet;
+    beam 1 taking back the t~ leaves the top propagator, massive and not a jet.
+    With the two ends swapped the gluon was read as the top, the beam's parton
+    line stopped at the jet, and mu_R picked up the jet's own scale - 3 to 12%
+    too much t t~ + jets against madevent."""
+    first = first_initial_state_transitions(gg_ttbar_g_chain_clustering(), 5)
+    assert first[(0, 4)] == (0, 1), "beam 0 + jet should leave a massless jet line"
+    assert first[(1, 3)] == (1, 0), "beam 1 + t~ should leave a massive, non-jet line"
+
