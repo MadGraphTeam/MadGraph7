@@ -56,11 +56,7 @@
 
 namespace
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
   using namespace mg5amcCpu;
-#endif
 
   // Fixed physics inputs
   fptype kEnergy = 1500.;                  // Ecms = 1.5 TeV and changed for the matrix mode to 1TeV
@@ -232,17 +228,6 @@ namespace
     }
   }
 
-#ifdef MGONGPUCPP_GPUIMPL
-  __global__ void
-  aosoa_to_umami_kernel( const fptype_momenta* aosoa,
-                         double* soa,
-                         std::size_t nevt )
-  {
-    std::size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
-    if( ievt >= nevt ) return;
-    aosoa_to_umami_one( aosoa, soa, ievt, nevt );
-  }
-#endif
 
   const char* backend_label()
   {
@@ -313,29 +298,17 @@ namespace
     unsigned int nevt,
     mgOnGpu::TimerMap& timermap,
     double& wavetime,
-#ifdef MGONGPUCPP_GPUIMPL
-    const DeviceBufferBase<double>& devUmamiMomenta,
-    const DeviceBufferBase<unsigned int>& devFlv,
-    DeviceBufferBase<double>& devUmamiMEs,
-    std::vector<double>& hstMEs
-#else
     const std::vector<double>& umamiMomenta,
     const std::vector<unsigned int>& flvVec,
     std::vector<double>& umamiMEs
-#endif
   )
   {
     constexpr unsigned int UmamiInKeyNum = 2;
     timermap.start( "3a SigmaKin" );
     UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
     UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
-    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data() };
-    void* outputs[1] = { devUmamiMEs.data() };
-#else
     const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data() };
     void* outputs[1] = { umamiMEs.data() };
-#endif
     UmamiStatus st = umami_matrix_element(
       handle, nevt, nevt, 0, UmamiInKeyNum, in_keys, inputs, 1, out_keys, outputs );
     wavetime += timermap.stop();
@@ -345,11 +318,6 @@ namespace
       return false;
     }
 
-#ifdef MGONGPUCPP_GPUIMPL
-    timermap.start( "3b CpDTHmes" );
-    gpuMemcpy( hstMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
-    wavetime += timermap.stop();
-#endif
     return true;
   }
 
@@ -622,30 +590,12 @@ namespace
 
     mgOnGpu::TimerMap timermap;
 
-#ifdef MGONGPUCPP_GPUIMPL
-    timermap.start( "00 GpuInit" );
-    GpuRuntime gpuRuntime( false );
-
-    PinnedHostBufferRndNumMomenta hstRndmom( nevt );
-    PinnedHostBufferMomenta hstMomenta( nevt );
-    PinnedHostBufferWeights hstWeights( nevt );
-    DeviceBufferRndNumMomenta devRndmom( nevt );
-    DeviceBufferMomenta devMomenta( nevt );
-    DeviceBufferWeights devWeights( nevt );
-    DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
-    DeviceBufferBase<double> devUmamiMEs( nevt );
-    DeviceBufferBase<unsigned int> devFlv( nevt );
-    std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
-    std::vector<unsigned int> flvVec( nevt );
-    std::vector<double> hstUmamiMEs( nevt );
-#else
     HostBufferRndNumMomenta hstRndmom( nevt );
     HostBufferMomenta hstMomenta( nevt );
     HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt );
-#endif
 
     UmamiHandle umami_handle = nullptr;
     if( umami_initialize( &umami_handle, "../../Cards/param_card.dat" ) != UMAMI_SUCCESS )
@@ -687,10 +637,6 @@ namespace
     SLHAReader slha( "../../Cards/param_card.dat", false );
     const double alphaS = slha.get_block_entry( "sminputs", 3, 1.180000e-01 );
     std::vector<double> alphasVec( nevt, alphaS );
-#ifdef MGONGPUCPP_GPUIMPL
-    DeviceBufferBase<double> devAlphaS( nevt );
-    gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
-#endif
 
     // Always massive RAMBO
     std::unique_ptr<SamplingKernelBase> prsk(
@@ -704,16 +650,8 @@ namespace
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = point[ipar][ip4];
-#ifdef MGONGPUCPP_GPUIMPL
-    gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
-    // Host only implementation now (copy)
-    copyDeviceFromHost( devMomenta, hstMomenta );
-    gpuLaunchKernel( aosoa_to_umami_kernel, kMatrixBlocks, kMatrixThreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
-    checkGpu( gpuPeekAtLastError() );
-#else
     for( std::size_t ievt = 0; ievt < nevt; ++ievt )
       aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
-#endif
 
     if( verbose )
     {
@@ -741,19 +679,11 @@ namespace
     for( unsigned int iflav = 0; iflav < nFlavors; ++iflav )
     {
       std::fill( flvVec.begin(), flvVec.end(), iflav );
-#ifdef MGONGPUCPP_GPUIMPL
-      gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
-#endif
       timermap.start( "3a SigmaKin" );
       UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
       UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
-      const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
-      void* outputs[1] = { devUmamiMEs.data() };
-#else
       const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
       void* outputs[1] = { umamiMEs.data() };
-#endif
       UmamiStatus st = umami_matrix_element(
         umami_handle, nevt, nevt, 0, 3, in_keys, inputs, 1, out_keys, outputs );
       timermap.stop();
@@ -763,12 +693,7 @@ namespace
         umami_free( umami_handle );
         return 3;
       }
-#ifdef MGONGPUCPP_GPUIMPL
-      gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
-      const double* mes = hstUmamiMEs.data();
-#else
       const double* mes = umamiMEs.data();
-#endif
 
       std::cout << " PDG";
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
@@ -843,31 +768,12 @@ namespace
 
     mgOnGpu::TimerMap timermap;
 
-#ifdef MGONGPUCPP_GPUIMPL
-    timermap.start( "00 GpuInit" );
-    GpuRuntime gpuRuntime( false );
-
-    PinnedHostBufferRndNumMomenta hstRndmom( nevt );
-    PinnedHostBufferMomenta hstMomenta( nevt );
-    PinnedHostBufferWeights hstWeights( nevt );
-    DeviceBufferRndNumMomenta devRndmom( nevt );
-    DeviceBufferMomenta devMomenta( nevt );
-    DeviceBufferWeights devWeights( nevt );
-    DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
-    DeviceBufferBase<double> devUmamiMEs( nevt );
-    DeviceBufferBase<unsigned int> devFlv( nevt );
-    std::vector<unsigned int> flvVec( nevt, flavorID );
-    std::vector<double> hstUmamiMEs( nevt );
-    // perf-mode runs a single flavor, so the device-side flavor buffer is filled once.
-    gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
-#else
     HostBufferRndNumMomenta hstRndmom( nevt );
     HostBufferMomenta hstMomenta( nevt );
     HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
-#endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
       new CommonRandomNumberKernel( hstRndmom ) );
@@ -908,11 +814,7 @@ namespace
     }
     else
     {
-#ifdef MGONGPUCPP_GPUIMPL
-      prsk.reset( new MasslessRamboSamplingKernelDevice( kEnergy, devRndmom, devMomenta, devWeights, gpublocks, gputhreads ) );
-#else
       prsk.reset( new MasslessRamboSamplingKernelHost( kEnergy, hstRndmom, hstMomenta, hstWeights, nevt ) );
-#endif
     }
 
     std::unique_ptr<double[]> genrtimes( new double[niter] );
@@ -940,14 +842,6 @@ namespace
         timermap.start( "1b GenRnGen" );
         prnk->generateRnarray();
         genrtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
-        if( ramboType == RAMBO_MASSLESS )
-        {
-          timermap.start( "1c CpHTDrnd" );
-          copyDeviceFromHost( devRndmom, hstRndmom );
-          genrtime += timermap.stop();
-        }
-#endif
 
         timermap.start( "2a RamboIni" );
         prsk->getMomentaInitial();
@@ -955,15 +849,6 @@ namespace
         timermap.start( "2b RamboFin" );
         prsk->getMomentaFinal();
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
-        // Massive host only (copy)
-        if( ramboType != RAMBO_MASSLESS )
-        {
-          timermap.start( "2c CpHTDmom" );
-          copyDeviceFromHost( devMomenta, hstMomenta );
-          rambtime += timermap.stop();
-        }
-#endif
       }
       else
       {
@@ -982,47 +867,23 @@ namespace
               MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype_momenta)ev[ipar][ip4];
         }
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
-        timermap.start( "2c CpHTDmom" );
-        copyDeviceFromHost( devMomenta, hstMomenta );
-        rambtime += timermap.stop();
-#endif
       }
 
       timermap.start( "2d Aosoa2U " );
-#ifdef MGONGPUCPP_GPUIMPL
-      gpuLaunchKernel( aosoa_to_umami_kernel, gpublocks, gputhreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
-      checkGpu( gpuPeekAtLastError() );
-#else
       for( std::size_t ievt = 0; ievt < nevt; ++ievt )
         aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
-#endif
       rambtime += timermap.stop();
 
       double wavetime = 0;
       if( !run_umami( umami_handle, nevt, timermap, wavetime,
-#ifdef MGONGPUCPP_GPUIMPL
-                      devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
-#else
                       umamiMomenta, flvVec, umamiMEs
-#endif
                       ) )
       {
         umami_free( umami_handle );
         return 3;
       }
 
-#ifdef MGONGPUCPP_GPUIMPL
-      if( verbose || dumpMomenta.is_open() )
-      {
-        timermap.start( "3c CpDTHmom" );
-        copyHostFromDevice( hstMomenta, devMomenta );
-        wavetime += timermap.stop();
-      }
-      const double* mes = hstUmamiMEs.data();
-#else
       const double* mes = umamiMEs.data();
-#endif
 
       if( dumpMomenta.is_open() )
       {

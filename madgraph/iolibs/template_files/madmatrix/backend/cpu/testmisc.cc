@@ -23,26 +23,14 @@
 #include <sstream>
 #include <typeinfo>
 
-#ifdef MGONGPUCPP_GPUIMPL
-#define TESTID( s ) s##_GPU_MISC
-#else
 #define TESTID( s ) s##_CPU_MISC
-#endif
 
 #define XTESTID( s ) TESTID( s )
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
-#ifdef MGONGPU_CPPSIMD /* clang-format off */
-#define EXPECT_TRUE_sv( cond ) { bool_v mask( cond ); EXPECT_TRUE( maskand( mask ) ); }
-#else
 #define EXPECT_TRUE_sv( cond ) { EXPECT_TRUE( cond ); }
-#endif /* clang-format on */
 
   inline const std::string
   boolTF( const bool& b )
@@ -50,26 +38,11 @@ namespace mg5amcCpu
     return ( b ? "T" : "F" );
   }
 
-#ifdef MGONGPU_CPPSIMD
-  inline const std::string
-  boolTF( const bool_v& v )
-  {
-    std::stringstream out;
-    out << "{ " << ( v[0] ? "T" : "F" );
-    for( int i = 1; i < neppV; i++ ) out << ", " << ( v[i] ? "T" : "F" );
-    out << " }";
-    return out.str();
-  }
-#endif
 }
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
   using namespace mg5amcCpu;
-#endif
 
   //--------------------------------------------------------------------------
 
@@ -92,34 +65,9 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     fptype_sv f{ 1 };
     //std::cout << f << std::endl << boolTF( f == 1 ) << std::endl;
     //EXPECT_TRUE_sv( f == 1 ); // this fails for vectors! TFFF
-#ifndef MGONGPU_CPPSIMD
     EXPECT_TRUE_sv( f == 1 ); // this succeds: T
-#else
-    EXPECT_TRUE( ( f == 1 )[0] ); // this succeds: TFFF[0]
-    EXPECT_TRUE( ( f[0] == 1 ) );
-    for( int i = 1; i < neppV; i++ )
-    {
-      EXPECT_TRUE( !( ( f == 1 )[i] ) ); // this succeds: FTTT[i>=1]
-      EXPECT_TRUE( ( f[i] == 0 ) );      // equals 0, not 1
-    }
-#endif
   }
 
-#ifdef MGONGPU_CPPSIMD
-  // Vector initialization for cxtype_sv - demonstrate fix for bug #339
-  {
-    fptype_sv f1 = fptype_v{ 0 } + 1;
-    EXPECT_TRUE_sv( f1 == 1 );
-    cxtype_v c12 = cxmake( f1, 2 );
-    //std::cout << c12 << std::endl << boolTF( c12.real() == 1 ) << std::endl << boolTF( c12.imag() == 2 ) << std::endl;
-    EXPECT_TRUE_sv( c12.real() == 1 );
-    EXPECT_TRUE_sv( c12.imag() == 2 );
-    cxtype_v c21 = cxmake( 2, f1 );
-    //std::cout << c21 << std::endl << boolTF( c21.real() == 2 ) << std::endl << boolTF( c21.imag() == 1 ) << std::endl;
-    EXPECT_TRUE_sv( c21.real() == 2 );
-    EXPECT_TRUE_sv( c21.imag() == 1 );
-  }
-#endif
 
   // Vector initialization for cxtype_sv
   {
@@ -256,48 +204,20 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
     test_int_sv channelids1_sv{}; // mimic CHANNEL_ACCESS::kernelAccess( pchannelIds )
     fptype_sv absamp0_sv{};       // mimic cxabs2( amp_sv[0] )
     fptype_sv absamp1_sv{};       // mimic cxabs2( amp_sv[0] )
-#ifdef MGONGPU_CPPSIMD
-    for( int i = 0; i < neppV; i++ )
-    {
-      channelids0_sv[i] = i;   // 0123
-      channelids1_sv[i] = i;   // 1234
-      absamp0_sv[i] = 10. + i; // 10. 11. 12. 13.
-      absamp1_sv[i] = 11. + i; // 11. 12. 13. 14.
-    }
-#else
     channelids0_sv = 0;
     channelids1_sv = 1;
     absamp0_sv = 10.;
     absamp1_sv = 11.;
-#endif
     bool_sv mask0_sv = ( channelids0_sv % 2 == 0 ); // even channels 0123 -> TFTF (1010)
     bool_sv mask1_sv = ( channelids1_sv % 2 == 0 ); // even channels 1234 -> FTFT (0101)
     constexpr fptype_sv fpZERO_sv{};                // 0000
     //fptype_sv numerators0_sv = mask0_sv * absamp0_sv; // invalid operands to binary * ('__vector(4) long int' and '__vector(4) double')
     fptype_sv numerators0_sv = fpternary( mask0_sv, absamp0_sv, fpZERO_sv ); // equivalent to "mask0_sv * absamp0_sv"
     fptype_sv numerators1_sv = fpternary( mask1_sv, absamp1_sv, fpZERO_sv ); // equivalent to "mask1_sv * absamp1_sv"
-#ifdef MGONGPU_CPPSIMD
-    //std::cout << "numerators0_sv: " << numerators0_sv << std::endl;
-    //std::cout << "numerators1_sv: " << numerators1_sv << std::endl;
-    for( int i = 0; i < neppV; i++ )
-    {
-      // Values of numerators0_sv: 10.*1 11.*0 12.*1 13.*0
-      if( channelids0_sv[i] % 2 == 0 ) // even channels
-        EXPECT_TRUE( numerators0_sv[i] == ( 10. + i ) );
-      else // odd channels
-        EXPECT_TRUE( numerators0_sv[i] == 0. );
-      // Values of numerators1_sv: 11.*0 12.*1 13.*0 14.*1
-      if( channelids1_sv[i] % 2 == 0 ) // even channels
-        EXPECT_TRUE( numerators1_sv[i] == ( 11. + i ) );
-      else // odd channels
-        EXPECT_TRUE( numerators1_sv[i] == 0. );
-    }
-#else
     // Values of numerators0_sv: 10.*1
     EXPECT_TRUE( numerators0_sv == 10. );
     // Values of numerators1_sv: 11.*0
     EXPECT_TRUE( numerators1_sv == 0. );
-#endif
   }
 
   //--------------------------------------------------------------------------

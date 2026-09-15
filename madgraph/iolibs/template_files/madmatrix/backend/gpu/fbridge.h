@@ -12,11 +12,7 @@
 
 extern "C"
 {
-#ifdef MGONGPUCPP_GPUIMPL
   using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
 
   using FORTRANFPTYPE = double;
 

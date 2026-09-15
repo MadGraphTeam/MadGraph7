@@ -19,15 +19,10 @@
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
 #ifndef MGONGPU_HAS_NO_BLAS
   // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
   // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
@@ -46,11 +41,9 @@ namespace mg5amcCpu
     return nfptype2PerEvent * (std::size_t)nhel * (std::size_t)nevt;
   }
 #endif
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   class DeviceAccessJamp
   {
   public:
@@ -85,43 +78,13 @@ namespace mg5amcCpu
                      buffer[1 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] );
     }
   };
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   void createNormalizedColorMatrix();
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPUCPP_GPUIMPL
-  void
-  color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
-                 const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
-                 const int ievt0 );           // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
-#endif
-
-  //--------------------------------------------------------------------------
-
-  // Only defined for processes whose color matrix is large enough that the
-  // BLAS call is worth setting up (see blas_wanted): the color sum for every
-  // good helicity of one event page in one go.
-#ifndef MGONGPUCPP_GPUIMPL
-#ifdef MGONGPU_CPP_HAS_BLAS
-  void
-  color_sum_cpu_blas( fptype* allMEs,                  // input/output: allMEs[nevt], add |M|^2 summed over all good helicities
-                      fptype_sv* MEs_ighel,            // output: [ncomb] running sum of |M|^2 up to ighel (first - and/or only - neppV page)
-                      fptype_sv* MEs_ighel2,           // output: [ncomb] the same for the second neppV page (mixed mode only)
-                      const cxtype_sv* ghelAllJamp_sv, // input: jamp_sv[nGoodHel][nParity*ncolor] for all good helicities
-                      const int nGoodHel,              // input: number of good helicities
-                      const int ievt0 );               // input: first event number in current C++ event page
-#endif
-#endif
-
-  //--------------------------------------------------------------------------
-
-#ifdef MGONGPUCPP_GPUIMPL
   void
   color_sum_gpu( fptype* ghelAllMEs,               // output: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
                  const fptype_amp* ghelAllJamps,   // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
@@ -132,17 +95,14 @@ namespace mg5amcCpu
                  const int gpublocks,              // input: cuda gpublocks
                  const int gputhreads,             // input: cuda gputhreads
                  const bool processAllHelicities); // input: if true, use blockIdx.y to index helicities
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   color_sum_kernel( fptype* allMEs,                 // output: allMEs[nevt], add |M|^2 for one specific helicity
                     const fptype_amp* allJamps,     // input: jamp[ncolor*2*nevt] for one specific helicity
                     const int nGoodHel,             // input: number of good helicities
                     const int nevtIfAllHelicities); // input: zero in single-helicity mode, number of events in multi-helicity mode
-#endif
 
   //--------------------------------------------------------------------------
 }

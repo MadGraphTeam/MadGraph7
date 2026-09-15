@@ -17,7 +17,6 @@
 //--------------------------------------------------------------------------
 
 // See https://stackoverflow.com/a/14038590
-#ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
 #define checkGpu( code ) { assertGpu( code, __FILE__, __LINE__ ); }
 inline void assertGpu( gpuError_t code, const char* file, int line, bool abort = true )
 {
@@ -27,11 +26,9 @@ inline void assertGpu( gpuError_t code, const char* file, int line, bool abort =
     if( abort ) assert( code == gpuSuccess );
   }
 }
-#endif /* clang-format on */
 
 //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
 #ifndef MGONGPU_HAS_NO_BLAS
 #define checkGpuBlas( code ){ assertGpuBlas( code, __FILE__, __LINE__ ); }
 inline void assertGpuBlas( gpuBlasStatus_t code, const char *file, int line, bool abort = true )
@@ -43,11 +40,9 @@ inline void assertGpuBlas( gpuBlasStatus_t code, const char *file, int line, boo
   }
 }
 #endif
-#endif /* clang-format on */
 
 //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 {
   // Instantiate a GpuRuntime at the beginnining of the application's main to
@@ -95,7 +90,6 @@ namespace mg5amcGpu
     }
   };
 }
-#endif
 
 //--------------------------------------------------------------------------
 

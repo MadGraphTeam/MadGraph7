@@ -18,11 +18,7 @@ struct curandGenerator_st;
 struct rocrand_generator_base_type;
 typedef rocrand_generator_base_type hiprandGenerator_st;
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 

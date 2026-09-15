@@ -13,11 +13,7 @@
 
 #include <vector>
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -132,7 +128,6 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   // A class encapsulating RAMBO phase space sampling on a GPU device
   class MasslessRamboSamplingKernelDevice final : public SamplingKernelBase, public NumberOfEvents
   {
@@ -166,7 +161,6 @@ namespace mg5amcCpu
     // The number of threads in the GPU grid
     size_t m_gputhreads;
   };
-#endif
 
   //--------------------------------------------------------------------------
 }

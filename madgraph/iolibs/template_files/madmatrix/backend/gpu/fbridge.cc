@@ -23,11 +23,7 @@ extern "C"
    * Using the same Fortran MadEvent code, linking to the hetrerogeneous library would allow access to both CPU and GPU implementations.
    * The specific heterogeneous configuration (how many GPUs, how many threads on each CPU, etc) could be loaded in CUDA/C++ from a data file.
    */
-#ifdef MGONGPUCPP_GPUIMPL
   using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
 
   /**
    * The floating point precision used in Fortran arrays.
@@ -47,9 +43,7 @@ extern "C"
    */
   void fbridgecreate_( CppObjectInFortran** ppbridge, const int* pnevtF, const int* pnparF, const int* pnp4F )
   {
-#ifdef MGONGPUCPP_GPUIMPL
     GpuRuntime::setUp();
-#endif
     // (NB: CPPProcess::initProc no longer needs to be executed here because it is called in the Bridge constructor)
     // FIXME: disable OMP in Bridge when called from Fortran
     *ppbridge = new Bridge<FORTRANFPTYPE>( *pnevtF, *pnparF, *pnp4F );
@@ -66,9 +60,7 @@ extern "C"
     Bridge<FORTRANFPTYPE>* pbridge = dynamic_cast<Bridge<FORTRANFPTYPE>*>( *ppbridge );
     if( pbridge == 0 ) throw std::runtime_error( "fbridgedelete_: invalid Bridge address" );
     delete pbridge;
-#ifdef MGONGPUCPP_GPUIMPL
     GpuRuntime::tearDown();
-#endif
   }
 
   /**
@@ -101,15 +93,9 @@ extern "C"
     Bridge<FORTRANFPTYPE>* pbridge = dynamic_cast<Bridge<FORTRANFPTYPE>*>( *ppbridge );
     //printf("fbridgesequence_ goodHelOnly=%d\n", ( *pgoodHelOnly ? 1 : 0 ) );
     if( pbridge == 0 ) throw std::runtime_error( "fbridgesequence_: invalid Bridge address" );
-#ifdef MGONGPUCPP_GPUIMPL
     // Use the device/GPU implementation in the CUDA library
     // (there is also a host implementation in this library)
     pbridge->gpu_sequence( momenta, gs, iflavorVec, rndhel, rndcol, channelIds, mes, selhel, selcol, *pgoodHelOnly );
-#else
-    // Use the host/CPU implementation in the C++ library
-    // (there is no device implementation in this library)
-    pbridge->cpu_sequence( momenta, gs, iflavorVec, rndhel, rndcol, channelIds, mes, selhel, selcol, *pgoodHelOnly );
-#endif
   }
 
   /**

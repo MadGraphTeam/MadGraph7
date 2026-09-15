@@ -25,40 +25,24 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
-#ifdef MGONGPUCPP_GPUIMPL
-#define TESTID( s ) s##_GPU_XXX
-#else
 #define TESTID( s ) s##_CPU_XXX
-#endif
 
 #define XTESTID( s ) TESTID( s )
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   std::string fpeHandlerMessage = "unknown";
   int fpeHandlerIevt = -1;
   inline void fpeHandlerTestxxx( int /*sig*/ )
   {
-#ifdef MGONGPUCPP_GPUIMPL
-    std::cerr << "Floating Point Exception (GPU): '" << fpeHandlerMessage << "' ievt=" << fpeHandlerIevt << std::endl;
-#else
     std::cerr << "Floating Point Exception (CPU neppV=" << neppV << "): '" << fpeHandlerMessage << "' ievt=" << fpeHandlerIevt << std::endl;
-#endif
     exit( 1 );
   }
 }
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
   using namespace mg5amcCpu;
-#endif
 #ifndef __APPLE__ // test #701 (except on MacOS where feenableexcept is not defined #730)
   auto fpeHandlerDefault = signal( SIGFPE, fpeHandlerTestxxx );
 #endif
@@ -72,11 +56,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   assert( nevt %% neppM == 0 ); // nevt must be a multiple of neppM
   assert( nevt %% neppV == 0 ); // nevt must be a multiple of neppV
   // Fill in the input momenta
-#ifdef MGONGPUCPP_GPUIMPL
-  mg5amcGpu::PinnedHostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
-#else
   mg5amcCpu::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
-#endif /* clang-format off */
   // NB NEW TESTS FOR DEBUGGING #701: KEEP TWO SEPARATE SETS (16-SIMD-VECTORS!) OF TESTS FOR M==0 AND M!=0!
   const fptype par0[np4 * nevt] = // AOS[nevt][np4]
     {
@@ -167,7 +147,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
     out << "                                   // ---------" << std::endl;
     for( int iw6 = 0; iw6 < nw6; iw6++ )
     {
-#ifdef MGONGPU_CPPSIMD
       const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
       out << std::setw( 26 ) << cxreal( wf[iw6][ieppV] ) << ", ";
@@ -175,10 +154,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 #else
       out << std::setw( 26 ) << wf[iw6].real()[ieppV] << ", ";
       out << std::setw( 22 ) << wf[iw6].imag()[ieppV];
-#endif
-#else
-      out << std::setw( 26 ) << wf[iw6].real();
-      out << ", " << std::setw( 22 ) << wf[iw6].imag();
 #endif
       if( iw6 < nw6 - 1 )
         out << ",    ";
@@ -207,7 +182,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
         const fptype expImag = expwf[iw6 * 2 + 1];
         if( true )
         {
-#ifdef MGONGPU_CPPSIMD
           const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
           EXPECT_NEAR( cxreal( wf[iw6][ieppV] ), expReal, std::abs( expReal * toleranceXXXs ) )
@@ -218,12 +192,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
           EXPECT_NEAR( wf[iw6].real()[ieppV], expReal, std::abs( expReal * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt;
           EXPECT_NEAR( wf[iw6].imag()[ieppV], expImag, std::abs( expImag * toleranceXXXs ) )
-            << " itest=" << itest << ": " << xxx << "#" << ievt;
-#endif
-#else
-          EXPECT_NEAR( cxreal( wf[iw6] ), expReal, std::abs( expReal * toleranceXXXs ) )
-            << " itest=" << itest << ": " << xxx << "#" << ievt;
-          EXPECT_NEAR( cximag( wf[iw6] ), expImag, std::abs( expImag * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt;
 #endif
         }
@@ -246,7 +214,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
       {
         if( true )
         {
-#ifdef MGONGPU_CPPSIMD
           const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
           const fptype expReal = cxreal( expwf[iw6][ieppV] );
@@ -261,14 +228,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
           EXPECT_NEAR( wf[iw6].real()[ieppV], expReal, std::abs( expReal * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt << " against " << xxxFull;
           EXPECT_NEAR( wf[iw6].imag()[ieppV], expImag, std::abs( expImag * toleranceXXXs ) )
-            << " itest=" << itest << ": " << xxx << "#" << ievt << " against " << xxxFull;
-#endif
-#else
-          const fptype expReal = cxreal( expwf[iw6] );
-          const fptype expImag = cximag( expwf[iw6] );
-          EXPECT_NEAR( cxreal( wf[iw6] ), expReal, std::abs( expReal * toleranceXXXs ) )
-            << " itest=" << itest << ": " << xxx << "#" << ievt << " against " << xxxFull;
-          EXPECT_NEAR( cximag( wf[iw6] ), expImag, std::abs( expImag * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt << " against " << xxxFull;
 #endif
         }
@@ -317,11 +276,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   {
     for( int ievt = 0; ievt < nevt; ievt++ )
     {
-#ifdef MGONGPUCPP_GPUIMPL
-      using namespace mg5amcGpu;
-#else
       using namespace mg5amcCpu;
-#endif
       if( debug )
       {
         std::cout << std::endl;
@@ -438,9 +393,6 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
 void
 myexit()
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  //checkGpu( gpuDeviceReset() ); // FIXME??? this still crashes! should systematically avoid CUDA calls in all destructors?
-#endif
 }
 
 // Main function (see https://google.github.io/googletest/primer.html#writing-the-main-function)

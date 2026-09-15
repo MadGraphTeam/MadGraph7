@@ -14,11 +14,7 @@
 
 //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   template<typename FORTRANFPTYPE>
   class Sampler final : public CppObjectInFortran
@@ -41,15 +37,9 @@ namespace mg5amcCpu
   private:
     const int m_nevt; // The number of events in each iteration
     int m_iiter;      // The iteration counter (for random number seeding)
-#ifndef MGONGPUCPP_GPUIMPL
-    HostBufferRndNumMomenta m_hstRndmom; // Memory buffers for random numbers
-    HostBufferMomenta m_hstMomenta;      // Memory buffers for momenta
-    HostBufferWeights m_hstWeights;      // Memory buffers for sampling weights
-#else
     PinnedHostBufferRndNumMomenta m_hstRndmom; // Memory buffers for random numbers
     PinnedHostBufferMomenta m_hstMomenta;      // Memory buffers for momenta
     PinnedHostBufferWeights m_hstWeights;      // Memory buffers for sampling weights
-#endif
     std::unique_ptr<RandomNumberKernelBase> m_prnk; // The appropriate RandomNumberKernel
     std::unique_ptr<SamplingKernelBase> m_prsk;     // The appropriate SamplingKernel
     // HARDCODED DEFAULTS
@@ -106,11 +96,7 @@ namespace mg5amcCpu
 
 extern "C"
 {
-#ifdef MGONGPUCPP_GPUIMPL
   using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
 
   /**
    * The floating point precision used in Fortran arrays.

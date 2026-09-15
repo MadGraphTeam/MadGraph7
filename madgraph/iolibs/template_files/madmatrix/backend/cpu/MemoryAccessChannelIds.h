@@ -14,11 +14,7 @@
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL // fix #893 (not __CUDACC__)
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //----------------------------------------------------------------------------
 
@@ -103,14 +99,7 @@ namespace mg5amcCpu
     kernelAccessConst( const unsigned int* buffer )
     {
       const unsigned int& out = kernelAccessConst_s( buffer );
-#ifndef MGONGPU_CPPSIMD
       return out;
-#else
-      // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
-      static_assert( mg5amcCpu::HostBufferChannelIds::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return mg5amcCpu::uintvFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
-#endif
     }
   };
 

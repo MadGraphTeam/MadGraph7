@@ -16,11 +16,7 @@
 #include <map>
 #include <memory>
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -109,58 +105,9 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPUCPP_GPUIMPL
-  // A class encapsulating matrix element calculations on a CPU host
-  class MatrixElementKernelHost final : public MatrixElementKernelBase, public NumberOfEvents
-  {
-  public:
-
-    // Constructor from existing input and output buffers
-    MatrixElementKernelHost( const BufferMomenta& momenta,         // input: momenta
-                             const BufferGs& gs,                   // input: gs for alphaS
-                             const BufferIflavorVec& iflavorVec,   // input: flavor indices for the flavor combination
-                             const BufferRndNumHelicity& rndhel,   // input: random numbers for helicity selection
-                             const BufferRndNumColor& rndcol,      // input: random numbers for color selection
-                             const BufferChannelIds& channelIds,   // input: channel ids for single-diagram enhancement
-                             BufferMatrixElements& matrixElements, // output: matrix elements
-                             BufferSelectedHelicity& selhel,       // output: helicity selection
-                             BufferSelectedColor& selcol,          // output: color selection
-                             const size_t nevt);
-
-    // Destructor
-    virtual ~MatrixElementKernelHost();
-
-    // Compute good helicities (returns nGoodHel, the number of good helicity combinations out of ncomb)
-    int computeGoodHelicities() override final;
-
-    // Compute matrix elements
-    void computeMatrixElements( const bool useChannelIds ) override final;
-
-    // Is this a host or device kernel?
-    bool isOnDevice() const override final { return false; }
-
-  private:
-
-    // Does this host system support the SIMD used in the matrix element calculation?
-    // [NB: this is private, SIMD vectorization in mg5amc C++ code is currently only used in the ME calculations below MatrixElementKernelHost!]
-    static bool hostSupportsSIMD( const bool verbose = false ); // ZW: default verbose false
-
-  private:
-
-    // The buffer for the event-by-event couplings that depends on alphas QCD
-    HostBufferCouplings m_couplings;
-
-    // The buffer for the event-by-event numerators of multichannel factors
-    HostBufferNumerators m_numerators;
-
-    // The buffer for the event-by-event denominators of multichannel factors
-    HostBufferDenominators m_denominators;
-  };
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   // A class encapsulating matrix element calculations on a GPU device
   class MatrixElementKernelDevice : public MatrixElementKernelBase, public NumberOfEvents
   {
@@ -243,7 +190,6 @@ namespace mg5amcCpu
     // The number of threads in the GPU grid
     size_t m_gputhreads;
   };
-#endif
 
   //--------------------------------------------------------------------------
 }

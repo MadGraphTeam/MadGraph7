@@ -35,13 +35,8 @@
 #endif
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
-#ifdef MGONGPU_CPPSIMD
 
   const int neppV = MGONGPU_CPPSIMD;
 
@@ -231,11 +226,6 @@ namespace mg5amcCpu
 #endif
 #endif
 
-#else // i.e #ifndef MGONGPU_CPPSIMD (this includes #ifdef MGONGPUCPP_GPUIMPL)
-
-  const int neppV = 1;
-
-#endif // #ifdef MGONGPU_CPPSIMD
 }
 
 //--------------------------------------------------------------------------
@@ -253,13 +243,8 @@ namespace mg5amcCpu
 //==========================================================================
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
-#ifndef MGONGPUCPP_GPUIMPL
 
   // Printout to stream for user defined types
 
@@ -286,7 +271,6 @@ namespace mg5amcCpu
 #endif
   */
 
-#ifdef MGONGPU_CPPSIMD
   inline std::ostream&
   operator<<( std::ostream& out, const fptype_v& v )
   {
@@ -295,7 +279,6 @@ namespace mg5amcCpu
     out << " }";
     return out;
   }
-#endif
 
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
   inline std::ostream&
@@ -308,7 +291,6 @@ namespace mg5amcCpu
   }
 #endif
 
-#ifdef MGONGPU_CPPSIMD
   inline std::ostream&
   operator<<( std::ostream& out, const cxtype_v& v )
   {
@@ -322,9 +304,7 @@ namespace mg5amcCpu
     out << " }";
     return out;
   }
-#endif
 
-#ifdef MGONGPU_CPPSIMD
   inline std::ostream&
   operator<<( std::ostream& out, const uint_v& v )
   {
@@ -333,7 +313,6 @@ namespace mg5amcCpu
     out << " }";
     return out;
   }
-#endif
 
   //--------------------------------------------------------------------------
 
@@ -357,7 +336,6 @@ namespace mg5amcCpu
 
   // Functions and operators for fptype_v
 
-#ifdef MGONGPU_CPPSIMD
   inline fptype_v
   fpsqrt( const volatile fptype_v& v ) // volatile fixes #736
   {
@@ -388,7 +366,6 @@ namespace mg5amcCpu
     for( int i = 0; i < neppV; i++ ) out[i] = std::signbit( v[i] );
     return out;
   }
-#endif
 
   /*
 #ifdef MGONGPU_CPPSIMD
@@ -406,7 +383,6 @@ namespace mg5amcCpu
 
   // Functions and operators for cxtype_v
 
-#ifdef MGONGPU_CPPSIMD
 
   /*
   inline cxtype_v
@@ -643,13 +619,10 @@ namespace mg5amcCpu
                      ( a.imag() * b.real() - a.real() * b.imag() ) / bnorm );
   }
 
-#endif // #ifdef MGONGPU_CPPSIMD
-
   //--------------------------------------------------------------------------
 
   // Functions and operators for bool_v (ternary and masks)
 
-#ifdef MGONGPU_CPPSIMD
 
   inline fptype_v
   fpternary( const bool_v& mask, const fptype_v& a, const fptype_v& b )
@@ -778,43 +751,11 @@ namespace mg5amcCpu
     return out;
   }
 
-#else // i.e. #ifndef MGONGPU_CPPSIMD
-
-  template<typename FP>
-  inline FP
-  fpternary( const bool& mask, const FP& a, const FP& b )
-  {
-    return ( mask ? a : b );
-  }
-
-  template<typename CX>
-  inline CX
-  cxternary( const bool& mask, const CX& a, const CX& b )
-  {
-    return ( mask ? a : b );
-  }
-
-  /*
-  inline bool
-  maskor( const bool& mask )
-  {
-    return mask;
-  }
-  */
-
-  inline bool
-  maskand( const bool& mask )
-  {
-    return mask;
-  }
-
-#endif // #ifdef MGONGPU_CPPSIMD
 
   //--------------------------------------------------------------------------
 
   // Functions and operators for fptype_v (min/max)
 
-#ifdef MGONGPU_CPPSIMD
 
   inline fptype_v
   fpmax( const fptype_v& a, const fptype_v& b )
@@ -881,7 +822,6 @@ namespace mg5amcCpu
     fptype_v *m_preal, *m_pimag; // RRRRIIII
   };
 
-#endif // #ifdef MGONGPU_CPPSIMD
 
   //--------------------------------------------------------------------------
 
@@ -908,16 +848,8 @@ namespace mg5amcCpu
     }
     return out;
     */
-#if MGONGPU_CPPSIMD == 2
     fptype2_v out =
       { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v2[0], (fptype2)v2[1] };
-#elif MGONGPU_CPPSIMD == 4
-    fptype2_v out =
-      { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3] };
-#elif MGONGPU_CPPSIMD == 8
-    fptype2_v out =
-      { (fptype2)v1[0], (fptype2)v1[1], (fptype2)v1[2], (fptype2)v1[3], (fptype2)v1[4], (fptype2)v1[5], (fptype2)v1[6], (fptype2)v1[7], (fptype2)v2[0], (fptype2)v2[1], (fptype2)v2[2], (fptype2)v2[3], (fptype2)v2[4], (fptype2)v2[5], (fptype2)v2[6], (fptype2)v2[7] };
-#endif
     return out;
   }
 
@@ -931,16 +863,8 @@ namespace mg5amcCpu
       out[ieppV] = v[ieppV];
     }
     */
-#if MGONGPU_CPPSIMD == 2
     fptype_v out =
       { (fptype)v[0], (fptype)v[1] };
-#elif MGONGPU_CPPSIMD == 4
-    fptype_v out =
-      { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3] };
-#elif MGONGPU_CPPSIMD == 8
-    fptype_v out =
-      { (fptype)v[0], (fptype)v[1], (fptype)v[2], (fptype)v[3], (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
-#endif
     return out;
   }
 
@@ -954,93 +878,20 @@ namespace mg5amcCpu
       out[ieppV] = v[ieppV+neppV];
     }
     */
-#if MGONGPU_CPPSIMD == 2
     fptype_v out =
       { (fptype)v[2], (fptype)v[3] };
-#elif MGONGPU_CPPSIMD == 4
-    fptype_v out =
-      { (fptype)v[4], (fptype)v[5], (fptype)v[6], (fptype)v[7] };
-#elif MGONGPU_CPPSIMD == 8
-    fptype_v out =
-      { (fptype)v[8], (fptype)v[9], (fptype)v[10], (fptype)v[11], (fptype)v[12], (fptype)v[13], (fptype)v[14], (fptype)v[15] };
-#endif
     return out;
   }
 
 #endif // #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
 
-#endif // #ifndef MGONGPUCPP_GPUIMPL
 
   //==========================================================================
-
-#ifdef MGONGPUCPP_GPUIMPL
-
-  //------------------------------
-  // Vector types - CUDA
-  //------------------------------
-
-  // Printout to std::cout for user defined types
-  inline __host__ __device__ void
-  print( const fptype& f )
-  {
-    printf( "%f\n", f );
-  }
-  inline __host__ __device__ void
-  print( const cxtype& c )
-  {
-    printf( "[%f, %f]\n", cxreal( c ), cximag( c ) );
-  }
-
-  /*
-  inline __host__ __device__ const cxtype&
-  cxvmake( const cxtype& c )
-  {
-    return c;
-  }
-  */
-
-  template<typename FP>
-  inline __host__ __device__ FP
-  fpternary( const bool& mask, const FP& a, const FP& b )
-  {
-    return ( mask ? a : b );
-  }
-
-  template<typename CX>
-  inline __host__ __device__ CX
-  cxternary( const bool& mask, const CX& a, const CX& b )
-  {
-    return ( mask ? a : b );
-  }
-
-  inline __host__ __device__ bool
-  maskand( const bool& mask )
-  {
-    return mask;
-  }
-
-#endif // #ifdef MGONGPUCPP_GPUIMPL
 
   //==========================================================================
 
   // Scalar-or-vector types: scalar in CUDA, vector or scalar in C++.
   // 3 mixed-precision stages: _amp (== fptype), _momenta (== _denom), _colour (== fptype2).
-#ifdef MGONGPUCPP_GPUIMPL
-  typedef bool bool_sv;
-  typedef fptype fptype_sv;
-  typedef fptype2 fptype2_sv;
-  typedef unsigned int uint_sv;
-  typedef cxtype cxtype_sv;
-  typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
-  typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
-  typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
-  typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
-  typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
-  typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
-  typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
-#elif defined MGONGPU_CPPSIMD
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
   typedef fptype2_v fptype2_sv;
@@ -1064,22 +915,6 @@ namespace mg5amcCpu
   typedef cxtype_v cxtype_momenta_v;          typedef cxtype_v cxtype_momenta_sv;
   typedef cxtype_v cxtype_denom_v;            typedef cxtype_v cxtype_denom_sv;
 #endif
-#else
-  typedef bool bool_sv;
-  typedef fptype fptype_sv;
-  typedef fptype2 fptype2_sv;
-  typedef unsigned int uint_sv;
-  typedef cxtype cxtype_sv;
-  typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
-  typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
-  typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
-  typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
-  typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
-  typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
-  typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
-#endif
 
   // narrowing/casting operators for unification
 #ifdef MGONGPU_SIMD_DENOM64
@@ -1092,17 +927,9 @@ namespace mg5amcCpu
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
   // Template version for multi-precision (explicit template parameter required)
-#ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
-  template<typename CX = cxtype>
-  inline __host__ __device__ CX cxzero_sv(){ return CX( 0, 0 ); }
-#elif defined MGONGPU_CPPSIMD
   inline cxtype_v cxzero_sv() { return cxtype_v(); } // RRRR=0000 IIII=0000
   template<typename CX>
   inline CX cxzero_sv() { return CX{}; }
-#else
-  template<typename CX = cxtype>
-  inline CX cxzero_sv() { return CX{}; }
-#endif /* clang-format on */
 
   //==========================================================================
 
