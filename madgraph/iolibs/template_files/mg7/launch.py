@@ -1649,6 +1649,10 @@ class MadgraphSubprocess:
                     pdf_reweighting=self.process.run_card["beam"][
                         "pdf_reweighting"
                     ],
+                    clustering_measure=getattr(
+                        ms.MLMClustering.ClusteringMeasure,
+                        self.process.run_card["beam"]["clustering_measure"],
+                    ),
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
                 max_scale=max_scale,

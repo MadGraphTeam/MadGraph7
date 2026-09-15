@@ -1861,3 +1861,101 @@ def test_a_jet_emitted_before_the_tops_does_not_set_the_renormalisation_scale():
         "mu_R == mu_F on only %.1f%% of jet-into-beam points"
         % (100 * np.mean(same[jet_into_beam]))
     )
+
+
+# --------------------------------------------------------------------------
+# clustering_measure: FxFx (NLO cluster_scale) against madevent's LO DJ
+# --------------------------------------------------------------------------
+
+
+def w_plus_jet_two_diagrams():
+    """g u > e+ ve d with both ways the jet can be clustered:
+
+      s-channel: g u > u*, u* > d W - the jet pairs with the W (massless mother,
+                 massive and massless daughters, the case the measures disagree
+                 on)
+      t-channel: u emits the W and becomes d*, d* g > d - the jet goes into
+                 beam 0
+
+    madevent scores the (W, d) pair by the d's transverse mass times 1 + 1e-6,
+    which never beats taking the d into a beam; the FxFx measure scores it by
+    sqrt(|p_d.(p_d+p_W)|)/2, which often does."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 2), (M_W, W_W, 24)],
+            "vertices": [["i1", "i0", "p0"], ["o0", "o1", "p1"], ["p0", "o2", "p1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 1), (M_W, W_W, 24)],
+            "vertices": [["o0", "o1", "p1"], ["i1", "p1", "p0"], ["p0", "i0", "o2"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+    ]
+
+
+def w_plus_jet_two_diagram_clustering(**kwargs):
+    diagrams = w_plus_jet_two_diagrams()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=W_PLUS_JET_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        **kwargs,
+    )
+
+
+def jet_into_beam_fraction(clustering, momenta):
+    outgoing = run(clustering, momenta)[3]
+    jet = momenta[:, 4, :]
+    jet_pt = np.sqrt(jet[:, 1] ** 2 + jet[:, 2] ** 2)
+    return np.mean(np.abs(outgoing[:, 2] / jet_pt - 1.0) < 1e-5)
+
+
+def test_fxfx_is_the_default_clustering_measure():
+    clustering = w_plus_jet_two_diagram_clustering()
+    assert clustering.clustering_measure == ms.MLMClustering.ClusteringMeasure.fxfx
+
+
+def test_the_madevent_measure_takes_the_jet_into_the_beam():
+    """Under madevent's measure the jet never pairs with the W: its scale is its
+    transverse momentum on every point, as in madevent (99% there, the rest
+    being histories without this choice). Half of these jets go against the
+    beam, where only the LO ordering of the 1 + 1e-6 factors and madevent's
+    keep-the-first tie-break decide it."""
+    momenta = sample_momenta(w_plus_jet_two_diagrams(), batch_size=4000)
+    clustering = w_plus_jet_two_diagram_clustering(
+        clustering_measure=ms.MLMClustering.ClusteringMeasure.madevent
+    )
+    assert jet_into_beam_fraction(clustering, momenta) == 1.0
+
+
+def test_the_fxfx_measure_lets_the_jet_pair_with_the_w():
+    """The FxFx score of the (W, d) pair is often below the d's pt, so some jets
+    pair with the W instead - which is exactly what made W + 1 jet (quark jets)
+    and h + 1 jet (gluon jets) low against madevent."""
+    momenta = sample_momenta(w_plus_jet_two_diagrams(), batch_size=4000)
+    fxfx = jet_into_beam_fraction(
+        w_plus_jet_two_diagram_clustering(
+            clustering_measure=ms.MLMClustering.ClusteringMeasure.fxfx
+        ),
+        momenta,
+    )
+    assert fxfx < 0.95, "the FxFx measure should pair a visible fraction with the W"

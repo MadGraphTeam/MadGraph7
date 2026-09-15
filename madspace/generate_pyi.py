@@ -61,6 +61,7 @@ def main():
             "--enum-class-locations=ScaleScheme:MLMClustering.ScaleScheme",
             "--enum-class-locations=PartonLineScheme:MLMClustering.PartonLineScheme",
             "--enum-class-locations=AlphasScheme:MLMClustering.AlphasScheme",
+            "--enum-class-locations=ClusteringMeasure:MLMClustering.ClusteringMeasure",
             # Fail the build on unresolvable names/expressions (e.g. an enum
             # default value needing its own --enum-class-locations entry)
             # instead of silently emitting a stub with holes in it.

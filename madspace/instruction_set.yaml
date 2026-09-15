@@ -2259,6 +2259,9 @@ mlm_clustering_hadronic:
     - name: pdf_reweighting
       type: [int, single]
       desc:
+    - name: clustering_measure
+      type: [int, single]
+      desc:
   outputs:
     - name: ren_scale
       type: [float]
@@ -2362,6 +2365,9 @@ mlm_clustering_leptonic:
       type: [int, single]
       desc:
     - name: pdf_reweighting
+      type: [int, single]
+      desc:
+    - name: clustering_measure
       type: [int, single]
       desc:
   outputs:

@@ -6589,6 +6589,18 @@ class RunCardMG7(RunCard):
         # is on by default there. Only read when dynamical_scale_choice = "mlm"
         # and scale_scheme = "madevent".
         self.add_toml_param('beam', 'pdf_reweighting', True)
+        # Which measure scores a candidate final-state clustering. The two only
+        # differ for a non-resonant pair with a massless mother and one massive
+        # and one massless daughter (q* > q W, g* > g h), or a massive mother
+        # with two massless daughters:
+        #   "fxfx":     cluster_scale of Template/NLO/SubProcesses/cluster.f,
+        #               sqrt(|p_j.(p_i+p_j)|)/2 and the invariant mass
+        #   "madevent": DJ of Template/LO/Source/kin_functions.f, as madevent's
+        #               LO clustering does: the massless one's transverse mass
+        #               for a massless-massive pair, the kt measure otherwise
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'clustering_measure', "fxfx",
+            allowed=['fxfx', 'madevent'])
         # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
         # the lowest Q of a PDF grid the densities are undefined, so an event
         # whose scales fall under this is dropped. madevent applies the same

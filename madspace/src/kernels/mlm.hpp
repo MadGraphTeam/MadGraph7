@@ -31,6 +31,10 @@ constexpr int SCALES_MADEVENT = 1;
 // daughter's own flavour, or from the propagated goodjet flag of reweight.f.
 constexpr int LINE_FLAVOR = 0;
 constexpr int LINE_GOODJET = 1;
+// ClusteringMeasure in mlm_clustering.hpp: which definition scores a
+// non-resonant final-state clustering.
+constexpr int MEASURE_FXFX = 0;
+constexpr int MEASURE_MADEVENT = 1;
 // How alpha_s is evaluated for a merged event.
 constexpr int ALPHAS_NONE = 0;          // one coupling at mu_R, as before
 constexpr int ALPHAS_PER_VERTEX = 1;    // alphas(pt_i) at each vertex, as madevent
@@ -147,11 +151,24 @@ KERNELSPEC FVal<T> compute_scale(
     bool massive_out1,
     bool massive_out2,
     bool hadronic,
-    FVal<T> jet_radius
+    FVal<T> jet_radius,
+    int measure
 ) {
     if (is_initial) {
         // scale = mT of the final-state parton
         // small penalty when it goes against the beam
+        if (measure == MEASURE_MADEVENT) {
+            // LO cluster.f multiplies pt2ij, the squared measure, by 1 + 1e-6,
+            // which is exactly the factor DJ gives a massless-massive
+            // final-state pair: the two tie, and madevent keeps the
+            // initial-state candidate it evaluated first. Taking the square
+            // root of the same product keeps the tie bit-for-bit here.
+            auto djb = djb_clus<T>(momentum2, hadronic);
+            if ((momentum1[3] < 0.0) != (momentum2[3] < 0.0)) {
+                djb = djb * ONE_PLUS_TINY;
+            }
+            return sqrt(djb);
+        }
         auto scale = sqrt(djb_clus<T>(momentum2, hadronic));
         if ((momentum1[3] < 0.0) != (momentum2[3] < 0.0)) {
             scale = scale * ONE_PLUS_TINY;
@@ -160,6 +177,17 @@ KERNELSPEC FVal<T> compute_scale(
     }
     if (resonant) {
         return sqrt(max(lsquare<T>(momentum_sum), 0.0));
+    }
+    if (measure == MEASURE_MADEVENT) {
+        // DJ of Template/LO/Source/kin_functions.f, which madevent's LO
+        // cluster.f takes for every final-state pair: dj_clus already scores a
+        // massless-massive pair by the massless one's transverse mass (times
+        // 1 + 1e-6) and anything else by the kt measure with the larger mass
+        // squared added. The branches below are the NLO cluster_scale's, which
+        // score q* > q W and g* > g h by sqrt(|p_j.(p_i+p_j)|)/2 instead - often
+        // below the jet's pt, so the jet pairs with the boson where madevent
+        // takes it into a beam.
+        return sqrt(dj_clus<T>(momentum1, momentum2, mass1, mass2, hadronic, jet_radius));
     }
     if (!massive_in && massive_out1 && !massive_out2) {
         return sqrt(fabs(ldot<T>(momentum2, momentum_sum))) / 2.0;
@@ -251,6 +279,7 @@ KERNELSPEC void mlm_clustering(
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
+    IIn<T, 0> clustering_measure,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -318,6 +347,7 @@ KERNELSPEC void mlm_clustering(
 
     int win_next_state = -1, win_data = 0, win_trace = TRACE_FIRST;
     bool win_resonant = false;
+    bool win_initial = false;
     FVal<T> win_scale = SCALE_MAX * 10.;
     while (cluster_count < cluster_max) {
         int data = state_machine[state];
@@ -362,7 +392,8 @@ KERNELSPEC void mlm_clustering(
             massive_out1,
             massive_out2,
             hadronic,
-            jet_radius
+            jet_radius,
+            clustering_measure
         );
 
         // An exactly collinear pair - which the boost and rotation applied after
@@ -377,13 +408,22 @@ KERNELSPEC void mlm_clustering(
         // The MG5 fortran code extracted the resonance structure from the integration
         // channel. This is not always possible in MG7, so prefer resonant configs
         // over non-resonant ones
+        // madevent's cluster.f keeps the first of two equal candidates, and it
+        // always tries a leg against the beams before the final-state legs. Under
+        // the madevent measure an initial-state clustering and a massless-massive
+        // final-state one can tie exactly, so settle that tie the same way
+        // whatever order the state machine lists them in.
+        bool beats_on_tie = clustering_measure == MEASURE_MADEVENT &&
+            is_initial && !win_initial &&
+            !(scale > win_scale * (1.0 + 1e-12));
         if (win_next_state == -1 || (!win_resonant && resonant) ||
-            (win_resonant == resonant && scale < win_scale)) {
+            (win_resonant == resonant && (scale < win_scale || beats_on_tie))) {
             win_next_state = next_state;
             win_scale = scale;
             win_data = data;
             win_trace = trace_data;
             win_resonant = resonant;
+            win_initial = is_initial;
         }
         if (is_last) {
             int p1_win = win_data & 0xFF;
@@ -464,6 +504,7 @@ KERNELSPEC void mlm_clustering(
             win_data = 0;
             win_trace = TRACE_FIRST;
             win_resonant = false;
+            win_initial = false;
             win_scale = SCALE_MAX * 10.;
         } else {
             state += STATE_ITEM_SIZE;
@@ -1316,6 +1357,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
+    IIn<T, 0> clustering_measure,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1351,6 +1393,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         parton_line_scheme,
         alphas_scheme,
         pdf_reweighting,
+        clustering_measure,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -1390,6 +1433,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> parton_line_scheme,
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
+    IIn<T, 0> clustering_measure,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1425,6 +1469,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         parton_line_scheme,
         alphas_scheme,
         pdf_reweighting,
+        clustering_measure,
         ren_scale,
         fact_scale1,
         fact_scale2,

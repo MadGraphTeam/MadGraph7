@@ -501,7 +501,8 @@ MLMClustering::MLMClustering(
     int max_jet_flavor,
     PartonLineScheme parton_line_scheme,
     AlphasScheme alphas_scheme,
-    bool pdf_reweighting
+    bool pdf_reweighting,
+    ClusteringMeasure clustering_measure
 ) :
     FunctionGenerator(
         "MLMClustering",
@@ -544,6 +545,7 @@ MLMClustering::MLMClustering(
     _parton_line_scheme(parton_line_scheme),
     _alphas_scheme(alphas_scheme),
     _pdf_reweighting(pdf_reweighting),
+    _clustering_measure(clustering_measure),
     _beam_flags(0),
     _jet_leg_mask(0),
     _xqcut(xqcut),
@@ -841,7 +843,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_jet_leg_mask),
             static_cast<me_int_t>(_parton_line_scheme),
             static_cast<me_int_t>(_alphas_scheme),
-            static_cast<me_int_t>(_pdf_reweighting)
+            static_cast<me_int_t>(_pdf_reweighting),
+            static_cast<me_int_t>(_clustering_measure)
         );
     } else {
         mlm_out = fb.mlm_clustering_leptonic(
@@ -861,7 +864,8 @@ NamedVector<Value> MLMClustering::build_function_impl(
             static_cast<me_int_t>(_jet_leg_mask),
             static_cast<me_int_t>(_parton_line_scheme),
             static_cast<me_int_t>(_alphas_scheme),
-            static_cast<me_int_t>(_pdf_reweighting)
+            static_cast<me_int_t>(_pdf_reweighting),
+            static_cast<me_int_t>(_clustering_measure)
         );
     }
     return {return_types().keys(), {mlm_out.begin(), mlm_out.end()}};
