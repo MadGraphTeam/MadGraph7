@@ -468,7 +468,7 @@ class MadgraphProcess:
         # Leaving mjj out is what makes the highest multiplicity misbehave at a
         # tight xqcut: almost every point it proposes is vetoed, and the few
         # survivors sit against a boundary it cannot see.
-        for key in ("jet-pt", "jet-m_inv"):
+        for key in ("jet-pt", "jet-pair_mass"):
             if auto:
                 cuts.setdefault(key, {})["min"] = xqcut
             elif cuts.get(key, {}).get("min", 0.0) > xqcut:
