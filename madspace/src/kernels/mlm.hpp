@@ -260,8 +260,12 @@ KERNELSPEC void update_momenta(
     }
 }
 
+// One clustering history, walked from start_state: 0 is the root of the
+// state machine over every diagram, anything else the root of the one compiled
+// for a single diagram. Writes every output and returns the number of outgoing
+// legs the history calls merging jets.
 template <typename T>
-KERNELSPEC void mlm_clustering(
+KERNELSPEC int mlm_clustering_walk(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
     IIn<T, 1> state_machine,
@@ -296,13 +300,14 @@ KERNELSPEC void mlm_clustering(
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
     FOut<T, 1> pdf_rw_beam,
+    int start_state,
     bool hadronic
 ) {
     // we do not support SIMD for now, so we can assume simple types
     static_assert(std::is_same_v<IVal<T>, int>);
     static_assert(std::is_same_v<FVal<T>, double>);
 
-    int state = 0, cluster_count = 0;
+    int state = start_state, cluster_count = 0;
     int cluster_max = momenta.size() - 3;
     int n_part = momenta.size();
     FourMom<T> momenta_tmp[N_EXT_MAX];
@@ -555,6 +560,11 @@ KERNELSPEC void mlm_clustering(
     // second time.
     int step_bare[N_EXT_MAX - 3];
     int step_mother_leg1[N_EXT_MAX - 3], step_mother_leg2[N_EXT_MAX - 3];
+    // The external legs each daughter's line ends at, as the step found them:
+    // (daughter 1 first, daughter 2 second, -1 for none). madevent's ptclus
+    // loop reads ipart of the daughters, which the slots no longer hold once
+    // the mother has taken them over.
+    int step_daughter_legs[N_EXT_MAX - 3][4];
 
     bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
     FVal<T> ren_scale_val = 1.0;
@@ -610,6 +620,11 @@ KERNELSPEC void mlm_clustering(
             ren_scale_val *= max_scale;
         }
         is_last_cluster &= ~((1 << particle1) | (1 << particle2));
+
+        step_daughter_legs[i][0] = rep1[particle1];
+        step_daughter_legs[i][1] = rep2[particle1];
+        step_daughter_legs[i][2] = rep1[particle2];
+        step_daughter_legs[i][3] = rep2[particle2];
 
         // Carry the parton line into the mother, which occupies slot
         // particle1. Only needed for the production scheme, but keeping it
@@ -851,11 +866,16 @@ KERNELSPEC void mlm_clustering(
         };
 
         int steps = cluster_max + (leftover >= 0 ? 1 : 0);
+        // goodjet of the two daughters as each step meets them, before the
+        // step turns the first slot into the mother. The ptclus loop needs it.
+        bool step_daughter_goodjet[N_EXT_MAX - 3][2];
         for (int i = 0; i < cluster_max; ++i) {
             int data = cluster_history[i];
             int particle1 = data & 0xFF;
             int particle2 = (data >> 8) & 0xFF;
             int trace = cluster_trace[i];
+            step_daughter_goodjet[i][0] = goodjet[particle1];
+            step_daughter_goodjet[i][1] = goodjet[particle2];
             bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
             if (particle1 >= 2) {
                 // Final-state clustering. isjetvx() of reweight.f: a QCD
@@ -1041,6 +1061,71 @@ KERNELSPEC void mlm_clustering(
         }
         for (int i = 0; i < cluster_max; ++i) {
             alphas_step[i] = pt_step[i];
+        }
+
+        // The jet scales madevent writes, the "Store jet info for matching"
+        // loop at the end of setclscales. A leg only takes a scale from a jet
+        // vertex its line is still a good jet at, and a line stops being one
+        // at the first leg that iqjets does not call a merging jet. Everything
+        // else is written at sqrt(s), which is what tells the shower's MLM
+        // matching to leave that parton alone: without this a VBF tagging
+        // quark that radiated a gluon kept the scale of that emission, and was
+        // matched and vetoed as if it were a merging jet.
+        //
+        // Only the production scheme is madevent's; the emission scheme keeps
+        // the booking above.
+        if (by_production) {
+            FVal<T> ptclus[N_EXT_MAX];
+            for (int leg = 0; leg < n_part; ++leg) {
+                ptclus[leg] = 0.0;
+            }
+            auto book = [&](int leg, bool jet_vertex, bool& good, FVal<T> scale) {
+                if (leg < 2) {
+                    return;
+                }
+                if (good && iqjets[leg] == 0) {
+                    good = false;
+                }
+                if (jet_vertex && good) {
+                    ptclus[leg] = max(ptclus[leg], scale);
+                } else if (ptclus[leg] == 0.0) {
+                    ptclus[leg] = FVal<T>(cm_energy);
+                }
+            };
+            for (int i = 0; i < cluster_max; ++i) {
+                int data = cluster_history[i];
+                int trace = cluster_trace[i];
+                bool is_qcd_vertex = (data >> 27) & 1;
+                bool is_jet1 = (data >> 28) & 1;
+                bool is_jet2 = (data >> 29) & 1;
+                bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
+                // isjetvx: an initial-state vertex is a jet vertex when the
+                // emitted daughter is a jet, a final-state one as in the
+                // iqjets walk above.
+                bool jet_vertex = is_qcd_vertex &&
+                    ((data & 0xFF) < 2
+                         ? is_jet2
+                         : ((is_jet1 &&
+                             (is_jet_in || (trace & TRACE_MOTHER_IS_DAU2) != 0)) ||
+                            (is_jet2 &&
+                             (is_jet_in || (trace & TRACE_MOTHER_IS_DAU1) != 0))));
+                for (int k = 0; k < 2; ++k) {
+                    bool good = step_daughter_goodjet[i][k];
+                    for (int m = 0; m < 2; ++m) {
+                        book(step_daughter_legs[i][2 * k + m], jet_vertex, good, pt_step[i]);
+                    }
+                }
+            }
+            if (leftover >= 0) {
+                // the root is never a jet vertex (islast in isjetvx)
+                bool good = goodjet[leftover];
+                book(rep1[leftover], false, good, 0.0);
+                book(rep2[leftover], false, good, 0.0);
+            }
+            for (int leg = 2; leg < n_part; ++leg) {
+                outgoing_scales[leg - 2] =
+                    ptclus[leg] > 0.0 ? ptclus[leg] : FVal<T>(cm_energy);
+            }
         }
 
         FVal<T> s_last[2], s_central[2];
@@ -1336,12 +1421,52 @@ KERNELSPEC void mlm_clustering(
         rand_index = diag_count - 1;
     }
     diagram_index = state_machine[state + rand_index + 1];
+
+    // How many outgoing legs this history calls merging jets: iqjets where the
+    // madevent scale scheme has filled it, a jet emitted at a QCD vertex
+    // otherwise - the same test the merging cut above falls back to. This is
+    // njets of setclscales, which HISTORY_MADEVENT compares between histories.
+    int merging_jet_count = 0;
+    if (have_merging_jets) {
+        for (int leg = 2; leg < n_part; ++leg) {
+            if (merging_jet[leg]) {
+                ++merging_jet_count;
+            }
+        }
+    } else {
+        int emitted = 0;
+        for (int i = 0; i < cluster_max; ++i) {
+            int data = cluster_history[i];
+            if (!((data >> 27) & 1)) {
+                continue;
+            }
+            for (int k = 0; k < 2; ++k) {
+                int slot = k == 0 ? (data & 0xFF) : ((data >> 8) & 0xFF);
+                if (slot >= 2 && (step_bare[i] & (1 << slot)) &&
+                    ((data >> (28 + k)) & 1) != 0) {
+                    emitted |= 1 << slot;
+                }
+            }
+        }
+        for (int leg = 2; leg < n_part; ++leg) {
+            if (emitted & (1 << leg)) {
+                ++merging_jet_count;
+            }
+        }
+    }
+    return merging_jet_count;
 }
 
+// ClusteringHistory in mlm_clustering.hpp.
+constexpr int HISTORY_ALL_DIAGRAMS = 0;
+constexpr int HISTORY_DIAGRAM = 1;
+constexpr int HISTORY_MADEVENT = 2;
+
 template <typename T>
-KERNELSPEC void kernel_mlm_clustering_hadronic(
+KERNELSPEC void mlm_clustering(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
+    IIn<T, 0> start_state,
     IIn<T, 1> state_machine,
     FIn<T, 1> external_masses,
     FIn<T, 1> bw_masses,
@@ -1358,6 +1483,102 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
+    IIn<T, 0> history_mode,
+    FOut<T, 0> ren_scale,
+    FOut<T, 0> fact_scale1,
+    FOut<T, 0> fact_scale2,
+    FOut<T, 1> outgoing_scales,
+    IOut<T, 0> diagram_index,
+    FOut<T, 0> xqcut_weight,
+    FOut<T, 1> alphas_scales,
+    FOut<T, 0> alphas_weight,
+    FOut<T, 0> pdf_scale1,
+    FOut<T, 0> pdf_scale2,
+    IOut<T, 1> pdf_rw_flavor,
+    FOut<T, 1> pdf_rw_x,
+    FOut<T, 1> pdf_rw_q_num,
+    FOut<T, 1> pdf_rw_q_den,
+    FOut<T, 1> pdf_rw_active,
+    FOut<T, 1> pdf_rw_beam,
+    bool hadronic
+) {
+    auto walk = [&](int start) {
+        return mlm_clustering_walk<T>(
+            momenta,
+            random,
+            state_machine,
+            external_masses,
+            bw_masses,
+            bw_widths,
+            bw_cutoff,
+            jet_radius,
+            cm_energy,
+            jet_scale_scheme,
+            xqcut,
+            scale_scheme,
+            beam_flags,
+            jet_leg_mask,
+            parton_line_scheme,
+            alphas_scheme,
+            pdf_reweighting,
+            clustering_measure,
+            ren_scale,
+            fact_scale1,
+            fact_scale2,
+            outgoing_scales,
+            diagram_index,
+            xqcut_weight,
+            alphas_scales,
+            alphas_weight,
+            pdf_scale1,
+            pdf_scale2,
+            pdf_rw_flavor,
+            pdf_rw_x,
+            pdf_rw_q_num,
+            pdf_rw_q_den,
+            pdf_rw_active,
+            pdf_rw_beam,
+            start,
+            hadronic
+        );
+    };
+    int start = start_state;
+    if (history_mode == HISTORY_MADEVENT && start != 0) {
+        // setclscales clusters over every graph first and keeps that history
+        // unless its jet count differs from the one stored for the channel,
+        // which was itself clustered along the channel's graph. Every walk
+        // writes all outputs, so the one that ran last is the one that stands.
+        int diagram_jets = walk(start);
+        if (walk(0) != diagram_jets) {
+            walk(start);
+        }
+    } else {
+        walk(start);
+    }
+}
+
+template <typename T>
+KERNELSPEC void kernel_mlm_clustering_hadronic(
+    FIn<T, 2> momenta,
+    FIn<T, 0> random,
+    IIn<T, 0> start_state,
+    IIn<T, 1> state_machine,
+    FIn<T, 1> external_masses,
+    FIn<T, 1> bw_masses,
+    FIn<T, 1> bw_widths,
+    FIn<T, 0> bw_cutoff,
+    FIn<T, 0> jet_radius,
+    FIn<T, 0> cm_energy,
+    IIn<T, 0> jet_scale_scheme,
+    FIn<T, 0> xqcut,
+    IIn<T, 0> scale_scheme,
+    IIn<T, 0> beam_flags,
+    IIn<T, 0> jet_leg_mask,
+    IIn<T, 0> parton_line_scheme,
+    IIn<T, 0> alphas_scheme,
+    IIn<T, 0> pdf_reweighting,
+    IIn<T, 0> clustering_measure,
+    IIn<T, 0> history_mode,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1378,6 +1599,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     mlm_clustering<T>(
         momenta,
         random,
+        start_state,
         state_machine,
         external_masses,
         bw_masses,
@@ -1394,6 +1616,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         alphas_scheme,
         pdf_reweighting,
         clustering_measure,
+        history_mode,
         ren_scale,
         fact_scale1,
         fact_scale2,
@@ -1418,6 +1641,7 @@ template <typename T>
 KERNELSPEC void kernel_mlm_clustering_leptonic(
     FIn<T, 2> momenta,
     FIn<T, 0> random,
+    IIn<T, 0> start_state,
     IIn<T, 1> state_machine,
     FIn<T, 1> external_masses,
     FIn<T, 1> bw_masses,
@@ -1434,6 +1658,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     IIn<T, 0> alphas_scheme,
     IIn<T, 0> pdf_reweighting,
     IIn<T, 0> clustering_measure,
+    IIn<T, 0> history_mode,
     FOut<T, 0> ren_scale,
     FOut<T, 0> fact_scale1,
     FOut<T, 0> fact_scale2,
@@ -1454,6 +1679,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     mlm_clustering<T>(
         momenta,
         random,
+        start_state,
         state_machine,
         external_masses,
         bw_masses,
@@ -1470,6 +1696,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         alphas_scheme,
         pdf_reweighting,
         clustering_measure,
+        history_mode,
         ren_scale,
         fact_scale1,
         fact_scale2,

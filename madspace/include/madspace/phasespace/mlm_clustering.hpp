@@ -82,6 +82,23 @@ enum class ClusteringMeasure {
     madevent = 1,
 };
 
+// Which diagrams a clustering history may follow.
+enum class ClusteringHistory {
+    // The smallest-measure history over the union of every diagram, with the
+    // properties of each line taken from the first diagram that has it.
+    all_diagrams = 0,
+    // Pick one diagram per event, with probability proportional to its
+    // single-diagram weight |A_i|^2, and cluster along that diagram alone: its
+    // own line flavours, vertices and merging jets. What an integration
+    // channel is to madevent's reclustering, without its first-event
+    // bookkeeping.
+    diagram = 1,
+    // setclscales of Template/LO/SubProcesses/reweight.f: keep the history
+    // over every diagram unless it calls a different number of legs merging
+    // jets than the picked diagram does, and fall back to that diagram then.
+    madevent = 2,
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
     MLMClustering(
@@ -118,8 +135,23 @@ public:
         // once at the factorisation scale, which is what madevent does for a
         // merged sample (pdfwgt in the run card, hidden and on by default).
         bool pdf_reweighting = true,
-        ClusteringMeasure clustering_measure = ClusteringMeasure::fxfx
+        ClusteringMeasure clustering_measure = ClusteringMeasure::fxfx,
+        // Anything but all_diagrams also compiles one state machine per
+        // diagram, which build_along_diagram walks.
+        ClusteringHistory clustering_history = ClusteringHistory::all_diagrams
     );
+
+    // The same outputs as the function itself, for a history restricted to
+    // the given diagram index (as the matrix element numbers diagrams). A
+    // diagram no topology was supplied for falls back to the history over
+    // every diagram.
+    NamedVector<Value>
+    build_along_diagram(FunctionBuilder& fb, Value momenta, Value diagram) const;
+    // The same from an offset into cluster_state_machine, as
+    // diagram_start_states lists them, for a caller that keeps its own table.
+    NamedVector<Value> build_from_start_state(
+        FunctionBuilder& fb, Value momenta, Value start_state
+    ) const;
 
     // The compiled clustering state machine, in the flat encoding the kernel
     // walks. Exposed so that its structure can be checked directly.
@@ -132,6 +164,13 @@ public:
     AlphasScheme alphas_scheme() const { return _alphas_scheme; }
     bool pdf_reweighting() const { return _pdf_reweighting; }
     ClusteringMeasure clustering_measure() const { return _clustering_measure; }
+    ClusteringHistory clustering_history() const { return _clustering_history; }
+    // Offset of each diagram's own state machine in cluster_state_machine,
+    // indexed by diagram index, or 0 for a diagram that has none. Empty under
+    // ClusteringHistory::all_diagrams.
+    const std::vector<me_int_t>& diagram_start_states() const {
+        return _diagram_start_states;
+    }
     // The flavours the pdf reweighting asks for that are neither the gluon nor
     // a beam's own, in the order the kernel's flavour classes index them. The
     // consumer turns these, the gluon and the per-channel beam flavours into
@@ -143,8 +182,12 @@ private:
     NamedVector<Value> build_function_impl(
         FunctionBuilder& fb, const NamedVector<Value>& args
     ) const override;
+    NamedVector<Value> build_kernel(
+        FunctionBuilder& fb, Value momenta, Value start_state, me_int_t history_mode
+    ) const;
 
     std::vector<me_int_t> _cluster_state_machine;
+    std::vector<me_int_t> _diagram_start_states;
     std::vector<double> _external_masses;
     std::vector<double> _bw_masses;
     std::vector<double> _bw_widths;
@@ -155,6 +198,7 @@ private:
     AlphasScheme _alphas_scheme;
     bool _pdf_reweighting;
     ClusteringMeasure _clustering_measure;
+    ClusteringHistory _clustering_history;
     std::vector<int> _pdf_absolute_pdgs;
     int _beam_flags;
     int _jet_leg_mask;
@@ -162,6 +206,21 @@ private:
     double _bw_cutoff;
     double _jet_radius;
     bool _hadronic;
+};
+
+// The clustering along one diagram as a function of its own, taking the
+// diagram index as a second argument. The integrand calls build_along_diagram
+// directly; this is how that path is reached from Python.
+class MLMClusteringAlongDiagram : public FunctionGenerator {
+public:
+    MLMClusteringAlongDiagram(const MLMClustering& clustering);
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    MLMClustering _clustering;
 };
 
 } // namespace madspace

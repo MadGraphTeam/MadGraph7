@@ -262,6 +262,26 @@ Integrand::Integrand(
         }
     }
 
+    if (energy_scale && energy_scale->mlm_history_per_diagram()) {
+        // The diagram is picked from the matrix element's own diagram weights,
+        // and those only line up with the clustering's diagram numbering for
+        // a single matrix element.
+        if (diff_xs.size() != 1) {
+            throw std::invalid_argument(
+                "an MLM clustering history per diagram needs a single matrix element"
+            );
+        }
+        auto& starts = energy_scale->mlm_diagram_start_states();
+        std::size_t diagram_count = diff_xs.at(0).matrix_element().diagram_count();
+        std::vector<double> mask(diagram_count, 0.);
+        _mlm_start_states.assign(diagram_count, 0);
+        for (std::size_t i = 0; i < std::min(diagram_count, starts.size()); ++i) {
+            mask.at(i) = starts.at(i) != 0 ? 1. : 0.;
+            _mlm_start_states.at(i) = starts.at(i);
+        }
+        _mlm_diagram_mask.push_back(mask);
+    }
+
     if (active_flavors.size() > 0) {
         if (active_flavors.size() != mapping.channel_count()) {
             throw std::invalid_argument(
@@ -624,128 +644,17 @@ NamedVector<Value> Integrand::build_channel_part(
         weights_after_cuts.push_back(mirror_det);
     }
 
-    if (_energy_scale && _energy_scale->is_mlm()) {
-        // The merging cut comes out of the clustering, which only runs for
-        // events that already passed the phase-space cuts, so it enters as a
-        // factor on the weight rather than as one of the cuts themselves. An
-        // event below xqcut ends up with weight zero and is never unweighted.
-        weights_after_cuts.push_back(scales.at("xqcut_weight"));
-
-        // alpha_s reweighting, the CKKW-style factor madevent applies in
-        // Template/LO/SubProcesses/reweight.f: every clustering vertex that
-        // produced a parton is evaluated at its own scale rather than at the
-        // event's, so the weight carries prod_i alphas(pt_i) instead of
-        // alphas(mu_R)^n. Without it a merged sample is short by one factor
-        // per emission, compounding with multiplicity.
-        //
-        // The kernel hands back mu_R for any vertex it does not reweight, so
-        // that vertex's ratio is one and no mask is needed here.
-        if (_energy_scale->mlm_alphas_reweighting() && _running_coupling) {
-            auto vertex_scales = scales.at("alphas_scales");
-            std::size_t vertex_count = vertex_scales.type.shape.at(0);
-            if (vertex_count > 0) {
-                auto reference = _running_coupling.value()
-                                     .build_function(fb, {scales.at("ren_scale")})
-                                     .at(0);
-                Value factor;
-                for (std::size_t i = 0; i < vertex_count; ++i) {
-                    auto [rest, one_scale] = fb.pop(vertex_scales);
-                    vertex_scales = rest;
-                    auto alpha =
-                        _running_coupling.value().build_function(fb, {one_scale}).at(0);
-                    auto ratio = fb.div(alpha, reference);
-                    factor = factor ? fb.mul(factor, ratio) : ratio;
-                }
-                weights_after_cuts.push_back(factor);
-                weights_after_cuts.push_back(scales.at("alphas_weight"));
-            }
-        }
-
-        // pdf reweighting: the beam density, evaluated above at the bottom of
-        // the clustering ladder, walked back up one clustering at a time. Each
-        // slot the kernel marked active contributes f(x, Q_i) / f(x, Q_i-1)
-        // for the flavour its beam line carried at that point.
-        //
-        // The flavour is only knowable here, after the sampling: the kernel
-        // hands out a class - the gluon, one of the two beams' own flavours, or
-        // a flavour the diagram pinned down - and the table turns that plus the
-        // sampled option into an index into the reweighting density.
-        if (_pdf_rw && _pid_options.size() > 0) {
-            auto flavor_classes = scales.at("pdf_rw_flavor");
-            std::size_t slot_count = flavor_classes.type.shape.at(0);
-            double low = _energy_scale->min_scale();
-            double high = _energy_scale->max_scale() > 0.
-                ? _energy_scale->max_scale()
-                : 1e30;
-            auto ones = fb.full({1., batch_size_acc});
-            Value factor, veto;
-            for (std::size_t i = 0; i < slot_count; ++i) {
-                std::vector<me_int_t> column{static_cast<me_int_t>(i)};
-                auto pick = [&](const char* name) {
-                    return fb.squeeze(fb.select(scales.at(name), column));
-                };
-                auto active = pick("pdf_rw_active");
-                auto beam = pick("pdf_rw_beam");
-                // x of the beam line: the beam's own momentum fraction times
-                // everything the clustering z has taken off it since.
-                auto x_beam = fb.add(
-                    x_acc.at(0),
-                    fb.mul(beam, fb.sub(x_acc.at(1), x_acc.at(0)))
-                );
-                auto x = fb.mul(x_beam, pick("pdf_rw_x"));
-                auto scale_of = [&](const char* name) {
-                    auto q = pick(name);
-                    if (low > 0.) {
-                        q = fb.max(q, fb.full({low, batch_size_acc}));
-                    }
-                    return fb.min(q, fb.full({high, batch_size_acc}));
-                };
-                auto index = fb.gather_int(
-                    fb.add_int(
-                        fb.gather_int(
-                            fb.squeeze(fb.select_int(flavor_classes, column)),
-                            _pdf_rw_class_offsets
-                        ),
-                        flavor_id
-                    ),
-                    _pdf_rw_table
-                );
-                auto density = [&](const char* name) {
-                    return _pdf_rw.value()
-                        .build_function(fb, {x, scale_of(name), index})
-                        .at(0);
-                };
-                auto numerator = density("pdf_rw_q_num");
-                auto denominator = density("pdf_rw_q_den");
-                // madevent drops the event outright when the density it is
-                // dividing by falls under 1e-10, where the grid is no longer
-                // saying anything. Same threshold, as a ramp rather than a
-                // branch, and the floor under the division keeps the term
-                // finite so that a vetoed slot multiplies to zero and not to
-                // a NaN.
-                auto floor = fb.full({1e-10, batch_size_acc});
-                auto usable = fb.min(
-                    fb.max(
-                        fb.mul(denominator, fb.full({1e10, batch_size_acc})),
-                        fb.full({0., batch_size_acc})
-                    ),
-                    ones
-                );
-                auto ratio = fb.div(numerator, fb.max(denominator, floor));
-                // An inert slot contributes exactly one, whatever its density
-                // came out as.
-                auto term = fb.add(ones, fb.mul(active, fb.sub(ratio, ones)));
-                auto pass = fb.add(ones, fb.mul(active, fb.sub(usable, ones)));
-                factor = factor ? fb.mul(factor, term) : term;
-                veto = veto ? fb.mul(veto, pass) : pass;
-            }
-            if (factor) {
-                weights_after_cuts.push_back(factor);
-                weights_after_cuts.push_back(veto);
-            }
+    // With a clustering history per diagram these scales only serve the pdf
+    // prior above: the history, and every weight read off it, is settled after
+    // the matrix element has given the diagram weights, in the common part.
+    bool mlm_history_per_diagram =
+        _energy_scale && _energy_scale->mlm_history_per_diagram();
+    if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram) {
+        for (auto& weight : mlm_weights(fb, scales, x_acc, flavor_id)) {
+            weights_after_cuts.push_back(weight);
         }
     }
-    if (_energy_scale && _energy_scale->has_scale_range()) {
+    if (_energy_scale && _energy_scale->has_scale_range() && !mlm_history_per_diagram) {
         // Same for the floor on the scales themselves, which applies to every
         // dynamical scale choice rather than only to the merging one.
         weights_after_cuts.push_back(scales.at("scale_weight"));
@@ -815,6 +724,158 @@ NamedVector<Value> Integrand::build_channel_part(
     return out;
 }
 
+ValueVec Integrand::mlm_weights(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& scales,
+    const std::array<Value, 2>& x,
+    Value flavor_id
+) const {
+    ValueVec weights;
+    auto batch_size_acc = fb.batch_size({flavor_id});
+    // The merging cut comes out of the clustering, which only runs for
+    // events that already passed the phase-space cuts, so it enters as a
+    // factor on the weight rather than as one of the cuts themselves. An
+    // event below xqcut ends up with weight zero and is never unweighted.
+    weights.push_back(scales.at("xqcut_weight"));
+
+    // alpha_s reweighting, the CKKW-style factor madevent applies in
+    // Template/LO/SubProcesses/reweight.f: every clustering vertex that
+    // produced a parton is evaluated at its own scale rather than at the
+    // event's, so the weight carries prod_i alphas(pt_i) instead of
+    // alphas(mu_R)^n. Without it a merged sample is short by one factor
+    // per emission, compounding with multiplicity.
+    //
+    // The kernel hands back mu_R for any vertex it does not reweight, so
+    // that vertex's ratio is one and no mask is needed here.
+    if (_energy_scale->mlm_alphas_reweighting() && _running_coupling) {
+        auto vertex_scales = scales.at("alphas_scales");
+        std::size_t vertex_count = vertex_scales.type.shape.at(0);
+        if (vertex_count > 0) {
+            auto reference = _running_coupling.value()
+                                 .build_function(fb, {scales.at("ren_scale")})
+                                 .at(0);
+            Value factor;
+            for (std::size_t i = 0; i < vertex_count; ++i) {
+                auto [rest, one_scale] = fb.pop(vertex_scales);
+                vertex_scales = rest;
+                auto alpha =
+                    _running_coupling.value().build_function(fb, {one_scale}).at(0);
+                auto ratio = fb.div(alpha, reference);
+                factor = factor ? fb.mul(factor, ratio) : ratio;
+            }
+            weights.push_back(factor);
+            weights.push_back(scales.at("alphas_weight"));
+        }
+    }
+
+    // pdf reweighting: the beam density, evaluated above at the bottom of
+    // the clustering ladder, walked back up one clustering at a time. Each
+    // slot the kernel marked active contributes f(x, Q_i) / f(x, Q_i-1)
+    // for the flavour its beam line carried at that point.
+    //
+    // The flavour is only knowable here, after the sampling: the kernel
+    // hands out a class - the gluon, one of the two beams' own flavours, or
+    // a flavour the diagram pinned down - and the table turns that plus the
+    // sampled option into an index into the reweighting density.
+    if (_pdf_rw && _pid_options.size() > 0) {
+        auto flavor_classes = scales.at("pdf_rw_flavor");
+        std::size_t slot_count = flavor_classes.type.shape.at(0);
+        double low = _energy_scale->min_scale();
+        double high = _energy_scale->max_scale() > 0.
+            ? _energy_scale->max_scale()
+            : 1e30;
+        auto ones = fb.full({1., batch_size_acc});
+        Value factor, veto;
+        for (std::size_t i = 0; i < slot_count; ++i) {
+            std::vector<me_int_t> column{static_cast<me_int_t>(i)};
+            auto pick = [&](const char* name) {
+                return fb.squeeze(fb.select(scales.at(name), column));
+            };
+            auto active = pick("pdf_rw_active");
+            auto beam = pick("pdf_rw_beam");
+            // x of the beam line: the beam's own momentum fraction times
+            // everything the clustering z has taken off it since.
+            auto x_beam = fb.add(
+                x.at(0),
+                fb.mul(beam, fb.sub(x.at(1), x.at(0)))
+            );
+            auto x = fb.mul(x_beam, pick("pdf_rw_x"));
+            auto scale_of = [&](const char* name) {
+                auto q = pick(name);
+                if (low > 0.) {
+                    q = fb.max(q, fb.full({low, batch_size_acc}));
+                }
+                return fb.min(q, fb.full({high, batch_size_acc}));
+            };
+            auto index = fb.gather_int(
+                fb.add_int(
+                    fb.gather_int(
+                        fb.squeeze(fb.select_int(flavor_classes, column)),
+                        _pdf_rw_class_offsets
+                    ),
+                    flavor_id
+                ),
+                _pdf_rw_table
+            );
+            auto density = [&](const char* name) {
+                return _pdf_rw.value()
+                    .build_function(fb, {x, scale_of(name), index})
+                    .at(0);
+            };
+            auto numerator = density("pdf_rw_q_num");
+            auto denominator = density("pdf_rw_q_den");
+            // madevent drops the event outright when the density it is
+            // dividing by falls under 1e-10, where the grid is no longer
+            // saying anything. Same threshold, as a ramp rather than a
+            // branch, and the floor under the division keeps the term
+            // finite so that a vetoed slot multiplies to zero and not to
+            // a NaN.
+            auto floor = fb.full({1e-10, batch_size_acc});
+            auto usable = fb.min(
+                fb.max(
+                    fb.mul(denominator, fb.full({1e10, batch_size_acc})),
+                    fb.full({0., batch_size_acc})
+                ),
+                ones
+            );
+            auto ratio = fb.div(numerator, fb.max(denominator, floor));
+            // An inert slot contributes exactly one, whatever its density
+            // came out as.
+            auto term = fb.add(ones, fb.mul(active, fb.sub(ratio, ones)));
+            auto pass = fb.add(ones, fb.mul(active, fb.sub(usable, ones)));
+            factor = factor ? fb.mul(factor, term) : term;
+            veto = veto ? fb.mul(veto, pass) : pass;
+        }
+        if (factor) {
+            weights.push_back(factor);
+            weights.push_back(veto);
+        }
+    }
+    return weights;
+}
+
+std::array<Value, 2> Integrand::evaluate_pdfs(
+    FunctionBuilder& fb,
+    const NamedVector<Value>& scales,
+    const std::array<Value, 2>& x,
+    Value flavor_id
+) const {
+    std::array<Value, 2> pdfs;
+    for (std::size_t i = 0; i < 2; ++i) {
+        if (!_diff_xs.at(0).has_pdf(i)) {
+            continue;
+        }
+        auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+            ? scales.at(std::format("pdf_scale{}", i + 1))
+            : scales.at(std::format("fact_scale{}", i + 1));
+        auto pdf = _pdfs.at(i).value().build_function(fb, {x.at(i), pdf_scale}).at(0);
+        pdfs.at(i) = _pid_options.size() > 1
+            ? fb.gather(fb.gather_int(flavor_id, _pdf_indices.at(i)), pdf)
+            : fb.squeeze(pdf);
+    }
+    return pdfs;
+}
+
 NamedVector<Value> Integrand::build_common_part(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
@@ -871,24 +932,48 @@ NamedVector<Value> Integrand::build_common_part(
     Value alpha_qcd_acc =
         _running_coupling.value().build_function(fb, {args.at("ren_scale")}).at(0);
 
-    // Evaluate differential cross section
-    ValueVec xs_args{
-        momenta_acc,
-        _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
-    };
+    // The scales and densities the event is evaluated with. They come from the
+    // channel part, unless the MLM history is picked per diagram further down.
+    Value ren_scale_acc = args.at("ren_scale");
+    std::array<Value, 2> fact_scales_acc, pdfs_acc;
+    for (std::size_t i = 0; i < 2; ++i) {
+        if (_diff_xs.at(0).has_pdf(i)) {
+            fact_scales_acc.at(i) = args.at(std::format("fact_scale{}", i + 1));
+            pdfs_acc.at(i) = args.at(std::format("pdf{}", i + 1));
+        }
+    }
+    Value cluster_scales_acc;
     if (_energy_scale && _energy_scale->is_mlm()) {
-        xs_args.push_back(args.at("scale_diagram_index_acc"));
+        cluster_scales_acc = args.at("cluster_scales_acc");
     }
-    xs_args.push_back(x1_acc);
-    xs_args.push_back(x2_acc);
-    xs_args.push_back(flavor_id);
-    if (_diff_xs.at(0).has_pdf(0)) {
-        xs_args.push_back(args.at("pdf1"));
-    }
-    if (_diff_xs.at(0).has_pdf(1)) {
-        xs_args.push_back(args.at("pdf2"));
-    }
-    xs_args.push_back(alpha_qcd_acc);
+
+    // Evaluate differential cross section
+    auto make_xs_args = [&](Value diagram, std::array<Value, 2>& pdfs, Value alpha) {
+        ValueVec xs_args{
+            momenta_acc,
+            _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap)
+                                     : flavor_id,
+        };
+        if (_energy_scale && _energy_scale->is_mlm()) {
+            xs_args.push_back(diagram);
+        }
+        xs_args.push_back(x1_acc);
+        xs_args.push_back(x2_acc);
+        xs_args.push_back(flavor_id);
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (_diff_xs.at(0).has_pdf(i)) {
+                xs_args.push_back(pdfs.at(i));
+            }
+        }
+        xs_args.push_back(alpha);
+        return xs_args;
+    };
+    ValueVec xs_args = make_xs_args(
+        _energy_scale && _energy_scale->is_mlm() ? args.at("scale_diagram_index_acc")
+                                                 : Value(),
+        pdfs_acc,
+        alpha_qcd_acc
+    );
     ValueVec dxs_vec;
     Value ps_flavor_id;
     Value subproc_id;
@@ -950,11 +1035,60 @@ NamedVector<Value> Integrand::build_common_part(
             chan_weights_acc = fb.batch_merge_by_index(split_channel_weights);
         }
     }
+
+    // A clustering history per diagram. The evaluation above, at the scales of
+    // the history over every diagram, has supplied the diagram weights
+    // |A_i|^2 / sum_j |A_j|^2 (and the channel weights, which stay as they
+    // are). One diagram is picked from them - a choice between histories, not
+    // an importance sample, so it puts no factor on the weight - the event is
+    // clustered along it, and the matrix element is evaluated again at the
+    // scales that history gives. Evaluating it again rather than rescaling by
+    // alpha_s ratios keeps this exact when coupling orders mix, as they do for
+    // gluon fusion and VBF in one process.
+    ValueVec mlm_history_weights;
+    if (_energy_scale && _energy_scale->mlm_history_per_diagram()) {
+        auto batch_size_acc = fb.batch_size({momenta_acc});
+        auto diagram_mask = fb.gather_vector(
+            fb.full({static_cast<me_int_t>(0), batch_size_acc}), _mlm_diagram_mask
+        );
+        auto [diagram, diagram_det] = fb.sample_discrete_probs(
+            fb.squeeze(fb.random(batch_size_acc, 1)),
+            fb.mul(dxs_vec.at(1), diagram_mask)
+        );
+        auto scales = _energy_scale->build_mlm_from_start_state(
+            fb, momenta_acc, fb.gather_int(diagram, _mlm_start_states)
+        );
+        std::array<Value, 2> x_acc{x1_acc, x2_acc};
+        mlm_history_weights = mlm_weights(fb, scales, x_acc, flavor_id);
+        if (_energy_scale->has_scale_range()) {
+            mlm_history_weights.push_back(scales.at("scale_weight"));
+        }
+        ren_scale_acc = scales.at("ren_scale");
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (_diff_xs.at(0).has_pdf(i)) {
+                fact_scales_acc.at(i) = scales.at(std::format("fact_scale{}", i + 1));
+            }
+        }
+        pdfs_acc = evaluate_pdfs(fb, scales, x_acc, flavor_id);
+        cluster_scales_acc = scales.at("outgoing_scales");
+        alpha_qcd_acc =
+            _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
+        dxs_vec = _diff_xs.at(0)
+                      .build_function(
+                          fb,
+                          make_xs_args(scales.at("diagram_index"), pdfs_acc, alpha_qcd_acc)
+                      )
+                      .values();
+    }
+
     auto diff_xs_acc = dxs_vec.at(0);
     if (_flavor_factors.size() > 0) {
         diff_xs_acc = fb.mul(diff_xs_acc, fb.gather(flavor_id, _flavor_factors));
     }
     ValueVec weights_after_cuts{args.at("weight_after_cuts"), diff_xs_acc};
+    for (auto& weight : mlm_history_weights) {
+        weights_after_cuts.push_back(weight);
+    }
     ValueVec extra_weights_after_cuts;
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
@@ -1115,23 +1249,23 @@ NamedVector<Value> Integrand::build_common_part(
         }
 
         outputs.push_back(
-            "ren_scale", scatter_or_drop(zeros_float, args.at("ren_scale"))
+            "ren_scale", scatter_or_drop(zeros_float, ren_scale_acc)
         );
         outputs.push_back("alpha_qcd", scatter_or_drop(zeros_float, alpha_qcd_acc));
         ValueVec pdf_vals;
         if (_diff_xs.at(0).has_pdf(0)) {
             outputs.push_back("x1", scatter_or_drop(zeros_float, args.at("x1_acc")));
             outputs.push_back(
-                "fact_scale1", scatter_or_drop(zeros_float, args.at("fact_scale1"))
+                "fact_scale1", scatter_or_drop(zeros_float, fact_scales_acc.at(0))
             );
-            pdf_vals.push_back(args.at("pdf1"));
+            pdf_vals.push_back(pdfs_acc.at(0));
         }
         if (_diff_xs.at(0).has_pdf(1)) {
             outputs.push_back("x2", scatter_or_drop(zeros_float, args.at("x2_acc")));
             outputs.push_back(
-                "fact_scale2", scatter_or_drop(zeros_float, args.at("fact_scale2"))
+                "fact_scale2", scatter_or_drop(zeros_float, fact_scales_acc.at(1))
             );
-            pdf_vals.push_back(args.at("pdf2"));
+            pdf_vals.push_back(pdfs_acc.at(1));
         }
         if (_partial_weights &&
             (_diff_xs.at(0).has_pdf(0) || _diff_xs.at(0).has_pdf(1))) {
@@ -1146,7 +1280,7 @@ NamedVector<Value> Integrand::build_common_part(
                 "cluster_scales",
                 scatter_or_drop(
                     fb.full({0., batch_size_val, outgoing_count}),
-                    args.at("cluster_scales_acc")
+                    cluster_scales_acc
                 )
             );
         }

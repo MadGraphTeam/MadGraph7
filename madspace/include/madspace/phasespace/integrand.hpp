@@ -118,6 +118,22 @@ private:
     build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
     NamedVector<Value>
     build_common_part(FunctionBuilder& fb, const NamedVector<Value>& channel_out) const;
+    // The beam densities at the scales an MLM or dynamical scale choice
+    // produced, for the sampled flavour.
+    std::array<Value, 2> evaluate_pdfs(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id
+    ) const;
+    // The factors an MLM clustering puts on the event weight: the merging cut,
+    // the alpha_s and the pdf reweighting, each with its veto.
+    ValueVec mlm_weights(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& scales,
+        const std::array<Value, 2>& x,
+        Value flavor_id
+    ) const;
 
     PhaseSpaceMapping _mapping;
     std::vector<DifferentialCrossSection> _diff_xs;
@@ -138,6 +154,12 @@ private:
     std::vector<me_int_t> _pdf_rw_class_offsets;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
+    // One row with a 1 for every matrix-element diagram the MLM clustering has
+    // a history of its own for, used to restrict the per-event diagram pick.
+    nested_vector2<double> _mlm_diagram_mask;
+    // MLMClustering::diagram_start_states padded to the matrix element's
+    // diagram count, so that any diagram the pick can return has an entry.
+    std::vector<me_int_t> _mlm_start_states;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;
     std::optional<ChannelWeightNetwork> _chan_weight_net;
