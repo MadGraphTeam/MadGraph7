@@ -691,6 +691,61 @@ class TestFrameBoost(unittest.TestCase):
         self.assertEqual(stub._boost_momenta(momenta, boost), momenta)
 
 
+class TestFrameFromRunCard(unittest.TestCase):
+    """``frame_and_beampol_from_run_card``: MadSpin takes ``frame_id`` and
+    ``beampol`` from the run_card of the production, for LO and NLO samples
+    alike, unless its own card sets them.
+
+    NLO run_cards carry ``me_frame`` since polarised NLO generation, but only
+    the LO card used to be read: every NLO sample was decayed with the partonic
+    c.m. (6), so a ``p p > z{0} z{0} [QCD]`` sample generated with
+    ``me_frame = [3,4]`` had its polarisation projected in the wrong frame."""
+
+    MI = interface_madspin.MadSpinInterface
+
+    def apply(self, run_card, user=()):
+        options = interface_madspin.MadSpinOptions()
+        overrides = {'frame_id': 16, 'beampol': [50., 0.]}
+        for key in user:
+            options[key] = overrides[key]
+            options.user_set.add(key)
+        self.MI.frame_and_beampol_from_run_card(options, run_card)
+        return options
+
+    def test_the_nlo_me_frame_reaches_madspin(self):
+        for frame, wanted in (([3, 4], 24), ([3], 8), ([4], 16)):
+            card = banner.RunCardNLO()
+            card.set('me_frame', frame, user=True)
+            options = self.apply(card)
+            self.assertEqual(options['frame_id'], wanted, frame)
+            self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
+
+    def test_the_nlo_default_is_still_the_partonic_cm(self):
+        """[1,2] -> 6, the value every NLO sample had before: an unpolarised
+        NLO sample decays exactly as it used to. Not RunCardNLO['frame_id'],
+        which is 0 when no frame was asked for -- 'no frame at all' to MadSpin."""
+        card = banner.RunCardNLO()
+        card.update_system_parameter_for_include()
+        self.assertEqual(card['frame_id'], 0)
+        self.assertEqual(self.apply(card)['frame_id'], 6)
+
+    def test_the_lo_path_is_unchanged(self):
+        card = banner.RunCardLO()
+        card.set('me_frame', [3], user=True)
+        card.set('polbeam1', 80., user=True)
+        options = self.apply(card)
+        self.assertEqual(options['frame_id'], 8)
+        self.assertEqual([float(x) for x in options['beampol']], [80., 0.])
+        self.assertEqual(self.apply(banner.RunCardLO())['frame_id'], 6)
+
+    def test_the_madspin_card_wins(self):
+        for card in (banner.RunCardNLO(), banner.RunCardLO()):
+            card.set('me_frame', [3, 4], user=True)
+            options = self.apply(card, user=('frame_id', 'beampol'))
+            self.assertEqual(options['frame_id'], 16, type(card).__name__)
+            self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
+
+
 class TestOnshellProductionNorm(unittest.TestCase):
     """``_onshell_production_norm``: |M_prod|^2 on shell, which is the
     denominator of the offshell mass-set weight (the sequential accept/reject's

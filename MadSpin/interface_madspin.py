@@ -1043,6 +1043,42 @@ class MadSpinInterface(extended_cmd.Cmd):
                   (key, total, count, total / max(1, count)))
         
      
+    @staticmethod
+    def frame_and_beampol_from_run_card(options, run_card):
+        """Take ``frame_id`` and ``beampol`` from the run_card of the production.
+
+        The run_card is the default source for both, but an explicit
+        "set frame_id"/"set beampol" in the MadSpin card wins -- otherwise
+        neither option could be set from the card the rest of the MadSpin
+        options live in.
+
+        ``frame_id`` is the leg bitmask ``sum(2**n for n in me_frame)``. An NLO
+        run_card carries ``me_frame`` too, since polarised fixed-order and
+        NLO+PS generation, and it used to be ignored: every NLO sample got the
+        partonic c.m. (6), so an ``me_frame = [3,4]`` sample had its
+        polarisation projected in a different frame from the one it was
+        generated in. The mask is built from ``me_frame`` itself rather than
+        read from ``RunCardNLO['frame_id']``: that one is 0 unless a frame was
+        explicitly asked for (the fortran then skips the boost), whereas 0 means
+        "no frame at all" to MadSpin. The default ``me_frame = [1,2]`` gives 6,
+        i.e. exactly the value NLO samples always had. An NLO run_card has no
+        beam polarisation.
+        """
+        if isinstance(run_card, banner.RunCardLO):
+            run_card.update_system_parameter_for_include()
+            frame_id = run_card['frame_id']
+            beampol = [run_card['polbeam1'], run_card['polbeam2']]
+        elif isinstance(run_card, banner.RunCardNLO):
+            frame_id = sum(2**n for n in run_card['me_frame'])
+            beampol = [0., 0.]
+        else:
+            frame_id = 6
+            beampol = [0., 0.]
+        if 'frame_id' not in options.user_set:
+            options['frame_id'] = frame_id
+        if 'beampol' not in options.user_set:
+            options['beampol'] = beampol
+
     def do_import(self, inputfile):
         """import the event file"""
         
@@ -1118,22 +1154,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if self.options['BW_cut'] > 25:
                     logger.critical("value of bwcutoff set to %s from the input file. This is much too large value for Madspin and the validity of the Narrow-width-Approximation. Please ensure that you overwrite that value via \"set BW_cut X\"  to a smaller value (like X=10)", self.options['BW_cut'])
             
-            if isinstance(run_card, banner.RunCardLO):
-                run_card.update_system_parameter_for_include()
-                # The run_card of the production is the default source for both,
-                # but an explicit "set frame_id"/"set beampol" in the MadSpin
-                # card wins -- otherwise neither option could be set from the
-                # card the rest of the MadSpin options live in.
-                if 'frame_id' not in self.options.user_set:
-                    self.options['frame_id'] = run_card['frame_id']
-                if 'beampol' not in self.options.user_set:
-                    self.options['beampol'] = [run_card['polbeam1'],
-                                               run_card['polbeam2']]
-            else:
-                if 'frame_id' not in self.options.user_set:
-                    self.options['frame_id'] = 6
-                if 'beampol' not in self.options.user_set:
-                    self.options['beampol'] = [0., 0.]
+            self.frame_and_beampol_from_run_card(self.options, run_card)
 
         else:
             if not self.options['Nevents_for_max_weight']:
