@@ -359,13 +359,13 @@ def test_top_level_help_lists_nested_model_and_utility_commands() -> None:
         "examples",
         "doctor",
         "self-test",
-        "request-symbolica-trial-license",
-        "request-symbolica-hobbyist-license",
     ):
         assert command in help_text
     assert "model-inspect" not in help_text
     assert "model-compile" not in help_text
     assert "model-processes" not in help_text
+    assert "request-symbolica-trial-license" not in help_text
+    assert "request-symbolica-hobbyist-license" not in help_text
 
 
 def test_model_help_does_not_import_symbolica(

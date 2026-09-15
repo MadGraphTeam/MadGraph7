@@ -22,7 +22,6 @@ from pyamplicol.reporting import (
 )
 
 from .handlers import CliServices, DefaultCliServices, dispatch
-from .licensing import LicenseRequestInvocation
 from .parser import parse_cli
 from .utilities import UtilityInvocation, example_card, execute_utility
 
@@ -83,26 +82,15 @@ def run_cli(
     argv: Sequence[str] | None = None,
     *,
     services: CliServices | None = None,
-    stdin: TextIO | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
 ) -> int:
     output_stream = sys.stdout if stdout is None else stdout
     diagnostic_stream = sys.stderr if stderr is None else stderr
-    input_stream = sys.stdin if stdin is None else stdin
     logging_configured = False
     sink = None
     try:
         invocation = parse_cli(argv)
-        if isinstance(invocation, LicenseRequestInvocation):
-            result = invocation.run(stdin=input_stream, stdout=output_stream)
-            write_result(
-                result,
-                format=invocation.output_format,
-                stream=output_stream,
-                color=_color_enabled(invocation.output_color, output_stream),
-            )
-            return 0
         if isinstance(invocation, UtilityInvocation):
             if invocation.kind == "examples-run":
                 assert invocation.name is not None
@@ -113,9 +101,7 @@ def run_cli(
                     arguments.append("--json")
                 arguments.extend(("--color", invocation.output_color))
                 invocation = parse_cli(arguments)
-                assert not isinstance(
-                    invocation, (LicenseRequestInvocation, UtilityInvocation)
-                )
+                assert not isinstance(invocation, UtilityInvocation)
             else:
                 result = execute_utility(invocation)
                 write_result(

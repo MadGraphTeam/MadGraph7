@@ -48,13 +48,14 @@ def test_jit_compression_setting_requires_a_boolean() -> None:
         SymbolicaEvaluatorSettings(jit_compress=1)  # type: ignore[arg-type]
 
 
-def test_evaluator_module_import_is_symbolica_lazy() -> None:
+def test_evaluator_module_import_registers_symbolica_without_model_tooling() -> None:
     code = """
 import sys
 assert 'symbolica' not in sys.modules
 from pyamplicol.evaluators import SymbolicaEvaluatorSettings
 SymbolicaEvaluatorSettings()
-assert 'symbolica' not in sys.modules
+assert 'symbolica' in sys.modules
+assert 'pyamplicol.models.compiler_symbolica' not in sys.modules
     """
     subprocess.run([sys.executable, "-c", code], check=True)
 

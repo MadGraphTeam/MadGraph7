@@ -17,34 +17,41 @@ where to read the authoritative license terms.
 > [`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)
 > and the repository's `licenses/` directory.
 
-## Lazy import boundary
+## Package license at startup
 
-Importing pyAmpliCol does not import Symbolica:
+Importing pyAmpliCol imports Symbolica and calls `symbolica.set_library_key()`
+with the key issued for the `pyamplicol` package, before any symbolic work.
+Users do not need a personal Symbolica license for calls made by pyAmpliCol,
+including parallel generation and evaluator optimization. The key also
+registers when a spawned Python worker imports pyAmpliCol.
 
 ```python
 import sys
 import pyamplicol
 
-print("symbolica" in sys.modules)  # False
+print("symbolica" in sys.modules)  # True
 
-from pyamplicol import Runtime
-print("symbolica" in sys.modules)  # False
+from pyamplicol.licensing import detect_symbolica_license
+print(detect_symbolica_license(suggest=False).licensed)  # True
 ```
 
-The public package, configuration types, and runtime class remain lightweight.
-Symbolica is loaded only when a requested operation needs symbolic model
-compilation, process generation, or retained exact evaluator state.
+The key licenses calls within `pyamplicol`; it does not license unrelated
+Symbolica code in the user's program. Personal license environment variables
+are left unchanged. Model compilation and generation tooling remain lazy.
+
+The installed Symbolica must provide `set_library_key()`. Startup reports an
+error if the installed version cannot register the package key.
 
 ## Which operations need Symbolica?
 
 | Operation | Uses Symbolica? | Notes |
 | --- | --- | --- |
-| Import `pyamplicol` | No | Public exports are lazy. |
-| Inspect an artifact | No | Reads metadata and indexes only. |
-| Ordinary Python f64 evaluation (`precision=16`) | No | Runs through Rusticol and the artifact's native evaluator. |
+| Import `pyamplicol` | Yes | Registers the package key; public exports remain lazy. |
+| Inspect an artifact | Startup only | Reads metadata and indexes only. |
+| Ordinary Python f64 evaluation (`precision=16`) | Startup only | Runs through Rusticol and the artifact's native evaluator. |
 | C11/C++17/Fortran 2008/Rust 2021 runtime | No | Ordinary and opt-in correlated APIs are f64-only. |
-| Direct JIT f64 load | No | Uses the separate MIT-licensed SymJIT runtime. |
-| Compatible C++/ASM evaluator load | No | Uses the artifact's target-native library. |
+| Direct JIT f64 load | Startup only in Python | Uses the separate MIT-licensed SymJIT runtime. |
+| Compatible C++/ASM evaluator load | Startup only in Python | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
@@ -58,7 +65,7 @@ change the terms governing Symbolica use during generation.
 The default JIT backend embeds a direct SymJIT application in the schema-v3
 artifact. Rusticol loads and lowers that application to native code without:
 
-- importing the Symbolica Python package;
+- performing Symbolica computations (Python package startup registers the key);
 - reading `SYMBOLICA_LICENSE`;
 - applying Symbolica's generation-time worker clamp;
 - linking the arbitrary-precision Symbolica/Rug/Malachite closure into the
@@ -82,9 +89,10 @@ See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-a
 
 ## Generation with a valid license
 
-At the first operation that needs Symbolica, pyAmpliCol calls
-`symbolica.is_licensed()`. Merely defining a `SYMBOLICA_LICENSE` environment
-variable is not treated as proof that it is valid.
+pyAmpliCol calls `symbolica.is_licensed()` from inside the package to select
+its generation resources. This detects the registered package key even when
+`SYMBOLICA_LICENSE` is absent. A call from unrelated user code can still return
+`False`, because the package key is scoped to pyAmpliCol.
 
 With a valid license, automatic resource settings share one affinity-aware CPU
 budget:
@@ -101,70 +109,11 @@ Concurrent process builds receive disjoint evaluator budgets. Explicit
 requests are clamped when their product exceeds the available budget, and the
 requested/effective difference is recorded in generation provenance.
 
-## Restricted generation
+## Requesting a personal license for other Symbolica work
 
-Without a valid license, pyAmpliCol offers a license-request reminder. Users
-whose work is eligible under Symbolica's current terms can continue in
-restricted mode. Symbolica describes that mode as non-commercial, one instance,
-and one core per device; commercial work requires the applicable professional
-license path.
-
-pyAmpliCol enforces a technical clamp of one process worker and one Symbolica
-core and records why the requested configuration changed. That clamp does not
-grant eligibility or replace upstream terms.
-
-Suppress the request reminder and Symbolica startup banner when appropriate:
-
-```console
-pyamplicol generate_pp_zjj_from_ufo_sm.toml \
-  --no-symbolica-suggestion
-```
-
-or in a run card:
-
-```toml
-[symbolica]
-suggest_license = false
-```
-
-JSON CLI output suppresses the banner automatically so stdout remains valid
-machine-readable JSON.
-
-## Requesting a license
-
-Interactive helpers collect the fields, show a confirmation, and submit
-through Symbolica's Python API:
-
-```console
-pyamplicol request-symbolica-trial-license
-pyamplicol request-symbolica-hobbyist-license
-```
-
-Complete noninteractive requests require all fields and `--yes`:
-
-```console
-pyamplicol request-symbolica-trial-license \
-  --name "Ada Lovelace" \
-  --email ada@example.org \
-  --organization "Example Institute" \
-  --yes
-
-pyamplicol request-symbolica-hobbyist-license \
-  --name "Ada Lovelace" \
-  --email ada@example.org \
-  --yes
-```
-
-pyAmpliCol does not retain the submitted identity fields and does not print the
-returned key. Symbolica emails the issued key. Export it before generation:
-
-```console
-export SYMBOLICA_LICENSE='your-issued-key'
-```
-
-Consult the
-[official Symbolica installation and licensing guide](https://symbolica.io/docs/get_started.html)
-before choosing a request type.
+For personal licenses covering Symbolica use outside pyAmpliCol, visit
+[symbolica.io/license](https://symbolica.io/license). No personal key is
+needed for work covered by pyAmpliCol's embedded package key.
 
 ## Python exact precision
 
@@ -242,7 +191,8 @@ model with `--jit-compress` or `--no-jit-compress`.
 The pyAmpliCol project has express authorization from the Symbolica licensor to
 redistribute the Symbolica components required by pyAmpliCol's binary runtime.
 That project-specific permission is not a general grant to redistribute
-Symbolica separately. Users remain responsible for an appropriate use license.
+Symbolica separately. The embedded library key covers Symbolica calls within
+pyAmpliCol; other Symbolica use requires its own applicable authorization.
 
 Exact dependency versions and notices are included in release metadata and
 [`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).

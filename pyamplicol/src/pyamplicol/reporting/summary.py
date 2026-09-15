@@ -2093,8 +2093,6 @@ def _human_result_title(value: object, plain: object) -> str:
         return "pyAmpliCol Diagnostics"
     if class_name == "UtilityResult":
         return "Operation Complete"
-    if class_name == "LicenseRequestResult":
-        return "Symbolica License Request"
     if isinstance(plain, (str, int, float, bool)) or plain is None:
         return "pyAmpliCol Result"
     if isinstance(plain, Mapping):

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Lazy Symbolica licensing and generation-resource policy."""
+"""Symbolica licensing and generation-resource policy."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import importlib
 import os
 import sys
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import ModuleType
 from typing import TextIO
@@ -56,7 +56,7 @@ def detect_symbolica_license(
     stream: TextIO | None = None,
     loader: Callable[[], ModuleType] = _load_symbolica,
 ) -> SymbolicaLicenseState:
-    """Import Symbolica on first use and query its actual license manager."""
+    """Query Symbolica's license manager from the licensed package scope."""
 
     prepare_symbolica_environment(suppress_banner=not suggest or json_mode)
     module = loader()
@@ -76,9 +76,8 @@ def _suggest_license(stream: TextIO) -> None:
             return
         stream.write(
             "pyAmpliCol is using Symbolica restricted mode (one generation "
-            "worker and one Symbolica core). Request a free license with "
-            "'pyamplicol request-symbolica-trial-license' or "
-            "'pyamplicol request-symbolica-hobbyist-license'.\n"
+            "worker and one Symbolica core). For personal Symbolica licenses, "
+            "visit https://symbolica.io/license.\n"
         )
         stream.flush()
         _SUGGESTION_EMITTED = True
@@ -246,63 +245,10 @@ def resolve_symbolica_resource_config(
     return resolve_config(config_to_dict(requested), clamps=merged)
 
 
-def request_trial_license(
-    name: str,
-    email: str,
-    organization: str,
-    *,
-    loader: Callable[[], ModuleType] = _load_symbolica,
-) -> None:
-    _validate_identity((name, email, organization), requires_organization=True)
-    function = getattr(loader(), "request_trial_license", None)
-    if not callable(function):
-        raise RuntimeError(
-            "installed Symbolica does not provide request_trial_license()"
-        )
-    function(name, email, organization)
-
-
-def request_hobbyist_license(
-    name: str,
-    email: str,
-    *,
-    loader: Callable[[], ModuleType] = _load_symbolica,
-) -> None:
-    _validate_identity((name, email), requires_organization=False)
-    function = getattr(loader(), "request_hobbyist_license", None)
-    if not callable(function):
-        raise RuntimeError(
-            "installed Symbolica does not provide request_hobbyist_license()"
-        )
-    function(name, email)
-
-
-def _validate_identity(
-    values: Sequence[str],
-    *,
-    requires_organization: bool,
-) -> None:
-    expected = 3 if requires_organization else 2
-    if len(values) != expected or any(
-        not isinstance(value, str) or not value.strip() for value in values
-    ):
-        fields = (
-            "name, email, and organization"
-            if requires_organization
-            else "name and email"
-        )
-        raise ValueError(f"Symbolica license requests require non-empty {fields}")
-    email = values[1]
-    if "@" not in email or email.startswith("@") or email.endswith("@"):
-        raise ValueError("Symbolica license requests require a valid email address")
-
-
 __all__ = [
     "SymbolicaLicenseState",
     "detect_symbolica_license",
     "prepare_symbolica_environment",
-    "request_hobbyist_license",
-    "request_trial_license",
     "resolve_symbolica_resource_config",
     "symbolica_resource_clamps",
 ]

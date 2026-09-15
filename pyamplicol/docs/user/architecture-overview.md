@@ -200,9 +200,10 @@ See [Native APIs](native-apis.md).
 
 ## Symbolica and SymJIT boundary
 
-Symbolica is loaded lazily when model compilation, generation, or Python
-higher-precision or correlated evaluation requires it. Generation uses the
-effective license state and records resource clamps.
+Python package startup imports Symbolica and registers the pyAmpliCol library
+key. Model compilation, generation, and Python higher-precision or correlated
+evaluation use that package license without requiring a personal user key.
+Generation uses the effective license state and records resource clamps.
 
 The default JIT artifact embeds a direct SymJIT application. Rusticol loads and
 executes that f64 state without importing Symbolica or applying its generation-

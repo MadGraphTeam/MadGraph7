@@ -425,9 +425,10 @@ high_precision = runtime.evaluate(points, precision=80)
 ```
 
 For ordinary `evaluate` and `evaluate_resolved`, precision 16 uses the native
-Rusticol runtime and does not import Symbolica. Other positive precision
-requests use retained exact evaluator state when the artifact supports it and
-load Symbolica lazily. Decimal input preserves the supplied decimal digits;
+Rusticol runtime without Symbolica computations. Package startup imports
+Symbolica to register the pyAmpliCol library key. Other positive precision
+requests load retained exact evaluator state when the artifact supports it.
+Decimal input preserves the supplied decimal digits;
 binary64 input cannot gain information merely by requesting more arithmetic
 precision.
 

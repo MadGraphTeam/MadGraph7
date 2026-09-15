@@ -157,10 +157,12 @@ def test_model_compilation_returns_the_canonical_public_model(tmp_path: Path) ->
     assert parameter_card.is_file()
 
 
-def test_injected_license_plan_avoids_symbolica_and_model_compilers() -> None:
+def test_injected_license_plan_avoids_model_compilers() -> None:
     root = Path(__file__).resolve().parents[2]
     environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(root / "src")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(root / "src"), environment.get("PYTHONPATH", ""))
+    )
     completed = subprocess.run(
         (
             sys.executable,
@@ -173,11 +175,11 @@ def test_injected_license_plan_avoids_symbolica_and_model_compilers() -> None:
                     "from pyamplicol.config import EvaluatorConfig, RunConfig",
                     "licensing.detect_symbolica_license = lambda **kwargs: "
                     "licensing.SymbolicaLicenseState(False, True)",
-                    "assert 'symbolica' not in sys.modules",
+                    "assert 'symbolica' in sys.modules",
                     "Generator(RunConfig(action='generate', evaluator="
                     "EvaluatorConfig(execution_mode='compiled'))).plan("
                     "'d d~ > z')",
-                    "assert 'symbolica' not in sys.modules",
+                    "assert 'symbolica' in sys.modules",
                     "assert not any(name.startswith("
                     "'pyamplicol.models.compiler') for name in sys.modules)",
                 )

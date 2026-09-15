@@ -19,8 +19,6 @@ from pyamplicol.config import (
 from pyamplicol.licensing import (
     SymbolicaLicenseState,
     detect_symbolica_license,
-    request_hobbyist_license,
-    request_trial_license,
     reset_suggestion_state_for_tests,
     resolve_symbolica_resource_config,
     symbolica_resource_clamps,
@@ -46,6 +44,7 @@ def test_unlicensed_detection_suggests_once_and_hides_json_banner(
     detect_symbolica_license(stream=stream, loader=lambda: _module(licensed=False))
     assert state == SymbolicaLicenseState(licensed=False, restricted=True)
     assert stream.getvalue().count("restricted mode") == 1
+    assert "https://symbolica.io/license" in stream.getvalue()
 
     detect_symbolica_license(
         json_mode=True,
@@ -219,24 +218,3 @@ def test_licensed_partition_uses_process_affinity_budget(
 
     assert resolution.effective.generation.workers == 3
     assert resolution.effective.evaluator.optimization.cores == 1
-
-
-def test_request_helpers_forward_only_after_validation() -> None:
-    calls: list[tuple[object, ...]] = []
-    module = _module(licensed=True)
-    module.request_trial_license = lambda *args: calls.append(args)  # type: ignore[attr-defined]
-    module.request_hobbyist_license = lambda *args: calls.append(args)  # type: ignore[attr-defined]
-
-    request_trial_license(
-        "Ada",
-        "ada@example.org",
-        "Institute",
-        loader=lambda: module,
-    )
-    request_hobbyist_license("Grace", "grace@example.org", loader=lambda: module)
-    assert calls == [
-        ("Ada", "ada@example.org", "Institute"),
-        ("Grace", "grace@example.org"),
-    ]
-    with pytest.raises(ValueError, match="valid email"):
-        request_hobbyist_license("Grace", "invalid", loader=lambda: module)

@@ -19,13 +19,8 @@ from pyamplicol.config import (
     resolve_config,
 )
 
-from .licensing import LicenseKind, LicenseRequestInvocation
 from .utilities import UtilityInvocation, parse_utility
 
-_LICENSE_ACTIONS: dict[str, LicenseKind] = {
-    "request-symbolica-trial-license": "trial",
-    "request-symbolica-hobbyist-license": "hobbyist",
-}
 _MODEL_ACTIONS: dict[str, Action] = {
     "inspect": Action.MODEL_INSPECT,
     "compile": Action.MODEL_COMPILE,
@@ -39,7 +34,6 @@ _DIRECT_COMMANDS = frozenset(
         *(action.value for action in ACTIONS if not action.value.startswith("model-")),
         "profile",
         "model",
-        *_LICENSE_ACTIONS,
     }
 )
 _REMOVED_FLAT_MODEL_COMMANDS = frozenset(
@@ -762,36 +756,6 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         subparsers.add_parser(name, help=help_text)
 
-    trial = subparsers.add_parser(
-        "request-symbolica-trial-license",
-        help="Request a Symbolica trial license.",
-    )
-    trial.add_argument("--name")
-    trial.add_argument("--email")
-    trial.add_argument("--organization")
-    trial.add_argument("--yes", dest="assume_yes", action="store_true")
-    trial.add_argument("--json", dest="_json_output", action="store_true")
-    trial.add_argument(
-        "--color",
-        dest="_output_color",
-        choices=("auto", "always", "never"),
-        default="auto",
-    )
-
-    hobbyist = subparsers.add_parser(
-        "request-symbolica-hobbyist-license",
-        help="Request a Symbolica hobbyist license.",
-    )
-    hobbyist.add_argument("--name")
-    hobbyist.add_argument("--email")
-    hobbyist.add_argument("--yes", dest="assume_yes", action="store_true")
-    hobbyist.add_argument("--json", dest="_json_output", action="store_true")
-    hobbyist.add_argument(
-        "--color",
-        dest="_output_color",
-        choices=("auto", "always", "never"),
-        default="auto",
-    )
     return parser
 
 
@@ -814,7 +778,7 @@ def _is_prepared_model_output(value: object) -> bool:
 
 def _namespace_to_invocation(
     namespace: argparse.Namespace,
-) -> CliInvocation | LicenseRequestInvocation:
+) -> CliInvocation:
     raw = vars(namespace).copy()
     action_value = raw.pop("_action", None)
     model_action = raw.pop("_model_action", None)
@@ -824,16 +788,6 @@ def _namespace_to_invocation(
         action_value = _MODEL_ACTIONS[model_action].value
     if action_value == "profile":
         action_value = Action.BENCHMARK.value
-    if action_value in _LICENSE_ACTIONS:
-        return LicenseRequestInvocation(
-            kind=_LICENSE_ACTIONS[action_value],
-            name=raw.pop("name", None),
-            email=raw.pop("email", None),
-            organization=raw.pop("organization", None),
-            assume_yes=bool(raw.pop("assume_yes", False)),
-            output_format="json" if bool(raw.pop("_json_output", False)) else "human",
-            output_color=str(raw.pop("_output_color", "auto")),
-        )
     action = Action(action_value) if action_value is not None else None
     if action is Action.MODEL_COMPILE:
         evaluator_arguments = tuple(
@@ -942,7 +896,7 @@ def _normalize_direct_arguments(
 
 def parse_cli(
     argv: Sequence[str] | None = None,
-) -> CliInvocation | LicenseRequestInvocation | UtilityInvocation:
+) -> CliInvocation | UtilityInvocation:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] in _UTILITY_COMMANDS:
         return parse_utility(arguments)

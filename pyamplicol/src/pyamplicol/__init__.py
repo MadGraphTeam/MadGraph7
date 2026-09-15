@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 """Public Python interface for pyAmpliCol.
 
-Importing this module intentionally does not import Symbolica or model tooling. Heavy
-dependencies are loaded only when generation or runtime services are first used.
+The package's Symbolica library key is registered before any symbolic work.
+Model tooling is loaded only when generation or runtime services are first used.
 """
 
 from __future__ import annotations
@@ -10,7 +10,17 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
+from symbolica import set_library_key as _set_library_key
+
 from ._internal.versions import package_version
+
+# This key licenses Symbolica calls made by pyamplicol, including its workers.
+_set_library_key(
+    "SU-419-pyamplicol-2028.01.01-"
+    "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX"
+    "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ"
+)
+del _set_library_key
 
 if TYPE_CHECKING:
     from .api import (
