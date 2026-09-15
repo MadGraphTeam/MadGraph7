@@ -1028,6 +1028,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"madevent", ClusteringMeasure::madevent},
         }
     );
+    add_enum<ClusteringHistory>(
+        mlm,
+        "ClusteringHistory",
+        {
+            {"all_diagrams", ClusteringHistory::all_diagrams},
+            {"diagram", ClusteringHistory::diagram},
+            {"madevent", ClusteringHistory::madevent},
+        }
+    );
     add_enum<PartonLineScheme>(
         mlm,
         "PartonLineScheme",
@@ -1055,7 +1064,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PartonLineScheme,
                 AlphasScheme,
                 bool,
-                ClusteringMeasure>(),
+                ClusteringMeasure,
+                ClusteringHistory>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
@@ -1072,7 +1082,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
             py::arg("alphas_scheme") = AlphasScheme::per_vertex,
             py::arg("pdf_reweighting") = true,
-            py::arg("clustering_measure") = ClusteringMeasure::fxfx
+            py::arg("clustering_measure") = ClusteringMeasure::fxfx,
+            py::arg("clustering_history") = ClusteringHistory::all_diagrams
         )
         .def_property_readonly(
             "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
@@ -1081,11 +1092,22 @@ PYBIND11_MODULE(_madspace_py, m) {
             "clustering_measure", &MLMClustering::clustering_measure
         )
         .def_property_readonly(
+            "clustering_history", &MLMClustering::clustering_history
+        )
+        .def_property_readonly(
+            "diagram_start_states", &MLMClustering::diagram_start_states
+        )
+        .def_property_readonly(
             "cluster_state_machine", &MLMClustering::cluster_state_machine
         )
         .def_property_readonly("external_masses", &MLMClustering::external_masses)
         .def_property_readonly("bw_masses", &MLMClustering::bw_masses)
         .def_property_readonly("bw_widths", &MLMClustering::bw_widths);
+
+    py::classh<MLMClusteringAlongDiagram, FunctionGenerator>(
+        m, "MLMClusteringAlongDiagram"
+    )
+        .def(py::init<const MLMClustering&>(), py::arg("clustering"));
 
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(

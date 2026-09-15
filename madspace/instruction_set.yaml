@@ -2214,6 +2214,9 @@ mlm_clustering_hadronic:
     - name: random
       type: [float]
       desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
     - name: state_machine
       type: [int, single, m]
       desc:
@@ -2262,6 +2265,9 @@ mlm_clustering_hadronic:
     - name: clustering_measure
       type: [int, single]
       desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
   outputs:
     - name: ren_scale
       type: [float]
@@ -2322,6 +2328,9 @@ mlm_clustering_leptonic:
     - name: random
       type: [float]
       desc:
+    - name: start_state
+      type: [int]
+      desc: state machine offset the walk starts at, 0 for the history over every diagram
     - name: state_machine
       type: [int, single, m]
       desc:
@@ -2370,6 +2379,9 @@ mlm_clustering_leptonic:
     - name: clustering_measure
       type: [int, single]
       desc:
+    - name: history_mode
+      type: [int, single]
+      desc: ClusteringHistory, how the start state and the history over every diagram are combined
   outputs:
     - name: ren_scale
       type: [float]
