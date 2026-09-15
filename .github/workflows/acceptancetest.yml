@@ -1149,6 +1149,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_improve_ps_keeps_a_leg_at_rest -pA -t0 -l INFO
 
+  acceptancetest_polarised_rotation_at_rest:
+    # MadLoop's rotation stability test must stay a symmetry when a polarised
+    # particle is exactly at rest: HELAS pins its spin axis to the frame z, so
+    # the rotations are then taken about z.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_all
+
+      - name: test polarised rotation stability with a leg at rest
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_polarised_rotation_stability_leg_at_rest -pA -t0 -l INFO
+
   acceptancetest_check_madevent_me_vs_standalone:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
     runs-on: ubuntu-24.04

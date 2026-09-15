@@ -1726,13 +1726,22 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   in the integration, which is why the M2 sweep's "route every ME entry
   point through a wrapper" rule did not catch it: `BinothLHA` is not an ME
   entry point, it is a wrapper of one. Fixed at `check_poles.f:228`. See M3.
-- **B11 — latent, documented, not fixed.** `NRotations_DP`/`NRotations_QP`
-  re-evaluate the loop at a rotated phase-space point and expect `|M|^2`
-  unchanged. That fails for a particle put at rest by a one-leg `me_frame`,
-  whose quantisation axis is the frame z axis and does not rotate with the
-  momenta, so MadLoop would report spurious instability. Both default to 0,
-  so nothing is wrong today; a user who raises them on a polarised run will
-  see it. Same root as B8: the HELAS branch at exactly zero momentum.
+- **B11 — RESOLVED: rotations about z when a leg is at rest.**
+  `NRotations_DP`/`NRotations_QP` re-evaluate the loop at a rotated
+  phase-space point and expect `|M|^2` unchanged. The two rotations were axis
+  permutations moving z, and a particle put at rest by a one-leg `me_frame`
+  has its quantisation axis pinned to the frame z axis, so the rotated
+  evaluation was a different polarisation state. It was worse than a false
+  flag: on `u u~ > z{0} z{0} [virt=QCD]` with leg 3 exactly at rest,
+  `NRotations=2` returned code 420 (EPS), relative accuracy 6.1, and a finite
+  part of -2.129e-06 against the correct -4.838e-06 (56% off). `ROTATE_PS`
+  (DP and MP) now detects an exactly-at-rest external leg and rotates by
+  pi/2 and pi about z instead -- exact permutations that leave that spin axis
+  alone. After: code 216, accuracy 6.3e-11, finite equal to the no-rotation
+  value to 5e-13. Points with no leg at rest take the old permutations and are
+  bit-identical. Regression test:
+  `test_polarised_rotation_stability_leg_at_rest`. Same root as B8: the HELAS
+  branch at exactly zero momentum.
 
 ## 6. Risk
 
