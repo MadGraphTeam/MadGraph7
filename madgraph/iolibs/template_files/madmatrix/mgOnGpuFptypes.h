@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
 #ifdef MGONGPUCPP_GPUIMPL // cuda
@@ -41,29 +42,42 @@ namespace mg5amcCpu
   }
   */
 
-  inline __host__ __device__ const fptype&
-  fpmax( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline __host__ __device__ const FP&
+  fpmax( const FP& a, const FP& b )
   {
     return ( ( b < a ) ? a : b );
   }
 
-  inline __host__ __device__ const fptype&
-  fpmin( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline __host__ __device__ const FP&
+  fpmin( const FP& a, const FP& b )
   {
     return ( ( a < b ) ? a : b );
   }
 
-  inline __host__ __device__ fptype
-  fpsqrt( const fptype& f )
+  // Non-template overloads 
+  inline __host__ __device__ const fptype_amp&
+  fpmax( const fptype_amp& a, const fptype_amp& b ) { return ( ( b < a ) ? a : b ); }
+
+  inline __host__ __device__ const fptype_amp&
+  fpmin( const fptype_amp& a, const fptype_amp& b ) { return ( ( a < b ) ? a : b ); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  fpsqrt( FP f )
   {
-#if defined MGONGPU_FPTYPE_FLOAT
-    // See https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
-    return sqrtf( f );
-#else
-    // See https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
-    return sqrt( f );
-#endif
+    // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
+    // https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__DOUBLE.html
+    if constexpr( std::is_same_v<std::remove_cv_t<FP>, float> )
+      return sqrtf( f );
+    else
+      return sqrt( f );
   }
+
+  template<typename FP>
+  inline __host__ __device__ bool
+  fpsignbit( FP f ) { return signbit( f ); }
 
 #endif // #ifdef MGONGPUCPP_GPUIMPL
 
@@ -75,23 +89,37 @@ namespace mg5amcCpu
   // Floating point types - C++
   //------------------------------
 
-  inline const fptype&
-  fpmax( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline const FP&
+  fpmax( const FP& a, const FP& b )
   {
     return std::max( a, b );
   }
 
-  inline const fptype&
-  fpmin( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline const FP&
+  fpmin( const FP& a, const FP& b )
   {
     return std::min( a, b );
   }
 
-  inline fptype
-  fpsqrt( const fptype& f )
+  // Non-template overloads
+  inline const fptype_amp&
+  fpmax( const fptype_amp& a, const fptype_amp& b ) { return std::max( a, b ); }
+
+  inline const fptype_amp&
+  fpmin( const fptype_amp& a, const fptype_amp& b ) { return std::min( a, b ); }
+
+  template<typename FP>
+  inline FP
+  fpsqrt( FP f )
   {
     return std::sqrt( f );
   }
+
+  template<typename FP>
+  inline bool
+  fpsignbit( FP f ) { return std::signbit( f ); }
 
 #endif // #ifndef MGONGPUCPP_GPUIMPL
 

@@ -23,6 +23,7 @@ import math
 import os
 import re
 import sys
+import tempfile
 import time
 import collections
 
@@ -47,6 +48,16 @@ import models as ufomodels
 import models.model_reader as model_reader
 logger = logging.getLogger('madgraph.model')
 logger_mod = logging.getLogger('madgraph.model')
+# Importing a model prints hundreds of lines of details at debug level: what
+# the UFO converter defines, and everything the restriction removes or fuses.
+# They are written to a file (see start_model_log) rather than to the screen:
+# with no handler attached and no propagation to 'madgraph.model', the messages
+# are simply dropped.
+logger_details = logging.getLogger('madgraph.model.details')
+logger_details.propagate = False
+logger_details.addHandler(logging.NullHandler())
+# file handler of the import being logged, if any (see start_model_log)
+_model_log_handler = None
 
 root_path = os.path.dirname(os.path.realpath( __file__ ))
 sys.path.append(root_path)
@@ -275,135 +286,200 @@ def get_path_restrict(model_name, restrict=True):
     
     return model_path, restrict_file, restrict_name
 
+def start_model_log(model_dir, model_name):
+    """Write the details of the import of model_name into a file instead of on
+    the screen, and print the path of that file.
+
+    The file goes into the model directory when that directory is writable,
+    into the temporary directory otherwise. Nothing is written -- and nothing
+    is printed -- when the logger is not in debug mode. Return True when this
+    call is the one that opened the file, i.e. when the caller has to close it
+    with stop_model_log."""
+
+    global _model_log_handler
+
+    if _model_log_handler is not None:
+        # an enclosing import is already collecting the details: same file
+        return False
+    # logger_details has no level of its own: it inherits the one of
+    # 'madgraph.model', which is what the user sets with stdout_level. The
+    # handler keeps no level either, so a message that the logger lets through
+    # is written, be it DEBUG or the lower level of the admin debug mode.
+    if not logger_mod.isEnabledFor(logging.DEBUG):
+        return False
+
+    name = '%s_debug.log' % model_name.replace(os.path.sep, '_')
+    paths = []
+    if model_dir and os.access(model_dir, os.W_OK):
+        paths.append(pjoin(model_dir, name))
+    paths.append(pjoin(tempfile.gettempdir(), name))
+
+    for path in paths:
+        try:
+            handler = logging.FileHandler(path, mode='w')
+        except (IOError, OSError):
+            continue
+        break
+    else:
+        logger.info('No writable directory found for the model debug log.')
+        return False
+
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    logger_details.addHandler(handler)
+    _model_log_handler = handler
+    logger.info('Details of the model import are written in %s' % path)
+    return True
+
+def stop_model_log(started=True):
+    """Close the file opened by start_model_log (if this caller opened it)."""
+
+    global _model_log_handler
+
+    if not started or _model_log_handler is None:
+        return
+    logger_details.removeHandler(_model_log_handler)
+    _model_log_handler.close()
+    _model_log_handler = None
+
 def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                                                     complex_mass_scheme = None,
                                                     options={}):
     """ a practical and efficient way to import a model"""
     
     model_path, restrict_file, restrict_name = get_path_restrict(model_name, restrict)
-    
-    #import the FULL model
-    model = import_full_model(model_path, decay, prefix, options=options)
 
-    if os.path.exists(pjoin(model_path, "README")):
-        logger.info("Please read carefully the README of the model file for instructions/restrictions of the model.",'$MG:color:BLACK') 
-    # restore the model name
+    # everything the import prints at debug level (the definitions of the UFO
+    # converter, the details of the restriction) goes to a file, not on screen
+    name = os.path.basename(model_path.rstrip(os.path.sep))
     if restrict_name:
-        model["name"] += '-' + restrict_name
-    
-    # Decide whether complex mass scheme is on or not
-    useCMS = (complex_mass_scheme is None and aloha.complex_mass) or \
-                                                      complex_mass_scheme==True
-    #restrict it if needed       
-    if restrict_file:
-        try:
-            logger.info('Restrict model %s with file %s .' % (model_name, os.path.relpath(restrict_file)))
-        except OSError:
-            # sometimes has trouble with relative path
-            logger.info('Restrict model %s with file %s .' % (model_name, restrict_file))
-            
-        if logger_mod.getEffectiveLevel() > 10:
-            logger.info('Run \"set stdout_level DEBUG\" before import for more information.')
-        # Modify the mother class of the object in order to allow restriction
-        model = RestrictModel(model)
+        name += '-' + restrict_name
+    log_started = start_model_log(model_path, name)
+    try:
+        
+        #import the FULL model
+        model = import_full_model(model_path, decay, prefix, options=options)
 
-        # Change to complex mass scheme if necessary. This must be done BEFORE
-        # the restriction.
-        if useCMS:
-            # We read the param_card a first time so that the function 
-            # change_mass_to_complex_scheme can know if a particle is to
-            # be considered massive or not and with zero width or not.
-            # So we read the restrict card a first time, with the CMS set to
-            # False because we haven't changed the model yet.
-            model.set_parameters_and_couplings(param_card = restrict_file,
-                                                      complex_mass_scheme=False)
+        if os.path.exists(pjoin(model_path, "README")):
+            logger.info("Please read carefully the README of the model file for instructions/restrictions of the model.",'$MG:color:BLACK') 
+        # restore the model name
+        if restrict_name:
+            model["name"] += '-' + restrict_name
+        
+        # Decide whether complex mass scheme is on or not
+        useCMS = (complex_mass_scheme is None and aloha.complex_mass) or \
+                                                          complex_mass_scheme==True
+        #restrict it if needed       
+        if restrict_file:
+            try:
+                logger.info('Restrict model %s with file %s .' % (model_name, os.path.relpath(restrict_file)))
+            except OSError:
+                # sometimes has trouble with relative path
+                logger.info('Restrict model %s with file %s .' % (model_name, restrict_file))
+                
+            if logger_mod.getEffectiveLevel() > 10:
+                logger.info('Run \"set stdout_level DEBUG\" before import to write the details of the model import into a file.')
+            # Modify the mother class of the object in order to allow restriction
+            model = RestrictModel(model)
+
+            # Change to complex mass scheme if necessary. This must be done BEFORE
+            # the restriction.
+            if useCMS:
+                # We read the param_card a first time so that the function 
+                # change_mass_to_complex_scheme can know if a particle is to
+                # be considered massive or not and with zero width or not.
+                # So we read the restrict card a first time, with the CMS set to
+                # False because we haven't changed the model yet.
+                model.set_parameters_and_couplings(param_card = restrict_file,
+                                                          complex_mass_scheme=False)
+                if 'allow_qed_cms' in options and options['allow_qed_cms']:
+                    allow_qed = True
+                else:
+                    allow_qed = False
+
+                model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
+            else:
+                # Make sure that the parameter 'CMSParam' of the model is set to 0.0
+                # as it should in order to have the correct NWA renormalization condition.
+                # It might be that the default of the model is CMS.
+                model.change_mass_to_complex_scheme(toCMS=False)
+
+            blocks = model.get_param_block()
+            if model_name == 'mssm' or os.path.basename(model_name) == 'mssm':
+                keep_external=True
+            elif all( b in blocks for b in ['USQMIX', 'SL2', 'MSOFT', 'YE', 'NMIX', 'TU','MSE2','UPMNS']):
+                keep_external=True
+            elif model_name == 'MSSM_SLHA2' or os.path.basename(model_name) == 'MSSM_SLHA2':
+                keep_external=True            
+            else:
+                keep_external=False
+            if keep_external:
+                logger.info('Detect SLHA2 format. keeping restricted parameter in the param_card')
+                
+            model.restrict_model(restrict_file, rm_parameter=not decay,
+               keep_external=keep_external, complex_mass_scheme=complex_mass_scheme)
+            model.path = model_path
+        else:
             if 'allow_qed_cms' in options and options['allow_qed_cms']:
                 allow_qed = True
             else:
                 allow_qed = False
+            # Change to complex mass scheme if necessary
+            if useCMS:
+                model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
+            else:
+                # It might be that the default of the model (i.e. 'CMSParam') is CMS.
+                model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
 
-            model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
-        else:
-            # Make sure that the parameter 'CMSParam' of the model is set to 0.0
-            # as it should in order to have the correct NWA renormalization condition.
-            # It might be that the default of the model is CMS.
-            model.change_mass_to_complex_scheme(toCMS=False)
-
-        blocks = model.get_param_block()
-        if model_name == 'mssm' or os.path.basename(model_name) == 'mssm':
-            keep_external=True
-        elif all( b in blocks for b in ['USQMIX', 'SL2', 'MSOFT', 'YE', 'NMIX', 'TU','MSE2','UPMNS']):
-            keep_external=True
-        elif model_name == 'MSSM_SLHA2' or os.path.basename(model_name) == 'MSSM_SLHA2':
-            keep_external=True            
-        else:
-            keep_external=False
-        if keep_external:
-            logger.info('Detect SLHA2 format. keeping restricted parameter in the param_card')
-            
-        model.restrict_model(restrict_file, rm_parameter=not decay,
-           keep_external=keep_external, complex_mass_scheme=complex_mass_scheme)
-        model.path = model_path
-    else:
-        if 'allow_qed_cms' in options and options['allow_qed_cms']:
-            allow_qed = True
-        else:
-            allow_qed = False
-        # Change to complex mass scheme if necessary
-        if useCMS:
-            model.change_mass_to_complex_scheme(toCMS=True, bypass_check=allow_qed)
-        else:
-            # It might be that the default of the model (i.e. 'CMSParam') is CMS.
-            model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
-
-    # forbid NLO model to use flavor grouping
-    try:
-        perturb = model.get('perturbation_couplings')
-    except Exception:
-        support_flavor = True
-    else:
-        if perturb:
-            support_flavor = False  
-        else:
+        # forbid NLO model to use flavor grouping
+        try:
+            perturb = model.get('perturbation_couplings')
+        except Exception:
             support_flavor = True
-
-    # forbid 4Fermion model to use flavor grouping
-    if any(lor.spins.count(2)>2 for lor in model.get('lorentz')):
-        support_flavor = False
-
-    if options.get('apply_flavor_grouping', True) and support_flavor:
-        logger.info("Apply flavor grouping to the model")
-        if model.get_particle(2).get('mass') != 'ZERO':
-            logger.info('no grouping quark due to massive u quark')
-        elif model.get_particle(3).get('mass') != 'ZERO':
-            model.merge_flavor([1,2])
-        elif model.get_particle(4).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3])
-        elif model.get_particle(5).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3,4])
-        elif model.get_particle(6).get('mass') != 'ZERO':
-            model.merge_flavor([1,2,3,4,5])
         else:
-            model.merge_flavor([1,2,3,4,5,6])
-        if model.get_particle(11).get('mass') != 'ZERO':
-            logger.info('no grouping lepton due to massive electron')
-        elif model.get_particle(13).get('mass') != 'ZERO':
-            logger.info('no grouping lepton due to massive muon')
-        elif model.get_particle(15).get('mass') != 'ZERO':
-            model.merge_flavor([11,13])
-        else:
-            model.merge_flavor([11,13,15])
+            if perturb:
+                support_flavor = False  
+            else:
+                support_flavor = True
 
-        if model.get_particle(12).get('mass') != 'ZERO' or \
-            model.get_particle(14).get('mass') != 'ZERO' or \
-            model.get_particle(16).get('mass') != 'ZERO':
-            logger.info('no grouping neutrino due to mass')
-        else:
-            model.merge_flavor([12,14,16])
-        #misc.sprint('W merging')
-        #model.merge_part_antipart(24)  # W+/W-
+        # forbid 4Fermion model to use flavor grouping
+        if any(lor.spins.count(2)>2 for lor in model.get('lorentz')):
+            support_flavor = False
 
-    return model
+        if options.get('apply_flavor_grouping', True) and support_flavor:
+            logger.info("Apply flavor grouping to the model")
+            if model.get_particle(2).get('mass') != 'ZERO':
+                logger.info('no grouping quark due to massive u quark')
+            elif model.get_particle(3).get('mass') != 'ZERO':
+                model.merge_flavor([1,2])
+            elif model.get_particle(4).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3])
+            elif model.get_particle(5).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3,4])
+            elif model.get_particle(6).get('mass') != 'ZERO':
+                model.merge_flavor([1,2,3,4,5])
+            else:
+                model.merge_flavor([1,2,3,4,5,6])
+            if model.get_particle(11).get('mass') != 'ZERO':
+                logger.info('no grouping lepton due to massive electron')
+            elif model.get_particle(13).get('mass') != 'ZERO':
+                logger.info('no grouping lepton due to massive muon')
+            elif model.get_particle(15).get('mass') != 'ZERO':
+                model.merge_flavor([11,13])
+            else:
+                model.merge_flavor([11,13,15])
+
+            if model.get_particle(12).get('mass') != 'ZERO' or \
+                model.get_particle(14).get('mass') != 'ZERO' or \
+                model.get_particle(16).get('mass') != 'ZERO':
+                logger.info('no grouping neutrino due to mass')
+            else:
+                model.merge_flavor([12,14,16])
+            #misc.sprint('W merging')
+            #model.merge_part_antipart(24)  # W+/W-
+
+        return model
+    finally:
+        stop_model_log(log_started)
     
 
 _import_once = []
@@ -548,12 +624,12 @@ def import_full_model(model_path, decay=False, prefix='', options={}):
             elif p and not hasattr(p, 'partial_widths'):
                 p.partial_widths = {}
             # might be None for ghost
-        logger.debug("load width takes %s", time.time()-start)
+        logger_details.debug("load width takes %s", time.time()-start)
     
     if prefix:
         start = time.time()
         model.change_parameter_name_with_prefix()
-        logger.debug("model prefixing  takes %s", time.time()-start)
+        logger_details.debug("model prefixing  takes %s", time.time()-start)
                      
     path = os.path.dirname(os.path.realpath(model_path))
     path = os.path.join(path, model.get('name'))
@@ -582,7 +658,7 @@ class UFOMG5Converter(object):
         if hasattr(model, '__header__'):
             header = model.__header__
             if len(header) > 500 or header.count('\n') > 5:
-                logger.debug("Too long header")
+                logger_details.debug("Too long header")
             else:
                 logger.info("\n"+header)
         else:
@@ -714,13 +790,13 @@ class UFOMG5Converter(object):
         # OrganizeModelExpression only, so that the main() function of this class
         # *must* be run on the UFO to have this change reverted.
         if hasattr(self.ufomodel,'all_CTparameters'):
-            logger.debug('Handling couplings defined with CTparameters...')
+            logger_details.debug('Handling couplings defined with CTparameters...')
             start_treat_coupling = time.time()
             self.treat_couplings(self.ufomodel.all_couplings, 
                                                  self.ufomodel.all_CTparameters)
             tot_time = time.time()-start_treat_coupling
             if tot_time>5.0:
-                logger.debug('... done in %s'%misc.format_time(tot_time))        
+                logger_details.debug('... done in %s'%misc.format_time(tot_time))        
 
         logger.info('load vertices')
         for interaction_info in self.ufomodel.all_vertices:
@@ -2316,7 +2392,7 @@ class UFOMG5Converter(object):
     def add_coupling(self, expr, order, name):
         """Add a coupling definition to the model """
 
-        logger.debug('MG5 converter defines %s to %s', name, expr)
+        logger_details.debug('MG5 converter defines %s to %s', name, expr)
         assert name not in [c.name for c in self.additional_couplings] + [c.name for c in self.ufomodel.all_couplings]
         #avoid side effect that the instantiate a UFO class update the list of coupling in the model
         # Use the Coupling class's own __globals__ dict directly, because self.ufomodel.object_library
@@ -2341,7 +2417,7 @@ class UFOMG5Converter(object):
         if name is None:
             assert formfact is None
             return self.add_lorentz_create_name(spins, expr)
-        logger.debug('MG5 converter defines %s to %s', name, expr)
+        logger_details.debug('MG5 converter defines %s to %s', name, expr)
         assert name not in [l.name for l in self.model['lorentz']]
 
         if not hasattr(self.ufomodel, 'object_library'):
@@ -2414,22 +2490,22 @@ class UFOMG5Converter(object):
                 elif particle.color in [-3,3]:
                     if particle.pdg_code not in color_info:
                         #try to find it one more time 3 -3 1 might help
-                        logger.debug('fail to find 3/3bar representation: Retry to find it')
+                        logger_details.debug('fail to find 3/3bar representation: Retry to find it')
                         color_info = self.find_color_anti_color_rep(color_info)
                         if particle.pdg_code not in color_info:
-                            logger.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle.name)
+                            logger_details.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle.name)
                             color_info[particle.pdg_code] = particle.color
                         else:
-                            logger.debug('succeed')
+                            logger_details.debug('succeed')
                     if particle2.pdg_code not in color_info:
                         #try to find it one more time 3 -3 1 might help
-                        logger.debug('fail to find 3/3bar representation: Retry to find it')
+                        logger_details.debug('fail to find 3/3bar representation: Retry to find it')
                         color_info = self.find_color_anti_color_rep(color_info)
                         if particle2.pdg_code not in color_info:
-                            logger.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle2.name)
+                            logger_details.debug('Not able to find the 3/3bar rep from the interactions for particle %s' % particle2.name)
                             color_info[particle2.pdg_code] = particle2.color                    
                         else:
-                            logger.debug('succeed')
+                            logger_details.debug('succeed')
                 
                     if color_info[particle.pdg_code] == 3 :
                         output.append(self._pat_id.sub(r'color.T(\g<second>,\g<first>)', term))
@@ -2811,13 +2887,15 @@ class RestrictModel(model_reader.ModelReader):
     def modify_autowidth(self, cards, id):
         self.autowidth.append([int(id[0])])
         return math.log10(2*len(self.autowidth))
-     
+
     def restrict_model(self, param_card, rm_parameter=True, keep_external=False,
                                                       complex_mass_scheme=None):
         """apply the model restriction following param_card.
         rm_parameter defines if the Zero/one parameter are removed or not from
         the model.
-        keep_external if the param_card need to be kept intact
+        keep_external if the param_card need to be kept intact.
+        The details of the restriction are logged on logger_details, i.e. in
+        the file opened by start_model_log.
         """
         
         if self.get('name') == "mssm" and not keep_external:
@@ -2834,7 +2912,7 @@ class RestrictModel(model_reader.ModelReader):
                                         auto_width=self.modify_autowidth)
         
         # Simplify conditional statements
-        logger.log(self.log_level, 'Simplifying conditional expressions')
+        logger_details.log(self.log_level, 'Simplifying conditional expressions')
         modified_params, modified_couplings = \
             self.detect_conditional_statements_simplifications(model_definitions)
         
@@ -2982,7 +3060,7 @@ class RestrictModel(model_reader.ModelReader):
                 zero_coupling.append(name)
                 continue
             elif not strict_zero and abs(value) < 1e-13:
-                logger.log(self.log_level, 'coupling with small value %s: %s treated as zero' %
+                logger_details.log(self.log_level, 'coupling with small value %s: %s treated as zero' %
                              (name, value))
                 zero_coupling.append(name)
                 continue
@@ -3086,14 +3164,14 @@ class RestrictModel(model_reader.ModelReader):
         parameter (resp. coupling) instance and b is the simplified expression."""
         
         if modified_params:
-            logger.log(self.log_level, "Conditional expressions are simplified for parameters:")
-            logger.log(self.log_level, ",".join("%s"%param[0].name for param in modified_params))
+            logger_details.log(self.log_level, "Conditional expressions are simplified for parameters:")
+            logger_details.log(self.log_level, ",".join("%s"%param[0].name for param in modified_params))
         for param, new_expr in modified_params:
             param.expr = new_expr
         
         if modified_couplings:
-            logger.log(self.log_level, "Conditional expressions are simplified for couplings:")
-            logger.log(self.log_level, ",".join("%s"%coupl[0].name for coupl in modified_couplings))
+            logger_details.log(self.log_level, "Conditional expressions are simplified for couplings:")
+            logger_details.log(self.log_level, ",".join("%s"%coupl[0].name for coupl in modified_couplings))
         for coupl, new_expr in modified_couplings:
             coupl.expr = new_expr
     
@@ -3133,10 +3211,10 @@ class RestrictModel(model_reader.ModelReader):
         tot_param_time = end_param-start_param
         tot_coupl_time = end_coupl-end_param
         if tot_param_time>5.0:
-            logger.log(self.log_level, "Simplification of conditional statements"+\
+            logger_details.log(self.log_level, "Simplification of conditional statements"+\
               " in parameter expressions done in %s."%misc.format_time(tot_param_time))
         if tot_coupl_time>5.0:
-            logger.log(self.log_level, "Simplification of conditional statements"+\
+            logger_details.log(self.log_level, "Simplification of conditional statements"+\
               " in couplings expressions done in %s."%misc.format_time(tot_coupl_time))
 
         return param_modifications, coupl_modifications
@@ -3217,7 +3295,7 @@ class RestrictModel(model_reader.ModelReader):
         counterterms"""
 
         
-        logger_mod.log(self.log_level, ' Fuse the Following coupling (they have the same value): %s '% \
+        logger_details.log(self.log_level, ' Fuse the Following coupling (they have the same value): %s '% \
                         ', '.join([str(obj) for obj in couplings]))
 
         #names = [name for (name,ratio) in couplings if ratio ==1]
@@ -3261,7 +3339,7 @@ class RestrictModel(model_reader.ModelReader):
         """ merge the identical parameters given in argument.
         keep external force to keep the param_card untouched (up to comment)"""
             
-        logger_mod.log(self.log_level, 'Parameters set to identical values: %s '% \
+        logger_details.log(self.log_level, 'Parameters set to identical values: %s '% \
                  ', '.join(['%s*%s' % (f, obj.name.replace('mdl_','')) for (obj,f) in parameters]))
 
         # Extract external parameters
@@ -3373,11 +3451,11 @@ class RestrictModel(model_reader.ModelReader):
             orders = ['%s=%s' % (order,value) for order,value in vertex['orders'].items()]
                                         
             if not vertex['couplings']:
-                logger_mod.log(self.log_level, 'remove interactions: %s at order: %s' % \
+                logger_details.log(self.log_level, 'remove interactions: %s at order: %s' % \
                                         (' '.join(part_name),', '.join(orders)))
                 self['interactions'].remove(vertex)
             else:
-                logger_mod.log(self.log_level, 'modify interactions: %s at order: %s' % \
+                logger_details.log(self.log_level, 'modify interactions: %s at order: %s' % \
                                 (' '.join(part_name),', '.join(orders)))
 
         # print useful log and clean the empty counterterm values
@@ -3389,12 +3467,12 @@ class RestrictModel(model_reader.ModelReader):
                          for part in pct[1][1]])
                                         
             if not pct[0]['counterterm'][pct[1]]:
-                logger_mod.log(self.log_level, 'remove counterterm of particle %s'%part_name+\
+                logger_details.log(self.log_level, 'remove counterterm of particle %s'%part_name+\
                                  ' with loop particles (%s)'%loop_parts+\
                                  ' perturbing order %s'%order)
                 del pct[0]['counterterm'][pct[1]]
             else:
-                logger_mod.log(self.log_level, 'Modify counterterm of particle %s'%part_name+\
+                logger_details.log(self.log_level, 'Modify counterterm of particle %s'%part_name+\
                                  ' with loop particles (%s)'%loop_parts+\
                                  ' perturbing order %s'%order)  
 
@@ -3543,9 +3621,9 @@ class RestrictModel(model_reader.ModelReader):
             #by pass parameter still in use
             if param in used or \
                   (keep_external and param_info[param]['dep'] == ('external',)):
-                logger_mod.log(self.log_level, 'fix parameter value: %s' % param)
+                logger_details.log(self.log_level, 'fix parameter value: %s' % param)
                 continue 
-            logger_mod.log(self.log_level,'remove parameters: %s' % (param))
+            logger_details.log(self.log_level,'remove parameters: %s' % (param))
             data = self['parameters'][param_info[param]['dep']]
             data.remove(param_info[param]['obj'])
             

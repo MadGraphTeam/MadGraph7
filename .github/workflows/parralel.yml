@@ -6,6 +6,12 @@ name: running parralel test
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -19,9 +25,6 @@ on:
       message:
         description: 'running parralel test'
         required: true
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 env:
   commitmsg: ${{ github.event.head_commit.message }}
@@ -38,7 +41,7 @@ jobs:
   test_short_cross_sqso1:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -61,7 +64,7 @@ jobs:
   test_gauge_4_e500:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -83,7 +86,7 @@ jobs:
   test_gauge_6_e500:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -105,7 +108,7 @@ jobs:
   test_gauge_6_e90:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -128,7 +131,7 @@ jobs:
   test_short_cross_pol:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -151,7 +154,7 @@ jobs:
   test_short_cross_sm1:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -174,7 +177,7 @@ jobs:
   test_short_ppgogo_amcatnlo_nlo:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -196,7 +199,7 @@ jobs:
   test_short_softcol_nlo:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -218,7 +221,7 @@ jobs:
   test_short_cross_gauge:
     # Short gauge cross-section comparison (tests/parallel_tests/compare_gauge.py)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -237,7 +240,7 @@ jobs:
   test_short_gauge:
     # Short LO gauge-invariance comparison (tests/parallel_tests/compare_gauge.py)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -256,7 +259,7 @@ jobs:
   test_short_gauge_loop:
     # Short loop gauge-invariance comparison (tests/parallel_tests/compare_gauge.py)
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -283,7 +286,7 @@ jobs:
 
   test_short_sm:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -301,7 +304,7 @@ jobs:
 
   test_short_sqso:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -319,7 +322,7 @@ jobs:
 
   test_short_polarization:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -338,7 +341,7 @@ jobs:
   test_short_mssm:
     # Needs MSSM_SLHA2 UFO model from the UFOmodeldb cache.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -358,7 +361,7 @@ jobs:
   test_short_heft:
     # Needs heft UFO model from the UFOmodeldb cache.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -378,7 +381,7 @@ jobs:
   test_short_cross_sm2:
     # Compares MadEvent cross-section against hard-coded u j > W+ g / g g > W+ j j values.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -397,7 +400,7 @@ jobs:
   test_short_cross_sm3:
     # Compares MadEvent cross-section against hard-coded g g > t t~ decay-chain values.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -416,7 +419,7 @@ jobs:
   test_short_cross_mssm1:
     # Compares MadEvent cross-section against hard-coded g g > go go (MSSM) values.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -444,7 +447,7 @@ jobs:
   test_short_check_eejjj_lo_lhapdf:
     # e+ e- > p p p [real=QCD] at LO with pdlabel='lhapdf'.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -461,7 +464,7 @@ jobs:
   test_short_split_evt_gen_zeroev:
     # p p > e+ e- [real=QCD] with split event generation when a channel has zero events.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -478,7 +481,7 @@ jobs:
   test_short_check_ppwy:
     # p p > w+ y [QCD] using the loop_smgrav model (spin-2 graviton wavefunction).
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -495,7 +498,7 @@ jobs:
   test_short_launch_amcatnlo_name:
     # p p > e+ ve [QCD] launched via aMC@NLO with an explicit run name.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -512,7 +515,7 @@ jobs:
   test_short_calculate_xsect_script:
     # Cross-section computation driven by bin/calculate_xsect for p p > e+ ve [QCD].
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -534,7 +537,7 @@ jobs:
 
   test_short_ML5_sm_vs_stored_ML5:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -550,7 +553,7 @@ jobs:
 
   test_short_ML5_sm_vs_stored_ML4:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -573,7 +576,7 @@ jobs:
   test_short_generate_events_nlo_hw6_stdhep:
     # NLO event generation, showered with HERWIG6, output as StdHEP.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -591,7 +594,7 @@ jobs:
   test_short_generate_events_nlo_hw6_split:
     # NLO event generation split into multiple HERWIG6 shower sub-jobs.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -609,7 +612,7 @@ jobs:
   test_short_generate_events_nlo_py6_stdhep:
     # NLO event generation, showered with PYTHIA6 (PYTHIA6Q), output as StdHEP.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -627,7 +630,7 @@ jobs:
   test_short_generate_events_nlo_py6pt_stdhep:
     # NLO event generation, showered with PYTHIA6PT, output as StdHEP.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -645,7 +648,7 @@ jobs:
   test_short_check_generate_events_nlo_py6pt_fsr:
     # Negative test: PYTHIA6PT must refuse to shower a process with final-state radiation.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -664,7 +667,7 @@ jobs:
     # Exercises bin/generate_events + bin/shower with HERWIG6 hep and top output,
     # including nsplit_jobs > 1 splitting.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -682,7 +685,7 @@ jobs:
   test_short_generate_events_name:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -701,7 +704,7 @@ jobs:
   test_decay_comparator_mssm:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -718,7 +721,7 @@ jobs:
   test_decay_comparator_heft:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -735,7 +738,7 @@ jobs:
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -752,7 +755,7 @@ jobs:
   test_decay_comparator_nmssm2:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -769,7 +772,7 @@ jobs:
   test_decay_comparator_nmssm3:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -786,7 +789,7 @@ jobs:
   test_ML5_uux_ddx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -803,7 +806,7 @@ jobs:
   test_long_sm_vs_stored_ML5_sqso_ddx_ddx_WEIGHTEDgt6:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -820,7 +823,7 @@ jobs:
   test_long_sm_vs_stored_ML5_gg_zccx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -837,7 +840,7 @@ jobs:
   test_long_sm_vs_stored_HCR_uxu_zz_QED:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
@@ -854,7 +857,7 @@ jobs:
   test_long_sm_vs_stored_HCR_uxu_zz_QCD:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5

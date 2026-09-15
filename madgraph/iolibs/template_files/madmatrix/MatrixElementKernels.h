@@ -203,7 +203,7 @@ namespace mg5amcCpu
     std::unique_ptr<DeviceBufferSimple> m_pHelMEs;
 
     // The super-buffer of nGoodHel jamp buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelJamps;
+    std::unique_ptr<DeviceBufferAmp> m_pHelJamps;
 
     // The super-buffer of nGoodHel numerator buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelNumerators;
@@ -211,8 +211,8 @@ namespace mg5amcCpu
     // The super-buffer of nGoodHel denominator buffers (dynamically allocated because nGoodHel is determined at runtime)
     std::unique_ptr<DeviceBufferSimple> m_pHelDenominators;
 
-    // The super-buffer of ncolor jamp2 buffers
-    DeviceBufferSimple m_colJamp2s;
+    // The super-buffer of ncolor_flow jamp2 buffers
+    DeviceBufferAmp m_colJamp2s;
 
 #ifdef MGONGPU_CHANNELID_DEBUG
     // The **host** buffer for the channelId array

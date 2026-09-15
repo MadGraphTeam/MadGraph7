@@ -146,10 +146,10 @@ class CheckFKS(mg_interface.CheckValidForCmd):
     def check_tutorial(self, args):
         """check the validity of the line"""
         if len(args) == 0:
-            #this means mg5 tutorial
-            args.append('aMCatNLO')
-        else:
-            return mg_interface.CheckValidForCmd.check_tutorial(self,args)
+            # a bare 'tutorial' still opens the menu, but from the aMC@NLO
+            # interface the NLO tutorial is the natural default
+            args.append(self.ask_tutorial(default='nlo'))
+        return mg_interface.CheckValidForCmd.check_tutorial(self, args)
 
     def check_output(self, args):
         """ check the validity of the line"""

@@ -12,6 +12,7 @@
 #include "mgOnGpuFptypes.h"
 
 #include <iostream>
+#include <type_traits>
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) HEADERS
@@ -322,6 +323,44 @@ namespace mg5amcCpu
 
   // SANITY CHECK: memory access may be based on casts of fptype[2] to cxtype (e.g. for wavefunctions)
   static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
+
+  // --- Multi-precision complex types (same platform logic as cxtype)
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#if defined MGONGPU_CUCXTYPE_THRUST
+  typedef thrust::complex<fptype_momenta> cxtype_momenta;
+  typedef cxtype_momenta cxtype_denom;
+  typedef thrust::complex<fptype_amp> cxtype_amp;
+  typedef thrust::complex<fptype_colour> cxtype_colour;
+#elif defined MGONGPU_CUCXTYPE_CUCOMPLEX
+  // cucomplex is not templated; use cxsmpl for stage-specific types
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef cxtype_momenta cxtype_denom;
+  typedef cxsmpl<fptype_amp> cxtype_amp;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
+#else
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef cxtype_momenta cxtype_denom;
+  typedef cxsmpl<fptype_amp> cxtype_amp;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
+#endif
+#else // c++
+#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+  typedef std::complex<fptype_momenta> cxtype_momenta;
+  typedef cxtype_momenta cxtype_denom;
+  typedef std::complex<fptype_amp> cxtype_amp;
+  typedef std::complex<fptype_colour> cxtype_colour;
+#else
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef cxtype_momenta cxtype_denom;
+  typedef cxsmpl<fptype_amp> cxtype_amp;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
+#endif
+#endif
+
+  // SANITY CHECKS
+  static_assert( sizeof( cxtype_momenta ) == mgOnGpu::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
+  static_assert( sizeof( cxtype_amp ) == mgOnGpu::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
+  static_assert( sizeof( cxtype_colour ) == mgOnGpu::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
 }
 
 // DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
@@ -381,6 +420,28 @@ namespace mg5amcCpu
     return cxmake( c.real(), c.imag() );
   }
 
+  inline __host__ __device__ const cxtype&
+  cxmake( const cxtype& c ) // cxsmpl to cxsmpl (identity)
+  {
+    return c;
+  }
+
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
+  inline __host__ __device__ cxsmpl<FP>
+  cxmake( const FP& r, const FP& i ) { return cxsmpl<FP>( r, i ); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  cxreal( const cxsmpl<FP>& c ) { return c.real(); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  cximag( const cxsmpl<FP>& c ) { return c.imag(); }
+
+  template<typename FP>
+  inline __host__ __device__ cxsmpl<FP>
+  cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
+
 #endif // #if defined MGONGPU_CUCXTYPE_CXSMPL or defined MGONGPU_HIPCXTYPE_CXSMPL or defined MGONGPU_CPPCXTYPE_CXSMPL
 
   //==========================================================================
@@ -395,6 +456,13 @@ namespace mg5amcCpu
   cxmake( const fptype& r, const fptype& i )
   {
     return cxtype( r, i ); // thrust::complex<fptype> constructor
+  }
+
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
+  inline __host__ __device__ thrust::complex<FP>
+  cxmake( const FP& r, const FP& i )
+  {
+    return thrust::complex<FP>( r, i );
   }
 
   inline __host__ __device__ fptype
@@ -420,6 +488,19 @@ namespace mg5amcCpu
   {
     return c;
   }
+
+  // Template versions for multi-precision complex types (thrust-based)
+  template<typename FP>
+  inline __host__ __device__ FP
+  cxreal( const thrust::complex<FP>& c ) { return c.real(); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  cximag( const thrust::complex<FP>& c ) { return c.imag(); }
+
+  template<typename FP>
+  inline __host__ __device__ thrust::complex<FP>
+  cxconj( const thrust::complex<FP>& c ) { return thrust::conj( c ); }
 
 #endif // #if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_THRUST
 
@@ -622,11 +703,44 @@ namespace mg5amcCpu
     return cxmake( cxreal( c ), -cximag( c ) );
   }
 
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
+  inline __host__ __device__ cxsmpl<FP>
+  cxmake( const FP& r, const FP& i )
+  {
+    return cxsmpl<FP>( r, i );
+  }
+
+  // Template versions for multi-precision complex types (cucomplex-based, using cxsmpl)
+  template<typename FP>
+  inline __host__ __device__ FP
+  cxreal( const cxsmpl<FP>& c ) { return c.real(); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  cximag( const cxsmpl<FP>& c ) { return c.imag(); }
+
+  template<typename FP>
+  inline __host__ __device__ cxsmpl<FP>
+  cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
+
   inline __host__ cxtype                  // NOT __device__
   cxmake( const std::complex<fptype>& c ) // std::complex to cucomplex (float-to-float or double-to-double)
   {
     return cxmake( c.real(), c.imag() );
   }
+
+// Template versions for multi-precision complex types (cxsmpl-based, used with cucomplex build)
+  template<typename FP>
+  inline __host__ __device__ FP
+  cxreal( const cxsmpl<FP>& c ) { return c.real(); }
+
+  template<typename FP>
+  inline __host__ __device__ FP
+  cximag( const cxsmpl<FP>& c ) { return c.imag(); }
+
+  template<typename FP>
+  inline __host__ __device__ cxsmpl<FP>
+  cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
 
 #endif // #if defined __CUDACC__ and defined MGONGPU_CUCXTYPE_CUCOMPLEX
 
@@ -676,21 +790,23 @@ namespace mg5amcCpu
   }
 #endif
 
+  template<typename FP, typename = std::enable_if_t<std::is_floating_point<FP>::value>>
+  inline std::complex<FP>
+  cxmake( const FP& r, const FP& i ) { return std::complex<FP>( r, i ); }
+
+  template<typename FP>
+  inline FP
+  cxreal( const std::complex<FP>& c ) { return c.real(); }
+
+  template<typename FP>
+  inline FP
+  cximag( const std::complex<FP>& c ) { return c.imag(); }
+
+  template<typename FP>
+  inline std::complex<FP>
+  cxconj( const std::complex<FP>& c ) { return conj( c ); }
+
 #endif // #if not defined __CUDACC__ and defined MGONGPU_CPPCXTYPE_STDCOMPLEX
-
-  //==========================================================================
-
-  inline __host__ __device__ const cxtype
-  cxmake( const cxsmpl<float>& c ) // cxsmpl to cxtype (float-to-float or float-to-double)
-  {
-    return cxmake( c.real(), c.imag() );
-  }
-
-  inline __host__ __device__ const cxtype
-  cxmake( const cxsmpl<double>& c ) // cxsmpl to cxtype (double-to-float or double-to-double)
-  {
-    return cxmake( c.real(), c.imag() );
-  }
 
 } // end namespace mg5amcGpu/mg5amcCpu
 
@@ -735,6 +851,35 @@ namespace mg5amcCpu
   operator<<( std::ostream& out, const cxtype_ref& c )
   {
     out << (cxtype)c;
+    return out;
+  }
+
+  // The cxtype_amp_ref class: same as cxtype_ref but for fptype_amp buffers
+  class cxtype_amp_ref
+  {
+  public:
+    cxtype_amp_ref() = delete;
+    cxtype_amp_ref( const cxtype_amp_ref& ) = delete;
+    cxtype_amp_ref( cxtype_amp_ref&& ) = default;
+    __host__ __device__ cxtype_amp_ref( fptype_amp& r, fptype_amp& i )
+      : m_preal( &r ), m_pimag( &i ) {}
+    cxtype_amp_ref& operator=( const cxtype_amp_ref& ) = delete;
+    __host__ __device__ cxtype_amp_ref& operator=( const cxtype_amp& c )
+    {
+      *m_preal = cxreal( c );
+      *m_pimag = cximag( c );
+      return *this;
+    }
+    __host__ __device__ operator cxtype_amp() const { return cxmake( *m_preal, *m_pimag ); }
+  private:
+    fptype_amp* const m_preal;
+    fptype_amp* const m_pimag;
+  };
+
+  inline __host__ __device__ std::ostream&
+  operator<<( std::ostream& out, const cxtype_amp_ref& c )
+  {
+    out << (cxtype_amp)c;
     return out;
   }
 

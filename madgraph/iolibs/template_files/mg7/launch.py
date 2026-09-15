@@ -110,6 +110,13 @@ def backend_of(device_name: str, cpu_mode: str) -> str:
     return cpu_mode if device_type == "cpu" else device_type
 
 
+_PRECISION_2_FPTYPE = {"all64": "d", "all32": "f", "color32": "m", "denom64": "v"}
+
+
+def fptype_of(precision: str) -> str:
+    return _PRECISION_2_FPTYPE.get(str(precision).lower(), str(precision).lower())
+
+
 def resolve_auto_backend(build_path: str) -> str:
     """Ask the matrix-element Makefile to resolve the ``auto`` cpu_mode.
 
@@ -1044,6 +1051,8 @@ class MadgraphProcess:
         first_proc_path = self.subprocess_data[0]["path"]
         subproc_path = os.path.dirname(first_proc_path)
 
+        fptype = fptype_of(self.run_card["run"]["precision"])
+
         # Resolve cpu_mode='auto' once (the build rules pick the best SIMD
         # backend available here), so all subprocesses agree on the library names.
         auto_backend = None
@@ -1074,7 +1083,8 @@ class MadgraphProcess:
             )
             start_time = time.time()
             self.make_subprocesses(
-                subproc_path, [f"BACKEND={backend}", "USEBUILDDIR=1"],
+                subproc_path,
+                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
                 nb_core, log_path,
             )
             logger.info(
@@ -2666,9 +2676,9 @@ def load_mg5_options(me_dir=None) -> dict:
         'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
     }
     config_files = []
-    if os.environ.get('MADGRAPH_BASE'):
-        config_files.append((os.path.join(os.environ['MADGRAPH_BASE'],
-                                          misc.CONFIG_NAME), mg5dir))
+    base_config = misc.base_config_file()
+    if base_config:
+        config_files.append((base_config, mg5dir))
     user_config = misc.user_config_file()
     if user_config:
         config_files.append((user_config, mg5dir))

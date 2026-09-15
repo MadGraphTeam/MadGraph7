@@ -44,6 +44,7 @@ import madgraph.interface.extended_cmd as cmd
 import madgraph.interface.madgraph_interface as MGcmd
 import madgraph.interface.loop_interface as LoopCmd
 import madgraph.interface.amcatnlo_interface as amcatnloCmd
+import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.fks.fks_base as fks_base
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
@@ -92,6 +93,9 @@ class Switcher(object):
         self.to_preserve = [key for key,method in Switcher.__dict__.items() if
                        hasattr(method, '__call__') ]
         self.to_preserve += ['do_shell', 'help_shell', 'complete_shell']
+        # commands the tutorial mixin splices onto the live instance while a
+        # tutorial runs: they are deliberately not routed through self.cmd
+        self.to_preserve += tutorial_mixin.mixin_command_names()
 
         ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
         
@@ -787,7 +791,11 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
+        config_path = misc.base_config_file()
+        if not config_path:
+            # on the web MADGRAPH_BASE is always set: never silently fall back
+            # to the local configuration files.
+            raise KeyError('MADGRAPH_BASE')
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):

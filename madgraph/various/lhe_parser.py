@@ -1851,6 +1851,364 @@ class MultiEventFile(EventFile):
             
         
            
+def _model_leg_is_massless(model, pdg):
+    """True when the model gives this leg a strictly zero mass.
+
+    Scoping is taken from the model, never from a hardcoded PDG list: the same
+    PDG is massless in one restriction and massive in another (b, c, tau...).
+    Merged particles (apply_flavor_grouping, codes 81/82/83) are resolved onto
+    the flavours they stand for.  Anything that cannot be resolved answers
+    False, i.e. is left untouched.
+    """
+    try:
+        pdg = int(pdg)
+    except (TypeError, ValueError):
+        return False
+    merged = None
+    if hasattr(model, 'get'):
+        try:
+            merged = model.get('merged_particles')
+        except Exception:
+            merged = None
+    if merged and abs(pdg) in merged:
+        ids = merged[abs(pdg)]
+        return bool(ids) and all(_model_leg_is_massless(model, i) for i in ids)
+    try:
+        part = model.get_particle(pdg)
+    except Exception:
+        return False
+    if part is None:
+        return False
+    try:
+        if part.get('mass').lower() == 'zero':
+            return True
+    except Exception:
+        pass
+    if hasattr(model, 'get_mass'):
+        try:
+            return float(model.get_mass(pdg)) == 0.
+        except Exception:
+            return False
+    return False
+
+
+def project_massless_initial_state(momenta, pdgs, model, n_initial=2,
+                                   tolerance=1e-6):
+    """Put the initial-state legs the model calls massless back onto p^2 = 0.
+
+    aMC@NLO writes its LHE with the partons on the *Monte-Carlo* mass shell
+    (``Template/NLO/SubProcesses/add_write_info.f``, ``put_on_MC_mshell_in``
+    via ``getxmss_madfks``): in the frame where pz1+pz2 = 0 it replaces
+
+        pz -> +- sqrt( shat - 2(m1^2+m2^2) + (m1^2-m2^2)^2/shat ) / 2
+        E  -> sqrt(m^2 + pz^2)
+
+    with m the Monte-Carlo mass (0.33 GeV for a light quark or a gluon), and
+    then boosts back to the lab.  That map leaves shat and the *total* initial
+    four-momentum exactly invariant, which is why the LHE still balances.
+
+    The matrix element is nevertheless a massless one, and ``ixxxxx``'s
+    massless branch is only accidentally right for a parton pointing exactly
+    along -z (it special-cases px==py==0, pz<0).  Any boost gives the backward
+    parton a transverse component, the branch stops firing and the implicit
+    light-cone projection p~ = p - m^2/(2(p0+p3)) (1,0,0,-1) is evaluated on a
+    cancelling p0+p3: the error is unbounded although m^2/shat is not.
+
+    The exact inverse of the map above, for two purely longitudinal incoming
+    legs, is the light-cone projection onto the total initial momentum
+    P = p1 + p2:
+
+        p1 -> ((P0+Pz)/2) (1,0,0,+1)        p2 -> ((P0-Pz)/2) (1,0,0,-1)
+
+    which is light-like by construction, reproduces shat, and conserves
+    energy-momentum *exactly* -- unlike the naive E := |p|, which silently
+    loses m^2/2E ~ 1e-3 GeV per leg.
+
+    Only the initial state is touched: the final-state light partons carry
+    transverse momentum, so their (equally wrong) O(m^2) treatment is at least
+    frame-independent, and projecting them was measured to buy no invariance
+    at all while moving the matrix element slightly more.
+
+    ``momenta`` is a list of (E,px,py,pz) in matrix-element order, ``pdgs`` the
+    PDG codes in the same order.  A new list is returned; the input is left
+    alone.  Legs that are crossed into the initial block (negative energy),
+    that carry transverse momentum, or that the model gives a mass, are copied
+    through untouched.
+    """
+    out = [tuple(p) for p in momenta]
+    if len(out) < n_initial or len(pdgs) < n_initial:
+        return out
+    idx, todo = [], False
+    for i in range(n_initial):
+        E, px, py, pz = out[i]
+        if E <= 0.:                              # crossed into the initial block
+            return out
+        if abs(px) > tolerance * E or abs(py) > tolerance * E:
+            return out                           # not the longitudinal beam setup
+        if not _model_leg_is_massless(model, pdgs[i]):
+            continue
+        idx.append(i)
+        if E * E - px * px - py * py - pz * pz != 0.:
+            todo = True
+    # a leg that happens to be light-like already is still part of the two-leg
+    # recoil: put_on_MC_mshell_in can give one of the two a mass and not the
+    # other, and the exact inverse then still moves both.
+    if not idx or not todo:
+        return out
+    if len(idx) == n_initial == 2:
+        # exact inverse: the light-cone components of the *total*
+        P0 = out[0][0] + out[1][0]
+        Pz = out[0][3] + out[1][3]
+        plus, minus = 0.5 * (P0 + Pz), 0.5 * (P0 - Pz)
+        if plus <= 0. or minus <= 0.:
+            return out
+        if out[0][3] >= 0.:
+            out[0], out[1] = (plus, 0., 0., plus), (minus, 0., 0., -minus)
+        else:
+            out[0], out[1] = (minus, 0., 0., -minus), (plus, 0., 0., plus)
+    else:
+        # only one of the two legs is massless in the model: drop that leg's
+        # own small light-cone component and leave the partner alone.
+        for i in idx:
+            E, px, py, pz = out[i]
+            h = 0.5 * (E + abs(pz))
+            out[i] = (h, 0., 0., math.copysign(h, pz))
+    return out
+
+
+def _boost_from_rest(p, q, mq):
+    """Boost p from the rest frame of q into the frame where q is written.
+
+    ``mq`` is sqrt(q^2).  This is the inverse of ``_boost_to_rest``; the pair
+    is written out longhand (rather than reusing FourMomentum.boost) so that
+    the round trip is exactly the same arithmetic in both directions.
+    """
+    E, px, py, pz = p
+    qE, qx, qy, qz = q
+    bp = (qx * px + qy * py + qz * pz) / mq
+    c = (E + bp / (qE / mq + 1.))
+    return ((qE * E + qx * px + qy * py + qz * pz) / mq,
+            px + qx * c / mq, py + qy * c / mq, pz + qz * c / mq)
+
+
+def _boost_to_rest(p, q, mq):
+    """Boost p into the rest frame of q.  ``mq`` is sqrt(q^2)."""
+    E, px, py, pz = p
+    qE, qx, qy, qz = q
+    bp = (qx * px + qy * py + qz * pz) / mq
+    c = (E - bp / (qE / mq + 1.))
+    return ((qE * E - qx * px - qy * py - qz * pz) / mq,
+            px - qx * c / mq, py - qy * c / mq, pz - qz * c / mq)
+
+
+def project_massless_final_state(momenta, pdgs, model, n_initial=2,
+                                 tolerance=1e-6, max_iter=100):
+    """Put the final-state legs the model calls massless back onto p^2 = 0.
+
+    Same disease as ``project_massless_initial_state``: aMC@NLO writes its LHE
+    with the light partons on the *Monte-Carlo* mass shell (0.33 GeV for a
+    light quark or a gluon, ``put_on_MC_mshell_Hevout`` in
+    ``Template/NLO/SubProcesses/add_write_info.f``), while the matrix element
+    that is then asked to evaluate them is a massless one.
+
+    Unlike the initial state there is no exact inverse to invert: the H-event
+    kinematics were regenerated by ``generate_momenta`` with the MC masses
+    already in the common block, and ``i_fks`` was reshuffled against
+    ``j_fks``.  What matters instead is the property the naive per-leg recipe
+    ``E := |p|`` destroys, and it destroys it badly: it loses m^2/2E ~ 1e-3 GeV
+    of energy on *every* leg, so the matrix element is handed a set of momenta
+    that no longer balances -- and |M|^2 off the momentum-conserving surface is
+    not gauge invariant.
+
+    So this uses the standard momentum-conserving massless mapping, the same
+    construction a parton shower uses in the other direction.  In the rest
+    frame of the total final-state momentum Q, every final-state
+    three-momentum is scaled by one *common* factor x,
+
+        sum_(massless i) x |p_i| + sum_(massive j) sqrt(m_j^2 + x^2 |p_j|^2)
+                                                             = sqrt(Q^2)
+
+    solved for x by a guarded Newton iteration (the left-hand side is strictly
+    increasing in x, so the root is unique and is bracketed from x = 1).  The
+    massless legs then take E_i = x |p_i|, exactly light-like; the massive ones
+    keep the invariant mass they have *in the event* -- not the model mass, so
+    an off-shell Z keeps its Breit-Wigner mass -- and are scaled by the same x.
+
+    Two properties follow, and they are the whole point:
+
+      * every direction is untouched, so no observable moves at O(1);
+      * the spatial sum stays zero in that frame and the energy sum is what x
+        solves for, so the total final-state four-momentum is conserved
+        *exactly*.  Combined with the initial-state light-cone projection,
+        which conserves the total initial four-momentum exactly, the event
+        still balances -- measured to ~1e-13 GeV, the cost of the boost round
+        trip alone.
+
+    Guards.  The whole thing is skipped, and the momenta returned untouched,
+    whenever the construction is not defined or the root find does not
+    converge: fewer than two final-state legs, a leg crossed into the final
+    block (E <= 0), a spacelike leg, Q^2 <= 0, sqrt(Q^2) not above the sum of
+    the masses that are being kept, no bracket found for the root, or Newton
+    failing to reach |g(x) - sqrt(Q^2)| <= 1e-14 sqrt(Q^2) within ``max_iter``
+    steps.  The failure mode is always "return the input", never "return
+    something subtly wrong".
+
+    ``momenta`` is a list of (E,px,py,pz) in matrix-element order, ``pdgs`` the
+    PDG codes in the same order.  A new list is returned; the input is left
+    alone.
+    """
+    out = [tuple(p) for p in momenta]
+    n = len(out)
+    if n - n_initial < 2 or len(pdgs) < n:
+        return out
+
+    # ---- classify, and find out whether there is anything to do at all
+    light, heavy, todo = [], [], False
+    for i in range(n_initial, n):
+        E, px, py, pz = out[i]
+        if E <= 0.:                      # crossed into the final block
+            return out
+        m2 = E * E - px * px - py * py - pz * pz
+        if m2 < -tolerance * E * E:      # spacelike: not our business
+            return out
+        if _model_leg_is_massless(model, pdgs[i]):
+            light.append(i)
+            if m2 != 0.:
+                todo = True
+        else:
+            heavy.append((i, math.sqrt(m2) if m2 > 0. else 0.))
+    if not light or not todo:
+        return out
+
+    # ---- the total final-state momentum, and its rest frame
+    Q = [0., 0., 0., 0.]
+    for i in range(n_initial, n):
+        for k in range(4):
+            Q[k] += out[i][k]
+    s = Q[0] ** 2 - Q[1] ** 2 - Q[2] ** 2 - Q[3] ** 2
+    if s <= 0.:
+        return out
+    roots = math.sqrt(s)
+    Q = tuple(Q)
+
+    rest = [_boost_to_rest(out[i], Q, roots) for i in range(n_initial, n)]
+    q = [math.sqrt(p[1] ** 2 + p[2] ** 2 + p[3] ** 2) for p in rest]
+
+    qlight = [q[i - n_initial] for i in light]
+    qheavy = [(q[i - n_initial], m) for i, m in heavy]
+    sumlight = sum(qlight)
+    summass = sum(m for _, m in qheavy)
+    # The energy the rescaled legs have to add back up to is the energy sum of
+    # the momenta *as they were boosted here*, not sqrt(Q^2): the two agree to
+    # a few ulp, but only the first makes the shift sum to exactly zero, and
+    # the boost back multiplies whatever it does not by gamma*beta (measured:
+    # 2.7e-12 GeV of residual imbalance with it against 1.7e-10 without).
+    esum = sum(p[0] for p in rest)
+    if sumlight <= 0. or esum <= summass:
+        return out
+    if min(qlight) <= 0.:
+        # a leg the model calls massless, at rest in the final-state frame:
+        # E := x|p| would annihilate it.  Unphysical input, leave it alone.
+        return out
+
+    def g(x):
+        return (x * sumlight
+                + sum(math.sqrt(m * m + x * x * qq * qq) for qq, m in qheavy))
+
+    def dg(x):
+        d = sumlight
+        for qq, m in qheavy:
+            r = math.sqrt(m * m + x * x * qq * qq)
+            if r > 0.:
+                d += x * qq * qq / r
+        return d
+
+    # ---- bracket.  g is strictly increasing; g(1) <= esum because a massless
+    # leg contributes |p| where it used to contribute sqrt(m^2+|p|^2), so the
+    # root sits at x >= 1.  Walk up until g overshoots.
+    lo, hi = 1., 1.
+    if g(lo) > esum:                     # only reachable on an already-exact
+        lo = 0.                          # event, off by a rounding of |p| <= E
+    for _ in range(200):
+        if g(hi) >= esum:
+            break
+        hi *= 2.
+    else:
+        return out                       # no bracket: give up, momenta as they were
+
+    # bisection-safeguarded Newton, run to the fixed point rather than to a
+    # tolerance: the residual is what leaks into the energy balance.
+    x, done = 0.5 * (lo + hi), False
+    for _ in range(max_iter):
+        f = g(x) - esum
+        if f == 0.:
+            done = True
+            break
+        if f > 0.:
+            hi = x
+        else:
+            lo = x
+        d = dg(x)
+        step = x - f / d if d > 0. else 0.5 * (lo + hi)
+        if not (lo < step < hi):
+            step = 0.5 * (lo + hi)
+        if step == x or step == lo or step == hi:
+            done = True                  # converged to the last representable x
+            break
+        x = step
+    if not done:
+        return out                       # did not converge: momenta as they were
+
+    if x != x or not 0. < x < float('inf'):     # NaN / inf / non-positive
+        return out
+
+    # The shift is applied as a *difference* boosted back, not as the new
+    # momentum boosted back: the boost round trip is only accurate to a few
+    # ulp of the momentum itself (~1e-11 GeV at LHC energies), while the shift
+    # is O(m_MC^2/2E) ~ 1e-3 GeV, so boosting the shift keeps the exact input
+    # momentum as the base and pushes the round-trip error down by the ratio.
+    # Sum_i rest_i is (sqrt(Q^2),0,0,0) by construction both before and after,
+    # so the boosted shifts sum to (0,0,0,0) and the event still balances.
+    for k, i in enumerate(light):
+        E, px, py, pz = rest[i - n_initial]
+        d = (x * qlight[k] - E, (x - 1.) * px, (x - 1.) * py, (x - 1.) * pz)
+        rest[i - n_initial] = d
+    for i, m in heavy:
+        E, px, py, pz = rest[i - n_initial]
+        qq = q[i - n_initial]
+        d = (math.sqrt(m * m + x * x * qq * qq) - E,
+             (x - 1.) * px, (x - 1.) * py, (x - 1.) * pz)
+        rest[i - n_initial] = d
+    for i in range(n_initial, n):
+        d = _boost_from_rest(rest[i - n_initial], Q, roots)
+        out[i] = tuple(a + b for a, b in zip(out[i], d))
+    return out
+
+
+def project_massless_partons(momenta, pdgs, model, n_initial=2,
+                             tolerance=1e-6, final_state=False):
+    """Undo the Monte-Carlo mass shell on both sides of the event.
+
+    The initial state gets the exact closed-form inverse of
+    ``put_on_MC_mshell_in`` (``project_massless_initial_state``), the final
+    state the momentum-conserving common-rescaling map
+    (``project_massless_final_state``).  Each conserves its own half of the
+    total four-momentum exactly, so applying both leaves the event balanced.
+
+    This is for the *matrix-element call only*: it returns a new list and never
+    touches the ``Event`` the momenta came from, so nothing that is written
+    back to an LHE file ever sees a projected momentum.
+    """
+    out = project_massless_initial_state(momenta, pdgs, model,
+                                         n_initial=n_initial,
+                                         tolerance=tolerance)
+    if final_state:
+        out = project_massless_final_state(out, pdgs, model,
+                                           n_initial=n_initial,
+                                           tolerance=tolerance)
+    return out
+
+
 class Event(list):
     """Class storing a single event information (list of particles + global information)"""
 

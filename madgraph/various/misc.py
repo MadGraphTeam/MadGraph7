@@ -57,12 +57,32 @@ misc = locals
 # configuration file locations
 #===============================================================================
 CONFIG_NAME = 'mg7_configuration.txt'
+LEGACY_CONFIG_NAME = 'mg5_configuration.txt'
 CONFIG_TEMPLATE_NAME = '.mg7_configuration_default.txt'
 
 def install_config_file(root):
     """The configuration file of the MadGraph installation rooted at *root*."""
 
     return pjoin(root, 'input', CONFIG_NAME)
+
+def base_config_file():
+    """The $MADGRAPH_BASE configuration file, or None if that is not set.
+
+    A base directory set up for MadGraph5_aMC@NLO holds mg5_configuration.txt
+    rather than the MadGraph7 name, so fall back to it when only that one is
+    there. With neither present the MadGraph7 name is returned, which is what
+    the callers that create a missing file need.
+    """
+
+    base = os.environ.get('MADGRAPH_BASE')
+    if not base:
+        return None
+    config_path = pjoin(base, CONFIG_NAME)
+    if not os.path.exists(config_path):
+        legacy_path = pjoin(base, LEGACY_CONFIG_NAME)
+        if os.path.exists(legacy_path):
+            return legacy_path
+    return config_path
 
 def user_config_dir(create=False):
     """MadGraph7's per-user configuration directory.
@@ -1333,28 +1353,48 @@ class TMP_directory(object):
 class TMP_variable(object):
     """replace an attribute of a class with another value for the time of the
        context manager
+
+       A dict is addressed by key instead: TMP_variable(cmd.options, 'foo', 1)
+       swaps cmd.options['foo'], which is where MG5 keeps its own settings.
+
+       Note that the new value is installed by __init__, not by __enter__, so
+       this can also be driven by hand -- construct it to swap, and call
+       __exit__(None, None, None) to restore -- for a scope that is not a
+       single block.
     """
 
     def __init__(self, cls, attribute, value):
 
         self.cls = cls
-        self.attribute = attribute        
+        self.attribute = attribute
+        self.is_dict = isinstance(cls, dict)
         if isinstance(attribute, list):
             self.old_value = []
             for key, onevalue in zip(attribute, value):
-                self.old_value.append(getattr(cls, key))
-                setattr(self.cls, key, onevalue)
+                self.old_value.append(self._get(key))
+                self._set(key, onevalue)
         else:
-            self.old_value = getattr(cls, attribute)
-            setattr(self.cls, self.attribute, value)
-    
+            self.old_value = self._get(attribute)
+            self._set(attribute, value)
+
+    def _get(self, key):
+        if self.is_dict:
+            return self.cls.get(key)
+        return getattr(self.cls, key)
+
+    def _set(self, key, value):
+        if self.is_dict:
+            self.cls[key] = value
+        else:
+            setattr(self.cls, key, value)
+
     def __exit__(self, ctype, value, traceback ):
         
         if isinstance(self.attribute, list):
             for key, old_value in zip(self.attribute, self.old_value):
-                setattr(self.cls, key, old_value)
+                self._set(key, old_value)
         else:
-            setattr(self.cls, self.attribute, self.old_value)
+            self._set(self.attribute, self.old_value)
         
     def __enter__(self):
         return self.old_value 

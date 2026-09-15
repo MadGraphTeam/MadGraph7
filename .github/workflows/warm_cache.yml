@@ -44,10 +44,6 @@ on:
       reset_pip:
         type: boolean
         default: false
-
-  # Called from release.yml to warm caches before the release test suite runs,
-  # so restore_heptools's fail-on-cache-miss doesn't abort the release.
-  workflow_call:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -203,7 +199,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   rebuild-numpy-cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name == 'schedule')
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -244,7 +240,7 @@ jobs:
           key: pip-numpy-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
   ufo_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || github.event_name == 'schedule')
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     runs-on: ubuntu-24.04
     needs: delete-cache
 
@@ -289,7 +285,7 @@ jobs:
           key: ufomodel-${{ github.run_id }}
            
   lhapdf_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     needs: delete-cache
     runs-on: ${{ matrix.os }}
     strategy:
@@ -359,7 +355,7 @@ jobs:
            tools: lhapdf
 
   pythia8_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: lhapdf_cache
     strategy:
@@ -470,7 +466,7 @@ jobs:
            tools: boost
 
   emela_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: boost_cache
     strategy:
@@ -545,7 +541,7 @@ jobs:
 #             GH_TOKEN: ${{ github.token }}
 
   contur_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: pythia8_cache
     strategy:
@@ -611,7 +607,7 @@ jobs:
        #     GH_TOKEN: ${{ github.token }}
 
   looptools_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
      matrix:
@@ -705,7 +701,7 @@ jobs:
   # their exact key when that run is re-run.
   # ---------------------------------------------------------------------------
   heptools_cache:
-    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && github.event_name != 'schedule'
+    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}       
     strategy:
       matrix:

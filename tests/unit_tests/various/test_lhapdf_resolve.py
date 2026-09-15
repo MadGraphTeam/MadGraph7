@@ -70,6 +70,45 @@ class TestUserConfigLocation(unittest.TestCase):
         self.assertIsNone(misc.user_config_file())
 
 
+class TestBaseConfigLocation(unittest.TestCase):
+    """$MADGRAPH_BASE may have been set up for MadGraph5_aMC@NLO, in which case
+    it holds mg5_configuration.txt and not the MadGraph7 name."""
+
+    def setUp(self):
+        self.saved = os.environ.get('MADGRAPH_BASE')
+        self.tmpdir = tempfile.mkdtemp(prefix='mg7_base_test')
+
+    def tearDown(self):
+        if self.saved is None:
+            os.environ.pop('MADGRAPH_BASE', None)
+        else:
+            os.environ['MADGRAPH_BASE'] = self.saved
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_no_base(self):
+        os.environ.pop('MADGRAPH_BASE', None)
+        self.assertIsNone(misc.base_config_file())
+
+    def test_mg7_file_wins(self):
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        for name in ('mg7_configuration.txt', 'mg5_configuration.txt'):
+            open(pjoin(self.tmpdir, name), 'w').close()
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg7_configuration.txt'))
+
+    def test_mg5_fallback(self):
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        open(pjoin(self.tmpdir, 'mg5_configuration.txt'), 'w').close()
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg5_configuration.txt'))
+
+    def test_neither_file(self):
+        """With nothing there the MadGraph7 name is the one to create."""
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg7_configuration.txt'))
+
+
 class TestResolveLhapdf(unittest.TestCase):
     """misc.resolve_lhapdf is the single place both 'launch' and a standalone
     bin/generate_events use to locate LHAPDF, so it carries all the awkward

@@ -6,6 +6,12 @@ name: running test for aloha
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -19,9 +25,6 @@ on:
       message:
         description: 'running aloha test'
         required: true
-
-  # Allows release.yml to run this as part of the release test suite
-  workflow_call:
 
 env:
   commitmsg: ${{ github.event.head_commit.message }}
@@ -38,7 +41,7 @@ jobs:
   test_aloha:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -57,7 +60,7 @@ jobs:
     # excluded due to side effect
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event_name == 'workflow_call' || github.event.pull_request.head.repo.fork == true
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
