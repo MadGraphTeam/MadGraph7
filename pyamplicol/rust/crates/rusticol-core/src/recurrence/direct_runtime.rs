@@ -386,7 +386,6 @@ pub struct DirectRecurrenceExecutionRuntime {
     tile_capacity: u32,
     point_stride: u32,
     alternate_point_storage: Option<DirectPointStorage>,
-    deferred_tiled_layout_error: Option<RusticolError>,
     packed_singleton_active: bool,
     momenta_are_compact: bool,
     momentum_filled_points: u32,
@@ -479,24 +478,16 @@ impl DirectRecurrenceExecutionRuntime {
         let per_point_scalar_count = split_complex_scalar_count
             .checked_add(momentum_scalar_count)
             .ok_or_else(|| invalid("per-point workspace size overflows usize"))?;
-        let per_point_bytes = per_point_scalar_count
-            .checked_mul(size_of::<f64>())
-            .ok_or_else(|| invalid("per-point workspace bytes overflow usize"))?;
         let workspace_bytes = usize::try_from(plan.workspace_mib())
             .ok()
             .and_then(|mib| mib.checked_mul(1024 * 1024))
-            .ok_or_else(|| invalid("workspace byte limit overflows usize"))?;
-        if per_point_bytes == 0 || per_point_bytes > workspace_bytes {
-            return Err(invalid(format!(
-                "one point requires {per_point_bytes} workspace bytes, exceeding the configured {workspace_bytes}"
-            )));
-        }
-        let hard_budget_tile = deterministic_point_tile_size(
+            .ok_or_else(|| invalid("workspace byte target overflows usize"))?;
+        let workspace_tile = deterministic_point_tile_size(
             plan.point_tile_size(),
             workspace_bytes,
             usize::MAX,
             per_point_scalar_count,
-        );
+        )?;
         let split_complex_per_point_bytes = cache_split_complex_scalar_count
             .checked_mul(size_of::<f64>())
             .filter(|bytes| *bytes != 0)
@@ -505,31 +496,17 @@ impl DirectRecurrenceExecutionRuntime {
             DIRECT_RUNTIME_CACHE_TARGET_BYTES / split_complex_per_point_bytes,
         );
         // The accepted recurrence cache policy is deliberately lane-local:
-        // it counts current+amplitude split halves, while the hard workspace
-        // budget above counts those halves plus every momentum plane.
+        // it counts current+amplitude split halves, while the workspace
+        // target above counts those halves plus every momentum plane.
         // Fill at least one already allocated aligned pitch when the request
-        // and hard budget allow it, rather than repeatedly running a few lanes.
+        // allows it, rather than repeatedly running a few lanes.
         let minimum_tiled_points = (DIRECT_RUNTIME_ARENA_ALIGNMENT / size_of::<f64>()) as u32;
         let packed_singleton_capable = executors.packed_singleton_capable();
-        let (tile_capacity, deferred_tiled_layout_error) = match hard_budget_tile {
-            Ok(hard_budget_tile) => (
-                hard_budget_tile.min(
-                    u32::try_from(cache_tile)
-                        .unwrap_or(u32::MAX)
-                        .max(minimum_tiled_points),
-                ),
-                None,
-            ),
-            Err(error)
-                if packed_singleton_capable
-                    && error
-                        .message()
-                        .starts_with("minimum aligned Direct-Arena pitch requires") =>
-            {
-                (1, Some(hard_budget_tile_error(error)))
-            }
-            Err(error) => return Err(hard_budget_tile_error(error)),
-        };
+        let tile_capacity = workspace_tile.min(
+            u32::try_from(cache_tile)
+                .unwrap_or(u32::MAX)
+                .max(minimum_tiled_points),
+        );
         let momentum_plane_count = usize::try_from(momentum_form_count)
             .ok()
             .and_then(|forms| forms.checked_mul(usize::from(lorentz_component_count)))
@@ -619,7 +596,6 @@ impl DirectRecurrenceExecutionRuntime {
             tile_capacity,
             point_stride,
             alternate_point_storage: None,
-            deferred_tiled_layout_error,
             packed_singleton_active: packed_singleton_capable,
             momenta_are_compact: false,
             momentum_filled_points: 0,
@@ -1821,13 +1797,6 @@ impl DirectRecurrenceExecutionRuntime {
         if point_count == 0 {
             return Err(invalid("point count must be positive"));
         }
-        if point_count > 1
-            && self.packed_singleton_active
-            && self.alternate_point_storage.is_none()
-            && let Some(error) = self.deferred_tiled_layout_error.as_ref()
-        {
-            return Err(error.clone());
-        }
         if point_count > self.tile_capacity {
             return Err(invalid(format!(
                 "point count {point_count} exceeds point tile size {}",
@@ -1885,9 +1854,6 @@ impl DirectRecurrenceExecutionRuntime {
     fn ensure_tiled_point_storage(&mut self) -> RusticolResult<()> {
         if self.alternate_point_storage.is_some() {
             return Ok(());
-        }
-        if let Some(error) = self.deferred_tiled_layout_error.as_ref() {
-            return Err(error.clone());
         }
         let parameter_view = DirectParameterView {
             values_re: self.parameters_re.as_ptr(),
@@ -2689,12 +2655,6 @@ fn validate_split_values(
         )));
     }
     Ok(())
-}
-
-fn hard_budget_tile_error(error: RusticolError) -> RusticolError {
-    invalid(format!(
-        "could not derive a hard-budget Direct-Arena tile: {error}"
-    ))
 }
 
 fn invalid(message: impl Into<String>) -> RusticolError {

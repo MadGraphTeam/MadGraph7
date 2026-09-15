@@ -26,8 +26,6 @@ pub(super) const EAGER_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 const LEGACY_EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v2";
 const LEGACY_EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
 
-pub(super) const MAX_EXECUTION_MANIFEST_BYTES: usize = 1 << 20;
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct EagerV3ExecutionManifest {
@@ -460,23 +458,18 @@ impl EagerV3SelectorWork {
     }
 }
 
-/// Parse and validate one bounded eager plan-v3 `execution.json`.
+/// Parse and validate one eager plan-v3 `execution.json`.
 ///
-/// Legacy plan-v2 markers are detected before the one-MiB v3 bound or full
+/// Legacy plan-v2 markers are detected before full
 /// JSON deserialization, avoiding traversal of an expanded `runtime_schema`.
 pub(super) fn parse_eager_v3_execution_manifest(
     bytes: &[u8],
     outer: &ArtifactProcess,
 ) -> RusticolResult<EagerV3ExecutionManifest> {
     reject_legacy_eager_manifest(bytes)?;
-    if bytes.len() >= MAX_EXECUTION_MANIFEST_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "eager plan-v3 execution manifest must be smaller than {MAX_EXECUTION_MANIFEST_BYTES} bytes"
-        )));
-    }
     let manifest: EagerV3ExecutionManifest = serde_json::from_slice(bytes).map_err(|error| {
         RusticolError::serialization(format!(
-            "could not parse bounded eager plan-v3 execution manifest: {error}"
+            "could not parse eager plan-v3 execution manifest: {error}"
         ))
     })?;
     manifest.validate(outer)?;

@@ -32,10 +32,8 @@ from pyamplicol.generation.numerical_candidate_index import (
 )
 from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _COMPRESSED_EVIDENCE_HEADER,
-    _MAX_PERSISTED_EVIDENCE_BYTES,
-    _MAX_RAW_EVIDENCE_BYTES,
-    _MAX_RAW_EVIDENCE_MEMORY_BYTES,
     _MIN_RAW_EVIDENCE_WIRE_BYTES,
+    _RAW_EVIDENCE_MEMORY_TARGET_BYTES,
     RecurrenceNumericalEvidenceEnvelopeExceeded,
     RecurrenceNumericalEvidenceGeometry,
     _build_candidate_indexes,
@@ -44,7 +42,6 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _pair_residuals,
     _raw_evidence_memory_upper_bound,
     _raw_evidence_wire_byte_limit,
-    _raw_streaming_consumer_memory_upper_bound,
     _read_compressed_evidence_spool,
     _relation_residuals,
     _runtime_parameter_schema_payload,
@@ -680,7 +677,7 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets(
         census["rejection_decision_sha256"]
         == report["discovery"]["rejection_decision_sha256"]
     )
-    assert persisted["measured_payload_bytes"] < _MAX_PERSISTED_EVIDENCE_BYTES
+    assert persisted["measured_payload_bytes"] > 0
     assert {
         row["current_id"] for row in persisted["candidate_capture"]["observations"]
     } == {2, 3}
@@ -877,7 +874,7 @@ def test_recurrence_opt_out_has_no_capture_or_warning() -> None:
     assert report["warning"]["required"] is False
 
 
-def test_raw_evidence_scaling_is_quantified_and_bounded() -> None:
+def test_raw_evidence_scaling_is_quantified_without_a_fixed_ceiling() -> None:
     common = {
         "component_count": 4,
         "candidate_probe_count": 4,
@@ -889,7 +886,6 @@ def test_raw_evidence_scaling_is_quantified_and_bounded() -> None:
 
     assert b_like_bytes == 4_918_550
     assert a_like_bytes == 128_293_862
-    assert a_like_bytes < _MAX_RAW_EVIDENCE_BYTES
     assert a_like_bytes > 25 * b_like_bytes
     a_like_upper_bound = _raw_evidence_memory_upper_bound(
         a_like_bytes,
@@ -897,11 +893,10 @@ def test_raw_evidence_scaling_is_quantified_and_bounded() -> None:
         row_count=34_000,
     )
     assert a_like_upper_bound == 1_003_870_156
-    assert a_like_upper_bound < _MAX_RAW_EVIDENCE_MEMORY_BYTES
+    assert a_like_upper_bound < _RAW_EVIDENCE_MEMORY_TARGET_BYTES
     just_over = _synthetic_raw_evidence_bytes(50_000, **common)
-    assert just_over > _MAX_RAW_EVIDENCE_BYTES
-    with pytest.raises(ValueError, match="memory envelope"):
-        _validate_raw_evidence_canonical_size(just_over)
+    assert just_over > a_like_bytes
+    _validate_raw_evidence_canonical_size(just_over)
 
 
 def test_real_a_mixed_dimension_shape_uses_dynamic_wire_budget() -> None:
@@ -953,23 +948,6 @@ def test_real_a_mixed_dimension_shape_uses_dynamic_wire_budget() -> None:
         )
 
 
-def test_real_a_streaming_consumer_bound_matches_native_model() -> None:
-    resident = _raw_streaming_consumer_memory_upper_bound(
-        raw_byte_count=146_798_789,
-        metadata_byte_count=2_874_885,
-        metadata_structural_token_count=788_978,
-        current_count=17_074,
-        component_count=70_776,
-        maximum_dimension=6,
-        candidate_probe_count=4,
-        verification_probe_count=4,
-        runtime_parameter_count=10,
-    )
-
-    assert resident == 414_500_724
-    assert resident < _MAX_RAW_EVIDENCE_MEMORY_BYTES
-
-
 def test_runtime_parameter_metadata_reduces_dynamic_wire_budget() -> None:
     without_parameters = _raw_evidence_wire_byte_limit(
         scalar_count=1_132_416,
@@ -987,13 +965,15 @@ def test_runtime_parameter_metadata_reduces_dynamic_wire_budget() -> None:
 
 def test_parameter_context_geometry_is_preflighted_without_allocation() -> None:
     sections = _topology_replay_plan().sections
-    with pytest.raises(ValueError, match="memory envelope"):
-        _validate_raw_evidence_geometry(
-            sections,
-            candidate_probe_count=2,
-            verification_probe_count=2,
-            runtime_parameter_count=400_000,
-        )
+    scalar_count, row_count, byte_limit = _validate_raw_evidence_geometry(
+        sections,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=400_000,
+    )
+    assert scalar_count > 400_000
+    assert row_count > 400_000
+    assert byte_limit is None
 
 
 def test_exact_z_n8_sequential_spool_bound_includes_the_global_index() -> None:
@@ -1005,11 +985,11 @@ def test_exact_z_n8_sequential_spool_bound_includes_the_global_index() -> None:
     )
 
     assert resident == 935_671_296
-    assert resident < _MAX_RAW_EVIDENCE_MEMORY_BYTES
-    assert _MAX_RAW_EVIDENCE_MEMORY_BYTES - resident == 138_070_528
+    assert resident < _RAW_EVIDENCE_MEMORY_TARGET_BYTES
+    assert _RAW_EVIDENCE_MEMORY_TARGET_BYTES - resident == 138_070_528
 
 
-def test_exact_failing_geometry_returns_typed_fallback_before_allocation() -> None:
+def test_large_geometry_selects_spool_without_a_default_memory_limit() -> None:
     geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
         current_count=116_319,
         component_count=561_426,
@@ -1018,30 +998,23 @@ def test_exact_failing_geometry_returns_typed_fallback_before_allocation() -> No
         runtime_parameter_count=10,
     )
 
-    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
-        recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(geometry)
-
-    outcome = captured.value
-    assert outcome.geometry is geometry
-    assert outcome.to_json_dict() == {
-        "reason": "evidence-envelope-fallback",
-        "memory_envelope_bytes": 1 << 30,
-        "spooled_producer_resident_bytes": 3_095_140_864,
-        "geometry": {
-            "current_count": 116_319,
-            "component_count": 561_426,
-            "candidate_probe_count": 4,
-            "verification_probe_count": 4,
-            "runtime_parameter_count": 10,
-            "scalar_count": 8_982_896,
-            "row_count": 232_648,
-        },
-    }
+    selected = recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(
+        geometry
+    )
+    assert selected.encoding == "zlib-canonical-json-v1"
+    assert selected.canonical_byte_limit is None
+    assert selected.producer_resident_upper_bound == 3_095_140_864
+    explicitly_allowed = (
+        recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(
+            geometry, memory_envelope_bytes=4 << 30
+        )
+    )
+    assert explicitly_allowed.producer_resident_upper_bound == 3_095_140_864
 
 
 @pytest.mark.parametrize(
     "memory_envelope_bytes",
-    (True, 0, -1, _MAX_RAW_EVIDENCE_MEMORY_BYTES + 1),
+    (True, 0, -1),
 )
 def test_invalid_injected_envelope_is_not_converted_to_geometry_fallback(
     memory_envelope_bytes: object,
@@ -1535,8 +1508,7 @@ def test_native_capacity_fallback_releases_warmup_before_publish(
             self.open_spool = None
 
     message = (
-        "raw numerical evidence exceeds the streaming 1 GiB resident memory "
-        "envelope"
+        "raw numerical evidence exceeds the streaming 1 GiB resident memory envelope"
     )
     retained_frames: list[weakref.ReferenceType[RetainedResource]] = []
 
@@ -1690,7 +1662,7 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
         verification_spool[0]
 
 
-def test_late_raw_wire_overflow_uses_typed_fallback_without_compression(
+def test_explicit_raw_wire_limit_is_honored_without_compression(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1712,7 +1684,9 @@ def test_late_raw_wire_overflow_uses_typed_fallback_without_compression(
         ),
     )
 
-    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+    with pytest.raises(
+        recurrence_warmup._CanonicalEvidenceCapacityExceeded
+    ) as captured:
         run_recurrence_numerical_current_warmup(
             _topology_replay_plan(),
             candidate_points=_points(1),
@@ -1725,11 +1699,10 @@ def test_late_raw_wire_overflow_uses_typed_fallback_without_compression(
             absolute_tolerance=1.0e-70,
         )
 
-    assert "canonical boundary" in captured.value.raw_reason
-    assert captured.value.geometry.current_count > 0
+    assert "canonical boundary" in str(captured.value)
 
 
-def test_initial_compressed_capacity_uses_typed_optional_evidence_fallback(
+def test_initial_compressed_capacity_error_is_propagated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -1753,7 +1726,9 @@ def test_initial_compressed_capacity_uses_typed_optional_evidence_fallback(
         ),
     )
 
-    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+    with pytest.raises(
+        recurrence_warmup._CanonicalEvidenceCapacityExceeded
+    ) as captured:
         run_recurrence_numerical_current_warmup(
             _topology_replay_plan(),
             candidate_points=_points(1),
@@ -1766,7 +1741,7 @@ def test_initial_compressed_capacity_uses_typed_optional_evidence_fallback(
             absolute_tolerance=1.0e-70,
         )
 
-    assert "compressed transport capacity" in captured.value.raw_reason
+    assert "compressed transport capacity" in str(captured.value)
 
 
 def test_native_capacity_classifier_excludes_integrity_and_structure_errors() -> None:
@@ -1867,8 +1842,7 @@ def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() 
     } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
 
 
-def test_synthetic_multi_helicity_all_flow_skips_unsafe_selector_hypotheses(
-) -> None:
+def test_synthetic_multi_helicity_all_flow_skips_unsafe_selector_hypotheses() -> None:
     plan = _signed_relation_plan()
     source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
     candidate = capture_recurrence_current_observations(
@@ -1919,15 +1893,19 @@ def test_synthetic_multi_helicity_all_flow_skips_unsafe_selector_hypotheses(
     assert candidate_index["theoretical_pair_hypothesis_count"] == 0
     assert candidate_index["screened_pair_hypothesis_count"] == 0
     assert candidate_index["zero_hypothesis_count"] == 0
-    assert recurrence_warmup._effective_numerical_relation_mode(
-        sections,
-        requested_mode="certified-reuse",
-        certificates=certificates,
-    ) == "diagnostic"
+    assert (
+        recurrence_warmup._effective_numerical_relation_mode(
+            sections,
+            requested_mode="certified-reuse",
+            certificates=certificates,
+        )
+        == "diagnostic"
+    )
 
 
-def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations(
-) -> None:
+def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations() -> (
+    None
+):
     plan = _signed_relation_plan()
     source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
     candidate = capture_recurrence_current_observations(
@@ -1967,11 +1945,14 @@ def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations
     relation_kinds = {certificate.relation_kind for certificate in certificates}
     assert relation_kinds == {"equal", "opposite", "zero"}
     assert report["application_scope"]["contracted_opposite_application"] == "disabled"
-    assert recurrence_warmup._effective_numerical_relation_mode(
-        sections,
-        requested_mode="certified-reuse",
-        certificates=certificates,
-    ) == "certified-reuse"
+    assert (
+        recurrence_warmup._effective_numerical_relation_mode(
+            sections,
+            requested_mode="certified-reuse",
+            certificates=certificates,
+        )
+        == "certified-reuse"
+    )
     eligible = recurrence_warmup._applicable_numerical_certificates(
         certificates, application_scope=report["application_scope"]
     )
@@ -1980,15 +1961,18 @@ def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations
     assert all(
         any(item is certificate for item in certificates) for certificate in eligible
     )
-    assert recurrence_warmup._effective_numerical_relation_mode(
-        sections,
-        requested_mode="certified-reuse",
-        certificates=tuple(
-            certificate
-            for certificate in certificates
-            if certificate.relation_kind == "opposite"
-        ),
-    ) == "diagnostic"
+    assert (
+        recurrence_warmup._effective_numerical_relation_mode(
+            sections,
+            requested_mode="certified-reuse",
+            certificates=tuple(
+                certificate
+                for certificate in certificates
+                if certificate.relation_kind == "opposite"
+            ),
+        )
+        == "diagnostic"
+    )
 
 
 def test_contracted_partial_reuse_preserves_full_native_evidence_and_census() -> None:
@@ -2007,13 +1991,16 @@ def test_contracted_partial_reuse_preserves_full_native_evidence_and_census() ->
         assert len(result.certificates) == 3
         assert result.applied_relation_count == 2
         assert {item.relation_kind for item in result.applied_certificates} == {
-            "equal", "zero"
+            "equal",
+            "zero",
         }
         assert result.effective_mode_reason is None
         evidence = json.loads(result.evidence_json)
         assert len(evidence["certificates"]) == len(evidence["mappings"]) == 3
         assert {item["relation_kind"] for item in evidence["mappings"]} == {
-            "equal", "opposite", "zero"
+            "equal",
+            "opposite",
+            "zero",
         }
         report = result.to_json_dict()
         assert report["certified_relation_count"] == 3
@@ -2021,9 +2008,12 @@ def test_contracted_partial_reuse_preserves_full_native_evidence_and_census() ->
         assert report["application"]["certified_relation_count"] == 3
         assert report["application"]["applied_relation_count"] == 2
         assert len(report["application"]["certificates"]) == 3
-        assert report["persisted_numerical_evidence"]["full_census"][
-            "certificate_set_sha256"
-        ] == evidence["certificate_set_sha256"]
+        assert (
+            report["persisted_numerical_evidence"]["full_census"][
+                "certificate_set_sha256"
+            ]
+            == evidence["certificate_set_sha256"]
+        )
         assert 4 not in result.candidate_capture.observations
         assert 5 in result.candidate_capture.observations
         assert result.warning_required is True
@@ -2175,20 +2165,17 @@ def test_dynamic_raw_geometry_rejects_adversarial_sizes_and_reserves_wire() -> N
         scalar_count=0,
         row_count=0,
     )
-    assert maximum == _MAX_RAW_EVIDENCE_BYTES
+    assert maximum == (_RAW_EVIDENCE_MEMORY_TARGET_BYTES - (32 << 20)) // 2
     assert maximum >= _MIN_RAW_EVIDENCE_WIRE_BYTES
 
 
-@pytest.mark.parametrize("text", ("1e+1000000000", "1e-1000000000"))
-def test_raw_evidence_rejects_huge_decimal_exponents_before_formatting(
+@pytest.mark.parametrize("text", ("1e+20000", "1e-20000"))
+def test_raw_evidence_accepts_decimal_widths_above_the_old_ceiling(
     text: str,
 ) -> None:
-    class DecimalThatMustNotFormat(Decimal):
-        def __format__(self, _format_spec: str, /) -> str:
-            raise AssertionError("unbounded fixed-point formatting was reached")
-
-    with pytest.raises(ValueError, match="raw evidence scalar boundary"):
-        _decimal_string(DecimalThatMustNotFormat(text))
+    encoded = _decimal_string(Decimal(text))
+    assert len(encoded) > 16_384
+    assert Decimal(encoded) == Decimal(text)
 
 
 def test_shared_candidate_index_is_complete_at_exact_signed_boundaries() -> None:
@@ -2385,7 +2372,8 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out(
                 _recurrence_relation_reporting(
                     {
                         "relation_discovery": {
-                            **native, "applied_relation_count": incorrect_count
+                            **native,
+                            "applied_relation_count": incorrect_count,
                         }
                     },
                     mode="certified-reuse",
@@ -2584,9 +2572,10 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     assert cached_output.payload_path == cached_destination
     assert dispatched_output.helicity_dispatch is not None
     assert dispatched_output.helicity_dispatch.payload_path == dispatch_destination
-    assert dispatched_output.helicity_dispatch.payload_sha256 == hashlib.sha256(
-        b"dispatch"
-    ).hexdigest()
+    assert (
+        dispatched_output.helicity_dispatch.payload_sha256
+        == hashlib.sha256(b"dispatch").hexdigest()
+    )
     assert len(calls) == 3
     args, kwargs = calls[0]
     assert args[:2] == (builder, template)
@@ -2619,8 +2608,7 @@ def test_recurrence_service_preserves_native_capacity_message_for_fallback(
     tmp_path: Path,
 ) -> None:
     message = (
-        "raw numerical evidence exceeds the streaming 1 GiB resident memory "
-        "envelope"
+        "raw numerical evidence exceeds the streaming 1 GiB resident memory envelope"
     )
 
     def binding(*_args: object, **_kwargs: object) -> object:
@@ -2665,7 +2653,7 @@ def test_recurrence_service_preserves_native_capacity_message_for_fallback(
             relation_discovery_absolute_tolerance=2.5e-80,
             relation_discovery_seed=123456789,
             color_accuracy="nlc",
-            relation_discovery_evidence_json=b'{}',
+            relation_discovery_evidence_json=b"{}",
             progress_callback=None,
         )
     outcome = recurrence_warmup.recurrence_numerical_evidence_capacity_outcome(

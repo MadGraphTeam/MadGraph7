@@ -437,16 +437,17 @@ pub fn checked_plane_scalar_len(
 /// footprint even when the active point count is smaller than the allocated
 /// capacity. Keeping the pitch bounded preserves locality without consulting
 /// the host architecture or runtime timings. Lanes remain free to request a
-/// smaller tile or apply a stricter authenticated workspace bound.
+/// smaller tile or apply a smaller workspace target.
 pub const DIRECT_ARENA_LOCALITY_POINT_CAP: u32 = 64;
 
-/// Select a semantic tile capacity while authenticating its padded footprint.
+/// Select a semantic tile capacity using its padded footprint.
 ///
 /// `scalar_values_per_point` includes every physically pitched plane and both
-/// halves of split-complex planes. The logical workspace limit is hard and
-/// excludes the allocator's small base-alignment reserve. `cache_target_bytes`
-/// is a caller-selected policy bound; lanes may pass `usize::MAX` and apply a
-/// lane-specific cache heuristic after the hard budget has been authenticated.
+/// halves of split-complex planes. The workspace target excludes the
+/// allocator's small base-alignment reserve and grows to fit one aligned tile.
+/// It controls batching, not which processes can run. `cache_target_bytes`
+/// is a separate locality target; lanes may pass `usize::MAX` and apply their
+/// own cache heuristic.
 pub fn deterministic_point_tile_size(
     requested_points: u32,
     workspace_bytes: usize,
@@ -464,12 +465,11 @@ pub fn deterministic_point_tile_size(
 
 /// Select a semantic tile using distinct physical and cache-local footprints.
 ///
-/// The hard workspace bound is authenticated against
-/// `physical_scalar_values_per_point`, including the final aligned pitch. The
-/// soft cache target instead uses the maximum phase-local working set. Keeping
+/// The workspace target uses `physical_scalar_values_per_point`, including
+/// the final aligned pitch. The cache target instead uses the maximum
+/// phase-local working set. Keeping
 /// the two inputs separate prevents cold persistent planes from shrinking a
-/// tile whose hot kernels touch only a bounded subset, without weakening the
-/// allocation safety check.
+/// tile whose hot kernels touch only a bounded subset.
 pub fn deterministic_point_tile_size_with_cache_footprint(
     requested_points: u32,
     workspace_bytes: usize,
@@ -494,12 +494,7 @@ pub fn deterministic_point_tile_size_with_cache_footprint(
     let minimum_physical_bytes = physical_bytes_per_point
         .checked_mul(DIRECT_ARENA_ALIGNMENT_SCALARS as usize)
         .ok_or_else(|| invalid("minimum aligned Direct-Arena tile byte count overflows usize"))?;
-    if minimum_physical_bytes > workspace_bytes {
-        return Err(invalid(format!(
-            "minimum aligned Direct-Arena pitch requires {minimum_physical_bytes} bytes, \
-             exceeding workspace limit {workspace_bytes}"
-        )));
-    }
+    let workspace_bytes = workspace_bytes.max(minimum_physical_bytes);
     let largest_aligned_u32 = u32::MAX - u32::MAX % DIRECT_ARENA_ALIGNMENT_SCALARS;
     let workspace_stride = (workspace_bytes / physical_bytes_per_point)
         .min(largest_aligned_u32 as usize)
@@ -518,8 +513,8 @@ pub fn deterministic_point_tile_size_with_cache_footprint(
         .ok_or_else(|| invalid("padded Direct-Arena tile byte count overflows usize"))?;
     if physical_bytes > workspace_bytes {
         return Err(invalid(format!(
-            "padded Direct-Arena tile requires {physical_bytes} bytes, exceeding authenticated \
-             workspace limit {workspace_bytes}"
+            "padded Direct-Arena tile accounting mismatch: {physical_bytes} bytes \
+             exceeds derived workspace size {workspace_bytes}"
         )));
     }
     Ok(tile_capacity)
@@ -557,7 +552,7 @@ mod tests {
     }
 
     #[test]
-    fn tiling_authenticates_padded_physical_workspace() {
+    fn tiling_uses_padded_physical_workspace_target() {
         assert_eq!(
             deterministic_point_tile_size(129, 2064, usize::MAX, 2).unwrap(),
             128
@@ -570,7 +565,10 @@ mod tests {
             deterministic_point_tile_size(129, 2175, usize::MAX, 2).unwrap(),
             128
         );
-        assert!(deterministic_point_tile_size(1, 127, usize::MAX, 2).is_err());
+        assert_eq!(
+            deterministic_point_tile_size(1, 127, usize::MAX, 2).unwrap(),
+            1
+        );
         assert_eq!(
             deterministic_point_tile_size(1, 128, usize::MAX, 2).unwrap(),
             1
@@ -578,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn tiling_separates_hard_physical_and_soft_cache_footprints() {
+    fn tiling_separates_physical_and_cache_footprints() {
         assert_eq!(
             deterministic_point_tile_size_with_cache_footprint(32, 32 * 1024, 4 * 1024, 128, 8,)
                 .unwrap(),
@@ -589,7 +587,7 @@ mod tests {
             deterministic_point_tile_size_with_cache_footprint(64, 16 * 1024, usize::MAX, 128, 1,)
                 .unwrap(),
             16,
-            "the padded physical allocation remains hard-bounded"
+            "the padded physical allocation controls the tile size"
         );
         assert_eq!(
             deterministic_point_tile_size_with_cache_footprint(64, usize::MAX, 4 * 1024, 1, 128,)
@@ -604,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn observed_large_minimum_pitch_uses_the_explicit_workspace_budget() {
+    fn observed_large_minimum_pitch_can_exceed_the_workspace_target() {
         const PHYSICAL_SCALARS_PER_POINT: usize = 4_249_960;
         const REQUIRED_BYTES: usize = 271_997_440;
 
@@ -619,7 +617,7 @@ mod tests {
             .unwrap(),
             8
         );
-        assert!(
+        assert_eq!(
             deterministic_point_tile_size_with_cache_footprint(
                 1024,
                 REQUIRED_BYTES - 1,
@@ -627,9 +625,8 @@ mod tests {
                 PHYSICAL_SCALARS_PER_POINT,
                 1,
             )
-            .unwrap_err()
-            .message()
-            .contains("minimum aligned Direct-Arena pitch")
+            .unwrap(),
+            8
         );
     }
 

@@ -70,44 +70,29 @@ _RELATION_OBSERVATION_ABI = "pyamplicol-recurrence-relation-observation-v2"
 _DECISION_CHAIN_ABI = "pyamplicol-recurrence-numerical-decision-chain-v1"
 _REJECTION_CHAIN_ABI = "pyamplicol-recurrence-rejected-numerical-decision-chain-v1"
 _PERSISTED_EVIDENCE_ABI = "pyamplicol-recurrence-numerical-persisted-evidence-v1"
-_MAX_RAW_EVIDENCE_MEMORY_BYTES = 1 << 30
+# Select a sequential spool for large captures; this is not a memory ceiling.
+_RAW_EVIDENCE_MEMORY_TARGET_BYTES = 1 << 30
 _COMPRESSED_EVIDENCE_MAGIC = b"PACNCEZ1"
 _COMPRESSED_EVIDENCE_HEADER = struct.Struct(">8sQ32s")
 _COMPRESSED_EVIDENCE_ENCODING = "zlib-canonical-json-v1"
 _RAW_EVIDENCE_ENCODING = "canonical-json-v3"
-_MAX_COMPRESSED_EVIDENCE_BYTES = 256 << 20
-_MAX_DECOMPRESSED_EVIDENCE_BYTES = 512 << 20
 _SPOOLED_CAPTURE_COMPRESSION_RESERVE_BYTES = 8 << 20
 _SPOOLED_CANDIDATE_INDEX_BYTES_PER_CURRENT = 1_024
-_COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES = 192 << 20
 # The producer-side peak ends when the canonical bytes have been encoded and
 # the complete Decimal graphs are detached.  The per-scalar allowance covers
 # the Python Decimal/tuple capture graph and encoder temporaries; the row
-# allowance covers capture dictionaries and rows.  Native independently
-# authenticates this shape limit, then applies its separate streaming-consumer
-# bound without materializing observation JSON or exact-rational graphs.
+# allowance covers capture dictionaries and rows. These estimates select
+# resident or spooled storage; native validates the observations independently
+# without imposing a fixed memory ceiling.
 _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES = 640
 _RAW_EVIDENCE_ROW_RESIDENT_BYTES = 512
 _RAW_EVIDENCE_FIXED_RESERVE_BYTES = 32 << 20
 _RAW_EVIDENCE_WIRE_PEAK_COPIES = 2
-_RAW_STREAM_METADATA_COPIES = 2
-_RAW_STREAM_BYTES_PER_ROW_OFFSETS = 16
-_RAW_STREAM_BYTES_PER_TEXT_REFERENCE = 16
-_RAW_STREAM_BYTES_PER_CURRENT_INDEX = 512
-_RAW_STREAM_BYTES_PER_RATIONAL = 320
-_RAW_STREAM_BYTES_PER_METADATA_TOKEN = 80
-_RAW_STREAM_PARAMETER_RATIONAL_COPIES = 4
 _MIN_RAW_EVIDENCE_WIRE_BYTES = 1 << 20
-# This global ceiling is shared with the native pre-metadata lexical budget.  A
-# concrete capture may receive a smaller limit from its scalar/row geometry.
-_MAX_RAW_EVIDENCE_BYTES = 157_853_696
-_MAX_RAW_EVIDENCE_DECIMAL_BYTES = 16_384
-_MAX_PERSISTED_EVIDENCE_BYTES = 64 << 20
 _RECURRENCE_CERTIFICATE_ALGORITHM = (
     "authenticated-independent-recursive-decimal-raw-probes-v2"
 )
 _MAX_REJECTED_DIAGNOSTICS = 32
-_MAX_RAW_NUMERICAL_HYPOTHESES = 1_000_000
 _CANDIDATE_INDEX_ALGORITHM = "complete-contract-anchor-tolerance-window-v1"
 _APPLICATION_SCOPE_ABI = "pyamplicol-recurrence-numerical-relation-application-scope-v1"
 NUMERICAL_RELATION_CORRECTNESS_ABI = (
@@ -135,7 +120,7 @@ _Tolerance = Decimal | Fraction
 class _RawEvidenceStorageGeometry:
     scalar_count: int
     row_count: int
-    canonical_byte_limit: int
+    canonical_byte_limit: int | None
     encoding: _EvidenceEncoding
     producer_resident_upper_bound: int
 
@@ -605,7 +590,6 @@ class RecurrenceCurrentObservationCapture:
                 "certificate replay references an absent recurrence current"
             )
         observation_rows: list[object] = []
-        observation_bytes = 0
         for current_id in selected:
             row = {
                 "current_id": current_id,
@@ -615,12 +599,6 @@ class RecurrenceCurrentObservationCapture:
                     for real, imaginary in self.observations[current_id]
                 ],
             }
-            observation_bytes += len(_canonical_json_bytes(row)) + 1
-            if observation_bytes > _MAX_PERSISTED_EVIDENCE_BYTES // 2:
-                raise ValueError(
-                    "recurrence certificate replay rows exceed their compact "
-                    "persisted-evidence budget"
-                )
             observation_rows.append(row)
         return {
             "abi": "pyamplicol-recurrence-certificate-capture-replay-v1",
@@ -790,8 +768,7 @@ class RecurrenceNumericalCurrentWarmupResult:
         if cast(Sequence[int], application_scope["suppressed_selector_domain_ids"]):
             return "multi-helicity-all-flow-member-scope-unproven"
         if any(
-            certificate.relation_kind == "opposite"
-            for certificate in self.certificates
+            certificate.relation_kind == "opposite" for certificate in self.certificates
         ):
             return "contracted-opposite-binary64-disabled"
         raise AssertionError("recurrence numerical mode changed without a reason")
@@ -898,16 +875,11 @@ class RecurrenceNumericalCurrentWarmupResult:
         }
         persisted_encoded = _bounded_canonical_json_bytes(
             persisted_evidence,
-            byte_limit=_MAX_PERSISTED_EVIDENCE_BYTES,
+            byte_limit=None,
             label="recurrence persisted numerical evidence",
         )
         persisted_evidence["measured_payload_bytes"] = len(persisted_encoded)
         persisted_evidence["sha256"] = _canonical_sha256(persisted_evidence)
-        _bounded_canonical_json_bytes(
-            persisted_evidence,
-            byte_limit=_MAX_PERSISTED_EVIDENCE_BYTES,
-            label="recurrence persisted numerical evidence",
-        )
         application_scope = dict(
             cast(
                 Mapping[str, object],
@@ -1017,15 +989,6 @@ def run_recurrence_numerical_current_warmup(
     geometry_started = time.perf_counter()
     geometry = _select_raw_evidence_storage_geometry(
         plan.sections,
-        candidate_probe_count=len(candidate_points),
-        verification_probe_count=len(verification_points),
-        runtime_parameter_count=len(plan.runtime_parameter_schema),
-    )
-    evidence_geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
-        current_count=len(plan.sections.currents),
-        component_count=sum(
-            current.component_count for current in plan.sections.currents
-        ),
         candidate_probe_count=len(candidate_points),
         verification_probe_count=len(verification_points),
         runtime_parameter_count=len(plan.runtime_parameter_schema),
@@ -1254,58 +1217,23 @@ def run_recurrence_numerical_current_warmup(
         generation_profile_timings["warmup_evidence_payload"] = (
             time.perf_counter() - evidence_payload_started
         )
-        _validate_raw_evidence_scalar_widths(candidate, verification)
         evidence_serialization_started = time.perf_counter()
         if geometry.encoding == _RAW_EVIDENCE_ENCODING:
-            try:
-                encoded = _bounded_canonical_json_bytes(
-                    evidence,
-                    byte_limit=geometry.canonical_byte_limit,
-                    label="recurrence numerical raw evidence",
-                )
-            except _CanonicalEvidenceCapacityExceeded as raw_error:
-                # Captures selected for raw storage are resident mappings.  A
-                # late switch to the compressed transport would retain those
-                # mappings while allocating the compressed producer state, so
-                # its peak would no longer be covered by the 1 GiB envelope.
-                # Optional certified reuse therefore falls back to mode-off;
-                # exact recurrence generation continues through the caller's
-                # existing typed-fallback path.
-                raise RecurrenceNumericalEvidenceEnvelopeExceeded(
-                    evidence_geometry,
-                    memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
-                    spooled_producer_resident_bytes=(
-                        evidence_geometry.spooled_producer_resident_upper_bound()
-                    ),
-                    raw_reason=str(raw_error),
-                ) from raw_error
-            else:
-                canonical_byte_count = len(encoded)
-                _validate_raw_evidence_memory_upper_bound(
-                    canonical_byte_count,
-                    scalar_count=geometry.scalar_count,
-                    row_count=geometry.row_count,
-                    byte_limit=geometry.canonical_byte_limit,
-                )
+            encoded = _bounded_canonical_json_bytes(
+                evidence,
+                byte_limit=geometry.canonical_byte_limit,
+                label="recurrence numerical raw evidence",
+            )
+            canonical_byte_count = len(encoded)
         else:
             evidence_spool = tempfile.TemporaryFile(  # noqa: SIM115
                 prefix="pyamplicol-recurrence-evidence-",
             )
-            try:
-                canonical_byte_count = _write_compressed_canonical_evidence(
-                    evidence,
-                    evidence_spool,
-                    canonical_byte_limit=geometry.canonical_byte_limit,
-                )
-            except _CanonicalEvidenceCapacityExceeded as compressed_error:
-                raise RecurrenceNumericalEvidenceEnvelopeExceeded(
-                    evidence_geometry,
-                    memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
-                    spooled_producer_resident_bytes=(
-                        evidence_geometry.spooled_producer_resident_upper_bound()
-                    ),
-                    raw_reason=str(compressed_error),
-                ) from compressed_error
+            canonical_byte_count = _write_compressed_canonical_evidence(
+                evidence,
+                evidence_spool,
+                canonical_byte_limit=geometry.canonical_byte_limit,
+            )
             encoded = b""
         generation_profile_timings["warmup_evidence_serialization"] = (
             time.perf_counter() - evidence_serialization_started
@@ -1482,22 +1410,6 @@ def validate_recurrence_numerical_current_application(
     if verification_capture is None:
         raise ValueError(
             "applied recurrence numerical relations lack verification observations"
-        )
-    application_capture_bound = _spooled_capture_memory_upper_bound(
-        current_count=len(baseline_plan.sections.currents),
-        component_count=sum(
-            current.component_count for current in baseline_plan.sections.currents
-        ),
-        maximum_probe_count=len(verification_capture.points),
-        runtime_parameter_count=len(baseline_plan.runtime_parameter_schema),
-        include_candidate_index=False,
-    )
-    application_resident_bound = application_capture_bound + len(baseline.evidence_json)
-    if application_resident_bound > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
-        raise ValueError(
-            "recurrence numerical application validation exceeds its "
-            "explicit 1 GiB resident memory envelope; the native evidence "
-            "transport must be released after lowering"
         )
     reference_spool: _SpooledObservationMapping | None = None
     try:
@@ -2417,11 +2329,6 @@ def _discover_relations(
             opposite_representatives
         )
         zero_hypotheses += 1
-        if screened_pair_hypotheses + zero_hypotheses > _MAX_RAW_NUMERICAL_HYPOTHESES:
-            raise ValueError(
-                "recurrence numerical candidate index exceeds the explicit "
-                "authenticated screened-hypothesis budget"
-            )
         hypotheses: list[tuple[_RelationKind, int | None]] = [
             ("zero", None),
             *[
@@ -2675,8 +2582,6 @@ def _discover_relations(
             "theoretical_pair_hypothesis_count": (theoretical_pair_hypotheses),
             "screened_pair_hypothesis_count": screened_pair_hypotheses,
             "zero_hypothesis_count": zero_hypotheses,
-            "screened_hypothesis_budget": _MAX_RAW_NUMERICAL_HYPOTHESES,
-            "budget_classification": "within-authenticated-budget",
             "nearest_rejected_scope": ("zero-and-tolerance-window-screened-hypotheses"),
         },
         "numerical_candidate_count": candidates,
@@ -3569,10 +3474,6 @@ def validate_recurrence_numerical_evidence_fallback(
         name="memory envelope",
         minimum=1,
     )
-    if memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
-        raise ValueError(
-            "recurrence numerical fallback memory envelope exceeds its fixed bound"
-        )
     producer_resident_bytes = required_integer(
         value.get("spooled_producer_resident_bytes"),
         name="producer resident bound",
@@ -3671,25 +3572,6 @@ def _decimal_string(value: Decimal) -> str:
         raise ValueError("non-finite Decimal cannot be canonicalized")
     if value == 0:
         return "0"
-    sign, digits, exponent = value.as_tuple()
-    if not isinstance(exponent, int):
-        raise ValueError("non-finite Decimal cannot be canonicalized")
-    digit_count = len(digits)
-    decimal_point = digit_count + exponent
-    if exponent >= 0:
-        fixed_length = digit_count + exponent
-    elif decimal_point > 0:
-        fixed_length = digit_count + 1
-    else:
-        # ``format(value, "f")`` would emit ``0.``, followed by
-        # ``-decimal_point`` leading zeroes and all coefficient digits.
-        fixed_length = 2 - exponent
-    fixed_length += sign
-    if fixed_length > _MAX_RAW_EVIDENCE_DECIMAL_BYTES:
-        raise ValueError(
-            "finite Decimal fixed-point encoding exceeds the raw evidence "
-            "scalar boundary"
-        )
     text = format(value, "f")
     if "." in text:
         text = text.rstrip("0").rstrip(".")
@@ -3810,17 +3692,17 @@ def _iter_canonical_json_chunks(value: object) -> Iterator[bytes]:
 def _bounded_canonical_json_bytes(
     value: object,
     *,
-    byte_limit: int,
+    byte_limit: int | None,
     label: str,
 ) -> bytes:
-    """Encode canonically while failing before an oversized string exists."""
+    """Encode canonically, honoring an explicitly requested byte limit."""
 
-    if byte_limit <= 0:
+    if byte_limit is not None and byte_limit <= 0:
         raise ValueError(f"{label} byte limit is invalid")
     encoded = bytearray()
     for chunk in _iter_canonical_json_chunks(value):
         next_size = len(encoded) + len(chunk)
-        if next_size > byte_limit:
+        if byte_limit is not None and next_size > byte_limit:
             raise _CanonicalEvidenceCapacityExceeded(
                 f"{label} exceeds the explicit {byte_limit}-byte canonical boundary"
             )
@@ -3828,40 +3710,15 @@ def _bounded_canonical_json_bytes(
     return bytes(encoded)
 
 
-def _compressed_transport_byte_limit(canonical_byte_count: int) -> int:
-    if not 0 <= canonical_byte_count <= _MAX_DECOMPRESSED_EVIDENCE_BYTES:
-        raise ValueError(
-            "recurrence compressed evidence canonical size is outside its "
-            "explicit decompression boundary"
-        )
-    available = (
-        _MAX_RAW_EVIDENCE_MEMORY_BYTES
-        - _COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES
-        - canonical_byte_count
-    )
-    if available <= 2 * _COMPRESSED_EVIDENCE_HEADER.size:
-        raise _CanonicalEvidenceCapacityExceeded(
-            "recurrence compressed evidence leaves no bounded transport "
-            "resident inside its native memory envelope"
-        )
-    return min(
-        _MAX_COMPRESSED_EVIDENCE_BYTES,
-        available // 2,
-    )
-
-
 def _write_compressed_canonical_evidence(
     value: object,
     stream: BinaryIO,
     *,
-    canonical_byte_limit: int,
+    canonical_byte_limit: int | None,
 ) -> int:
-    """Stream canonical JSON into one bounded zlib transport envelope."""
+    """Stream canonical JSON into one zlib transport envelope."""
 
-    if (
-        canonical_byte_limit <= 0
-        or canonical_byte_limit > _MAX_DECOMPRESSED_EVIDENCE_BYTES
-    ):
+    if canonical_byte_limit is not None and canonical_byte_limit <= 0:
         raise ValueError("recurrence compressed evidence canonical boundary is invalid")
     stream.seek(0)
     stream.truncate(0)
@@ -3876,16 +3733,14 @@ def _write_compressed_canonical_evidence(
         if not chunk:
             return
         transport_byte_count += len(chunk)
-        if transport_byte_count > _MAX_COMPRESSED_EVIDENCE_BYTES:
-            raise _CanonicalEvidenceCapacityExceeded(
-                "recurrence compressed evidence exceeds its explicit "
-                f"{_MAX_COMPRESSED_EVIDENCE_BYTES}-byte transport boundary"
-            )
         stream.write(chunk)
 
     for chunk in _iter_canonical_json_chunks(value):
         canonical_byte_count += len(chunk)
-        if canonical_byte_count > canonical_byte_limit:
+        if (
+            canonical_byte_limit is not None
+            and canonical_byte_count > canonical_byte_limit
+        ):
             raise _CanonicalEvidenceCapacityExceeded(
                 "recurrence numerical raw evidence exceeds the explicit "
                 f"{canonical_byte_limit}-byte decompression boundary"
@@ -3893,12 +3748,6 @@ def _write_compressed_canonical_evidence(
         digest.update(chunk)
         write_compressed(compressor.compress(chunk))
     write_compressed(compressor.flush())
-    dynamic_transport_limit = _compressed_transport_byte_limit(canonical_byte_count)
-    if transport_byte_count > dynamic_transport_limit:
-        raise _CanonicalEvidenceCapacityExceeded(
-            "recurrence compressed evidence exceeds the shape-dependent "
-            f"{dynamic_transport_limit}-byte native transport boundary"
-        )
     stream.seek(0)
     stream.write(
         _COMPRESSED_EVIDENCE_HEADER.pack(
@@ -3916,37 +3765,25 @@ def _write_compressed_canonical_evidence(
 
 def _read_compressed_evidence_spool(stream: BinaryIO) -> bytes:
     stream.seek(0)
-    encoded = stream.read(_MAX_COMPRESSED_EVIDENCE_BYTES + 1)
-    if len(encoded) > _MAX_COMPRESSED_EVIDENCE_BYTES:
-        raise ValueError(
-            "recurrence compressed evidence spool exceeds its transport boundary"
-        )
+    encoded = stream.read()
     if len(encoded) < _COMPRESSED_EVIDENCE_HEADER.size:
         raise ValueError("recurrence compressed evidence spool is truncated")
-    magic, canonical_byte_count, _digest = _COMPRESSED_EVIDENCE_HEADER.unpack_from(
+    magic, _canonical_byte_count, _digest = _COMPRESSED_EVIDENCE_HEADER.unpack_from(
         encoded
     )
     if magic != _COMPRESSED_EVIDENCE_MAGIC:
         raise ValueError("recurrence compressed evidence spool has invalid magic")
-    if canonical_byte_count > _MAX_DECOMPRESSED_EVIDENCE_BYTES:
-        raise ValueError("recurrence compressed evidence declares an oversized payload")
     return encoded
 
 
 def _validate_raw_evidence_canonical_size(
     size: int,
     *,
-    byte_limit: int = _MAX_RAW_EVIDENCE_BYTES,
+    byte_limit: int | None = None,
 ) -> None:
-    if (
-        size < 0
-        or byte_limit <= 0
-        or byte_limit > _MAX_RAW_EVIDENCE_BYTES
-        or size > byte_limit
-    ):
+    if size < 0 or (byte_limit is not None and (byte_limit <= 0 or size > byte_limit)):
         raise ValueError(
-            "recurrence numerical raw evidence exceeds the canonical share "
-            f"of its {_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope "
+            "recurrence numerical raw evidence exceeds its explicit memory envelope "
             f"(size={size}, byte_limit={byte_limit})"
         )
 
@@ -3955,16 +3792,15 @@ def _raw_evidence_wire_byte_limit(
     *,
     scalar_count: int,
     row_count: int,
-    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
+    memory_envelope_bytes: int = _RAW_EVIDENCE_MEMORY_TARGET_BYTES,
 ) -> int:
-    """Return the per-shape wire ceiling inside the combined 1 GiB envelope."""
+    """Return the per-shape wire allowance for a supplied batching target."""
 
     if (
         scalar_count < 0
         or row_count < 0
         or type(memory_envelope_bytes) is not int
         or memory_envelope_bytes <= 0
-        or memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES
     ):
         raise ValueError("recurrence raw-evidence memory geometry is invalid")
     resident_without_wire = _raw_evidence_memory_upper_bound(
@@ -3983,11 +3819,9 @@ def _raw_evidence_wire_byte_limit(
             f"envelope (scalars={scalar_count}, rows={row_count}, "
             f"resident_without_wire={resident_without_wire})"
         )
-    return min(
-        _MAX_RAW_EVIDENCE_BYTES,
-        (memory_envelope_bytes - resident_without_wire)
-        // _RAW_EVIDENCE_WIRE_PEAK_COPIES,
-    )
+    return (
+        memory_envelope_bytes - resident_without_wire
+    ) // _RAW_EVIDENCE_WIRE_PEAK_COPIES
 
 
 def _raw_evidence_geometry_counts(
@@ -4074,21 +3908,21 @@ def _select_raw_evidence_storage_geometry(
 def _select_raw_evidence_storage_geometry_for_counts(
     geometry: RecurrenceNumericalEvidenceGeometry,
     *,
-    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
+    memory_envelope_bytes: int | None = None,
 ) -> _RawEvidenceStorageGeometry:
     """Select storage from scalar geometry before allocating observations."""
 
-    if (
-        type(memory_envelope_bytes) is not int
-        or memory_envelope_bytes <= 0
-        or memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES
+    if memory_envelope_bytes is not None and (
+        type(memory_envelope_bytes) is not int or memory_envelope_bytes <= 0
     ):
         raise ValueError("recurrence raw-evidence memory envelope is invalid")
     try:
         byte_limit = _raw_evidence_wire_byte_limit(
             scalar_count=geometry.scalar_count,
             row_count=geometry.row_count,
-            memory_envelope_bytes=memory_envelope_bytes,
+            memory_envelope_bytes=(
+                memory_envelope_bytes or _RAW_EVIDENCE_MEMORY_TARGET_BYTES
+            ),
         )
     except _RawEvidenceWireEnvelopeExceeded as raw_error:
         return _compressed_raw_evidence_storage_geometry_for_counts(
@@ -4099,7 +3933,7 @@ def _select_raw_evidence_storage_geometry_for_counts(
     return _RawEvidenceStorageGeometry(
         scalar_count=geometry.scalar_count,
         row_count=geometry.row_count,
-        canonical_byte_limit=byte_limit,
+        canonical_byte_limit=byte_limit if memory_envelope_bytes is not None else None,
         encoding=_RAW_EVIDENCE_ENCODING,
         producer_resident_upper_bound=_raw_evidence_memory_upper_bound(
             _MIN_RAW_EVIDENCE_WIRE_BYTES,
@@ -4112,13 +3946,13 @@ def _select_raw_evidence_storage_geometry_for_counts(
 def _compressed_raw_evidence_storage_geometry_for_counts(
     geometry: RecurrenceNumericalEvidenceGeometry,
     *,
-    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
+    memory_envelope_bytes: int | None = None,
     raw_reason: str,
 ) -> _RawEvidenceStorageGeometry:
     """Select the sequential compressed spool or return the typed fallback."""
 
     producer_bound = geometry.spooled_producer_resident_upper_bound()
-    if producer_bound > memory_envelope_bytes:
+    if memory_envelope_bytes is not None and producer_bound > memory_envelope_bytes:
         raise RecurrenceNumericalEvidenceEnvelopeExceeded(
             geometry,
             memory_envelope_bytes=memory_envelope_bytes,
@@ -4128,7 +3962,7 @@ def _compressed_raw_evidence_storage_geometry_for_counts(
     return _RawEvidenceStorageGeometry(
         scalar_count=geometry.scalar_count,
         row_count=geometry.row_count,
-        canonical_byte_limit=_MAX_DECOMPRESSED_EVIDENCE_BYTES,
+        canonical_byte_limit=None,
         encoding=_COMPRESSED_EVIDENCE_ENCODING,
         producer_resident_upper_bound=producer_bound,
     )
@@ -4163,7 +3997,7 @@ def recurrence_numerical_evidence_capacity_outcome(
     )
     return RecurrenceNumericalEvidenceEnvelopeExceeded(
         geometry,
-        memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
+        memory_envelope_bytes=_RAW_EVIDENCE_MEMORY_TARGET_BYTES,
         spooled_producer_resident_bytes=(
             geometry.spooled_producer_resident_upper_bound()
         ),
@@ -4177,10 +4011,10 @@ def _validate_raw_evidence_geometry(
     candidate_probe_count: int,
     verification_probe_count: int,
     runtime_parameter_count: int,
-) -> tuple[int, int, int]:
-    """Reject unsafe capture geometry before allocating Decimal observations."""
+) -> tuple[int, int, None]:
+    """Validate capture dimensions without imposing a memory ceiling."""
 
-    current_count, component_count, scalar_count, row_count = (
+    _current_count, _component_count, scalar_count, row_count = (
         _raw_evidence_geometry_counts(
             sections,
             candidate_probe_count=candidate_probe_count,
@@ -4188,44 +4022,7 @@ def _validate_raw_evidence_geometry(
             runtime_parameter_count=runtime_parameter_count,
         )
     )
-    try:
-        byte_limit = _raw_evidence_wire_byte_limit(
-            scalar_count=scalar_count,
-            row_count=row_count,
-        )
-    except ValueError as error:
-        raise ValueError(
-            "recurrence raw-evidence capture geometry exceeds the explicit "
-            f"{_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope "
-            f"(currents={current_count}, components={component_count}, "
-            f"candidate_points={candidate_probe_count}, "
-            f"verification_points={verification_probe_count}, "
-            f"runtime_parameters={runtime_parameter_count}, "
-            f"scalars={scalar_count}, rows={row_count}, "
-            f"reason={error})"
-        ) from error
-    return scalar_count, row_count, byte_limit
-
-
-def _validate_raw_evidence_scalar_widths(
-    candidate: RecurrenceCurrentObservationCapture,
-    verification: RecurrenceCurrentObservationCapture,
-) -> None:
-    """Bound every scalar before starting the raw evidence byte buffer."""
-
-    for capture_name, capture in (
-        ("candidate", candidate),
-        ("verification", verification),
-    ):
-        for current_id, values in capture.observations.items():
-            for component_index, (real, imaginary) in enumerate(values):
-                for part_name, value in (("real", real), ("imaginary", imaginary)):
-                    if len(_decimal_string(value)) > _MAX_RAW_EVIDENCE_DECIMAL_BYTES:
-                        raise ValueError(
-                            f"{capture_name} current {current_id} component "
-                            f"{component_index} {part_name} exceeds the raw "
-                            "evidence scalar boundary"
-                        )
+    return scalar_count, row_count, None
 
 
 def _raw_evidence_memory_upper_bound(
@@ -4242,78 +4039,6 @@ def _raw_evidence_memory_upper_bound(
         + row_count * _RAW_EVIDENCE_ROW_RESIDENT_BYTES
         + size * _RAW_EVIDENCE_WIRE_PEAK_COPIES
     )
-
-
-def _raw_streaming_consumer_memory_upper_bound(
-    *,
-    raw_byte_count: int,
-    metadata_byte_count: int,
-    metadata_structural_token_count: int,
-    current_count: int,
-    component_count: int,
-    maximum_dimension: int,
-    candidate_probe_count: int,
-    verification_probe_count: int,
-    runtime_parameter_count: int,
-) -> int:
-    """Mirror the native streaming-consumer envelope for parity tests."""
-
-    values = (
-        raw_byte_count,
-        metadata_byte_count,
-        metadata_structural_token_count,
-        current_count,
-        component_count,
-        maximum_dimension,
-        candidate_probe_count,
-        verification_probe_count,
-        runtime_parameter_count,
-    )
-    if any(value < 0 for value in values):
-        raise ValueError("recurrence raw streaming geometry is invalid")
-    observation_row_count = current_count * 2
-    candidate_scalar_references = component_count * candidate_probe_count * 2
-    transient_rational_count = (
-        maximum_dimension * max(candidate_probe_count, verification_probe_count) * 4
-    )
-    parameter_rational_count = (
-        runtime_parameter_count
-        * (candidate_probe_count + verification_probe_count)
-        * _RAW_STREAM_PARAMETER_RATIONAL_COPIES
-    )
-    return (
-        raw_byte_count * _RAW_EVIDENCE_WIRE_PEAK_COPIES
-        + metadata_byte_count * _RAW_STREAM_METADATA_COPIES
-        + metadata_structural_token_count * _RAW_STREAM_BYTES_PER_METADATA_TOKEN
-        + observation_row_count * _RAW_STREAM_BYTES_PER_ROW_OFFSETS
-        + candidate_scalar_references * _RAW_STREAM_BYTES_PER_TEXT_REFERENCE
-        + current_count * _RAW_STREAM_BYTES_PER_CURRENT_INDEX
-        + transient_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
-        + parameter_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
-        + _RAW_EVIDENCE_FIXED_RESERVE_BYTES
-    )
-
-
-def _validate_raw_evidence_memory_upper_bound(
-    size: int,
-    *,
-    scalar_count: int,
-    row_count: int,
-    byte_limit: int = _MAX_RAW_EVIDENCE_BYTES,
-) -> None:
-    _validate_raw_evidence_canonical_size(size, byte_limit=byte_limit)
-    if (
-        _raw_evidence_memory_upper_bound(
-            size,
-            scalar_count=scalar_count,
-            row_count=row_count,
-        )
-        > _MAX_RAW_EVIDENCE_MEMORY_BYTES
-    ):
-        raise ValueError(
-            "recurrence numerical raw evidence exceeds its explicit "
-            f"{_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte resident memory envelope"
-        )
 
 
 def _synthetic_raw_evidence_bytes(

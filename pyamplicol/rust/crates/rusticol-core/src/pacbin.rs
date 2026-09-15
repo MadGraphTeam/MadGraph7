@@ -24,9 +24,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const PACBIN_VERSION: u16 = 1;
 pub const PACBIN_ALIGNMENT: u32 = 64;
-pub const PACBIN_MAX_MEMBERS: u64 = 1_000_000;
-pub const PACBIN_MAX_PATH_BYTES: u32 = 4096;
-pub const PACBIN_MAX_INDEX_BYTES: u64 = 256 * 1024 * 1024;
 pub const PACBIN_DEFAULT_CHUNK_SIZE: usize = 1024 * 1024;
 pub const PACBIN_DEFAULT_MODE: u32 = 0o644;
 
@@ -682,21 +679,16 @@ fn prepare_write_members<'a>(
 }
 
 fn validate_write_index_bounds(members: &[PacbinWriteMember<'_>]) -> RusticolResult<u64> {
-    let member_count = u64::try_from(members.len())
+    u64::try_from(members.len())
         .map_err(|_| RusticolError::invalid_argument("pacbin member count exceeds u64"))?;
-    if member_count > PACBIN_MAX_MEMBERS {
-        return Err(RusticolError::invalid_argument(format!(
-            "pacbin member count exceeds limit: {member_count}"
-        )));
-    }
     let mut index_size = INDEX_HEADER_SIZE as u64;
     for member in members {
         let path_length = u64::try_from(member.logical_path.len()).map_err(|_| {
             RusticolError::invalid_argument("pacbin logical path exceeds u64 byte length")
         })?;
-        if path_length > u64::from(PACBIN_MAX_PATH_BYTES) {
+        if path_length > u64::from(u32::MAX) {
             return Err(RusticolError::invalid_argument(format!(
-                "pacbin member path exceeds size limit: {path_length} bytes"
+                "pacbin member path exceeds u32 byte length: {path_length} bytes"
             )));
         }
         let record_size = (INDEX_ENTRY_SIZE as u64)
@@ -706,11 +698,6 @@ fn validate_write_index_bounds(members: &[PacbinWriteMember<'_>]) -> RusticolRes
         index_size = index_size
             .checked_add(record_size)
             .ok_or_else(|| RusticolError::invalid_argument("pacbin index size exceeds u64"))?;
-        if index_size > PACBIN_MAX_INDEX_BYTES {
-            return Err(RusticolError::invalid_argument(
-                "pacbin index exceeds size limit",
-            ));
-        }
     }
     Ok(index_size)
 }
@@ -1113,11 +1100,6 @@ fn parse_and_validate(bytes: &[u8], verify_payloads: bool) -> RusticolResult<Pac
             "pacbin footer member count disagrees with header",
         ));
     }
-    if member_count > PACBIN_MAX_MEMBERS {
-        return Err(integrity(format!(
-            "pacbin member count exceeds limit: {member_count}"
-        )));
-    }
     let expected_index_digest: [u8; 32] = footer[32..64]
         .try_into()
         .map_err(|_| integrity("truncated pacbin footer digest"))?;
@@ -1173,11 +1155,6 @@ fn parse_and_validate(bytes: &[u8], verify_payloads: bool) -> RusticolResult<Pac
     for _ in 0..member_count {
         let entry = checked_slice(index_bytes, cursor, INDEX_ENTRY_SIZE, "pacbin index entry")?;
         let path_length = u32_at(entry, 0, "pacbin member path length")?;
-        if path_length > PACBIN_MAX_PATH_BYTES {
-            return Err(integrity(format!(
-                "pacbin member path exceeds size limit: {path_length} bytes"
-            )));
-        }
         let kind = PacbinMemberKind::parse(u16_at(entry, 4, "pacbin member kind")?)?;
         let entry_flags = u16_at(entry, 6, "pacbin member flags")?;
         if entry_flags != SUPPORTED_FLAGS as u16 {
@@ -1294,11 +1271,6 @@ fn validate_contract(
 }
 
 fn validate_index_bounds(member_count: u64, available_index_bytes: u64) -> RusticolResult<()> {
-    if available_index_bytes > PACBIN_MAX_INDEX_BYTES {
-        return Err(integrity(format!(
-            "pacbin index exceeds size limit: {available_index_bytes} bytes"
-        )));
-    }
     let minimum_record_size = (INDEX_ENTRY_SIZE as u64)
         .checked_add(INDEX_ALIGNMENT)
         .expect("pacbin minimum record size fits u64");

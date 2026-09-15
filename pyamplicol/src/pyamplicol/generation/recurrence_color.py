@@ -32,9 +32,8 @@ _FACTOR_ELEMENTARY_ABELIAN = 2
 _FACTOR_SYMMETRIC_GROUP_FOURIER = 3
 _FLAG_INCLUDES_COLOR_FACTOR = 1 << 0
 _KNOWN_FLAGS = _FLAG_INCLUDES_COLOR_FACTOR
-_MAX_FACTOR_RANK = 16
+_MAX_FACTOR_RANK = 31  # 2**rank must fit the u32 local-group count.
 _MAX_SYMMETRIC_GROUP_DEGREE = 10
-_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024 * 1024
 _ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 
 # magic; 14 u32 fields; 7 u64 fields
@@ -141,8 +140,7 @@ def encode_recurrence_color_contraction(
         _checked_u32("group component ID", value) for value in group_component_ids
     )
     owners = tuple(
-        _checked_u32("physical sector owner ID", value)
-        for value in sector_owner_ids
+        _checked_u32("physical sector owner ID", value) for value in sector_owner_ids
     )
     destination_count = _checked_u32("destination_count", destination_count)
     if destination_count == 0:
@@ -785,9 +783,7 @@ def _encode_symmetric_group_convolution(
                     )
                 offset += 1
             if left_channel == right_channel:
-                kernel = block.kernel_exact_weights[
-                    offset - group_order : offset
-                ]
+                kernel = block.kernel_exact_weights[offset - group_order : offset]
                 for relative_index, exact in enumerate(kernel):
                     inverse_index = _inverse_lexicographic_permutation_index(
                         degree, relative_index
@@ -826,9 +822,7 @@ def _encode_symmetric_group_convolution(
             raise RecurrenceColorCodecError(
                 "symmetric-group residual row contains a complex coefficient"
             )
-        expected_symmetry = (
-            1.0 if _entry_left(entry) == _entry_right(entry) else 2.0
-        )
+        expected_symmetry = 1.0 if _entry_left(entry) == _entry_right(entry) else 2.0
         if entry.symmetry_factor != expected_symmetry:
             raise RecurrenceColorCodecError(
                 "symmetric-group residual row has a noncanonical symmetry factor"
@@ -956,11 +950,7 @@ def _checked_payload_size(
         + sector_count * _U32.size
         + coset_index_count * _U32.size
     )
-    if size > _MAX_PAYLOAD_BYTES:
-        raise RecurrenceColorCodecError(
-            "recurrence color payload exceeds the 8 GiB format limit"
-        )
-    return size
+    return _checked_u64("recurrence color payload byte count", size)
 
 
 def _pack_exact_factor(

@@ -524,11 +524,6 @@ impl AmplitudeRuntime {
                 ));
             }
         };
-        if reducer.bounded_lane_capacity(lane_capacity)? != lane_capacity {
-            return Err(RusticolError::compatibility(
-                "compiled symmetric-group FFT reduction tile exceeds its workspace budget",
-            ));
-        }
         symmetric_group.workspace = Some(reducer.workspace(lane_capacity)?);
         Ok(())
     }

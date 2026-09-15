@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Compact, bounded native image of recurrence process physics.
+//! Compact native image of recurrence process physics.
 //!
 //! This is an internal cold-load cache, not a stable interchange format.  The
 //! enclosing PACBIN member authenticates its bytes; this codec supplies an
-//! independently recognizable ABI, bounded allocation, exact consumption, and
+//! independently recognizable ABI, file-length checks, exact consumption, and
 //! the same semantic validation as the canonical JSON path.
 
 use crate::{
@@ -29,15 +29,11 @@ pub(super) const RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI: &str =
 const RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAGIC: &[u8; 8] = b"PACRPHM1";
 const RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_VERSION: u16 = 1;
 const RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_HEADER_BYTES: usize = 16;
-const RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 
 // serde_json's ordinary parser rejects nesting beyond 128 levels.  Apply the
 // same bound to the native representation so a recursive Decode cannot be used
 // to exhaust the stack.
 const COMPACT_JSON_MAX_DEPTH: usize = 128;
-const COMPACT_JSON_MAX_NODES: usize = 1 << 20;
-const COMPACT_JSON_MAX_CONTAINER_ITEMS: usize = 1 << 18;
-const COMPACT_JSON_MAX_STRING_BYTES: usize = 1 << 20;
 
 #[derive(Clone, Debug, Decode)]
 #[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
@@ -104,41 +100,25 @@ struct CompactJsonObject(Vec<(String, CompactJsonValue)>);
 impl CompactJsonObject {
     #[cfg(any(feature = "python-generation-bridge", test))]
     fn from_extensions(extensions: &BTreeMap<String, JsonValue>) -> RusticolResult<Self> {
-        let mut budget = CompactJsonEncodeBudget::default();
-        Self::from_entries(extensions.iter(), 0, &mut budget)
+        Self::from_entries(extensions.iter(), 0)
     }
 
     #[cfg(any(feature = "python-generation-bridge", test))]
-    fn from_json_map(
-        values: &JsonMap<String, JsonValue>,
-        depth: usize,
-        budget: &mut CompactJsonEncodeBudget,
-    ) -> RusticolResult<Self> {
-        Self::from_entries(values.iter(), depth, budget)
+    fn from_json_map(values: &JsonMap<String, JsonValue>, depth: usize) -> RusticolResult<Self> {
+        Self::from_entries(values.iter(), depth)
     }
 
     #[cfg(any(feature = "python-generation-bridge", test))]
     fn from_entries<'a>(
         entries: impl ExactSizeIterator<Item = (&'a String, &'a JsonValue)>,
         depth: usize,
-        budget: &mut CompactJsonEncodeBudget,
     ) -> RusticolResult<Self> {
-        if entries.len() > COMPACT_JSON_MAX_CONTAINER_ITEMS {
-            return Err(compact_json_bound_error(format!(
-                "object contains {} entries, exceeding the {COMPACT_JSON_MAX_CONTAINER_ITEMS}-entry limit",
-                entries.len()
-            )));
-        }
         let mut compact = Vec::new();
         compact.try_reserve_exact(entries.len()).map_err(|error| {
             compact_json_bound_error(format!("could not allocate compact JSON object: {error}"))
         })?;
         for (key, value) in entries {
-            check_compact_json_string(key, "object key")?;
-            compact.push((
-                key.clone(),
-                CompactJsonValue::from_json(value, depth, budget)?,
-            ));
+            compact.push((key.clone(), CompactJsonValue::from_json(value, depth)?));
         }
         compact.sort_unstable_by(|left, right| left.0.cmp(&right.0));
         Ok(Self(compact))
@@ -214,17 +194,12 @@ enum CompactJsonValue {
 
 impl CompactJsonValue {
     #[cfg(any(feature = "python-generation-bridge", test))]
-    fn from_json(
-        value: &JsonValue,
-        depth: usize,
-        budget: &mut CompactJsonEncodeBudget,
-    ) -> RusticolResult<Self> {
+    fn from_json(value: &JsonValue, depth: usize) -> RusticolResult<Self> {
         if depth > COMPACT_JSON_MAX_DEPTH {
             return Err(compact_json_bound_error(format!(
                 "nesting exceeds the {COMPACT_JSON_MAX_DEPTH}-level limit"
             )));
         }
-        budget.claim_node()?;
         match value {
             JsonValue::Null => Ok(Self::Null),
             JsonValue::Bool(value) => Ok(Self::Bool(*value)),
@@ -247,17 +222,8 @@ impl CompactJsonValue {
                 }
                 Ok(Self::F64Bits(value.to_bits()))
             }
-            JsonValue::String(value) => {
-                check_compact_json_string(value, "string")?;
-                Ok(Self::String(value.clone()))
-            }
+            JsonValue::String(value) => Ok(Self::String(value.clone())),
             JsonValue::Array(values) => {
-                if values.len() > COMPACT_JSON_MAX_CONTAINER_ITEMS {
-                    return Err(compact_json_bound_error(format!(
-                        "array contains {} entries, exceeding the {COMPACT_JSON_MAX_CONTAINER_ITEMS}-entry limit",
-                        values.len()
-                    )));
-                }
                 let mut compact = Vec::new();
                 compact.try_reserve_exact(values.len()).map_err(|error| {
                     compact_json_bound_error(format!(
@@ -265,14 +231,13 @@ impl CompactJsonValue {
                     ))
                 })?;
                 for value in values {
-                    compact.push(Self::from_json(value, depth + 1, budget)?);
+                    compact.push(Self::from_json(value, depth + 1)?);
                 }
                 Ok(Self::Array(compact))
             }
             JsonValue::Object(values) => Ok(Self::Object(CompactJsonObject::from_json_map(
                 values,
                 depth + 1,
-                budget,
             )?)),
         }
     }
@@ -316,7 +281,7 @@ impl Decode<CompactJsonDecodeContext> for CompactJsonValue {
             }
             if context.nodes_remaining == 0 {
                 return Err(DecodeError::Other(
-                    "compact JSON node count exceeds its limit",
+                    "compact JSON node count cannot fit in the encoded payload",
                 ));
             }
             context.nodes_remaining -= 1;
@@ -355,42 +320,18 @@ static COMPACT_JSON_ALLOWED_VARIANTS: AllowedEnumVariants =
 #[derive(Clone, Copy, Debug)]
 struct CompactJsonDecodeContext {
     depth: usize,
+    payload_bytes: usize,
     nodes_remaining: usize,
 }
 
-impl Default for CompactJsonDecodeContext {
-    fn default() -> Self {
+impl CompactJsonDecodeContext {
+    fn new(payload_bytes: usize) -> Self {
         Self {
             depth: 0,
-            nodes_remaining: COMPACT_JSON_MAX_NODES,
+            payload_bytes,
+            // Each node needs at least one encoded variant byte.
+            nodes_remaining: payload_bytes,
         }
-    }
-}
-
-#[cfg(any(feature = "python-generation-bridge", test))]
-#[derive(Clone, Copy, Debug)]
-struct CompactJsonEncodeBudget {
-    nodes_remaining: usize,
-}
-
-#[cfg(any(feature = "python-generation-bridge", test))]
-impl Default for CompactJsonEncodeBudget {
-    fn default() -> Self {
-        Self {
-            nodes_remaining: COMPACT_JSON_MAX_NODES,
-        }
-    }
-}
-
-#[cfg(any(feature = "python-generation-bridge", test))]
-impl CompactJsonEncodeBudget {
-    fn claim_node(&mut self) -> RusticolResult<()> {
-        self.nodes_remaining = self.nodes_remaining.checked_sub(1).ok_or_else(|| {
-            compact_json_bound_error(format!(
-                "node count exceeds the {COMPACT_JSON_MAX_NODES}-node limit"
-            ))
-        })?;
-        Ok(())
     }
 }
 
@@ -432,9 +373,9 @@ fn decode_compact_json_length<D: Decoder<Context = CompactJsonDecodeContext>>(
 ) -> Result<usize, DecodeError> {
     let wire_len = u64::decode(decoder)?;
     let len = usize::try_from(wire_len).map_err(|_| DecodeError::OutsideUsizeRange(wire_len))?;
-    if len > COMPACT_JSON_MAX_CONTAINER_ITEMS {
+    if len > decoder.context().payload_bytes {
         return Err(DecodeError::OtherString(format!(
-            "compact JSON {description} contains {len} entries, exceeding the {COMPACT_JSON_MAX_CONTAINER_ITEMS}-entry limit"
+            "compact JSON {description} count {len} cannot fit in the encoded payload"
         )));
     }
     Ok(len)
@@ -446,9 +387,9 @@ fn decode_compact_json_string<D: Decoder<Context = CompactJsonDecodeContext>>(
 ) -> Result<String, DecodeError> {
     let wire_len = u64::decode(decoder)?;
     let len = usize::try_from(wire_len).map_err(|_| DecodeError::OutsideUsizeRange(wire_len))?;
-    if len > COMPACT_JSON_MAX_STRING_BYTES {
+    if len > decoder.context().payload_bytes {
         return Err(DecodeError::OtherString(format!(
-            "compact JSON {description} contains {len} bytes, exceeding the {COMPACT_JSON_MAX_STRING_BYTES}-byte limit"
+            "compact JSON {description} length {len} cannot fit in the encoded payload"
         )));
     }
     decoder.claim_bytes_read(len)?;
@@ -463,17 +404,6 @@ fn decode_compact_json_string<D: Decoder<Context = CompactJsonDecodeContext>>(
     String::from_utf8(bytes).map_err(|error| DecodeError::Utf8 {
         inner: error.utf8_error(),
     })
-}
-
-#[cfg(any(feature = "python-generation-bridge", test))]
-fn check_compact_json_string(value: &str, description: &str) -> RusticolResult<()> {
-    if value.len() > COMPACT_JSON_MAX_STRING_BYTES {
-        return Err(compact_json_bound_error(format!(
-            "{description} contains {} bytes, exceeding the {COMPACT_JSON_MAX_STRING_BYTES}-byte limit",
-            value.len()
-        )));
-    }
-    Ok(())
 }
 
 #[cfg(any(feature = "python-generation-bridge", test))]
@@ -501,13 +431,6 @@ fn encode_recurrence_bootstrap_physics_wire_v1(
             "could not encode {RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI}: {error}"
         ))
     })?;
-    if body.len() > RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "{RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI} body contains {} bytes, exceeding the {}-byte limit",
-            body.len(),
-            RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES,
-        )));
-    }
     let body_len = u32::try_from(body.len()).map_err(|_| {
         RusticolError::artifact(format!(
             "{RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI} body length exceeds its u32 wire domain"
@@ -534,7 +457,7 @@ fn encode_recurrence_bootstrap_physics_wire_v1(
     Ok(encoded)
 }
 
-/// Decode, bound, and semantically validate one native recurrence physics
+/// Decode and semantically validate one native recurrence physics
 /// payload. Exact consumption is part of the ABI.
 #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
@@ -583,12 +506,6 @@ pub(super) fn decode_recurrence_bootstrap_physics_v1(
             "{RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI} body length exceeds usize"
         ))
     })?;
-    if declared_body_len > RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "{RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_ABI} declares {declared_body_len} body bytes, exceeding the {}-byte limit",
-            RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES,
-        )));
-    }
     let expected_len = RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_HEADER_BYTES
         .checked_add(declared_body_len)
         .ok_or_else(|| {
@@ -607,9 +524,8 @@ pub(super) fn decode_recurrence_bootstrap_physics_v1(
     let (wire, consumed): (RecurrenceBootstrapPhysicsV1, usize) =
         bincode::decode_from_slice_with_context(
             body,
-            bincode::config::standard()
-                .with_limit::<RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES>(),
-            CompactJsonDecodeContext::default(),
+            bincode::config::standard(),
+            CompactJsonDecodeContext::new(body.len()),
         )
         .map_err(|error| {
             RusticolError::serialization(format!(
@@ -782,15 +698,12 @@ mod tests {
         );
 
         let mut oversized = encoded;
-        oversized[12..16].copy_from_slice(
-            &(u32::try_from(RECURRENCE_BOOTSTRAP_PHYSICS_BINARY_MAX_BODY_BYTES).unwrap() + 1)
-                .to_le_bytes(),
-        );
+        oversized[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(
             decode_recurrence_bootstrap_physics_v1(&oversized)
                 .unwrap_err()
                 .message()
-                .contains("exceeding")
+                .contains("payload length")
         );
     }
 

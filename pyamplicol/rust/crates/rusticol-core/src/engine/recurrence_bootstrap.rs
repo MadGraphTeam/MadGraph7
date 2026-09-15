@@ -29,9 +29,6 @@ const RECURRENCE_BOOTSTRAP_IMAGE_MAGIC: &[u8; 8] = b"PACRBIN1";
 const RECURRENCE_BOOTSTRAP_IMAGE_VERSION: u16 = 1;
 const RECURRENCE_BOOTSTRAP_IMAGE_SCHEMA_VERSION: u16 = 1;
 const RECURRENCE_BOOTSTRAP_IMAGE_HEADER_BYTES: usize = 64;
-pub(crate) const RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES: usize = 128 * 1024 * 1024;
-pub(crate) const RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES: usize =
-    RECURRENCE_BOOTSTRAP_IMAGE_HEADER_BYTES + RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES;
 
 #[cfg(feature = "python-generation-bridge")]
 #[derive(Deserialize)]
@@ -345,15 +342,12 @@ pub(crate) fn decode_recurrence_bootstrap_image_v1(
     bytes: &[u8],
 ) -> RusticolResult<DecodedRecurrenceBootstrapV1> {
     let body_bytes = checked_image_body(bytes)?;
-    let (body, consumed): (RecurrenceBootstrapImageBodyV1, usize) = bincode::decode_from_slice(
-        body_bytes,
-        bincode::config::standard().with_limit::<RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES>(),
-    )
-    .map_err(|error| {
-        RusticolError::serialization(format!(
-            "could not decode {RECURRENCE_BOOTSTRAP_IMAGE_ABI}: {error}"
-        ))
-    })?;
+    let (body, consumed): (RecurrenceBootstrapImageBodyV1, usize) =
+        bincode::decode_from_slice(body_bytes, bincode::config::standard()).map_err(|error| {
+            RusticolError::serialization(format!(
+                "could not decode {RECURRENCE_BOOTSTRAP_IMAGE_ABI}: {error}"
+            ))
+        })?;
     if consumed != body_bytes.len() {
         return Err(RusticolError::serialization(format!(
             "{RECURRENCE_BOOTSTRAP_IMAGE_ABI} contains {} trailing body bytes",
@@ -448,13 +442,6 @@ fn encode_image_body(body: &RecurrenceBootstrapImageBodyV1) -> RusticolResult<Ve
             "could not encode {RECURRENCE_BOOTSTRAP_IMAGE_ABI}: {error}"
         ))
     })?;
-    if encoded.len() > RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "{RECURRENCE_BOOTSTRAP_IMAGE_ABI} body contains {} bytes, exceeding the {}-byte limit",
-            encoded.len(),
-            RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES
-        )));
-    }
     let body_len = u64::try_from(encoded.len()).map_err(|_| {
         RusticolError::artifact(format!(
             "{RECURRENCE_BOOTSTRAP_IMAGE_ABI} body length exceeds u64"
@@ -522,12 +509,6 @@ fn checked_image_body(bytes: &[u8]) -> RusticolResult<&[u8]> {
             "{RECURRENCE_BOOTSTRAP_IMAGE_ABI} body length exceeds usize"
         ))
     })?;
-    if body_len > RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "{RECURRENCE_BOOTSTRAP_IMAGE_ABI} declares {body_len} bytes, exceeding the {}-byte limit",
-            RECURRENCE_BOOTSTRAP_IMAGE_MAX_BODY_BYTES
-        )));
-    }
     let expected_len = RECURRENCE_BOOTSTRAP_IMAGE_HEADER_BYTES
         .checked_add(body_len)
         .ok_or_else(|| {

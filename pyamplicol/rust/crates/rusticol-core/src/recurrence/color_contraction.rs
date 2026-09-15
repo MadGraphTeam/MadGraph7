@@ -22,10 +22,12 @@ const VERSION: u32 = 3;
 const HEADER_BYTES: usize = 120;
 const ENTRY_BYTES: usize = 36;
 const EXACT_FACTOR_BYTES: usize = 64;
-const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024 * 1024;
-const MAX_FACTOR_RANK: u32 = 16;
+// The subgroup order must fit the codec's u32 local-group count.
+const MAX_FACTOR_RANK: u32 = u32::BITS - 1;
 const MAX_SYMMETRIC_GROUP_DEGREE: u32 = 10;
-const MAX_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
+// A batching target, not a resource limit: a single large lane and explicitly
+// requested workspace growth may exceed it.
+const TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
 const ZERO_SECTOR_OWNER: u32 = u32::MAX;
 const FLAG_INCLUDES_COLOR_FACTOR: u32 = 1 << 0;
 const KNOWN_FLAGS: u32 = FLAG_INCLUDES_COLOR_FACTOR;
@@ -324,7 +326,7 @@ impl RuntimeSymmetricGroupColorContraction {
             .checked_mul(std::mem::size_of::<SymmetricGroupComplex64>())
             .and_then(|value| value.checked_add(std::mem::size_of::<f64>()))
             .ok_or_else(|| malformed("symmetric-group lane workspace bytes overflow usize"))?;
-        let budget_lanes = (MAX_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES / bytes_per_lane).max(1);
+        let budget_lanes = (TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES / bytes_per_lane).max(1);
         Ok(requested.min(budget_lanes))
     }
 
@@ -632,13 +634,6 @@ impl RuntimeSymmetricGroupColorWorkspace {
     ) -> RusticolResult<()> {
         if lane_count <= self.lane_capacity {
             return Ok(());
-        }
-        let bounded = contraction.bounded_lane_capacity(lane_count)?;
-        if bounded < lane_count {
-            return Err(RusticolError::invalid_argument(format!(
-                "symmetric-group color tile of {lane_count} lanes exceeds the {}-byte workspace budget",
-                MAX_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES
-            )));
         }
         *self = Self::new(contraction, lane_count)?;
         Ok(())
@@ -1552,9 +1547,6 @@ impl FusedIterator for RuntimeColorContractionEntries<'_> {}
 pub fn decode_recurrence_color_contraction_v3(
     bytes: &[u8],
 ) -> RusticolResult<RecurrenceColorContraction> {
-    if bytes.len() > MAX_PAYLOAD_BYTES.saturating_add(HEADER_BYTES) {
-        return Err(malformed("payload exceeds the 8 GiB format limit"));
-    }
     let mut reader = Reader::new(bytes);
     if reader.take(8, "magic")? != MAGIC {
         return Err(malformed("invalid payload magic"));
@@ -1610,8 +1602,7 @@ pub fn decode_recurrence_color_contraction_v3(
         .and_then(|value| value.checked_add(coset_index_count.checked_mul(4)?))
         .ok_or_else(|| malformed("payload byte count overflows usize"))?;
     if payload_bytes != expected_payload_bytes
-        || payload_bytes > MAX_PAYLOAD_BYTES
-        || bytes.len() != HEADER_BYTES + payload_bytes
+        || Some(bytes.len()) != HEADER_BYTES.checked_add(payload_bytes)
     {
         return Err(malformed(
             "declared payload size does not match its fixed-width sections",

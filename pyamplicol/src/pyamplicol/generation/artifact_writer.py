@@ -158,7 +158,6 @@ EAGER_RUNTIME_CONTAINER_KIND = "pyamplicol-eager-runtime-container"
 EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
 EAGER_RUNTIME_STORAGE_ABI = "pacbin-v1"
 _EAGER_RUNTIME_CONTAINER_PATH = "eager-runtime.pacbin"
-_MAX_EAGER_EXECUTION_SUMMARY_BYTES = 1 << 20
 RECURRENCE_RUNTIME_KIND = "pyamplicol-runtime-recurrence-execution"
 RECURRENCE_RUNTIME_CONTAINER_KIND = "pyamplicol-recurrence-runtime-container"
 RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
@@ -1075,9 +1074,7 @@ def write_schema_v3_artifact(
                 "engine_version": str(producer["version"]),
                 "evaluator_manifest_path": _EVALUATOR_SET_PATH,
                 "api_bundle_path": api_bundle_path,
-                "required_runtime_capabilities": list(
-                    canonical_runtime_capabilities
-                ),
+                "required_runtime_capabilities": list(canonical_runtime_capabilities),
             },
             evaluator_payload_container=evaluator_payload_container,
             target=target,
@@ -1684,7 +1681,7 @@ def _write_process_payloads(
         _validate_staged_eager_runtime(process, runtime_record)
         execution_record = builder.add_bytes(
             execution_path,
-            _bounded_eager_execution_summary(process),
+            _eager_execution_summary(process),
             role="evaluator-manifest",
             media_type="application/json",
             process_id=process.process_id,
@@ -2463,7 +2460,7 @@ def _recurrence_helicity_selector_companion_v2_manifest(
     }
 
 
-def _bounded_eager_execution_summary(
+def _eager_execution_summary(
     process: EagerPlanV3ProcessArtifact,
 ) -> bytes:
     try:
@@ -2481,11 +2478,6 @@ def _bounded_eager_execution_summary(
         raise ValueError(
             f"Rust eager execution summary is not canonical JSON: {exc}"
         ) from exc
-    if len(content) >= _MAX_EAGER_EXECUTION_SUMMARY_BYTES:
-        raise ValueError(
-            "Rust eager execution summary must be smaller than 1 MiB; "
-            f"received {len(content)} bytes"
-        )
     return content
 
 

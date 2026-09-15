@@ -1055,8 +1055,7 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
             # colour applies only the supported equal/zero subset.
             certificates = application["certificates"]
             expected_applied = sum(
-                certificate["relation_kind"] != "opposite"
-                or color_accuracy == "lc"
+                certificate["relation_kind"] != "opposite" or color_accuracy == "lc"
                 for certificate in certificates
             )
             assert applied == expected_applied
@@ -1410,8 +1409,6 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
         "theoretical_pair_hypothesis_count": 0,
         "screened_pair_hypothesis_count": 0,
         "zero_hypothesis_count": 0,
-        "screened_hypothesis_budget": 1_000_000,
-        "budget_classification": "within-authenticated-budget",
         "nearest_rejected_scope": ("zero-and-tolerance-window-screened-hypotheses"),
     }
     persisted = certified["persisted_numerical_evidence"]

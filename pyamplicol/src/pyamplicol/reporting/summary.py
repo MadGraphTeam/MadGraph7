@@ -2007,14 +2007,14 @@ def _artifact_inspection_summary(
                 ),
             )
         )
-        workspace_limit = process.get("workspace_limit_bytes")
+        workspace_target = process.get("workspace_limit_bytes")
         workspace_used = process.get("workspace_bytes")
         add_execution_row(
             (
                 process_id,
-                "workspace limit / allocated",
+                "workspace target / allocated",
                 (
-                    f"{_byte_size(workspace_limit)} / "
+                    f"{_byte_size(workspace_target)} / "
                     + (
                         _byte_size(workspace_used)
                         if workspace_used is not None
@@ -2181,8 +2181,7 @@ def _record_sequence_summary(
             ]
             if has_remainder:
                 remainder = {
-                    key: record.get(key)
-                    for key in ordered_keys[len(visible_keys) :]
+                    key: record.get(key) for key in ordered_keys[len(visible_keys) :]
                 }
                 row.append(_value_text(remainder))
             table.add_row(tuple(row) if row else ("N/A",))

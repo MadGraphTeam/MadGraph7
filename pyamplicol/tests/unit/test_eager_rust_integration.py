@@ -685,7 +685,7 @@ def test_plan_v3_summary_failure_rolls_back_staged_runtime(
 ) -> None:
     process = _writer_process(
         tmp_path,
-        inspection_summary={"oversized": "x" * (1 << 20)},
+        inspection_summary={"nonfinite": float("nan")},
     )
     output = tmp_path / "artifact"
     output.mkdir()
@@ -710,7 +710,7 @@ def test_plan_v3_summary_failure_rolls_back_staged_runtime(
             return record
 
     with (
-        pytest.raises(ValueError, match="smaller than 1 MiB"),
+        pytest.raises(ValueError, match="not canonical JSON"),
         ArtifactBuilder(output, mode="replace") as builder,
     ):
         collector = TrackingCollector(

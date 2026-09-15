@@ -51,7 +51,6 @@ FROZEN_INSTALL_STATE_SHA256 = (
 )
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}")
-_JSON_LIMIT_BYTES = 64 * 1024 * 1024
 _BASELINE_IGNORED_ENTRY_LIMIT = 100_000
 _BASELINE_GENERATED_FILES = (
     "dependencies/candidate-Cargo.lock",
@@ -232,13 +231,8 @@ def _checked_json(path: Path, *, label: str) -> dict[str, Any]:
         before = expanded.lstat()
     except OSError as error:
         raise BundleError(f"cannot inspect {label}") from error
-    if (
-        not stat.S_ISREG(before.st_mode)
-        or expanded.is_symlink()
-        or before.st_size <= 0
-        or before.st_size > _JSON_LIMIT_BYTES
-    ):
-        raise BundleError(f"{label} is not a bounded regular non-symlink file")
+    if not stat.S_ISREG(before.st_mode) or expanded.is_symlink() or before.st_size <= 0:
+        raise BundleError(f"{label} is not a nonempty regular non-symlink file")
     try:
         encoded = expanded.read_bytes()
         after = expanded.lstat()
@@ -357,9 +351,7 @@ def _baseline_ignored_inventory(root: Path) -> dict[str, object]:
         "ignored_entry_count": len(ignored),
         "ignored_relative_paths": ignored,
         "ignored_paths_sha256": _canonical_sha256(ignored),
-        "ignored_entries_by_bootstrap_root": (
-            ignored_entries_by_bootstrap_root
-        ),
+        "ignored_entries_by_bootstrap_root": (ignored_entries_by_bootstrap_root),
         "allowed_generated_files": list(_BASELINE_GENERATED_FILES),
         "allowed_bootstrap_roots": list(_BASELINE_BOOTSTRAP_ROOTS),
         "unexpected_ignored_files": [],
@@ -458,9 +450,7 @@ def freeze_baseline(source_root: Path) -> dict[str, object]:
             "schema_version": SCHEMA_VERSION,
             "source_root": str(root),
             "source_revision": matrix.FROZEN_BASELINE_SOURCE_REVISION,
-            "native_build_inputs_sha256": (
-                matrix.FROZEN_BASELINE_NATIVE_INPUTS_SHA256
-            ),
+            "native_build_inputs_sha256": (matrix.FROZEN_BASELINE_NATIVE_INPUTS_SHA256),
             "candidate_lock_sha256": identities["candidate_lock"],
             "cargo_config_sha256": identities["cargo_config"],
             "install_state_sha256": _sha256_file(state),
@@ -469,10 +459,7 @@ def freeze_baseline(source_root: Path) -> dict[str, object]:
             "passes": _sha256_file(state) == FROZEN_INSTALL_STATE_SHA256,
         }
     )
-    if (
-        result["passes"] is not True
-        or not _valid_baseline_attestation_payload(result)
-    ):
+    if result["passes"] is not True or not _valid_baseline_attestation_payload(result):
         raise BundleError("frozen install state could not be materialized exactly")
     return result
 
@@ -753,8 +740,7 @@ def _baseline_attestation_inventory(root: Path) -> dict[str, object]:
         or payload.get("source_revision") != matrix.FROZEN_BASELINE_SOURCE_REVISION
         or payload.get("native_build_inputs_sha256")
         != matrix.FROZEN_BASELINE_NATIVE_INPUTS_SHA256
-        or payload.get("candidate_lock_sha256")
-        != FROZEN_CANDIDATE_LOCK_SHA256
+        or payload.get("candidate_lock_sha256") != FROZEN_CANDIDATE_LOCK_SHA256
         or payload.get("cargo_config_sha256") != FROZEN_CARGO_CONFIG_SHA256
         or payload.get("install_state_sha256") != FROZEN_INSTALL_STATE_SHA256
         or not _valid_baseline_attestation_payload(payload)

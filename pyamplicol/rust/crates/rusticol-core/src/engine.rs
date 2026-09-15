@@ -4581,7 +4581,7 @@ impl CompiledDirectReductionFootprint {
         };
         // One real total plane is live in every reducer. Reducer storage is a
         // cache-local working-set estimate only; none of it belongs to the
-        // Direct workspace hard-allocation bound.
+        // Direct workspace batching target.
         let total_phase = amplitude_input_scalars
             .checked_add(reducer_workspace_scalars)
             .and_then(|value| value.checked_add(1))
@@ -4746,8 +4746,7 @@ mod recurrence_bootstrap;
 pub(crate) use recurrence_bootstrap::build_recurrence_bootstrap_image_v1;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use recurrence_bootstrap::{
-    RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES, RecurrenceReadyExecutionV1,
-    decode_recurrence_bootstrap_image_v1,
+    RecurrenceReadyExecutionV1, decode_recurrence_bootstrap_image_v1,
 };
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

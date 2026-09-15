@@ -235,11 +235,10 @@ fn large_writer_representable_container_metadata_is_accepted() {
 }
 
 #[test]
-fn long_writer_valid_model_name_within_compact_summary_profile_is_accepted() {
+fn long_writer_valid_model_name_is_accepted() {
     let mut fixture = Fixture::new();
-    fixture.manifest["plan"]["inspection_summary"]["model_name"] = json!("m".repeat(8192));
-    let bytes = serde_json::to_vec(&fixture.manifest).unwrap();
-    assert!(bytes.len() < MAX_EXECUTION_MANIFEST_BYTES);
+    fixture.manifest["plan"]["inspection_summary"]["model_name"] =
+        json!("m".repeat(1024 * 1024 + 1));
 
     fixture.parse().unwrap();
 
@@ -459,11 +458,11 @@ fn incorrect_member_kind_is_rejected() {
 }
 
 #[test]
-fn legacy_plan_v2_reports_regeneration_before_large_manifest_bound() {
+fn legacy_plan_v2_reports_regeneration_before_large_manifest_parse() {
     let outer = outer_process();
     let mut bytes = br#"{"eager_plan_abi":"pyamplicol-eager-plan-v2","kind":"pyamplicol-runtime-eager-execution","runtime_schema":"#
         .to_vec();
-    bytes.extend(std::iter::repeat_n(b'x', MAX_EXECUTION_MANIFEST_BYTES * 2));
+    bytes.extend(std::iter::repeat_n(b'x', 2 * 1024 * 1024));
     bytes.extend_from_slice(br#""}"#);
     let error = parse_eager_v3_execution_manifest(&bytes, &outer).unwrap_err();
     assert_eq!(error.kind(), RusticolErrorKind::Compatibility);

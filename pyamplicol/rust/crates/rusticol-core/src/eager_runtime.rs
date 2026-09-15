@@ -119,6 +119,7 @@ pub struct EagerPlanPayloads<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct EagerRuntimeOptions {
     pub point_tile_size: usize,
+    /// Batch workspace target; one executable point may require more memory.
     pub workspace_bytes: usize,
 }
 

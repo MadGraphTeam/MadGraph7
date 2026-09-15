@@ -347,28 +347,27 @@ def test_writer_rejects_source_that_exceeds_requested_chunk() -> None:
         )
 
 
-def test_writer_preflights_bounded_index_before_truncation(
+def test_writer_preflights_wire_bounds_before_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     destination = io.BytesIO(b"existing")
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_PATH_BYTES", 3)
-    with pytest.raises(PacbinError, match="path exceeds size limit"):
+    monkeypatch.setattr(pacbin, "_MAX_U32", 3)
+    with pytest.raises(PacbinError, match="path exceeds u32 byte length"):
         write_pacbin(destination, _sources(b"payload"))
     assert destination.getvalue() == b"existing"
 
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_PATH_BYTES", 4096)
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_MEMBERS", 2)
-    with pytest.raises(PacbinError, match="member count exceeds limit"):
+    monkeypatch.setattr(pacbin, "_MAX_U32", 2**32 - 1)
+    monkeypatch.setattr(pacbin, "_MAX_U64", 2)
+    with pytest.raises(PacbinError, match="member count exceeds u64"):
         write_pacbin(destination, _sources(b"payload"))
     assert destination.getvalue() == b"existing"
 
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_MEMBERS", 1_000_000)
     monkeypatch.setattr(
         pacbin,
-        "PACBIN_MAX_INDEX_BYTES",
+        "_MAX_U64",
         pacbin._INDEX_HEADER_STRUCT.size,
     )
-    with pytest.raises(PacbinError, match="index exceeds size limit"):
+    with pytest.raises(PacbinError, match="index size exceeds u64"):
         write_pacbin(destination, _sources(b"payload"))
     assert destination.getvalue() == b"existing"
 
@@ -554,26 +553,6 @@ def test_reader_rejects_unknown_member_contract(
 
     with pytest.raises(PacbinError, match=message):
         PacbinReader.open(_mutated_container(mutate, rewrite_index_digest=True))
-
-
-def test_reader_enforces_bounded_index_policy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    data = _container_bytes()
-
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_MEMBERS", 2)
-    with pytest.raises(PacbinError, match="member count exceeds limit"):
-        PacbinReader.open(io.BytesIO(data))
-
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_MEMBERS", 1_000_000)
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_PATH_BYTES", 3)
-    with pytest.raises(PacbinError, match="path exceeds size limit"):
-        PacbinReader.open(io.BytesIO(data))
-
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_PATH_BYTES", 4096)
-    monkeypatch.setattr(pacbin, "PACBIN_MAX_INDEX_BYTES", 1)
-    with pytest.raises(PacbinError, match="index exceeds size limit"):
-        PacbinReader.open(io.BytesIO(data))
 
 
 def test_reader_rejects_noncanonical_and_case_colliding_paths() -> None:

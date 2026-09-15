@@ -28,9 +28,6 @@ from typing import BinaryIO
 
 PACBIN_VERSION = 1
 PACBIN_ALIGNMENT = 64
-PACBIN_MAX_MEMBERS = 1_000_000
-PACBIN_MAX_PATH_BYTES = 4096
-PACBIN_MAX_INDEX_BYTES = 256 * 1024 * 1024
 
 _HEADER_MAGIC = b"PACBIN\x00\x00"
 _INDEX_MAGIC = b"PACIDX\x00\x00"
@@ -554,8 +551,6 @@ class PacbinReader:
             raise PacbinError("pacbin footer index offset disagrees with header")
         if footer_member_count != member_count:
             raise PacbinError("pacbin footer member count disagrees with header")
-        if member_count > PACBIN_MAX_MEMBERS:
-            raise PacbinError(f"pacbin member count exceeds limit: {member_count}")
 
         stream.seek(index_offset)
         index_digest = hashlib.sha256()
@@ -585,10 +580,6 @@ class PacbinReader:
         if index_member_count != member_count:
             raise PacbinError("pacbin index member count disagrees with header")
         available_index_bytes = footer_offset - index_offset
-        if available_index_bytes > PACBIN_MAX_INDEX_BYTES:
-            raise PacbinError(
-                f"pacbin index exceeds size limit: {available_index_bytes} bytes"
-            )
         if member_count > available_index_bytes // (_INDEX_ENTRY_STRUCT.size + 8):
             raise PacbinError("pacbin member count cannot fit in index")
 
@@ -607,10 +598,6 @@ class PacbinReader:
             path_length, kind_value, entry_flags, offset, length, digest = (
                 _INDEX_ENTRY_STRUCT.unpack(prefix)
             )
-            if path_length > PACBIN_MAX_PATH_BYTES:
-                raise PacbinError(
-                    f"pacbin member path exceeds size limit: {path_length} bytes"
-                )
             if entry_flags != _SUPPORTED_FLAGS:
                 raise PacbinError(f"unknown pacbin member flags: {entry_flags}")
             try:
@@ -745,25 +732,17 @@ def _ordered_sources(
 
 
 def _validate_index_bounds(members: tuple[PacbinMemberSource, ...]) -> int:
-    if len(members) > PACBIN_MAX_MEMBERS:
-        raise PacbinError(f"pacbin member count exceeds limit: {len(members)}")
+    if len(members) > _MAX_U64:
+        raise PacbinError("pacbin member count exceeds u64")
     index_size = _INDEX_HEADER_STRUCT.size
-    if index_size > PACBIN_MAX_INDEX_BYTES:
-        raise PacbinError("pacbin index exceeds size limit")
     for member in members:
         path_length = len(member.logical_path.encode("utf-8"))
         if path_length > _MAX_U32:
             raise PacbinError("pacbin logical path exceeds u32 byte length")
-        if path_length > PACBIN_MAX_PATH_BYTES:
-            raise PacbinError(
-                f"pacbin member path exceeds size limit: {path_length} bytes"
-            )
         record_size = _INDEX_ENTRY_STRUCT.size + path_length
         record_size += _padding_length(record_size, _INDEX_ALIGNMENT)
         if record_size > _MAX_U64 - index_size:
             raise PacbinError("pacbin index size exceeds u64")
-        if record_size > PACBIN_MAX_INDEX_BYTES - index_size:
-            raise PacbinError("pacbin index exceeds size limit")
         index_size += record_size
     return index_size
 
@@ -964,9 +943,6 @@ def _fsync_directory_best_effort(path: Path) -> None:
 
 __all__ = [
     "PACBIN_ALIGNMENT",
-    "PACBIN_MAX_INDEX_BYTES",
-    "PACBIN_MAX_MEMBERS",
-    "PACBIN_MAX_PATH_BYTES",
     "PACBIN_VERSION",
     "PacbinError",
     "PacbinIndex",

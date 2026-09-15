@@ -413,23 +413,15 @@ fn count_and_index_size_bounds_fail_before_allocation() {
     assert_error(
         {
             let mut bytes = decode_hex(PYTHON_GOLDEN_HEX);
-            put_u64(&mut bytes, 32, PACBIN_MAX_MEMBERS + 1);
+            put_u64(&mut bytes, 32, u64::MAX);
             let footer = footer_offset(&bytes);
-            put_u64(&mut bytes, footer + 24, PACBIN_MAX_MEMBERS + 1);
+            put_u64(&mut bytes, footer + 24, u64::MAX);
             bytes
         },
         RusticolErrorKind::Integrity,
-        "member count exceeds limit",
+        "member count cannot fit in index",
     );
-    let oversized = validate_index_bounds(0, PACBIN_MAX_INDEX_BYTES + 1).unwrap_err();
-    assert_eq!(oversized.kind(), RusticolErrorKind::Integrity);
-    assert_eq!(
-        oversized.to_string(),
-        format!(
-            "pacbin index exceeds size limit: {} bytes",
-            PACBIN_MAX_INDEX_BYTES + 1
-        )
-    );
+    validate_index_bounds(0, 256 * 1024 * 1024 + 1).unwrap();
     let impossible = validate_index_bounds(2, 64).unwrap_err();
     assert_eq!(
         impossible.to_string(),
@@ -452,12 +444,12 @@ fn member_contract_path_bounds_and_utf8_are_strict() {
     assert_error(flags, RusticolErrorKind::Compatibility, "member flags");
 
     let mut path_bound = golden.clone();
-    put_u32(&mut path_bound, entry, PACBIN_MAX_PATH_BYTES + 1);
+    put_u32(&mut path_bound, entry, u32::MAX);
     rewrite_index_digest(&mut path_bound);
     assert_error(
         path_bound,
         RusticolErrorKind::Integrity,
-        "path exceeds size limit",
+        "pacbin member path",
     );
 
     let mut utf8 = golden.clone();

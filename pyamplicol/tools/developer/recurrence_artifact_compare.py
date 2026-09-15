@@ -99,9 +99,6 @@ _STRUCTURAL_SEMANTIC_MAP_DOMAINS = {
 _PACBIN_VERSION = 1
 _PACBIN_ALIGNMENT = 64
 _PACBIN_INDEX_ALIGNMENT = 8
-_PACBIN_MAX_MEMBERS = 1_000_000
-_PACBIN_MAX_PATH_BYTES = 4096
-_PACBIN_MAX_INDEX_BYTES = 256 * 1024 * 1024
 _PACBIN_HEADER = struct.Struct("<8sHHIIIQQ24s")
 _PACBIN_INDEX_HEADER = struct.Struct("<8sHHIQQ")
 _PACBIN_INDEX_ENTRY = struct.Struct("<IHHQQ32s")
@@ -478,8 +475,6 @@ def _alignment_padding(position: int, alignment: int) -> int:
 
 
 def _canonical_pacbin_member_path(value: bytes) -> str:
-    if len(value) > _PACBIN_MAX_PATH_BYTES:
-        raise ComparisonError("recurrence PACBIN member path exceeds size limit")
     try:
         text = value.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -602,11 +597,7 @@ def _load_recurrence_pacbin(
         ):
             raise ComparisonError(f"{description} has non-canonical header fields")
         footer_offset = file_size - _PACBIN_FOOTER.size
-        if (
-            index_offset < _PACBIN_HEADER.size
-            or index_offset >= footer_offset
-            or member_count > _PACBIN_MAX_MEMBERS
-        ):
+        if index_offset < _PACBIN_HEADER.size or index_offset >= footer_offset:
             raise ComparisonError(f"{description} has invalid index bounds")
         footer = _PACBIN_FOOTER.unpack(
             _read_exact_at(
@@ -637,8 +628,6 @@ def _load_recurrence_pacbin(
         if footer_index_offset != index_offset or footer_member_count != member_count:
             raise ComparisonError(f"{description} header and footer disagree")
         available_index_bytes = footer_offset - index_offset
-        if available_index_bytes > _PACBIN_MAX_INDEX_BYTES:
-            raise ComparisonError(f"{description} index exceeds size limit")
 
         stream.seek(index_offset)
         index_digest = hashlib.sha256()
@@ -695,8 +684,6 @@ def _load_recurrence_pacbin(
             )
             if entry_flags != 0:
                 raise ComparisonError(f"{description} has unknown member flags")
-            if path_length > _PACBIN_MAX_PATH_BYTES:
-                raise ComparisonError(f"{description} member path exceeds size limit")
             path_bytes = read_index(path_length, "member path")
             logical_path = _canonical_pacbin_member_path(path_bytes)
             folded = logical_path.casefold()

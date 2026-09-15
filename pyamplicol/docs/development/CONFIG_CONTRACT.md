@@ -124,15 +124,16 @@ model-certificate-owned.
 ### Eager Execution
 
 - `point_tile_size: int = 1024`
-- `workspace_mib: int = 256`
+- `workspace_mib: int = 256` (soft batching target)
 
 Eager mode requires a prepared model bundle before DAG construction. A
 `built-in-sm` source resolves automatically to the wheel-owned portable
 `built-in-sm-jit-o2` pack; other models and built-in C++/ASM execution require
 an explicit prepared path. The prepared pack is
 authoritative for backend and code-shaping optimization settings. The runtime
-may reduce `point_tile_size` to honor the workspace limit, but never increases
-it.
+may reduce `point_tile_size` to approach the workspace target, but never
+increases it. The target does not reject a process whose minimum workspace
+is larger: at least one point is always allowed, with sufficient allocation.
 
 `.pyAmplicol-model.json` IR is architecture-independent. SymJIT application
 storage-v3 prepared packs use optimization level 2 and are portable across the
@@ -144,10 +145,13 @@ target-native.
 ### Recurrence Execution
 
 - `point_tile_size: int = 1024`
-- `workspace_mib: int = 256`
+- `workspace_mib: int = 256` (soft batching target)
 
 Recurrence is the global default. The runtime may reduce `point_tile_size` to
-honor the recurrence workspace limit, but never increases it. Recurrence JIT
+approach the recurrence workspace target, but never increases it. Like eager
+execution, it allocates at least the workspace needed for one point, even when
+that exceeds the target. A strict total-memory limit belongs to an external
+watchdog, not to the generated process. Recurrence JIT
 kernels use the same portable prepared O2 contract as eager execution. A
 missing prepared pack fails closed; configuration resolution never falls back
 to compiled execution. Cards that require process-local compiled DAGs must set

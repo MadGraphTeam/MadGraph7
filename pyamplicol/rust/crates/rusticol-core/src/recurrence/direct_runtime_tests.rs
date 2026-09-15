@@ -1554,7 +1554,7 @@ fn cache_target_never_rejects_a_point_that_fits_the_workspace_limit() {
 }
 
 #[test]
-fn hard_workspace_budget_counts_the_minimum_aligned_physical_pitch() {
+fn workspace_target_allows_the_minimum_aligned_physical_pitch() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
     parts.point_tile_size = 1024;
     parts.workspace_mib = 8;
@@ -1566,18 +1566,13 @@ fn hard_workspace_budget_counts_the_minimum_aligned_physical_pitch() {
         direct_executor_handles(),
     )
     .unwrap();
-    let error = DirectRecurrenceExecutionRuntime::new(plan, executors, 4)
-        .err()
-        .unwrap();
-    assert!(
-        error
-            .to_string()
-            .contains("minimum aligned Direct-Arena pitch")
-    );
+    let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    assert_eq!(runtime.point_tile_size(), 8);
+    assert_eq!(runtime.point_stride(), 8);
 }
 
 #[test]
-fn packed_singleton_defers_the_aligned_pitch_error_until_tiled_use() {
+fn packed_singleton_can_switch_to_tiles_larger_than_the_workspace_target() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
     parts.point_tile_size = 1024;
     parts.workspace_mib = 8;
@@ -1589,9 +1584,8 @@ fn packed_singleton_defers_the_aligned_pitch_error_until_tiled_use() {
         direct_executor_handles(),
     )
     .unwrap();
-    let expected_error = DirectRecurrenceExecutionRuntime::new(plan.clone(), ordinary_executors, 4)
-        .err()
-        .unwrap();
+    let ordinary_runtime =
+        DirectRecurrenceExecutionRuntime::new(plan.clone(), ordinary_executors, 4).unwrap();
     let packed_executors = DirectExecutorCatalog::new(
         &plan,
         plan.direct_template_catalog_digest(),
@@ -1600,7 +1594,10 @@ fn packed_singleton_defers_the_aligned_pitch_error_until_tiled_use() {
     .unwrap()
     .mark_packed_singleton_capable();
     let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, packed_executors, 4).unwrap();
-    assert_eq!(runtime.point_tile_size(), 1);
+    assert_eq!(
+        runtime.point_tile_size(),
+        ordinary_runtime.point_tile_size()
+    );
     assert_eq!(runtime.point_stride(), 1);
     assert!(runtime.packed_singleton_active);
     assert!(runtime.alternate_point_storage.is_none());
@@ -1609,22 +1606,13 @@ fn packed_singleton_defers_the_aligned_pitch_error_until_tiled_use() {
     let output = runtime.execute_tile(1).unwrap();
     assert_eq!(output.destination_re(0).unwrap(), &[0.0]);
     assert_eq!(output.destination_im(0).unwrap(), &[0.0]);
-    let allocation_counters = runtime.allocation_counters();
     assert!(runtime.outputs().is_some());
 
-    let batch_error = runtime.execute_tile(2).err().unwrap();
-    assert_eq!(batch_error, expected_error);
+    runtime.execute_tile(2).unwrap();
     assert!(runtime.outputs().is_some());
-    assert!(runtime.packed_singleton_active);
-    assert!(runtime.alternate_point_storage.is_none());
-    assert_eq!(runtime.allocation_counters(), allocation_counters);
-
-    let legacy_error = runtime.physical_momenta_mut().err().unwrap();
-    assert_eq!(legacy_error, expected_error);
-    assert!(runtime.outputs().is_some());
-    assert!(runtime.packed_singleton_active);
-    assert!(runtime.alternate_point_storage.is_none());
-    assert_eq!(runtime.allocation_counters(), allocation_counters);
+    assert!(!runtime.packed_singleton_active);
+    assert!(runtime.alternate_point_storage.is_some());
+    runtime.physical_momenta_mut().unwrap();
 
     runtime.execute_tile(1).unwrap();
 }
@@ -3118,7 +3106,7 @@ fn runtime_parameter_storage_is_sized_from_the_authenticated_plan() {
 }
 
 #[test]
-fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point() {
+fn runtime_clamps_the_effective_tile_but_accepts_a_point_above_the_target() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
     parts.point_tile_size = 1024;
     parts.workspace_mib = 1;
@@ -3148,10 +3136,9 @@ fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point
         direct_executor_handles(),
     )
     .unwrap();
-    let error = DirectRecurrenceExecutionRuntime::new(plan, executors, 4)
-        .err()
-        .unwrap();
-    assert!(error.to_string().contains("one point requires"));
+    let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
+    assert_eq!(runtime.point_tile_size(), 8);
+    assert_eq!(runtime.point_stride(), 8);
 
     let plan = DirectRecurrencePlan::new({
         let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
@@ -3168,10 +3155,9 @@ fn runtime_clamps_the_effective_tile_to_workspace_and_rejects_an_oversized_point
     )
     .unwrap()
     .mark_packed_singleton_capable();
-    let error = DirectRecurrenceExecutionRuntime::new(plan, packed_executors, 4)
-        .err()
-        .unwrap();
-    assert!(error.to_string().contains("one point requires"));
+    let runtime = DirectRecurrenceExecutionRuntime::new(plan, packed_executors, 4).unwrap();
+    assert_eq!(runtime.point_tile_size(), 8);
+    assert_eq!(runtime.point_stride(), 1);
 }
 
 #[test]

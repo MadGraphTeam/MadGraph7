@@ -194,15 +194,7 @@ impl EagerDirectExecutionRuntime {
             .ok_or_else(|| invalid("eager direct fixed workspace size overflows"))?;
         let arena_workspace_budget = options
             .workspace_bytes
-            .checked_sub(fixed_workspace_bytes)
-            .ok_or_else(|| {
-                invalid(format!(
-                    "eager Direct-Arena needs at least {fixed_workspace_bytes} fixed bytes for its \
-                     descriptors, factors, and persistent parameter cache, exceeding its \
-                     {}-byte budget",
-                    options.workspace_bytes
-                ))
-            })?;
+            .saturating_sub(fixed_workspace_bytes);
         let tile_capacity = direct_tile_capacity(
             requested_tile,
             arena_workspace_budget,
@@ -267,12 +259,6 @@ impl EagerDirectExecutionRuntime {
         )?
         .checked_add(broadcast_cache_bytes)
         .ok_or_else(|| invalid("eager direct workspace byte accounting overflows"))?;
-        if workspace_bytes > options.workspace_bytes {
-            return Err(invalid(format!(
-                "eager Direct-Arena needs {workspace_bytes} bytes, exceeding its {}-byte budget",
-                options.workspace_bytes
-            )));
-        }
 
         Ok(Self {
             plan,
@@ -2743,7 +2729,11 @@ fn direct_tile_capacity(
                     .and_then(|reduced| bytes.checked_add(reduced))
             })
             .ok_or_else(|| invalid("eager direct workspace size overflows"))?;
-        if bytes <= workspace_bytes {
+        // The target may reduce batching, but must not reject a process whose
+        // minimum aligned tile is larger. Fill the already allocated pitch.
+        if bytes <= workspace_bytes
+            || candidate <= (crate::direct_arena::DIRECT_ARENA_ALIGNMENT / size_of::<f64>()) as u32
+        {
             return Ok(candidate);
         }
     }

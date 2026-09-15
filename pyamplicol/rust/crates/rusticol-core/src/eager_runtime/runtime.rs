@@ -20,7 +20,7 @@ use std::mem::size_of;
 use std::ops::Range;
 use std::time::Instant;
 
-// `workspace_bytes` is a hard upper bound, not a target packet size. Keeping
+// `workspace_bytes` controls batching, not the maximum process size. Keeping
 // one gather/evaluate/scatter packet cache-sized avoids turning otherwise
 // linear eager execution into a memory-bandwidth workload when many
 // invocations share one prepared kernel.
@@ -234,19 +234,11 @@ impl EagerExecutionRuntime {
             .ok_or_else(|| RusticolError::invalid_argument("eager packet workspace overflows"))?;
         let dynamic_bytes = options
             .workspace_bytes
-            .checked_sub(static_bytes)
-            .ok_or_else(|| {
-                RusticolError::invalid_argument("eager workspace cannot hold coupling values")
-            })?;
+            .saturating_sub(static_bytes)
+            .max(minimum_bytes_per_point);
         let workspace_maximum_tile = dynamic_bytes
             .checked_div(minimum_bytes_per_point)
             .unwrap_or(0);
-        if workspace_maximum_tile == 0 {
-            return Err(RusticolError::invalid_argument(format!(
-                "eager workspace needs at least {} bytes for one point",
-                static_bytes + minimum_bytes_per_point
-            )));
-        }
         let tile_capacity = effective_tile_capacity(
             options.point_tile_size,
             workspace_maximum_tile,
@@ -262,7 +254,16 @@ impl EagerExecutionRuntime {
             .ok_or_else(|| {
                 RusticolError::internal("eager workspace accounting lost its packet budget")
             })?
-            .min(MAX_PACKET_BUFFER_BYTES);
+            .min(
+                MAX_PACKET_BUFFER_BYTES.max(
+                    largest_kernel_io
+                        .checked_mul(complex_bytes)
+                        .and_then(|bytes| bytes.checked_mul(tile_capacity))
+                        .ok_or_else(|| {
+                            RusticolError::invalid_argument("eager packet size overflows")
+                        })?,
+                ),
+            );
         let schedule = build_schedule(&plan, tile_capacity, packet_budget)?;
         let workspace = allocate_workspace(&plan, tile_capacity, schedule.packet_buffer_len)?;
         let workspace_bytes = static_bytes
@@ -274,11 +275,6 @@ impl EagerExecutionRuntime {
                     .and_then(|packet| value.checked_add(packet))
             })
             .ok_or_else(|| RusticolError::invalid_argument("eager workspace size overflows"))?;
-        if workspace_bytes > options.workspace_bytes {
-            return Err(RusticolError::internal(
-                "eager scheduler exceeded its workspace budget",
-            ));
-        }
         Ok(Self {
             plan,
             schedule,

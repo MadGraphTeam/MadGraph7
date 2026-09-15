@@ -37,8 +37,7 @@ _FACTOR_ELEMENTARY_ABELIAN = 2
 _FACTOR_SYMMETRIC_GROUP_FOURIER = 3
 _FLAG_INCLUDES_COLOR_FACTOR = 1 << 0
 _KNOWN_FLAGS = _FLAG_INCLUDES_COLOR_FACTOR
-_MAX_FACTOR_RANK = 16
-_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024 * 1024
+_MAX_FACTOR_RANK = 31  # 2**rank must fit the u32 local-group count.
 _ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 _HEADER = struct.Struct("<8s14I7Q")
 _ENTRY = struct.Struct("<IIdddI")
@@ -314,10 +313,6 @@ def _decode_recurrence_color_contraction(
 ) -> _RecurrenceColorContraction:
     if len(payload) < _HEADER.size:
         raise ArtifactError("recurrence color-contraction payload is truncated")
-    if len(payload) > _HEADER.size + _MAX_PAYLOAD_BYTES:
-        raise ArtifactError(
-            "recurrence color-contraction payload exceeds the format limit"
-        )
     (
         magic,
         version,
@@ -384,7 +379,6 @@ def _decode_recurrence_color_contraction(
     )
     if (
         payload_size != expected_payload_size
-        or payload_size > _MAX_PAYLOAD_BYTES
         or len(payload) != _HEADER.size + payload_size
     ):
         raise ArtifactError("recurrence color-contraction payload size is inconsistent")

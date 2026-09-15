@@ -141,7 +141,8 @@ output_chunk_size = 512
 # The runtime reduces this automatically when required. Default 1024.
 # This eager section is not applied by on-the-fly execution.
 point_tile_size = 1024
-# evaluator.eager.workspace_mib: Maximum reusable eager workspace. Default 256.
+# evaluator.eager.workspace_mib: Batch workspace target. Default 256; grows as
+# needed to fit the minimum executable tile, rather than rejecting a process.
 workspace_mib = 256
 
 [evaluator.recurrence]
@@ -149,8 +150,9 @@ workspace_mib = 256
 # tile. The runtime may reduce this automatically. Default 1024.
 # On-the-fly records this request as provenance but does not currently apply it.
 point_tile_size = 1024
-# evaluator.recurrence.workspace_mib: Maximum reusable recurrence workspace.
-# Default 256. This limit is not currently applied by on-the-fly execution.
+# evaluator.recurrence.workspace_mib: Batch workspace target; grows as needed
+# to fit the minimum executable tile, rather than rejecting a process.
+# Default 256. This target is not currently applied by on-the-fly execution.
 workspace_mib = 256
 
 [evaluator.optimization]

@@ -76,8 +76,11 @@ point_tile_size = 1024
 workspace_mib = 256
 ```
 
-The runtime may reduce the effective point tile to stay within the configured
-workspace. It does not increase the requested tile.
+`workspace_mib` is a soft batching target, not a memory limit. The runtime may
+reduce the effective point tile to approach this target, but always allocates
+the workspace needed to evaluate at least one point, even when that exceeds
+the target. It does not increase the requested tile. Use an external memory
+watchdog when a strict limit on total process memory is required.
 
 For topology replay, generation groups current-building operations with similar
 helicity coverage while keeping shared-input groups together. The row order is

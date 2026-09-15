@@ -1134,11 +1134,10 @@ fn read_bounded_recurrence_bootstrap(root: &Path, path: &Path) -> RusticolResult
     let size = usize::try_from(metadata.len()).map_err(|_| {
         RusticolError::artifact("recurrence bootstrap size exceeds this platform's usize domain")
     })?;
-    if size == 0 || size > crate::engine::RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES {
+    if size == 0 {
         return Err(RusticolError::artifact(format!(
-            "recurrence bootstrap {} has {size} bytes; expected 1..={}",
-            path.display(),
-            crate::engine::RECURRENCE_BOOTSTRAP_IMAGE_MAX_FILE_BYTES
+            "recurrence bootstrap {} is empty",
+            path.display()
         )));
     }
     #[cfg(unix)]

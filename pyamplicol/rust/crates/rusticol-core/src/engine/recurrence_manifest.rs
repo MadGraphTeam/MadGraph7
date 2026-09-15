@@ -2788,7 +2788,7 @@ impl RecurrenceColorContractionReference {
         if let Some(factorization) = &self.factorization {
             let valid_kind_and_rank = match factorization.kind.as_str() {
                 "klein-four-walsh" => factorization.rank == 2,
-                "elementary-abelian-walsh" => (3..=16).contains(&factorization.rank),
+                "elementary-abelian-walsh" => (3..u32::BITS).contains(&factorization.rank),
                 "symmetric-group-fourier" => (2..=10).contains(&factorization.rank),
                 _ => false,
             };

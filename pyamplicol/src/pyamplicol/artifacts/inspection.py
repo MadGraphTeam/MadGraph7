@@ -142,6 +142,7 @@ class ArtifactProcessInspection:
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
     requested_query_construction_threads: int | None = None
+    # Historical field name: this is a soft batching target, not an upper limit.
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
     arena_semantic_component_count: int | None = None
@@ -339,6 +340,7 @@ class _ExecutionInspection:
     requested_point_tile_size: int | None = None
     effective_point_tile_size: int | None = None
     requested_query_construction_threads: int | None = None
+    # Historical field name: this is a soft batching target, not an upper limit.
     workspace_limit_bytes: int | None = None
     workspace_bytes: int | None = None
     arena_semantic_component_count: int | None = None
@@ -1383,7 +1385,7 @@ def _recurrence_execution_inspection(
                 or (
                     color_storage == "repeated"
                     and color_factorization_kind == "elementary-abelian-walsh"
-                    and 3 <= color_factorization_rank <= 16
+                    and 3 <= color_factorization_rank <= 31
                 )
                 or (
                     color_storage == "convolution-kernels"

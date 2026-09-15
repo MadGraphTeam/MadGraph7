@@ -775,15 +775,16 @@ fn workspace_budget_reduces_tile_and_splits_packets() {
         &closure_rows(),
     )
     .unwrap();
-    let error = EagerExecutionRuntime::new(
+    let runtime = EagerExecutionRuntime::new(
         plan,
         EagerRuntimeOptions {
             point_tile_size: 8,
             workspace_bytes: 250,
         },
     )
-    .unwrap_err();
-    assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+    .unwrap();
+    assert_eq!(runtime.effective_point_tile_size(), 1);
+    assert!(runtime.workspace_bytes() > 250);
 }
 
 #[test]

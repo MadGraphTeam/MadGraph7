@@ -759,6 +759,7 @@ class CppConfig:
 @dataclass(frozen=True, slots=True)
 class EagerEvaluatorConfig:
     point_tile_size: int = field(default=1024, metadata=_setting("int"))
+    # Soft batching target, not a cap on the workspace needed by one point.
     workspace_mib: int = field(default=256, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
@@ -785,6 +786,7 @@ class EagerEvaluatorConfig:
 @dataclass(frozen=True, slots=True)
 class RecurrenceEvaluatorConfig:
     point_tile_size: int = field(default=1024, metadata=_setting("int"))
+    # Soft batching target, not a cap on the workspace needed by one point.
     workspace_mib: int = field(default=256, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
