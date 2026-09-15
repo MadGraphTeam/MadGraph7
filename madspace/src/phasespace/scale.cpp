@@ -95,6 +95,14 @@ NamedVector<Value> EnergyScale::apply_scale_range(
     return scales;
 }
 
+NamedVector<Value> EnergyScale::build_mlm_from_start_state(
+    FunctionBuilder& fb, Value momenta, Value start_state
+) const {
+    return apply_scale_range(
+        fb, _clustering.value().build_from_start_state(fb, momenta, start_state)
+    );
+}
+
 NamedVector<Value> EnergyScale::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
