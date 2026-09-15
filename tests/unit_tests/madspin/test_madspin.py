@@ -444,6 +444,10 @@ class _FrameStub(object):
         self.options['keep_weight_for_polarization_fermion'] = list(fermion)
         self.options['pure_interference'] = pure_interference
         self.model = _PIModelStub()
+        # MadSpinInterface carries this as a class attribute (it is {} unless
+        # flavour grouping is on); _frame_boost passes it to get_momenta as
+        # merged_map, so the stub has to have it too.
+        self._revert_merged = {}
         # what _production_polarization would have parsed out of the banner's
         # proc_card: {} for a brace-free production process
         self._production_polarization_cache = prodpol if prodpol else {}
@@ -473,7 +477,9 @@ class _MomentaEvent(object):
     def __init__(self, momenta):
         self.momenta = momenta
 
-    def get_momenta(self, orig_order):
+    def get_momenta(self, orig_order, merged_map=None):
+        # merged_map mirrors lhe_parser.Event.get_momenta: _frame_boost has
+        # to pass it so the ME ordering resolves under flavour grouping.
         return self.momenta
 
 
@@ -5229,6 +5235,11 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
             self.mg5cmd = self
 
         def extract_process(self, line):
+            if '[' in line:
+                # like MadSpin's tree-level mg5cmd on an NLO process line
+                raise self.InvalidCmd('Perturbation order QCD is not among the '
+                                      'perturbation orders allowed for by the '
+                                      'loop model')
             legs = []
             initial, final = line.split('>')
             for state, part in ([(False, p) for p in initial.split()] +
@@ -5265,6 +5276,20 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
         """'z{0} z': the second Z has no brace and stays summed over."""
         self.assertEqual(self.polarization('generate p p > z{0} z'),
                          {23: ((0,), None)})
+
+    def test_nlo_perturbation_bracket_is_ignored(self):
+        """'p p > z{0} z{0} [QCD]': the tree-level parser refuses the bracket,
+        which used to leave every NLO polarised production unrestricted (with
+        only a warning). The bracket says nothing about the braces on the legs,
+        so the restriction must be the bracket-free line's."""
+        for bracket in ('[QCD]', '[virt=QCD]', '[noborn=QCD]'):
+            self.assertEqual(
+                self.polarization('generate p p > z{0} z{0} %s' % bracket),
+                {23: ((0,),)})
+            self.assertEqual(
+                self.polarization('generate p p > w+{0} w+{T} %s' % bracket,
+                                  'add process p p > w+{0} w+{T} j %s' % bracket),
+                {24: ((0,), (-1, 1))})
 
     def test_broadcast_survives_extra_subprocesses(self):
         """The multiplicity of a broadcast pdg does not have to match between
@@ -7070,6 +7095,12 @@ class TestPAUpFrontMass(unittest.TestCase):
         stub._slot_of = {index: slot for slot, index in enumerate(slots)}
         # |M_prod|^2 on shell, the denominator of the offshell mass-set weight
         stub.calculate_matrix_element = lambda *args, **opts: 1.0
+        # The mass stage takes that denominator through
+        # _onshell_production_norm, which returns calculate_matrix_element
+        # unchanged when there is no frame boost -- which is this stub's
+        # case, and the only one it can represent.
+        stub._onshell_production_norm = \
+            lambda production, prod_static: stub.calculate_matrix_element(production)
 
         def _no_pool(*args, **opts):
             raise TestPAUpFrontMass._NoDecayPool()

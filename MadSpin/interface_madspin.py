@@ -8591,8 +8591,16 @@ class MadSpinInterface(extended_cmd.Cmd):
             source = {}
             multi_id = set()
             for line in lines:
+                # The perturbation-order bracket of an NLO process line
+                # ('p p > z{0} z{0} [QCD]') is irrelevant to the polarisation
+                # braces, which sit on the legs -- but MadSpin's mg5cmd holds
+                # the TREE-level model, so extract_process refuses it with
+                # "Perturbation order QCD is not among the perturbation orders
+                # allowed for by the loop model" and every NLO polarised
+                # production silently lost its restriction.  Strip it.
+                bare = re.sub(r'\[[^\]]*\]', '', line).strip()
                 try:
-                    procdef = self.mg5cmd.extract_process(line)
+                    procdef = self.mg5cmd.extract_process(bare)
                 except Exception as error:
                     logger.warning('MadSpin could not re-read the polarisation of '
                                    'the production process "%s" (%s); the density '
@@ -9916,6 +9924,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         Evaluated on a round-tripped copy, like ``_upfront_production``'s
         ``prod_off``, so the two sides of the ratio see the same %.10e
         truncation.
+
+        Any residual inaccuracy of the boosted density evaluation is already
+        inside the numerator of every ``me_frame`` run; taking the denominator
+        in the same frame is what makes it cancel.
         """
         frame_boost = self._frame_boost(production)
         if frame_boost is None:
@@ -10630,11 +10642,13 @@ class MadSpinInterface(extended_cmd.Cmd):
             me_prod_on = getattr(production, 'me_wgt', None)
             if not me_prod_on:
                 # The denominator has to be the same quantity as the numerator,
-                # in the same frame: Tr(rho_off) is built in the me_frame while
-                # calculate_matrix_element hands the matrix element the LAB
-                # momenta, and a helicity-restricted matrix element is not
-                # Lorentz invariant.  Unpolarised runs have no frame boost and
-                # keep the matrix-element call, bit for bit.
+                # in the same frame: Tr(rho_off) is built in the me_frame, and a
+                # helicity-restricted matrix element is not Lorentz invariant,
+                # so the lab-frame calculate_matrix_element is a different
+                # projection (on a boosted polarised event, by orders of
+                # magnitude -- which then sets the mass-stage bound).
+                # Unpolarised runs have no frame boost and keep the
+                # matrix-element call, bit for bit.
                 me_prod_on = self._onshell_production_norm(production,
                                                            prod_static)
                 production.me_wgt = me_prod_on
@@ -11614,15 +11628,21 @@ class MadSpinInterface(extended_cmd.Cmd):
             #VALENTIN: except for the mode "full", we should not compute the matrix element here
             MEdenom_prod, MEdenom_decay = None, None
             if not density_pole_approximation:
-                # compute the denominator and then reshuffle the event before 
-                # computing the numerator 
-                # same frame-consistency fix as on the sequential mass
-                # stage: the numerator is the contraction of the (possibly
-                # restricted) production density built in the me_frame, so the
-                # denominator cannot be the lab-frame matrix element.
+                # compute the denominator and then reshuffle the event before
+                # computing the numerator
+                #
+                # The denominator has to be taken in the same frame as the
+                # numerator (see _onshell_production_norm), as on the
+                # sequential mass stage.
+                #
+                # Not polarised-only: keep_weight_for_polarization_* or
+                # 'unweighting = auto' can bring an unbraced production here with
+                # the frame axis on. That is safe: the denominator is a constant
+                # per production event, identical across its joint trials, so it
+                # cancels out of the accept/reject.
                 MEdenom_prod = self._onshell_production_norm(production,
                                                              prod_static)
-                MEdenom_decay = 1.0              
+                MEdenom_decay = 1.0
                 for key in decays:
                     for dec in decays[key]:
                         MEdenom_decay *= self.calculate_matrix_element(dec)
@@ -11945,7 +11965,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if frame_id <= 0:
             return None
         _, orig_order, _, _, _ = self.get_pdir(event)
-        momenta = event.get_momenta(orig_order)
+        # merged_map: orig_order comes out of all_me, which is keyed by the
+        # MERGED-pdg tag when apply_flavor_grouping is on (81/-81 in place of
+        # u/d/...).  Without the map the raw event pdgs are looked up in a
+        # merged block and get_mapping dies with
+        # "ValueError: list.index(x): x not in list" -- exactly as the matrix
+        # element call twenty lines below already guards against.
+        momenta = event.get_momenta(orig_order,
+                                    merged_map=self._revert_merged or None)
         selected = [n for n in range(1, len(momenta) + 1) if frame_id >> n & 1]
         if not selected:
             return None
@@ -12020,8 +12047,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         if orig_order is None:
             _, orig_order, _, _, tag = self.get_pdir(event)
             event._ms_orig_order_for_density = orig_order
+            # cache the tag get_pdir resolved rather than recomputing it: it is
+            # the MERGED-pdg tag (all_me is keyed by 81/-81, not by the raw
+            # event pdgs, so a bare get_tag_and_order() raises KeyError on the
+            # lookup below -- e.g. ((-1, 1), (23, 23)) against ((-81, 81),
+            # (23, 23))), and get_pdir also owns the 1 -> N antiparticle
+            # fallback, which no recomputation here would reproduce.
+            event._ms_tag_for_density = tag
         else: #in any case, we need tag to differentiate between production and decay
-            tag, _ = event.get_tag_and_order()
+            tag = getattr(event, '_ms_tag_for_density', None)
+            if tag is None:
+                tag, _ = event.get_tag_and_order(
+                    merged_particle=self._revert_merged or None)
 
 
         # Fast path: single-point momentum extraction without permutation
@@ -12036,6 +12073,11 @@ class MadSpinInterface(extended_cmd.Cmd):
             all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
             assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
             p = all_p[0]
+        # get_pdg below identifies the particles by EXACT momentum equality
+        # against the event record, so it has to see the lab-frame momenta.
+        # _boost_momenta builds new tuples and never touches its input, so
+        # keeping a reference is enough -- no copy needed.
+        p_lab = p
         if frame_boost is not None:
             p = self._boost_momenta(p, frame_boost, rest_leg=frame_rest_leg)
         P = rwgt_interface.ReweightInterface.invert_momenta(p)
@@ -12049,7 +12091,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         need_raw_pdg = (self._revert_merged and
                         any(abs(pid) in merged_particles for pid in pdg_template))
         if need_raw_pdg:
-            pdgs = event.get_pdg(p)
+            pdgs = event.get_pdg(p_lab)
         else:
             pdgs = pdg_template
         n_changing = len(position)
