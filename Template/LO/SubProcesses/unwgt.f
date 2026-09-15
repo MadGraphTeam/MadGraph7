@@ -587,6 +587,17 @@ c
          jsym = jsym+1
       enddo
 c
+c     Guard against an invalid subprocess selection: idup(i,ipsel,numproc)
+c     with ipsel outside 1..maxproc reads outside the array and writes an
+c     event with meaningless PDG codes (see the IPSEL clamp in auto_dsig).
+c     Nothing downstream can recognise such an event, so refuse to write it.
+c
+      if (ipsel.lt.1.or.ipsel.gt.maxproc) then
+         write(*,*) 'Error write_leshouche: invalid ipsel=',ipsel,
+     $        ' (valid range 1 to ',maxproc,'); event not written.'
+         stop 1
+      endif
+c
 c     Fill jpart color and particle info
 c
       do i=1,nexternal

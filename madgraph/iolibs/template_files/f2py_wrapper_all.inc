@@ -45,7 +45,50 @@ CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
       DOUBLE COMPLEX INTER(N_COMB*(N_COMB+1)/2)
       call %(f2py_prefix)sf77_density(PDGS, NPDG, PROCID, P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)
 
-      return 
+      return
+      end
+
+      SUBROUTINE %(f2py_prefix)sPY_GET_DENSITY_BATCH(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2, NBATCH, NEXT, INTER, N_CHANGING, N_COMB, NPDG)
+C     PY_GET_DENSITY for NBATCH phase-space points in one call.
+C
+C     The density itself is cheap; crossing into fortran is not. MadSpin's
+C     max-weight scan evaluates hundreds of decay configurations against the
+C     same production event, so paying the f2py entry once per point dominated
+C     the cost. Everything is per point except POS/ALLOW_HEL, which describe
+C     the helicity structure and are shared: PDGS is per point because a decay
+C     pool mixes flavours, and ALPHAS/SCALE2 because nothing guarantees the
+C     points share a scale.
+      IMPLICIT NONE
+CF2PY double precision, intent(in), dimension(0:3,next,nbatch) :: p
+CF2PY integer, intent(in), dimension(npdg,nbatch) :: pdgs
+CF2PY integer, intent(in) :: procid
+CF2PY integer, INTENT(IN) :: ALLOW_HEL(N_CHANGING*N_COMB)
+CF2PY integer, INTENT(IN) :: POS(N_CHANGING)
+CF2PY double precision INTENT(IN), dimension(nbatch) :: ALPHAS
+CF2PY double precision INTENT(IN), dimension(nbatch) :: SCALE2
+CF2PY integer, intent(in) :: NBATCH
+CF2PY integer, intent(in) :: NEXT
+CF2PY double complex INTENT(OUT), dimension(N_COMB*(N_COMB+1)/2,NBATCH) :: INTER
+CF2PY integer, intent(hide), depend(allow_hel, pos) :: N_COMB = len(ALLOW_HEL)/len(pos)
+CF2PY integer, intent(hide), depend(pos) :: N_CHANGING = len(pos)
+CF2PY integer, intent(hide), depend(PDGS) :: NPDG = len(PDGS)
+
+      INTEGER NBATCH, NEXT, NPDG, PROCID, N_CHANGING, N_COMB
+      INTEGER PDGS(NPDG, NBATCH)
+      INTEGER POS(N_CHANGING)
+      DOUBLE PRECISION ALPHAS(NBATCH), SCALE2(NBATCH)
+      DOUBLE PRECISION P(0:3, NEXT, NBATCH)
+      INTEGER ALLOW_HEL(N_CHANGING*N_COMB)
+      DOUBLE COMPLEX INTER(N_COMB*(N_COMB+1)/2, NBATCH)
+      INTEGER IBATCH
+
+      DO IBATCH = 1, NBATCH
+        call %(f2py_prefix)sf77_density(PDGS(1,IBATCH), NPDG, PROCID,
+     $   P(0,1,IBATCH), POS, N_CHANGING, ALLOW_HEL, N_COMB,
+     $   ALPHAS(IBATCH), SCALE2(IBATCH), INTER(1,IBATCH))
+      ENDDO
+
+      return
       end
 
       SUBROUTINE %(f2py_prefix)sPY_GET_ALL_INTER(PDGS, PROCID, NPDG, P, POS,N_CHANGING, ALLOW_HEL, N_COMB, INTER)

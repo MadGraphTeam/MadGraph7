@@ -1909,7 +1909,7 @@ c went all the way through the 2nd do-loop without finding the corresponding par
             write (*,*) idup_in(1:nup_in)
             write (*,*) icolup_in(1,1:nup_in)
             write (*,*) icolup_in(2,1:nup_in)
-            write (*,*) 'available in MG5_aMC:'
+            write (*,*) 'available in MadGraph7:'
             write (*,*) idup_s(1:nup_in)
             write (*,*) icolup_s(1,1:nup_in)
             write (*,*) icolup_s(2,1:nup_in)
@@ -1941,7 +1941,7 @@ c SCALUP_tmp_H2, meant to be used in the computation of Delta.
 
 ! Since pythia simply does a one-branch cluster, it does not check if
 ! the stopping scale (in xscales) is smaller than the starting scale (as
-! determined by MG5_aMC in SCALUP_tmp_S). If this is the case, put the
+! determined by MadGraph7 in SCALUP_tmp_S). If this is the case, put the
 ! event in the dead-zone.
       do i=1,nexternal-1
          do j=1,nexternal-1

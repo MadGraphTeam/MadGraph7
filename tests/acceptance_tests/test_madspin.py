@@ -519,7 +519,7 @@ decay w+ > all all
             msg='Expected electron/muon counts to be comparable, got %s' % counts)
                
 
-    def test_one_mode(self, mode, particle_to_decay, name_input_file, name_scipt_file):
+    def _run_one_mode(self, mode, particle_to_decay, name_input_file, name_scipt_file):
         cwd = os.getcwd()
         index = name_input_file.find(".lhe")
         name_file_decayed = name_input_file[:index] + "_decayed" + name_input_file[index:]
@@ -591,20 +591,20 @@ decay w+ > all all
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 
-        self.test_one_mode("PA", [24, -24], 'test_madspin_loop_induced_PA.lhe.gz', 'test_loop_induced_PA')
-        self.test_one_mode("full", [24, -24], 'test_madspin_loop_induced_full.lhe.gz', 'test_loop_induced_full')
-        self.test_one_mode("onshell", [24, -24], 'test_madspin_loop_induced_onshell.lhe.gz', 'test_loop_induced_onshell')
-        self.test_one_mode("madspin", [24, -24], 'test_madspin_loop_induced_madspin.lhe.gz', 'test_loop_induced_madspin')
+        self._run_one_mode("PA", [24, -24], 'test_madspin_loop_induced_PA.lhe.gz', 'test_loop_induced_PA')
+        self._run_one_mode("full", [24, -24], 'test_madspin_loop_induced_full.lhe.gz', 'test_loop_induced_full')
+        self._run_one_mode("onshell", [24, -24], 'test_madspin_loop_induced_onshell.lhe.gz', 'test_loop_induced_onshell')
+        self._run_one_mode("madspin", [24, -24], 'test_madspin_loop_induced_madspin.lhe.gz', 'test_loop_induced_madspin')
 
     def test_madspin_tree_level(self):
         """ Tests that that the differrent mode of madspin work for tree-level processes.
             It checks that there is no crash and that the decayed particles have a status of 2.
         """ 
 
-        self.test_one_mode("PA", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_PA')
-        self.test_one_mode("full", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_full')
-        self.test_one_mode("onshell", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_onshell')
-        self.test_one_mode("madspin", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin')
-        self.test_one_mode("none", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_none')
-        self.test_one_mode("madspin_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin_v1')
-        self.test_one_mode("onshell_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_onshell_v1')
+        self._run_one_mode("PA", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_PA')
+        self._run_one_mode("full", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_full')
+        self._run_one_mode("onshell", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_onshell')
+        self._run_one_mode("madspin", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin')
+        self._run_one_mode("none", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_none')
+        self._run_one_mode("madspin_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_level_madspin_v1')
+        self._run_one_mode("onshell_v1", [6, -6], 'test_madspin_tree_level.lhe.gz', 'test_tree_onshell_v1')

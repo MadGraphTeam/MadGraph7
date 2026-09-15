@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Install madspace either using pre-compiled binaries or built from source.
 
+The pre-compiled PyPI wheel (--bin) is only offered/defaulted-to in an
+official MadGraph release tarball, where it is guaranteed to match the
+bundled source; a plain git checkout always builds from source.
+
 Interactive usage (no arguments):  python install.py
 Non-interactive examples:
   python install.py --bin
@@ -298,16 +302,17 @@ def _cmake_version_ok(path, minimum=CMAKE_MIN_VERSION) -> bool:
 
 
 def _heptools_dir_from_config() -> str | None:
-    """Read heptools_install_dir from the MG5 configuration files (same
-    locations MG5 itself uses), so the value is available even when the
-    installer is run directly rather than launched from MG5."""
-    home = os.environ.get("HOME") or os.path.expanduser("~")
-    candidates = []
-    if home:
-        candidates.append(os.path.join(home, ".mg5", "mg5_configuration.txt"))
-        xdg = os.environ.get("XDG_CONFIG_HOME", os.path.join(home, ".config"))
-        candidates.append(os.path.join(xdg, "mg5_configuration.txt"))
-    candidates.append(str(SCRIPT_DIR.parent / "input" / "mg5_configuration.txt"))
+    """Read heptools_install_dir from the MadGraph configuration files (same
+    locations MadGraph itself uses -- see misc.user_config_file), so the value
+    is available even when the installer is run directly rather than launched
+    from MadGraph. This installation's own config wins over the per-user one."""
+    candidates = [str(SCRIPT_DIR.parent / "input" / "mg7_configuration.txt")]
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    home = os.environ.get("HOME")
+    if xdg:
+        candidates.append(os.path.join(xdg, "mg7", "mg7_configuration.txt"))
+    elif home:
+        candidates.append(os.path.join(home, ".mg7", "mg7_configuration.txt"))
     for cfg in candidates:
         try:
             with open(cfg) as f:
@@ -427,6 +432,61 @@ def install_build_deps(system: bool = False) -> dict:
     # make sure the source build can find a recent-enough cmake
     env = add_cmake_to_path(env)
     return env
+
+
+def _madspace_version() -> str:
+    """The version a wheel built from this checkout would carry. Comes from the
+    MadGraph VERSION file, the same source pyproject.toml's dynamic version
+    reads, so madspace and MadGraph are always released in lockstep."""
+    for line in (SCRIPT_DIR.parent / "VERSION").read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == "version":
+            return value.strip()
+    raise RuntimeError("no 'version' line in the MadGraph VERSION file")
+
+
+def _release_info() -> dict[str, str]:
+    """Parse input/.release, the marker a MadGraph release tarball carries
+    (written by bin/create_release.py), or {} in a plain git checkout."""
+    marker = SCRIPT_DIR.parent / "input" / ".release"
+    if not marker.is_file():
+        return {}
+    info = {}
+    for line in marker.read_text().splitlines():
+        name, _, value = line.partition("=")
+        info[name.strip()] = value.strip()
+    return info
+
+
+def _release_version() -> str | None:
+    """Version recorded in input/.release, or None in a plain git checkout.
+    Used to decide whether the PyPI wheel -- built from the exact same
+    release -- may be offered instead of a source build."""
+    return _release_info().get("version")
+
+
+def _release_wheel_available() -> bool:
+    """Whether input/.release lists a wheel matching this exact interpreter
+    and platform. The list is the actual filenames cibuildwheel produced for
+    this release (see bin/create_release.py --wheels-dir), so this is a
+    purely local check -- no PyPI query, no guessing at the CI build matrix."""
+    wheels = _release_info().get("wheels", "")
+    if not wheels:
+        return False
+
+    system, machine = platform.system(), platform.machine()
+    if system == "Linux" and machine in ("x86_64", "AMD64"):
+        platform_tags = ("manylinux", "x86_64")
+    elif system == "Darwin" and machine in ("arm64", "aarch64"):
+        platform_tags = ("macosx", "arm64")
+    else:
+        return False  # release wheels only ever target those two platforms
+
+    python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return any(
+        python_tag in name and all(tag in name for tag in platform_tags)
+        for name in wheels.split(",")
+    )
 
 
 def load_settings() -> dict:
@@ -571,28 +631,52 @@ def main() -> None:
     # Load saved settings when a previous installation is present
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
 
+    # The PyPI wheel is only offered/defaulted-to in an actual release tarball
+    # (input/.release, written by bin/create_release.py) that still matches
+    # this checkout's madspace version -- otherwise pip would pull in an
+    # unrelated madspace release -- and only when that release actually built
+    # a wheel for this exact platform/Python (checked locally against the
+    # wheel filenames recorded in the marker, no PyPI query).
+    release_version = _release_version()
+    is_release = release_version is not None and release_version == _madspace_version()
+    bin_available = is_release and _release_wheel_available()
+
     # Determine install mode. An explicit --bin/--source always wins; --yes
-    # alone reuses the saved mode (built-in default otherwise).
+    # alone reuses the saved mode, defaulting to bin only when available.
     if args.bin:
+        if not bin_available:
+            print(
+                "WARNING: no madspace wheel was published for this platform/Python "
+                "version; --bin will likely fail."
+            )
         from_source = False
     elif args.source:
         from_source = True
     elif args.yes:
-        from_source = saved.get("mode", "bin") == "source"
+        from_source = (
+            saved.get("mode", "bin" if bin_available else "source") == "source"
+        )
     else:
         print("Welcome to the MadSpace interactive installer")
         print()
-        # commented out the option to use the pre-compiled binaries
-        # TODO: add this again once we build release build
-        # default_is_bin = saved.get("mode", "bin") != "source"
-        # from_source = not ask_yes_no(
-        #     "Install pre-compiled package? (recommended)", default=default_is_bin
-        # )
-        from_source = True
+        if bin_available:
+            default_is_bin = saved.get("mode", "bin") != "source"
+            from_source = not ask_yes_no(
+                "Install pre-compiled package? (recommended)", default=default_is_bin
+            )
+        else:
+            from_source = True
 
-    # PyPI installation
+    # PyPI installation, pinned to this checkout's madspace version so the
+    # wheel matches the bundled source (see SOURCE_HASH check in mg7/launch.py).
     if not from_source:
-        pip_cmd = [sys.executable, "-m", "pip", "install", PACKAGE_NAME]
+        pip_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            f"{PACKAGE_NAME}=={_madspace_version()}",
+        ]
         if not args.system:
             pip_cmd.append(f"--target={INSTALL_DIR}")
         run(pip_cmd)

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -40,10 +40,12 @@ import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
+import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.various.banner as banner_mod
 from madgraph import MadGraph5Error, InvalidCmd, MG5DIR
 from madgraph.iolibs.files import cp, ln, mv
 
+import madgraph.iolibs.export_v4 as export_v4
 from madgraph.iolibs.export_v4 import VirtualExporter, ProcessExporterFortran
 import madgraph.various.misc as misc
 
@@ -789,14 +791,14 @@ class OneProcessExporterCPP(object):
         info = misc.get_pkg_info()
         info_lines = ""
         if info and 'version' in info and  'date' in info:
-            info_lines = "//  MadGraph5_aMC@NLO v. %s, %s\n" % \
+            info_lines = "//  MadGraph7 v. %s, %s\n" % \
                          (info['version'], info['date'])
             info_lines = info_lines + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"
         else:
-            info_lines = "//  MadGraph5_aMC@NLO\n" + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+            info_lines = "//  MadGraph7\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"        
 
         return info_lines
@@ -1662,6 +1664,10 @@ class OneProcessExporterCPP(object):
                                      
         replace_dict['jamp_lines'] = self.get_jamp_lines(color_amplitudes)
 
+        # The color sum may run on a smaller basis than the one the color flow
+        # is picked among (see the madmatrix override)
+        self.set_color_flow_lines_cpp(matrix_element, replace_dict)
+
         replace_dict['amp2_lines'] = self.get_amp2_lines(matrix_element)
 
         #specific exporter hack
@@ -1814,6 +1820,15 @@ class OneProcessExporterCPP(object):
 
 
             
+    def set_color_flow_lines_cpp(self, matrix_element, replace_dict):
+        """Tell the process template that the color sum and the color flow use
+        the same basis. Overridden by the backends which can put the color sum
+        on a smaller one."""
+
+        replace_dict['ncolor_flow'] = replace_dict['ncolor']
+        replace_dict['jampflow_lines'] = ''
+        replace_dict['jamp_flow'] = 'jamp_sv'
+
     def get_jamp_lines(self, color_amplitudes):
         """Return the jamp = sum(fermionfactor * amp[i]) lines"""
 
@@ -2685,16 +2700,20 @@ class ProcessExporterCPP(VirtualExporter):
             if self.template_src_make:
                 # Copy src Makefile
                 makefile = self.read_template_file(self.template_src_make) % \
-                               {'model': self.get_model_name(model.get('name')),
-                                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('src', 'Makefile'), 'w').write(makefile)
 
             if self.template_Sub_make:
                 # Copy SubProcesses Makefile
                 makefile = self.read_template_file(self.template_Sub_make) % \
-                                        {'model': self.get_model_name(model.get('name')),
-                                         'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
+                                        self.get_makefile_replace_dict(model)
                 open(os.path.join('SubProcesses', 'Makefile'), 'w').write(makefile)
+
+    def get_makefile_replace_dict(self, model):
+        """Template replacements for the src and SubProcesses makefiles."""
+
+        return {'model': self.get_model_name(model.get('name')),
+                'cpp_compiler': self.opt['cpp_compiler'] if self.opt['cpp_compiler'] else 'g++'}
 
     #===========================================================================
     # Helper functions
@@ -3229,7 +3248,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
             plot.draw()
 
         me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
-        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path)
+        # Store the path relative to the process directory (like me_path): an
+        # absolute path would break as soon as the process directory is moved.
+        rel_dirpath = pjoin('SubProcesses', proc_dir_name)
+        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(rel_dirpath, me_lib_path)
         self.merged_subprocesses[subproc_class].append(
             (len(self.process_info), diagram_tags)
         )
@@ -3256,6 +3278,47 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "        pass\n"
                 )
             os.chmod(madnis_bin, 0o755)
+
+    # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
+    # rediscover on its own. LHAPDF above all -- bin/generate_events may be
+    # driven from a shell that never sourced anything MadGraph-related.
+    _me5_config_keys = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2',
+                        'heptools_install_dir')
+
+    def write_me5_configuration(self):
+        """Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration
+        and by the mg7 launcher (load_mg5_options). Edit it to move the
+        directory to a machine where the tools sit elsewhere."""
+
+        lines = ['# configuration for the mg7 run time and post-processing tools',
+                 '# written at output time; edit if you move this directory',
+                 'mg5_path = %s' % MG5DIR]
+        for key in self._me5_config_keys:
+            value = self.opt.get(key)
+            if not value or str(value).strip().lower() in ('none', 'auto'):
+                continue
+            lines.append('%s = %s' % (key, self._portable_tool_value(value)))
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('\n'.join(lines) + '\n')
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
+    @staticmethod
+    def _portable_tool_value(value):
+        """Make a configuration value usable from another working directory.
+
+        A value relative to MG5DIR ('./HEPTools') becomes absolute; a bare
+        program name ('lhapdf-config', the shipped default) is left alone,
+        since resolving it would freeze this machine's PATH into the output.
+        A trailing '--python=X.Y' filter is preserved -- the readers know it.
+        """
+
+        exe, sep, flags = str(value).strip().partition(' ')
+        if not os.path.isabs(exe) and (os.sep in exe or exe.startswith('.')):
+            exe = os.path.realpath(pjoin(MG5DIR, exe))
+        return exe + sep + flags
 
     def get_merged_info(self):
         merged_subproc_info = []
@@ -3349,25 +3412,19 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with open(merged_file_name, 'w') as f:
             json.dump(self.get_merged_info(), f)
 
+        # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
+        # post-processing driver (get_characteristics) so that the madevent
+        # tool interface can run on this directory.
+        # NB: this must come *before* create_run_card: it is what fills in
+        # self.proc_characteristic, and the run_card defaults are derived from
+        # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
+        self.create_proc_characteristics(matrix_elements)
+
         # Generate Cards/run_card.toml from the template, filling in
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
-        # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
-        # post-processing driver (get_characteristics) so that the madevent
-        # tool interface can run on this directory.
-        self.create_proc_characteristics(matrix_elements)
-
-        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
-        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
-        # cluster/run-mode settings resolve from the central configuration.
-        try:
-            with open(pjoin(self.dir_path, 'Cards',
-                            'me5_configuration.txt'), 'w') as fsock:
-                fsock.write('# configuration for the mg7 post-processing tools\n'
-                            'mg5_path = %s\n' % MG5DIR)
-        except Exception as error:
-            logger.warning('could not write me5_configuration.txt: %s', error)
+        self.write_me5_configuration()
 
         # MadAnalysis5 default analysis cards, tailored to this process. This
         # must run *before* history.write() below: writing the proc_card cleans
@@ -3459,20 +3516,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
-            # persist the model so the runtime can compute widths set to 'auto'
-            # in the param_card (and recompute them at each scan point). A hash
-            # of the model's python source is stored on the second line so the
-            # runtime can detect a model that changed since output.
+            # persist the model so the runtime can reload it: to compute the
+            # widths set to 'auto' in the param_card (and recompute them at
+            # each scan point) and to reset the parameters the model derives
+            # from the free ones (launch.MG7Cmd.get_model). A hash of the
+            # model's python source is stored on the second line so the runtime
+            # can detect a model that changed since output.
             try:
                 model = processes[0][0].get('model')
-                model_path = model.get('modelpath')
-                model_ref = model_path or model.get('name')
+                try:
+                    model_path = model.get('modelpath')
+                    model_hash = misc.hash_model_files(model_path)
+                except Exception:
+                    model_path, model_hash = None, None
+                # the restriction is part of the model the process was
+                # generated with ('sm-no_b_mass' is not 'sm'), so store the
+                # reference that reproduces it, not the bare UFO directory.
+                try:
+                    model_ref = model.get('modelpath+restriction')
+                except Exception:
+                    model_ref = model_path or model.get('name')
                 if model_ref:
-                    model_hash = misc.hash_model_files(model_path) if model_path else None
                     with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
                         f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception:
-                pass
+            except Exception as error:
+                logger.debug('could not record the model: %s', error)
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')
@@ -3549,7 +3617,14 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
     cformat = cmd._export_format
-    
+
+    # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
+    # loop legs: it builds its edge names from the external legs alone).
+    if cformat not in export_v4.LOOP_INDUCED_FORMATS and cmd._curr_amps and \
+       isinstance(cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
+        raise InvalidCmd(export_v4.loop_induced_not_supported_msg(
+                                     cformat, cmd._curr_amps[0].get('process')))
+
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':

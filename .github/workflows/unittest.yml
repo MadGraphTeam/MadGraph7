@@ -6,6 +6,12 @@ name: running unittest
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 # - '.github/**'
@@ -168,10 +174,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # Runs a set of commands using the runners shell
-      - name: test one of the test test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list
+      - name: test one of the test test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_loop_Nc_power_survives_a_poisoned_memo test_memo_is_shared_across_loop_bases test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list -t0
+            ./tests/test_manager.py test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_loop_Nc_power_survives_a_poisoned_memo test_memo_is_shared_across_loop_bases test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list -t0
 
 
 
@@ -754,6 +760,21 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+
+
+  unittest_config_location:
+    # tests/unit_tests/various/test_lhapdf_resolve.py: where the configuration
+    # files live ($MADGRAPH_BASE, per-user, install) and how LHAPDF is resolved
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the configuration-location and lhapdf-resolve unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_xdg_config_home_wins test_home_fallback test_never_mg5 test_no_home test_no_base test_mg7_file_wins test_mg5_fallback test_neither_file test_absolute_lhapdf test_python_filter_is_not_part_of_the_path test_relative_value_roots_at_the_install test_bare_name_from_path test_missing_executable_does_not_raise test_no_lhapdf_at_all test_lhapdf5_pdfsets_path test_datadir_list_is_split test_env_data_path_comes_first test_env_config_wins_over_options test_lhapdf_py3_fallback test_none_and_auto_are_not_paths test_heptools_fallback_when_datadir_is_read_only test_create_makes_the_download_directory test_cvmfs_mirror_is_searched_last_and_never_downloaded_into test_with_data_path_promotes_a_directory -t0
 
 
   unittest_write_model:

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/context.hpp"
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
@@ -19,6 +23,8 @@ public:
         const std::vector<bool>& eval_grad,
         bool return_contiguous_grads = false
     ) = 0;
+    virtual void set_seed(DerivedSeed seed) = 0;
+
     friend std::unique_ptr<Runtime>
     build_runtime(const Function& function, ContextPtr context, bool concurrent);
 
