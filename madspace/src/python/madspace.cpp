@@ -719,7 +719,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double,
+                bool>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -727,7 +729,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = std::vector<Topology>{},
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false
         )
         .def(
             py::init<
@@ -737,16 +741,22 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double,
+                bool>(),
             py::arg("masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt
+            py::arg("color_order") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false
         )
         .def("random_dim", &PhaseSpaceMapping::random_dim)
+        .def("beam_rapidity", &PhaseSpaceMapping::beam_rapidity)
+        .def("mirror_beams", &PhaseSpaceMapping::mirror_beams)
         .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)
         .def("particle_count", &PhaseSpaceMapping::particle_count)
         .def("channel_count", &PhaseSpaceMapping::channel_count);
@@ -1266,7 +1276,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
-                std::size_t>(),
+                std::size_t,
+                const std::optional<PdfGrid>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1294,7 +1305,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
-            py::arg("compressed_channel_weight_count") = 50
+            py::arg("compressed_channel_weight_count") = 50,
+            py::arg("pdf_grid2") = std::nullopt
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)
@@ -1915,14 +1927,16 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<AlphaSGrid>&,
                 ContextPtr,
                 const std::vector<std::optional<MatrixElement>>&,
-                const nested_vector2<me_int_t>&>(),
+                const nested_vector2<me_int_t>&,
+                const std::optional<PdfGrid>&>(),
             py::arg("config"),
             py::arg("subproc_args"),
             py::arg("nominal_pdf") = std::nullopt,
             py::arg("nominal_alpha_s") = std::nullopt,
             py::arg("context") = nullptr,
             py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
-            py::arg("me_flavor_remap") = nested_vector2<me_int_t>{}
+            py::arg("me_flavor_remap") = nested_vector2<me_int_t>{},
+            py::arg("nominal_pdf2") = std::nullopt
         )
         .def_property_readonly("config", &SystematicsCalculator::config)
         .def_property_readonly(
