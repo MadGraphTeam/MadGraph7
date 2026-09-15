@@ -77,6 +77,13 @@ pdf_reweighting = %(beam.pdf_reweighting)s
 # massless-massive pair scores the massless one's transverse mass). They only
 # differ for e.g. q* > q W and g* > g h; madevent matches madevent's MLM
 clustering_measure = %(beam.clustering_measure)s
+# which diagrams the MLM clustering history may follow (dynamical_scale_choice =
+# "mlm"). options: all_diagrams (smallest measure over every diagram at once),
+# diagram (one diagram per event, picked by |A_i|^2, clustered with its own
+# line flavours), madevent (all_diagrams unless its merging-jet count differs
+# from the picked diagram's, as madevent reclusters along the channel). The
+# last two evaluate the matrix element twice per event
+clustering_history = %(beam.clustering_history)s
 # floor on mu_R and mu_F: an event whose scales fall below this is dropped,
 # since a PDF grid has no densities there (0 disables it)
 min_scale = %(beam.min_scale)s

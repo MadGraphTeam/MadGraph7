@@ -2089,6 +2089,10 @@ class MadgraphSubprocess:
                         ms.MLMClustering.ClusteringMeasure,
                         self.process.run_card["beam"]["clustering_measure"],
                     ),
+                    clustering_history=getattr(
+                        ms.MLMClustering.ClusteringHistory,
+                        self.process.run_card["beam"]["clustering_history"],
+                    ),
                 ),
                 min_scale=self.process.run_card["beam"]["min_scale"],
                 max_scale=max_scale,
