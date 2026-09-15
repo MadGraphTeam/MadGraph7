@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -77,10 +77,10 @@
 # pythia8_path = ./HEPTools/pythia8
 
 #! MG5aMC_PY8_interface path
-#!  Defines the path of the C++ driver file that is used by MG5_aMC to
+#!  Defines the path of the C++ driver file that is used by MadGraph7 to
 #!  steer the Pythia8 shower.
-#!  Can be installed directly from within MG5_aMC with the following command:
-#!     MG5_aMC> install mg5amc_py8_interface
+#!  Can be installed directly from within MadGraph7 with the following command:
+#!     MadGraph7> install mg5amc_py8_interface
 # mg5amc_py8_interface_path = ./HEPTools/MG5aMC_PY8_interface 
 
 #! Herwig++/Herwig7 paths
@@ -108,7 +108,7 @@
 #  INFO FOR MADEVENT / aMC@NLO 
 ################################################################################
 # If this file is in a MADEVENT Template. 'main directory' is the directory
-# containing the SubProcesses directory. Otherwise this is the MadGraph5_aMC@NLO main
+# containing the SubProcesses directory. Otherwise this is the MadGraph7 main
 # directory (containing the directories madgraph and Template)
 
 #! Allow/Forbid the automatic opening of the web browser  (on the status page)
@@ -146,6 +146,13 @@
 #! path to a node directory where local file can be found (typically pdf)
 #! to avoid to send them to the node (if cluster_temp_path is on True or condor)
 # cluster_local_path =  None # example: /cvmfs/cp3.uclouvain.be/madgraph/
+
+#! Directory of the LHAPDF sets mirrored via CVMFS. When it is mounted, a PDF
+#!  set found there is read from it directly: never downloaded, never copied
+#!  into lib/PDFsets and therefore never transferred to the cluster nodes.
+#!  A path which is not mounted is ignored, so this default is safe everywhere.
+#!  Set it to None to switch that fallback off.
+# cvmfs_lhapdf_path = /cvmfs/sft.cern.ch/lcg/external/lhapdfsets/current
 
 #! Cluster waiting time for status update 
 #!  First number is when the number of waiting job is higher than the number 
@@ -240,7 +247,7 @@
 # collier = ./HEPTools/lib 
 
 #! Set how MadLoop dependencies (such as CutTools) should be handled
-#!  > external : ML5 places a link to the MG5_aMC-wide libraries
+#!  > external : ML5 places a link to the MadGraph7-wide libraries
 #!  > internal : ML5 copies all dependencies in the output so that it is independent
 #!  > environment_paths : ML5 searches for the dependencies in your environment path
 # output_dependencies = external

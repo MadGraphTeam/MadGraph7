@@ -1,6 +1,6 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: S. Roiser (Feb 2020) for the MG5aMC CUDACPP plugin.
+# Created originally by: S. Roiser (Feb 2020) for the MadGraph7 CUDACPP plugin.
 # Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi, Z. Wettersten (2020-2024).
 
 #=== Determine the name of this makefile (https://ftp.gnu.org/old-gnu/Manuals/make-3.80/html_node/make_17.html)
@@ -45,9 +45,9 @@ UNAME_M := $(shell uname -m)
 
 #-------------------------------------------------------------------------------
 
-#=== Include the common MG5aMC Makefile options
+#=== Include the common MadGraph7 Makefile options
 
-# OM: including make_opts is crucial for MG5aMC flag consistency/documentation
+# OM: including make_opts is crucial for MadGraph7 flag consistency/documentation
 # AV: disable the inclusion of make_opts if the file has not been generated (standalone cudacpp)
 ifneq ($(wildcard ../Source/make_opts),)
   include ../Source/make_opts

@@ -62,6 +62,7 @@ C
   INTEGER ALLOW_HEL(n_changing*n_comb)
   DOUBLE COMPLEX INTER(n_comb*(n_comb+1)/2)
   integer flavor(%(maxpart)i),I
+%(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
 %(flavormapping)s
@@ -91,6 +92,7 @@ C      symmetric one)
   INTEGER ALLOW_HEL(*)
   DOUBLE COMPLEX INTER(*)
   integer flavor(%(maxpart)i),I
+%(flavor_index_decl)s
 C     Update is done insider the direct density call functions
 
 C     Update is done insider the direct density call functions
@@ -286,3 +288,5 @@ CF2PY integer, intent(in) :: new_value
     
 
     %(nhel)s
+
+%(flavor_repair_function)s

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -1684,6 +1684,20 @@ class ReweightInterface(extended_cmd.Cmd):
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
 
+        # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
+        # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
+        # while these matrix elements are massless ones. Undo that on both
+        # sides before the momenta are handed over -- and before any boost,
+        # which is what turns the O(m^2/shat) mismatch into an O(1) one. See
+        # lhe_parser.project_massless_partons.  The projection is for the
+        # matrix-element call only: it works on the copy get_momenta handed
+        # back, so the event that is rewritten to the LHE keeps its own
+        # (massive) momenta and only the weights move.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
+
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
         
@@ -2047,7 +2061,7 @@ class ReweightInterface(extended_cmd.Cmd):
         # deactivate golem since it creates troubles
         old_options = dict(mgcmd.options)
         if mgcmd.options['golem']:
-            logger.info(" When doing NLO reweighting, MG5aMC cannot use the loop reduction algorithms Golem")
+            logger.info(" When doing NLO reweighting, MadGraph7 cannot use the loop reduction algorithms Golem")
         mgcmd.options['golem'] = None            
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
@@ -3242,6 +3256,14 @@ class DensityInterface(ReweightInterface):
         relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
         if relevant_merged and any(p in relevant_merged for p in pdg):
             pdg = event.get_pdg(all_p[0])
+
+        # same Monte-Carlo-mass projection as in ReweightInterface, and for the
+        # same reason: this path boosts and rotates the momenta before the
+        # matrix element sees them.  Again on the copy only.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
 
         #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
         list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]

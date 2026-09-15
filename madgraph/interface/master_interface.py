@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access all MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access all MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 
@@ -44,6 +44,7 @@ import madgraph.interface.extended_cmd as cmd
 import madgraph.interface.madgraph_interface as MGcmd
 import madgraph.interface.loop_interface as LoopCmd
 import madgraph.interface.amcatnlo_interface as amcatnloCmd
+import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.fks.fks_base as fks_base
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
@@ -92,6 +93,9 @@ class Switcher(object):
         self.to_preserve = [key for key,method in Switcher.__dict__.items() if
                        hasattr(method, '__call__') ]
         self.to_preserve += ['do_shell', 'help_shell', 'complete_shell']
+        # commands the tutorial mixin splices onto the live instance while a
+        # tutorial runs: they are deliberately not routed through self.cmd
+        self.to_preserve += tutorial_mixin.mixin_command_names()
 
         ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
         
@@ -631,6 +635,9 @@ class Switcher(object):
     def help_set2_output_dependencies(self, *args, **opts):
         return self.cmd.help_set2_output_dependencies(self, *args, **opts)
 
+    def help_set2_color_basis(self, *args, **opts):
+        return self.cmd.help_set2_color_basis(self, *args, **opts)
+
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
 
@@ -784,7 +791,11 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], misc.CONFIG_NAME)
+        config_path = misc.base_config_file()
+        if not config_path:
+            # on the web MADGRAPH_BASE is always set: never silently fall back
+            # to the local configuration files.
+            raise KeyError('MADGRAPH_BASE')
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):

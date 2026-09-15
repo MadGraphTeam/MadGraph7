@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Jan 2022) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Jan 2022) for the MadGraph7 CUDACPP plugin.
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -84,6 +84,16 @@ namespace mg5amcCpu // this is only needed for CPU SIMD vectorization
 #error Internal error! Unknown MGONGPU_CPPSIMD value
 #endif
   }
+
+#ifdef MGONGPU_SIMD_DENOM64
+  // assume load from one page return high and low
+  inline fptype_denom_sv momvFromContiguousArray( const fptype_momenta& ref )
+  {
+    fptype_denom_hv lo = {}, hi = {};
+    for( int l = 0; l < neppVD; l++ ) { lo[l] = ( &ref )[l]; hi[l] = ( &ref )[neppVD + l]; }
+    return { lo, hi };
+  }
+#endif
 
   // Build one fptype_v (one vector of neppV fptype values) from one fptype reference,
   // with no a priori assumption on how the input fptype array should be decoded

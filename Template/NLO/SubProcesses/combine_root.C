@@ -1,4 +1,4 @@
-//Sums root histograms produced by MadGraph5_aMC@NLO and saves 
+//Sums root histograms produced by MadGraph7 and saves 
 //the results in a single root file. 
 //
 //This code is steered by combine_root.sh, but can be executed directly

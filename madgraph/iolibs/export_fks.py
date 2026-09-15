@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -1027,7 +1027,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             libStdHep = misc.which_lib('libstdhep.a')
             libFmcfio = misc.which_lib('libFmcfio.a')
             if not libStdHep is None and not libFmcfio is None:
-                logger.info('MG5_aMC is using StdHep installation found at %s.'%\
+                logger.info('MadGraph7 is using StdHep installation found at %s.'%\
                                                      os.path.dirname(libStdHep)) 
                 ln(pjoin(libStdHep),pjoin(self.dir_path, 'MCatNLO', 'lib'),abspath=True)
                 ln(pjoin(libFmcfio),pjoin(self.dir_path, 'MCatNLO', 'lib'),abspath=True)
@@ -1052,7 +1052,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 processes = self.born_processes
             if len(processes)==0:
                 logger.warning(
-"""MG5aMC could not provide to Madanalysis5 the list of processes generated.
+"""MadGraph7 could not provide to Madanalysis5 the list of processes generated.
 As a result, the default card will not be tailored to the process generated.
 This typically happens when using the 'low_mem_multicore_nlo_generation' NLO generation mode.""")
             # For now, simply assign all processes to each proc_defs.
@@ -2585,7 +2585,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['pdgs'] = '\n'.join(proc_lines)
         replace_dict['symfin'] = 'Yes'
         content = \
-"#OLE_order written by MadGraph5_aMC@NLO\n\
+"#OLE_order written by MadGraph7\n\
 \n\
 MatrixElementSquareType %(mesq)s\n\
 CorrectionType          %(corr)s\n\

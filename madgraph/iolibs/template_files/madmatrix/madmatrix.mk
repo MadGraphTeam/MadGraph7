@@ -1,6 +1,6 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: S. Roiser (Feb 2020) for the MG5aMC CUDACPP plugin.
+# Created originally by: S. Roiser (Feb 2020) for the MadGraph7 CUDACPP plugin.
 # Further modified by: S. Hageboeck, D. Massaro, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -41,7 +41,9 @@ ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
 
-override SUPPORTED_FPTYPES = d f m
+# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
+override SUPPORTED_FPTYPES = d f m e v
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
   $(error Invalid fptype FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -599,18 +601,27 @@ ifeq ($(GPUCC),)
 endif
 
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
+# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
 $(info FPTYPE='$(FPTYPE)')
-ifeq ($(FPTYPE),d)
+ifeq ($(FPTYPE),d) # all64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
-else ifeq ($(FPTYPE),f)
+else ifeq ($(FPTYPE),f) # all32
   CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
-else ifeq ($(FPTYPE),m)
+else ifeq ($(FPTYPE),m) # color32: colour FP32, momenta+amp FP64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+else ifeq ($(FPTYPE),v) # denom64: momenta/denom FP64, colour+amp FP32
+  # cppnone/cuda/hip trivial, SIMD denom ex. twice, rest narrowed 
+  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+else ifeq ($(FPTYPE),e)
+  CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
 else
-  $(error Unknown FPTYPE='$(FPTYPE)': only 'd', 'f' and 'm' are supported)
+  $(error Unknown FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
 
 # Set the build flags appropriate to each HELINL choice (example: "make HELINL=1")
@@ -654,6 +665,39 @@ GPUFLAGS += $(BLASCXXFLAGS)
 
 #$(info BLASCXXFLAGS=$(BLASCXXFLAGS))
 #$(info BLASLIBFLAGS=$(BLASLIBFLAGS))
+
+#-------------------------------------------------------------------------------
+
+#=== Configure defaults and check if user-defined choices exist for CPPBLAS
+
+# HASBLAS above is about cuBLAS/hipBLAS, which only a GPU build can use. CPPBLAS
+# is the separate question of whether the C++ color sum goes through a host BLAS:
+# the color matrix does not depend on the helicity, so all the good helicities of
+# one event page are the columns of one SYMM call. Whether a BLAS carrying SYMM
+# could be linked was settled when this directory was written out; it is only
+# taken for processes whose color matrix is large enough to be worth it, and for
+# those the generated color_sum.cc carries both paths (example: "make CPPBLAS=hasNoBlas").
+ifeq ($(CPPBLAS),)
+  ifeq ($(GPUCC),) # CPU-only build
+    override CPPBLAS = %(cpp_blas_default)s
+  else # the GPU build does its color sum on the device
+    override CPPBLAS = hasNoBlas
+  endif
+endif
+
+override CPPBLASCXXFLAGS=
+override CPPBLASLIBFLAGS=
+
+ifeq ($(CPPBLAS),hasBlas)
+  override CPPBLASCXXFLAGS += -DMGONGPU_CPP_HAS_BLAS
+  override CPPBLASLIBFLAGS += %(cpp_blas_libflags)s
+else ifneq ($(CPPBLAS),hasNoBlas)
+  $(error Unknown CPPBLAS='$(CPPBLAS)': only 'hasBlas' and 'hasNoBlas' are supported)
+endif
+CXXFLAGS += $(CPPBLASCXXFLAGS)
+
+#$(info CPPBLAS=$(CPPBLAS))
+#$(info CPPBLASLIBFLAGS=$(CPPBLASLIBFLAGS))
 
 #-------------------------------------------------------------------------------
 
@@ -811,7 +855,7 @@ endif
 # Target (and build rules): process shared library (C++ or CUDA/HIP, selected by GPUCC)
 ifeq ($(GPUCC),)
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSNAME) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
+	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSNAME) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(CPPBLASLIBFLAGS)
 else
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
 	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSNAME) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -28,7 +28,7 @@ pjoin = os.path.join
 
 class TestUserConfigLocation(unittest.TestCase):
     """MadGraph7 must keep its per-user configuration to itself: a file shared
-    with an MG5aMC installation is what issue #94 is about."""
+    with an MadGraph7 installation is what issue #94 is about."""
 
     def setUp(self):
         self.saved = {key: os.environ.get(key)
@@ -56,7 +56,7 @@ class TestUserConfigLocation(unittest.TestCase):
                          pjoin('/home/someone', '.mg7', 'mg7_configuration.txt'))
 
     def test_never_mg5(self):
-        """No location MadGraph7 uses may live under MG5aMC's ~/.mg5."""
+        """No location MadGraph7 uses may live under MadGraph7's ~/.mg5."""
         os.environ['HOME'] = '/home/someone'
         os.environ.pop('XDG_CONFIG_HOME', None)
         self.assertNotIn('.mg5', misc.user_config_file())
@@ -68,6 +68,45 @@ class TestUserConfigLocation(unittest.TestCase):
         os.environ.pop('XDG_CONFIG_HOME', None)
         self.assertIsNone(misc.user_config_dir())
         self.assertIsNone(misc.user_config_file())
+
+
+class TestBaseConfigLocation(unittest.TestCase):
+    """$MADGRAPH_BASE may have been set up for MadGraph5_aMC@NLO, in which case
+    it holds mg5_configuration.txt and not the MadGraph7 name."""
+
+    def setUp(self):
+        self.saved = os.environ.get('MADGRAPH_BASE')
+        self.tmpdir = tempfile.mkdtemp(prefix='mg7_base_test')
+
+    def tearDown(self):
+        if self.saved is None:
+            os.environ.pop('MADGRAPH_BASE', None)
+        else:
+            os.environ['MADGRAPH_BASE'] = self.saved
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_no_base(self):
+        os.environ.pop('MADGRAPH_BASE', None)
+        self.assertIsNone(misc.base_config_file())
+
+    def test_mg7_file_wins(self):
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        for name in ('mg7_configuration.txt', 'mg5_configuration.txt'):
+            open(pjoin(self.tmpdir, name), 'w').close()
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg7_configuration.txt'))
+
+    def test_mg5_fallback(self):
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        open(pjoin(self.tmpdir, 'mg5_configuration.txt'), 'w').close()
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg5_configuration.txt'))
+
+    def test_neither_file(self):
+        """With nothing there the MadGraph7 name is the one to create."""
+        os.environ['MADGRAPH_BASE'] = self.tmpdir
+        self.assertEqual(misc.base_config_file(),
+                         pjoin(self.tmpdir, 'mg7_configuration.txt'))
 
 
 class TestResolveLhapdf(unittest.TestCase):
@@ -121,6 +160,9 @@ class TestResolveLhapdf(unittest.TestCase):
         return exe
 
     def resolve(self, **options):
+        # the CVMFS mirror is a real path which may be mounted on the machine
+        # running the tests: opt out unless the test is about it
+        options.setdefault('cvmfs_lhapdf_path', None)
         return misc.resolve_lhapdf(options, root=self.root)
 
     def test_absolute_lhapdf(self):
@@ -183,11 +225,13 @@ class TestResolveLhapdf(unittest.TestCase):
         other = pjoin(self.tmpdir, 'other')
         os.makedirs(pjoin(other, 'MYSET'))
         os.environ['LHAPDF_DATA_PATH'] = os.pathsep.join([other, self.datadir])
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root)
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.data_paths[0], other)
         self.assertEqual(paths.find_set('MYSET'), other)
         # ... and use_env=False ignores the environment entirely
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root,
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root,
                                     use_env=False)
         self.assertEqual(paths.data_paths, [self.datadir])
 
@@ -196,7 +240,8 @@ class TestResolveLhapdf(unittest.TestCase):
         os.makedirs(other)
         exe = self.write_config('lhaenv', other)
         os.environ['MADGRAPH_LHAPDF_CONFIG'] = exe
-        paths = misc.resolve_lhapdf({'lhapdf': self.exe}, root=self.root)
+        paths = misc.resolve_lhapdf({'lhapdf': self.exe,
+                                     'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.config, exe)
 
     def test_lhapdf_py3_fallback(self):
@@ -228,11 +273,30 @@ class TestResolveLhapdf(unittest.TestCase):
     def test_create_makes_the_download_directory(self):
         os.environ['PATH'] = pjoin(self.tmpdir, 'empty')
         target = pjoin(self.root, 'HEPTools', 'lhapdf_pdfsets')
-        paths = misc.resolve_lhapdf({}, root=self.root)
+        paths = misc.resolve_lhapdf({'cvmfs_lhapdf_path': None}, root=self.root)
         self.assertEqual(paths.download_path, target)
         self.assertFalse(os.path.isdir(target))
-        paths = misc.resolve_lhapdf({}, root=self.root, create=True)
+        paths = misc.resolve_lhapdf({'cvmfs_lhapdf_path': None}, root=self.root,
+                                    create=True)
         self.assertTrue(os.path.isdir(target))
+
+    def test_cvmfs_mirror_is_searched_last_and_never_downloaded_into(self):
+        """a set present on the CVMFS mirror is found there instead of being
+        downloaded, but the mirror is read-only so it is never a download
+        target"""
+
+        mirror = pjoin(self.tmpdir, 'cvmfs')
+        os.makedirs(pjoin(mirror, 'CVMFSSET'))
+        paths = self.resolve(lhapdf=self.exe, cvmfs_lhapdf_path=mirror)
+        self.assertEqual(paths.data_paths, [self.datadir, mirror])
+        self.assertEqual(paths.find_set('CVMFSSET'), mirror)
+        # the local data directory still wins for a set it holds
+        self.assertEqual(paths.find_set('MYSET'), self.datadir)
+        self.assertNotEqual(paths.download_path, mirror)
+        # a mirror which is not mounted is simply ignored
+        paths = self.resolve(lhapdf=self.exe,
+                             cvmfs_lhapdf_path=pjoin(self.tmpdir, 'nomount'))
+        self.assertEqual(paths.data_paths, [self.datadir])
 
     def test_with_data_path_promotes_a_directory(self):
         paths = self.resolve(lhapdf=self.exe)
