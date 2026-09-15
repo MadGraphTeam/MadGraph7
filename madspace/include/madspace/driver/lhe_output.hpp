@@ -51,6 +51,7 @@ struct LHEParticle {
     double px, py, pz, energy, mass;
     double lifetime;
     double spin;
+    double cluster_scale;
 };
 
 // LO reweighting inputs of one event, written as <mgrwt> block (the format
@@ -72,6 +73,7 @@ struct LHEEvent {
     double alpha_qed;
     double alpha_qcd;
     std::vector<LHEParticle> particles;
+    bool has_cluster_scales;
     // optional LHEF v3 weights (<rwgt> block); ids and values have the same length
     std::vector<int> rwgt_ids;
     std::vector<double> rwgt;

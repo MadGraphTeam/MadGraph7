@@ -42,8 +42,16 @@ fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
 fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
-# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
+# options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
+# jet radius used by the MLM clustering measure (only for dynamical_scale_choice = "mlm")
+jet_radius = %(beam.jet_radius)s
+# heaviest quark flavour treated as a jet by the MLM back-clustering
+max_jet_flavor = %(beam.max_jet_flavor)s
+# how the MLM back-clustering assigns a clustering scale to each outgoing jet
+# options: production (the scale at which the parton's line was produced, as in
+#          madevent), emission (the scale at which the leg itself was emitted)
+jet_scale_scheme = %(beam.jet_scale_scheme)s
 
 [generation]
 events = %(generation.events)s
@@ -101,6 +109,10 @@ combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s # -1 keeps all channels, otherwise drop channels without a QCD s-channel resonance once the channel count would exceed this
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
+# minimum kt separation required of a matrix-element jet emission, the
+# counterpart of xqcut in the legacy run_card (0 disables it; only used
+# with dynamical_scale_choice = "mlm")
+xqcut = %(phasespace.xqcut)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
 
 [multiparticles]

@@ -98,6 +98,12 @@ public:
     const std::vector<double>& t_propagator_widths() const {
         return _t_propagator_widths;
     }
+    // pdg ids of the t-channel propagators, in the same order as
+    // t_propagator_masses(). Needed to tell a QCD splitting off the initial
+    // state from a QED/EW one.
+    const std::vector<int>& t_propagator_pdg_ids() const {
+        return _t_propagator_pdg_ids;
+    }
     const std::vector<Decay>& decays() const { return _decays; }
     // Raise a propagator's minimum invariant mass. Used to hand a cut that
     // bounds the pair this propagator decays into straight to the sampler,
@@ -129,6 +135,7 @@ private:
     std::vector<std::size_t> _t_integration_order;
     std::vector<double> _t_propagator_masses;
     std::vector<double> _t_propagator_widths;
+    std::vector<int> _t_propagator_pdg_ids;
     std::vector<Decay> _decays;
     std::vector<std::size_t> _decay_integration_order;
     std::vector<std::size_t> _outgoing_indices;
