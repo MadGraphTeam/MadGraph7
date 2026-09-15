@@ -122,12 +122,14 @@ logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
 logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
-# The logo's blue (#3B6598). 
-if os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
+# The logo's blue (#3B6598). Empty under --plain (MG7_NO_COLOR).
+if os.environ.get('MG7_NO_COLOR'):
+    MG7_BLUE = ""
+elif os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
     MG7_BLUE = "\033[1;38;2;59;101;152m"
 else:
     MG7_BLUE = "\033[1;34m" #fall back to bold blue
-MG7_RESET = "\033[0m"
+MG7_RESET = "\033[0m" if MG7_BLUE else ""
 
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
@@ -141,7 +143,7 @@ except Exception:
     _prompt_is_libedit = False
 
 #left open so whole command in blue
-if _prompt_is_libedit:
+if _prompt_is_libedit or not MG7_BLUE:
     MG7_PROMPT = MG7_PROMPT_TEXT
 else:
     MG7_PROMPT = "\001%s\002MG7> " % MG7_BLUE

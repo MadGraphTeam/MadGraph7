@@ -55,10 +55,16 @@ parser.add_option("","--debug", action="store_true", default=False, dest='debug'
 parser.add_option("-m", "--mode", dest="plugin",
                   help="Define some additional command provide by a PLUGIN")
 parser.add_option("-s", "--nocaffeinate", action="store_false", default=True, dest='nosleep',
-                  help='For mac user, forbids to use caffeinate when running with a script')                               
+                  help='For mac user, forbids to use caffeinate when running with a script')
+parser.add_option("","--plain", action="store_true", default=False, dest='plain',
+                  help='disable coloured output')
 (options, args) = parser.parse_args()
 if len(args) == 0:
     args = ''
+
+if options.plain:
+    # disable color
+    os.environ['MG7_NO_COLOR'] = '1'
 
 import subprocess
 
@@ -76,7 +82,10 @@ import madgraph.interface.coloring_logging
 
 
 if ' ' in os.getcwd():
-    logging.warning("\033[91mThe current working directory (%s) does contain spaces. We advise that you change the location of the code/working area to avoid to have space in such path.\033[0m", os.getcwd())
+    cwd_warning = "The current working directory (%s) does contain spaces. We advise that you change the location of the code/working area to avoid to have space in such path."
+    if not options.plain:
+        cwd_warning = "\033[91m" + cwd_warning + "\033[0m"
+    logging.warning(cwd_warning, os.getcwd())
 
 
 
