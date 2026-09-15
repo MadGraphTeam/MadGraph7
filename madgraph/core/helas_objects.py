@@ -164,7 +164,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify matrix
         elements: ((leg numer, state, spin, self_antipart, mass,
-        width, color, decay and is_part), number)."""
+        width, color, polarization, decay and is_part), number)."""
 
         part = model.get_particle(leg.get('id'))
 
@@ -174,10 +174,24 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # For FS legs, don't care about number (but do for IS legs)
         if leg.get('state'): number = 0
         else: number = leg.get('number')
+        # A polarization restriction selects which helicities of this leg are
+        # summed over, so two legs which restrict it differently do NOT share
+        # a matrix element ('p p > t t~{+}' and 'p p > t t~{-}' must stay
+        # apart; without this they get the same tag and only the first one is
+        # ever written out).
+        # The stored list is the typed order but means the *set* of allowed
+        # helicities, so canonicalise it: this MUST agree with the
+        # canonicalisation Process.shell_polarization uses to build the P
+        # directory name, or two legs could be told apart here yet render to
+        # one and the same directory.
+        # An unpolarized leg gives (), so every tag of an unpolarized process
+        # is structurally what it was before.
+        polarization = tuple(sorted(set(leg.get('polarization'))))
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
-                  part.get('mass'), part.get('width'), part.get('color')),
+                  part.get('mass'), part.get('width'), part.get('color'),
+                  polarization),
                  leg.get('number'))]
         
     @staticmethod
@@ -2074,7 +2088,17 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 'number': self.get('number_external'),
                 'state': self.get('leg_state'),
                 'onshell': self.get('onshell'),
-                'loop_line':self.get('is_loop')
+                'loop_line':self.get('is_loop'),
+                # the wavefunction kept the polarization restriction of the
+                # leg it was built from: put it back, or the amplitude
+                # rebuilt by get_base_amplitude would identify (through
+                # IdentifyMETag) a polarized process with an unpolarized one.
+                # dict.get and not self.get, here and in the two sibling
+                # get_base_vertex: a wavefunction unpickled from a file
+                # written before 'polarization' existed has no such key at
+                # all, and PhysicsObject.get raises on a missing one
+                # (tests/input_files/test_8fs.pkl is one such file)
+                'polarization': dict.get(self, 'polarization', [])
                 })
 
             if optimization != 0 and not self.get('is_loop'):
@@ -2093,7 +2117,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     'state': mother.get('leg_state'),
                     'onshell': None,
                     'loop_line':mother.get('is_loop'),
-                    'onshell': None
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg
@@ -3453,7 +3477,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
                     'number': mother.get('number_external'),
                     'state': mother.get('leg_state'),
                     'onshell': None,
-                    'loop_line':mother.get('is_loop')
+                    'loop_line':mother.get('is_loop'),
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg

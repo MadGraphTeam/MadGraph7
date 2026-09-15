@@ -381,11 +381,15 @@ C stores the result in P and for the quadruple precision
 c version , it also modifies the global variables
 C PS and MP_DONE accordingly.
 
-C     NOTE:: an exact axis permutation, so exact zeros survive. But
-C     it is NOT a symmetry of a polarised amplitude with a leg at
-C     rest: HELAS pins that leg's spin axis to the frame z.
-C     NRotations_DP/QP default to 0; enabling them on a polarised
-C     run gives spurious instability flags.
+C     Both rotations are exact axis permutations, so exact zeros
+C     survive. When some external leg is EXACTLY at rest -- what
+C     boost_to_frame arranges for a polarised particle selected alone
+C     by me_frame -- HELAS takes that particle's spin axis from the
+C     frame z axis instead of its momentum, and a permutation moving z
+C     would change |M|^2 and fake an instability (blocker B11). The
+C     rotations are then taken about z (pi/2 and pi), which are just as
+C     exact and leave that spin axis where it is. Moving and massless
+C     particles carry their helicity axis along, so nothing else changes.
 	  SUBROUTINE %(proc_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -402,14 +406,35 @@ C
 C LOCAL VARIABLES 
 C
       INTEGER I,J
+      LOGICAL ATREST
+      DOUBLE PRECISION ZERO
+      PARAMETER (ZERO=0.0D0)
 
 C ----------
 C BEGIN CODE
 C ----------
 
+      ATREST=.FALSE.
       DO I=1,NEXTERNAL
+        IF(P_IN(1,I).EQ.ZERO.AND.P_IN(2,I).EQ.ZERO.AND.
+     &     P_IN(3,I).EQ.ZERO) ATREST=.TRUE.
+      ENDDO
+
+      DO I=1,NEXTERNAL
+C a leg at rest, rotation=1 => pi/2 about z (xp=-y,yp=x,zp=z)
+		IF(ATREST.AND.ROTATION.EQ.1) THEN
+		  P(0,I)=P_IN(0,I)
+		  P(1,I)=-P_IN(2,I)
+		  P(2,I)=P_IN(1,I)
+		  P(3,I)=P_IN(3,I)
+C a leg at rest, rotation=2 => pi about z (xp=-x,yp=-y,zp=z)
+		ELSEIF(ATREST.AND.ROTATION.EQ.2) THEN
+		  P(0,I)=P_IN(0,I)
+		  P(1,I)=-P_IN(1,I)
+		  P(2,I)=-P_IN(2,I)
+		  P(3,I)=P_IN(3,I)
 C rotation=1 => (xp=z,yp=-x,zp=-y)
-		IF(ROTATION.EQ.1) THEN
+		ELSEIF(ROTATION.EQ.1) THEN
 		  P(0,I)=P_IN(0,I)
 		  P(1,I)=P_IN(3,I)
 		  P(2,I)=-P_IN(1,I)
@@ -431,11 +456,15 @@ C rotation=2 => (xp=-z,yp=y,zp=x)
 	  END
 
 
-C     NOTE:: an exact axis permutation, so exact zeros survive. But
-C     it is NOT a symmetry of a polarised amplitude with a leg at
-C     rest: HELAS pins that leg's spin axis to the frame z.
-C     NRotations_DP/QP default to 0; enabling them on a polarised
-C     run gives spurious instability flags.
+C     Both rotations are exact axis permutations, so exact zeros
+C     survive. When some external leg is EXACTLY at rest -- what
+C     boost_to_frame arranges for a polarised particle selected alone
+C     by me_frame -- HELAS takes that particle's spin axis from the
+C     frame z axis instead of its momentum, and a permutation moving z
+C     would change |M|^2 and fake an instability (blocker B11). The
+C     rotations are then taken about z (pi/2 and pi), which are just as
+C     exact and leave that spin axis where it is. Moving and massless
+C     particles carry their helicity axis along, so nothing else changes.
 	  SUBROUTINE %(proc_prefix)s%(mp_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -452,6 +481,9 @@ C
 C LOCAL VARIABLES 
 C
       INTEGER I,J
+      LOGICAL ATREST
+      %(real_format)s ZERO
+      PARAMETER (ZERO=0.0E0)
 C  
 C GLOBAL VARIABLES
 C 
@@ -462,9 +494,27 @@ C ----------
 C BEGIN CODE
 C ----------
 
+      ATREST=.FALSE.
       DO I=1,NEXTERNAL
+        IF(P_IN(1,I).EQ.ZERO.AND.P_IN(2,I).EQ.ZERO.AND.
+     &     P_IN(3,I).EQ.ZERO) ATREST=.TRUE.
+      ENDDO
+
+      DO I=1,NEXTERNAL
+C a leg at rest, rotation=1 => pi/2 about z (xp=-y,yp=x,zp=z)
+		IF(ATREST.AND.ROTATION.EQ.1) THEN
+		  P(0,I)=P_IN(0,I)
+		  P(1,I)=-P_IN(2,I)
+		  P(2,I)=P_IN(1,I)
+		  P(3,I)=P_IN(3,I)
+C a leg at rest, rotation=2 => pi about z (xp=-x,yp=-y,zp=z)
+		ELSEIF(ATREST.AND.ROTATION.EQ.2) THEN
+		  P(0,I)=P_IN(0,I)
+		  P(1,I)=-P_IN(1,I)
+		  P(2,I)=-P_IN(2,I)
+		  P(3,I)=P_IN(3,I)
 C rotation=1 => (xp=z,yp=-x,zp=-y)
-		IF(ROTATION.EQ.1) THEN
+		ELSEIF(ROTATION.EQ.1) THEN
 		  P(0,I)=P_IN(0,I)
 		  P(1,I)=P_IN(3,I)
 		  P(2,I)=-P_IN(1,I)
