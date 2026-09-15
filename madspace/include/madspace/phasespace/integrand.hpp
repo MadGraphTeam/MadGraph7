@@ -67,8 +67,13 @@ public:
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
-        std::size_t compressed_channel_weight_count = 50
+        std::size_t compressed_channel_weight_count = 50,
+        // PDF of the second beam when it differs from pdf_grid (which is then
+        // the first beam's). Its globals must be initialized with the prefix
+        // Integrand::pdf2_prefix.
+        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt
     );
+    inline static const std::string pdf2_prefix = "beam2";
     std::size_t particle_count() const { return _mapping.particle_count(); }
     bool madnis_training() const { return _madnis_training; }
     std::optional<std::string> vegas_grid_name() const {
@@ -126,6 +131,9 @@ private:
     AdaptiveDiscrete _discrete_flavor;
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
+    // with different PDFs per beam: each leg's density from the other beam,
+    // for the events whose orientation is mirrored
+    std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
@@ -148,7 +156,11 @@ private:
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
     std::vector<me_int_t> _flavor_mirror;
+    std::vector<double> _flavor_mirror_factors;
     bool _has_mirror;
+    // Asymmetric beams: the orientation is drawn before the phase-space
+    // mapping (mirror_index condition) instead of mirroring accepted events.
+    bool _mirror_before_cuts;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;
     std::vector<me_int_t> _flavor_subproc_indices;

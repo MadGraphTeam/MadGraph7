@@ -107,7 +107,10 @@ public:
         const std::optional<AlphaSGrid>& nominal_alpha_s,
         ContextPtr context = nullptr,
         const std::vector<std::optional<MatrixElement>>& matrix_elements = {},
-        const nested_vector2<me_int_t>& me_flavor_remap = {}
+        const nested_vector2<me_int_t>& me_flavor_remap = {},
+        // the second beam's PDF when it differs from nominal_pdf (the first
+        // beam's); PDF member variations are then dropped with a warning
+        const std::optional<PdfGrid>& nominal_pdf2 = std::nullopt
     );
 
     const SystematicsConfig& config() const { return _config; }
@@ -179,6 +182,7 @@ private:
     ContextPtr _context;
     std::string _prefix;
     std::optional<PdfEvaluator> _nominal_pdf;   // has_pdf only
+    std::optional<PdfEvaluator> _nominal_pdf2;  // second beam, if its set differs
     std::vector<PdfEvaluator> _member_pdfs;     // one per member
     std::vector<RuntimePtr> _alpha_s_runtimes;  // index 0: nominal set
     std::vector<std::optional<MatrixElementData>> _matrix_elements;

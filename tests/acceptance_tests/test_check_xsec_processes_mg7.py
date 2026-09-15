@@ -148,7 +148,11 @@ def _edit_run_card(toml_path, events, disable_jet_cuts):
     t = open(toml_path).read()
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     t = t.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
-    t = re.sub(r'(?m)^pdf = ".*"$', 'pdf = "%s"' % _REFERENCE_PDF, t)
+    # one set per beam (pdf1/pdf2); a card from before the split has pdf
+    t, pinned = re.subn(r'(?m)^(pdf[12]?) = ".*"$',
+                        r'\1 = "%s"' % _REFERENCE_PDF, t)
+    if not pinned:
+        raise RuntimeError('no [beam] pdf entry to pin in %s' % toml_path)
     t = re.sub(r'events = \d+', 'events = %d' % events, t)
     if disable_jet_cuts:
         # jet cuts must be disabled for the hadronic tt~ decay processes to

@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import sys
 import time
@@ -269,6 +270,14 @@ class MadgraphProcess:
         self.is_decay = incoming_counts == {1}
         if not self.is_decay:
             self.decaying_mass = None
+            single = [meta["outgoing"] for meta in self.subprocess_data
+                      if len(clean_pids(meta["outgoing"])) == 1]
+            if single and self.run_card["beam"]["leptonic"]:
+                raise ValueError(
+                    f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
+                    "(leptonic = false in [beam]): with fixed beam energies the "
+                    "one-particle phase space is a delta function in s_hat"
+                )
             return
 
         masses = {
@@ -499,7 +508,7 @@ class MadgraphProcess:
             found = ("no usable lhapdf-config was found, so the set could not "
                      "be downloaded automatically")
         return (
-            "LHAPDF set %r, requested by [beam] pdf in Cards/run_card.toml, "
+            "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
@@ -529,9 +538,19 @@ class MadgraphProcess:
             # No beams: the total energy is the decaying particle's mass, and
             # "leptonic" is what the mappings call "no parton luminosity".
             self.e_cm = self.decaying_mass
+            self.beam_energies = (float(self.e_cm), 0.0)
+            self.beam_rapidity = 0.0
+            self.asymmetric_beams = False
             self.leptonic = True
         else:
-            self.e_cm = beam_args["e_cm"]
+            ebeam1 = float(beam_args["ebeam1"])
+            ebeam2 = float(beam_args["ebeam2"])
+            self.beam_energies = (ebeam1, ebeam2)
+            # The phase space is generated in the beams' centre-of-mass frame
+            # (massless beams: s = 4 E1 E2) and boosted by this rapidity into
+            # the lab frame, where the events are written and the cuts applied.
+            self.e_cm = 2.0 * math.sqrt(ebeam1 * ebeam2)
+            self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
 
         dynamical_scales = {
@@ -563,8 +582,10 @@ class MadgraphProcess:
                 fact_scale2=self.decaying_mass,
             )
             self.pdf_grid = None
+            self.pdf_grid2 = None
             self.lhapdf = None
             self.pdf_dir = None
+            self.pdf_dir2 = None
             self.fixed_alphas_info = self.write_fixed_alphas_info()
             self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
             for context in self.contexts:
@@ -572,18 +593,40 @@ class MadgraphProcess:
             self.running_coupling = ms.RunningCoupling(self.alphas_grid)
             return
 
-        pdf_set = beam_args["pdf"]
+        pdf_set = beam_args["pdf1"]
         self.pdf_set = pdf_set
+        self.pdf_set2 = beam_args["pdf2"]
         self.fixed_alphas_info = None
         self.lhapdf = self.ensure_pdf_set(pdf_set)
         self.pdf_dir = self.lhapdf.find_set(pdf_set)
         if self.pdf_dir is None:
             raise RuntimeError(self._no_pdf_message(pdf_set))
         self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
+        # A second grid only when the beams differ (and have a PDF at all);
+        # otherwise beam 2 shares the first one.
+        self.pdf_grid2 = None
+        self.pdf_dir2 = self.pdf_dir
+        if self.pdf_set2 != pdf_set and not self.leptonic:
+            self.pdf_dir2 = self.ensure_pdf_set(self.pdf_set2).find_set(self.pdf_set2)
+            if self.pdf_dir2 is None:
+                raise RuntimeError(self._no_pdf_message(self.pdf_set2))
+            self.pdf_grid2 = ms.PdfGrid(os.path.join(
+                self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat"))
+            logger.info("PDF sets: %s (beam 1), %s (beam 2); alpha_s from %s",
+                        pdf_set, self.pdf_set2, pdf_set)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
+            if self.pdf_grid2 is not None:
+                # the prefix ms.Integrand reads the second beam's grid from
+                # (Integrand::pdf2_prefix)
+                self.pdf_grid2.initialize_globals(context, "beam2")
             self.alphas_grid.initialize_globals(context)
+        # Beams that differ in energy or PDF are not mirror images: a flavor
+        # standing for both orientations then needs the orientation drawn
+        # before the phase-space mapping (ms.PhaseSpaceMapping mirror_beams).
+        self.asymmetric_beams = (
+            self.beam_rapidity != 0.0 or self.pdf_grid2 is not None)
         self.running_coupling = ms.RunningCoupling(self.alphas_grid)
 
     # ------------------------------------------------------------------
@@ -761,7 +804,14 @@ class MadgraphProcess:
             config.nominal_lhaid = info["SetIndex"]
             config.nominal_error_type = info["ErrorType"]
             config.nominal_description = info["SetDesc"]
-            config.pdf_members = self.resolve_pdf_variations()
+            if self.pdf_grid2 is None:
+                config.pdf_members = self.resolve_pdf_variations()
+            else:
+                logger.warning(
+                    "systematics: the beams use different PDF sets (%s, %s), so "
+                    "no PDF variation is computed; the scale variations use both "
+                    "sets", self.pdf_set, self.pdf_set2)
+                config.pdf_members = []
         else:
             config.pdf_members = []
         args = self.build_systematics_args()
@@ -773,7 +823,8 @@ class MadgraphProcess:
             args, self.systematics_context)
         self.systematics = ms.SystematicsCalculator(
             config, args, self.pdf_grid, self.alphas_grid,
-            self.systematics_context, matrix_elements, flavor_remap)
+            self.systematics_context, matrix_elements, flavor_remap,
+            nominal_pdf2=self.pdf_grid2 if config.has_pdf else None)
         for warning in self.systematics.warnings:
             logger.warning("systematics: %s", warning)
         self.systematics_data = {
@@ -782,6 +833,9 @@ class MadgraphProcess:
             "nominal_grid_file": os.path.join(
                 self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat")
                 if config.has_pdf else None,
+            "nominal_grid_file2": os.path.join(
+                self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat")
+                if config.has_pdf and self.pdf_grid2 is not None else None,
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
@@ -1510,7 +1564,6 @@ class MadgraphProcess:
         `incoming` holds the *partonic* initial state (e.g. gluons), not the
         beam particle, so hadronic beams are protons (2212); leptonic beams are
         the incoming leptons themselves."""
-        half_e = float(self.e_cm) / 2.
         if self.is_decay:
             # No beams. LHE has no way to say that, so report the decaying
             # particle at rest as a single "beam"; the second slot is empty.
@@ -1519,22 +1572,23 @@ class MadgraphProcess:
             return [pdg, 0], [float(self.e_cm), 0.0]
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
-            return [2212, 2212], [half_e, half_e]
+            return [2212, 2212], list(self.beam_energies)
         data = self.subprocess_data[0]
         incoming = data["incoming"]
         flavor0 = data["flavors"][0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
         beam_pdgs = [pdg if abs(code) in (81, 82) else code
                      for code, pdg in zip(incoming, init_pdgs)]
-        return beam_pdgs, [half_e, half_e]
+        return beam_pdgs, list(self.beam_energies)
 
-    def _lhapdf_id(self):
-        """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
-        or -1 for a leptonic beam (no PDF)."""
+    def _lhapdf_id(self, beam=1):
+        """Central LHAPDF id of the PDF set of `beam` (read from its .info
+        SetIndex), or -1 for a leptonic beam (no PDF)."""
         if self.leptonic or not self.pdf_dir:
             return -1
-        pdf_set = self.run_card["beam"]["pdf"]
-        info = os.path.join(self.pdf_dir, pdf_set, "%s.info" % pdf_set)
+        pdf_set = self.pdf_set if beam == 1 else self.pdf_set2
+        pdf_dir = self.pdf_dir if beam == 1 else self.pdf_dir2
+        info = os.path.join(pdf_dir, pdf_set, "%s.info" % pdf_set)
         try:
             for line in open(info):
                 if line.strip().startswith("SetIndex:"):
@@ -1548,7 +1602,6 @@ class MadgraphProcess:
         run_card.toml (<MG7RunCard>) headers plus the beam/PDF/cross-section info
         needed by downstream tools (systematics, MadSpin, ...)."""
         beam_pdgs, energies = self._beam_info()
-        lhaid = self._lhapdf_id()
         pdf_group = -1 if self.leptonic else 0
         status = self.event_generator.status()
         xsec, err = status.mean, status.error
@@ -1571,7 +1624,7 @@ class MadgraphProcess:
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
             beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
-            beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
+            beam1_pdf_id=self._lhapdf_id(1), beam2_pdf_id=self._lhapdf_id(2),
             weight_mode=3,
             # positional: the pybind arg name for max_weight is non-kwarg-safe
             processes=[ms.LHEProcess(xsec, err, xsec, 1)],
@@ -2034,6 +2087,8 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    beam_rapidity=self.process.beam_rapidity,
+                    mirror_beams=self.process.asymmetric_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -2094,6 +2149,8 @@ class MadgraphSubprocess:
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.process.leptonic,
+            beam_rapidity=self.process.beam_rapidity,
+            mirror_beams=self.process.asymmetric_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
@@ -2627,7 +2684,8 @@ class MadgraphSubprocess:
                 flavor_diff_xs_indices,
                 flavor_subproc_indices,
                 flavor_per_subproc_remap,
-                madnis_args["compressed_channel_weight_count"]
+                madnis_args["compressed_channel_weight_count"],
+                None if self.process.leptonic else self.process.pdf_grid2,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())
@@ -3027,6 +3085,15 @@ def build_selector_cmd(mother=None):
                         run_card.set('run.seed', seed, user=True)
                         logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
                                     seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
+                    # quantities the card stores per beam: set both beams
+                    if rest and nlow in ("e_cm", "beam.e_cm", "beam.pdf"):
+                        value = rest if nlow == "beam.pdf" else run_card.evaluate(rest, masses)
+                        run_card.set(nlow, value, user=True)
+                        logger.info("set %s of the run_card.toml to %s (both beams)",
+                                    nlow, run_card["beam." + nlow.split(".")[-1]])
                         self.modified_card.add("run")
                         return
 
