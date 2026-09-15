@@ -741,6 +741,23 @@ integration, only in the artificial deep-soft scan of `test_soft_col_limits`.
 Confirmed neutral: the `[real=QCD]` cross-section is 2.604e+03 +- 2.8e+01 pb
 without the guard and 2.600e+03 +- 2.2e+01 pb with it, 0.1 sigma.
 
+**Update 2026-09-15: the guard is removed.** PR #111 (on main) rewrote the
+massless spinors to take the small light-cone component from
+`p+ p- = pT^2` whenever `p3 < 0` and `pT != 0`, a sum of positives where
+`sqrt(p(0)+p(3))` was a cancelling difference -- exactly the tilted
+backward beam above. Re-measured on `p p > z{0} z{0} [real=QCD]`,
+`me_frame=[3,4]` (`FRAME_ID = 24`), the split-order soft test that exposed
+this, three trees generated from scratch:
+
+| HELAS | guard | split-order soft, 16 tests |
+|---|---|---|
+| before #111 | removed | **6 FAILED**, worst 0.43, run aborts |
+| with #111 | kept | 0 failed, worst 0.01 |
+| with #111 | removed | 0 failed, worst 0.02 |
+
+The first row reproduces the 0.43 above exactly, so the test still sees the
+defect; the last shows the spinors no longer need protecting from it.
+
 ### Gate results
 
 `p p > z{0} j [real=QCD]`, `me_frame=[3]`, nn23lo1, fixed scales -- the
@@ -1236,8 +1253,8 @@ boosted spinors, or rebuild its collinear limit from `xij_kperp` through
 only at `kt=0`, and its error away from there was measured in review to scale
 as `(kt/E)/betaT`, with `betaT` the *transverse* velocity of the me_frame
 boost — 1.1e-3 at `kt/E=1e-6, betaT=1e-2`, but 1.36 at `betaT=1e-5`. The
-`betamin` guard in `get_me_frame_boost` bounds `|beta|`, not `betaT`, so it
-does not cover this. The condition is therefore `1-y_ij_fks <= 0` rather than
+former `betamin` guard (removed, see B9) bounded `|beta|`, not `betaT`, so it
+never covered this. The condition is therefore `1-y_ij_fks <= 0` rather than
 the legacy `< 1d-12`: at `y=1` the spinor product is genuinely `0/0` and the
 `kperp` route is the only one available; everywhere else the exact route is.
 
@@ -1682,12 +1699,13 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   leg at rest only to rounding, and HELAS `vxxxxx` picks the quantisation axis
   from the momentum direction unless the 3-momentum is *exactly* zero. Fixed in
   both `boost_to_me_frame` (NLO) and `boost_to_frame` (LO). See M2 step 2.
-- **B9 — mitigated, not eliminated.** A boost whose velocity degenerates to
-  zero tilts the beams just enough to wreck `sqrt(p(0)+p(3))` in the HELAS
-  massless spinors, without reaching the exact on-axis branch. Guarded by
-  `betamin=1d-4` in `get_me_frame_boost`. The underlying fragility lives in
-  HELAS and is not fixed; anything else that boosts an on-axis beam by a tiny
-  amount will hit it. See M2 step 2.
+- **B9 — RESOLVED by PR #111, guard removed.** A boost whose velocity
+  degenerates to zero tilted the beams just enough to wreck `sqrt(p(0)+p(3))`
+  in the HELAS massless spinors, without reaching the exact on-axis branch.
+  It was guarded by `betamin=1d-4` in `get_me_frame_boost`. #111 fixed the
+  spinors themselves (the component now comes from `pT^2`, no cancellation),
+  in every backend, so the guard is gone; the split-order soft test that
+  failed 0.43 without it passes at 0.02. See M2 step 2.
 - **B12 — RESOLVED here, and it has a twin that must land with it.**
   `ProcessDefinition.__iter__` dropped `polarization` when expanding
   multiparticles, so any polarised MadLoop-standalone process written with
@@ -1714,7 +1732,7 @@ marker. Run via `./tests/test_manager.py`, not pytest.
   whose quantisation axis is the frame z axis and does not rotate with the
   momenta, so MadLoop would report spurious instability. Both default to 0,
   so nothing is wrong today; a user who raises them on a polarised run will
-  see it. Same root as B8/B9: the HELAS branch at exactly zero momentum.
+  see it. Same root as B8: the HELAS branch at exactly zero momentum.
 
 ## 6. Risk
 

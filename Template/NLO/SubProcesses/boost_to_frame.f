@@ -574,8 +574,6 @@ c**************************************************************************
       integer i, j
       integer nsel, nini, nfin
       double precision m2, pvec2
-      double precision betamin
-      parameter (betamin=1d-4)
       include 'nexternal.inc'
 
       pboost(0:3)=0d0
@@ -631,44 +629,13 @@ c     Already at rest: skip, so the default costs nothing and changes nothing.
          return
       endif
 
-c     At rest to well below the precision the matrix elements can use:
-c     skip too, because below betamin the boost costs more accuracy than
-c     it delivers.
-c
-c     What it delivers is O(beta): that is how much a boost of velocity
-c     beta moves a polarised |M|^2. What it costs is a loss of precision
-c     in the incoming legs. Before the boost they are exactly on the beam
-c     axis, so p(0)+p(3) of the backward one is exactly zero and the HELAS
-c     massless spinors -- built from sqrt(p(0)+p(3)) and pt/sqrt(p(0)+p(3))
-c     -- take their exact on-axis branch. The boost tilts them by O(beta),
-c     making p(0)+p(3) = E*beta^2/2, and that is computed as a difference
-c     of two numbers of size E, so it carries an absolute error ulp(E) and
-c     a relative error 2*eps/beta^2. Small beta is the dangerous end.
-c
-c     Measured on p p > z{0} z{0} [real=QCD] with me_frame=[3,4], whose
-c     boost degenerates to the identity as xi->0. Down the soft scan
-c     p(0)+p(3) of the boosted incoming leg runs
-c         3.3d-9, 3.3d-11, 3.4d-13, 0, 0, 0
-c     and the deviation of the soft ratio from 1 runs
-c         9d-6,   6.5d-4,  2.1d-2,  2d-6, 4d-7, 2d-6,
-c     i.e. it grows like 1/beta^2 exactly while p(0)+p(3) is a few ulp,
-c     and goes clean again once it underflows to exactly zero.
-c
-c     Balancing cost against benefit, 30*2*eps/beta^2 = beta (the factor 30
-c     is the measured prefactor above), gives beta* = 2.4d-5. betamin is set
-c     one safety decade above that. It was checked that 1d-5 is not enough
-c     -- the split-order soft test still fails 0.16 -- and that 1d-4 and
-c     1d-3 both give 0.01.
-c
-c     This costs no physics: it fires only where the selected system is at
-c     rest to one part in 10^4, which in a real integration never happens.
-c     It is reached only in the artificial deep-soft/collinear scan of
-c     test_soft_col_limits, and there only for a frame that degenerates to
-c     the partonic c.m. in the limit being scanned.
-      if (pvec2 .lt. (betamin*pboost(0))**2) then
-         trivial=.true.
-         return
-      endif
+c     No floor below that. A near-identity boost used to tilt the
+c     on-axis incoming partons just enough that sqrt(p(0)+p(3)) in the
+c     HELAS massless spinors was a cancelling difference of two numbers
+c     of size E, and a betamin=1d-4 skip hid it (blocker B9). The
+c     spinors now take that component from p+ p- = pT^2 (PR #111), so
+c     there is no cancellation left to avoid: the boost is applied
+c     however small it is.
 
 c     The selected system must be timelike for its rest frame to exist. A
 c     lightlike or spacelike sum means the run_card selection is nonsense
