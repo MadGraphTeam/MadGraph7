@@ -142,6 +142,20 @@ fn distribution_version_normalization_is_narrow() {
         "0.1.0.dev0+candidate.0123"
     );
     assert_eq!(canonical_distribution_version("0.1.0"), "0.1.0");
+    assert_eq!(
+        canonical_distribution_version("0.2.1-dev.0+candidate.3112b2494ca7"),
+        canonical_distribution_version("0.2.1.dev0+candidate.42ec2237ad19")
+    );
+    for other in [
+        "0.2.1",
+        "0.2.2.dev0+candidate.3112b2494ca7",
+        "0.2.1.dev0+other.3112b2494ca7",
+    ] {
+        assert_ne!(
+            canonical_distribution_version("0.2.1.dev0+candidate.3112b2494ca7"),
+            canonical_distribution_version(other)
+        );
+    }
     assert_ne!(
         canonical_distribution_version("0.1.0-dev.0+candidate.0123"),
         canonical_distribution_version("0.1.0-dev.0+candidate.4567")

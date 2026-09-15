@@ -2693,7 +2693,20 @@ fn compatible_distribution_version(version: &str) -> bool {
 }
 
 fn canonical_distribution_version(version: &str) -> String {
-    version.replace("-dev.", ".dev")
+    let canonical = version.replace("-dev.", ".dev");
+    // Candidate build hashes identify native builds, not process formats.
+    // Explicit schema, ABI, and evaluator-storage versions are checked when
+    // loading the output; a runtime fix must not require process regeneration.
+    if let Some((base, fingerprint)) = canonical.split_once("+candidate.")
+        && base.contains(".dev")
+        && fingerprint.len() == 12
+        && fingerprint
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return base.to_owned();
+    }
+    canonical
 }
 
 fn validate_references(
