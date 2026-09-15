@@ -361,11 +361,25 @@
       invp2_dump_file << std::setprecision( 17 );
       for( int ievt = 0; ievt < nevt && invp2_dump_count < MGONGPU_INVP2_DUMP; ++ievt )
       {
-        ++invp2_dump_count;
-        // EVENT <npar> <ninvar> <channel> <|M|^2>
+        // EVENT <npar> <ninvar> <channel> <alpha_c> <|M|^2>
         const unsigned int invp2_channel = ( allDiagramIdsOut != nullptr ) ? allDiagramIdsOut[ievt] : 0u;
+        // Channel-filtered dump: only events actually sampled from this build's
+        // selected channel are written (its ME is otherwise already zeroed above).
+        // A negative MGONGPU_SELECTED_CHANNEL (the default) dumps every channel.
+        if( MGONGPU_SELECTED_CHANNEL >= 0 && invp2_channel != (unsigned int)MGONGPU_SELECTED_CHANNEL ) continue;
+        ++invp2_dump_count;
+        // alpha_c = this channel's share of the multichannel denominator for this
+        // event (numerators[channel-1]/denominator, same floor as the ME rescaling
+        // above so 0/0 reads as 0 rather than nan).
+        double invp2_alpha = 0.;
+        if( invp2_channel > 0 && allNumerators != nullptr && allDenominators != nullptr )
+        {
+          const double invp2_num = (double)allNumerators[ievt * processConfig::ndiagrams + ( invp2_channel - 1 )];
+          const double invp2_den = (double)allDenominators[ievt] + std::numeric_limits<double>::min();
+          invp2_alpha = invp2_num / invp2_den;
+        }
         invp2_dump_file << "EVENT " << CPPProcess::npar << " " << ninvar << " "
-                        << invp2_channel << " " << (double)( allMEs[ievt] ) << "\n";
+                        << invp2_channel << " " << invp2_alpha << " " << (double)( allMEs[ievt] ) << "\n";
         // one line per particle: P <E> <px> <py> <pz>
         for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
           invp2_dump_file << "P "

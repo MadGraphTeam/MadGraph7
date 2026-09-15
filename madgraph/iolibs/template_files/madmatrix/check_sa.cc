@@ -153,15 +153,19 @@ namespace
   }
 
   // One event's sampled invariants read from an invp2_dump.dat file (see MGONGPU_INVP2_DUMP):
-  // one entry per propagator - the packed (pid<<16)|mask word and the invariant p^2.
+  // one entry per propagator - the packed (pid<<16)|mask word and the invariant p^2 - plus the
+  // dumping build's channel/alpha_c/channel-weighted-ME for that event (see EVENT line below).
   struct DumpInvariants
   {
     std::vector<int> word;
     std::vector<double> p2;
+    unsigned int channel = 0; // channel/diagram this event was sampled from (0 => none/disabled)
+    double alpha = 0.;        // alpha_c for that channel, as computed by the dumping build
+    double me = 0.;           // channel-weighted |M|^2 (alpha_c * ME_c), as computed by the dumping build
   };
 
-  // Read an invp2_dump.dat text file: per event a header "EVENT <npar> <ninvar> <channel> <|M|^2>",
-  // then npar "P <E> <px> <py> <pz>" lines and ninvar "I <mask> <pid> <p2>" lines. Fills the
+  // Read an invp2_dump.dat text file: per event a header "EVENT <npar> <ninvar> <channel> <alpha_c>
+  // <|M|^2>", then npar "P <E> <px> <py> <pz>" lines and ninvar "I <mask> <pid> <p2>" lines. Fills the
   // momenta and the per-event invariants; ninvar (per-event count varies with the channel) is
   // returned as the max over events - the SoA stride (0 => none).
   bool read_dump_events( const std::string& path,
@@ -186,9 +190,12 @@ namespace
         return false;
       }
       int fnpar = 0, fninvar = 0;
-      unsigned int fchannel = 0; // selected channel/diagram (informational; ME uses masks, not channel)
-      std::string metok;         // informational |M|^2 (read as text: may be "nan" for padding events)
-      in >> fnpar >> fninvar >> fchannel >> metok;
+      unsigned int fchannel = 0; // channel/diagram this event was sampled from
+      // alpha/me: read as text, may be "nan" for padding events. 
+      std::string alphatok, metok;
+      in >> fnpar >> fninvar >> fchannel >> alphatok >> metok;
+      double falpha = 0.;
+      std::istringstream( alphatok ) >> falpha;
       if( fnpar != npar )
       {
         std::cerr << "ERROR! dump event has npar=" << fnpar << ", expected " << npar << std::endl;
@@ -220,6 +227,9 @@ namespace
       }
       double me = 0;
       if( !( std::istringstream( metok ) >> me ) || !std::isfinite( me ) ) continue;
+      inv.channel = fchannel;
+      inv.alpha = falpha;
+      inv.me = me;
       if( fninvar > ninvar ) ninvar = fninvar;
       events.push_back( ev );
       invariants.push_back( inv );
@@ -1198,8 +1208,19 @@ namespace
           print_momenta_table( std::cout, hstMomenta.data(), ievt );
           std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
                     << mes[ievt] << " GeV^" << kMEGeVExponent << std::endl
-                    << std::defaultfloat
-                    << std::string( SEP79, '-' ) << std::endl;
+                    << std::defaultfloat;
+	  // Dump print
+          if( !dumpInv.empty() )
+          {
+            const std::size_t base = (std::size_t)iiter * nevt;
+            const std::size_t src = base + std::min<std::size_t>( ievt, (std::size_t)nreal - 1 );
+            const DumpInvariants& di = dumpInv[src];
+            std::cout << " Dump channel = " << di.channel
+                      << " Dump alpha_c = " << std::scientific << std::setprecision( 16 ) << di.alpha
+                      << " Dump matrix element = " << di.me << std::endl
+                      << std::defaultfloat;
+          }
+          std::cout << std::string( SEP79, '-' ) << std::endl;
         }
       }
     }
