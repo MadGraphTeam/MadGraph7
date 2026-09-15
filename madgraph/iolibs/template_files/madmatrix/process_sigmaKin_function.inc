@@ -331,6 +331,10 @@
           MEs_sv *= numerators_sv[channelId - 1] / safe_den;
         }
       }
+      // Per-channel isolation build: zero out any event not sampled from channel MGONGPU_SELECTED_CHANNEL; negative computes all
+      if( MGONGPU_SELECTED_CHANNEL >= 0 && allChannelIds != nullptr &&
+          getChannelId( allChannelIds, ievt0, false ) != (unsigned int)MGONGPU_SELECTED_CHANNEL )
+        MEs_sv = fptype_sv{ 0 };
       //for( int ieppV = 0; ieppV < neppV; ieppV++ )
       //{
       //  const unsigned int ievt = ipagV * neppV + ieppV;

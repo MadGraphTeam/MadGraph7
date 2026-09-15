@@ -127,6 +127,11 @@
 #undef MGONGPU_NSIGHT_DEBUG // only option in HIP or C++
 #endif /* clang-format on */
 
+// Per channel isolation via -DMGONGPU_SELECTED_CHANNEL=c zeroes other channels contribution
+#ifndef MGONGPU_SELECTED_CHANNEL
+#define MGONGPU_SELECTED_CHANNEL -1
+#endif
+
 // SANITY CHECKS (floating point precision for everything but color algebra #537)
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_FPTYPE_DOUBLE or defined MGONGPU_FPTYPE_FLOAT

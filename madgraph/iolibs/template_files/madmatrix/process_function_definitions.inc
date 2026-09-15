@@ -731,6 +731,9 @@ namespace mg5amcCpu
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
+    // Per-channel isolation build: zero out any event not sampled from channel MGONGPU_SELECTED_CHANNEL; negative computes all
+    if( MGONGPU_SELECTED_CHANNEL >= 0 && allChannelIds != nullptr &&
+        allChannelIds[ievt] != (unsigned int)MGONGPU_SELECTED_CHANNEL ) allMEs[ievt] = 0;
     return;
   }
 #endif
