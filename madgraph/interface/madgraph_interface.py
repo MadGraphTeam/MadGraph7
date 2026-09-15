@@ -80,6 +80,7 @@ import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.save_load_object as save_load_object
 
 import madgraph.interface.extended_cmd as cmd
+import madgraph.interface.coloring_logging as coloring_logging
 import madgraph.interface.tutorials as tutorials
 import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.launch_ext_program as launch_ext
@@ -122,11 +123,31 @@ logger_tuto = logging.getLogger('tutorial') # -> stdout include instruction in
 logger_tuto_nlo = logging.getLogger('tutorial_aMCatNLO') # deprecated, unused
 logger_tuto_madloop = logging.getLogger('tutorial_MadLoop') # deprecated, unused
 
-# Central definition of the main interface prompt (bold blue "MG7> ")
-MG7_PROMPT = "\001\033[1;94m\002MG7> \001\033[0m\002"
+# The logo's blue (#3B6598). Empty under --plain (MG7_NO_COLOR).
+if os.environ.get('MG7_NO_COLOR'):
+    MG7_BLUE = ""
+elif os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit'):
+    MG7_BLUE = "\033[1;38;2;59;101;152m"
+else:
+    MG7_BLUE = "\033[1;34m" #fall back to bold blue
+MG7_RESET = "\033[0m" if MG7_BLUE else ""
+
 # the same prompt without the colour escapes, for quoting commands inside
 # tutorial text and help messages
 MG7_PROMPT_TEXT = "MG7> "
+
+# Stock macOS Python just leaks escape bytes into
+# the line editor instead of rendering. Keep the prompt plain there.
+try:
+    _prompt_is_libedit = 'libedit' in readline.__doc__
+except Exception:
+    _prompt_is_libedit = False
+
+#left open so whole command in blue
+if _prompt_is_libedit or not MG7_BLUE:
+    MG7_PROMPT = MG7_PROMPT_TEXT
+else:
+    MG7_PROMPT = "\001%s\002MG7> " % MG7_BLUE
 
 # The banner (and every easter-egg variant of it in madgraph.various.misc) is
 # written as a block of BANNER_WIDTH columns: '*', 58 characters of content and
@@ -226,7 +247,7 @@ class CmdExtended(cmd.Cmd):
     intro_banner = "************************************************************\n" + \
         "*                                                          *\n" + \
         "*                     W E L C O M E to                     *\n" + \
-        "*                    M A D G R A P H 7                     *\n" + \
+        "*                    M A D G R A P H " + MG7_BLUE + "7" + MG7_RESET + "                     *\n" + \
         "*                                                          *\n" + \
         "*                                                          *\n" + \
         "*                        ..........                        *\n" + \
@@ -237,11 +258,11 @@ class CmdExtended(cmd.Cmd):
         "*                 .     M  M   M  M  ..                    *\n" + \
         "*                 ..    M   M M   M ..                     *\n" + \
         "*                  .    M    M    M.                       *\n" + \
-        "*                  ...               7777777               *\n" + \
-        "*                    ....                 7                *\n" + \
-        "*                       ................ 7                 *\n" + \
-        "*                                       7                  *\n" + \
-        "*                                      7                   *\n" + \
+        "*                  ...               " + MG7_BLUE + "7777777" + MG7_RESET + "               *\n" + \
+        "*                    ....                 " + MG7_BLUE + "7" + MG7_RESET + "                *\n" + \
+        "*                       ................ " + MG7_BLUE + "7" + MG7_RESET + "                 *\n" + \
+        "*                                       " + MG7_BLUE + "7" + MG7_RESET + "                  *\n" + \
+        "*                                      " + MG7_BLUE + "7" + MG7_RESET + "                   *\n" + \
         "*                                                          *\n" + \
         "%s" + \
         "*                                                          *\n" + \
@@ -3357,6 +3378,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'acknowledged_v3.1_syntax': True,
                        'auto_update':7,
                        'heptools_install_dir': './HEPTools',
+                       'plain': False,
                        }
 
     options_madgraph= {'group_subprocesses': 'Auto',
@@ -3405,7 +3427,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     def preloop(self):
         """Initializing before starting the main loop"""
 
-        self.prompt = MG7_PROMPT
+        self.prompt = MG7_PROMPT_TEXT if self.options.get('plain') else MG7_PROMPT
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
@@ -8216,7 +8238,7 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
         config_file = open(config_path)
 
         # read the file and extract information
-        logger.info('load MG5 configuration from %s ' % config_file.name)
+        logger.info('load MG7 configuration from %s ' % config_file.name)
         for line in config_file:
             if '#' in line:
                 line = line.split('#',1)[0]
@@ -9574,6 +9596,26 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.check_set(args)
         
         self.options[args[0]] = args[1]
+
+    def set2_plain(self, args, log=True):
+        """Enable/Disable coloured output (equivalent to ./bin/madgraph --plain).
+        Example: set plain True
+        or: set plain False [Default]
+        """
+        args = ['plain'] + args
+        self.check_set(args)
+        if args[1] not in ['None', 'True', 'False']:
+            raise self.InvalidCmd('expected bool for plain')
+        self.options[args[0]] = eval(args[1])
+
+        if self.options['plain']:
+            os.environ['MG7_NO_COLOR'] = '1'
+            coloring_logging.NO_COLOR = True
+            self.prompt = MG7_PROMPT_TEXT
+        else:
+            os.environ.pop('MG7_NO_COLOR', None)
+            coloring_logging.NO_COLOR = False
+            self.prompt = MG7_PROMPT
 
     def set2_notification_center(self, args, log=True):
         """Enable/Disable the notification center (on desktop ubuntu/mac).

@@ -1034,6 +1034,10 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
                         line = 'EOF'
                     else:
                         line = line[:-1] # chop \n
+                # Coloured prompt
+                if not os.environ.get('MG7_NO_COLOR'):
+                    sys.stdout.write("\033[0m")
+                    sys.stdout.flush()
             try:
                 line = self.precmd(line)
                 stop = self.onecmd(line)

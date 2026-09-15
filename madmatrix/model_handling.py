@@ -1785,7 +1785,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         else:
             aloha_model.compute_all(save=False, custom_propa=True)
         for abstracthelas in dict(aloha_model).values():
-            print(type(abstracthelas), abstracthelas.name) # AV this is the loop on FFV functions
+            # print(type(abstracthelas), abstracthelas.name) # AV this is the loop on FFV functions
             h_rout, cc_rout = abstracthelas.write(output_dir=None, language=self.aloha_writer, mode='no_include')
             template_h_files.append(h_rout)
             template_cc_files.append(cc_rout)
