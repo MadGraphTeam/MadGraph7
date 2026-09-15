@@ -560,6 +560,11 @@ KERNELSPEC int mlm_clustering_walk(
     // second time.
     int step_bare[N_EXT_MAX - 3];
     int step_mother_leg1[N_EXT_MAX - 3], step_mother_leg2[N_EXT_MAX - 3];
+    // The external legs each daughter's line ends at, as the step found them:
+    // (daughter 1 first, daughter 2 second, -1 for none). madevent's ptclus
+    // loop reads ipart of the daughters, which the slots no longer hold once
+    // the mother has taken them over.
+    int step_daughter_legs[N_EXT_MAX - 3][4];
 
     bool by_production = jet_scale_scheme == SCHEME_PRODUCTION;
     FVal<T> ren_scale_val = 1.0;
@@ -615,6 +620,11 @@ KERNELSPEC int mlm_clustering_walk(
             ren_scale_val *= max_scale;
         }
         is_last_cluster &= ~((1 << particle1) | (1 << particle2));
+
+        step_daughter_legs[i][0] = rep1[particle1];
+        step_daughter_legs[i][1] = rep2[particle1];
+        step_daughter_legs[i][2] = rep1[particle2];
+        step_daughter_legs[i][3] = rep2[particle2];
 
         // Carry the parton line into the mother, which occupies slot
         // particle1. Only needed for the production scheme, but keeping it
@@ -856,11 +866,16 @@ KERNELSPEC int mlm_clustering_walk(
         };
 
         int steps = cluster_max + (leftover >= 0 ? 1 : 0);
+        // goodjet of the two daughters as each step meets them, before the
+        // step turns the first slot into the mother. The ptclus loop needs it.
+        bool step_daughter_goodjet[N_EXT_MAX - 3][2];
         for (int i = 0; i < cluster_max; ++i) {
             int data = cluster_history[i];
             int particle1 = data & 0xFF;
             int particle2 = (data >> 8) & 0xFF;
             int trace = cluster_trace[i];
+            step_daughter_goodjet[i][0] = goodjet[particle1];
+            step_daughter_goodjet[i][1] = goodjet[particle2];
             bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
             if (particle1 >= 2) {
                 // Final-state clustering. isjetvx() of reweight.f: a QCD
@@ -1046,6 +1061,71 @@ KERNELSPEC int mlm_clustering_walk(
         }
         for (int i = 0; i < cluster_max; ++i) {
             alphas_step[i] = pt_step[i];
+        }
+
+        // The jet scales madevent writes, the "Store jet info for matching"
+        // loop at the end of setclscales. A leg only takes a scale from a jet
+        // vertex its line is still a good jet at, and a line stops being one
+        // at the first leg that iqjets does not call a merging jet. Everything
+        // else is written at sqrt(s), which is what tells the shower's MLM
+        // matching to leave that parton alone: without this a VBF tagging
+        // quark that radiated a gluon kept the scale of that emission, and was
+        // matched and vetoed as if it were a merging jet.
+        //
+        // Only the production scheme is madevent's; the emission scheme keeps
+        // the booking above.
+        if (by_production) {
+            FVal<T> ptclus[N_EXT_MAX];
+            for (int leg = 0; leg < n_part; ++leg) {
+                ptclus[leg] = 0.0;
+            }
+            auto book = [&](int leg, bool jet_vertex, bool& good, FVal<T> scale) {
+                if (leg < 2) {
+                    return;
+                }
+                if (good && iqjets[leg] == 0) {
+                    good = false;
+                }
+                if (jet_vertex && good) {
+                    ptclus[leg] = max(ptclus[leg], scale);
+                } else if (ptclus[leg] == 0.0) {
+                    ptclus[leg] = FVal<T>(cm_energy);
+                }
+            };
+            for (int i = 0; i < cluster_max; ++i) {
+                int data = cluster_history[i];
+                int trace = cluster_trace[i];
+                bool is_qcd_vertex = (data >> 27) & 1;
+                bool is_jet1 = (data >> 28) & 1;
+                bool is_jet2 = (data >> 29) & 1;
+                bool is_jet_in = (trace & TRACE_IS_JET_IN) != 0;
+                // isjetvx: an initial-state vertex is a jet vertex when the
+                // emitted daughter is a jet, a final-state one as in the
+                // iqjets walk above.
+                bool jet_vertex = is_qcd_vertex &&
+                    ((data & 0xFF) < 2
+                         ? is_jet2
+                         : ((is_jet1 &&
+                             (is_jet_in || (trace & TRACE_MOTHER_IS_DAU2) != 0)) ||
+                            (is_jet2 &&
+                             (is_jet_in || (trace & TRACE_MOTHER_IS_DAU1) != 0))));
+                for (int k = 0; k < 2; ++k) {
+                    bool good = step_daughter_goodjet[i][k];
+                    for (int m = 0; m < 2; ++m) {
+                        book(step_daughter_legs[i][2 * k + m], jet_vertex, good, pt_step[i]);
+                    }
+                }
+            }
+            if (leftover >= 0) {
+                // the root is never a jet vertex (islast in isjetvx)
+                bool good = goodjet[leftover];
+                book(rep1[leftover], false, good, 0.0);
+                book(rep2[leftover], false, good, 0.0);
+            }
+            for (int leg = 2; leg < n_part; ++leg) {
+                outgoing_scales[leg - 2] =
+                    ptclus[leg] > 0.0 ? ptclus[leg] : FVal<T>(cm_energy);
+            }
         }
 
         FVal<T> s_last[2], s_central[2];

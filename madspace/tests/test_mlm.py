@@ -2086,3 +2086,80 @@ def test_a_diagram_history_uses_that_diagrams_own_line_flavours():
     assert np.mean(np.abs(t_channel[3][:, 2] / jet_pt - 1.0) < 1e-5) == 1.0
     # the s-channel one never clusters the jet with beam 0 before the W
     assert np.mean(np.abs(s_channel[3][:, 2] / jet_pt - 1.0) < 1e-5) < 0.5
+
+
+# --------------------------------------------------------------------------
+# jet scales of legs that are not merging jets, under scale_scheme = madevent
+# --------------------------------------------------------------------------
+
+
+def vbf_like_fsr_diagram():
+    """u d > u d g with a colourless t-channel Z between the two quark lines
+    and the gluon radiated off the outgoing u:
+
+      u* > u g      (final state, a jet vertex)
+      u Z > u*      (beam 0 line, through the Z)
+      Z d > d       (beam 1 line)
+
+    Neither quark is a merging jet in madevent (the Z stops both beam lines
+    being parton lines), the gluon is."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 2), (M_Z, 0.0, 23)],
+            "vertices": [["o0", "o2", "p0"], ["i0", "p1", "p0"], ["p1", "i1", "o1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+    ]
+
+
+def vbf_like_fsr_clustering(**kwargs):
+    diagrams = vbf_like_fsr_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=[2, 1, 2, 1, 21],
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        **kwargs,
+    )
+
+
+def fsr_jet_scales(**kwargs):
+    momenta = sample_momenta(vbf_like_fsr_diagram(), batch_size=500)
+    return run(vbf_like_fsr_clustering(**kwargs), momenta)[3]
+
+
+def test_a_quark_that_is_not_a_merging_jet_is_written_at_the_collider_energy():
+    """madevent writes ptclus = sqrt(s) for every leg iqjets does not call a
+    merging jet, even one that radiated at a QCD vertex: the shower's MLM
+    matching must leave it alone. The gluon keeps the scale of the vertex it
+    was emitted at. (The kt measure of these unconstrained points can itself
+    exceed sqrt(s), so the scales are compared to each other, not to it.)"""
+    production = fsr_jet_scales()
+    emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
+    np.testing.assert_array_equal(production[:, 0], CM_ENERGY)
+    np.testing.assert_array_equal(production[:, 1], CM_ENERGY)
+    np.testing.assert_array_equal(production[:, 2], emission[:, 2])
+    assert np.all(production[:, 2] != CM_ENERGY)
+
+
+def test_the_emission_scheme_still_books_the_radiating_quark():
+    """The emission scheme is not madevent's and keeps booking the (u, g)
+    vertex onto both of its legs."""
+    emission = fsr_jet_scales(jet_scale_scheme=ms.MLMClustering.JetScaleScheme.emission)
+    np.testing.assert_array_equal(emission[:, 0], emission[:, 2])
+    np.testing.assert_array_equal(emission[:, 1], CM_ENERGY)
