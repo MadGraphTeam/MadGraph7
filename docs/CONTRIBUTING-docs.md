@@ -278,4 +278,11 @@ in `instruction_set.yaml` has `desc:` fields for itself and each input/output.
 `python docs/check_doc_convention.py` prints
 `check_doc_convention: all phasespace/ and compgraphs/ classes pass`.
 
-Outside these, the `driver/` and top-level headers are still undocumented.
+**Every Python-bound `driver/` class is documented** — every class and struct
+reachable from the Python module has a class comment and, following the
+`driver/` convention above, a documented constructor and public methods/fields
+where those exist as real (non-aggregate) C++ declarations.
+
+The C++-only `driver/` helper types (internal job/runtime bookkeeping structs,
+`Tensor`'s private implementation, thread-pool and I/O plumbing not exposed to
+Python) and the top-level headers outside `driver/` are still undocumented.

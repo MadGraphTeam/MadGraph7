@@ -2106,80 +2106,147 @@ PYBIND11_MODULE(_madspace_py, m) {
         pydoc::doc("Verbosity")
     );
 
-    py::classh<MadnisTraining::Config>(m, "MadnisConfig")
+    py::classh<MadnisTraining::Config>(
+        m, "MadnisConfig", pydoc::doc("MadnisTraining::Config")
+    )
         .def(py::init<>())
-        .def_readwrite("learning_rate", &MadnisTraining::Config::learning_rate)
-        .def_readwrite("batches", &MadnisTraining::Config::batches)
-        .def_readwrite("log_interval", &MadnisTraining::Config::log_interval)
+        .def_readwrite(
+            "learning_rate",
+            &MadnisTraining::Config::learning_rate,
+            pydoc::doc("MadnisTraining::Config::learning_rate")
+        )
+        .def_readwrite(
+            "batches",
+            &MadnisTraining::Config::batches,
+            pydoc::doc("MadnisTraining::Config::batches")
+        )
+        .def_readwrite(
+            "log_interval",
+            &MadnisTraining::Config::log_interval,
+            pydoc::doc("MadnisTraining::Config::log_interval")
+        )
         .def_readwrite(
             "integration_history_length",
-            &MadnisTraining::Config::integration_history_length
+            &MadnisTraining::Config::integration_history_length,
+            pydoc::doc("MadnisTraining::Config::integration_history_length")
         )
         .def_readwrite(
             "channel_dropping_interval",
-            &MadnisTraining::Config::channel_dropping_interval
+            &MadnisTraining::Config::channel_dropping_interval,
+            pydoc::doc("MadnisTraining::Config::channel_dropping_interval")
         )
         .def_readwrite(
             "channel_dropping_threshold",
-            &MadnisTraining::Config::channel_dropping_threshold
+            &MadnisTraining::Config::channel_dropping_threshold,
+            pydoc::doc("MadnisTraining::Config::channel_dropping_threshold")
         )
         .def_readwrite(
             "cpu_generator_batch_size",
-            &MadnisTraining::Config::cpu_generator_batch_size
+            &MadnisTraining::Config::cpu_generator_batch_size,
+            pydoc::doc("MadnisTraining::Config::cpu_generator_batch_size")
         )
         .def_readwrite(
             "gpu_generator_batch_size",
-            &MadnisTraining::Config::gpu_generator_batch_size
+            &MadnisTraining::Config::gpu_generator_batch_size,
+            pydoc::doc("MadnisTraining::Config::gpu_generator_batch_size")
         )
         .def_readwrite(
             "gpu_generator_batch_granularity",
-            &MadnisTraining::Config::gpu_generator_batch_granularity
+            &MadnisTraining::Config::gpu_generator_batch_granularity,
+            pydoc::doc("MadnisTraining::Config::gpu_generator_batch_granularity")
         )
         .def_readwrite(
             "generator_target_size_factor",
-            &MadnisTraining::Config::generator_target_size_factor
-        )
-        .def_readwrite("batch_size_offset", &MadnisTraining::Config::batch_size_offset)
-        .def_readwrite(
-            "batch_size_per_channel", &MadnisTraining::Config::batch_size_per_channel
+            &MadnisTraining::Config::generator_target_size_factor,
+            pydoc::doc("MadnisTraining::Config::generator_target_size_factor")
         )
         .def_readwrite(
-            "uniform_channel_ratio", &MadnisTraining::Config::uniform_channel_ratio
-        )
-        .def_readwrite("lr_schedule", &MadnisTraining::Config::lr_schedule)
-        .def_readwrite("adam_beta1", &MadnisTraining::Config::adam_beta1)
-        .def_readwrite("adam_beta2", &MadnisTraining::Config::adam_beta2)
-        .def_readwrite("adam_eps", &MadnisTraining::Config::adam_eps)
-        .def_readwrite("adam_weight_decay", &MadnisTraining::Config::adam_weight_decay)
-        .def_readwrite(
-            "grad_clip_threshold", &MadnisTraining::Config::grad_clip_threshold
-        )
-        .def_readwrite("buffer_capacity", &MadnisTraining::Config::buffer_capacity)
-        .def_readwrite(
-            "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
+            "batch_size_offset",
+            &MadnisTraining::Config::batch_size_offset,
+            pydoc::doc("MadnisTraining::Config::batch_size_offset")
         )
         .def_readwrite(
-            "buffered_steps_fraction", &MadnisTraining::Config::buffered_steps_fraction
+            "batch_size_per_channel",
+            &MadnisTraining::Config::batch_size_per_channel,
+            pydoc::doc("MadnisTraining::Config::batch_size_per_channel")
         )
         .def_readwrite(
-            "buffer_skip_batches", &MadnisTraining::Config::buffer_skip_batches
+            "uniform_channel_ratio",
+            &MadnisTraining::Config::uniform_channel_ratio,
+            pydoc::doc("MadnisTraining::Config::uniform_channel_ratio")
+        )
+        .def_readwrite(
+            "lr_schedule",
+            &MadnisTraining::Config::lr_schedule,
+            pydoc::doc("MadnisTraining::Config::lr_schedule")
+        )
+        .def_readwrite(
+            "adam_beta1",
+            &MadnisTraining::Config::adam_beta1,
+            pydoc::doc("MadnisTraining::Config::adam_beta1")
+        )
+        .def_readwrite(
+            "adam_beta2",
+            &MadnisTraining::Config::adam_beta2,
+            pydoc::doc("MadnisTraining::Config::adam_beta2")
+        )
+        .def_readwrite(
+            "adam_eps",
+            &MadnisTraining::Config::adam_eps,
+            pydoc::doc("MadnisTraining::Config::adam_eps")
+        )
+        .def_readwrite(
+            "adam_weight_decay",
+            &MadnisTraining::Config::adam_weight_decay,
+            pydoc::doc("MadnisTraining::Config::adam_weight_decay")
+        )
+        .def_readwrite(
+            "grad_clip_threshold",
+            &MadnisTraining::Config::grad_clip_threshold,
+            pydoc::doc("MadnisTraining::Config::grad_clip_threshold")
+        )
+        .def_readwrite(
+            "buffer_capacity",
+            &MadnisTraining::Config::buffer_capacity,
+            pydoc::doc("MadnisTraining::Config::buffer_capacity")
+        )
+        .def_readwrite(
+            "minimum_buffer_size",
+            &MadnisTraining::Config::minimum_buffer_size,
+            pydoc::doc("MadnisTraining::Config::minimum_buffer_size")
+        )
+        .def_readwrite(
+            "buffered_steps_fraction",
+            &MadnisTraining::Config::buffered_steps_fraction,
+            pydoc::doc("MadnisTraining::Config::buffered_steps_fraction")
+        )
+        .def_readwrite(
+            "buffer_skip_batches",
+            &MadnisTraining::Config::buffer_skip_batches,
+            pydoc::doc("MadnisTraining::Config::buffer_skip_batches")
         )
         .def_readwrite(
             "buffer_unweighting_quantile",
-            &MadnisTraining::Config::buffer_unweighting_quantile
+            &MadnisTraining::Config::buffer_unweighting_quantile,
+            pydoc::doc("MadnisTraining::Config::buffer_unweighting_quantile")
         )
         .def_readwrite(
-            "fixed_cwnet_fraction", &MadnisTraining::Config::fixed_cwnet_fraction
+            "fixed_cwnet_fraction",
+            &MadnisTraining::Config::fixed_cwnet_fraction,
+            pydoc::doc("MadnisTraining::Config::fixed_cwnet_fraction")
         )
         .def_readwrite(
-            "softclip_threshold", &MadnisTraining::Config::softclip_threshold
+            "softclip_threshold",
+            &MadnisTraining::Config::softclip_threshold,
+            pydoc::doc("MadnisTraining::Config::softclip_threshold")
         )
         .def_readwrite(
             "compressed_channel_weight_count",
-            &MadnisTraining::Config::compressed_channel_weight_count
+            &MadnisTraining::Config::compressed_channel_weight_count,
+            pydoc::doc("MadnisTraining::Config::compressed_channel_weight_count")
         );
 
-    py::classh<MadnisTraining>(m, "MadnisTraining")
+    py::classh<MadnisTraining>(m, "MadnisTraining", pydoc::doc("MadnisTraining"))
         .def(
             py::init<
                 ContextPtr,
@@ -2193,11 +2260,25 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             py::arg("integrands"),
             py::arg("cwnet"),
-            py::arg("seed") = std::nullopt
+            py::arg("seed") = std::nullopt,
+            pydoc::doc("MadnisTraining::MadnisTraining")
         )
-        .def("train_step", &MadnisTraining::train_step, py::arg("batch_index"))
-        .def("active_channels", &MadnisTraining::active_channels)
-        .def("active_channel_count", &MadnisTraining::active_channel_count);
+        .def(
+            "train_step",
+            &MadnisTraining::train_step,
+            py::arg("batch_index"),
+            pydoc::doc("MadnisTraining::train_step")
+        )
+        .def(
+            "active_channels",
+            &MadnisTraining::active_channels,
+            pydoc::doc("MadnisTraining::active_channels")
+        )
+        .def(
+            "active_channel_count",
+            &MadnisTraining::active_channel_count,
+            pydoc::doc("MadnisTraining::active_channel_count")
+        );
 
     py::classh<StatusFile>(m, "StatusFile", pydoc::doc("StatusFile"))
         .def(
@@ -2207,7 +2288,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("StatusFile::StatusFile")
         );
 
-    py::classh<MultiMadnisTraining::TrainingArgs>(m, "TrainingArgs")
+    py::classh<MultiMadnisTraining::TrainingArgs>(
+        m, "TrainingArgs", pydoc::doc("MultiMadnisTraining::TrainingArgs")
+    )
         .def(
             py::init<
                 const MadnisTraining::Config&,
@@ -2218,7 +2301,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("cwnet")
         );
 
-    py::classh<MultiMadnisTraining>(m, "MultiMadnisTraining")
+    py::classh<MultiMadnisTraining>(
+        m, "MultiMadnisTraining", pydoc::doc("MultiMadnisTraining")
+    )
         .def(
             py::init<
                 ContextPtr,
@@ -2232,47 +2317,126 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("training_args"),
             py::arg("verbosity"),
             py::arg("status_file") = std::shared_ptr<StatusFile>(),
-            py::arg("seed") = std::nullopt
+            py::arg("seed") = std::nullopt,
+            pydoc::doc("MultiMadnisTraining::MultiMadnisTraining")
         )
-        .def("train", &MultiMadnisTraining::train)
-        .def("active_channels", &MultiMadnisTraining::active_channels);
+        .def(
+            "train",
+            &MultiMadnisTraining::train,
+            pydoc::doc("MultiMadnisTraining::train")
+        )
+        .def(
+            "active_channels",
+            &MultiMadnisTraining::active_channels,
+            pydoc::doc("MultiMadnisTraining::active_channels")
+        );
 
-    py::classh<GeneratorConfig>(m, "GeneratorConfig")
+    py::classh<GeneratorConfig>(m, "GeneratorConfig", pydoc::doc("GeneratorConfig"))
         .def(py::init<>())
-        .def_readwrite("target_count", &GeneratorConfig::target_count)
-        .def_readwrite("vegas_damping", &GeneratorConfig::vegas_damping)
         .def_readwrite(
-            "max_overweight_truncation", &GeneratorConfig::max_overweight_truncation
+            "target_count",
+            &GeneratorConfig::target_count,
+            pydoc::doc("GeneratorConfig::target_count")
         )
         .def_readwrite(
-            "freeze_max_weight_after", &GeneratorConfig::freeze_max_weight_after
+            "vegas_damping",
+            &GeneratorConfig::vegas_damping,
+            pydoc::doc("GeneratorConfig::vegas_damping")
         )
-        .def_readwrite("start_batch_size", &GeneratorConfig::start_batch_size)
-        .def_readwrite("max_batch_size", &GeneratorConfig::max_batch_size)
-        .def_readwrite("survey_min_iters", &GeneratorConfig::survey_min_iters)
-        .def_readwrite("survey_max_iters", &GeneratorConfig::survey_max_iters)
         .def_readwrite(
-            "survey_target_precision", &GeneratorConfig::survey_target_precision
+            "max_overweight_truncation",
+            &GeneratorConfig::max_overweight_truncation,
+            pydoc::doc("GeneratorConfig::max_overweight_truncation")
         )
-        .def_readwrite("optimization_patience", &GeneratorConfig::optimization_patience)
         .def_readwrite(
-            "optimization_threshold", &GeneratorConfig::optimization_threshold
+            "freeze_max_weight_after",
+            &GeneratorConfig::freeze_max_weight_after,
+            pydoc::doc("GeneratorConfig::freeze_max_weight_after")
         )
-        .def_readwrite("cpu_batch_size", &GeneratorConfig::cpu_batch_size)
-        .def_readwrite("gpu_batch_size", &GeneratorConfig::gpu_batch_size)
-        .def_readwrite("verbosity", &GeneratorConfig::verbosity)
-        .def_readwrite("write_live_data", &GeneratorConfig::write_live_data)
-        .def_readwrite("combine_thread_count", &GeneratorConfig::combine_thread_count)
         .def_readwrite(
-            "cut_efficiency_threshold", &GeneratorConfig::cut_efficiency_threshold
+            "start_batch_size",
+            &GeneratorConfig::start_batch_size,
+            pydoc::doc("GeneratorConfig::start_batch_size")
         )
-        .def_readwrite("max_cut_repetitions", &GeneratorConfig::max_cut_repetitions)
         .def_readwrite(
-            "finish_remaining_fraction", &GeneratorConfig::finish_remaining_fraction
+            "max_batch_size",
+            &GeneratorConfig::max_batch_size,
+            pydoc::doc("GeneratorConfig::max_batch_size")
         )
-        .def_readwrite("max_batch_fraction", &GeneratorConfig::max_batch_fraction)
         .def_readwrite(
-            "batch_overshoot_sigma", &GeneratorConfig::batch_overshoot_sigma
+            "survey_min_iters",
+            &GeneratorConfig::survey_min_iters,
+            pydoc::doc("GeneratorConfig::survey_min_iters")
+        )
+        .def_readwrite(
+            "survey_max_iters",
+            &GeneratorConfig::survey_max_iters,
+            pydoc::doc("GeneratorConfig::survey_max_iters")
+        )
+        .def_readwrite(
+            "survey_target_precision",
+            &GeneratorConfig::survey_target_precision,
+            pydoc::doc("GeneratorConfig::survey_target_precision")
+        )
+        .def_readwrite(
+            "optimization_patience",
+            &GeneratorConfig::optimization_patience,
+            pydoc::doc("GeneratorConfig::optimization_patience")
+        )
+        .def_readwrite(
+            "optimization_threshold",
+            &GeneratorConfig::optimization_threshold,
+            pydoc::doc("GeneratorConfig::optimization_threshold")
+        )
+        .def_readwrite(
+            "cpu_batch_size",
+            &GeneratorConfig::cpu_batch_size,
+            pydoc::doc("GeneratorConfig::cpu_batch_size")
+        )
+        .def_readwrite(
+            "gpu_batch_size",
+            &GeneratorConfig::gpu_batch_size,
+            pydoc::doc("GeneratorConfig::gpu_batch_size")
+        )
+        .def_readwrite(
+            "verbosity",
+            &GeneratorConfig::verbosity,
+            pydoc::doc("GeneratorConfig::verbosity")
+        )
+        .def_readwrite(
+            "write_live_data",
+            &GeneratorConfig::write_live_data,
+            pydoc::doc("GeneratorConfig::write_live_data")
+        )
+        .def_readwrite(
+            "combine_thread_count",
+            &GeneratorConfig::combine_thread_count,
+            pydoc::doc("GeneratorConfig::combine_thread_count")
+        )
+        .def_readwrite(
+            "cut_efficiency_threshold",
+            &GeneratorConfig::cut_efficiency_threshold,
+            pydoc::doc("GeneratorConfig::cut_efficiency_threshold")
+        )
+        .def_readwrite(
+            "max_cut_repetitions",
+            &GeneratorConfig::max_cut_repetitions,
+            pydoc::doc("GeneratorConfig::max_cut_repetitions")
+        )
+        .def_readwrite(
+            "finish_remaining_fraction",
+            &GeneratorConfig::finish_remaining_fraction,
+            pydoc::doc("GeneratorConfig::finish_remaining_fraction")
+        )
+        .def_readwrite(
+            "max_batch_fraction",
+            &GeneratorConfig::max_batch_fraction,
+            pydoc::doc("GeneratorConfig::max_batch_fraction")
+        )
+        .def_readwrite(
+            "batch_overshoot_sigma",
+            &GeneratorConfig::batch_overshoot_sigma,
+            pydoc::doc("GeneratorConfig::batch_overshoot_sigma")
         );
 
     m.def(
@@ -2283,41 +2447,101 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("count_opt"),
         py::arg("abs_cross_section_count"),
         py::arg("abs_cross_section_rel_error"),
-        py::arg("config")
+        py::arg("config"),
+        pydoc::doc("compute_generation_batch_event_count")
     );
 
     m.def(
         "select_combine_channel_index",
         &select_combine_channel_index,
         py::arg("cum_counts"),
-        py::arg("random_index")
+        py::arg("random_index"),
+        pydoc::doc("select_combine_channel_index")
     );
 
-    py::classh<GeneratorStatus>(m, "GeneratorStatus")
+    py::classh<GeneratorStatus>(m, "GeneratorStatus", pydoc::doc("GeneratorStatus"))
         .def(py::init<>())
-        .def_readwrite("subprocess", &GeneratorStatus::subprocess)
-        .def_readwrite("name", &GeneratorStatus::name)
-        .def_readwrite("mean", &GeneratorStatus::mean)
-        .def_readwrite("error", &GeneratorStatus::error)
-        .def_readwrite("mean_abs", &GeneratorStatus::mean_abs)
-        .def_readwrite("error_abs", &GeneratorStatus::error_abs)
-        .def_readwrite("rel_std_dev", &GeneratorStatus::rel_std_dev)
-        .def_readwrite("count", &GeneratorStatus::count)
-        .def_readwrite("count_opt", &GeneratorStatus::count_opt)
-        .def_readwrite("count_after_cuts", &GeneratorStatus::count_after_cuts)
-        .def_readwrite("count_after_cuts_opt", &GeneratorStatus::count_after_cuts_opt)
-        .def_readwrite("count_unweighted", &GeneratorStatus::count_unweighted)
-        .def_readwrite("count_target", &GeneratorStatus::count_target)
-        .def_readwrite("iterations", &GeneratorStatus::iterations)
-        .def_readwrite("optimized", &GeneratorStatus::optimized)
-        .def_readwrite("done", &GeneratorStatus::done);
+        .def_readwrite(
+            "subprocess",
+            &GeneratorStatus::subprocess,
+            pydoc::doc("GeneratorStatus::subprocess")
+        )
+        .def_readwrite(
+            "name", &GeneratorStatus::name, pydoc::doc("GeneratorStatus::name")
+        )
+        .def_readwrite(
+            "mean", &GeneratorStatus::mean, pydoc::doc("GeneratorStatus::mean")
+        )
+        .def_readwrite(
+            "error", &GeneratorStatus::error, pydoc::doc("GeneratorStatus::error")
+        )
+        .def_readwrite(
+            "mean_abs",
+            &GeneratorStatus::mean_abs,
+            pydoc::doc("GeneratorStatus::mean_abs")
+        )
+        .def_readwrite(
+            "error_abs",
+            &GeneratorStatus::error_abs,
+            pydoc::doc("GeneratorStatus::error_abs")
+        )
+        .def_readwrite(
+            "rel_std_dev",
+            &GeneratorStatus::rel_std_dev,
+            pydoc::doc("GeneratorStatus::rel_std_dev")
+        )
+        .def_readwrite(
+            "count", &GeneratorStatus::count, pydoc::doc("GeneratorStatus::count")
+        )
+        .def_readwrite(
+            "count_opt",
+            &GeneratorStatus::count_opt,
+            pydoc::doc("GeneratorStatus::count_opt")
+        )
+        .def_readwrite(
+            "count_after_cuts",
+            &GeneratorStatus::count_after_cuts,
+            pydoc::doc("GeneratorStatus::count_after_cuts")
+        )
+        .def_readwrite(
+            "count_after_cuts_opt",
+            &GeneratorStatus::count_after_cuts_opt,
+            pydoc::doc("GeneratorStatus::count_after_cuts_opt")
+        )
+        .def_readwrite(
+            "count_unweighted",
+            &GeneratorStatus::count_unweighted,
+            pydoc::doc("GeneratorStatus::count_unweighted")
+        )
+        .def_readwrite(
+            "count_target",
+            &GeneratorStatus::count_target,
+            pydoc::doc("GeneratorStatus::count_target")
+        )
+        .def_readwrite(
+            "iterations",
+            &GeneratorStatus::iterations,
+            pydoc::doc("GeneratorStatus::iterations")
+        )
+        .def_readwrite(
+            "optimized",
+            &GeneratorStatus::optimized,
+            pydoc::doc("GeneratorStatus::optimized")
+        )
+        .def_readwrite(
+            "done", &GeneratorStatus::done, pydoc::doc("GeneratorStatus::done")
+        );
 
-    py::classh<Histogram>(m, "Histogram")
-        .def_readonly("name", &Histogram::name)
-        .def_readonly("min", &Histogram::min)
-        .def_readonly("max", &Histogram::max)
-        .def_readonly("bin_values", &Histogram::bin_values)
-        .def_readonly("bin_errors", &Histogram::bin_errors);
+    py::classh<Histogram>(m, "Histogram", pydoc::doc("Histogram"))
+        .def_readonly("name", &Histogram::name, pydoc::doc("Histogram::name"))
+        .def_readonly("min", &Histogram::min, pydoc::doc("Histogram::min"))
+        .def_readonly("max", &Histogram::max, pydoc::doc("Histogram::max"))
+        .def_readonly(
+            "bin_values", &Histogram::bin_values, pydoc::doc("Histogram::bin_values")
+        )
+        .def_readonly(
+            "bin_errors", &Histogram::bin_errors, pydoc::doc("Histogram::bin_errors")
+        );
 
     py::classh<LHEHeader>(m, "LHEHeader", pydoc::doc("LHEHeader"))
         .def(
@@ -2729,7 +2953,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "line_count", &PrettyBox::line_count, pydoc::doc("PrettyBox::line_count")
         );
 
-    py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
+    py::classh<ChannelEventGenerator>(
+        m, "ChannelEventGenerator", pydoc::doc("ChannelEventGenerator")
+    )
         .def_static(
             "load",
             &ChannelEventGenerator::load,
@@ -2737,7 +2963,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("contexts"),
             py::arg("event_file"),
             py::arg("weight_file"),
-            py::arg("config")
+            py::arg("config"),
+            pydoc::doc("ChannelEventGenerator::load")
         )
         .def(
             py::init<
@@ -2756,10 +2983,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             py::arg("subprocess_index"),
             py::arg("name"),
-            py::arg("histograms")
+            py::arg("histograms"),
+            pydoc::doc("ChannelEventGenerator::ChannelEventGenerator")
         )
-        .def("status", &ChannelEventGenerator::status)
-        .def("save", &ChannelEventGenerator::save, py::arg("save"));
+        .def(
+            "status",
+            &ChannelEventGenerator::status,
+            pydoc::doc("ChannelEventGenerator::status")
+        )
+        .def(
+            "save",
+            &ChannelEventGenerator::save,
+            py::arg("save"),
+            pydoc::doc("ChannelEventGenerator::save")
+        );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
         .def(
@@ -3104,7 +3341,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("momenta") = nested_vector3<double>{},
             py::arg("alpha_qcd") = std::vector<double>{}
         );
-    py::classh<EventHistogramSpec>(m, "EventHistogramSpec")
+    py::classh<EventHistogramSpec>(
+        m, "EventHistogramSpec", pydoc::doc("EventHistogramSpec")
+    )
         .def(
             py::init([](const std::string& name,
                         double min,
@@ -3117,11 +3356,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max"),
             py::arg("bin_count")
         )
-        .def_readwrite("name", &EventHistogramSpec::name)
-        .def_readwrite("min", &EventHistogramSpec::min)
-        .def_readwrite("max", &EventHistogramSpec::max)
-        .def_readwrite("bin_count", &EventHistogramSpec::bin_count);
-    py::classh<SubprocessObservables>(m, "SubprocessObservables")
+        .def_readwrite(
+            "name", &EventHistogramSpec::name, pydoc::doc("EventHistogramSpec::name")
+        )
+        .def_readwrite(
+            "min", &EventHistogramSpec::min, pydoc::doc("EventHistogramSpec::min")
+        )
+        .def_readwrite(
+            "max", &EventHistogramSpec::max, pydoc::doc("EventHistogramSpec::max")
+        )
+        .def_readwrite(
+            "bin_count",
+            &EventHistogramSpec::bin_count,
+            pydoc::doc("EventHistogramSpec::bin_count")
+        );
+    py::classh<SubprocessObservables>(
+        m, "SubprocessObservables", pydoc::doc("SubprocessObservables")
+    )
         .def(
             py::init([](const ObservableValues& values, std::size_t particle_count) {
                 return SubprocessObservables{values, particle_count};
@@ -3129,7 +3380,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("values"),
             py::arg("particle_count")
         );
-    py::classh<EventHistograms>(m, "EventHistograms")
+    py::classh<EventHistograms>(m, "EventHistograms", pydoc::doc("EventHistograms"))
         .def(
             py::init<
                 ContextPtr,
@@ -3137,10 +3388,17 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::optional<SubprocessObservables>>&>(),
             py::arg("context"),
             py::arg("specs"),
-            py::arg("observables")
+            py::arg("observables"),
+            pydoc::doc("EventHistograms::EventHistograms")
         )
-        .def_property_readonly("specs", &EventHistograms::specs)
-        .def_property_readonly("weight_count", &EventHistograms::weight_count)
+        .def_property_readonly(
+            "specs", &EventHistograms::specs, pydoc::doc("EventHistograms::specs")
+        )
+        .def_property_readonly(
+            "weight_count",
+            &EventHistograms::weight_count,
+            pydoc::doc("EventHistograms::weight_count")
+        )
         .def(
             "fill",
             [](EventHistograms& hists,
@@ -3196,10 +3454,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             [](const EventHistograms& hists, const SystematicsCalculator* systematics) {
                 return hists.to_json(systematics).dump();
             },
-            py::arg("systematics") = nullptr
+            py::arg("systematics") = nullptr,
+            pydoc::doc("EventHistograms::to_json")
         );
 
-    py::classh<EventGenerator>(m, "EventGenerator")
+    py::classh<EventGenerator>(m, "EventGenerator", pydoc::doc("EventGenerator"))
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
             py::init<
@@ -3216,16 +3475,27 @@ PYBIND11_MODULE(_madspace_py, m) {
                 "config",
                 EventGenerator::default_config,
                 "EventGenerator.default_config"
-            )
+            ),
+            pydoc::doc("EventGenerator::EventGenerator")
         )
-        .def("survey", &EventGenerator::survey, py::arg("survey_pass") = 0)
-        .def("generate", &EventGenerator::generate)
+        .def(
+            "survey",
+            &EventGenerator::survey,
+            py::arg("survey_pass") = 0,
+            pydoc::doc("EventGenerator::survey")
+        )
+        .def(
+            "generate",
+            &EventGenerator::generate,
+            pydoc::doc("EventGenerator::generate")
+        )
         .def(
             "combine_to_compact_npy",
             &EventGenerator::combine_to_compact_npy,
             py::arg("file_name"),
             py::arg("systematics") = nullptr,
-            py::arg("histograms") = nullptr
+            py::arg("histograms") = nullptr,
+            pydoc::doc("EventGenerator::combine_to_compact_npy")
         )
         .def(
             "combine_to_lhe_npy",
@@ -3233,7 +3503,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file_name"),
             py::arg("lhe_completer"),
             py::arg("systematics") = nullptr,
-            py::arg("histograms") = nullptr
+            py::arg("histograms") = nullptr,
+            pydoc::doc("EventGenerator::combine_to_lhe_npy")
         )
         .def(
             "combine_to_lhe",
@@ -3242,13 +3513,30 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("lhe_completer"),
             py::arg_v("meta", LHEMeta{}, "LHEMeta()"),
             py::arg("systematics") = nullptr,
-            py::arg("histograms") = nullptr
+            py::arg("histograms") = nullptr,
+            pydoc::doc("EventGenerator::combine_to_lhe")
         )
-        .def("status", &EventGenerator::status)
-        .def("channel_status", &EventGenerator::channel_status)
-        .def("histograms", &EventGenerator::histograms)
-        .def("used_globals", &EventGenerator::used_globals)
-        .def("channels", &EventGenerator::channels);
+        .def("status", &EventGenerator::status, pydoc::doc("EventGenerator::status"))
+        .def(
+            "channel_status",
+            &EventGenerator::channel_status,
+            pydoc::doc("EventGenerator::channel_status")
+        )
+        .def(
+            "histograms",
+            &EventGenerator::histograms,
+            pydoc::doc("EventGenerator::histograms")
+        )
+        .def(
+            "used_globals",
+            &EventGenerator::used_globals,
+            pydoc::doc("EventGenerator::used_globals")
+        )
+        .def(
+            "channels",
+            &EventGenerator::channels,
+            pydoc::doc("EventGenerator::channels")
+        );
 
     py::classh<Logger> logger(m, "Logger", pydoc::doc("Logger"));
     add_enum<Logger::LogLevel>(
