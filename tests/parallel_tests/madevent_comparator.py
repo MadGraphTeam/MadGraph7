@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -581,6 +581,11 @@ class MG5Runner(MadEventRunner):
         return output
 
 
+# Default PDF of the mg7 run_card.toml, pinned into the MG5 side too (see
+# _patch_run_card_toml / the 'set lhaid' below); both runners need it on disk.
+_MG7_REFERENCE_PDF = 'NNPDF40_lo_as_01180'
+
+
 class MG7Runner(MG5Runner):
     """Runner object for the MadGraph7 default ('mg7') exporter.
 
@@ -602,31 +607,13 @@ class MG7Runner(MG5Runner):
 
     @staticmethod
     def resolve_lhapdf_data_path(lhapdf_config=None):
-        """Return a usable LHAPDF data dir, or None.
+        """A PDF-set directory holding the reference set, or None.
 
-        Tries, in order: the ``LHAPDF_DATA_PATH`` env var, the explicitly given
-        ``lhapdf-config`` (e.g. the one MG5 is configured with), and finally a
-        ``lhapdf-config`` found on PATH. A candidate is only accepted if the
-        directory exists and is non-empty (the PATH lhapdf-config sometimes
-        points at an empty share dir).
+        Only used to decide whether this runner can run: bin/generate_events
+        resolves LHAPDF from the configuration itself (see misc.resolve_lhapdf).
         """
-        if os.environ.get('LHAPDF_DATA_PATH'):
-            return os.environ['LHAPDF_DATA_PATH']
-        candidates = []
-        if lhapdf_config and lhapdf_config not in ('lhapdf-config', None):
-            candidates.append(lhapdf_config)
-        on_path = misc.which('lhapdf-config')
-        if on_path:
-            candidates.append(on_path)
-        for lc in candidates:
-            try:
-                datadir = subprocess.check_output(
-                    [lc, '--datadir']).decode().strip()
-            except Exception:
-                continue
-            if datadir and os.path.isdir(datadir) and os.listdir(datadir):
-                return datadir
-        return None
+        options = {'lhapdf': lhapdf_config} if lhapdf_config else {}
+        return misc.resolve_lhapdf(options).find_set(_MG7_REFERENCE_PDF)
 
     @classmethod
     def is_available(cls):
@@ -684,18 +671,9 @@ class MG7Runner(MG5Runner):
         # but ships with fixed_(ren|fact)_scale=true, so flip those off.
         self._patch_run_card_toml(os.path.join(dir_name, 'Cards', 'run_card.toml'))
 
-        # Drive the mg7 survey directly (bin/generate_events), with a resolved
-        # LHAPDF data path so hadronic PDFs load without the python lhapdf
-        # module. Prefer the lhapdf-config MG5 is configured with.
-        env = dict(os.environ)
-        mg5_lhapdf = None
-        try:
-            mg5_lhapdf = cmd.options.get('lhapdf')
-        except Exception:
-            mg5_lhapdf = None
-        datadir = self.resolve_lhapdf_data_path(mg5_lhapdf)
-        if datadir:
-            env['LHAPDF_DATA_PATH'] = datadir
+        # Drive the mg7 survey directly (bin/generate_events). It resolves
+        # LHAPDF from Cards/me5_configuration.txt on its own, so no LHAPDF
+        # environment is handed down here.
         # Run the full pipeline (survey + integration): the aggregated,
         # converged cross-section ends up in process.mean of info.json. The
         # survey-only estimate is far too biased to use here.
@@ -703,7 +681,7 @@ class MG7Runner(MG5Runner):
         log_path = os.path.join(dir_name, 'mg7_survey.log')
         with open(log_path, 'w') as logf:
             ret = subprocess.call([sys.executable, gen, '-f'],
-                                  cwd=dir_name, env=env,
+                                  cwd=dir_name,
                                   stdout=logf, stderr=subprocess.STDOUT)
         if ret != 0:
             raise self.MERunnerException(
@@ -749,8 +727,8 @@ class MG5RunnerMG7Aligned(MG5Runner):
     run_card.toml defaults, so its cross-section is directly comparable with
     :class:`MG7Runner`.
 
-    Matched settings: e_cm = 13 TeV (ebeam 6500 each), PDF NNPDF40MC_lo_as_01180
-    (lhaid 338500), the dynamical HT/2 scale (dynamical_scale_choice=3, which is
+    Matched settings: e_cm = 13 TeV (ebeam 6500 each), PDF NNPDF40_lo_as_01180
+    (lhaid 331900), the dynamical HT/2 scale (dynamical_scale_choice=3, which is
     the madevent equivalent of mg7's ``half_transverse_mass``), and the mg7 jet
     cuts (pt>20, |eta|<5, dR>0.4).  Returns the total cross-section under the
     'cross' key so the comparison is total-to-total.
@@ -758,10 +736,10 @@ class MG5RunnerMG7Aligned(MG5Runner):
 
     name = 'MadGraph madevent (mg7-aligned)'
     type = 'v5_mg7aligned'
-    # lhaid for NNPDF40MC_lo_as_01180 (the mg7 run_card.toml default PDF), so
+    # lhaid for NNPDF40_lo_as_01180 (the mg7 run_card.toml default PDF), so
     # both sides use exactly the same LHAPDF set. Must be kept in sync with the
     # [beam] pdf default in banner.py.
-    lhaid = 338500
+    lhaid = 331900
 
     def format_mg5_proc_card(self, proc_list, model, orders):
         if model != 'mssm':
@@ -782,7 +760,7 @@ class MG5RunnerMG7Aligned(MG5Runner):
         # --- align with the mg7 run_card.toml -------------------------------
         v5_string += "set ebeam1 6500\n"
         v5_string += "set ebeam2 6500\n"
-        # Use exactly the mg7 run_card.toml PDF (NNPDF40MC_lo_as_01180) via
+        # Use exactly the mg7 run_card.toml PDF (NNPDF40_lo_as_01180) via
         # LHAPDF, now that the AlphaS_FlavorScheme metadata hotfix patches the
         # source set in pdfsets_dir.
         v5_string += "set pdlabel lhapdf\n"

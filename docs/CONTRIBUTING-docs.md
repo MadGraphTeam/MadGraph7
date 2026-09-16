@@ -180,7 +180,7 @@ lists and **no** References. Every concrete `*Instruction` subclass, `ShapeExpr`
 `opcodes::Opcode` and the `optimizer.hpp` internals are excluded from the API
 pages by `docs/generate_api_pages.py` and are not checked.
 
-**Instructions.** The ~164 `FunctionBuilder` instruction methods
+**Instructions.** The ~165 `FunctionBuilder` instruction methods
 (`fb.stack(...)`, `fb.two_body_decay_com(...)`, …) are generated from
 `madspace/instruction_set.yaml`. Document them by filling the `desc:` fields in
 that file — the instruction-level `desc:` and the `desc:` on every named input
@@ -235,7 +235,7 @@ check, not a CI job (the wheel-test environment has no doxygen). The CI gate is
 `FunctionGenerator` subclasses and the plain helper structs.
 
 **`compgraphs/` is documented** — the in-scope value types and the
-`FunctionBuilder` API have class comments, and every one of the 164 instructions
+`FunctionBuilder` API have class comments, and every one of the 165 instructions
 in `instruction_set.yaml` has `desc:` fields for itself and each input/output.
 
 `python docs/check_doc_convention.py` prints

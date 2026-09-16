@@ -56,6 +56,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/MultiChannelIntegrand
    python/Observable
    python/ObservableHistograms
+   python/ObservableValues
    python/PartonDensity
    python/PropagatorChannelWeights
    python/RunningCoupling
@@ -100,6 +101,8 @@ Lower-level helpers and containers.
    python/Diagram
    python/DiscreteOptimizer
    python/EventGenerator
+   python/EventHistogramSpec
+   python/EventHistograms
    python/FunctionRuntime
    python/GeneratorConfig
    python/GeneratorStatus
@@ -117,17 +120,24 @@ Lower-level helpers and containers.
    python/MadnisConfig
    python/MadnisTraining
    python/MatrixElementApi
+   python/MixMaxRandom
    python/MultiMadnisTraining
    python/NamedTypes
    python/NamedValues
    python/PdfGrid
+   python/PdfGroupInfo
+   python/PdfMemberSpec
    python/PrettyBox
    python/Propagator
-   python/RandGen
    python/StatusFile
    python/SubprocArgs
+   python/SubprocessObservables
+   python/SubprocessSystArgs
+   python/SystematicsCalculator
+   python/SystematicsConfig
    python/Tensor
    python/Topology
    python/TrainingArgs
+   python/Variation
    python/VegasGridOptimizer
    python/Verbosity

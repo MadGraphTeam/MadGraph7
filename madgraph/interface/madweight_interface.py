@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2011 The MadGraph Development team and Contributors
 #
-# This file is a part of the MadGraph 5 project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
@@ -133,11 +133,19 @@ class CmdExtended(cmd.Cmd):
         '#************************************************************\n' + \
         '#*                        MadWeight 5                       *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
@@ -159,14 +167,22 @@ class CmdExtended(cmd.Cmd):
         logger.info(\
         "************************************************************\n" + \
         "*                                                          *\n" + \
-        "*           W E L C O M E  to  M A D G R A P H  5          *\n" + \
+        "*           W E L C O M E  to  M A D G R A P H 7           *\n" + \
         "*                      M A D W E I G H T                   *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
@@ -464,10 +480,13 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         
         input_files = [pjoin(self.me_dir, 'SubProcesses', dirname, 'comp_madweight'), 
                        pjoin(self.me_dir, 'Cards', 'param_card_%i.dat' % nb_card),
-                       self.get_pdf_input_filename(),
                        pjoin(self.me_dir, 'Cards', 'ident_card.dat'),
                        pjoin(self.me_dir, 'Cards', 'run_card.dat')
                        ]
+        # empty when the node reads the PDF on its own (CVMFS/cluster_local_path)
+        pdfinput = self.get_pdf_input_filename()
+        if pdfinput.strip():
+            input_files.insert(2, pdfinput)
         
         # add event_file:
         if not evt_file:

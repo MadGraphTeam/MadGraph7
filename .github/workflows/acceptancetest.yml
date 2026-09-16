@@ -6,6 +6,12 @@ name: running acceptance test (rest)
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -40,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
       - name: test concurrent read-only gridpack
         run: |
@@ -57,6 +64,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
       # Runs a set of commands using the runners shell
@@ -79,6 +87,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_complex_mass_SA/ DYj has no assymetry
@@ -97,6 +106,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_custom_propa
@@ -115,6 +125,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -134,6 +145,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -154,6 +166,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -174,6 +187,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -193,6 +207,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -213,6 +228,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -233,6 +249,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -253,6 +270,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -273,6 +291,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -293,6 +312,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -318,6 +338,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -339,6 +360,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -360,6 +382,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_standalone_spin2_loop_smgrav
@@ -379,6 +402,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -421,6 +445,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -441,14 +466,14 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_sm_equivalence -pA -t0 -l INFO
 
   acceptancetest_69:
@@ -461,14 +486,14 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_ufomodel
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_sm_equivalence
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_all -pA -t0 -l DEBUG --debug
 
 
@@ -483,6 +508,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -491,6 +517,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_check_brs_gd_gd -pA -t0 -l INFO
             ./tests/test_manager.py test_generate_output_semicolon_preserves_loop_process -pA -t0 -l INFO
+            ./tests/test_manager.py test_loop_nc_memo_not_poisoned_across_generations -pA -t0 -l INFO
 
 
 
@@ -503,6 +530,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -523,6 +551,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -542,6 +571,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -562,6 +592,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
 
@@ -583,6 +614,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -603,6 +635,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -623,6 +656,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -646,6 +680,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -667,6 +702,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -687,6 +723,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -707,6 +744,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -729,6 +767,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -746,6 +785,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -763,6 +803,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -779,6 +820,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test one of the test test_generate_eett_lo_emela_clusterpath
@@ -795,6 +837,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -819,6 +862,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -839,6 +883,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -859,6 +904,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -877,6 +923,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -897,6 +944,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -917,6 +965,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -936,6 +985,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       # Runs a set of commands using the runners shell
@@ -951,6 +1001,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test one of the test testIO_gnuplot_histo_output
         run: |
@@ -977,6 +1028,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
       - name: test one of the test test_loop_improved_reweighting
         run: |
@@ -1009,6 +1061,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_all
       - name: test loop-induced gg>h cross-section
@@ -1022,10 +1075,11 @@ jobs:
     steps:
       # kept previous version (checkout@v2)
       - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - name: test one of the test test_polarization_top_decay
         run: |
             cd $GITHUB_WORKSPACE
-            cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
             ./tests/test_manager.py test_polarization_top_decay -pA -t0 -l INFO
   
   acceptancetest_ewsudakov:
@@ -1038,6 +1092,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_tt_ewsudakov
@@ -1053,6 +1108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test cmd uncovered merged/ufo_aloha/standalone tests
@@ -1068,12 +1124,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test ML gauge invariance acceptance test
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_ML_gauge_invariance_epem_ttx_all_modes -pA -t0 -l INFO
+
+  acceptancetest_improve_ps_at_rest:
+    # improve_ps must not move an external leg off rest: a polarised matrix
+    # element is evaluated in a frame where the selected leg has an exactly
+    # zero three-momentum, and HELAS reads its spin axis off that zero.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore_all
+
+      - name: test improve_ps keeps a leg at rest
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_improve_ps_keeps_a_leg_at_rest -pA -t0 -l INFO
 
   acceptancetest_check_madevent_me_vs_standalone:
     # Previously uncovered acceptance test in tests/acceptance_tests/test_cmd_madloop.py
@@ -1082,6 +1156,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
 
       - name: test that ME of madevent are consistent with the standalone one
         run: |
@@ -1095,6 +1170,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
 
       - name: test MLM reweight factory cases (TestMLMReweight)
         run: |
@@ -1112,6 +1188,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test one of the test test_loop_improved_reweighting
@@ -1144,7 +1221,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             sudo pip install numpy
             which f2py
-            echo "f2py_compiler = $(which f2py)" >> input/mg5_configuration.txt
+            echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
 
   acceptancetest_density_decay2:
@@ -1278,6 +1355,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_all
       - uses: ./.github/actions/restore_delphes
@@ -1296,6 +1374,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test the check gauge/full acceptance tests
         run: |
@@ -1314,6 +1393,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test test_decay_chain_identical_particle_outoforder
         run: |
@@ -1335,6 +1415,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - name: test test_madevent_dy3j_mlm
         run: |
@@ -1402,6 +1483,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       # Runs a set of commands using the runners shell
       - name: test that the different options of madspin do not crash at tree level

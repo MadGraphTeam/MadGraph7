@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: T. Heimel (Nov 2025) for the MG5aMC CUDACPP plugin.
+// Created originally by: T. Heimel (Nov 2025) for the MadGraph7 CUDACPP plugin.
 // Further modified by: D. Massaro (2026).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -11,6 +11,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 
+#include <cfloat>
 #include <cmath>
 #include <vector>
 #include <array>
@@ -25,16 +26,45 @@ using namespace mg5amcCpu;
 namespace
 {
 
+  // The per-diagram channel weight handed to madspace as amp2. A subprocess whose
+  // matrix element is identically zero -- an FCNC channel with every Wilson
+  // coefficient at zero, say -- has all numerators at zero, so their sum, the
+  // denominator, is zero too. Dividing would give 0/0 = nan for every diagram, and
+  // that nan becomes the amp2 madspace builds its channel weights from, turning a
+  // channel that should simply contribute nothing into a non-finite event weight
+  // that aborts the whole integration.
+  //
+  // The denominator is a sum of |amp|^2 and so never negative: adding the smallest
+  // normal double floors it away from zero (0/tiny is 0, no channel preferred) while
+  // leaving every denominator a real amplitude produces bit-for-bit unchanged. This
+  // must NOT be written as a test for zero -- this is compiled with -ffast-math, and
+  // its -ffinite-math-only lets the compiler assume the quotient is finite and drop
+  // such a guard as dead code (the trap behind #117 and #516).
+  //
+  // This is called from both the host and the device code paths, hence the
+  // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
+  // std::numeric_limits<double>::min(), which is a host function and cannot be
+  // called from device code.
+#ifdef MGONGPUCPP_GPUIMPL
+  __host__ __device__
+#endif
+    inline double
+    channel_amp2( double numerator, double denominator )
+  {
+    return numerator / ( denominator + DBL_MIN );
+  }
+
+
   void* initialize_impl(
-    const fptype* momenta,
+    const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
+    fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
-    fptype* denominators,
+    fptype_amp* numerators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     bool is_good_hel[CPPProcess::ncomb];
@@ -50,15 +80,15 @@ namespace
   }
 
   void initialize(
-    const fptype* momenta,
+    const fptype_momenta* momenta,
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
 #ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
+    fptype_amp* color_jamps,
 #endif
-    fptype* numerators,
-    fptype* denominators,
+    fptype_amp* numerators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     // static local initialization is called exactly once in a thread-safe way
@@ -75,7 +105,7 @@ namespace
   __device__
 #endif
     void
-    transpose_momenta( const double* momenta_in, fptype* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
+    transpose_momenta( const double* momenta_in, fptype_momenta* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
   {
     std::size_t page_size = MemoryAccessMomentaBase::neppM;
     std::size_t i_page = i_event_out / page_size;
@@ -100,7 +130,7 @@ namespace
     const double* diagram_random_in,
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
-    fptype* momenta,
+    fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
     fptype* diagram_random,
@@ -122,8 +152,8 @@ namespace
   }
 
   __global__ void copy_outputs(
-    fptype* denominators,
-    fptype* numerators,
+    fptype_amp* denominators,
+    fptype_amp* numerators,
     fptype* matrix_elements,
     unsigned int* diagram_index,
     int* color_index,
@@ -146,7 +176,7 @@ namespace
       double denominator = denominators[i_event];
       for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * CPPProcess::ndiagrams + i_diag] / denominator;
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * CPPProcess::ndiagrams + i_diag], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -369,14 +399,18 @@ extern "C"
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
     std::size_t rounded_count = n_blocks * n_threads;
 
-    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random, *color_jamps;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements, *ghel_jamps;
+    fptype_momenta* momenta;
+    fptype_amp* numerators;
+    fptype_amp* denominators;
+    fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
+    fptype *matrix_elements, *ghel_matrix_elements;
+    fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
 
     std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
     std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
-        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&flavor_indices), rounded_count * sizeof( unsigned int )},
@@ -385,18 +419,20 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
-        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+        // The color flow is picked among ncolor_flow structures, which is more than
+        // ncolor when the color sum runs on the DDM basis
+        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype )},
+        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max(sizeof(fptype), sizeof(int));
+    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
         std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
         total_size += aligned_size;
@@ -520,7 +556,7 @@ extern "C"
       rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
     }
 
-    HostBufferBase<fptype, false> momenta( rounded_count * CPPProcess::npar * 4 );
+    HostBufferBase<fptype_momenta, false> momenta( rounded_count * CPPProcess::npar * 4 );
     HostBufferBase<fptype, false> couplings( rounded_count * mg5amcCpu::Parameters_dependentCouplings::ndcoup * 2 );
     HostBufferBase<fptype, false> g_s( rounded_count );
     HostBufferBase<fptype, false> helicity_random( rounded_count );
@@ -528,8 +564,8 @@ extern "C"
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
-    HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
-    HostBufferBase<fptype, false> denominators( rounded_count );
+    HostBufferBase<fptype_amp, false> numerators( rounded_count * CPPProcess::ndiagrams );
+    HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
     if ( sort_flavors ) {
@@ -607,7 +643,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )
@@ -639,7 +675,7 @@ extern "C"
         {
           for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector], denominator );
           }
         }
         if( diagram_out != nullptr )

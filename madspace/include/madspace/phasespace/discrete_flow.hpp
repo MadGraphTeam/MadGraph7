@@ -59,8 +59,15 @@ public:
     const std::vector<std::size_t>& option_counts() const { return _option_counts; }
     /// Width of the conditioning input.
     std::size_t condition_dim() const { return _condition_dim; }
-    /// Register the flow's trainable parameters on @p context.
-    void initialize_globals(ContextPtr context) const;
+    /**
+     * Register the flow's trainable parameters on @p context.
+     * @param context  Context receiving the globals.
+     * @param seed     Seed for the random initialization. If unset (the
+     *                 default), the initialization is non-deterministic.
+     */
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
 
 private:
     Result build_forward_impl(

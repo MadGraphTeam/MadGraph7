@@ -34,8 +34,9 @@ struct Propagator {
  * A tree-level Feynman diagram: external masses, internal @ref Propagator lines
  * and the vertices connecting them.
  *
- * Incoming and outgoing lines and propagators are each 0-indexed. The two
- * incoming beams are incoming lines 0 and 1. A `Diagram` is turned into one or
+ * Incoming and outgoing lines and propagators are each 0-indexed. A collision
+ * has two incoming lines, the beams 0 and 1; a decay has the single decaying
+ * particle as incoming line 0. A `Diagram` is turned into one or
  * more @ref Topology integration channels. @ref PhaseSpaceMapping walks those
  * to build the recursive phase-space decomposition (Sec. 2.2 of [1]).
  *
@@ -70,7 +71,8 @@ public:
     using Vertex = std::vector<LineRef>;
 
     /**
-     * @param incoming_masses  Masses of the incoming particles (beams 0 and 1).
+     * @param incoming_masses  Masses of the incoming particles: the two beams
+     *                         of a collision, or the single decaying particle.
      * @param outgoing_masses  Masses of the outgoing particles.
      * @param propagators      The internal lines.
      * @param vertices         The vertices, each listing its @ref LineRef lines.
@@ -90,10 +92,13 @@ public:
     const std::vector<Propagator>& propagators() const { return _propagators; }
     /// The vertices.
     const std::vector<Vertex>& vertices() const { return _vertices; }
-    /// Indices of the vertices the two incoming lines attach to.
-    const std::array<int, 2>& incoming_vertices() const { return _incoming_vertices; };
+    /// Index of the vertex each incoming line attaches to. One entry per
+    /// incoming particle: two for a collision, one for a decay.
+    const std::vector<int>& incoming_vertices() const { return _incoming_vertices; };
     /// Index of the vertex each outgoing line attaches to.
     const std::vector<int>& outgoing_vertices() const { return _outgoing_vertices; };
+    /// Whether this diagram is a decay, with a single incoming particle.
+    bool is_decay() const { return _incoming_masses.size() == 1; }
     /// For each propagator, the indices of its two end vertices.
     const std::vector<std::vector<std::size_t>>& propagator_vertices() const {
         return _propagator_vertices;
@@ -104,7 +109,7 @@ private:
     std::vector<double> _outgoing_masses;
     std::vector<Propagator> _propagators;
     std::vector<Vertex> _vertices;
-    std::array<int, 2> _incoming_vertices;
+    std::vector<int> _incoming_vertices;
     std::vector<int> _outgoing_vertices;
     std::vector<std::vector<std::size_t>> _propagator_vertices;
 };
@@ -120,7 +125,7 @@ std::ostream& operator<<(std::ostream& out, const Diagram::LineRef& value);
  * enumerates the sub-channels of a diagram, one per set of propagators that can
  * be simultaneously on shell (Sec. 2.2.7 of [1]). The constructor builds the
  * single canonical channel. All particle indices are 0-based, with the two
- * beams at 0 and 1.
+ * beams at 0 and 1, or the single decaying particle at 0.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -183,6 +188,22 @@ public:
     }
     /// The `s`-channel decay-tree nodes.
     const std::vector<Decay>& decays() const { return _decays; }
+    /**
+     * Raise the lower energy bound of one `s`-channel decay node.
+     *
+     * Hands a cut that bounds the pair this propagator decays into straight to
+     * the sampler, so the region the cut forbids is never generated. Lowering
+     * the bound is a no-op.
+     *
+     * @param index  Index of the node in @ref decays().
+     * @param e_min  The new lower bound.
+     */
+    void raise_decay_e_min(std::size_t index, double e_min) {
+        auto& decay = _decays.at(index);
+        if (e_min > decay.e_min) {
+            decay.e_min = e_min;
+        }
+    }
     /// Sampling order of the `s`-channel invariants.
     const std::vector<std::size_t>& decay_integration_order() const {
         return _decay_integration_order;
@@ -195,6 +216,10 @@ public:
     const std::vector<double>& incoming_masses() const { return _incoming_masses; }
     /// Masses of the outgoing particles.
     const std::vector<double>& outgoing_masses() const { return _outgoing_masses; }
+    /// Whether this channel is a decay, with a single incoming particle.
+    /// A decay has no `t`-channel chain and a root virtuality fixed by the
+    /// mass of the decaying particle.
+    bool is_decay() const { return _incoming_masses.size() == 1; }
     /// For each propagator, the outgoing momenta summed to form it and the
     /// energy window `(indices, e_min, e_max)`.
     /// @param only_decays  Restrict the result to the `s`-channel decay nodes.

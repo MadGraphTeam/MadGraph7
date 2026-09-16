@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 
@@ -49,8 +52,15 @@ public:
     std::size_t input_dim() const { return _input_dim; }
     /// Output width.
     std::size_t output_dim() const { return _output_dim; }
-    /// Register the network's trainable parameters on @p context.
-    void initialize_globals(ContextPtr context) const;
+    /**
+     * Register the network's trainable parameters on @p context.
+     * @param context  Context receiving the globals.
+     * @param seed     Seed for the random initialization. If unset (the
+     *                 default), the initialization is non-deterministic.
+     */
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
     /// Global name of the final layer's bias vector.
     std::string last_layer_bias_name() const {
         return prefixed_name(_prefix, std::format("layer{}.bias", _layers));

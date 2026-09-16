@@ -6,6 +6,12 @@ name: running test for aloha
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -17,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       message:
-        description: 'running aloha test'     
+        description: 'running aloha test'
         required: true
 
 env:

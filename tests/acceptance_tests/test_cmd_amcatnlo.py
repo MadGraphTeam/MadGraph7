@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -126,6 +126,24 @@ class MECmdShell(IOTests.IOTestManager):
         combine = os.path.join(*path)
         return combine.replace(' ',r'\ ')        
     
+    def set_parton_shower(self, shower):
+        """Pin parton_shower in the run card.
+
+        Rewriting a literal 'HERWIG6' only worked while that was the default;
+        the moment it changed, the rewrite became a no-op and the test quietly
+        showered with something other than the one it is named for.
+        """
+
+        path = '%s/Cards/run_card.dat' % self.path
+        with open(path) as handle:
+            card = handle.read()
+        card, count = re.subn(r'^(\s*)\S+(\s*=\s*parton_shower)',
+                              r'\g<1>%s\g<2>' % shower, card, flags=re.M)
+        self.assertEqual(count, 1,
+                         'could not set parton_shower in %s' % path)
+        with open(path, 'w') as handle:
+            handle.write(card)
+
     def do(self, line):
         """ exec a line in the cmd under test """        
         self.cmd_line.exec_cmd(line, errorhandling=False,precmd=True)
@@ -155,6 +173,8 @@ class MECmdShell(IOTests.IOTestManager):
         card = card.replace('EXTRALIBS    = stdhep Fmcfio', 'EXTRALIBS   = fastjet')
         open('%s/Cards/shower_card_default.dat' % self.path, 'w').write(card)
         os.system('cp  %s/Cards/shower_card_default.dat %s/Cards/shower_card.dat'% (self.path, self.path))
+
+        self.set_parton_shower('HERWIG6')
 
         os.system('rm -rf %s/RunWeb' % self.path)
         os.system('rm -rf %s/Events/run_*' % self.path)
@@ -200,8 +220,8 @@ class MECmdShell(IOTests.IOTestManager):
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
-        self.assertIn('HERWIG6   = parton_shower', card)
-        card = card.replace('HERWIG6   = parton_shower', 'HERWIGPP   = parton_shower')
+        self.assertIn('PYTHIA8   = parton_shower', card)
+        card = card.replace('PYTHIA8   = parton_shower', 'HERWIGPP   = parton_shower')
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card)
         self.cmd_line.exec_cmd('set  cluster_temp_path /tmp/ --no_save')
         self.do('generate_events -pf')
@@ -225,8 +245,8 @@ class MECmdShell(IOTests.IOTestManager):
         cmd = os.getcwd()
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD] '], 'sm')
         card = open('%s/Cards/run_card_default.dat' % self.path).read()
-        self.assertIn('HERWIG6   = parton_shower', card)
-        card = card.replace('HERWIG6   = parton_shower', 'PYTHIA8   = parton_shower')
+        # PYTHIA8 is now the default, so this test only has to keep it
+        self.assertIn('PYTHIA8   = parton_shower', card)
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card)
         self.cmd_line.exec_cmd('set  cluster_temp_path /tmp/ --no_save')
         self.cmd_line.exec_cmd('set  pythia8_path None')
@@ -638,6 +658,7 @@ class MECmdShell(IOTests.IOTestManager):
         """test the param_card created is correct"""
         
         self.generate_production()
+        self.set_parton_shower('HERWIG6')
         cmd = """generate_events aMC@LO
                  set nevents 100
                  """
@@ -671,8 +692,7 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate_production()
 
         #change to py6
-        card = open('%s/Cards/run_card.dat' % self.path).read()
-        open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace('HERWIG6', 'PYTHIA6Q'))       
+        self.set_parton_shower('PYTHIA6Q')
         self.do('generate_events aMC@LO -f')        
         
         # test the lhe event file exists
@@ -701,6 +721,7 @@ class MECmdShell(IOTests.IOTestManager):
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'loop_sm')
         self.assertEqual(cmd, os.getcwd())
         #change splitevent generation
+        self.set_parton_shower('HERWIG6')
         card = open('%s/Cards/run_card.dat' % self.path).read()
         open('%s/Cards/run_card.dat' % self.path, 'w').write(card.replace(' -1 = nevt_job', ' 1000 = nevt_job'))
         self.do('generate_events aMC@NLO -fp')        
@@ -792,10 +813,14 @@ class MECmdShell(IOTests.IOTestManager):
         #      Total cross-section: 1.249e+03 +- 3.2e+00 pb        
         cross_section = data[i+4]
         cross_section = float(cross_section.split(':')[1].split('+-')[0])
+        # previously PDF was nn23nlo (lhaid 244600) with this reference value 6675.0
+        # loop_sm gives the b a non-zero mass, so the NLO default here is the
+        # 4-flavour set NNPDF40_nlo_as_01180_nf_4 (lhaid 334700), matching the
+        # b-less proton MG5 already uses for this model.
         try:
-            self.assertAlmostEqual(6675.0, cross_section,delta=50)
+            self.assertAlmostEqual(6936.0, cross_section,delta=50)
         except TypeError:
-            self.assertTrue(cross_section < 6750.0 and cross_section > 6650.0)
+            self.assertTrue(cross_section < 7011.0 and cross_section > 6911.0)
 
         #      Number of events generated: 10000        
         self.assertIn('Number of events generated: 100', data[i+3])
@@ -880,7 +905,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -941,7 +966,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -1002,7 +1027,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 
@@ -1064,7 +1089,7 @@ class MECmdShell(IOTests.IOTestManager):
         interface = MGCmd.MasterCmd()
         interface.no_notification()
 
-        # skip if eMELA is not known to MG5_aMC
+        # skip if eMELA is not known to MadGraph7
         if not interface.options['eMELA']:
             self.skipTest("Skipping test, eMELA not available")
 

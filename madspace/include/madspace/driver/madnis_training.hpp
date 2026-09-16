@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/driver/adam_optimizer.hpp"
@@ -40,7 +42,11 @@ public:
         double grad_clip_threshold = 0.0;
         std::size_t buffer_capacity = 0;
         std::size_t minimum_buffer_size = 10000;
-        std::size_t buffered_steps = 0;
+        // fraction of training steps done on buffered samples, reached once the
+        // buffers are full (see buffered_step_target)
+        double buffered_steps_fraction = 0.;
+        // number of initial batches during which no samples are buffered
+        std::size_t buffer_skip_batches = 1000;
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
         double softclip_threshold = 0.0;
@@ -51,7 +57,12 @@ public:
         ContextPtr optimizer_context,
         const Config& config,
         const std::vector<std::shared_ptr<Integrand>>& integrands,
-        const std::optional<ChannelWeightNetwork>& cwnet
+        const std::optional<ChannelWeightNetwork>& cwnet,
+        std::optional<std::uint64_t> seed = std::nullopt,
+        // Offset added to this subprocess's local channel indices when deriving
+        // seeds, so MultiMadnisTraining's subprocesses (which all share the same
+        // top-level seed) get non-overlapping DerivedSeed channel_index ranges.
+        std::size_t channel_index_offset = 0
     );
     const Config& config() const { return _config; }
     void train_step(std::size_t batch_index);
@@ -94,6 +105,9 @@ private:
     struct SampleJob {
         SampleBatch samples;
         SampleBatch unweighted_samples;
+        // dispatch sequence used to commit in order: per-channel for single-channel
+        // jobs, global (see _multi_job_next_dispatch_seq) for multi-channel jobs
+        std::size_t dispatch_seq = 0;
     };
     struct ChannelData {
         std::size_t index;
@@ -106,13 +120,24 @@ private:
         RuntimePtr generator_runtime = nullptr;
         RuntimePtr unweighter_runtime = nullptr;
         SampleBatch buffer;
+        // commit-ordering state for single-channel generator jobs (see
+        // process_job_results)
+        std::size_t next_dispatch_seq = 0;
+        std::size_t commit_cursor = 0;
+        std::unordered_map<std::size_t, std::size_t> ready_job_ids;
+        // samples staged here, flushed into buffer at the start of the next round
+        std::vector<SampleBatch> pending_buffer_samples;
     };
 
     inline static std::function<void(void)> _abort_check_function = [] {};
 
     void build_runtimes_and_optimizer();
+    std::size_t buffered_step_target() const;
     std::vector<std::size_t> compute_channel_sizes();
     void start_generator_jobs(const std::vector<std::size_t>& channel_fractions);
+    void maybe_start_generator_jobs(
+        const std::vector<std::size_t>& channel_fractions, bool is_online_attempt
+    );
     TensorVec permute_tensors(const TensorVec& tensors) const;
     void start_single_job(std::size_t channel_index, std::size_t batch_size);
     void start_multi_job(const std::vector<std::size_t> batch_sizes);
@@ -121,6 +146,7 @@ private:
     TensorVec build_online_training_batch(const std::vector<size_t>& counts);
     TensorVec build_buffered_training_batch(const std::vector<size_t>& counts);
     void process_job_results(const std::vector<std::size_t>& job_ids);
+    void process_all_jobs();
     void buffer_store(ChannelData& channel, SampleBatch& samples);
     void update_history(
         const TensorVec& results,
@@ -153,11 +179,27 @@ private:
     std::vector<std::size_t> _status_generated_events;
     std::vector<std::size_t> _status_buffer_sizes;
     std::size_t _generated_event_count = 0;
+    // index of the current batch, only read on the dispatching thread
+    // (see start_single_job)
+    std::size_t _batch_index = 0;
+    // delta-sigma modulator state deciding online vs. buffered steps,
+    // in units of _buffered_step_scale (see buffered_step_target)
+    static constexpr std::size_t _buffered_step_scale = 1 << 20;
+    std::size_t _buffered_step_accumulator = 0;
     std::size_t _job_id = 0;
     Tensor _generator_params;
     std::vector<std::size_t> _arg_permutation;
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
+    std::optional<std::uint64_t> _seed;
+    std::size_t _channel_index_offset;
+    // sequence for seeding build_buffered_training_batch's BatchSampler::run() call
+    std::size_t _buffered_batch_seq = 0;
+    // commit-ordering state for multi-channel (GPU) generator jobs (see
+    // process_job_results): global, since one job spans multiple channels at once
+    std::size_t _multi_job_next_dispatch_seq = 0;
+    std::size_t _multi_job_commit_cursor = 0;
+    std::unordered_map<std::size_t, std::size_t> _multi_job_ready_job_ids;
     std::size_t _diverged_batch_count = 0;
 };
 
@@ -174,7 +216,11 @@ public:
         ContextPtr optimizer_context,
         const std::vector<TrainingArgs>& training_args,
         Verbosity verbosity = Verbosity::log,
-        std::shared_ptr<StatusFile> status_file = nullptr
+        std::shared_ptr<StatusFile> status_file = nullptr,
+        // Reuses the run_card's own seed (also used by build_event_generator()).
+        // Each subprocess's MadnisTraining gets a channel_index_offset slice of
+        // this seed's stream so their derived seeds don't collide.
+        std::optional<std::uint64_t> seed = std::nullopt
     );
     void train();
     nested_vector2<std::size_t> active_channels() const { return _active_channels; }
@@ -198,6 +244,7 @@ private:
     ContextPtr _optimizer_context;
     std::vector<TrainingArgs> _training_args;
     Verbosity _verbosity;
+    std::optional<std::uint64_t> _seed;
     nested_vector2<std::size_t> _active_channels;
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;

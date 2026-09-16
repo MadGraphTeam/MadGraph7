@@ -620,6 +620,21 @@ obs_delta_r:
   dims: 0
   desc: "Angular separation in the eta-phi plane between two four-momenta. See @ref Observable."
 
+obs_pair_mass:
+  inputs:
+    - name: p1
+      type: [float, ..., 4]
+      desc: "first four-momentum"
+    - name: p2
+      type: [float, ..., 4]
+      desc: "second four-momentum"
+  outputs:
+    - name: obs
+      type: [float, ...]
+      desc: "invariant mass of the pair"
+  dims: 0
+  desc: "Invariant mass of the two-particle system. See @ref Observable."
+
 ---
 title: Kinematics
 

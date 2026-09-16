@@ -43,6 +43,10 @@ public:
     int opcode() const { return _opcode; }
     /// Whether the runtime can backpropagate through this instruction.
     bool differentiable() const { return _differentiable; }
+    /// Whether the instruction draws from a shared RNG stream. Such an
+    /// instruction is never deduplicated and is always scheduled on the main
+    /// GPU stream; see @ref FunctionBuilder::instruction.
+    virtual bool is_random() const { return false; }
 
 protected:
     void check_arg_count(const ValueVec& args, std::size_t count) const;
@@ -226,6 +230,7 @@ public:
     RandomInstruction(int opcode, bool differentiable) :
         Instruction("random", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class RandomIntInstruction : public Instruction {
@@ -233,6 +238,7 @@ public:
     RandomIntInstruction(int opcode, bool differentiable) :
         Instruction("random_int", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class UnweightInstruction : public Instruction {
@@ -240,6 +246,7 @@ public:
     UnweightInstruction(int opcode, bool differentiable) :
         Instruction("unweight", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class MatrixElementInstruction : public Instruction {

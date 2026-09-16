@@ -22,10 +22,10 @@ if os.path.isdir(os.path.join(_local_install, "madspace")):
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "madspace"
-copyright = "2025, Theo Heimel"
-author = "Theo Heimel"
-release = "0.2.2"
+project = "MadGraph7"
+copyright = "2025-2026, The MadGraph7 Development Team"
+author = "The MadGraph7 Development Team"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

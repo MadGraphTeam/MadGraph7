@@ -14,13 +14,16 @@ std::size_t final_channel_count(
     std::size_t first_remapped_chan_count,
     const std::vector<me_int_t>& second_chan_weight_remap,
     std::size_t second_remapped_chan_count,
+    const std::optional<PropagatorChannelWeights>& prop_chan_weights,
     const std::optional<SubchannelWeights>& subchan_weights
 ) {
     if (second_chan_weight_remap.size() > 0) {
         return second_remapped_chan_count;
     } else if (subchan_weights) {
         return subchan_weights->channel_count();
-    } else if (first_chan_weight_remap.size() > 0) {
+    } else if (first_chan_weight_remap.size() > 0 || prop_chan_weights) {
+        // with the denominators sde_strategy, prop_chan_weights already
+        // produces first_remapped_chan_count weights without needing a remap
         return first_remapped_chan_count;
     } else {
         return diff_xs.at(0).matrix_element().diagram_count();
@@ -86,6 +89,7 @@ Integrand::Integrand(
                     first_remapped_chan_count,
                     second_chan_weight_remap,
                     second_remapped_chan_count,
+                    prop_chan_weights,
                     subchan_weights
                 );
                 if (madnis_channel_count > 1 &&
@@ -653,6 +657,7 @@ NamedVector<Value> Integrand::build_common_part(
         _first_remapped_chan_count,
         _second_chan_weight_remap,
         _second_remapped_chan_count,
+        _prop_chan_weights,
         _subchan_weights
     );
     bool use_compressed_channel_weights =

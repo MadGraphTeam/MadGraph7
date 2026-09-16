@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/mlp.hpp"
 
@@ -67,10 +69,28 @@ public:
     std::size_t input_dim() const { return _input_dim; }
     /// Width of the conditioning input.
     std::size_t condition_dim() const { return _condition_dim; }
-    /// Register the flow's trainable parameters on @p context.
-    void initialize_globals(ContextPtr context) const;
-    /// Initialize the flow to reproduce a trained VEGAS grid.
-    void initialize_from_vegas(ContextPtr context, const std::string& grid_name) const;
+    /**
+     * Register the flow's trainable parameters on @p context.
+     * @param context  Context receiving the globals.
+     * @param seed     Seed for the random initialization. If unset (the
+     *                 default), the initialization is non-deterministic.
+     */
+    void initialize_globals(
+        ContextPtr context, std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
+    /**
+     * Initialize the flow to reproduce a trained VEGAS grid.
+     * @param context    Context receiving the globals.
+     * @param grid_name  Global name of the VEGAS grid to copy.
+     * @param seed       Seed for the random initialization of the remaining
+     *                   parameters. If unset (the default), that initialization
+     *                   is non-deterministic.
+     */
+    void initialize_from_vegas(
+        ContextPtr context,
+        const std::string& grid_name,
+        std::optional<std::uint64_t> seed = std::nullopt
+    ) const;
 
 private:
     Result build_forward_impl(

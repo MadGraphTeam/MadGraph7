@@ -381,6 +381,11 @@ C stores the result in P and for the quadruple precision
 c version , it also modifies the global variables
 C PS and MP_DONE accordingly.
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -426,6 +431,11 @@ C rotation=2 => (xp=-z,yp=y,zp=x)
 	  END
 
 
+C     NOTE:: an exact axis permutation, so exact zeros survive. But
+C     it is NOT a symmetry of a polarised amplitude with a leg at
+C     rest: HELAS pins that leg's spin axis to the frame z.
+C     NRotations_DP/QP default to 0; enabling them on a polarised
+C     run gives spurious instability flags.
 	  SUBROUTINE %(proc_prefix)s%(mp_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -666,7 +676,7 @@ C
 C
 C LOCAL VARIABLES 
 C
-      INTEGER I,J, P1, P2 
+      INTEGER I,J, P1, P2, IABSORB
       %(real_format)s NEWP(0:3,NEXTERNAL), PBUFF(0:3)
 	  %(real_format)s BUFF, BUFF2, XSCALE, APPROX_ZEROS(NAPPROXZEROS)
 	  %(real_format)s MASSES(NEXTERNAL)
@@ -706,13 +716,30 @@ C     First make sur that the space like momentum is exactly conserved
 		  PBUFF(J)=PBUFF(J)+NEWP(J,I)
 		ENDDO
       ENDDO
-	  DO I=NINITIAL+1,NEXTERNAL-1
-	    DO J=1,3
-		  PBUFF(J)=PBUFF(J)-NEWP(J,I)
-		ENDDO
+C     Absorb the residual in the final-state leg with the largest
+C     |p|, not in leg NEXTERNAL: that leg is never at rest, so an
+C     exactly vanishing three-momentum survives. HELAS reads the
+C     spin axis of a polarised leg off 'pp.eq.0', so a 1e-14
+C     residual there builds the longitudinal vector along noise.
+C     Largest |p| is also the smallest relative distortion.
+      IABSORB=NEXTERNAL
+	  BUFF=ZERO
+      DO I=NINITIAL+1,NEXTERNAL
+	    BUFF2=NEWP(1,I)**2+NEWP(2,I)**2+NEWP(3,I)**2
+		IF (BUFF2.GT.BUFF) THEN
+		  BUFF=BUFF2
+		  IABSORB=I
+		ENDIF
+	  ENDDO
+	  DO I=NINITIAL+1,NEXTERNAL
+	    IF (I.NE.IABSORB) THEN
+		  DO J=1,3
+		    PBUFF(J)=PBUFF(J)-NEWP(J,I)
+		  ENDDO
+		ENDIF
       ENDDO
       DO J=1,3
-        NEWP(J,NEXTERNAL)=PBUFF(J)
+        NEWP(J,IABSORB)=PBUFF(J)
       ENDDO
 
 C     Now find the 'x' rescaling factor

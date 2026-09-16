@@ -4,6 +4,12 @@
 name: running IOTests
 on:
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -153,6 +159,22 @@ jobs:
         run: |
             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
             ./tests/test_manager.py testIO_TIR_output -pA -t0 -l INFO
+
+  # Loop-induced ([noborn=]) standalone output IOTest. Added with its goldens
+  # in PR #81 but never wired into CI, so PR #82's template changes left the
+  # goldens stale unnoticed.
+  IOtest_loop_induced:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      - name: test loop-induced standalone output IO test
+        run: |
+            cd $GITHUB_WORKSPACE
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/work/mg5amcnlo/mg5amcnlo/HEPTools/lib
+            ./tests/test_manager.py testIO_loop_induced_standalone_output -pA -t0 -l INFO
 
 
   # MatchBox output IOTest (from acceptancetest_77)

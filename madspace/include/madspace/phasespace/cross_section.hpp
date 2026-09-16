@@ -15,6 +15,11 @@ namespace madspace {
  * @ref EnergyScale of the event [1]. The `Cached*` variants of the PDF and
  * scale arguments reuse values already computed elsewhere in the graph.
  *
+ * With @p decay the generator instead describes the decay of a single incoming
+ * particle. The differential rate is then @f$|M|^2 / (2 M)@f$ with
+ * @f$M@f$ = @p cm_energy, in GeV, rather than a hadronic cross section in pb.
+ * There are no beams, hence no momentum fractions and no PDFs.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
@@ -55,6 +60,8 @@ public:
      * @param pdf2                     Likewise for the second beam.
      * @param input_momentum_fraction  If true, `x1` / `x2` are taken as inputs
      *                                 rather than reconstructed.
+     * @param decay                    If true, describe the decay of a single
+     *                                 incoming particle instead of a collision.
      */
     DifferentialCrossSection(
         const MatrixElement& matrix_element,
@@ -65,7 +72,8 @@ public:
         const nested_vector2<me_int_t>& pid_options = {},
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf1 = std::monostate{},
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2 = std::monostate{},
-        bool input_momentum_fraction = true
+        bool input_momentum_fraction = true,
+        bool decay = false
     );
 
     /// The allowed initial-parton flavour combinations.
@@ -92,6 +100,7 @@ private:
     double _e_cm;
     std::variant<std::monostate, EnergyScale, CachedScale> _energy_scale;
     bool _input_momentum_fraction;
+    bool _decay;
 };
 
 } // namespace madspace

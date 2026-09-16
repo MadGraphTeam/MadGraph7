@@ -62,6 +62,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/MultiChannelIntegrand
    cpp/Observable
    cpp/ObservableHistograms
+   cpp/ObservableValues
    cpp/PartonDensity
    cpp/PropagatorChannelWeights
    cpp/RunningCoupling
@@ -111,11 +112,14 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/ChannelEventGenerator
    cpp/Context
    cpp/DataLayout
+   cpp/DerivedSeed
    cpp/Device
    cpp/DiscreteOptimizer
    cpp/EventBuffer
    cpp/EventFile
    cpp/EventGenerator
+   cpp/EventHistogramSpec
+   cpp/EventHistograms
    cpp/EventRecord
    cpp/FieldLayout
    cpp/GeneratorBatchJob
@@ -129,23 +133,34 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/LHEMeta
    cpp/LHEParticle
    cpp/LHEProcess
+   cpp/LOReweightInfo
    cpp/Logger
    cpp/MadnisTraining
    cpp/MatrixElementApi
+   cpp/MixMaxRandom
    cpp/MultiMadnisTraining
    cpp/PackedTensorView
    cpp/ParticleRecord
+   cpp/PdfGroupInfo
+   cpp/PdfMemberSpec
    cpp/PrettyBox
+   cpp/ReadyJob
    cpp/ResultQueue
+   cpp/RunSeedSkip
    cpp/RunningIntegral
    cpp/Runtime
    cpp/Sizes
    cpp/StatusFile
+   cpp/SubprocessObservables
+   cpp/SubprocessSystArgs
+   cpp/SystematicsCalculator
+   cpp/SystematicsConfig
    cpp/Tensor
    cpp/TensorView
    cpp/ThreadPool
    cpp/ThreadResource
    cpp/UnalignedRef
+   cpp/Variation
    cpp/VegasGridOptimizer
 
 Utilities

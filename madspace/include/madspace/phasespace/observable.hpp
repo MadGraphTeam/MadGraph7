@@ -17,8 +17,8 @@ namespace madspace {
  * combined, for example all jet flavours. The available observables are
  * single-momentum functions (`e`, `px`, `py`, `pz`, `mass`, `pt`, `p_mag`,
  * `phi`, `theta`, `y`, `y_abs`, `eta`, `eta_abs`), pair functions
- * (`delta_eta`, `delta_phi`, `delta_r`, and the pair invariant `mass`), and the
- * event-level `sqrt_s`. The same mechanism defines the observables used by
+ * (`delta_eta`, `delta_phi`, `delta_r`, `pair_mass`), and the event-level
+ * `sqrt_s`. The same mechanism defines the observables used by
  * @ref Cuts and @ref ObservableHistograms.
  *
  * `batch` is the leading batch dimension. `n` is the number of selected
@@ -66,6 +66,7 @@ public:
         obs_delta_eta,
         obs_delta_phi,
         obs_delta_r,
+        obs_pair_mass,
         obs_sqrt_s
     };
 
