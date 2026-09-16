@@ -34,4 +34,10 @@ namespace ProcessData
   constexpr int nDPF = %(ndpf)d;
 }
 
+// Process identification for test/debug tooling. Must stay #define (not
+// constexpr): used for macro token-pasting (test suite names) and
+// stringification, e.g. TEST( XTESTID( MG_EPOCH_PROCESS_ID ), ... ).
+#define MG_EPOCH_PROCESS_ID %(processid_uppercase)s
+#define MG_EPOCH_REFERENCE_FILE_NAME "../../test/ref/dump_CPUTest.%(processid)s.txt"
+
 #endif // PROCESSDATA_H

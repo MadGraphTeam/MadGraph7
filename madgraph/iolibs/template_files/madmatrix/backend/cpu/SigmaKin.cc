@@ -31,7 +31,6 @@
 #include "ColorMatrixData.h" // for shouldUseBlas
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 #include "coloramps.h"       // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
-#include "processConfig.h"
 
 #include <limits>
 #include <vector>

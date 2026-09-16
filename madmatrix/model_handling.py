@@ -2149,8 +2149,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_mgonGPU()
-        self.edit_processidfile() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
-        self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
         self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_coloramps()
         super().generate_process_files()
@@ -2188,6 +2186,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nipc'] = self._nipc
         replace_dict['nipf'] = self._nipf
         replace_dict['ndpf'] = self._ndpf
+        replace_dict['processid'] = self.name
+        replace_dict['processid_uppercase'] = self.name.upper()
         ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
@@ -2270,18 +2270,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # this is the correct P1-specific nwf, now in CPPProcess.h (#644)
         replace_dict['wavefuncsize'] = 6
         ff = open(pjoin(self.path, '..','..','src','mgOnGpuConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_processidfile(self):
-        """Generate epoch_process_id.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processidfile')
-        template = open(pjoin(self.template_path,'madmatrix','epoch_process_id.h'),'r').read()
-        replace_dict = {}
-        replace_dict['processid'] = self.name
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'epoch_process_id.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
@@ -2457,17 +2445,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 "pair-loop variant. See color_sum_splitorders.cc for the algorithm "
                 "that still needs folding into the shared file behind a compile-time "
                 "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
-
-    def edit_processConfig(self):
-        """Generate process_config.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processConfig')
-        template = open(pjoin(self.template_path,'madmatrix','processConfig.h'),'r').read()
-        replace_dict = {}
-        replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams'))
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'processConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
 
     # AV - new method
     def edit_coloramps(self):

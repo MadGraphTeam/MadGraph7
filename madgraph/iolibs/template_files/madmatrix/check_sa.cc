@@ -32,7 +32,7 @@
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
 #include "RandomNumberKernels.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 #include "read_slha.h"
 #include "timermap.h"
 #include "umami.h"

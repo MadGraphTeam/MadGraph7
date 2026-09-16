@@ -27,7 +27,6 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"
-#include "processConfig.h"
 
 #include "MemoryAccessDenominators.h"
 #include "MemoryAccessNumerators.h"

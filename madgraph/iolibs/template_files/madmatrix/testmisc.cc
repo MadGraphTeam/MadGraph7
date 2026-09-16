@@ -12,7 +12,7 @@
 #include "mgOnGpuVectors.h"
 
 #include "constexpr_math.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 #include "valgrind.h"
 
 #include <gtest/gtest.h>

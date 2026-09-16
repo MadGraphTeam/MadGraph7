@@ -14,7 +14,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
 #include "MemoryBuffers.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 
 #include <gtest/gtest.h>
 
