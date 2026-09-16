@@ -97,7 +97,7 @@ namespace mg5amcCpu
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
     MEs_sv += deltaMEs; // fix #435
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype* MEs_next = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + neppV );
     fptype_sv& MEs_sv_next = E_ACCESS::kernelAccess( MEs_next );
     MEs_sv_next += deltaMEs_next;
@@ -261,10 +261,6 @@ namespace mg5amcCpu
   }
 #endif
 #endif
-
-
-  //--------------------------------------------------------------------------
-
 
   //--------------------------------------------------------------------------
 

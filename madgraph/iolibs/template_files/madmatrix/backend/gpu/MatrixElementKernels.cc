@@ -7,7 +7,7 @@
 #include "MatrixElementKernels.h"
 
 #include "ProcessData.h"
-#include "CPPProcess.h" // TODO(backend_separation): drop once sigmaKin/getGoodHel/computeDependentCouplings move to backend/
+#include "SigmaKin.h"
 #include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
