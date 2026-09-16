@@ -2202,6 +2202,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         template = open(pjoin(self.template_path, 'madmatrix', 'ProcessTables.h'), 'r').read()
         replace_dict = {}
 
+        # jampTmp_sv scratch size for calculate_jamps' shared sub-expressions
+        # (cached by get_process_function_definitions(), see there).
+        replace_dict['nb_tmp_jamp'] = self._nb_tmp_jamp
+
         # Dependent (event-by-event, running-alphas) flavor couplings: partner
         # indices and the per-flavor idcoup are pure compile-time constants
         # (the complex values are gathered per event page in calculate_jamps).
