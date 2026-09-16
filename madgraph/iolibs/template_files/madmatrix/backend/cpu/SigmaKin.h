@@ -13,6 +13,7 @@
 
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuCxtypes.h" // for cxtype
+#include "mgOnGpuVectors.h" // for fptype_amp_sv
 
 namespace mg5amcCpu
 {

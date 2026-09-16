@@ -54,6 +54,9 @@ namespace mg5amcCpu
     return std::sqrt( f );
   }
 
+  template<typename FP>
+  inline bool
+  fpsignbit( FP f ) { return std::signbit( f ); }
 
   //==========================================================================
 
