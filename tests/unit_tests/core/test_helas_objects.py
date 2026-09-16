@@ -73,6 +73,35 @@ class HelasWavefunctionTest(unittest.TestCase):
                           mywavefunction.set,
                           'wrongparam', 0)
 
+    def test_eq_distinguishes_polarization(self):
+        """Two wavefunctions that differ only by polarization are not equal.
+
+        get_call_key() includes the polarization, so it decides which HELAS
+        call is written. If __eq__ ignored it, the wavefunction dedup could
+        merge a transverse and a longitudinal wavefunction and write one of
+        them with the other's call -- wrong physics, no error."""
+
+        def wf(pol):
+            w = helas_objects.HelasWavefunction()
+            w.set('number_external', 3)
+            w.set('state', 'final')
+            w.set('polarization', pol)
+            return w
+
+        # differing polarizations
+        self.assertNotEqual(wf([0]), wf([1, -1]))
+        self.assertNotEqual(wf([1]), wf([-1]))
+        # polarized vs unpolarized
+        self.assertNotEqual(wf([0]), wf([]))
+        self.assertNotEqual(wf([]), wf([0]))
+        # same polarization still compares equal, both ways round
+        self.assertEqual(wf([0]), wf([0]))
+        self.assertEqual(wf([1, -1]), wf([1, -1]))
+        self.assertEqual(wf([]), wf([]))
+        # and __ne__ agrees with __eq__
+        self.assertTrue(wf([0]) != wf([1]))
+        self.assertFalse(wf([0]) != wf([0]))
+
     def test_values_for_prop(self):
         """Test filters for wavefunction properties"""
 

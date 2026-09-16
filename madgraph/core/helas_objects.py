@@ -2511,6 +2511,15 @@ class HelasWavefunction(base_objects.PhysicsObject):
         checking for identical processes. Note that the number for
         this wavefunction, the pdg code, and the interaction id are
         irrelevant, while the numbers for the mothers are important.
+
+        'polarization' is relevant: get_call_key() includes it, so it is
+        what picks the HELAS call for this wavefunction. Two wavefunctions
+        that differ only there must not be merged -- the survivor would be
+        written out with the other one's polarization, silently and without
+        failing anything. Today nothing puts two differently polarized
+        wavefunctions in the same matrix element (they are separated further
+        up, into distinct subprocesses), so this check never fires; it is
+        here so that it keeps not firing.
         """
 
         if not isinstance(other, HelasWavefunction):
@@ -2529,6 +2538,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
            self.get('mass') != other.get('mass') or \
            self.get('width') != other.get('width') or \
            self.get('color') != other.get('color') or \
+           self.get('polarization') != other.get('polarization') or \
            self['decay'] != other['decay'] or \
            self['decay'] and self['particle'] != other['particle']:
             return False
