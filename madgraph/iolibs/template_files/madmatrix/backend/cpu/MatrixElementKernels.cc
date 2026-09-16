@@ -8,11 +8,11 @@
 
 #include "ProcessData.h"
 #include "SigmaKin.h"
-#include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 #include "color_sum.h" // for blasColorSumTmpSize
 
+#include <cassert>
 #include <cfenv> // for fetestexcept
 #include <iostream>
 #include <sstream>

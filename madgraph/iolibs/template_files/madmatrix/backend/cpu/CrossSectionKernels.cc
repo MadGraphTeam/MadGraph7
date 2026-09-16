@@ -6,11 +6,11 @@
 
 #include "CrossSectionKernels.h"
 
-#include "GpuAbstraction.h"
 #include "MemoryAccessMatrixElements.h"
 #include "MemoryAccessWeights.h"
 #include "MemoryBuffers.h"
 
+#include <iostream>
 #include <sstream>
 
 // ******************************************************************************************

@@ -6,7 +6,9 @@
 
 #include "RamboSamplingKernels.h"
 
+#ifdef MGONGPUCPP_GPUIMPL
 #include "GpuRuntime.h"
+#endif
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessRandomNumbers.h"
 #include "MemoryAccessWeights.h"

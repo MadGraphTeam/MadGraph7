@@ -18,7 +18,6 @@
 
 #include "mgOnGpuVectors.h"
 
-#include "GpuAbstraction.h"
 #include "Parameters.h"
 #include "ProcessData.h"
 #include "SigmaKin.h" // for the setters CPPProcess's constructor/initProc call

@@ -16,7 +16,6 @@
 #include "CPPProcess.h" // ProcessData.h, Parameters.h, HelAmps_<model>.h transitively
 #include "ProcessTables.h"
 
-#include "GpuRuntime.h"
 #include "MemoryAccessAmplitudes.h"
 #include "MemoryAccessChannelIds.h"
 #include "MemoryAccessCouplings.h"
@@ -31,6 +30,7 @@
 #include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 
+#include <cassert>
 #include <limits>
 #include <vector>
 

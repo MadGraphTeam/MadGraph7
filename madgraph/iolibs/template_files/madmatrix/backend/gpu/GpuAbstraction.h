@@ -13,7 +13,7 @@
 
 //--------------------------------------------------------------------------
 
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 
 #ifndef MGONGPU_HAS_NO_BLAS
 #include "cublas_v2.h"

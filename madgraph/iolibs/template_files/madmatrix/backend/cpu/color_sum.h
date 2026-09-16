@@ -12,7 +12,6 @@
 #include "mgOnGpuVectors.h"
 
 #include "ProcessData.h"
-#include "GpuAbstraction.h"
 
 #include <cstddef>
 #ifdef MGONGPU_CPP_HAS_BLAS
