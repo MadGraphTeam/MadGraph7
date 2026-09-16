@@ -3,6 +3,20 @@ SHELL = /bin/sh
 -include $(PYTHIA8LOCATION)/config.mk
 -include ../Source/make_opts
 
+# $(CXX) may be a C driver: MadGraph auto-detects the compiler and writes it to
+# Source/make_opts as DEFAULT_CPP_COMPILER, and plain 'clang'/'gcc' compile C++
+# sources but do NOT link the C++ runtime. STDLIB is set per machine in
+# Source/make_opts (-lc++ / -lstdc++) and is appended to the link lines below;
+# this only fills it in should that file be missing.
+ifeq ($(strip $(STDLIB)),)
+  ifeq ($(shell uname -s),Darwin)
+    STDLIB = -lc++
+  else
+    STDLIB = -lstdc++
+  endif
+endif
+
+
 F77=$(FC)
 DEBUG=
 FF=$(F77) $(DEBUG)
@@ -44,19 +58,19 @@ Pythia8: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIRARCH)/libpythia8.a \
 	-I$(HEPMCLOCATION)/$(INCDIR) -I$(TOPDIR)/$(INCDIR) \
 	$(EXTRAPATHS) $(EXTRALIBS) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	-L$(PYTHIA8LOCATION)/$(LIBDIRARCH) -lpythia8 $(LIBLHAPDF) $(LIBGZIP) \
-	-lpythia8tohepmc -L$(HEPMCLOCATION)/$(LIBDIR) -lHepMC -lHepMCfio $(LIBGFORTRAN) \
+	-lpythia8tohepmc -L$(HEPMCLOCATION)/$(LIBDIR) -lHepMC -lHepMCfio $(LIBGFORTRAN) $(STDLIB) \
 
 Pythia82: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
 	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
 	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
-	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) \
+	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) $(STDLIB) \
 
 Pythia83: $(FORFILE) $(PYTHIA8LOCATION)/$(LIBDIR)/libpythia8.a
 	  $(CXX) $(CXXFLAGS) -I$(PYTHIA8LOCATION)/$(INCDIR) \
 	  -I$(TOPDIR)/$(INCDIR) $(INCLOPTION) $@.cc -o Pythia8.exe $(FORFILE) \
 	  -L$(PYTHIA8LOCATION)/$(LIBDIR) -lpythia8 $(LIBGZIP) \
-	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) \
+	  -lHepMCfio $(LIBGFORTRAN) $(HEPMCINCLIB) $(EXTRAPATHS) $(EXTRALIBS) $(STDLIB) \
 
 .PHONY: clean
 clean:
