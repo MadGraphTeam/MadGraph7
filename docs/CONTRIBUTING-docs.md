@@ -119,6 +119,7 @@ strings identical across classes by copying from the table below.
 | MadNIS | T. Heimel et al., "MadNIS – Neural multi-channel importance sampling", https://arxiv.org/abs/2212.06172 |
 | MadNIS Reloaded | T. Heimel et al., "The MadNIS Reloaded", https://arxiv.org/abs/2311.01548 |
 | MadNIS-Lite | T. Heimel et al., "Differentiable MadNIS-Lite", https://arxiv.org/abs/2408.01486 |
+| Adam | D. P. Kingma, J. Ba, "Adam: A method for stochastic optimization", https://arxiv.org/abs/1412.6980 |
 | MG5aMC | J. Alwall et al., "The automated computation of tree-level and next-to-leading order differential cross sections", https://arxiv.org/abs/1405.0301 |
 | PYTHIA 8.2 | T. Sjöstrand et al., "An introduction to PYTHIA 8.2", https://arxiv.org/abs/1410.3012 |
 | Sherpa 2.2 | E. Bothmann et al., "Event generation with Sherpa 2.2", https://arxiv.org/abs/1905.09127 |

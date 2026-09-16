@@ -101,15 +101,18 @@ void add_enum(
 
 template <typename T>
 void named_vector_instance(py::module_& m, const char* name) {
-    py::classh<NamedVector<T>>(m, name)
-        .def(py::init<>())
+    py::classh<NamedVector<T>>(m, name, pydoc::doc("NamedVector"))
+        .def(py::init<>(), pydoc::doc("NamedVector::NamedVector"))
         .def(
             py::init<const std::vector<std::string>&, const std::vector<T>&>(),
             py::arg("keys"),
-            py::arg("values")
+            py::arg("values"),
+            pydoc::doc("NamedVector::NamedVector#2")
         )
         .def(
-            py::init<const std::vector<std::pair<std::string, T>>&>(), py::arg("items")
+            py::init<const std::vector<std::pair<std::string, T>>&>(),
+            py::arg("items"),
+            pydoc::doc("NamedVector::NamedVector#4")
         )
         .def("__len__", &NamedVector<T>::size)
         .def(
@@ -122,10 +125,20 @@ void named_vector_instance(py::module_& m, const char* name) {
             py::overload_cast<const std::string&>(&NamedVector<T>::at, py::const_),
             py::arg("key")
         )
-        .def("values", &NamedVector<T>::values)
-        .def("index_map", &NamedVector<T>::index_map)
-        .def("keys", &NamedVector<T>::keys)
-        .def("push_back", &NamedVector<T>::push_back, py::arg("name"), py::arg("item"));
+        .def("values", &NamedVector<T>::values, pydoc::doc("NamedVector::values"))
+        .def(
+            "index_map",
+            &NamedVector<T>::index_map,
+            pydoc::doc("NamedVector::index_map")
+        )
+        .def("keys", &NamedVector<T>::keys, pydoc::doc("NamedVector::keys"))
+        .def(
+            "push_back",
+            &NamedVector<T>::push_back,
+            py::arg("name"),
+            py::arg("item"),
+            pydoc::doc("NamedVector::push_back")
+        );
 }
 
 } // namespace
@@ -1551,7 +1564,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("DiscreteFlow::initialize_globals")
         );
 
-    py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
+    py::classh<VegasGridOptimizer>(
+        m, "VegasGridOptimizer", pydoc::doc("VegasGridOptimizer")
+    )
         .def(
             "add_data",
             [](VegasGridOptimizer& opt, py::object values, py::object counts) {
@@ -1561,17 +1576,25 @@ PYBIND11_MODULE(_madspace_py, m) {
                 );
             },
             py::arg("values"),
-            py::arg("counts")
+            py::arg("counts"),
+            pydoc::doc("VegasGridOptimizer::add_data")
         )
-        .def("optimize", &VegasGridOptimizer::optimize)
+        .def(
+            "optimize",
+            &VegasGridOptimizer::optimize,
+            pydoc::doc("VegasGridOptimizer::optimize")
+        )
         .def(
             py::init<const std::vector<ContextPtr>&, const std::string&, double>(),
             py::arg("contexts"),
             py::arg("grid_name"),
-            py::arg("damping")
+            py::arg("damping"),
+            pydoc::doc("VegasGridOptimizer::VegasGridOptimizer")
         );
 
-    py::classh<DiscreteOptimizer>(m, "DiscreteOptimizer")
+    py::classh<DiscreteOptimizer>(
+        m, "DiscreteOptimizer", pydoc::doc("DiscreteOptimizer")
+    )
         .def(
             "add_data",
             [](DiscreteOptimizer& opt, std::vector<py::object> values_and_counts) {
@@ -1584,23 +1607,31 @@ PYBIND11_MODULE(_madspace_py, m) {
                 }
                 opt.add_data(input_tensors);
             },
-            py::arg("values_and_counts")
+            py::arg("values_and_counts"),
+            pydoc::doc("DiscreteOptimizer::add_data")
         )
-        .def("optimize", &DiscreteOptimizer::optimize)
+        .def(
+            "optimize",
+            &DiscreteOptimizer::optimize,
+            pydoc::doc("DiscreteOptimizer::optimize")
+        )
         .def(
             py::init<const std::vector<ContextPtr>&, const std::vector<std::string>&>(),
             py::arg("contexts"),
-            py::arg("prob_names")
+            py::arg("prob_names"),
+            pydoc::doc("DiscreteOptimizer::DiscreteOptimizer")
         );
 
-    py::classh<AdamOptimizer> adam(m, "AdamOptimizer");
+    py::classh<AdamOptimizer> adam(m, "AdamOptimizer", pydoc::doc("AdamOptimizer"));
     add_enum<AdamOptimizer::LRSchedule>(
         adam,
         "LRSchedule",
         {
             {"none", AdamOptimizer::none},
             {"cosine", AdamOptimizer::cosine},
-        }
+        },
+        "",
+        pydoc::doc("AdamOptimizer::LRSchedule")
     );
     adam.def(
             py::init<
@@ -1623,7 +1654,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beta2") = 0.999,
             py::arg("eps") = 1e-8,
             py::arg("grad_clip_threshold") = 0.0,
-            py::arg("weight_decay") = 0.0
+            py::arg("weight_decay") = 0.0,
+            pydoc::doc("AdamOptimizer::AdamOptimizer")
     )
         .def(
             "step",
@@ -1641,11 +1673,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                 }
                 return opt.step(tensors);
             },
-            py::arg("inputs")
+            py::arg("inputs"),
+            pydoc::doc("AdamOptimizer::step")
         )
-        .def("learning_rate", &AdamOptimizer::learning_rate)
-        .def("input_types", &AdamOptimizer::input_types)
-        .def("context", &AdamOptimizer::context);
+        .def(
+            "learning_rate",
+            &AdamOptimizer::learning_rate,
+            pydoc::doc("AdamOptimizer::learning_rate")
+        )
+        .def(
+            "input_types",
+            &AdamOptimizer::input_types,
+            pydoc::doc("AdamOptimizer::input_types")
+        )
+        .def("context", &AdamOptimizer::context, pydoc::doc("AdamOptimizer::context"));
 
     py::classh<PdfGrid>(m, "PdfGrid", pydoc::doc("PdfGrid"))
         .def(
