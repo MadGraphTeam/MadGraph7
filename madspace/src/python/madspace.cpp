@@ -2319,17 +2319,21 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("bin_values", &Histogram::bin_values)
         .def_readonly("bin_errors", &Histogram::bin_errors);
 
-    py::classh<LHEHeader>(m, "LHEHeader")
+    py::classh<LHEHeader>(m, "LHEHeader", pydoc::doc("LHEHeader"))
         .def(
             py::init<std::string, std::string, bool>(),
             py::arg("name") = "",
             py::arg("content") = "",
             py::arg("escape_content") = false
         )
-        .def_readwrite("name", &LHEHeader::name)
-        .def_readwrite("content", &LHEHeader::content)
-        .def_readwrite("escape_content", &LHEHeader::escape_content);
-    py::classh<LHEProcess>(m, "LHEProcess")
+        .def_readwrite("name", &LHEHeader::name, pydoc::doc("LHEHeader::name"))
+        .def_readwrite("content", &LHEHeader::content, pydoc::doc("LHEHeader::content"))
+        .def_readwrite(
+            "escape_content",
+            &LHEHeader::escape_content,
+            pydoc::doc("LHEHeader::escape_content")
+        );
+    py::classh<LHEProcess>(m, "LHEProcess", pydoc::doc("LHEProcess"))
         .def(
             py::init<double, double, double, int>(),
             py::arg("cross_section") = 0.,
@@ -2337,11 +2341,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("max_weight") = 0.,
             py::arg("process_id") = 0
         )
-        .def_readwrite("cross_section", &LHEProcess::cross_section)
-        .def_readwrite("cross_section_error", &LHEProcess::cross_section_error)
-        .def_readwrite("max_weight", &LHEProcess::max_weight)
-        .def_readwrite("process_id", &LHEProcess::process_id);
-    py::classh<LHEMeta>(m, "LHEMeta")
+        .def_readwrite(
+            "cross_section",
+            &LHEProcess::cross_section,
+            pydoc::doc("LHEProcess::cross_section")
+        )
+        .def_readwrite(
+            "cross_section_error",
+            &LHEProcess::cross_section_error,
+            pydoc::doc("LHEProcess::cross_section_error")
+        )
+        .def_readwrite(
+            "max_weight", &LHEProcess::max_weight, pydoc::doc("LHEProcess::max_weight")
+        )
+        .def_readwrite(
+            "process_id", &LHEProcess::process_id, pydoc::doc("LHEProcess::process_id")
+        );
+    py::classh<LHEMeta>(m, "LHEMeta", pydoc::doc("LHEMeta"))
         .def(
             py::init<
                 int,
@@ -2367,18 +2383,42 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("processes") = std::vector<LHEProcess>{},
             py::arg("headers") = std::vector<LHEHeader>{}
         )
-        .def_readwrite("beam1_pdg_id", &LHEMeta::beam1_pdg_id)
-        .def_readwrite("beam2_pdg_id", &LHEMeta::beam2_pdg_id)
-        .def_readwrite("beam1_energy", &LHEMeta::beam1_energy)
-        .def_readwrite("beam2_energy", &LHEMeta::beam2_energy)
-        .def_readwrite("beam1_pdf_authors", &LHEMeta::beam1_pdf_authors)
-        .def_readwrite("beam2_pdf_authors", &LHEMeta::beam2_pdf_authors)
-        .def_readwrite("beam1_pdf_id", &LHEMeta::beam1_pdf_id)
-        .def_readwrite("beam2_pdf_id", &LHEMeta::beam2_pdf_id)
-        .def_readwrite("weight_mode", &LHEMeta::weight_mode)
-        .def_readwrite("processes", &LHEMeta::processes)
-        .def_readwrite("headers", &LHEMeta::headers);
-    py::classh<LHEParticle>(m, "LHEParticle")
+        .def_readwrite(
+            "beam1_pdg_id", &LHEMeta::beam1_pdg_id, pydoc::doc("LHEMeta::beam1_pdg_id")
+        )
+        .def_readwrite(
+            "beam2_pdg_id", &LHEMeta::beam2_pdg_id, pydoc::doc("LHEMeta::beam2_pdg_id")
+        )
+        .def_readwrite(
+            "beam1_energy", &LHEMeta::beam1_energy, pydoc::doc("LHEMeta::beam1_energy")
+        )
+        .def_readwrite(
+            "beam2_energy", &LHEMeta::beam2_energy, pydoc::doc("LHEMeta::beam2_energy")
+        )
+        .def_readwrite(
+            "beam1_pdf_authors",
+            &LHEMeta::beam1_pdf_authors,
+            pydoc::doc("LHEMeta::beam1_pdf_authors")
+        )
+        .def_readwrite(
+            "beam2_pdf_authors",
+            &LHEMeta::beam2_pdf_authors,
+            pydoc::doc("LHEMeta::beam2_pdf_authors")
+        )
+        .def_readwrite(
+            "beam1_pdf_id", &LHEMeta::beam1_pdf_id, pydoc::doc("LHEMeta::beam1_pdf_id")
+        )
+        .def_readwrite(
+            "beam2_pdf_id", &LHEMeta::beam2_pdf_id, pydoc::doc("LHEMeta::beam2_pdf_id")
+        )
+        .def_readwrite(
+            "weight_mode", &LHEMeta::weight_mode, pydoc::doc("LHEMeta::weight_mode")
+        )
+        .def_readwrite(
+            "processes", &LHEMeta::processes, pydoc::doc("LHEMeta::processes")
+        )
+        .def_readwrite("headers", &LHEMeta::headers, pydoc::doc("LHEMeta::headers"));
+    py::classh<LHEParticle>(m, "LHEParticle", pydoc::doc("LHEParticle"))
         .def(
             py::init<
                 int,
@@ -2413,20 +2453,38 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly_static(
             "status_intermediate_resonance", &LHEParticle::status_intermediate_resonance
         )
-        .def_readwrite("pdg_id", &LHEParticle::pdg_id)
-        .def_readwrite("status_code", &LHEParticle::status_code)
-        .def_readwrite("mother1", &LHEParticle::mother1)
-        .def_readwrite("mother2", &LHEParticle::mother2)
-        .def_readwrite("color", &LHEParticle::color)
-        .def_readwrite("anti_color", &LHEParticle::anti_color)
-        .def_readwrite("px", &LHEParticle::px)
-        .def_readwrite("py", &LHEParticle::py)
-        .def_readwrite("pz", &LHEParticle::pz)
-        .def_readwrite("energy", &LHEParticle::energy)
-        .def_readwrite("mass", &LHEParticle::mass)
-        .def_readwrite("lifetime", &LHEParticle::lifetime)
-        .def_readwrite("spin", &LHEParticle::spin);
-    py::classh<LHEEvent>(m, "LHEEvent")
+        .def_readwrite(
+            "pdg_id", &LHEParticle::pdg_id, pydoc::doc("LHEParticle::pdg_id")
+        )
+        .def_readwrite(
+            "status_code",
+            &LHEParticle::status_code,
+            pydoc::doc("LHEParticle::status_code")
+        )
+        .def_readwrite(
+            "mother1", &LHEParticle::mother1, pydoc::doc("LHEParticle::mother1")
+        )
+        .def_readwrite(
+            "mother2", &LHEParticle::mother2, pydoc::doc("LHEParticle::mother2")
+        )
+        .def_readwrite("color", &LHEParticle::color, pydoc::doc("LHEParticle::color"))
+        .def_readwrite(
+            "anti_color",
+            &LHEParticle::anti_color,
+            pydoc::doc("LHEParticle::anti_color")
+        )
+        .def_readwrite("px", &LHEParticle::px, pydoc::doc("LHEParticle::px"))
+        .def_readwrite("py", &LHEParticle::py, pydoc::doc("LHEParticle::py"))
+        .def_readwrite("pz", &LHEParticle::pz, pydoc::doc("LHEParticle::pz"))
+        .def_readwrite(
+            "energy", &LHEParticle::energy, pydoc::doc("LHEParticle::energy")
+        )
+        .def_readwrite("mass", &LHEParticle::mass, pydoc::doc("LHEParticle::mass"))
+        .def_readwrite(
+            "lifetime", &LHEParticle::lifetime, pydoc::doc("LHEParticle::lifetime")
+        )
+        .def_readwrite("spin", &LHEParticle::spin, pydoc::doc("LHEParticle::spin"));
+    py::classh<LHEEvent>(m, "LHEEvent", pydoc::doc("LHEEvent"))
         .def(
             py::init<int, double, double, double, double, std::vector<LHEParticle>>(),
             py::arg("process_id") = 0,
@@ -2436,20 +2494,36 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alpha_qcd") = 0.,
             py::arg("particles") = std::vector<LHEParticle>{}
         )
-        .def_readwrite("process_id", &LHEEvent::process_id)
-        .def_readwrite("weight", &LHEEvent::weight)
-        .def_readwrite("scale", &LHEEvent::scale)
-        .def_readwrite("alpha_qed", &LHEEvent::alpha_qed)
-        .def_readwrite("alpha_qcd", &LHEEvent::alpha_qcd)
-        .def_readwrite("particles", &LHEEvent::particles)
-        .def_readwrite("rwgt_ids", &LHEEvent::rwgt_ids)
-        .def_readwrite("rwgt", &LHEEvent::rwgt)
-        .def("format", [](const LHEEvent& event) {
-            std::string buffer;
-            event.format_to(buffer);
-            return buffer;
-        });
-    py::classh<LHECompleter::SubprocArgs>(m, "SubprocArgs")
+        .def_readwrite(
+            "process_id", &LHEEvent::process_id, pydoc::doc("LHEEvent::process_id")
+        )
+        .def_readwrite("weight", &LHEEvent::weight, pydoc::doc("LHEEvent::weight"))
+        .def_readwrite("scale", &LHEEvent::scale, pydoc::doc("LHEEvent::scale"))
+        .def_readwrite(
+            "alpha_qed", &LHEEvent::alpha_qed, pydoc::doc("LHEEvent::alpha_qed")
+        )
+        .def_readwrite(
+            "alpha_qcd", &LHEEvent::alpha_qcd, pydoc::doc("LHEEvent::alpha_qcd")
+        )
+        .def_readwrite(
+            "particles", &LHEEvent::particles, pydoc::doc("LHEEvent::particles")
+        )
+        .def_readwrite(
+            "rwgt_ids", &LHEEvent::rwgt_ids, pydoc::doc("LHEEvent::rwgt_ids")
+        )
+        .def_readwrite("rwgt", &LHEEvent::rwgt, pydoc::doc("LHEEvent::rwgt"))
+        .def(
+            "format",
+            [](const LHEEvent& event) {
+                std::string buffer;
+                event.format_to(buffer);
+                return buffer;
+            },
+            pydoc::doc("LHEEvent::format_to")
+        );
+    py::classh<LHECompleter::SubprocArgs>(
+        m, "SubprocArgs", pydoc::doc("LHECompleter::SubprocArgs")
+    )
         .def(
             py::init<
                 int,
@@ -2473,20 +2547,55 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdg_ids") = nested_vector3<int>{},
             py::arg("diagram_propagator_pdgs") = nested_vector3<int>{}
         )
-        .def_readwrite("process_id", &LHECompleter::SubprocArgs::process_id)
-        .def_readwrite("topologies", &LHECompleter::SubprocArgs::topologies)
-        .def_readwrite("permutations", &LHECompleter::SubprocArgs::permutations)
-        .def_readwrite("diagram_indices", &LHECompleter::SubprocArgs::diagram_indices)
         .def_readwrite(
-            "diagram_color_indices", &LHECompleter::SubprocArgs::diagram_color_indices
+            "process_id",
+            &LHECompleter::SubprocArgs::process_id,
+            pydoc::doc("LHECompleter::SubprocArgs::process_id")
         )
-        .def_readwrite("color_flows", &LHECompleter::SubprocArgs::color_flows)
-        .def_readwrite("pdg_color_types", &LHECompleter::SubprocArgs::pdg_color_types)
-        .def_readwrite("helicities", &LHECompleter::SubprocArgs::helicities)
-        .def_readwrite("pdg_ids", &LHECompleter::SubprocArgs::pdg_ids)
+        .def_readwrite(
+            "topologies",
+            &LHECompleter::SubprocArgs::topologies,
+            pydoc::doc("LHECompleter::SubprocArgs::topologies")
+        )
+        .def_readwrite(
+            "permutations",
+            &LHECompleter::SubprocArgs::permutations,
+            pydoc::doc("LHECompleter::SubprocArgs::permutations")
+        )
+        .def_readwrite(
+            "diagram_indices",
+            &LHECompleter::SubprocArgs::diagram_indices,
+            pydoc::doc("LHECompleter::SubprocArgs::diagram_indices")
+        )
+        .def_readwrite(
+            "diagram_color_indices",
+            &LHECompleter::SubprocArgs::diagram_color_indices,
+            pydoc::doc("LHECompleter::SubprocArgs::diagram_color_indices")
+        )
+        .def_readwrite(
+            "color_flows",
+            &LHECompleter::SubprocArgs::color_flows,
+            pydoc::doc("LHECompleter::SubprocArgs::color_flows")
+        )
+        .def_readwrite(
+            "pdg_color_types",
+            &LHECompleter::SubprocArgs::pdg_color_types,
+            pydoc::doc("LHECompleter::SubprocArgs::pdg_color_types")
+        )
+        .def_readwrite(
+            "helicities",
+            &LHECompleter::SubprocArgs::helicities,
+            pydoc::doc("LHECompleter::SubprocArgs::helicities")
+        )
+        .def_readwrite(
+            "pdg_ids",
+            &LHECompleter::SubprocArgs::pdg_ids,
+            pydoc::doc("LHECompleter::SubprocArgs::pdg_ids")
+        )
         .def_readwrite(
             "diagram_propagator_pdgs",
-            &LHECompleter::SubprocArgs::diagram_propagator_pdgs
+            &LHECompleter::SubprocArgs::diagram_propagator_pdgs,
+            pydoc::doc("LHECompleter::SubprocArgs::diagram_propagator_pdgs")
         );
     py::classh<MixMaxRandom>(m, "MixMaxRandom", pydoc::doc("MixMaxRandom"))
         .def(py::init<>(), pydoc::doc("MixMaxRandom::MixMaxRandom"))
@@ -2495,11 +2604,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("seed"),
             pydoc::doc("MixMaxRandom::MixMaxRandom#3")
         );
-    py::classh<LHECompleter>(m, "LHECompleter")
+    py::classh<LHECompleter>(m, "LHECompleter", pydoc::doc("LHECompleter"))
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
             py::arg("subproc_args"),
-            py::arg("bw_cutoff")
+            py::arg("bw_cutoff"),
+            pydoc::doc("LHECompleter::LHECompleter")
         )
         .def(
             "complete_event_data",
@@ -2510,19 +2620,45 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("color_index"),
             py::arg("flavor_index"),
             py::arg("helicity_index"),
-            py::arg("rand_gen")
+            py::arg("rand_gen"),
+            pydoc::doc("LHECompleter::complete_event_data")
         )
-        .def("save", &LHECompleter::save, py::arg("file"))
-        .def_static("load", &LHECompleter::load, py::arg("file"))
-        .def_property_readonly("max_particle_count", &LHECompleter::max_particle_count);
-    py::classh<LHEFileWriter>(m, "LHEFileWriter")
+        .def(
+            "save",
+            &LHECompleter::save,
+            py::arg("file"),
+            pydoc::doc("LHECompleter::save")
+        )
+        .def_static(
+            "load",
+            &LHECompleter::load,
+            py::arg("file"),
+            pydoc::doc("LHECompleter::load")
+        )
+        .def_property_readonly(
+            "max_particle_count",
+            &LHECompleter::max_particle_count,
+            pydoc::doc("LHECompleter::max_particle_count")
+        );
+    py::classh<LHEFileWriter>(m, "LHEFileWriter", pydoc::doc("LHEFileWriter"))
         .def(
             py::init<const std::string&, const LHEMeta&>(),
             py::arg("file_name"),
-            py::arg("meta")
+            py::arg("meta"),
+            pydoc::doc("LHEFileWriter::LHEFileWriter")
         )
-        .def("write", &LHEFileWriter::write, py::arg("event"))
-        .def("write_string", &LHEFileWriter::write_string, py::arg("str"));
+        .def(
+            "write",
+            &LHEFileWriter::write,
+            py::arg("event"),
+            pydoc::doc("LHEFileWriter::write")
+        )
+        .def(
+            "write_string",
+            &LHEFileWriter::write_string,
+            py::arg("str"),
+            pydoc::doc("LHEFileWriter::write_string")
+        );
 
     m.def(
         "format_si_prefix",

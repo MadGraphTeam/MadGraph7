@@ -226,6 +226,12 @@ Two more `driver/`-specific traps found while documenting it:
   is declared first.
 - Private nested types (a private `struct` inside a class, e.g. `Tensor`'s
   `TensorImpl`) are never extracted by Doxygen and need no comment.
+- **No `pydoc::doc("X::X")` on a `py::init<...>()` bound to a plain aggregate**
+  (a struct with no user-declared constructor, e.g. `LHEHeader`). Doxygen never
+  emits a memberdef for the implicit constructor, so the key does not exist at
+  all — not even as an empty-string stub — and `pydoc::doc` fails to compile.
+  Bind the constructor without a doc argument (as `ObservableHistograms::HistItem`
+  already did) and document only the fields.
 
 Only the classes reachable from Python are done so far (see Status); the
 C++-only helper types in `driver/` are still undocumented.
