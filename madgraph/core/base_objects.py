@@ -2676,6 +2676,33 @@ class FLV_Coupling(PhysicsObject):
 #===============================================================================
 # Leg
 #===============================================================================
+def canonical_polarization(polarization):
+    """The canonical form of a polarization restriction: sorted, deduplicated.
+
+    Two legs carry the *same* restriction exactly when this returns equal
+    values, so every key that decides whether two processes may share a
+    matrix element, a directory or a subprocess group has to be built from
+    it and not from its own copy of the expression:
+
+      Process.shell_polarization              P-directory names
+      helas_objects.IdentifyMETag.link_from_leg   matrix-element identity
+      fks_base.FKSRealProcess.pdgs_pols       real-amplitude recycling
+      group_subprocs.SubProcessGroup          subprocess grouping
+
+    Those were four hand-kept copies agreeing only by comment. A divergence
+    between any two of them silently merges physics that must stay separate
+    (one born taking another's reals, two polarisations sharing one matrix
+    element) or splits what should combine -- which is the class of bug the
+    polarised-NLO work exists to fix, so it should not be reintroducible by
+    editing one site and missing three.
+
+    The '{}' parser refuses a repeated helicity outright, so set() is a
+    no-op for anything typed at the prompt; it matters for a list built
+    directly through the Python API, which never passes that parser.
+    """
+    return tuple(sorted(set(polarization or ())))
+
+
 def polarization_to_string(polarization):
     """Render a leg 'polarization' list as the brace content of a process
     string. The propagator-only entries (4,5,6,7,9,99) are printed as the
@@ -3754,7 +3781,7 @@ class Process(PhysicsObject):
         """
         if not polarization:
             return ''
-        pol = sorted(set(polarization))
+        pol = list(canonical_polarization(polarization))
         if pol == [-1, 1]:
             return 'T'
         elif pol == [-1]:

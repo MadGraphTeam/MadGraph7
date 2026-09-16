@@ -494,7 +494,8 @@ class SubProcessGroup(base_objects.PhysicsObject):
             # helas_objects.IdentifyMETag.link_from_leg; an unpolarized leg
             # contributes (), so the grouping of unpolarized processes is
             # strictly unchanged.
-            pols = tuple(tuple(sorted(set(l.get('polarization')))) \
+            pols = tuple(base_objects.canonical_polarization(
+                             l.get('polarization'))
                          for l in process.get('legs'))
 
             # This is where the requirements for which particles to

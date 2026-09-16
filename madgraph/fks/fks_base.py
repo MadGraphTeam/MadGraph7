@@ -470,7 +470,8 @@ class FKSRealProcess(object):
         # Process.shell_polarization: '{+-}' and '{-+}' are one restriction,
         # so they must share their reals just as they share their born.
         self.pdgs_pols = (self.pdgs,
-                          tuple(tuple(sorted(set(leg.get('polarization'))))
+                          tuple(MG.canonical_polarization(
+                                    leg.get('polarization'))
                                 for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]

@@ -186,7 +186,8 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # one and the same directory.
         # An unpolarized leg gives (), so every tag of an unpolarized process
         # is structurally what it was before.
-        polarization = tuple(sorted(set(leg.get('polarization'))))
+        polarization = base_objects.canonical_polarization(
+            leg.get('polarization'))
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
