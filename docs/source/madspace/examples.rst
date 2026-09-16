@@ -21,3 +21,4 @@ work against the current MadSpace build.
    examples/gpu
    examples/pdf
    examples/integrator
+   examples/integrator-madnis

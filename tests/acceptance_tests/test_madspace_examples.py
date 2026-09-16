@@ -48,6 +48,13 @@ from madgraph import MG5DIR
 
 pjoin = os.path.join
 
+# Harmless everywhere; avoids a common "OMP: Error #15" abort on setups (e.g.
+# conda + Homebrew on macOS) where more than one OpenMP runtime ends up linked
+# into the process. Set at import time, before any torch import in this
+# process (has_torch()/has_madnis() below import it just to check), not only
+# in the subprocess env run_doc_example() builds.
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+
 _EXAMPLES_DIR = pjoin(MG5DIR, 'docs', 'source', 'madspace', 'examples')
 _MADSPACE_INSTALL = pjoin(MG5DIR, 'madspace', 'install')
 
@@ -124,6 +131,22 @@ def has_pdf_set(name):
     return any(os.path.isdir(pjoin(p, name)) for p in lhapdf.paths())
 
 
+def has_torch():
+    try:
+        import torch  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def has_madnis():
+    try:
+        import madnis.integrator  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def run_doc_example(test, page_name, cwd=None):
     """Extract the python blocks of ``examples/<page_name>.rst``, concatenate
     them into one script, and run it as a subprocess. Fails the test if the
@@ -147,6 +170,10 @@ def run_doc_example(test, page_name, cwd=None):
         env['PYTHONPATH'] = os.pathsep.join(
             [_MADSPACE_INSTALL] + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else [])
         )
+    # Harmless everywhere; avoids a common "OMP: Error #15" abort on setups
+    # (e.g. conda + Homebrew on macOS) where more than one OpenMP runtime is
+    # linked into the process, which torch-based examples otherwise hit.
+    env.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
 
     def _run(directory):
         script_path = pjoin(directory, page_name.replace('-', '_') + '.py')
@@ -294,6 +321,27 @@ class TestMadSpaceExamples(unittest.TestCase):
             self.skipTest('could not generate/compile g g > t t~ g: %s'
                           % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
         run_doc_example(self, 'integrator', cwd=scratch)
+
+    def test_madspace_example_integrator_madnis(self):
+        """docs/source/madspace/examples/integrator-madnis.rst -- the same
+        integrand as the previous example, integrated with the external
+        madnis package's neural importance sampling instead of plain
+        sampling. Needs madspace, torch, the external madnis package,
+        lhapdf/NNPDF40_lo_as_01180 and a C++ compiler."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        if not has_torch():
+            self.skipTest('torch unavailable')
+        if not has_madnis():
+            self.skipTest('external madnis package unavailable')
+        if not has_pdf_set('NNPDF40_lo_as_01180'):
+            self.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found '
+                          '(set $LHAPDF_DATA_PATH)')
+        scratch = ggttg_process_dir()
+        if scratch is None:
+            self.skipTest('could not generate/compile g g > t t~ g: %s'
+                          % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
+        run_doc_example(self, 'integrator-madnis', cwd=scratch)
 
 
 if __name__ == '__main__':
