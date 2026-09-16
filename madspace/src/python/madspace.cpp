@@ -995,12 +995,45 @@ PYBIND11_MODULE(_madspace_py, m) {
         );
 
     py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
+    add_enum<ScaleScheme>(
+        mlm,
+        "ScaleScheme",
+        {
+            {"clustering_mean", ScaleScheme::clustering_mean},
+            {"madevent", ScaleScheme::madevent},
+        }
+    );
     add_enum<JetScaleScheme>(
         mlm,
         "JetScaleScheme",
         {
             {"emission", JetScaleScheme::emission},
             {"production", JetScaleScheme::production},
+        }
+    );
+    add_enum<AlphasScheme>(
+        mlm,
+        "AlphasScheme",
+        {
+            {"none", AlphasScheme::none},
+            {"per_vertex", AlphasScheme::per_vertex},
+            {"geometric_mean", AlphasScheme::geometric_mean},
+        }
+    );
+    add_enum<ClusteringMeasure>(
+        mlm,
+        "ClusteringMeasure",
+        {
+            {"fxfx", ClusteringMeasure::fxfx},
+            {"madevent", ClusteringMeasure::madevent},
+        }
+    );
+    add_enum<PartonLineScheme>(
+        mlm,
+        "PartonLineScheme",
+        {
+            {"flavor", PartonLineScheme::flavor},
+            {"goodjet", PartonLineScheme::goodjet},
         }
     );
     mlm
@@ -1011,25 +1044,41 @@ PYBIND11_MODULE(_madspace_py, m) {
                 nested_vector2<std::size_t>,
                 double,
                 JetScaleScheme,
+                ScaleScheme,
                 std::unordered_map<int, int>,
                 double,
                 double,
                 double,
                 bool,
                 std::vector<int>,
-                int>(),
+                int,
+                PartonLineScheme,
+                AlphasScheme,
+                bool,
+                ClusteringMeasure>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
             py::arg("cm_energy"),
             py::arg("jet_scale_scheme") = JetScaleScheme::production,
+            py::arg("scale_scheme") = ScaleScheme::clustering_mean,
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("xqcut") = 0.,
             py::arg("bw_cutoff") = 15.,
             py::arg("jet_radius") = 0.4,
             py::arg("hadronic") = true,
             py::arg("external_pdg_ids") = std::vector<int>{},
-            py::arg("max_jet_flavor") = 4
+            py::arg("max_jet_flavor") = 4,
+            py::arg("parton_line_scheme") = PartonLineScheme::goodjet,
+            py::arg("alphas_scheme") = AlphasScheme::per_vertex,
+            py::arg("pdf_reweighting") = true,
+            py::arg("clustering_measure") = ClusteringMeasure::fxfx
+        )
+        .def_property_readonly(
+            "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs
+        )
+        .def_property_readonly(
+            "clustering_measure", &MLMClustering::clustering_measure
         )
         .def_property_readonly(
             "cluster_state_machine", &MLMClustering::cluster_state_machine
@@ -1229,6 +1278,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1236,9 +1287,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale_fixed"),
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
-            py::arg("fact_scale2")
+            py::arg("fact_scale2"),
+            py::arg("min_scale") = 0.,
+            py::arg("max_scale") = 0.
         )
-        .def(py::init<const MLMClustering&>(), py::arg("clustering"))
+        .def(
+            py::init<const MLMClustering&, double, double>(),
+            py::arg("clustering"),
+            py::arg("min_scale") = 0.,
+            py::arg("max_scale") = 0.
+        )
         .def("is_mlm", &EnergyScale::is_mlm);
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());

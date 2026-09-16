@@ -6595,6 +6595,65 @@ class RunCardMG7(RunCard):
         #                 the softest clustering it takes part in.
         self.add_toml_param('beam', 'jet_scale_scheme', "production",
             allowed=['production', 'emission'])
+        # How mu_R and mu_F are read off the clustering history:
+        #   "clustering_mean": geometric mean of every clustering scale, with a
+        #                      single factorisation scale.
+        #   "madevent":        follow each beam's parton line and use
+        #                      (s_jlast1 s_jcentral1 s_jlast2 s_jcentral2)^(1/4),
+        #                      with a separate factorisation scale per beam.
+        # Left at "clustering_mean" by default because it moves the cross
+        # section, unlike jet_scale_scheme.
+        self.add_toml_param('beam', 'scale_scheme', "clustering_mean",
+            allowed=['clustering_mean', 'madevent'])
+        # How a beam's parton line is decided to carry on past a vertex (only
+        # read when scale_scheme = "madevent"):
+        #   "goodjet": a line stays a parton line only while every clustering
+        #              it has been through was a jet vertex, so one non-jet
+        #              vertex in its history stops it for good. What madevent
+        #              does.
+        #   "flavor":  decided from the flavour of the emitted object alone,
+        #              which keeps lines alive past vertices where madevent
+        #              would have stopped them.
+        self.add_toml_param('beam', 'parton_line_scheme', "goodjet",
+            allowed=['goodjet', 'flavor'])
+        # Evaluate alpha_s at the scale of each clustering vertex instead of
+        # once at the event scale, which is what madevent does for a merged
+        # sample (the rewgt loop in Template/LO/SubProcesses/reweight.f). A
+        # merged sample without it is short by roughly one factor of
+        # alphas(pt_emission)/alphas(mu_R) per extra jet, compounding with
+        # multiplicity.
+        #   "per_vertex":     alphas(pt_i) at each vertex, what madevent does
+        #   "geometric_mean": one coupling at the geometric mean of the pt_i,
+        #                     raised to the number of vertices
+        #   "none":           a single coupling at mu_R for the whole event
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'alphas_reweighting', "per_vertex",
+            allowed=['per_vertex', 'geometric_mean', 'none'])
+        # Re-evaluate the beam densities along the clustering ladder instead of
+        # once at the factorisation scale: the density is taken at the scale of
+        # the emission that pulled the parton out of the beam and walked back
+        # up, with the momentum fraction rescaled at each step. This is the
+        # pdf half of the same rewgt loop, madevent's hidden pdfwgt flag, which
+        # is on by default there. Only read when dynamical_scale_choice = "mlm"
+        # and scale_scheme = "madevent".
+        self.add_toml_param('beam', 'pdf_reweighting', True)
+        # Which measure scores a candidate final-state clustering. The two only
+        # differ for a non-resonant pair with a massless mother and one massive
+        # and one massless daughter (q* > q W, g* > g h), or a massive mother
+        # with two massless daughters:
+        #   "fxfx":     cluster_scale of Template/NLO/SubProcesses/cluster.f,
+        #               sqrt(|p_j.(p_i+p_j)|)/2 and the invariant mass
+        #   "madevent": DJ of Template/LO/Source/kin_functions.f, as madevent's
+        #               LO clustering does: the massless one's transverse mass
+        #               for a massless-massive pair, the kt measure otherwise
+        # Only read when dynamical_scale_choice = "mlm".
+        self.add_toml_param('beam', 'clustering_measure', "fxfx",
+            allowed=['fxfx', 'madevent'])
+        # Floor on mu_R and mu_F, whatever the dynamical scale choice. Below
+        # the lowest Q of a PDF grid the densities are undefined, so an event
+        # whose scales fall under this is dropped. madevent applies the same
+        # floor to mu_F. 0 disables it.
+        self.add_toml_param('beam', 'min_scale', 2.0)
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)
@@ -6680,6 +6739,14 @@ class RunCardMG7(RunCard):
         # the parton shower, so the event is dropped. Only used with
         # dynamical_scale_choice = "mlm"; 0 disables it.
         self.add_toml_param('phasespace', 'xqcut', 0.0)
+        # Counterpart of madevent's auto_ptj_mjj. With a merging cut in place
+        # the matrix-element jets are already bounded from below by xqcut, so
+        # the jet pt and pair-mass cuts are raised to it - free physically, and
+        # a large gain in integration efficiency - and the jet dR cuts are
+        # dropped, since xqcut supersedes them and a dR cut would otherwise
+        # carve a hole out of the region the shower is meant to fill.
+        # Only read when dynamical_scale_choice = "mlm" and xqcut > 0.
+        self.add_toml_param('phasespace', 'auto_ptj_mjj', True)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------

@@ -119,9 +119,46 @@ def run(clustering, momenta):
 
 
 def run_all(clustering, momenta):
-    """As run(), plus the trailing xqcut_weight."""
+    """As run(), plus the trailing xqcut_weight.
+
+    Deliberately stops there: the clustering also returns the per-vertex
+    alpha_s scales and their weight, which these tests are not about, and
+    unpacking everything would break every caller each time an output is
+    added. Use alphas_outputs() for those.
+    """
+    return tuple(np.asarray(v) for v in clustering(momenta))[:6]
+
+
+def alphas_outputs(clustering, momenta):
+    """The alpha_s reweighting outputs: per-vertex scales, and the weight that
+    drops an event whose vertices sit where the coupling is not usable."""
     out = clustering(momenta)
-    return tuple(np.asarray(v) for v in out)
+    return np.asarray(out[6]), np.asarray(out[7])
+
+
+PDF_OUTPUTS = [
+    "pdf_scale1",
+    "pdf_scale2",
+    "pdf_rw_flavor",
+    "pdf_rw_x",
+    "pdf_rw_q_num",
+    "pdf_rw_q_den",
+    "pdf_rw_active",
+    "pdf_rw_beam",
+]
+
+
+def pdf_outputs(clustering, momenta):
+    """The pdf reweighting outputs, by name: the scale each beam density is to
+    be evaluated at, and one slot per step of the ladder it is walked back up.
+    Named rather than positional because there are eight of them and their
+    order is not something a test should be pinning down."""
+    out = clustering(momenta)
+    first = len(out) - len(PDF_OUTPUTS)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(PDF_OUTPUTS, list(out)[first:])
+    }
 
 
 def assert_jet_scales_agree(reference, other, max_flip_fraction=0.05):
@@ -720,9 +757,17 @@ BIT_IS_LAST = (30, 1)
 # Words per transition: (data, next_offset, trace_data).
 STATE_ITEM_SIZE = 3
 
-# trace_data values: which daughter the mother's parton line continues into.
+# trace_data: the low two bits say which daughter the mother's parton line
+# continues into, the next two carry the mother's own flavour.
+TRACE_MODE_MASK = 0x3
 TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH = 0, 1, 2, 3
 TRACE_MODES = {TRACE_FIRST, TRACE_SECOND, TRACE_HARDER, TRACE_BOTH}
+TRACE_IS_JET_IN = 1 << 2
+TRACE_IS_COLORED_IN = 1 << 3
+
+
+def trace_mode(trace):
+    return trace & TRACE_MODE_MASK
 
 
 def field(data, spec):
@@ -866,15 +911,15 @@ def test_state_machine_trace_modes_are_valid(machine):
     non_terminal, _ = walk(flat, n_ext)
     for _, (_, transitions) in non_terminal.items():
         for data, _, trace in transitions:
-            assert trace in TRACE_MODES
+            assert trace_mode(trace) in TRACE_MODES
             if field(data, BIT_PARTICLE1) < 2:
-                assert trace == TRACE_FIRST
+                assert trace_mode(trace) == TRACE_FIRST
 
 
 def trace_modes_of(clustering, n_ext):
     non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), n_ext)
     return {
-        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)): trace
+        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)): trace_mode(trace)
         for _, (_, transitions) in non_terminal.items()
         for data, _, trace in transitions
     }
@@ -1311,3 +1356,606 @@ def test_xqcut_does_not_depend_on_the_jet_scale_scheme(process):
         diagrams, pdg_ids, momenta, 40.0, jet_scale_scheme=PRODUCTION
     )
     assert np.array_equal(emission, production)
+
+
+# --------------------------------------------------------------------------
+# the alpha_s and pdf reweighting a merged event carries
+# --------------------------------------------------------------------------
+#
+# Both are corrections madevent applies to a merged event that a single scale
+# does not describe: the coupling belongs at the scale of each emission, and
+# the beam density belongs at the scale that took the parton out of the beam.
+# The reference is the rewgt loop of Template/LO/SubProcesses/reweight.f.
+#
+# What is checkable here is the bookkeeping, not the densities: which one is
+# asked for is only settled once the flavour has been sampled, which happens in
+# the integrand and not in the clustering.
+
+
+def t_channel_diagram():
+    """u u~ > b b~ g g through a t-channel quark line, with the propagator
+    flavours filled in.
+
+    The pdf reweighting follows a beam's parton line through the clustering, so
+    a test of it needs a process where a beam emits more than once and stays a
+    parton in between. Here beam 0 emits both gluons before the Z attaches: the
+    line is a u throughout, which is also the case the "same flavour as the
+    beam" class exists for.
+
+    The propagator pdg ids matter and the json fixtures do not carry them. A
+    line whose flavour is unknown is not a parton as far as the reweighting is
+    concerned, so on those fixtures the chain stops at the first clustering and
+    nothing is exercised.
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_B, M_B, 0.0, 0.0],
+            # p0 = Z (b b~), p1/p2 = the t-channel u line
+            "propagators": [(M_Z, W_Z, 23), (0.0, 0.0, 2), (0.0, 0.0, 2)],
+            "vertices": [
+                ["o0", "o1", "p0"],
+                ["i0", "o2", "p1"],
+                ["p1", "o3", "p2"],
+                ["p2", "p0", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4, 5]],
+        }
+    ]
+
+
+T_CHANNEL_PDGS = [2, -2, 5, -5, 21, 21]
+
+
+def t_channel_clustering(**kwargs):
+    kwargs.setdefault("scale_scheme", ms.MLMClustering.ScaleScheme.madevent)
+    diagrams = t_channel_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=T_CHANNEL_PDGS,
+        **kwargs,
+    )
+
+
+@pytest.fixture(scope="module")
+def t_channel_momenta():
+    return sample_momenta(t_channel_diagram(), batch_size=2000)
+
+
+def test_alphas_scales_are_clustering_scales_or_the_renormalisation_scale(
+    process,
+):
+    """Every vertex is handed either its own scale or mu_R, the latter meaning
+    "not reweighted": its ratio against mu_R is then exactly one and the
+    consumer needs no mask."""
+    _, diagrams, pdg_ids = process
+    momenta = sample_momenta(diagrams)
+    clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
+    ren_scale = run(clustering, momenta)[0]
+    scales, weight = alphas_outputs(clustering, momenta)
+    assert np.all(np.isfinite(scales))
+    assert np.all(scales > 0.0)
+    assert np.all((weight == 0.0) | (weight == 1.0))
+    # gluon-only processes: every vertex is a QCD one, so few of them should
+    # have been left at mu_R
+    assert np.mean(np.isclose(scales, ren_scale[:, None])) < 0.5
+
+
+def test_pdf_reweighting_off_leaves_the_density_where_the_scale_is(
+    t_channel_momenta,
+):
+    clustering = t_channel_clustering(pdf_reweighting=False)
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert out["pdf_scale1"] == pytest.approx(fact1)
+    assert out["pdf_scale2"] == pytest.approx(fact2)
+    assert np.all(out["pdf_rw_active"] == 0.0)
+
+
+def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
+    """The point of the whole thing: with it on, the density is asked for at or
+    below the factorisation scale, and for a real part of the sample strictly
+    below it. If it were never below there would be nothing to walk back up."""
+    clustering = t_channel_clustering()
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    for scale, fact in [(out["pdf_scale1"], fact1), (out["pdf_scale2"], fact2)]:
+        assert np.all(np.isfinite(scale))
+        assert np.all(scale > 0.0)
+        assert np.all(scale <= fact * (1.0 + 1e-9))
+        assert np.mean(scale < fact * (1.0 - 1e-9)) > 0.1
+
+
+def test_pdf_reweighting_steps_only_ever_raise_the_scale(t_channel_momenta):
+    """A step exists precisely to move the density from where it was last
+    evaluated up to this clustering, so its two scales are ordered. reweight.f
+    reaches the same place through its pt2pdf(ida) < q2now test."""
+    out = pdf_outputs(t_channel_clustering(), t_channel_momenta)
+    active = out["pdf_rw_active"] == 1.0
+    assert active.any(), "no step fired; this test would prove nothing"
+    assert np.all(out["pdf_rw_q_num"][active] > out["pdf_rw_q_den"][active])
+
+
+def test_pdf_reweighting_ends_at_the_factorisation_scale(t_channel_momenta):
+    """A chain that fired at all has to arrive back at the scale the event is
+    reported at, otherwise the lowering it started from is never undone."""
+    clustering = t_channel_clustering()
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    fact = np.stack([fact1, fact2], axis=1)
+    for beam in (0, 1):
+        on_beam = (out["pdf_rw_active"] == 1.0) & (out["pdf_rw_beam"] == beam)
+        fired = on_beam.any(axis=1)
+        if not fired.any():
+            continue
+        top = np.max(np.where(on_beam, out["pdf_rw_q_num"], 0.0), axis=1)
+        assert top[fired] == pytest.approx(fact[fired, beam], rel=1e-9)
+
+
+def test_inert_pdf_slots_cannot_change_the_weight(t_channel_momenta):
+    """A slot no step claimed still costs two density evaluations, because the
+    graph is the same for every event. Its two scales are equal so that its
+    ratio is exactly one whatever those come out as."""
+    out = pdf_outputs(t_channel_clustering(), t_channel_momenta)
+    inert = out["pdf_rw_active"] == 0.0
+    assert inert.any()
+    assert out["pdf_rw_q_num"][inert] == pytest.approx(out["pdf_rw_q_den"][inert])
+    assert np.all(out["pdf_rw_q_den"][inert] > 0.0)
+
+
+def test_pdf_reweighting_only_ever_takes_momentum_off_the_beam(
+    t_channel_momenta,
+):
+    """The fraction travels down the ladder as a product of the clustering z,
+    each of which reweight.f only applies when it lies in (0, 1)."""
+    x = pdf_outputs(t_channel_clustering(), t_channel_momenta)["pdf_rw_x"]
+    assert np.all(x > 0.0)
+    assert np.all(x <= 1.0)
+    # and it does move: a chain that never rescaled x would be asking for the
+    # density of the beam parton at every rung
+    assert np.mean(x < 1.0) > 0.05
+
+
+def test_pdf_flavor_classes_stay_inside_the_table(t_channel_momenta):
+    """The class is an index the consumer looks up, so an out-of-range one
+    would read off the end of a table rather than fail visibly."""
+    clustering = t_channel_clustering()
+    class_count = 3 + len(clustering.pdf_absolute_pdgs)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert np.all(out["pdf_rw_flavor"] >= 0)
+    assert np.all(out["pdf_rw_flavor"] < class_count)
+    # the t-channel line is a u throughout, which is beam 0's own flavour, so
+    # no absolute flavour is needed and none should have been allocated
+    assert list(clustering.pdf_absolute_pdgs) == []
+    active = out["pdf_rw_active"] == 1.0
+    assert np.all(out["pdf_rw_flavor"][active] == 1)
+
+
+def test_pdf_steps_name_a_real_beam(t_channel_momenta):
+    beam = pdf_outputs(t_channel_clustering(), t_channel_momenta)["pdf_rw_beam"]
+    assert np.all((beam == 0.0) | (beam == 1.0))
+
+
+def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
+    """There is no beam parton line to walk without madevent's scale scheme, so
+    asking for the reweighting there must do nothing rather than something
+    arbitrary."""
+    clustering = t_channel_clustering(
+        scale_scheme=ms.MLMClustering.ScaleScheme.clustering_mean
+    )
+    _, fact1, fact2, _, _ = run(clustering, t_channel_momenta)
+    out = pdf_outputs(clustering, t_channel_momenta)
+    assert np.all(out["pdf_rw_active"] == 0.0)
+    assert out["pdf_scale1"] == pytest.approx(fact1)
+    assert out["pdf_scale2"] == pytest.approx(fact2)
+
+
+# --------------------------------------------------------------------------
+# the merging cut must not fire at a vertex that produced no radiation
+# --------------------------------------------------------------------------
+
+
+def w_plus_jet_diagram():
+    """g u > e+ ve d, the diagram in which the jet pairs into the W.
+
+    Vertices as mg7 builds them: the two beams give the t-channel quark p0, the
+    leptons give the W p1, and then p0 and the jet give the W again - so once
+    the W exists, (W, jet) is a valid clustering. Its measure is a kt between
+    the W and the jet and has nothing to do with the jet's own transverse
+    momentum, so a jet well above the merging cut can be clustered there at a
+    scale well below it.
+
+    That vertex is not a QCD splitting - the W carries no color - and madevent
+    never applies the merging cut to a leg that was not emitted at a jet vertex
+    (its iqjets gate). Reading the cut off any vertex instead removed 19% of
+    this process at xqcut = 60, all of it jets that were already above the cut.
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            # p0 = t-channel quark, p1 = W
+            "propagators": [(0.0, 0.0, 1), (M_W, W_W, 24)],
+            "vertices": [
+                ["i1", "i0", "p0"],
+                ["o0", "o1", "p1"],
+                ["p0", "o2", "p1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+M_W, W_W = 80.419002, 2.0476
+W_PLUS_JET_PDGS = [21, 2, -11, 12, 1]
+
+
+def w_plus_jet_clustering(xqcut):
+    diagrams = w_plus_jet_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=W_PLUS_JET_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        xqcut=xqcut,
+    )
+
+
+def test_a_jet_above_the_merging_cut_is_never_vetoed():
+    """The property the whole merging rests on: an event whose only jet is
+    already above xqcut belongs to the matrix element, and the merging cut must
+    leave it alone whatever the clustering history turns out to be."""
+    xqcut = 60.0
+    diagrams = w_plus_jet_diagram()
+    momenta = sample_momenta(diagrams, batch_size=4000)
+    clustering = w_plus_jet_clustering(xqcut)
+    weight = run_all(clustering, momenta)[5]
+
+    # mT of the one final-state parton, which is its pt here since it is
+    # massless, and which is the measure of every clustering that can take it
+    # back into a beam
+    jet = momenta[:, 4, :]
+    mt = np.sqrt(np.maximum(jet[:, 0] ** 2 - jet[:, 3] ** 2, 0.0))
+    above = mt > xqcut * (1.0 + 1e-9)
+
+    assert above.sum() > 200, "too few jets above the cut to prove anything"
+    assert np.all(weight[above] == 1.0), (
+        "%d of %d events with the jet above the merging cut were vetoed"
+        % (int((weight[above] != 1.0).sum()), int(above.sum()))
+    )
+
+
+def test_a_jet_emitted_at_the_w_vertex_is_not_a_merging_jet():
+    """The other half of the same rule, and the reason the test above is not
+    vacuous: in this one diagram the jet is produced at the W vertex, so it is
+    an electroweak emission and not radiation the shower would have made. Nothing
+    is vetoed here at any merging cut - which is madevent's behaviour, since its
+    iqjets is only ever set for a leg emitted at a jet vertex.
+
+    That the cut does still remove soft QCD emissions is covered by
+    test_xqcut_rejects_exactly_the_soft_jet_emissions and its neighbours, which
+    run on a process whose jets do sit on QCD vertices.
+    """
+    diagrams = w_plus_jet_diagram()
+    momenta = sample_momenta(diagrams, batch_size=4000)
+    for xqcut in (60.0, 500.0):
+        weight = run_all(w_plus_jet_clustering(xqcut), momenta)[5]
+        assert np.all(weight == 1.0), (
+            "xqcut = %g vetoed %d events whose jet is not a QCD emission"
+            % (xqcut, int((weight != 1.0).sum()))
+        )
+
+
+# --------------------------------------------------------------------------
+# mt2last: an s-channel QCD root takes the mean transverse mass of the pair
+# --------------------------------------------------------------------------
+
+
+def s_channel_ttbar_diagram(propagator):
+    """u u~ > t t~ through one s-channel propagator: a gluon, which is the only
+    diagram q q~ > t t~ has, or a Z as the colourless control.
+
+    The last recorded clustering is then the final-state (t, t~) pair and the
+    root is the only other step, so this is exactly the case setclscales'
+    mt2last rule exists for."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, M_TOP],
+            "propagators": [propagator],
+            "vertices": [["i0", "i1", "p0"], ["o0", "o1", "p0"]],
+            "permutations": [[0, 1, 2, 3]],
+        }
+    ]
+
+
+S_CHANNEL_TTBAR_PDGS = [2, -2, 6, -6]
+
+
+def s_channel_ttbar_clustering(propagator):
+    diagrams = s_channel_ttbar_diagram(propagator)
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=S_CHANNEL_TTBAR_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+    )
+
+
+def transverse_mass(p):
+    return np.sqrt(np.maximum(p[..., 0] ** 2 - p[..., 3] ** 2, 0.0))
+
+
+def test_an_s_channel_qcd_root_uses_the_mean_transverse_mass_of_the_pair():
+    """q q~ > g > t t~ is reported at sqrt(mT(t) mT(t~)), madevent's mt2last,
+    for both scales. Before this rule the root kept the mT of the whole final
+    state, sqrt(shat), which made q q~ > t t~ 18% low against madevent at
+    0 jets."""
+    gluon = (0.0, 0.0, 21)
+    momenta = sample_momenta(s_channel_ttbar_diagram(gluon), batch_size=500)
+    ren, fac1, fac2, _, _ = run(s_channel_ttbar_clustering(gluon), momenta)
+
+    expected = np.sqrt(
+        transverse_mass(momenta[:, 2]) * transverse_mass(momenta[:, 3])
+    )
+    shat_mt = transverse_mass(momenta[:, 2] + momenta[:, 3])
+    assert ren == pytest.approx(expected, rel=1e-9)
+    assert fac1 == pytest.approx(expected, rel=1e-9)
+    assert fac2 == pytest.approx(expected, rel=1e-9)
+    # and it is a different answer from the one the root would otherwise give
+    assert np.all(expected <= 0.5 * shat_mt * (1.0 + 1e-9))
+
+
+def test_a_colourless_s_channel_root_keeps_the_transverse_mass_of_the_final_state():
+    """The rule needs the last clustering to be a QCD one. Through a Z the pair
+    joins into a colourless line, so the root keeps mT of the final state - the
+    Drell-Yan-like answer, and the reason W and Z + 0 jets never needed it."""
+    z = (M_Z, W_Z, 23)
+    momenta = sample_momenta(s_channel_ttbar_diagram(z), batch_size=500)
+    ren, fac1, fac2, _, _ = run(s_channel_ttbar_clustering(z), momenta)
+
+    shat_mt = transverse_mass(momenta[:, 2] + momenta[:, 3])
+    assert ren == pytest.approx(shat_mt, rel=1e-9)
+    assert fac1 == pytest.approx(shat_mt, rel=1e-9)
+    assert fac2 == pytest.approx(shat_mt, rel=1e-9)
+
+
+# --------------------------------------------------------------------------
+# t-channel propagator flavours along the chain
+# --------------------------------------------------------------------------
+
+
+def gg_ttbar_g_chain_diagram():
+    """g g > t t~ g through a t-channel chain whose two propagators differ:
+
+        beam 0 --emits the jet--> gluon --emits t--> top --meets beam 1--> t~
+
+    A chain with a single propagator reads the same from both ends, so only a
+    chain like this one can tell whether each end of it got its own flavour and
+    mass. Legs: (g, g, t, t~, g)."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_TOP, M_TOP, 0.0],
+            "propagators": [(0.0, 0.0, 21), (M_TOP, 0.0, 6)],
+            "vertices": [["i0", "o2", "p0"], ["p0", "o0", "p1"], ["p1", "o1", "i1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+GG_TTBAR_G_PDGS = [21, 21, 6, -6, 21]
+
+
+def gg_ttbar_g_chain_clustering():
+    diagrams = gg_ttbar_g_chain_diagram()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=GG_TTBAR_G_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+    )
+
+
+def first_initial_state_transitions(clustering, n_ext):
+    """{(beam, leg): (massive_in, is_jet_in)} for the clusterings the walk can
+    take first, which are the ones whose mother is the propagator next to a
+    beam."""
+    machine = np.asarray(clustering.cluster_state_machine)
+    out = {}
+    for data, _, trace in decode_transitions(machine, 0):
+        p1, p2 = field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2)
+        if p1 < 2:
+            out[(p1, p2)] = (
+                field(data, BIT_MASSIVE_IN),
+                int(bool(trace & TRACE_IS_JET_IN)),
+            )
+    return out
+
+
+def test_each_end_of_a_t_channel_chain_gets_its_own_flavour():
+    """Beam 0 emitting the jet leaves the gluon propagator, massless and a jet;
+    beam 1 taking back the t~ leaves the top propagator, massive and not a jet.
+    With the two ends swapped the gluon was read as the top, the beam's parton
+    line stopped at the jet, and mu_R picked up the jet's own scale - 3 to 12%
+    too much t t~ + jets against madevent."""
+    first = first_initial_state_transitions(gg_ttbar_g_chain_clustering(), 5)
+    assert first[(0, 4)] == (0, 1), "beam 0 + jet should leave a massless jet line"
+    assert first[(1, 3)] == (1, 0), "beam 1 + t~ should leave a massive, non-jet line"
+
+
+def test_a_jet_emitted_before_the_tops_does_not_set_the_renormalisation_scale():
+    """setclscales carries a beam's parton line on past a jet emission to the
+    vertex where the top attaches, so when the jet is clustered into a beam and
+    the tops make up the rest, all four scales in the mu_R average are central
+    ones and mu_R equals mu_F. The jet's own scale entering mu_R is exactly the
+    symptom of the swapped chain, whose kernel gave mu_R == mu_F on no point.
+    It also needs the root measured where cluster.f measures it: not boosted
+    after the last clustering, and in the current frame after an initial-state
+    one. Taking it in the lab left mu_R a few per cent below mu_F."""
+    clustering = gg_ttbar_g_chain_clustering()
+    momenta = sample_momenta(gg_ttbar_g_chain_diagram(), batch_size=4000)
+    ren, fac1, fac2, outgoing, _ = run(clustering, momenta)
+    jet = momenta[:, 4, :]
+    jet_pt = np.sqrt(jet[:, 1] ** 2 + jet[:, 2] ** 2)
+    # the jet went into a beam: its clustering scale is its transverse momentum
+    jet_into_beam = np.abs(outgoing[:, 2] / jet_pt - 1.0) < 1e-9
+    assert jet_into_beam.sum() > 500, "too few jet-into-beam histories to test"
+    # the root is measured in the frame the boost after the jet left behind,
+    # where t and t~ balance, so the equality holds up to rounding
+    same = np.abs(ren / fac1 - 1.0) < 1e-6
+    assert np.mean(same[jet_into_beam]) > 0.5, (
+        "mu_R == mu_F on only %.1f%% of jet-into-beam points"
+        % (100 * np.mean(same[jet_into_beam]))
+    )
+
+
+# --------------------------------------------------------------------------
+# clustering_measure: FxFx (NLO cluster_scale) against madevent's LO DJ
+# --------------------------------------------------------------------------
+
+
+def w_plus_jet_two_diagrams():
+    """g u > e+ ve d with both ways the jet can be clustered:
+
+      s-channel: g u > u*, u* > d W - the jet pairs with the W (massless mother,
+                 massive and massless daughters, the case the measures disagree
+                 on)
+      t-channel: u emits the W and becomes d*, d* g > d - the jet goes into
+                 beam 0
+
+    madevent scores the (W, d) pair by the d's transverse mass times 1 + 1e-6,
+    which never beats taking the d into a beam; the FxFx measure scores it by
+    sqrt(|p_d.(p_d+p_W)|)/2, which often does."""
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 2), (M_W, W_W, 24)],
+            "vertices": [["i1", "i0", "p0"], ["o0", "o1", "p1"], ["p0", "o2", "p1"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [0.0, 0.0, 0.0],
+            "propagators": [(0.0, 0.0, 1), (M_W, W_W, 24)],
+            "vertices": [["o0", "o1", "p1"], ["i1", "p1", "p0"], ["p0", "i0", "o2"]],
+            "permutations": [[0, 1, 2, 3, 4]],
+        },
+    ]
+
+
+def w_plus_jet_two_diagram_clustering(**kwargs):
+    diagrams = w_plus_jet_two_diagrams()
+    return ms.MLMClustering(
+        [
+            ms.Topology(
+                ms.Diagram(
+                    d["incoming_masses"],
+                    d["outgoing_masses"],
+                    [ms.Propagator(mass=m, width=w, pdg_id=i)
+                     for m, w, i in d["propagators"]],
+                    d["vertices"],
+                )
+            )
+            for d in diagrams
+        ],
+        [d["permutations"] for d in diagrams],
+        make_diagram_indices(diagrams),
+        cm_energy=CM_ENERGY,
+        external_pdg_ids=W_PLUS_JET_PDGS,
+        scale_scheme=ms.MLMClustering.ScaleScheme.madevent,
+        **kwargs,
+    )
+
+
+def jet_into_beam_fraction(clustering, momenta):
+    outgoing = run(clustering, momenta)[3]
+    jet = momenta[:, 4, :]
+    jet_pt = np.sqrt(jet[:, 1] ** 2 + jet[:, 2] ** 2)
+    return np.mean(np.abs(outgoing[:, 2] / jet_pt - 1.0) < 1e-5)
+
+
+def test_fxfx_is_the_default_clustering_measure():
+    clustering = w_plus_jet_two_diagram_clustering()
+    assert clustering.clustering_measure == ms.MLMClustering.ClusteringMeasure.fxfx
+
+
+def test_the_madevent_measure_takes_the_jet_into_the_beam():
+    """Under madevent's measure the jet never pairs with the W: its scale is its
+    transverse momentum on every point, as in madevent (99% there, the rest
+    being histories without this choice). Half of these jets go against the
+    beam, where only the LO ordering of the 1 + 1e-6 factors and madevent's
+    keep-the-first tie-break decide it."""
+    momenta = sample_momenta(w_plus_jet_two_diagrams(), batch_size=4000)
+    clustering = w_plus_jet_two_diagram_clustering(
+        clustering_measure=ms.MLMClustering.ClusteringMeasure.madevent
+    )
+    assert jet_into_beam_fraction(clustering, momenta) == 1.0
+
+
+def test_the_fxfx_measure_lets_the_jet_pair_with_the_w():
+    """The FxFx score of the (W, d) pair is often below the d's pt, so some jets
+    pair with the W instead - which is exactly what made W + 1 jet (quark jets)
+    and h + 1 jet (gluon jets) low against madevent."""
+    momenta = sample_momenta(w_plus_jet_two_diagrams(), batch_size=4000)
+    fxfx = jet_into_beam_fraction(
+        w_plus_jet_two_diagram_clustering(
+            clustering_measure=ms.MLMClustering.ClusteringMeasure.fxfx
+        ),
+        momenta,
+    )
+    assert fxfx < 0.95, "the FxFx measure should pair a visible fraction with the W"

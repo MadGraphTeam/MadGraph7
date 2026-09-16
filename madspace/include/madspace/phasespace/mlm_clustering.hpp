@@ -23,6 +23,65 @@ enum class JetScaleScheme {
     production = 1,
 };
 
+// How the renormalisation and factorisation scales are read off the clustering
+// history once it has been chosen.
+enum class ScaleScheme {
+    // Geometric mean of every clustering scale, with the non-QCD ones replaced
+    // by the largest, and a single factorisation scale taken as the smallest
+    // QCD clustering scale capped at mu_R.
+    clustering_mean = 0,
+    // What madevent does: follow each beam's parton line through the
+    // clustering and take
+    //     mu_R   = (s[jlast1] s[jcentral1] s[jlast2] s[jcentral2])^(1/4)
+    //     mu_F,b = sqrt(s[jlast_b] s[jcentral_b])
+    // where jlast is the last initial-state clustering while the beam line is
+    // still a jet, and jcentral the last one while it is still coloured. The
+    // two beams get different factorisation scales.
+    madevent = 1,
+};
+
+// How the beam parton line is decided to carry on past a vertex. Only read by
+// ScaleScheme::madevent.
+enum class PartonLineScheme {
+    // From the flavour of the object emitted at that vertex alone.
+    flavor = 0,
+    // From goodjet of reweight.f: a line counts as a parton line only while
+    // every clustering it has been through was a jet vertex, so one non-jet
+    // vertex anywhere in its history stops it for good. This is what madevent
+    // does, and it stops beam lines earlier than flavor does.
+    goodjet = 1,
+};
+
+// How alpha_s is evaluated for a merged event.
+enum class AlphasScheme {
+    // One coupling at the event's renormalisation scale, for the whole event.
+    none = 0,
+    // alphas(pt_i) at each clustering vertex where a parton is produced, which
+    // is what madevent does (the rewgt loop in reweight.f). A merged sample
+    // without it is short by one factor per emission.
+    per_vertex = 1,
+    // One coupling at the geometric mean of those vertex scales, raised to the
+    // number of them: the same idea with a single scale for the whole ladder.
+    geometric_mean = 2,
+};
+
+// Which clustering measure scores a candidate final-state pair. Only the pairs
+// the two definitions disagree on are affected: a non-resonant final-state
+// clustering whose mother is massless with one massive and one massless
+// daughter (q* > q W, g* > g h), or whose mother is massive with two massless
+// daughters. Initial-state and resonant clusterings are the same in both.
+enum class ClusteringMeasure {
+    // cluster_scale of Template/NLO/SubProcesses/cluster.f, the FxFx
+    // definition: sqrt(|p_j . (p_i + p_j)|) / 2 for the massless-mother case and
+    // the invariant mass for the massive-mother one.
+    fxfx = 0,
+    // DJ of Template/LO/Source/kin_functions.f, which madevent's LO cluster.f
+    // uses for every final-state pair: a massless-massive pair scores the
+    // massless one's transverse mass (times 1 + 1e-6), and anything else the
+    // kt measure with the larger mass squared added.
+    madevent = 1,
+};
+
 class MLMClustering : public FunctionGenerator {
 public:
     MLMClustering(
@@ -34,6 +93,9 @@ public:
         // MLM veto can never trip on it.
         double cm_energy,
         JetScaleScheme jet_scale_scheme = JetScaleScheme::production,
+        // Left at the existing definition by default: unlike
+        // jet_scale_scheme, this one moves the cross section.
+        ScaleScheme scale_scheme = ScaleScheme::clustering_mean,
         // Signed color representation per pdg id, as exported in the
         // subprocess metadata. Used to follow a parton line through the
         // clustering; falls back to the Standard Model assignment for a pdg id
@@ -49,7 +111,14 @@ public:
         // pdg ids of the external particles, in leg order. When empty, every
         // clustering is assumed to be a QCD splitting between jets.
         std::vector<int> external_pdg_ids = {},
-        int max_jet_flavor = 4
+        int max_jet_flavor = 4,
+        PartonLineScheme parton_line_scheme = PartonLineScheme::goodjet,
+        AlphasScheme alphas_scheme = AlphasScheme::per_vertex,
+        // Re-evaluate the beam densities along the clustering ladder instead of
+        // once at the factorisation scale, which is what madevent does for a
+        // merged sample (pdfwgt in the run card, hidden and on by default).
+        bool pdf_reweighting = true,
+        ClusteringMeasure clustering_measure = ClusteringMeasure::fxfx
     );
 
     // The compiled clustering state machine, in the flat encoding the kernel
@@ -60,6 +129,15 @@ public:
     const std::vector<double>& external_masses() const { return _external_masses; }
     const std::vector<double>& bw_masses() const { return _bw_masses; }
     const std::vector<double>& bw_widths() const { return _bw_widths; }
+    AlphasScheme alphas_scheme() const { return _alphas_scheme; }
+    bool pdf_reweighting() const { return _pdf_reweighting; }
+    ClusteringMeasure clustering_measure() const { return _clustering_measure; }
+    // The flavours the pdf reweighting asks for that are neither the gluon nor
+    // a beam's own, in the order the kernel's flavour classes index them. The
+    // consumer turns these, the gluon and the per-channel beam flavours into
+    // the density it evaluates; see the flavour-class comment in
+    // mlm_clustering.cpp.
+    const std::vector<int>& pdf_absolute_pdgs() const { return _pdf_absolute_pdgs; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -72,6 +150,14 @@ private:
     std::vector<double> _bw_widths;
     double _cm_energy;
     JetScaleScheme _jet_scale_scheme;
+    ScaleScheme _scale_scheme;
+    PartonLineScheme _parton_line_scheme;
+    AlphasScheme _alphas_scheme;
+    bool _pdf_reweighting;
+    ClusteringMeasure _clustering_measure;
+    std::vector<int> _pdf_absolute_pdgs;
+    int _beam_flags;
+    int _jet_leg_mask;
     double _xqcut;
     double _bw_cutoff;
     double _jet_radius;

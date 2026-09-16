@@ -127,6 +127,15 @@ private:
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
+    // The pdf reweighting asks for densities the flavour sampling never does:
+    // the flavour of a beam line partway up the clustering ladder. One density
+    // over every flavour that can turn up there, picked per event by index.
+    std::optional<PartonDensity> _pdf_rw;
+    // Flavour class (as the mlm kernel emits it) and sampled flavour option to
+    // an index into that density, flattened as class * option_count + option,
+    // with the class offsets alongside so that the two can be added as ints.
+    std::vector<me_int_t> _pdf_rw_table;
+    std::vector<me_int_t> _pdf_rw_class_offsets;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
