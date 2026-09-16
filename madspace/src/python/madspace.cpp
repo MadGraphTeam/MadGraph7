@@ -2761,7 +2761,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("status", &ChannelEventGenerator::status)
         .def("save", &ChannelEventGenerator::save, py::arg("save"));
 
-    py::classh<PdfMemberSpec>(m, "PdfMemberSpec")
+    py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
         .def(
             py::init([](const std::string& set_name,
                         int set_lhaid,
@@ -2788,27 +2788,97 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("error_type") = "",
             py::arg("description") = ""
         )
-        .def_readwrite("set_name", &PdfMemberSpec::set_name)
-        .def_readwrite("set_lhaid", &PdfMemberSpec::set_lhaid)
-        .def_readwrite("member", &PdfMemberSpec::member)
-        .def_readwrite("grid_file", &PdfMemberSpec::grid_file)
-        .def_readwrite("info_file", &PdfMemberSpec::info_file)
-        .def_readwrite("error_type", &PdfMemberSpec::error_type)
-        .def_readwrite("description", &PdfMemberSpec::description);
-    py::classh<SystematicsConfig>(m, "SystematicsConfig")
+        .def_readwrite(
+            "set_name", &PdfMemberSpec::set_name, pydoc::doc("PdfMemberSpec::set_name")
+        )
+        .def_readwrite(
+            "set_lhaid",
+            &PdfMemberSpec::set_lhaid,
+            pydoc::doc("PdfMemberSpec::set_lhaid")
+        )
+        .def_readwrite(
+            "member", &PdfMemberSpec::member, pydoc::doc("PdfMemberSpec::member")
+        )
+        .def_readwrite(
+            "grid_file",
+            &PdfMemberSpec::grid_file,
+            pydoc::doc("PdfMemberSpec::grid_file")
+        )
+        .def_readwrite(
+            "info_file",
+            &PdfMemberSpec::info_file,
+            pydoc::doc("PdfMemberSpec::info_file")
+        )
+        .def_readwrite(
+            "error_type",
+            &PdfMemberSpec::error_type,
+            pydoc::doc("PdfMemberSpec::error_type")
+        )
+        .def_readwrite(
+            "description",
+            &PdfMemberSpec::description,
+            pydoc::doc("PdfMemberSpec::description")
+        );
+    py::classh<SystematicsConfig>(
+        m, "SystematicsConfig", pydoc::doc("SystematicsConfig")
+    )
         .def(py::init<>())
-        .def_readwrite("mur", &SystematicsConfig::mur)
-        .def_readwrite("muf", &SystematicsConfig::muf)
-        .def_readwrite("together", &SystematicsConfig::together)
-        .def_readwrite("dyn_scales", &SystematicsConfig::dyn_scales)
-        .def_readwrite("pdf_members", &SystematicsConfig::pdf_members)
-        .def_readwrite("nominal_set_name", &SystematicsConfig::nominal_set_name)
-        .def_readwrite("nominal_lhaid", &SystematicsConfig::nominal_lhaid)
-        .def_readwrite("nominal_error_type", &SystematicsConfig::nominal_error_type)
-        .def_readwrite("nominal_description", &SystematicsConfig::nominal_description)
-        .def_readwrite("has_pdf", &SystematicsConfig::has_pdf)
-        .def_readwrite("write_inputs", &SystematicsConfig::write_inputs)
-        .def_readwrite("first_id", &SystematicsConfig::first_id)
+        .def_readwrite(
+            "mur", &SystematicsConfig::mur, pydoc::doc("SystematicsConfig::mur")
+        )
+        .def_readwrite(
+            "muf", &SystematicsConfig::muf, pydoc::doc("SystematicsConfig::muf")
+        )
+        .def_readwrite(
+            "together",
+            &SystematicsConfig::together,
+            pydoc::doc("SystematicsConfig::together")
+        )
+        .def_readwrite(
+            "dyn_scales",
+            &SystematicsConfig::dyn_scales,
+            pydoc::doc("SystematicsConfig::dyn_scales")
+        )
+        .def_readwrite(
+            "pdf_members",
+            &SystematicsConfig::pdf_members,
+            pydoc::doc("SystematicsConfig::pdf_members")
+        )
+        .def_readwrite(
+            "nominal_set_name",
+            &SystematicsConfig::nominal_set_name,
+            pydoc::doc("SystematicsConfig::nominal_set_name")
+        )
+        .def_readwrite(
+            "nominal_lhaid",
+            &SystematicsConfig::nominal_lhaid,
+            pydoc::doc("SystematicsConfig::nominal_lhaid")
+        )
+        .def_readwrite(
+            "nominal_error_type",
+            &SystematicsConfig::nominal_error_type,
+            pydoc::doc("SystematicsConfig::nominal_error_type")
+        )
+        .def_readwrite(
+            "nominal_description",
+            &SystematicsConfig::nominal_description,
+            pydoc::doc("SystematicsConfig::nominal_description")
+        )
+        .def_readwrite(
+            "has_pdf",
+            &SystematicsConfig::has_pdf,
+            pydoc::doc("SystematicsConfig::has_pdf")
+        )
+        .def_readwrite(
+            "write_inputs",
+            &SystematicsConfig::write_inputs,
+            pydoc::doc("SystematicsConfig::write_inputs")
+        )
+        .def_readwrite(
+            "first_id",
+            &SystematicsConfig::first_id,
+            pydoc::doc("SystematicsConfig::first_id")
+        )
         .def(
             "to_json",
             [](const SystematicsConfig& config) {
@@ -2818,7 +2888,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_static("from_json", [](const std::string& text) {
             return nlohmann::json::parse(text).get<SystematicsConfig>();
         });
-    py::classh<SubprocessSystArgs>(m, "SubprocessSystArgs")
+    py::classh<SubprocessSystArgs>(
+        m, "SubprocessSystArgs", pydoc::doc("SubprocessSystArgs")
+    )
         .def(
             py::init([](int qcd_power, const nested_vector2<int>& beam_pdgs) {
                 return SubprocessSystArgs{qcd_power, beam_pdgs};
@@ -2826,8 +2898,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("qcd_power"),
             py::arg("beam_pdgs")
         )
-        .def_readwrite("qcd_power", &SubprocessSystArgs::qcd_power)
-        .def_readwrite("beam_pdgs", &SubprocessSystArgs::beam_pdgs)
+        .def_readwrite(
+            "qcd_power",
+            &SubprocessSystArgs::qcd_power,
+            pydoc::doc("SubprocessSystArgs::qcd_power")
+        )
+        .def_readwrite(
+            "beam_pdgs",
+            &SubprocessSystArgs::beam_pdgs,
+            pydoc::doc("SubprocessSystArgs::beam_pdgs")
+        )
         .def(
             "to_json",
             [](const SubprocessSystArgs& args) { return nlohmann::json(args).dump(); }
@@ -2835,19 +2915,35 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_static("from_json", [](const std::string& text) {
             return nlohmann::json::parse(text).get<SubprocessSystArgs>();
         });
-    py::classh<Variation>(m, "Variation")
-        .def_readonly("id", &Variation::id)
-        .def_readonly("mur", &Variation::mur)
-        .def_readonly("muf", &Variation::muf)
-        .def_readonly("pdf_index", &Variation::pdf_index)
-        .def_readonly("dyn", &Variation::dyn)
-        .def_property_readonly("is_scale", &Variation::is_scale);
-    py::classh<PdfGroupInfo>(m, "PdfGroupInfo")
-        .def_readonly("set_name", &PdfGroupInfo::set_name)
-        .def_readonly("set_lhaid", &PdfGroupInfo::set_lhaid)
-        .def_readonly("error_type", &PdfGroupInfo::error_type)
-        .def_readonly("members", &PdfGroupInfo::members);
-    py::classh<SystematicsCalculator>(m, "SystematicsCalculator")
+    py::classh<Variation>(m, "Variation", pydoc::doc("Variation"))
+        .def_readonly("id", &Variation::id, pydoc::doc("Variation::id"))
+        .def_readonly("mur", &Variation::mur, pydoc::doc("Variation::mur"))
+        .def_readonly("muf", &Variation::muf, pydoc::doc("Variation::muf"))
+        .def_readonly(
+            "pdf_index", &Variation::pdf_index, pydoc::doc("Variation::pdf_index")
+        )
+        .def_readonly("dyn", &Variation::dyn, pydoc::doc("Variation::dyn"))
+        .def_property_readonly(
+            "is_scale", &Variation::is_scale, pydoc::doc("Variation::is_scale")
+        );
+    py::classh<PdfGroupInfo>(m, "PdfGroupInfo", pydoc::doc("PdfGroupInfo"))
+        .def_readonly(
+            "set_name", &PdfGroupInfo::set_name, pydoc::doc("PdfGroupInfo::set_name")
+        )
+        .def_readonly(
+            "set_lhaid", &PdfGroupInfo::set_lhaid, pydoc::doc("PdfGroupInfo::set_lhaid")
+        )
+        .def_readonly(
+            "error_type",
+            &PdfGroupInfo::error_type,
+            pydoc::doc("PdfGroupInfo::error_type")
+        )
+        .def_readonly(
+            "members", &PdfGroupInfo::members, pydoc::doc("PdfGroupInfo::members")
+        );
+    py::classh<SystematicsCalculator>(
+        m, "SystematicsCalculator", pydoc::doc("SystematicsCalculator")
+    )
         .def(
             py::init<
                 const SystematicsConfig&,
@@ -2863,35 +2959,73 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("nominal_alpha_s") = std::nullopt,
             py::arg("context") = nullptr,
             py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
-            py::arg("me_flavor_remap") = nested_vector2<me_int_t>{}
+            py::arg("me_flavor_remap") = nested_vector2<me_int_t>{},
+            pydoc::doc("SystematicsCalculator::SystematicsCalculator")
         )
-        .def_property_readonly("config", &SystematicsCalculator::config)
         .def_property_readonly(
-            "scale_variation_indices", &SystematicsCalculator::scale_variation_indices
+            "config",
+            &SystematicsCalculator::config,
+            pydoc::doc("SystematicsCalculator::config")
         )
-        .def_property_readonly("pdf_groups", &SystematicsCalculator::pdf_groups)
+        .def_property_readonly(
+            "scale_variation_indices",
+            &SystematicsCalculator::scale_variation_indices,
+            pydoc::doc("SystematicsCalculator::scale_variation_indices")
+        )
+        .def_property_readonly(
+            "pdf_groups",
+            &SystematicsCalculator::pdf_groups,
+            pydoc::doc("SystematicsCalculator::pdf_groups")
+        )
         .def_static(
             "pdf_uncertainty",
             &SystematicsCalculator::pdf_uncertainty,
             py::arg("error_type"),
             py::arg("central"),
-            py::arg("member_values")
+            py::arg("member_values"),
+            pydoc::doc("SystematicsCalculator::pdf_uncertainty")
         )
         .def_static(
             "dynamical_scale",
             &SystematicsCalculator::dynamical_scale,
             py::arg("dyn"),
-            py::arg("momenta")
+            py::arg("momenta"),
+            pydoc::doc("SystematicsCalculator::dynamical_scale")
         )
-        .def_property_readonly("variations", &SystematicsCalculator::variations)
-        .def_property_readonly("weight_count", &SystematicsCalculator::weight_count)
-        .def_property_readonly("weight_ids", &SystematicsCalculator::weight_ids)
-        .def_property_readonly("members", &SystematicsCalculator::members)
-        .def_property_readonly("warnings", &SystematicsCalculator::warnings)
-        .def("initrwgt", &SystematicsCalculator::initrwgt)
+        .def_property_readonly(
+            "variations",
+            &SystematicsCalculator::variations,
+            pydoc::doc("SystematicsCalculator::variations")
+        )
+        .def_property_readonly(
+            "weight_count",
+            &SystematicsCalculator::weight_count,
+            pydoc::doc("SystematicsCalculator::weight_count")
+        )
+        .def_property_readonly(
+            "weight_ids",
+            &SystematicsCalculator::weight_ids,
+            pydoc::doc("SystematicsCalculator::weight_ids")
+        )
+        .def_property_readonly(
+            "members",
+            &SystematicsCalculator::members,
+            pydoc::doc("SystematicsCalculator::members")
+        )
+        .def_property_readonly(
+            "warnings",
+            &SystematicsCalculator::warnings,
+            pydoc::doc("SystematicsCalculator::warnings")
+        )
+        .def(
+            "initrwgt",
+            &SystematicsCalculator::initrwgt,
+            pydoc::doc("SystematicsCalculator::initrwgt")
+        )
         .def(
             "summary",
-            [](const SystematicsCalculator& calc) { return calc.summary().dump(); }
+            [](const SystematicsCalculator& calc) { return calc.summary().dump(); },
+            pydoc::doc("SystematicsCalculator::summary")
         )
         .def(
             "weights",

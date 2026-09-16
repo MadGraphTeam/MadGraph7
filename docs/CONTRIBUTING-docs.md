@@ -224,6 +224,9 @@ Two more `driver/`-specific traps found while documenting it:
   later in the same header; Doxygen has not indexed it yet at that point.
   Use plain text/backticks instead, or move the reference to whichever side
   is declared first.
+- **No `@ref Name:` with a colon directly after.** Doxygen's `@ref` parser
+  swallows the colon into the name and fails to resolve it. Use an em dash
+  (`—`) or move the punctuation, not a plain hyphen (see the `--` trap above).
 - Private nested types (a private `struct` inside a class, e.g. `Tensor`'s
   `TensorImpl`) are never extracted by Doxygen and need no comment.
 - **No `pydoc::doc("X::X")` on a `py::init<...>()` bound to a plain aggregate**
