@@ -407,6 +407,7 @@ else ifeq ($(BACKEND),scalar)
 else
   override BACKENDDIR = simd
 endif
+export BACKENDDIR
 
 #-------------------------------------------------------------------------------
 
