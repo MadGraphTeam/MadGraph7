@@ -816,7 +816,7 @@ c**************************************************************************
       integer ids(npart)
       double precision pboost(0:3)
       logical trivial
-      integer i, nsel, isel
+      integer i
 
       call get_me_frame_boost(p, npart, ids, pboost, trivial)
 
@@ -832,42 +832,18 @@ c**************************************************************************
       enddo
 
 c     A selection made of a single leg puts that leg at rest, and there
-c     the boost has to be *exactly* right, not right to rounding.
+c     the boost has to be *exactly* right, not right to rounding --
+c     see Template/Common/Source/impose_frame_rest.f for why HELAS
+c     cares.
 c
-c     HELAS switches convention at exactly zero: vxxxxx builds the
-c     polarisation vectors of a massive vector along the z axis when
-c     pp.eq.0d0, and along the momentum direction otherwise. boostx
-c     reaches p=0 only up to a relative rounding of order 1d-16 -- it
-c     forms p(i)+q(i)*lf with lf=1 up to the rounding of (q(0)-m)+p(0),
-c     so the residual is a few 1d-14 in absolute value and its direction
-c     is pure noise. When that residual happens not to round to zero,
-c     eps_L points along the noise instead of along z and |M|^2 changes
-c     by orders of magnitude.
-c
-c     Whether it rounds to zero is decided independently for the real
-c     and for the reduced Born, so the two are then evaluated with
-c     different quantisation axes and the subtraction stops cancelling.
-c     Measured on p p > z{0} z{0} [real=QCD] with me_frame=[3]: the
-c     soft/collinear ratio is 1 to 1d-7 whenever the residual is exactly
-c     zero and 2.2d-3 whenever it is 3d-14, with no intermediate values.
-c
-c     Imposing the defining property of the frame removes the choice.
-c     Only nsel=1 needs it: with two or more selected legs it is their
-c     *sum* that is at rest, no individual leg sits at the branch point,
-c     and the residual of the sum never reaches HELAS.
-      nsel=0
-      isel=0
-      do i=1,npart
-         if (ids(i).eq.1) then
-            nsel=nsel+1
-            isel=i
-         endif
-      enddo
-      if (nsel.eq.1) then
-         p_out(1,isel)=0d0
-         p_out(2,isel)=0d0
-         p_out(3,isel)=0d0
-      endif
+c     What is specific to NLO is that whether the residual rounds to
+c     zero is decided independently for the real and for the reduced
+c     Born, so the two are then evaluated with different quantisation
+c     axes and the subtraction stops cancelling. Measured on
+c     p p > z{0} z{0} [real=QCD] with me_frame=[3]: the soft/collinear
+c     ratio is 1 to 1d-7 whenever the residual is exactly zero and
+c     2.2d-3 whenever it is 3d-14, with no intermediate values.
+      call impose_frame_rest(ids, npart, p_out)
 
       return
       end
