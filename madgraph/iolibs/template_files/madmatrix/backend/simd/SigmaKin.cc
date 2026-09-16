@@ -28,9 +28,8 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
-#include "ColorMatrixData.h" // for shouldUseBlas
+#include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
-#include "coloramps.h"       // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 
 #include <limits>
 #include <vector>

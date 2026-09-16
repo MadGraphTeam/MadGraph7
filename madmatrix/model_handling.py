@@ -2087,7 +2087,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
 
         replace_dict['nb_channel'] = len(self.multi_channel_map)
-        # same meaning as in edit_coloramps: the number of color flows, which
+        # same meaning as in edit_colordata: the number of color flows, which
         # is not the size of the color basis when the color sum runs on the DDM one
         replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
 
@@ -2149,8 +2149,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_mgonGPU()
-        self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
-        self.edit_coloramps()
+        self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
@@ -2414,10 +2413,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return '\n'.join(lines)
 
     # generate process specific color matrix data - algo is backend owned
-    def edit_colorsum(self):
-        """Generate ColorMatrixData.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
-        template = open(pjoin(self.template_path,'madmatrix','ColorMatrixData.h'),'r').read()
+    # generate process specific color matrix + channel/config maps - algo is backend owned
+    def edit_colordata(self):
+        """Generate ColorData.h"""
+        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colordata')
+        template = open(pjoin(self.template_path,'madmatrix','ColorData.h'),'r').read()
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
@@ -2425,9 +2425,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # only ever built, never process-specific); this constexpr, not this
         # file's %-substitution, is what picks it at compile time per process.
         replace_dict['should_use_blas'] = 'true' if self.cpp_blas_wanted() else 'false'
-        ff = open(pjoin(self.path, 'ColorMatrixData.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
         # A process whose '^2' constraint leaves more than one amplitude split
         # order needs the dedicated pair-loop color sum (different jamp layout:
         # njampso = ncolor*nampso, not ncolor). backend/{cpu,simd}/color_sum.cc
@@ -2446,10 +2443,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 "that still needs folding into the shared file behind a compile-time "
                 "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
 
-    # AV - new method
-    def edit_coloramps(self):
-        """Generate coloramps.h"""
-
         # we don't sort self.multi_channel_map, and we rely on MadSpace sorting
         # so, diagrams there may be unsorted
         config_subproc_map_C = self.multi_channel_map.values() # this has C-indexing
@@ -2457,11 +2450,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for config in config_subproc_map_C:
             config_subproc_map.append([c+1 for c in config])
 
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_coloramps')
-        template = open(pjoin(self.template_path,'madmatrix','coloramps.h'),'r').read()
         # The following five lines from OneProcessExporterCPP.get_sigmaKin_lines (using OneProcessExporterCPP.get_icolamp_lines)
-        replace_dict={}
-
         iconfig_to_diag = {}
         diag_to_iconfig = {}
         iconfig = 0
@@ -2509,7 +2498,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
-        ff = open(pjoin(self.path, 'coloramps.h'),'w')
+        ff = open(pjoin(self.path, 'ColorData.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 

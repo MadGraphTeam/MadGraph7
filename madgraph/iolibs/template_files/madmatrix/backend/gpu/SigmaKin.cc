@@ -27,7 +27,7 @@
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h" // for DeviceAccessJamp
-#include "coloramps.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
+#include "ColorData.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 
 #include <cfloat>
 

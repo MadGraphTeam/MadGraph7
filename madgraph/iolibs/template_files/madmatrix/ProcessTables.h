@@ -5,7 +5,7 @@
 // Process-specific compile-time data tables, generated once per subprocess,
 // for backend-owned code (backend/{cpu,simd,gpu}/SigmaKin.cc) that can't take
 // this data as a runtime parameter without losing constexpr-ness. Unlike
-// ProcessData.h these are arrays, not scalars, and unlike ColorMatrixData.h
+// ProcessData.h these are arrays, not scalars, and unlike ColorData.h
 // there's no backend-conditional algorithm consuming them directly - it's
 // pulled in via ProcessTables::name from backend-owned function bodies.
 //

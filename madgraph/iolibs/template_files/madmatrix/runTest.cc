@@ -18,7 +18,7 @@
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
 #include "RandomNumberKernels.h"
-#include "coloramps.h"
+#include "ColorData.h"
 #include "ProcessData.h"
 
 #include <memory>
