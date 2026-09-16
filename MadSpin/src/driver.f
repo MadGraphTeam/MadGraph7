@@ -1934,6 +1934,7 @@ C     -----------------------------------------
 
       integer ids(nexternal)
       integer i,j
+      integer nsel, isel
       Pboost(0)= 0d0
       Pboost(1)= 0d0
       Pboost(2)= 0d0
@@ -1958,6 +1959,32 @@ c              write (999,*) (Pboost(j), j=0,3)
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
+
+c     If a single particle defines the frame, that particle must be exactly
+c     at rest after the boost. boostx only gets there up to the rounding of
+c     the boost factor, leaving a residual 3-momentum of a few 1d-14 whose
+c     direction is pure noise. vxxxxx branches on pp.eq.rZero and, for a
+c     massive vector at exactly zero 3-momentum, takes the frame z axis as
+c     quantisation axis; otherwise it builds the polarisation vectors from
+c     the momentum direction, i.e. from the noise, giving an O(1) wrong
+c     polarisation state on the events that fail to round to zero. Same fix
+c     as Template/LO/SubProcesses/genps.f and boost_to_frame.f, where it was
+c     measured at 1.8% (5 sigma) on the LO polarised cross-section.
+c     Only nsel==1 needs it: with two or more selected particles it is their
+c     sum that is at rest and no individual leg sits on the branch point.
+      nsel = 0
+      isel = 0
+      do i=1, nexternal
+         if (ids(i).eq.1) then
+            nsel = nsel + 1
+            isel = i
+         endif
+      enddo
+      if (nsel.eq.1) then
+         p2(1,isel) = 0d0
+         p2(2,isel) = 0d0
+         p2(3,isel) = 0d0
+      endif
       return
       end
 
@@ -2007,6 +2034,7 @@ C     -----------------------------------------
 
       integer ids(nexternal_prod)
       integer i,j
+      integer nsel, isel
       Pboost(0)= 0d0
       Pboost(1)= 0d0
       Pboost(2)= 0d0
@@ -2031,6 +2059,32 @@ c              write (999,*) (Pboost(j), j=0,3)
       do i=1, nexternal_prod
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
+
+c     If a single particle defines the frame, that particle must be exactly
+c     at rest after the boost. boostx only gets there up to the rounding of
+c     the boost factor, leaving a residual 3-momentum of a few 1d-14 whose
+c     direction is pure noise. vxxxxx branches on pp.eq.rZero and, for a
+c     massive vector at exactly zero 3-momentum, takes the frame z axis as
+c     quantisation axis; otherwise it builds the polarisation vectors from
+c     the momentum direction, i.e. from the noise, giving an O(1) wrong
+c     polarisation state on the events that fail to round to zero. Same fix
+c     as Template/LO/SubProcesses/genps.f and boost_to_frame.f, where it was
+c     measured at 1.8% (5 sigma) on the LO polarised cross-section.
+c     Only nsel==1 needs it: with two or more selected particles it is their
+c     sum that is at rest and no individual leg sits on the branch point.
+      nsel = 0
+      isel = 0
+      do i=1, nexternal_prod
+         if (ids(i).eq.1) then
+            nsel = nsel + 1
+            isel = i
+         endif
+      enddo
+      if (nsel.eq.1) then
+         p2(1,isel) = 0d0
+         p2(2,isel) = 0d0
+         p2(3,isel) = 0d0
+      endif
       return
       end
 
