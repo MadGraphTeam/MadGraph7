@@ -22,3 +22,4 @@ work against the current MadSpace build.
    examples/pdf
    examples/integrator
    examples/integrator-madnis
+   examples/flow-training

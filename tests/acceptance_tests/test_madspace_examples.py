@@ -343,6 +343,25 @@ class TestMadSpaceExamples(unittest.TestCase):
                           % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
         run_doc_example(self, 'integrator-madnis', cwd=scratch)
 
+    def test_madspace_example_flow_training(self):
+        """docs/source/madspace/examples/flow-training.rst -- fusing RNG,
+        the built-in Flow, the mapping and the matrix element into one
+        FunctionBuilder graph, trained with a plain torch optimizer. Needs
+        madspace, torch, lhapdf/NNPDF40_lo_as_01180 and a C++ compiler (no
+        external madnis package)."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        if not has_torch():
+            self.skipTest('torch unavailable')
+        if not has_pdf_set('NNPDF40_lo_as_01180'):
+            self.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found '
+                          '(set $LHAPDF_DATA_PATH)')
+        scratch = ggttg_process_dir()
+        if scratch is None:
+            self.skipTest('could not generate/compile g g > t t~ g: %s'
+                          % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
+        run_doc_example(self, 'flow-training', cwd=scratch)
+
 
 if __name__ == '__main__':
     unittest.main()
