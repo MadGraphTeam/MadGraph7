@@ -40,12 +40,16 @@ Builders that assemble compute-graph functions for channel weights, energy scale
 .. toctree::
    :maxdepth: 1
 
+   python/CachedPdf
+   python/CachedScale
    python/ChannelWeightNetwork
+   python/CutItem
    python/Cuts
    python/DifferentialCrossSection
    python/DiscreteHistogram
    python/EnergyScale
    python/FunctionGenerator
+   python/HistItem
    python/Integrand
    python/IntegrandProbability
    python/MLP
@@ -64,6 +68,22 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/Unweighter
    python/VegasHistogram
 
+Phase-space building blocks
+---------------------------
+
+Supporting types shared by the mappings: topologies, cuts, observables and density grids.
+
+.. toctree::
+   :maxdepth: 1
+
+   python/AlphaSGrid
+   python/Decay
+   python/Diagram
+   python/LineRef
+   python/PdfGrid
+   python/Propagator
+   python/Topology
+
 Compute graph
 -------------
 
@@ -76,10 +96,58 @@ The typed value model and the builder API used to record and compile functions f
    python/DataType
    python/Function
    python/FunctionBuilder
+   python/FunctionRuntime
    python/Instruction
    python/InstructionCall
    python/Type
    python/Value
+
+Driver and runtime
+------------------
+
+The high-level driver plus the tensor and device layer it runs on: integration, unweighting, event output and execution.
+
+.. toctree::
+   :maxdepth: 1
+
+   python/AdamOptimizer
+   python/ChannelEventGenerator
+   python/Context
+   python/Device
+   python/DiscreteOptimizer
+   python/EventGenerator
+   python/EventHistogramSpec
+   python/EventHistograms
+   python/GeneratorConfig
+   python/GeneratorStatus
+   python/Histogram
+   python/LHECompleter
+   python/LHEEvent
+   python/LHEFileWriter
+   python/LHEHeader
+   python/LHEMeta
+   python/LHEParticle
+   python/LHEProcess
+   python/Logger
+   python/MadnisConfig
+   python/MadnisTraining
+   python/MatrixElementApi
+   python/MixMaxRandom
+   python/MultiMadnisTraining
+   python/PdfGroupInfo
+   python/PdfMemberSpec
+   python/PrettyBox
+   python/StatusFile
+   python/SubprocArgs
+   python/SubprocessObservables
+   python/SubprocessSystArgs
+   python/SystematicsCalculator
+   python/SystematicsConfig
+   python/Tensor
+   python/TrainingArgs
+   python/Variation
+   python/VegasGridOptimizer
+   python/Verbosity
 
 Utilities
 ---------
@@ -89,55 +157,5 @@ Lower-level helpers and containers.
 .. toctree::
    :maxdepth: 1
 
-   python/AdamOptimizer
-   python/AlphaSGrid
-   python/CachedPdf
-   python/CachedScale
-   python/ChannelEventGenerator
-   python/Context
-   python/CutItem
-   python/Decay
-   python/Device
-   python/Diagram
-   python/DiscreteOptimizer
-   python/EventGenerator
-   python/EventHistogramSpec
-   python/EventHistograms
-   python/FunctionRuntime
-   python/GeneratorConfig
-   python/GeneratorStatus
-   python/HistItem
-   python/Histogram
-   python/LHECompleter
-   python/LHEEvent
-   python/LHEFileWriter
-   python/LHEHeader
-   python/LHEMeta
-   python/LHEParticle
-   python/LHEProcess
-   python/LineRef
-   python/Logger
-   python/MadnisConfig
-   python/MadnisTraining
-   python/MatrixElementApi
-   python/MixMaxRandom
-   python/MultiMadnisTraining
    python/NamedTypes
    python/NamedValues
-   python/PdfGrid
-   python/PdfGroupInfo
-   python/PdfMemberSpec
-   python/PrettyBox
-   python/Propagator
-   python/StatusFile
-   python/SubprocArgs
-   python/SubprocessObservables
-   python/SubprocessSystArgs
-   python/SystematicsCalculator
-   python/SystematicsConfig
-   python/Tensor
-   python/Topology
-   python/TrainingArgs
-   python/Variation
-   python/VegasGridOptimizer
-   python/Verbosity

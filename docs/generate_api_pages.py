@@ -87,8 +87,26 @@ _CPP_GROUPS = [
 ]
 _OTHER_GROUP = ("Utilities", "Lower-level helpers and containers.")
 
+# Python-only classes with no top-level C++ counterpart (nested C++ types
+# exposed to Python as their own class, plus a couple of pure-Python
+# wrappers). Mapped to the C++ class whose category they should inherit.
+_PY_ALIAS_PARENT = {
+    "CachedPdf": "DifferentialCrossSection",
+    "CachedScale": "DifferentialCrossSection",
+    "CutItem": "Cuts",
+    "Decay": "Topology",
+    "HistItem": "ObservableHistograms",
+    "LineRef": "Diagram",
+    "MadnisConfig": "MadnisTraining",
+    "NamedTypes": "NamedVector",
+    "NamedValues": "NamedVector",
+    "SubprocArgs": "LHECompleter",
+    "TrainingArgs": "MultiMadnisTraining",
+    "Verbosity": "Logger",
+}
 
-def _py_groups(mod):
+
+def _py_groups(mod, cpp_category):
     mapping = getattr(mod, "Mapping", ())
     generator = getattr(mod, "FunctionGenerator", ())
     compgraph = {
@@ -98,24 +116,44 @@ def _py_groups(mod):
         "DataType",
         "Function",
         "FunctionBuilder",
+        "FunctionRuntime",
         "InstructionCall",
         "Instruction",
     }
+
+    def in_cpp_group(heading):
+        return lambda obj: (
+            cpp_category.get(_PY_ALIAS_PARENT.get(obj.__name__, obj.__name__))
+            == heading
+        )
+
     return [
         (
             _CPP_GROUPS[0][0],
             _CPP_GROUPS[0][1],
-            lambda obj: isinstance(mapping, type) and issubclass(obj, mapping),
+            lambda obj: (isinstance(mapping, type) and issubclass(obj, mapping))
+            or in_cpp_group(_CPP_GROUPS[0][0])(obj),
         ),
         (
             _CPP_GROUPS[1][0],
             _CPP_GROUPS[1][1],
-            lambda obj: isinstance(generator, type) and issubclass(obj, generator),
+            lambda obj: (isinstance(generator, type) and issubclass(obj, generator))
+            or in_cpp_group(_CPP_GROUPS[1][0])(obj),
+        ),
+        (
+            _CPP_GROUPS[2][0],
+            _CPP_GROUPS[2][1],
+            in_cpp_group(_CPP_GROUPS[2][0]),
         ),
         (
             _CPP_GROUPS[3][0],
             _CPP_GROUPS[3][1],
             lambda obj: obj.__name__ in compgraph,
+        ),
+        (
+            _CPP_GROUPS[4][0],
+            _CPP_GROUPS[4][1],
+            in_cpp_group(_CPP_GROUPS[4][0]),
         ),
     ]
 
@@ -260,13 +298,12 @@ def generate_api_pages(source_dir, xml_dir) -> None:
         "Reference for the ``madspace`` C++ classes, extracted from the header "
         "comments, one page per class."
     )
+    cpp_grouped = _assign(compounds, _CPP_GROUPS, lambda c: c.short)
+    cpp_category = {
+        name: heading for heading, _, names in cpp_grouped for name in names
+    }
     (base / "cpp-api.rst").write_text(
-        _landing(
-            cpp_title,
-            cpp_intro,
-            "cpp",
-            _assign(compounds, _CPP_GROUPS, lambda c: c.short),
-        )
+        _landing(cpp_title, cpp_intro, "cpp", cpp_grouped)
         if compounds
         else _landing_fallback(cpp_title, cpp_intro, "cpp")
     )
@@ -289,7 +326,7 @@ def generate_api_pages(source_dir, xml_dir) -> None:
             "python",
             _assign(
                 [obj for _, obj in members],
-                _py_groups(mod),
+                _py_groups(mod, cpp_category),
                 lambda obj: obj.__name__,
             ),
         )
