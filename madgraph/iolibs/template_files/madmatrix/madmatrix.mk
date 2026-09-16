@@ -31,6 +31,11 @@ ifeq ($(HRDCOD),)
   override HRDCOD = 0
 endif
 
+# default USEBUILDDIR = 1
+ifeq ($(USEBUILDDIR),)
+  override USEBUILDDIR = 1
+endif
+
 # Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
 # (NB: use 'filter' and 'words' instead of 'findstring' because they properly handle whitespace-separated words)
 # NB: the CPU backends are the values of the 'cpu_mode' run_card entry; 'auto' picks the
@@ -78,7 +83,7 @@ endif
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
 override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
-# Build directory: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
+# Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
 ifeq ($(USEBUILDDIR),1)
   override MADMATRIX_BUILDDIR = build.$(BACKEND)
@@ -394,10 +399,10 @@ export GPUSUFFIX
 # Export BACKEND (resolved from auto above if needed; used e.g. to name the common library)
 export BACKEND
 
-# Map BACKEND to its backend/<variant> source subdirectory 
+# Map BACKEND to its backend/<variant> source subdirectory
 ifneq ($(GPUCC),)
   override BACKENDDIR = gpu
-else ifeq ($(BACKEND),cppnone)
+else ifeq ($(BACKEND),scalar)
   override BACKENDDIR = cpu
 else
   override BACKENDDIR = simd
@@ -739,7 +744,7 @@ override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
 
-# Build directory for object files: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
+# Build directory for object files: build.<BACKEND> by default, or current directory if USEBUILDDIR=0
 override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
 ###override INCDIR = ../../include
