@@ -1,13 +1,22 @@
 name: MadSpin parallel factory
 
-# Gated workflow: only fires on the literal "3.x" branch push, on pull requests,
-# and on manual dispatch. Unlike the existing parralel.yml (which runs on every
-# push) this one is intentionally restricted because the matrix is heavy.
+# Gated workflow: on a push it only fires on the release-preparation branches
+# (dev-X.Y.Z, e.g. dev-0.3.0), and otherwise on pull requests and on manual
+# dispatch. Unlike the existing parralel.yml (which runs on every push) this one
+# is intentionally restricted because the matrix is heavy -- it is a long-running
+# statistical suite (MADSPIN_TEST_NEVENTS defaults to 10000).
+#
+# It therefore does not run on a push to main and cannot be part of the
+# main-CI release gate in release.yml; running it on the dev-X.Y.Z branch is
+# what covers a release. The filter used to be the literal "3.x", a leftover
+# from the MG5 upstream layout -- there is no such branch here, so the suite
+# never ran on a push at all.
 
 on:
   push:
     branches:
-      - '3.x'
+      # Any release-preparation branch: dev- followed by X.Y.Z.
+      - 'dev-[0-9]*.[0-9]*.[0-9]*'
     paths-ignore:
       - 'docs/**'
   pull_request:

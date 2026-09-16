@@ -75,9 +75,11 @@ jobs:
           # when no run exists at all, which is exactly the failure mode that
           # let v0.2.0 publish untested.
           #
-          # madspin_parallel.yml is knowingly absent -- its push filter is
-          # branches: ['3.x'], so it never runs on main and there is nothing to
-          # gate on. See the tracking issue linked in the PR that added this.
+          # madspin_parallel.yml is knowingly absent: it is a long-running
+          # statistical suite, so on a push it only fires on the release
+          # branches (dev-X.Y.Z) and never on main -- there is no main run to
+          # gate on. A release is covered by that dev-X.Y.Z run (or by a manual
+          # workflow_dispatch) before the branch is merged and tagged.
           REQUIRED="
           .github/workflows/unittest.yml
           .github/workflows/acceptancetest.yml
