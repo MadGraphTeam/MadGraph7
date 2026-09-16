@@ -364,6 +364,32 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_onehel_frame(p_in, hel1, chosen_hel, ans)
+c**************************************************************************
+c     One-helicity Born in the frame selected by me_frame.
+c
+c     Needed wherever a caller already goes through sborn_frame: SBORN
+c     caches its amplitudes against (E, p_z) and SBORN_ONEHEL shares that
+c     cache, so passing boosted momenta to one and unboosted to the other
+c     silently returns amplitudes from the wrong frame -- see the note on
+c     sborn_frame. check_sudakov does exactly that mix.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p_in(0:3,nexternal-1)
+      integer hel1, chosen_hel
+      double precision ans
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
+      call sborn_onehel(p_f, hel1, chosen_hel, ans)
+
+      return
+      end
+
+
       subroutine binothlha_frame(p_in, born_wgt, virt_wgt)
 c**************************************************************************
 c     Virtual in the me_frame rest frame.
