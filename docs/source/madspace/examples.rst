@@ -20,3 +20,4 @@ work against the current MadSpace build.
    examples/matrix-element
    examples/gpu
    examples/pdf
+   examples/integrator

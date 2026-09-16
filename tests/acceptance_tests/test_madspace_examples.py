@@ -279,6 +279,22 @@ class TestMadSpaceExamples(unittest.TestCase):
                           '(set $LHAPDF_DATA_PATH)')
         run_doc_example(self, 'pdf')
 
+    def test_madspace_example_integrator(self):
+        """docs/source/madspace/examples/integrator.rst -- a hand-rolled,
+        non-adaptive integrator for g g > t t~ g: PhaseSpaceMapping +
+        DifferentialCrossSection (matrix element, PDF, HT/2 scale). Needs
+        madspace, numpy, lhapdf/NNPDF40_lo_as_01180 and a C++ compiler."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        if not has_pdf_set('NNPDF40_lo_as_01180'):
+            self.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found '
+                          '(set $LHAPDF_DATA_PATH)')
+        scratch = ggttg_process_dir()
+        if scratch is None:
+            self.skipTest('could not generate/compile g g > t t~ g: %s'
+                          % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
+        run_doc_example(self, 'integrator', cwd=scratch)
+
 
 if __name__ == '__main__':
     unittest.main()

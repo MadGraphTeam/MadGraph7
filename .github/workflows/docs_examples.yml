@@ -51,4 +51,4 @@ jobs:
       - name: run the madspace doc examples
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madspace_example_simple_mappings test_madspace_example_cuts test_madspace_example_diagram_mapping test_madspace_example_integration_order test_madspace_example_matrix_element test_madspace_example_pdf -pA -t0 -l INFO
+            ./tests/test_manager.py test_madspace_example_simple_mappings test_madspace_example_cuts test_madspace_example_diagram_mapping test_madspace_example_integration_order test_madspace_example_matrix_element test_madspace_example_pdf test_madspace_example_integrator -pA -t0 -l INFO
