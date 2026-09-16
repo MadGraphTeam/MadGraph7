@@ -98,8 +98,9 @@ public:
     );
 
     /**
-     * @param external_masses  Masses of the outgoing particles. A trivial
-     *                         topology is built from them.
+     * @param external_masses  Masses of all external particles, the two
+     *                         beams first. A trivial topology is built from
+     *                         them.
      * @param cm_energy        Total collision energy.
      * @param leptonic         If true, skip the PDF convolution.
      * @param invariant_power  Exponent of the `1/s^p` invariant sampling. See
