@@ -17,13 +17,29 @@
 #include "ProcessTables.h"
 
 #include "GpuRuntime.h"
+#include "MemoryAccessAmplitudes.h"
 #include "MemoryAccessChannelIds.h"
 #include "MemoryAccessCouplings.h"
+#include "MemoryAccessCouplingsFixed.h"
 #include "MemoryAccessGs.h"
+#include "MemoryAccessIflavorVec.h"
+#include "MemoryAccessMomenta.h"
+#include "MemoryAccessNumerators.h"
+#include "MemoryAccessWavefunctions.h"
 
 namespace mg5amcCpu
 {
   using namespace ProcessData;
+  using namespace ProcessTables;
+  using Parameters_dependentCouplings::ndcoup;   // #couplings that vary event by event (depend on running alphas QCD)
+  using Parameters_independentCouplings::nicoup; // #couplings that are fixed for all events (do not depend on running alphas QCD)
+
+  // The number of SIMD vectors of events processed by calculate_jamps
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+  constexpr int nParity = 2;
+#else
+  constexpr int nParity = 1;
+#endif
 
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
@@ -128,6 +144,99 @@ namespace mg5amcCpu
       G2COUP<G_ACCESS, C_ACCESS>( gs, couplings, bsmIndepParam );
     }
   }
+
+  //--------------------------------------------------------------------------
+
+  // Accumulate a multichannel numerator contribution in place. In C++ each
+  // event page is processed serially within the helicity loop, so a plain
+  // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
+#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
+
+  // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
+  // Also compute running sums over helicities adding jamp2, numerator, denominator
+  // (NB: this function no longer handles matrix elements as the color sum has now been
+  // moved to a separate function/kernel). This function processes a single event "page"
+  // or SIMD vector (or for two in "mixed" precision mode, nParity=2). Accepts a SCALAR
+  // channelId because it is GUARANTEED that all events in a SIMD vector have the same
+  // channelId #898.
+  void
+  calculate_jamps( int ihel,
+                   const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
+                   const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
+                   const unsigned int* iflavorVec,     // input: indices of the flavor combinations
+                   cxtype_amp_sv* allJamp_sv,          // output: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for this helicity
+                   bool storeChannelWeights,
+                   fptype_amp* allNumerators,          // input/output: multichannel numerators[nevt], add helicity ihel
+                   fptype_amp* allDenominators,        // input/output: multichannel denominators[nevt], add helicity ihel
+                   fptype_amp_sv* jamp2_sv,            // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
+                   const int ievt00 )                  // input: first event number in current C++ event page
+  {
+    using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
+    using W_ACCESS = HostAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
+    using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
+    using CD_ACCESS = HostAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
+    using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
+    using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
+    using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
+    mgDebug( 0, __FUNCTION__ );
+
+    // Local TEMPORARY variables for a subset of Feynman diagrams in the given C++ event
+    // page (ipagV) [NB these variables are reused several times (and re-initialised each
+    // time) within the same event or event page]. Create memory for both momenta and
+    // wavefunctions separately, and later wrap them in ALOHAOBJ.
+    fptype_momenta_sv pvec_sv[nwf][np4];
+    cxtype_amp_sv w_sv[nwf][nw6]; // particle wavefunctions within Feynman diagrams
+    cxtype_amp_sv amp_sv[1];      // invariant amplitude for one given Feynman diagram
+    ALOHAOBJ aloha_obj[nwf];
+    for( int iwf = 0; iwf < nwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+    fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
+
+    // special temporary ALOHAOBJ to hold F/Vtmp values in the combined vertex functions
+    // while using the FD gauge (harmless, unused, when the model doesn't need it)
+    fptype_momenta_sv pvec_sv_tmp[1][np4];
+    cxtype_amp_sv w_sv_tmp[1][nw6];
+    ALOHAOBJ aloha_obj_tmp[1];
+    aloha_obj_tmp[0] = ALOHAOBJ{ pvec_sv_tmp[0], w_sv_tmp[0] };
+    cxtype_amp_sv amp_tmp_sv[1]; // to ensure proper aligment for vector instructions
+    fptype_amp* amp_tmp_fp = reinterpret_cast<fptype_amp*>( amp_tmp_sv );
+
+    // jamp: sum (for one event or event page) of the invariant amplitudes for all Feynman
+    // diagrams in a given color combination (NB: vector cxtype_v IS initialized to 0, but
+    // scalar cxtype is NOT, if "= {}" is missing!)
+    cxtype_amp_sv jamp_sv[ncolor] = {};
+    // jampTmp: partial sums of amplitudes that several color flows share, so that they are
+    // computed only once (see MadMatrixUFOHelasCallWriter.build_jamp_plan); no "= {}", each
+    // one is assigned before it is ever read.
+    cxtype_amp_sv jampTmp_sv[ProcessTables::nb_tmp_jamp > 0 ? ProcessTables::nb_tmp_jamp : 1];
+
+    // === Calculate wavefunctions and amplitudes for all diagrams in all processes
+    // === (for one event page in C++, or for two in mixed mode)
+
+    // START LOOP ON IPARITY
+    for( int iParity = 0; iParity < nParity; ++iParity )
+    {
+      const int ievt0 = ievt00 + iParity * neppV;
+#include "EvaluateDiagrams.inc"
+
+      // *** COLOR CHOICE BELOW ***
+      // Store the leading color flows for choice of color
+      if( jamp2_sv ) // disable color choice if nullptr
+      {
+        for( int icol = 0; icol < ncolor; icol++ )
+          jamp2_sv[ncolor * iParity + icol] += cxabs2( jamp_sv[icol] ); // may underflow #831
+      }
+
+      // *** PREPARE OUTPUT JAMPS ***
+      // In C++, copy the local jamp to the output array passed as function argument
+      for( int icol = 0; icol < ncolor; icol++ )
+        allJamp_sv[iParity * ncolor + icol] = jamp_sv[icol];
+    }
+    // END LOOP ON IPARITY
+
+    mgDebug( 1, __FUNCTION__ );
+  }
+
+#undef NUM_ATOMIC_ADD
 
   //--------------------------------------------------------------------------
 
