@@ -1,12 +1,19 @@
-"""Generate one Sphinx page per madspace class, for the C++ and Python APIs.
+"""Generate one Sphinx page per madspace class or free function, for the C++
+and Python APIs.
 
 Run from conf.py after the Doxygen XML is produced. Writes
 ``<source>/madspace/cpp/<Class>.rst`` (breathe ``doxygenclass`` /
-``doxygenstruct``) and ``<source>/madspace/python/<Class>.rst``
-(``autoclass``), then rewrites the ``cpp-api.rst`` / ``python-api.rst`` landing
-pages as a grouped overview (mappings, function generators, compute graph, ...).
-Both output directories are wiped first so a removed class does not leave a
-stale page behind.
+``doxygenstruct`` / ``doxygenfunction``) and
+``<source>/madspace/python/<Class>.rst`` (``autoclass`` / ``autofunction``),
+then rewrites the ``cpp-api.rst`` / ``python-api.rst`` landing pages as a
+grouped overview (mappings, function generators, compute graph, ...). Both
+output directories are wiped first so a removed class or function does not
+leave a stale page behind.
+
+Free functions are limited to the ones bound into the Python module: that is
+already the curated list of top-level ``madspace`` functions meant for
+end users, as opposed to internal helpers (``operator<<``, ``to_json``, ...)
+that only exist for the C++ implementation.
 """
 
 import argparse
@@ -131,13 +138,21 @@ def _py_groups(mod, cpp_category):
         (
             _CPP_GROUPS[0][0],
             _CPP_GROUPS[0][1],
-            lambda obj: (isinstance(mapping, type) and issubclass(obj, mapping))
+            lambda obj: (
+                isinstance(obj, type)
+                and isinstance(mapping, type)
+                and issubclass(obj, mapping)
+            )
             or in_cpp_group(_CPP_GROUPS[0][0])(obj),
         ),
         (
             _CPP_GROUPS[1][0],
             _CPP_GROUPS[1][1],
-            lambda obj: (isinstance(generator, type) and issubclass(obj, generator))
+            lambda obj: (
+                isinstance(obj, type)
+                and isinstance(generator, type)
+                and issubclass(obj, generator)
+            )
             or in_cpp_group(_CPP_GROUPS[1][0])(obj),
         ),
         (
@@ -148,7 +163,8 @@ def _py_groups(mod, cpp_category):
         (
             _CPP_GROUPS[3][0],
             _CPP_GROUPS[3][1],
-            lambda obj: obj.__name__ in compgraph,
+            lambda obj: obj.__name__ in compgraph
+            or in_cpp_group(_CPP_GROUPS[3][0])(obj),
         ),
         (
             _CPP_GROUPS[4][0],
@@ -244,6 +260,29 @@ def _cpp_compounds(xml_dir: Path):
     return sorted(found, key=lambda c: c.short)
 
 
+def _cpp_namespace_functions(xml_dir: Path):
+    """Free functions declared directly in the top-level ``madspace``
+    namespace, keyed by short name. Used to look up the C++ declaration (for
+    its doxygenfunction page and source location) of a function bound into
+    the Python module."""
+    ns_file = xml_dir / "namespacemadspace.xml"
+    if not ns_file.is_file():
+        return {}
+    cd = ET.parse(ns_file).getroot().find("compounddef")
+    found = {}
+    for sec in cd.findall("sectiondef"):
+        for md in sec.findall("memberdef"):
+            if md.get("kind") != "function":
+                continue
+            name = md.findtext("name", "")
+            if not name or name in found:
+                continue
+            node = md.find("location")
+            loc = node.get("file", "") if node is not None else ""
+            found[name] = _Compound(name, f"madspace::{name}", "function", loc)
+    return found
+
+
 def _python_classes():
     try:
         import madspace
@@ -260,6 +299,17 @@ def _python_classes():
         and not _denied(name)
     ]
     return madspace, sorted(members)
+
+
+def _python_functions(mod):
+    if mod is None:
+        return []
+    return sorted(
+        (name, obj)
+        for name, obj in inspect.getmembers(mod, inspect.isroutine)
+        if getattr(obj, "__module__", "").startswith("madspace")
+        and not name.startswith("_")
+    )
 
 
 def _assign(items, groups, key):
@@ -283,60 +333,77 @@ def generate_api_pages(source_dir, xml_dir) -> None:
     base = Path(source_dir) / "madspace"
 
     compounds = _cpp_compounds(Path(xml_dir))
+    mod, members = _python_classes()
+    functions = _python_functions(mod)
+
+    ns_functions = _cpp_namespace_functions(Path(xml_dir))
+    function_compounds = [
+        ns_functions[name] for name, _ in functions if name in ns_functions
+    ]
+    cpp_items = compounds + function_compounds
+
     cpp_pages = {
         c.short: _page(
             c.short,
-            "doxygenstruct" if c.kind == "struct" else "doxygenclass",
+            {"struct": "doxygenstruct", "function": "doxygenfunction"}.get(
+                c.kind, "doxygenclass"
+            ),
             c.full,
-            _CPP_OPTIONS,
+            () if c.kind == "function" else _CPP_OPTIONS,
         )
-        for c in compounds
+        for c in cpp_items
     }
     _replace_dir(base / "cpp", cpp_pages)
     cpp_title = "C++ API"
     cpp_intro = (
-        "Reference for the ``madspace`` C++ classes, extracted from the header "
-        "comments, one page per class."
+        "Reference for the ``madspace`` C++ classes and free functions, "
+        "extracted from the header comments, one page per class or function."
     )
-    cpp_grouped = _assign(compounds, _CPP_GROUPS, lambda c: c.short)
+    cpp_grouped = _assign(cpp_items, _CPP_GROUPS, lambda c: c.short)
     cpp_category = {
         name: heading for heading, _, names in cpp_grouped for name in names
     }
     (base / "cpp-api.rst").write_text(
         _landing(cpp_title, cpp_intro, "cpp", cpp_grouped)
-        if compounds
+        if cpp_items
         else _landing_fallback(cpp_title, cpp_intro, "cpp")
     )
 
-    mod, members = _python_classes()
     py_pages = {
         name: _page(name, "autoclass", f"madspace.{name}", _PY_OPTIONS)
         for name, _ in members
     }
+    py_pages.update(
+        {
+            name: _page(name, "autofunction", f"madspace.{name}", ())
+            for name, _ in functions
+        }
+    )
     _replace_dir(base / "python", py_pages)
     py_title = "Python API"
     py_intro = (
-        "Reference for the classes exposed by the :mod:`madspace` Python module, "
-        "one page per class."
+        "Reference for the classes and free functions exposed by the "
+        ":mod:`madspace` Python module, one page per class or function."
     )
+    py_items = [obj for _, obj in members] + [obj for _, obj in functions]
     (base / "python-api.rst").write_text(
         _landing(
             py_title,
             py_intro,
             "python",
             _assign(
-                [obj for _, obj in members],
+                py_items,
                 _py_groups(mod, cpp_category),
                 lambda obj: obj.__name__,
             ),
         )
-        if members
+        if py_items
         else _landing_fallback(py_title, py_intro, "python")
     )
 
     print(
         f"generate_api_pages: wrote {len(cpp_pages)} C++ and "
-        f"{len(py_pages)} Python class pages"
+        f"{len(py_pages)} Python pages"
     )
 
 

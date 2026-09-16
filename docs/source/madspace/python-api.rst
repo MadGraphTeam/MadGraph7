@@ -3,7 +3,7 @@
 Python API
 ==========
 
-Reference for the classes exposed by the :mod:`madspace` Python module, one page per class.
+Reference for the classes and free functions exposed by the :mod:`madspace` Python module, one page per class or function.
 
 Phase-space mappings
 --------------------
@@ -83,6 +83,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    python/PdfGrid
    python/Propagator
    python/Topology
+   python/initialize_vegas_grid
 
 Compute graph
 -------------
@@ -101,6 +102,9 @@ The typed value model and the builder API used to record and compile functions f
    python/InstructionCall
    python/Type
    python/Value
+   python/batch_float_array
+   python/batch_four_vec_array
+   python/multichannel_batch_size
 
 Driver and runtime
 ------------------
@@ -148,6 +152,20 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    python/Variation
    python/VegasGridOptimizer
    python/Verbosity
+   python/available_backends
+   python/compute_generation_batch_event_count
+   python/cpu_device
+   python/cuda_device
+   python/default_context
+   python/default_cuda_context
+   python/default_hip_context
+   python/format_progress
+   python/format_si_prefix
+   python/format_with_error
+   python/hip_device
+   python/select_combine_channel_index
+   python/set_lib_path
+   python/set_simd_vector_size
 
 Utilities
 ---------

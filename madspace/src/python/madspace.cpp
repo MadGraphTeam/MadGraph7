@@ -186,12 +186,27 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("__repr__", &to_string<Type>);
     m.attr("single_float") = py::cast(single_float);
     m.attr("single_int") = py::cast(single_int);
-    m.def("multichannel_batch_size", &multichannel_batch_size, py::arg("count"));
+    m.def(
+        "multichannel_batch_size",
+        &multichannel_batch_size,
+        py::arg("count"),
+        pydoc::doc("multichannel_batch_size")
+    );
     m.attr("batch_float") = py::cast(batch_float);
     m.attr("batch_int") = py::cast(batch_int);
     m.attr("batch_four_vec") = py::cast(batch_four_vec);
-    m.def("batch_float_array", &batch_float_array, py::arg("count"));
-    m.def("batch_four_vec_array", &batch_four_vec_array, py::arg("count"));
+    m.def(
+        "batch_float_array",
+        &batch_float_array,
+        py::arg("count"),
+        pydoc::doc("batch_float_array")
+    );
+    m.def(
+        "batch_four_vec_array",
+        &batch_four_vec_array,
+        py::arg("count"),
+        pydoc::doc("batch_four_vec_array")
+    );
 
     py::classh<InstrCopy>(m, "Instruction", pydoc::doc("Instruction"))
         .def("__str__", [](const InstrCopy& instr) { return instr.name; })
@@ -3595,7 +3610,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         "initialize_vegas_grid",
         &initialize_vegas_grid,
         py::arg("context"),
-        py::arg("grid_name")
+        py::arg("grid_name"),
+        pydoc::doc("initialize_vegas_grid")
     );
     m.def(
         "set_lib_path", &set_lib_path, py::arg("lib_path"), pydoc::doc("set_lib_path")

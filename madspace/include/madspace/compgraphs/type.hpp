@@ -155,16 +155,22 @@ inline Type single_int_array_2d(int count1, int count2) {
 
 const BatchSize batch_size = BatchSize("batch_size");
 Type batch_size_array(int count);
+/// A `batch_sizes` `Type` splitting `batch_size` into `count` symbolic
+/// per-channel sizes that add up to the total.
 Type multichannel_batch_size(int count);
 const Type batch_float{DataType::dt_float, batch_size, {}};
 const Type batch_int{DataType::dt_int, batch_size, {}};
 const Type batch_four_vec{DataType::dt_float, batch_size, {4}};
+/// A `float` `Type` with a batch dimension and a static trailing shape of
+/// `count` elements.
 inline Type batch_float_array(int count) {
     return {DataType::dt_float, batch_size, {count}};
 }
 inline Type batch_int_array(int count) {
     return {DataType::dt_int, batch_size, {count}};
 }
+/// A `Type` of `count` four-vectors: batch dimension plus a trailing shape of
+/// `(count, 4)`.
 inline Type batch_four_vec_array(int count) {
     return {DataType::dt_float, batch_size, {count, 4}};
 }

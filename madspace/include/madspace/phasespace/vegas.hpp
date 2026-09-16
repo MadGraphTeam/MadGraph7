@@ -106,6 +106,8 @@ private:
     std::string _grid_name;
 };
 
+/// Register the VEGAS grid global named @p grid_name on @p context; see
+/// @ref VegasMapping::initialize_globals.
 void initialize_vegas_grid(ContextPtr context, const std::string& grid_name);
 
 } // namespace madspace

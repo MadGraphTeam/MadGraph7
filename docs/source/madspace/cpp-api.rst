@@ -3,7 +3,7 @@
 C++ API
 =======
 
-Reference for the ``madspace`` C++ classes, extracted from the header comments, one page per class.
+Reference for the ``madspace`` C++ classes and free functions, extracted from the header comments, one page per class or function.
 
 Phase-space mappings
 --------------------
@@ -83,6 +83,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    cpp/PdfGrid
    cpp/Propagator
    cpp/Topology
+   cpp/initialize_vegas_grid
 
 Compute graph
 -------------
@@ -99,6 +100,9 @@ The typed value model and the builder API used to record and compile functions f
    cpp/InstructionCall
    cpp/Type
    cpp/Value
+   cpp/batch_float_array
+   cpp/batch_four_vec_array
+   cpp/multichannel_batch_size
 
 Driver and runtime
 ------------------
@@ -162,6 +166,20 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/UnalignedRef
    cpp/Variation
    cpp/VegasGridOptimizer
+   cpp/available_backends
+   cpp/compute_generation_batch_event_count
+   cpp/cpu_device
+   cpp/cuda_device
+   cpp/default_context
+   cpp/default_cuda_context
+   cpp/default_hip_context
+   cpp/format_progress
+   cpp/format_si_prefix
+   cpp/format_with_error
+   cpp/hip_device
+   cpp/select_combine_channel_index
+   cpp/set_lib_path
+   cpp/set_simd_vector_size
 
 Utilities
 ---------
