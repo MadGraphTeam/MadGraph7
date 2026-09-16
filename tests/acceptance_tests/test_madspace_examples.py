@@ -33,8 +33,11 @@ Run locally with e.g.::
 
 from __future__ import absolute_import
 
+import atexit
+import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -104,11 +107,25 @@ def has_madspace():
         return False
 
 
-def run_doc_example(test, page_name):
+def has_cuda_backend():
+    try:
+        import madspace
+        madspace.cuda_device()
+        return True
+    except Exception:
+        return False
+
+
+def run_doc_example(test, page_name, cwd=None):
     """Extract the python blocks of ``examples/<page_name>.rst``, concatenate
     them into one script, and run it as a subprocess. Fails the test if the
     script raises or if the page has no python blocks at all (a moved or
-    renamed page must fail loudly, not silently pass)."""
+    renamed page must fail loudly, not silently pass).
+
+    *cwd* lets an example that depends on a generated process directory (see
+    ``ggttg_process_dir`` below) run with that directory as its working
+    directory, matching what the page's shell commands build. Without it, a
+    fresh empty temporary directory is used and cleaned up afterwards."""
     rst_path = pjoin(_EXAMPLES_DIR, page_name + '.rst')
     if not os.path.isfile(rst_path):
         test.fail('documentation page not found: %s' % rst_path)
@@ -123,21 +140,68 @@ def run_doc_example(test, page_name):
             [_MADSPACE_INSTALL] + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else [])
         )
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        script_path = pjoin(tmp_dir, page_name.replace('-', '_') + '.py')
+    def _run(directory):
+        script_path = pjoin(directory, page_name.replace('-', '_') + '.py')
         with open(script_path, 'w') as f:
             f.write(script)
-
-        result = subprocess.run(
+        return subprocess.run(
             [sys.executable, script_path],
-            cwd=tmp_dir, env=env, capture_output=True, text=True,
+            cwd=directory, env=env, capture_output=True, text=True,
         )
+
+    if cwd is None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = _run(tmp_dir)
+    else:
+        result = _run(cwd)
 
     test.assertEqual(
         result.returncode, 0,
         'example %s exited with code %s\n--- stdout ---\n%s\n--- stderr ---\n%s'
         % (page_name, result.returncode, result.stdout, result.stderr),
     )
+
+
+_GGTTG_PROCESS_CACHE = {}
+
+
+def ggttg_process_dir():
+    """Generate and compile ``g g > t t~ g`` as an mg7 output, once per test
+    process, and return the directory that contains ``PROC_ggttg/`` -- the
+    same relative name the matrix-element examples show being created by
+    ``output mg7 PROC_ggttg``. Returns ``None`` if the MadGraph interface or
+    a C++ compiler is unavailable, so dependent tests can self-skip."""
+    if 'dir' in _GGTTG_PROCESS_CACHE:
+        return _GGTTG_PROCESS_CACHE['dir']
+
+    try:
+        import madgraph.interface.master_interface as mg_interface
+    except ImportError:
+        _GGTTG_PROCESS_CACHE['dir'] = None
+        return None
+
+    scratch = tempfile.mkdtemp(prefix='madspace_doc_ggttg_')
+    atexit.register(shutil.rmtree, scratch, ignore_errors=True)
+    proc_dir = pjoin(scratch, 'PROC_ggttg')
+
+    mg = mg_interface.MasterCmd()
+    mg.no_notification()
+    for c in ['set automatic_html_opening False --no_save',
+              'import model sm',
+              'generate g g > t t~ g']:
+        mg.exec_cmd(c)
+    mg.exec_cmd('output mg7 %s' % proc_dir)
+
+    make = subprocess.run(
+        ['make'], cwd=pjoin(proc_dir, 'SubProcesses'), capture_output=True, text=True,
+    )
+    if make.returncode != 0:
+        _GGTTG_PROCESS_CACHE['dir'] = None
+        _GGTTG_PROCESS_CACHE['make_error'] = make.stdout + make.stderr
+        return None
+
+    _GGTTG_PROCESS_CACHE['dir'] = scratch
+    return scratch
 
 
 class TestMadSpaceExamples(unittest.TestCase):
@@ -171,6 +235,29 @@ class TestMadSpaceExamples(unittest.TestCase):
         if not has_madspace():
             self.skipTest('madspace unavailable')
         run_doc_example(self, 'integration-order')
+
+    def test_madspace_example_matrix_element(self):
+        """docs/source/madspace/examples/matrix-element.rst -- loading a
+        MadGraph-generated matrix element for g g > t t~ g through the UMAMI
+        interface. Needs madspace, numpy and a C++ compiler; generates and
+        compiles the process itself."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        scratch = ggttg_process_dir()
+        if scratch is None:
+            self.skipTest('could not generate/compile g g > t t~ g: %s'
+                          % _GGTTG_PROCESS_CACHE.get('make_error', 'mg7 unavailable'))
+        run_doc_example(self, 'matrix-element', cwd=scratch)
+
+    def test_madspace_example_gpu(self):
+        """docs/source/madspace/examples/gpu.rst -- sampling the same
+        PhaseSpaceMapping on a CUDA device with PyTorch. Needs a CUDA-enabled
+        madspace build and a GPU; not run in CI, which is CPU-only."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        if not has_cuda_backend():
+            self.skipTest('CUDA backend unavailable')
+        run_doc_example(self, 'gpu')
 
 
 if __name__ == '__main__':

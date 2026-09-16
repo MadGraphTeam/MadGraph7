@@ -17,3 +17,5 @@ work against the current MadSpace build.
    examples/cuts
    examples/diagram-mapping
    examples/integration-order
+   examples/matrix-element
+   examples/gpu
