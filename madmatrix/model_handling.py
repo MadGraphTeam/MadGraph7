@@ -2153,8 +2153,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
         self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_coloramps()
-        self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
-        self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
@@ -2444,26 +2442,21 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.close()
         # A process whose '^2' constraint leaves more than one amplitude split
         # order needs the dedicated pair-loop color sum (different jamp layout:
-        # njampso = ncolor*nampso, not ncolor). Unlike the default path this
-        # can't live in the backend-shared color_sum.cc every process links to,
-        # so override it with a process-specific copy (see
-        # _link_backend_dirs_in_P: it skips a file already written here).
+        # njampso = ncolor*nampso, not ncolor). backend/{cpu,simd}/color_sum.cc
+        # is now a single file shared by every P* in this output (compiled once,
+        # found via the Makefile's vpath into the top-level backend/ dir - see
+        # "Redundant template file delete"), so it can no longer hold a
+        # process-specific algorithm variant. Fail loudly here rather than
+        # silently emitting the non-split color sum for a split-order process.
         if self.split_orders_active():
-            self.edit_colorsum_splitorders()
-
-    # split-order override of backend/{cpu,simd}/color_sum.cc (GPU is not
-    # supported for split orders, see color_sum_splitorders.cc); color_sum.h
-    # is untouched, its declarations are the same either way
-    def edit_colorsum_splitorders(self):
-        """Generate a process-specific backend/{cpu,simd}/color_sum.cc"""
-        replace_dict = {}
-        replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
-        replace_dict['sqso_tables'] = self.get_sqso_table_lines()
-        cc = open(pjoin(self.template_path, 'madmatrix', 'color_sum_splitorders.cc'), 'r').read() % replace_dict
-        for variant in ('cpu', 'simd'):
-            backend_dir = pjoin(self.path, 'backend', variant)
-            os.makedirs(backend_dir, exist_ok=True)
-            open(pjoin(backend_dir, 'color_sum.cc'), 'w').write(cc)
+            raise Exception(
+                "Split amplitude orders ('^2' constraints with more than one "
+                "amplitude order) are not yet supported by the backend-separated "
+                "color sum: backend/{cpu,simd}/color_sum.cc is shared across every "
+                "P* directory in this output, so it cannot carry a process-specific "
+                "pair-loop variant. See color_sum_splitorders.cc for the algorithm "
+                "that still needs folding into the shared file behind a compile-time "
+                "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
 
     def edit_processConfig(self):
         """Generate process_config.h"""
@@ -2540,28 +2533,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
         ff = open(pjoin(self.path, 'coloramps.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memorybuffers(self):
-        """Generate MemoryBuffers.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memorybuffers')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryBuffers.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryBuffers.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memoryaccesscouplings(self):
-        """Generate MemoryAccessCouplings.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memoryaccesscouplings')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryAccessCouplings.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryAccessCouplings.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
