@@ -26,6 +26,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
+#include "color_sum.h" // for color_sum_cpu
 
 namespace mg5amcCpu
 {
@@ -237,6 +238,112 @@ namespace mg5amcCpu
   }
 
 #undef NUM_ATOMIC_ADD
+
+  //--------------------------------------------------------------------------
+
+  void
+  sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
+                       const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
+                       const unsigned int* iflavorVec,   // input: index of the flavor combination
+                       fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
+                       fptype_amp* allNumerators,        // output: multichannel numerators[nevt], running_sum_over_helicities
+                       fptype_amp* allDenominators,      // output: multichannel denominators[nevt], running_sum_over_helicities
+                       bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
+                       const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+  {
+    // Allocate arrays at build time to contain at least 16 events (or at least neppV events if neppV>16, e.g. in future VPUs)
+    constexpr int maxtry0 = std::max( 16, neppV ); // 16, but at least neppV (otherwise the npagV loop does not even start)
+    // Loop over only nevt events if nevt is < 16 (note that nevt is always >= neppV)
+    assert( nevt >= neppV );
+    const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
+    // HELICITY LOOP: CALCULATE WAVEFUNCTIONS
+    const int npagV = maxtry / neppV;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
+    // Mixed fptypes #537: float for color algebra and double elsewhere
+    // Delay color algebra and ME updates (only on even pages)
+    assert( npagV % 2 == 0 ); // SANITY CHECK for mixed fptypes: two neppV-pages are merged to one 2*neppV-page
+    const int npagV2 = npagV / 2; // loop on two SIMD pages (neppV events) at a time
+#else
+    const int npagV2 = npagV; // loop on one SIMD page (neppV events) at a time
+#endif /* clang-format on */
+    // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): a helicity
+    // that vanishes for the sampled flavor may be non-zero for another merged
+    // flavor and must not be dropped. Sample every flavor combination on the
+    // same momenta and OR the result, so cGoodHel becomes the union over all
+    // flavors (extra helicities simply contribute 0 for a given flavor at run
+    // time, exactly as in the scalar standalone_cpp per-flavor good-hel filter).
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    unsigned int hgFlavorVec[maxtry0] = {}; // forced single-flavor index buffer
+    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    {
+    for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
+    for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
+    {
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
+      const int ievt00 = ipagV2 * neppV * 2; // loop on two SIMD pages (neppV events) at a time
+#else
+      const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
+#endif /* clang-format on */
+      for( int ihel = 0; ihel < ncomb; ihel++ )
+      {
+        // NEW IMPLEMENTATION OF GETGOODHEL (#630): RESET THE RUNNING SUM OVER HELICITIES TO 0 BEFORE ADDING A NEW HELICITY
+        for( int ieppV = 0; ieppV < neppV; ++ieppV )
+        {
+          const int ievt = ievt00 + ieppV;
+          allMEs[ievt] = 0;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+          const int ievt2 = ievt00 + ieppV + neppV;
+          allMEs[ievt2] = 0;
+#endif
+        }
+        constexpr fptype_amp_sv* jamp2_sv = nullptr; // no need for color selection during helicity filtering
+#if defined MGONGPU_CPPSIMD and !( defined MGONGPU_FPTYPE_AMP_FLOAT ) and defined MGONGPU_FPTYPE2_FLOAT
+        cxtype_amp_sv jamp_sv[2 * ncolor] = {}; // all zeros
+#else
+        cxtype_amp_sv jamp_sv[ncolor] = {}; // all zeros
+#endif
+        calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        color_sum_cpu( allMEs, jamp_sv, ievt00 );
+        for( int ieppV = 0; ieppV < neppV; ++ieppV )
+        {
+          const int ievt = ievt00 + ieppV;
+          if( allMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
+          {
+            isGoodHel[ihel] = true;
+          }
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+          const int ievt2 = ievt00 + ieppV + neppV;
+          if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
+          {
+            isGoodHel[ihel] = true;
+          }
+#endif
+        }
+      }
+    }
+    } // end loop over flavor combinations (per-flavor good-helicity union)
+  }
+
+  //--------------------------------------------------------------------------
+
+  int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
+  sigmaKin_setGoodHel( const bool* isGoodHel ) // input: isGoodHel[ncomb] - host array
+  {
+    int nGoodHel = 0;
+    int goodHel[ncomb] = { 0 }; // all zeros https://en.cppreference.com/w/c/language/array_initialization#Notes
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      if( isGoodHel[ihel] )
+      {
+        goodHel[nGoodHel] = ihel;
+        nGoodHel++;
+      }
+    }
+    cNGoodHel = nGoodHel;
+    for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
+    return nGoodHel;
+  }
 
   //--------------------------------------------------------------------------
 

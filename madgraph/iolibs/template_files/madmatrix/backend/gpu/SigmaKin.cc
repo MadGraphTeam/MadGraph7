@@ -223,4 +223,79 @@ namespace mg5amcGpu
 
   //--------------------------------------------------------------------------
 
+  void /* clang-format off */
+  sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
+                       const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
+                       const unsigned int* iflavorVec,   // input: indices of the flavor combinations
+                       fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
+                       fptype_amp* allNumerators,        // output: multichannel numerators[nevt], running_sum_over_helicities
+                       fptype_amp* allDenominators,      // output: multichannel denominators[nevt], running_sum_over_helicities
+                       fptype_amp_sv* allJamps,          // tmp: jamp[ncolor*2*nevt] _for one helicity_ (reused in the getGoodHel helicity loop)
+                       bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
+                       const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+  { /* clang-format on */
+    const int maxtry0 = 16;
+    fptype hstMEs[maxtry0];
+    const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
+    // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): sample every
+    // flavor combination on the same momenta and OR the result, so cGoodHel is
+    // the union over all flavors (see the C++ branch below for the rationale).
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    unsigned int hstFlavorVec[maxtry0] = {};
+    unsigned int* devFlavorVec = nullptr;
+    gpuMalloc( (void**)&devFlavorVec, maxtry * sizeof( unsigned int ) );
+    for( int iflav = 0; iflav < nmaxflavor; ++iflav )
+    {
+    for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
+    gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      const int gpublocks = 1;
+      const int gputhreads = maxtry;
+      constexpr int nOneHel = 1; // use a jamp buffer for a single helicity
+      gpuMemcpyToSymbol( dcNGoodHel, &nOneHel, sizeof( int ) );
+      // NEW IMPLEMENTATION OF GETGOODHEL (#630): RESET THE RUNNING SUM OVER HELICITIES TO 0 BEFORE ADDING A NEW HELICITY
+      gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
+      // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
+      constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
+      gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
+      gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
+      for( int ievt = 0; ievt < maxtry; ++ievt )
+      {
+        if( hstMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
+        {
+          isGoodHel[ihel] = true;
+        }
+      }
+    }
+    } // end loop over flavor combinations (per-flavor good-helicity union)
+    gpuFree( devFlavorVec );
+  }
+
+  //--------------------------------------------------------------------------
+
+  int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
+  sigmaKin_setGoodHel( const bool* isGoodHel ) // input: isGoodHel[ncomb] - host array (CUDA and C++)
+  {
+    int nGoodHel = 0;
+    int goodHel[ncomb] = { 0 }; // all zeros https://en.cppreference.com/w/c/language/array_initialization#Notes
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      if( isGoodHel[ihel] )
+      {
+        goodHel[nGoodHel] = ihel;
+        nGoodHel++;
+      }
+    }
+    gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
+    gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
+    cNGoodHel = nGoodHel;
+    for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
+    return nGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
 } // end namespace
