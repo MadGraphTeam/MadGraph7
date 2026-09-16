@@ -116,6 +116,14 @@ def has_cuda_backend():
         return False
 
 
+def has_pdf_set(name):
+    try:
+        import lhapdf
+    except ImportError:
+        return False
+    return any(os.path.isdir(pjoin(p, name)) for p in lhapdf.paths())
+
+
 def run_doc_example(test, page_name, cwd=None):
     """Extract the python blocks of ``examples/<page_name>.rst``, concatenate
     them into one script, and run it as a subprocess. Fails the test if the
@@ -258,6 +266,18 @@ class TestMadSpaceExamples(unittest.TestCase):
         if not has_cuda_backend():
             self.skipTest('CUDA backend unavailable')
         run_doc_example(self, 'gpu')
+
+    def test_madspace_example_pdf(self):
+        """docs/source/madspace/examples/pdf.rst -- the built-in PDF
+        interpolator (PdfGrid/PartonDensity/AlphaSGrid/RunningCoupling) on
+        the NNPDF40_lo_as_01180 set. Needs madspace, numpy, lhapdf and that
+        PDF set installed."""
+        if not has_madspace():
+            self.skipTest('madspace unavailable')
+        if not has_pdf_set('NNPDF40_lo_as_01180'):
+            self.skipTest('NNPDF40_lo_as_01180 LHAPDF data not found '
+                          '(set $LHAPDF_DATA_PATH)')
+        run_doc_example(self, 'pdf')
 
 
 if __name__ == '__main__':

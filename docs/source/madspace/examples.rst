@@ -19,3 +19,4 @@ work against the current MadSpace build.
    examples/integration-order
    examples/matrix-element
    examples/gpu
+   examples/pdf
