@@ -11,7 +11,7 @@
 
 #include "mgOnGpuVectors.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 #include "GpuAbstraction.h"
 
 #include <cstddef>
@@ -33,7 +33,7 @@ namespace mg5amcGpu
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
-    std::size_t nfptype2PerEvent = CPPProcess::ncolor * mgOnGpu::nx2;
+    std::size_t nfptype2PerEvent = ProcessData::ncolor * mgOnGpu::nx2;
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
     nfptype2PerEvent += 1;  // the fptype2 matrix elements
@@ -50,7 +50,7 @@ namespace mg5amcGpu
     static __device__ inline cxtype_amp_ref
     kernelAccessIcolIhelNhel( fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = CPPProcess::ncolor; // the number of leading colors
+      const int ncolor = ProcessData::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
@@ -65,7 +65,7 @@ namespace mg5amcGpu
     static __device__ inline const cxtype
     kernelAccessIcolIhelNhelConst( const fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = CPPProcess::ncolor; // the number of leading colors
+      const int ncolor = ProcessData::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)

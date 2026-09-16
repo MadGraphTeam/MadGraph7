@@ -7,7 +7,7 @@
 #ifndef COLORAMPS_H
 #define COLORAMPS_H 1
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 
 
 namespace mgOnGpu
@@ -30,7 +30,7 @@ namespace mgOnGpu
   // The number of channels in the channel2iconfig array below
   // *** NB this is not guaranteed to be equal to ndiagrams, it can be lower as the remaining diagrams all have no associated SDE iconfig (#919) ***
   constexpr unsigned int nchannels = %(nb_diag)i;
-  static_assert( nchannels <= mg5amcGpu::CPPProcess::ndiagrams, "nchannels should be <= ndiagrams" ); // sanity check #910 and #919
+  static_assert( nchannels <= ProcessData::ndiagrams, "nchannels should be <= ndiagrams" ); // sanity check #910 and #919
   
   // Map channel to iconfig (e.g. "iconfig = channel2iconfig[channelId - 1]": input index uses C indexing, output index uses F indexing)
   // Note: iconfig=-1 indicates channels/diagrams with no associated iconfig for single-diagram enhancement in the MadEvent sampling algorithm (presence of 4-point interaction?)

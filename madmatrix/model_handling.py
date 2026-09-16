@@ -2404,11 +2404,36 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
+        # needs to be after get_matrix_element_calls to have nwf ready
+        self.edit_processdata()
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
+
+    # seperate process constants to one truth file
+    def edit_processdata(self):
+        """Generate ProcessData.h"""
+        template = open(pjoin(self.template_path, 'madmatrix', 'ProcessData.h'), 'r').read()
+        me = self.matrix_elements[0]
+        replace_dict = {}
+        nexternal, nincoming = me.get_nexternal_ninitial()
+        replace_dict['nincoming'] = nincoming
+        replace_dict['noutcoming'] = nexternal - nincoming
+        replace_dict['nbhel'] = me.get_helicity_combinations()
+        replace_dict['ndiagrams'] = len(me.get('diagrams'))
+        replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
+        replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
+        replace_dict['ncolor'] = len(me.get_color_amplitudes())
+        replace_dict['nwf'] = me.get_number_of_wavefunctions()
+        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
+        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
+        replace_dict['den_factors'] = ",".join(den_factors)
+        ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
+        ff.write(template % replace_dict)
+        ff.close()
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2578,29 +2603,44 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                  for k in so['chosen']))
         return '\n'.join(lines)
 
-    # AV - new method
+    # generate process specific color matrix data - algo is backend owned
     def edit_colorsum(self):
-        """Generate color_sum.cc"""
+        """Generate ColorMatrixData.h"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
-        # A process whose '^2' constraint leaves more than one amplitude split
-        # order gets the dedicated pair-loop color sum instead (see that file).
-        split = self.split_orders_active()
-        name = 'color_sum_splitorders.cc' if split else 'color_sum.cc'
-        template = open(pjoin(self.template_path,'madmatrix',name),'r').read()
+        template = open(pjoin(self.template_path,'madmatrix','ColorMatrixData.h'),'r').read()
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
-        if split:
-            replace_dict['sqso_tables'] = self.get_sqso_table_lines()
-        replace_dict['cpp_blas_color_sum'] = ''
-        if self.cpp_blas_wanted():
-            replace_dict['cpp_blas_color_sum'] = strip_banner(
-                open(pjoin(self.template_path, self.blas_color_sum_template), 'r').read(),
-                banner_mark='/')
-        ff = open(pjoin(self.path, 'color_sum.cc'),'w')
+        # backend/{cpu,simd}/color_sum.cc always compiles the BLAS path (it is
+        # only ever built, never process-specific); this constexpr, not this
+        # file's %-substitution, is what picks it at compile time per process.
+        replace_dict['should_use_blas'] = 'true' if self.cpp_blas_wanted() else 'false'
+        ff = open(pjoin(self.path, 'ColorMatrixData.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
-        
+        # A process whose '^2' constraint leaves more than one amplitude split
+        # order needs the dedicated pair-loop color sum (different jamp layout:
+        # njampso = ncolor*nampso, not ncolor). Unlike the default path this
+        # can't live in the backend-shared color_sum.cc every process links to,
+        # so override it with a process-specific copy (see
+        # _link_backend_dirs_in_P: it skips a file already written here).
+        if self.split_orders_active():
+            self.edit_colorsum_splitorders()
+
+    # split-order override of backend/{cpu,simd}/color_sum.cc (GPU is not
+    # supported for split orders, see color_sum_splitorders.cc); color_sum.h
+    # is untouched, its declarations are the same either way
+    def edit_colorsum_splitorders(self):
+        """Generate a process-specific backend/{cpu,simd}/color_sum.cc"""
+        replace_dict = {}
+        replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
+        replace_dict['sqso_tables'] = self.get_sqso_table_lines()
+        cc = open(pjoin(self.template_path, 'madmatrix', 'color_sum_splitorders.cc'), 'r').read() % replace_dict
+        for variant in ('cpu', 'simd'):
+            backend_dir = pjoin(self.path, 'backend', variant)
+            os.makedirs(backend_dir, exist_ok=True)
+            open(pjoin(backend_dir, 'color_sum.cc'), 'w').write(cc)
+
     def edit_processConfig(self):
         """Generate process_config.h"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processConfig')

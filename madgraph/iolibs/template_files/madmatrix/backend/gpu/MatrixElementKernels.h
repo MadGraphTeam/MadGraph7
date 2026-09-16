@@ -9,7 +9,7 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 #include "GpuAbstraction.h"
 #include "MemoryBuffers.h"
 
@@ -182,7 +182,7 @@ namespace mg5amcGpu
 #endif
 
     // The array of GPU streams (one for each good helicity)
-    gpuStream_t m_helStreams[CPPProcess::ncomb]; // reserve ncomb streams (but only nGoodHel <= ncomb will be used)
+    gpuStream_t m_helStreams[ProcessData::ncomb]; // reserve ncomb streams (but only nGoodHel <= ncomb will be used)
 
     // The number of blocks in the GPU grid
     size_t m_gpublocks;

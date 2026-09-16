@@ -296,6 +296,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                 os.makedirs(backend_rel, exist_ok=True)
                 src_dir = pjoin('..', '..', 'backend', backend)
                 for fname in sorted(os.listdir(src_dir)):
+                    # a process-specific override (e.g. split-order color_sum) may already be there
+                    if os.path.exists(pjoin(backend_rel, fname)):
+                        continue
                     files.ln(pjoin(src_dir, fname), starting_dir=backend_rel)
 
     # AV (default from OM's tutorial) - add a debug printout

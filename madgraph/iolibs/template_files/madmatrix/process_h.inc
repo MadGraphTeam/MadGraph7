@@ -20,6 +20,7 @@
 
 #include "GpuAbstraction.h"
 #include "Parameters.h"
+#include "ProcessData.h"
 
 #include <vector>
 
