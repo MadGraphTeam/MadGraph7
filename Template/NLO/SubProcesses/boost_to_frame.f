@@ -14,27 +14,38 @@ c     real and reusing it for the reduced Born breaks the cancellation of the
 c     collinear pole.
 c**************************************************************************
 
-      subroutine mapid_frame(id, npart, ids)
+
+      subroutine snap_mother_at_rest(ids, npart, imother, pm)
 c**************************************************************************
-c     Uncompress frame_id into a 0/1 mask over npart legs.
-c     Bit n of id is set for each leg n selected by me_frame. This is the
-c     same encoding as mapid() in the LO cluster.f -- note it is 2**n, not
-c     2**(n-1), whatever the stale comment above the LO boost_to_frame says.
-c
-c     input:  id      compressed frame id (run_card frame_id)
-c             npart   number of legs of this configuration
-c     output: ids     ids(i)=1 if leg i takes part in the frame definition
+c     When me_frame selects exactly one leg and that leg is the FKS mother,
+c     the mother is analytically at rest in this frame. boostx only reaches
+c     that to a few 1d-14, and everything downstream tests for rest with an
+c     exact .eq.0d0 -- azifact_from_kperp divides by |pmother| and guards it
+c     with rn.eq.0d0. Left as noise the guard never fires and the azimuth is
+c     reconstructed from a direction that is pure rounding error; imposed,
+c     the caller gets that routine's clear 'mother at rest' error instead of
+c     a silently wrong phase. boost_to_me_frame imposes the same property on
+c     the full momentum set, and for the same reason.
 c**************************************************************************
       implicit none
-      integer id, npart, ids(npart)
-      integer i
+      integer npart, imother
+      integer ids(npart)
+      double precision pm(0:3)
+      integer i, nsel, isel
 
+      nsel=0
+      isel=0
       do i=1,npart
-         ids(i)=0
-         if (btest(id,i)) then
-            ids(i)=1
+         if (ids(i).eq.1) then
+            nsel=nsel+1
+            isel=i
          endif
       enddo
+      if (nsel.eq.1 .and. isel.eq.imother) then
+         pm(1)=0d0
+         pm(2)=0d0
+         pm(3)=0d0
+      endif
 
       return
       end
@@ -91,6 +102,7 @@ c**************************************************************************
       endif
 
       call boostx(p_born_in(0,imother), pboost, pm)
+      call snap_mother_at_rest(ids, nexternal-1, imother, pm)
 
       if (1d0-y_ij_fks.lt.vtiny) then
 c        Collinear: <ij>/[ij] is 0/0, so rebuild -exp(2 i psi) from the
@@ -195,10 +207,13 @@ c**************************************************************************
       double complex azifact
       double precision cphi_mother, sphi_mother
       double precision pm(0:3), kp(0:3), pib(0:3), pjb(0:3)
+      integer ids(nexternal-1)
       double precision xij_kperp(0:3)
       common/cxij_kperp/xij_kperp
 
       call boostx(p_born_in(0,imother), pboost, pm)
+      call get_frame_mask_born(ids)
+      call snap_mother_at_rest(ids, nexternal-1, imother, pm)
       call getaziangles(pm, cphi_mother, sphi_mother)
 
       if (1d0-y_ij_fks.le.0d0) then
@@ -587,7 +602,7 @@ c     their momentum fractions differ by a finite amount even in the
 c     singular limit. Skipping is both the safe and the meaningful choice.
 c
 c     input:  p(0:3,npart)  momenta of this configuration
-c             ids(npart)    0/1 mask, see mapid_frame
+c             ids(npart)    0/1 mask, bit n of frame_id = leg n+1
 c     output: pboost(0:3)   boost 4-vector
 c             trivial       .true. if the boost may be skipped
 c**************************************************************************
@@ -599,6 +614,9 @@ c**************************************************************************
       integer i, j
       integer nsel, nini, nfin
       double precision m2, pvec2
+      double precision m2i, betamin, mtiny
+      parameter (betamin=1d-4, mtiny=1d-12)
+      logical massive_ini
       include 'nexternal.inc'
 
       pboost(0:3)=0d0
@@ -654,13 +672,32 @@ c     Already at rest: skip, so the default costs nothing and changes nothing.
          return
       endif
 
-c     No floor below that. A near-identity boost used to tilt the
-c     on-axis incoming partons just enough that sqrt(p(0)+p(3)) in the
-c     HELAS massless spinors was a cancelling difference of two numbers
-c     of size E, and a betamin=1d-4 skip hid it (blocker B9). The
-c     spinors now take that component from p+ p- = pT^2 (PR #111), so
-c     there is no cancellation left to avoid: the boost is applied
-c     however small it is.
+c     A near-identity boost tilts the on-axis incoming partons just
+c     enough that p(0)+p(3) of the backward one becomes E*beta**2/2,
+c     computed as a difference of two numbers of size E: relative error
+c     2*eps/beta**2, worst at small beta. A betamin=1d-4 skip used to
+c     hide that (blocker B9), and was removed because PR #111 takes the
+c     component from p+ p- = pT**2 instead, leaving no cancellation.
+c
+c     That holds for a MASSLESS incoming parton. PR #111 rewrote only
+c     the fmass.eq.rZero branch of ixxxxx/oxxxxx; the massive branch
+c     still forms pp3 = max(pp+p(3),rZero) and feeds it to
+c     sqrt(pp3/(2*pp)), which is the same cancelling difference. So the
+c     skip is kept exactly where it is still needed -- a massive
+c     initial-state parton, e.g. b in a 4-flavour scheme -- and nowhere
+c     else. The deeper fix is to give the massive branch the same
+c     treatment as the massless one, across the ALOHA templates, the
+c     legacy HELAS sources and the C++ backends; until that lands this
+c     guard is what stops a massive beam leg losing its precision here.
+      massive_ini=.false.
+      do i=1,min(nincoming,npart)
+         m2i=p(0,i)**2-p(1,i)**2-p(2,i)**2-p(3,i)**2
+         if (m2i.gt.mtiny*p(0,i)**2) massive_ini=.true.
+      enddo
+      if (massive_ini .and. pvec2.lt.(betamin*pboost(0))**2) then
+         trivial=.true.
+         return
+      endif
 
 c     The selected system must be timelike for its rest frame to exist. A
 c     lightlike or spacelike sum means the run_card selection is nonsense
