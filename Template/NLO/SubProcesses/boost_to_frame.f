@@ -519,12 +519,29 @@ c**************************************************************************
       include 'run.inc'
       integer ids(nexternal-1)
       integer i
+c     The answer depends only on frame_id, fixed for the run from the
+c     run_card, and on frame_map_born, a compile-time DATA table -- but
+c     this is called from every _frame wrapper on every phase-space point.
+c     Cache it, keyed on frame_id so the cache cannot go stale if that
+c     ever becomes settable mid-run. No OpenMP in these sources; MadEvent
+c     parallelises by forking, so each process gets its own copy.
+      integer cached_ids(nexternal-1)
+      integer cached_id
+      save cached_ids, cached_id
+      data cached_id /-1/
+
+      if (frame_id.ne.cached_id) then
+         do i=1,nexternal-1
+            cached_ids(i)=0
+            if (btest(frame_id, frame_map_born(i))) then
+               cached_ids(i)=1
+            endif
+         enddo
+         cached_id=frame_id
+      endif
 
       do i=1,nexternal-1
-         ids(i)=0
-         if (btest(frame_id, frame_map_born(i))) then
-            ids(i)=1
-         endif
+         ids(i)=cached_ids(i)
       enddo
 
       return
@@ -570,10 +587,38 @@ c**************************************************************************
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
+      include 'nFKSconfigs.inc'
+      include 'run.inc'
       integer iFKS
       integer ids(nexternal)
       integer ids_born(nexternal-1)
       integer r, b
+c     Constant for a given iFKS: the Born mask is run-constant and the
+c     r <-> b correspondence is fixed by fks_i_D(iFKS), a DATA table. So
+c     cache one mask per FKS configuration rather than rebuilding both
+c     this and the Born mask on every real-emission evaluation. Keyed on
+c     frame_id for the same reason as get_frame_mask_born.
+      integer cached_real(nexternal, fks_configs)
+      logical cached_ok(fks_configs)
+      integer cached_id_r
+      save cached_real, cached_ok, cached_id_r
+      data cached_ok /fks_configs*.false./
+      data cached_id_r /-1/
+
+      if (frame_id.ne.cached_id_r) then
+         do r=1,fks_configs
+            cached_ok(r)=.false.
+         enddo
+         cached_id_r=frame_id
+      endif
+      if (iFKS.ge.1 .and. iFKS.le.fks_configs) then
+         if (cached_ok(iFKS)) then
+            do r=1,nexternal
+               ids(r)=cached_real(r,iFKS)
+            enddo
+            return
+         endif
+      endif
 
       call get_frame_mask_born(ids_born)
 
@@ -591,6 +636,13 @@ c           the extra parton: no Born counterpart, never part of the frame
             ids(r)=ids_born(b)
          endif
       enddo
+
+      if (iFKS.ge.1 .and. iFKS.le.fks_configs) then
+         do r=1,nexternal
+            cached_real(r,iFKS)=ids(r)
+         enddo
+         cached_ok(iFKS)=.true.
+      endif
 
       return
       end
