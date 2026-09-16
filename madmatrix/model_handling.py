@@ -2489,7 +2489,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_coloramps')
         template = open(pjoin(self.template_path,'madmatrix','coloramps.h'),'r').read()
-        ff = open(pjoin(self.path, 'coloramps.h'),'w')
         # The following five lines from OneProcessExporterCPP.get_sigmaKin_lines (using OneProcessExporterCPP.get_icolamp_lines)
         replace_dict={}
 
@@ -2540,8 +2539,20 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
+        ff = open(pjoin(self.path, 'coloramps.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
+        # backend_separation: values above (nb_diag/nb_channel/nb_color/...) are
+        # process-specific, so backend/{cpu,simd,gpu}/coloramps.h -- symlinked in
+        # from the shared, unsubstituted template by _link_backend_dirs_in_P --
+        # would shadow this real file for anything #include'd from backend/ (same-
+        # directory quote-include beats the P1-level one). Override it here with
+        # a real substituted copy per backend, same pattern as color_sum.cc.
+        for variant in ('cpu', 'simd', 'gpu'):
+            backend_template = open(pjoin(self.template_path, 'madmatrix', 'backend', variant, 'coloramps.h'), 'r').read()
+            backend_dir = pjoin(self.path, 'backend', variant)
+            os.makedirs(backend_dir, exist_ok=True)
+            open(pjoin(backend_dir, 'coloramps.h'), 'w').write(backend_template % replace_dict)
 
     # AV - new method
     def edit_memorybuffers(self):

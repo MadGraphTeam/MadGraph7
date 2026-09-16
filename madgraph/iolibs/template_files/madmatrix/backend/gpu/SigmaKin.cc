@@ -27,6 +27,9 @@
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h" // for DeviceAccessJamp
+#include "coloramps.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
+
+#include <cfloat>
 
 namespace mg5amcGpu
 {
@@ -34,6 +37,11 @@ namespace mg5amcGpu
   using namespace ProcessTables;
   using Parameters_dependentCouplings::ndcoup;   // #couplings that vary event by event (depend on running alphas QCD)
   using Parameters_independentCouplings::nicoup; // #couplings that are fixed for all events (do not depend on running alphas QCD)
+
+  // ncolor_flow (unlike ncolor) is not in ProcessData.h: the color sum can run
+  // on a smaller (DDM) basis than the color flow probabilities do, so this stays
+  // a CPPProcess-generated constant (see process_class.inc/set_color_flow_lines_cpp).
+  constexpr int ncolor_flow = CPPProcess::ncolor_flow;
 
   // Per-color running sum of |jamp|^2 over helicities, for event-by-event color choice.
   class DeviceAccessJamp2
@@ -294,6 +302,304 @@ namespace mg5amcGpu
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
     return nGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
+  // Decay-aware identical-particle (broken-)symmetry factor, shared with the
+  // Fortran / standalone_cpp exporters (_get_broken_symmetry_data). Two
+  // entries contribute to the over-counting factor only when they have the
+  // same top-level PID AND the same full decay/flavour block, so e.g. two Z
+  // bosons decaying to different families are correctly distinguished.
+  __device__ int
+  broken_symmetry_factor( const int iflavor )
+  {
+    int pid_work[broken_sym_nentries];
+    for( int i = 0; i < broken_sym_nentries; i++ )
+      pid_work[i] = broken_sym_pid_list[i];
+
+    int total_factor = 1;
+    for( int icomp = 0; icomp < broken_sym_ncomponents; icomp++ )
+    {
+      int old_factor = broken_sym_component_old_factors[icomp];
+      if( broken_sym_component_old_factors[icomp] > 1 )
+      {
+        for( int i = broken_sym_component_starts[icomp] - 1; i < broken_sym_component_ends[icomp]; i++ )
+        {
+          if( pid_work[i] == 0 )
+            continue;
+          int n_tot = 1;
+          for( int j = i + 1; j < broken_sym_component_ends[icomp]; j++ )
+          {
+            if( pid_work[i] != pid_work[j] )
+              continue;
+            bool same_block = ( broken_sym_block_lengths[i] == broken_sym_block_lengths[j] );
+            for( int k = 0; same_block && k < broken_sym_block_lengths[i]; k++ )
+            {
+              if( cFlavors[iflavor][broken_sym_block_starts[i] - 1 + k] != cFlavors[iflavor][broken_sym_block_starts[j] - 1 + k] )
+                same_block = false;
+            }
+            if( same_block )
+            {
+              pid_work[j] = 0;
+              n_tot = n_tot + 1;
+              old_factor = old_factor / n_tot;
+            }
+          }
+        }
+      }
+      total_factor = total_factor * old_factor;
+    }
+    return total_factor;
+  }
+
+  //--------------------------------------------------------------------------
+
+  __global__ void
+  normalise_output( fptype* allMEs,                    // output: allMEs[nevt], |M|^2 running_sum_over_helicities
+                    const unsigned int* iflavorVec,
+                    fptype_amp* allNumerators,          // input: multichannel numerators[nevt][ndiagrams], already summed over helicities (atomicAdd)
+                    fptype_amp* allDenominators,        // output: multichannel denominators[nevt], derived here as the sum of numerators
+                    const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
+                    bool storeChannelWeights,            // if true, compute final multichannel weights
+                    bool mulChannelWeight,               // if true, multiply matrix element by channel weight
+                    const fptype globaldenom )
+  {
+    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( iflavorVec[ievt] ) / globaldenom;
+    if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
+    {
+      // The numerators have already been accumulated over all good helicities in place (atomicAdd in
+      // calculate_jamps), so there is no helicity dimension to sum here. The denominator is just the
+      // sum of all numerators for this event: derive it once and store it for the downstream consumers.
+      fptype_amp* numerators = allNumerators + ievt * ndiagrams;
+      fptype denominator = 0;
+      for( int idiag = 0; idiag < ndiagrams; ++idiag )
+        denominator += numerators[idiag];
+      allDenominators[ievt] = denominator;
+      if( mulChannelWeight )
+      {
+        unsigned int channelId = allChannelIds[ievt];
+        // denominator == 0 means every diagram's |amp|^2 vanishes for this event (a
+        // subprocess whose matrix element is identically zero); 0/0 would turn a zero
+        // matrix element into a nan. Floored rather than tested, so that -ffast-math
+        // cannot drop the guard - see backend/cpu/SigmaKin.cc for the reasoning.
+#if defined MGONGPU_FPTYPE_DOUBLE
+        constexpr fptype fptypeMin = DBL_MIN; // smallest normal double
+#elif defined MGONGPU_FPTYPE_FLOAT
+        constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
+#endif
+        allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
+      }
+    }
+  }
+
+  //--------------------------------------------------------------------------
+
+  __global__ void
+  add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
+                      const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
+                      fptype* ghelAllMEs,      // input/tmp: allMEs for nGoodHel <= ncomb individual/runningsum helicities (index is ighel)
+                      fptype* allMEs,          // output: allMEs[nevt], final sum over helicities
+                      const int nevt )         // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+  {
+    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    // Compute the sum of MEs over all good helicities (defer this after the helicity loop to avoid breaking streams parallelism)
+    for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+    {
+      allMEs[ievt] += ghelAllMEs[ighel * nevt + ievt];
+      ghelAllMEs[ighel * nevt + ievt] = allMEs[ievt]; // reuse the buffer to store the running sum for helicity selection
+    }
+    // Event-by-event random choice of helicity #403
+    for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+    {
+      if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
+      {
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        allselhel[ievt] = ihelF;
+        break;
+      }
+    }
+  }
+
+  //--------------------------------------------------------------------------
+
+  __global__ void
+  select_col_and_diag( int* allselcol,                    // output: color selection[nevt]
+                       unsigned int* allDiagramIdsOut,    // output: sampled diagram ids
+                       const fptype* allrndcol,           // input: random numbers[nevt] for color selection
+                       const fptype* allrnddiagram,       // input: random numbers[nevt] for diagram selection
+                       const unsigned int* allChannelIds, // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable SDE enhancement (fix #899/#911)
+                       const fptype_amp_sv* allJamp2s,    // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
+                       const fptype_amp* allNumerators,   // input: all numerators
+                       const fptype_amp* allDenominators, // input: all denominators
+                       const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+  {
+    const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    // SCALAR channelId for the current event (CUDA)
+    unsigned int channelId = gpu_channelId( allChannelIds );
+
+    // Event-by-event random choice of channel
+    if( allrnddiagram != nullptr )
+    {
+      fptype numerator_sum = 0., normalization = 0.;
+      for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+      {
+        if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+        normalization += allNumerators[ievt * ndiagrams + ichan];
+      }
+      channelId = mgOnGpu::nchannels;
+      for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+      {
+        if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+        numerator_sum += allNumerators[ievt * ndiagrams + ichan];
+        if( allrnddiagram[ievt] < numerator_sum / normalization )
+        {
+          channelId = ichan + 1;
+          break;
+        }
+      }
+      allDiagramIdsOut[ievt] = channelId;
+    }
+
+    if( channelId != 0 ) // no event-by-event choice of color if channelId == 0 (fix FPE #783)
+    {
+      if( channelId > mgOnGpu::nchannels )
+      {
+        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, mgOnGpu::nchannels );
+        assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
+      }
+      // Determine the jamp2 for this event (TEMPORARY? could do this with a dedicated memory accessor instead...)
+      fptype_amp_sv jamp2_sv[ncolor_flow] = { 0 };
+      assert( allJamp2s != nullptr ); // sanity check
+
+      using J2_ACCESS = DeviceAccessJamp2;
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+        jamp2_sv[icolC] = J2_ACCESS::kernelAccessIcolConst( allJamp2s, icolC );
+      // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
+      const int iconfig = mgOnGpu::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
+      if( iconfig <= 0 )
+      {
+        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which has no associated SDE iconfig\n", channelId );
+        assert( iconfig > 0 ); // SANITY CHECK #917
+      }
+      else if( iconfig > (int)mgOnGpu::nconfigSDE )
+      {
+        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
+        assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
+      }
+      fptype_amp targetamp[ncolor_flow] = { 0 };
+      // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+      {
+        if( icolC == 0 )
+          targetamp[icolC] = 0;
+        else
+          targetamp[icolC] = targetamp[icolC - 1];
+        // NB (see #877): in the array icolamp, the input index uses C indexing (iconfig -1)
+        if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
+      }
+      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+      {
+        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
+        {
+          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
+          break;
+        }
+      }
+    }
+    else
+    {
+      allselcol[ievt] = 0; // no color selected in Fortran range [1,ncolor] if channelId == 0 (see #931)
+    }
+  }
+
+  //--------------------------------------------------------------------------
+  // Evaluate |M|^2, part independent of incoming flavour
+
+  void /* clang-format off */
+  sigmaKin( const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
+            const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
+            const unsigned int* iflavorVec,     // input: index of the flavor combination
+            const fptype* allrndhel,            // input: random numbers[nevt] for helicity selection
+            const fptype* allrndcol,            // input: random numbers[nevt] for color selection
+            const unsigned int* allChannelIds,  // input: multichannel channelIds[nevt] (1 to #diagrams); nullptr to disable single-diagram enhancement (fix #899/#911)
+            const fptype* allrnddiagram,        // input: random numbers[nevt] for channel sampling
+            fptype* allMEs,                     // output: allMEs[nevt], |M|^2 final_avg_over_helicities
+            int* allselhel,                     // output: helicity selection[nevt]
+            int* allselcol,                     // output: helicity selection[nevt]
+            fptype_amp* colAllJamp2s,           // tmp: allJamp2s super-buffer for ncolor individual colors, running sum over colors and helicities
+            fptype_amp* ghelAllNumerators,      // tmp: allNumerators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+            fptype_amp* ghelAllDenominators,    // tmp: allDenominators super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+            unsigned int* allDiagramIdsOut,     // output: multichannel channelIds[nevt] (1 to #diagrams)
+            bool mulChannelWeight,              // if true, multiply channel weight to ME output
+            fptype* ghelAllMEs,                 // tmp: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+            fptype_amp* ghelAllJamps,           // tmp: jamp[2*ncolor*nGoodHel*nevt] super-buffer for nGoodHel <= ncomb individual helicities
+            fptype_colour* ghelAllBlasTmp,      // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities
+            gpuBlasHandle_t* pBlasHandle,       // input: cuBLAS/hipBLAS handle
+            gpuStream_t* ghelStreams,           // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
+            const bool async,
+            const int gpublocks,                // input: cuda gpublocks
+            const int gputhreads )              // input: cuda gputhreads
+  /* clang-format on */
+  {
+    mgDebugInitialise();
+
+    // SANITY CHECKS for cudacpp code generation (see issues #272 and #343 and PRs #619, #626, #360, #396 and #754)
+    {
+      // nprocesses == 2 may happen for "mirror processes" such as P0_uux_ttx within pp_tt012j (see PR #754)
+      static_assert( nproc == 1 || nproc == 2, "Assume nprocesses == 1 or 2" );
+      static_assert( proc_id == 1, "Assume process_id == 1" );
+    }
+
+    // === PART 0 - INITIALISATION (before calculate_jamps) ===
+    // Reset the "matrix elements" - running sums of |M|^2 over helicities for the given event
+    const int nevt = gpublocks * gputhreads;
+    gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
+    gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype_amp ) );
+    gpuMemset( colAllJamp2s, 0, ncolor_flow * nevt * sizeof( fptype_amp ) );
+    // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
+    // atomicAdd, so it is zeroed once as [nevt][ndiagrams]. The denominators are derived from the
+    // numerators in normalise_output, so the buffer is just [nevt].
+    gpuMemset( ghelAllNumerators, 0, ndiagrams * nevt * sizeof( fptype_amp ) );
+    gpuMemset( ghelAllDenominators, 0, nevt * sizeof( fptype_amp ) );
+    gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
+
+    // === PART 1 - HELICITY LOOP: CALCULATE WAVEFUNCTIONS (one event per GPU thread) ===
+
+    // Use CUDA/HIP streams to process different helicities in parallel (one good helicity per stream)
+    // (1) First, within each helicity stream, compute the QCD partial amplitudes jamp's for each helicity
+    // In multichannel mode, also compute the running sums over helicities of numerators, denominators and squared jamp2s
+    bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
+    if( async )
+    {
+      gpuLaunchKernel2D( calculate_jamps, gpublocks, cNGoodHel, gputhreads, ghelStreams[0], 0, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, true );
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, true );
+    }
+    else
+    {
+      for( int ighel = 0; ighel < cNGoodHel; ighel++ )
+      {
+        const int ihel = cGoodHel[ighel];
+        fptype_amp* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
+        // NB: the numerators buffer has no helicity dimension: every helicity stream accumulates in place
+        // into the same [nevt][ndiagrams] slot via atomicAdd. The denominators are derived later.
+        gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, false );
+      }
+      // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
+      color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, cNGoodHel, gpublocks, gputhreads, false );
+      checkGpu( gpuDeviceSynchronize() ); // do not start helicity/color selection until the loop over helicities has completed
+      // (3) Wait for all helicity streams to complete, then finally compute the ME sum over all helicities and choose one helicity and one color
+    }
+    // Event-by-event random choice of helicity #403 and ME sum over helicities (defer this after the helicity loop to avoid breaking streams parallelism)
+    gpuLaunchKernel( add_and_select_hel, gpublocks, gputhreads, allselhel, allrndhel, ghelAllMEs, allMEs, gpublocks * gputhreads );
+
+    gpuLaunchKernel( normalise_output, gpublocks, gputhreads, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
+
+    // Event-by-event random choice of color and diagram #402
+    gpuLaunchKernel( select_col_and_diag, gpublocks, gputhreads, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, gpublocks * gputhreads );
+
+    mgDebugFinalise();
   }
 
   //--------------------------------------------------------------------------
