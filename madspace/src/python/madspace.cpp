@@ -243,30 +243,49 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Function::instructions")
         );
 
-    py::classh<Device> device(m, "Device");
-    m.def("cpu_device", &cpu_device, py::return_value_policy::reference);
+    py::classh<Device> device(m, "Device", pydoc::doc("Device"));
+    m.def(
+        "cpu_device",
+        &cpu_device,
+        py::return_value_policy::reference,
+        pydoc::doc("cpu_device")
+    );
     m.def(
         "cuda_device",
         &cuda_device,
         py::arg("index") = 0,
-        py::return_value_policy::reference
+        py::return_value_policy::reference,
+        pydoc::doc("cuda_device")
     );
     m.def(
         "hip_device",
         &hip_device,
         py::arg("index") = 0,
-        py::return_value_policy::reference
+        py::return_value_policy::reference,
+        pydoc::doc("hip_device")
     );
-    m.def("available_backends", &available_backends);
+    m.def("available_backends", &available_backends, pydoc::doc("available_backends"));
 
-    py::classh<MatrixElementApi>(m, "MatrixElementApi")
+    py::classh<MatrixElementApi>(m, "MatrixElementApi", pydoc::doc("MatrixElementApi"))
         //.def("device", &MatrixElementApi::device)
-        .def("particle_count", &MatrixElementApi::particle_count)
-        .def("diagram_count", &MatrixElementApi::diagram_count)
-        .def("helicity_count", &MatrixElementApi::helicity_count)
-        .def("index", &MatrixElementApi::index);
+        .def(
+            "particle_count",
+            &MatrixElementApi::particle_count,
+            pydoc::doc("MatrixElementApi::particle_count")
+        )
+        .def(
+            "diagram_count",
+            &MatrixElementApi::diagram_count,
+            pydoc::doc("MatrixElementApi::diagram_count")
+        )
+        .def(
+            "helicity_count",
+            &MatrixElementApi::helicity_count,
+            pydoc::doc("MatrixElementApi::helicity_count")
+        )
+        .def("index", &MatrixElementApi::index, pydoc::doc("MatrixElementApi::index"));
 
-    py::classh<Tensor>(m, "Tensor", py::dynamic_attr())
+    py::classh<Tensor>(m, "Tensor", py::dynamic_attr(), pydoc::doc("Tensor"))
         .def(
             "__dlpack__",
             &tensor_to_dlpack,
@@ -277,17 +296,25 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def("__dlpack_device__", &dlpack_device);
 
-    py::classh<Context>(m, "Context")
-        .def(py::init<int>(), py::arg("thread_count") = -1)
+    py::classh<Context>(m, "Context", pydoc::doc("Context"))
         .def(
-            py::init<DevicePtr, int>(), py::arg("device"), py::arg("thread_count") = -1
+            py::init<int>(),
+            py::arg("thread_count") = -1,
+            pydoc::doc("Context::Context")
+        )
+        .def(
+            py::init<DevicePtr, int>(),
+            py::arg("device"),
+            py::arg("thread_count") = -1,
+            pydoc::doc("Context::Context#2")
         )
         .def(
             "load_matrix_element",
             &Context::load_matrix_element,
             py::arg("file"),
             py::arg("param_card"),
-            py::return_value_policy::reference_internal
+            py::return_value_policy::reference_internal,
+            pydoc::doc("Context::load_matrix_element")
         )
         .def(
             "define_global",
@@ -295,26 +322,80 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("name"),
             py::arg("dtype"),
             py::arg("shape"),
-            py::arg("requires_grad") = false
+            py::arg("requires_grad") = false,
+            pydoc::doc("Context::define_global")
         )
-        .def("get_global", &Context::global, py::arg("name"))
-        .def("global_requires_grad", &Context::global_requires_grad, py::arg("name"))
-        .def("global_exists", &Context::global_exists, py::arg("name"))
-        .def("global_names", &Context::global_names)
-        .def("delete_global", &Context::delete_global, py::arg("name"))
-        .def("copy_globals_from", &Context::copy_globals_from, py::arg("context"))
+        .def(
+            "get_global",
+            &Context::global,
+            py::arg("name"),
+            pydoc::doc("Context::global")
+        )
+        .def(
+            "global_requires_grad",
+            &Context::global_requires_grad,
+            py::arg("name"),
+            pydoc::doc("Context::global_requires_grad")
+        )
+        .def(
+            "global_exists",
+            &Context::global_exists,
+            py::arg("name"),
+            pydoc::doc("Context::global_exists")
+        )
+        .def(
+            "global_names", &Context::global_names, pydoc::doc("Context::global_names")
+        )
+        .def(
+            "delete_global",
+            &Context::delete_global,
+            py::arg("name"),
+            pydoc::doc("Context::delete_global")
+        )
+        .def(
+            "copy_globals_from",
+            &Context::copy_globals_from,
+            py::arg("context"),
+            pydoc::doc("Context::copy_globals_from")
+        )
         .def(
             "matrix_element",
             &Context::matrix_element,
             py::arg("index"),
-            py::return_value_policy::reference_internal
+            py::return_value_policy::reference_internal,
+            pydoc::doc("Context::matrix_element")
         )
-        .def("save_globals", &Context::save_globals, py::arg("dir"))
-        .def("load_globals", &Context::load_globals, py::arg("dir"))
-        .def("device", &Context::device, py::return_value_policy::reference);
-    m.def("default_context", &default_context);
-    m.def("default_cuda_context", &default_cuda_context, py::arg("index") = 0);
-    m.def("default_hip_context", &default_hip_context, py::arg("index") = 0);
+        .def(
+            "save_globals",
+            &Context::save_globals,
+            py::arg("dir"),
+            pydoc::doc("Context::save_globals")
+        )
+        .def(
+            "load_globals",
+            &Context::load_globals,
+            py::arg("dir"),
+            pydoc::doc("Context::load_globals")
+        )
+        .def(
+            "device",
+            &Context::device,
+            py::return_value_policy::reference,
+            pydoc::doc("Context::device")
+        );
+    m.def("default_context", &default_context, pydoc::doc("default_context"));
+    m.def(
+        "default_cuda_context",
+        &default_cuda_context,
+        py::arg("index") = 0,
+        pydoc::doc("default_cuda_context")
+    );
+    m.def(
+        "default_hip_context",
+        &default_hip_context,
+        py::arg("index") = 0,
+        pydoc::doc("default_hip_context")
+    );
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
@@ -1979,7 +2060,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"silent", Verbosity::silent},
             {"log", Verbosity::log},
             {"pretty", Verbosity::pretty},
-        }
+        },
+        "",
+        pydoc::doc("Verbosity")
     );
 
     py::classh<MadnisTraining::Config>(m, "MadnisConfig")
@@ -2075,11 +2158,12 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("active_channels", &MadnisTraining::active_channels)
         .def("active_channel_count", &MadnisTraining::active_channel_count);
 
-    py::classh<StatusFile>(m, "StatusFile")
+    py::classh<StatusFile>(m, "StatusFile", pydoc::doc("StatusFile"))
         .def(
             py::init<const std::string&, double>(),
             py::arg("file_name"),
-            py::arg("min_interval_sec") = 10.0
+            py::arg("min_interval_sec") = 10.0,
+            pydoc::doc("StatusFile::StatusFile")
         );
 
     py::classh<MultiMadnisTraining::TrainingArgs>(m, "TrainingArgs")
@@ -2363,9 +2447,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             "diagram_propagator_pdgs",
             &LHECompleter::SubprocArgs::diagram_propagator_pdgs
         );
-    py::classh<MixMaxRandom>(m, "MixMaxRandom")
-        .def(py::init<>())
-        .def(py::init<std::uint64_t>(), py::arg("seed"));
+    py::classh<MixMaxRandom>(m, "MixMaxRandom", pydoc::doc("MixMaxRandom"))
+        .def(py::init<>(), pydoc::doc("MixMaxRandom::MixMaxRandom"))
+        .def(
+            py::init<std::uint64_t>(),
+            py::arg("seed"),
+            pydoc::doc("MixMaxRandom::MixMaxRandom#3")
+        );
     py::classh<LHECompleter>(m, "LHECompleter")
         .def(
             py::init<const std::vector<LHECompleter::SubprocArgs>&, double>(),
@@ -2395,10 +2483,27 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("write", &LHEFileWriter::write, py::arg("event"))
         .def("write_string", &LHEFileWriter::write_string, py::arg("str"));
 
-    m.def("format_si_prefix", &format_si_prefix, py::arg("value"));
-    m.def("format_with_error", &format_with_error, py::arg("value"), py::arg("error"));
-    m.def("format_progress", &format_progress, py::arg("progress"), py::arg("width"));
-    py::classh<PrettyBox>(m, "PrettyBox")
+    m.def(
+        "format_si_prefix",
+        &format_si_prefix,
+        py::arg("value"),
+        pydoc::doc("format_si_prefix")
+    );
+    m.def(
+        "format_with_error",
+        &format_with_error,
+        py::arg("value"),
+        py::arg("error"),
+        pydoc::doc("format_with_error")
+    );
+    m.def(
+        "format_progress",
+        &format_progress,
+        py::arg("progress"),
+        py::arg("width"),
+        pydoc::doc("format_progress")
+    );
+    py::classh<PrettyBox>(m, "PrettyBox", pydoc::doc("PrettyBox"))
         .def(
             py::init<
                 const std::string&,
@@ -2410,20 +2515,42 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("rows"),
             py::arg("columns"),
             py::arg("offset") = 0,
-            py::arg("box_width") = 91
+            py::arg("box_width") = 91,
+            pydoc::doc("PrettyBox::PrettyBox#2")
         )
-        .def("set_row", &PrettyBox::set_row, py::arg("row"), py::arg("values"))
-        .def("set_column", &PrettyBox::set_column, py::arg("column"), py::arg("values"))
+        .def(
+            "set_row",
+            &PrettyBox::set_row,
+            py::arg("row"),
+            py::arg("values"),
+            pydoc::doc("PrettyBox::set_row")
+        )
+        .def(
+            "set_column",
+            &PrettyBox::set_column,
+            py::arg("column"),
+            py::arg("values"),
+            pydoc::doc("PrettyBox::set_column")
+        )
         .def(
             "set_cell",
             &PrettyBox::set_cell,
             py::arg("row"),
             py::arg("column"),
-            py::arg("value")
+            py::arg("value"),
+            pydoc::doc("PrettyBox::set_cell")
         )
-        .def("print_first", &PrettyBox::print_first)
-        .def("print_update", &PrettyBox::print_update)
-        .def_property_readonly("line_count", &PrettyBox::line_count);
+        .def(
+            "print_first", &PrettyBox::print_first, pydoc::doc("PrettyBox::print_first")
+        )
+        .def(
+            "print_update",
+            &PrettyBox::print_update,
+            pydoc::doc("PrettyBox::print_update")
+        )
+        .def_property_readonly(
+            "line_count", &PrettyBox::line_count, pydoc::doc("PrettyBox::line_count")
+        );
 
     py::classh<ChannelEventGenerator>(m, "ChannelEventGenerator")
         .def_static(
@@ -2812,7 +2939,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("used_globals", &EventGenerator::used_globals)
         .def("channels", &EventGenerator::channels);
 
-    py::classh<Logger> logger(m, "Logger");
+    py::classh<Logger> logger(m, "Logger", pydoc::doc("Logger"));
     add_enum<Logger::LogLevel>(
         logger,
         "LogLevel",
@@ -2821,15 +2948,44 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"level_info", Logger::level_info},
             {"level_warning", Logger::level_warning},
             {"level_error", Logger::level_error},
-        }
+        },
+        "",
+        pydoc::doc("Logger::LogLevel")
     );
-    logger.def_static("log", &Logger::log, py::arg("level"), py::arg("message"))
-        .def_static("debug", &Logger::debug, py::arg("message"))
-        .def_static("info", &Logger::info, py::arg("message"))
-        .def_static("warning", &Logger::warning, py::arg("message"))
-        .def_static("error", &Logger::error, py::arg("message"))
-        .def_static("set_log_handler", &Logger::set_log_handler, py::arg("func"))
-        .def_static("clear_log_handler", &Logger::clear_log_handler);
+    logger
+        .def_static(
+            "log",
+            &Logger::log,
+            py::arg("level"),
+            py::arg("message"),
+            pydoc::doc("Logger::log")
+        )
+        .def_static(
+            "debug", &Logger::debug, py::arg("message"), pydoc::doc("Logger::debug")
+        )
+        .def_static(
+            "info", &Logger::info, py::arg("message"), pydoc::doc("Logger::info")
+        )
+        .def_static(
+            "warning",
+            &Logger::warning,
+            py::arg("message"),
+            pydoc::doc("Logger::warning")
+        )
+        .def_static(
+            "error", &Logger::error, py::arg("message"), pydoc::doc("Logger::error")
+        )
+        .def_static(
+            "set_log_handler",
+            &Logger::set_log_handler,
+            py::arg("func"),
+            pydoc::doc("Logger::set_log_handler")
+        )
+        .def_static(
+            "clear_log_handler",
+            &Logger::clear_log_handler,
+            pydoc::doc("Logger::clear_log_handler")
+        );
 
     // prevent memory error due to static lifetime of log handler
     py::module_::import("atexit").attr("register")(py::cpp_function([]() {
@@ -2842,8 +2998,15 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("context"),
         py::arg("grid_name")
     );
-    m.def("set_lib_path", &set_lib_path, py::arg("lib_path"));
-    m.def("set_simd_vector_size", &set_simd_vector_size, py::arg("vector_size"));
+    m.def(
+        "set_lib_path", &set_lib_path, py::arg("lib_path"), pydoc::doc("set_lib_path")
+    );
+    m.def(
+        "set_simd_vector_size",
+        &set_simd_vector_size,
+        py::arg("vector_size"),
+        pydoc::doc("set_simd_vector_size")
+    );
 
     auto abort_check_function = [] {
         if (PyErr_CheckSignals() != 0) {

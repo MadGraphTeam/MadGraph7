@@ -202,6 +202,33 @@ To document a **new** instruction: add its `desc:` fields in
 build), and `python docs/check_doc_convention.py` will flag any `desc:` you
 missed.
 
+## `driver/` — the runtime, tensors and event generation
+
+`driver/` classes are ordinary C++/Python objects, not compute-graph
+`Mapping`/`FunctionGenerator` subclasses, so they follow the general layout
+(brief, prose, `@param` per constructor parameter, cross-links with `@ref`)
+but **without** the Inputs/Conditions/Outputs/Arguments/Returns bullets or the
+standing weight note, and **without** a `**References**` list unless the class
+wraps a specific external algorithm or paper (e.g. `MixMaxRandom`). Every
+public method gets at least a `///` brief, including free functions in the
+`madspace` namespace — those are documented and picked up by
+`generate_docstrings.py` the same way, with an unqualified key (no
+`Class::` prefix).
+
+Two more `driver/`-specific traps found while documenting it:
+
+- **No forward `@ref` within the same file.** A class comment cannot `@ref` a
+  member of its own class (nested enums resolve if referenced by other
+  classes, not by their own enclosing comment) or a free function declared
+  later in the same header; Doxygen has not indexed it yet at that point.
+  Use plain text/backticks instead, or move the reference to whichever side
+  is declared first.
+- Private nested types (a private `struct` inside a class, e.g. `Tensor`'s
+  `TensorImpl`) are never extracted by Doxygen and need no comment.
+
+Only the classes reachable from Python are done so far (see Status); the
+C++-only helper types in `driver/` are still undocumented.
+
 ## Verification
 
 Fast loop, no rebuild:
