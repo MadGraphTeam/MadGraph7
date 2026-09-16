@@ -432,9 +432,57 @@ class MadgraphProcess:
             name=name,
         )
 
+    def apply_auto_ptj_mjj(self, cuts: dict) -> None:
+        """madevent's auto_ptj_mjj, from Template/LO/SubProcesses/setcuts.f.
+
+        A merging cut already bounds every matrix-element jet from below, so
+        raising the jet pt and pair-mass cuts to xqcut removes no phase space
+        that survives the merging anyway while making the integration much more
+        efficient. The jet dR cuts go the other way and are dropped:
+        xqcut supersedes them, and a dR cut would carve a hole out of exactly
+        the region the parton shower is supposed to fill, leaving a gap in the
+        jet rates at the merging scale.
+
+        With the option off, madevent still drops the dR cuts, and only zeroes
+        a pt or pair-mass cut that sits above xqcut - it never tightens.
+        """
+        if self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+            return
+        xqcut = self.run_card["phasespace"]["xqcut"]
+        if xqcut <= 0:
+            return
+        for key in ("jet-delta_r", "jet-lepton-delta_r"):
+            if cuts.get(key, {}).get("min", 0.0) > 0.0:
+                cuts[key]["min"] = 0.0
+        auto = self.run_card["phasespace"]["auto_ptj_mjj"]
+        # Both halves of madevent's rule matter, and for different reasons.
+        #
+        # ptj reaches the phase space only for jets that are leaf children of
+        # the root: a jet inside a composite s-channel node - two jets off one
+        # gluon, say - has its pt_min reset to zero in PhaseSpaceMapping, and
+        # that node's invariant is then sampled from threshold upward knowing
+        # nothing about the cut. mjj is what bounds those nodes, because a
+        # pairwise invariant-mass minimum is carried into the propagator's own
+        # e_min and so into the s_min the sampler uses.
+        #
+        # Leaving mjj out is what makes the highest multiplicity misbehave at a
+        # tight xqcut: almost every point it proposes is vetoed, and the few
+        # survivors sit against a boundary it cannot see.
+        for key in ("jet-pt", "jet-pair_mass"):
+            if auto:
+                cuts.setdefault(key, {})["min"] = xqcut
+            elif cuts.get(key, {}).get("min", 0.0) > xqcut:
+                cuts[key]["min"] = 0.0
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
+        cuts = {
+            key: dict(values)
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        }
+        self.apply_auto_ptj_mjj(cuts)
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -442,8 +490,7 @@ class MadgraphProcess:
                 max=values.get("max", inf),
                 mode=values.get("mode", "all"),
             )
-            for key, values in self.run_card["cuts"].items()
-            if key != "order_by"
+            for key, values in cuts.items()
         ]
 
     def init_histograms(self) -> None:
@@ -588,6 +635,12 @@ class MadgraphProcess:
         if self.pdf_dir is None:
             raise RuntimeError(self._no_pdf_message(pdf_set))
         self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
+        # The grid only covers a band in Q. Asking for a density above its
+        # highest Q reads past the end of the interpolation and comes back as a
+        # NaN, so the scale is capped there. A dynamical scale rarely gets near
+        # it, but the madevent MLM scheme, which multiplies four clustering
+        # scales together under a fourth root, can.
+        self.max_scale = max(self.pdf_grid.q)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
         for context in self.contexts:
             self.pdf_grid.initialize_globals(context)
@@ -1994,6 +2047,7 @@ class MadgraphSubprocess:
             else None
         )
 
+        max_scale = 0.0 if self.process.leptonic else self.process.max_scale
         if self.process.mlm_clustering:
             mc_data = self.build_multi_channel_data()
             self.scale = ms.EnergyScale(
@@ -2006,6 +2060,10 @@ class MadgraphSubprocess:
                         ms.MLMClustering.JetScaleScheme,
                         self.process.run_card["beam"]["jet_scale_scheme"],
                     ),
+                    scale_scheme=getattr(
+                        ms.MLMClustering.ScaleScheme,
+                        self.process.run_card["beam"]["scale_scheme"],
+                    ),
                     pdg_color_types={
                         int(key): value
                         for key, value in self.meta["pdg_color_types"].items()
@@ -2016,11 +2074,31 @@ class MadgraphSubprocess:
                     hadronic=not self.process.leptonic,
                     external_pdg_ids=all_pids,
                     max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
-                )
+                    parton_line_scheme=getattr(
+                        ms.MLMClustering.PartonLineScheme,
+                        self.process.run_card["beam"]["parton_line_scheme"],
+                    ),
+                    alphas_scheme=getattr(
+                        ms.MLMClustering.AlphasScheme,
+                        self.process.run_card["beam"]["alphas_reweighting"],
+                    ),
+                    pdf_reweighting=self.process.run_card["beam"][
+                        "pdf_reweighting"
+                    ],
+                    clustering_measure=getattr(
+                        ms.MLMClustering.ClusteringMeasure,
+                        self.process.run_card["beam"]["clustering_measure"],
+                    ),
+                ),
+                min_scale=self.process.run_card["beam"]["min_scale"],
+                max_scale=max_scale,
             )
         else:
             self.scale = ms.EnergyScale(
-                particle_count=self.particle_count, **self.process.scale_kwargs
+                particle_count=self.particle_count,
+                min_scale=self.process.run_card["beam"]["min_scale"],
+                max_scale=max_scale,
+                **self.process.scale_kwargs,
             )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
