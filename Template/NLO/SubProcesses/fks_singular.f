@@ -4114,7 +4114,14 @@ c
       xlength=rho(p)
       if(xlength.ne.0.d0)then
         cth=p(3)/xlength
-        sth=sqrt(1-cth**2)
+c Clamp before the sqrt. Until the me_frame work this was only ever fed
+c momenta straight out of the phase-space generator, where |cth|<=1 held
+c to rounding; azifact_mc_frame now hands it a *boosted* momentum, whose
+c p(3) and rho(p) carry independent error, so cth can come out a few ulp
+c above 1 and 1-cth**2 go negative -- a silent NaN under the default
+c flags. azifact_from_kperp in boost_to_frame.f clamps the identical
+c expression for the same reason.
+        sth=sqrt(max(1d0-cth**2,0d0))
         if(sth.ne.0.d0)then
           cphi=p(1)/(xlength*sth)
           sphi=p(2)/(xlength*sth)
@@ -4829,7 +4836,8 @@ C check if any extra_cnt is needed
          elseif (m_type.eq.8.or.ch_m.eq.0d0) then
 c Insert <ij>/[ij] which is not included by sborn()
             imother_fks=min(i_fks,j_fks)
-            call azifact_me_frame(p_born,imother_fks,azifact,me_boosted)
+            call azifact_me_frame(p_born,imother_fks,p_i_fks_ev,
+     &        p(0,j_fks),y_ij_fks,azifact,me_boosted)
             if (me_boosted) then
 c Same as the ISR case, up to the conjugation that distinguishes a timelike
 c from a spacelike splitting: psi is measured in the helicity basis of the
@@ -5023,7 +5031,8 @@ C check if any extra_cnt is needed
            amp_split_cnt_local(1:amp_split_size,2,iord)=dcmplx(0d0,0d0)
         else
 c Insert <ij>/[ij] which is not included by sborn()
-           call azifact_me_frame(p_born_used,j_fks,azifact,me_boosted)
+           call azifact_me_frame(p_born_used,j_fks,p_i_fks_ev,
+     &        p(0,j_fks),y_ij_fks,azifact,me_boosted)
            if (me_boosted) then
 c In the me_frame the mother is no longer on the beam axis, so neither the
 c cphi_mother=1 shortcut nor the R_y(pi) flip of the legacy branch below is

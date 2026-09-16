@@ -40,7 +40,8 @@ c**************************************************************************
       end
 
 
-      subroutine azifact_me_frame(p_born_in, imother, azifact, boosted)
+      subroutine azifact_me_frame(p_born_in, imother, p_i, p_j,
+     &                            y_ij_fks, azifact, boosted)
 c**************************************************************************
 c     Collinear azimuthal factor -exp(2 i psi), evaluated in the me_frame.
 c
@@ -69,9 +70,13 @@ c**************************************************************************
       include 'nexternal.inc'
       double precision p_born_in(0:3,nexternal-1)
       integer imother
+      double precision p_i(0:3), p_j(0:3), y_ij_fks
       double complex azifact
       logical boosted
       double precision pboost(0:3), pm(0:3), kp(0:3)
+      double precision pib(0:3), pjb(0:3)
+      double precision cphi_m, sphi_m, vtiny
+      parameter (vtiny=1d-8)
       integer ids(nexternal-1)
       logical trivial
       double precision xij_kperp(0:3)
@@ -86,8 +91,28 @@ c**************************************************************************
       endif
 
       call boostx(p_born_in(0,imother), pboost, pm)
-      call boostx(xij_kperp, pboost, kp)
-      call azifact_from_kperp(pm, kp, azifact)
+
+      if (1d0-y_ij_fks.lt.vtiny) then
+c        Collinear: <ij>/[ij] is 0/0, so rebuild -exp(2 i psi) from the
+c        stored emission direction. Same threshold as the legacy branch
+c        in sborncol_fsr/isr, so boosted and unboosted switch together.
+         call boostx(xij_kperp, pboost, kp)
+         call azifact_from_kperp(pm, kp, azifact)
+      else
+c        Away from the collinear point the spinors are exact, while the
+c        kperp reconstruction carries an O((kt/E)/betaT) error -- 136%
+c        at betaT=1e-5 when this was measured for azifact_mc_frame,
+c        which is why that routine branches the same way. sreal enters
+c        here whenever 1-y_ij_fks < tiny (1e-6 in production), not only
+c        at y=1, so this branch is reached with genuinely off-collinear
+c        kinematics. Convert <ij>/[ij] to the -exp(2 i psi) this routine
+c        contracts to return, using <ij>/[ij] = -exp(2 i psi) e^(2 i phi_m).
+         call boostx(p_i, pboost, pib)
+         call boostx(p_j, pboost, pjb)
+         call azifact_from_spinors(pib, pjb, azifact)
+         call getaziangles(pm, cphi_m, sphi_m)
+         azifact=azifact*dcmplx(cphi_m,-sphi_m)**2
+      endif
       boosted=.true.
 
       return
