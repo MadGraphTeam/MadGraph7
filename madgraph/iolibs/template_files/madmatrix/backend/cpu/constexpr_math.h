@@ -10,8 +10,10 @@
 #include "mgOnGpuConfig.h"
 
 #include <cassert>
+#include <cfenv> // for feenableexcept, fegetexcept and FE_XXX
 #include <cmath>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 
 // SWITCH ON/OFF DEBUGGING
@@ -325,6 +327,27 @@ namespace mg5amcCpu
   CONSTEXPRMATHFUN double constexpr_atan( const double x )
   {
     return constexpr_atan_quad( x );
+  }
+
+  // Enable FPE traps (see #701, #733, #831 - except on MacOS where feenableexcept is not defined #730)
+  // [NB1: Fortran default is -ffpe-trap=none, i.e. FPE traps are not enabled, https://gcc.gnu.org/onlinedocs/gfortran/Debugging-Options.html]
+  // [NB2: Fortran default is -ffpe-summary=invalid,zero,overflow,underflow,denormal, i.e. warn at the end on STOP]
+  inline void
+  fpeEnable()
+  {
+    static bool first = true; // FIXME: quick and dirty hack to do this only once (can be removed when separate C++/CUDA builds are implemented)
+    if( !first ) return;
+    first = false;
+#ifndef __APPLE__ // on MacOS feenableexcept is not defined #730
+    constexpr bool enableFPE = true; // this is hardcoded and no longer controlled by getenv( "CUDACPP_RUNTIME_ENABLEFPE" )
+    if( enableFPE )
+    {
+      std::cout << "INFO: The following Floating Point Exceptions will cause SIGFPE program aborts: FE_DIVBYZERO, FE_INVALID, FE_OVERFLOW" << std::endl;
+      feenableexcept( FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW ); // new strategy #831 (do not enable FE_UNDERFLOW)
+    }
+#else
+    //std::cout << "INFO: Keep default SIGFPE settings because feenableexcept is not available on MacOS" << std::endl;
+#endif
   }
 }
 
