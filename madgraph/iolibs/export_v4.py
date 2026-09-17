@@ -389,6 +389,9 @@ class ProcessExporterFortran(VirtualExporter,
         if opt:
             self.opt.update(opt)
         self.cmd_options = self.opt['output_options']
+        if isinstance(self.cmd_options, dict) and 'axial_gauge' in self.cmd_options:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  self.cmd_options['axial_gauge'], bool, 'axial_gauge')
         self._configure_flavor_mask_from_cmd_options()
         
         #place holder to pass information to the run_interface
@@ -6123,6 +6126,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_mask > 0)
         fortran_model.me_n_flavors = n_mask
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        fortran_model.axial_gauge = bool(self.opt.get('axial_gauge'))
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
@@ -6130,6 +6137,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
+            fortran_model.axial_gauge_refs = {}
             fortran_model.me_active_flavor_mask = None
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
@@ -7527,7 +7535,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': False
+                        'hel_recycling': False,
+                        'axial_gauge': False
                         }
     jamp_optim = True
     default_vector_size = 1
@@ -7548,6 +7557,24 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                                        'hel_recycling' in opt['output_options']:
             self.opt['hel_recycling'] = banner_mod.ConfigFile.format_variable(
                   opt['output_options']['hel_recycling'], bool, 'hel_recycling')
+
+        if opt and isinstance(opt['output_options'], dict) and \
+                                       'axial_gauge' in opt['output_options']:
+            self.opt['axial_gauge'] = banner_mod.ConfigFile.format_variable(
+                  opt['output_options']['axial_gauge'], bool, 'axial_gauge')
+            if self.opt['axial_gauge']:
+                # AMP2 -- the single diagram enhancement weight of
+                # sde_strategy 1 -- is gauge dependent: the axial gauge moves
+                # amplitude between diagrams, so |AMP_i|^2 stops following the
+                # propagator structure of diagram i and the multichannel
+                # weights stop matching the peaks of the integrand.  Measured
+                # on g g > g g g g: 2m37s with sde_strategy 1 against 1m33s
+                # with sde_strategy 2, for the same cross section.
+                logger.warning("axial_gauge makes the per diagram AMP2 gauge "
+                    "dependent, which badly degrades the default single "
+                    "diagram enhancement. Set 'sde_strategy = 2' in the run "
+                    "card, otherwise the integration can be several times "
+                    "slower than without the optimisation.")
 
         if opt and isinstance(opt['output_options'], dict) and \
                                        't_strategy' in opt['output_options']:
@@ -8158,12 +8185,17 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         fortran_model.use_flavor_mask = (n_flavors > 0)
         fortran_model.me_n_flavors = n_flavors
         fortran_model.me_active_flavor_mask = active_flavor_mask
+        fortran_model.axial_gauge = bool(self.opt.get('axial_gauge'))
+        fortran_model.axial_gauge_refs = \
+            helas_call_writers.get_axial_gauge_refs(matrix_element) \
+            if fortran_model.axial_gauge else {}
         try:
             helas_calls = fortran_model.get_matrix_element_calls(matrix_element)
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
+            fortran_model.axial_gauge_refs = {}
         if fortran_model.width_tchannel_set_tozero and not ProcessExporterFortranME.done_warning_tchannel:
             logger.info("Some T-channel width have been set to zero [new since 2.8.0]\n if you want to keep this width please set \"zerowidth_tchannel\" to False", '$MG:BOLD')
             ProcessExporterFortranME.done_warning_tchannel = True
@@ -9805,7 +9837,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                         'export_format':'madevent', 'mp': False,
                         'v5_model': True,
                         'output_options':{},
-                        'hel_recycling': True
+                        'hel_recycling': True,
+                        'axial_gauge': False
                         }
     
     
