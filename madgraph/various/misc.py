@@ -2317,8 +2317,15 @@ class EasterEgg(object):
             return ""
         from madgraph import MG5DIR
         import madgraph.interface.madgraph_interface as madgraph_interface
+        # written by bin/create_release.py, so a git checkout has none.  That is
+        # normal, not a failure: without it there is simply no contributor to
+        # celebrate, and reporting it printed a DEBUG line under every error
+        # message the user got (EasterEgg('error') comes through here).
+        authors = pjoin(MG5DIR, 'input', 'authors.md')
+        if not os.path.exists(authors):
+            return ""
         to_add = []
-        ff = open(pjoin(MG5DIR,'input','authors.md'), 'r')
+        ff = open(authors, 'r')
         for line in ff:
             author, fdate = line.split()
             year, month, day = [int(i) for i in fdate.split('-')]
