@@ -124,6 +124,40 @@ momenta, needed below to train the flow:
 
 The compiled function takes a single argument, how many events to generate.
 
+Inspecting the graph
+------------------------
+
+Printing a :py:class:`Function <madspace.Function>` lists every input, trainable global,
+instruction and output it was built from, which is often the fastest way to check that a
+graph does what it should:
+
+.. code-block:: python
+
+    print(sampling_func)
+
+Fusing a flow, a phase-space mapping, cuts, a PDF and a matrix element into one graph makes
+for a long instruction list; the inputs, a few of the globals and instructions, and the
+outputs already show the shape of it::
+
+    Inputs:
+      %0 : {batch_size}=batch_size
+    Globals:
+      %192 : float[1, 16, 11, 9850] = pdf_coefficients
+      %190 : float[1, 198] = pdf_logx
+      %103 : float[1, 93] = flow.subnet3a.layer2.bias
+      %61 : float[1, 32, 4] = flow.subnet2a.layer1.weight
+      ...
+    Instructions:
+      %2 = random(%0, 7)
+      %4 = select(%2, {1, 3, 5})
+      %6 = select(%2, {0, 2, 4, 6})
+      ...                                    # 113 instructions in total
+      %209 = mul(%118, %185)
+      %210 = mul(%209, %208)
+    Outputs:
+      weight=%210 : float[batch_size]
+      y=%116 : float[batch_size, 7]
+
 The flow's own probability
 ------------------------------
 
