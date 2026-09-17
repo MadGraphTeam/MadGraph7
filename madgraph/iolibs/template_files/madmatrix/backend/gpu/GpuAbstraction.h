@@ -33,6 +33,7 @@
 #define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
 #define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
 #define gpuMemcpyToSymbol( type1, type2, size ) checkGpu( cudaMemcpyToSymbol( type1, type2, size ) )
+#define gpuMemcpyFromSymbol( type1, type2, size ) checkGpu( cudaMemcpyFromSymbol( type1, type2, size ) )
 
 #define gpuFree( ptr ) checkGpu( cudaFree( ptr ) )
 #define gpuFreeHost( ptr ) checkGpu( cudaFreeHost( ptr ) )
@@ -101,6 +102,7 @@
 #define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
 #define gpuMemcpyToSymbol( type1, type2, size ) checkGpu( hipMemcpyToSymbol( type1, type2, size ) )
+#define gpuMemcpyFromSymbol( type1, type2, size ) checkGpu( hipMemcpyFromSymbol( type1, type2, size ) )
 
 #define gpuFree( ptr ) checkGpu( hipFree( ptr ) )
 #define gpuFreeHost( ptr ) checkGpu( hipHostFree( ptr ) )
