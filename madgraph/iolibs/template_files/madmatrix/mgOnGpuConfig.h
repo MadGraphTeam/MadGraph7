@@ -132,6 +132,14 @@
 #define MGONGPU_SELECTED_CHANNEL -1
 #endif
 
+// The run_card's sampled_diagram (1-based, i.e. diagram id + 1), for builds where
+// phase-space sampling was restricted to a single diagram via -DMGONGPU_INVP2_CHANNEL=c;
+// every event is then known at compile time to come from that diagram, since no other
+// diagram was ever sampled. -1 (the default) means no such restriction was requested.
+#ifndef MGONGPU_INVP2_CHANNEL
+#define MGONGPU_INVP2_CHANNEL -1
+#endif
+
 // SANITY CHECKS (floating point precision for everything but color algebra #537)
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_FPTYPE_DOUBLE or defined MGONGPU_FPTYPE_FLOAT

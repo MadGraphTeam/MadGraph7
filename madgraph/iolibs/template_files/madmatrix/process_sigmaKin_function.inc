@@ -362,19 +362,25 @@
       for( int ievt = 0; ievt < nevt && invp2_dump_count < MGONGPU_INVP2_DUMP; ++ievt )
       {
         // EVENT <npar> <ninvar> <channel> <alpha_c> <|M|^2>
-        const unsigned int invp2_channel = ( allDiagramIdsOut != nullptr ) ? allDiagramIdsOut[ievt] : 0u;
-        // Channel-filtered dump: only events actually sampled from this build's
-        // selected channel are written (its ME is otherwise already zeroed above).
-        // A negative MGONGPU_SELECTED_CHANNEL (the default) dumps every channel.
-        if( MGONGPU_SELECTED_CHANNEL >= 0 && invp2_channel != (unsigned int)MGONGPU_SELECTED_CHANNEL ) continue;
+        // invp2_channel is a compile-time constant (see MGONGPU_INVP2_CHANNEL above):
+        // every event in this dump comes from the run_card's sampled_diagram, since
+        // phase-space sampling itself was restricted to that one diagram, so there is
+        // no genuine per-event channel to read from the ME.
+        const unsigned int invp2_channel = ( MGONGPU_INVP2_CHANNEL >= 0 ) ? (unsigned int)MGONGPU_INVP2_CHANNEL : 0u;
         ++invp2_dump_count;
         // alpha_c = this channel's share of the multichannel denominator for this
-        // event (numerators[channel-1]/denominator, same floor as the ME rescaling
-        // above so 0/0 reads as 0 rather than nan).
+        // event, summed over every diagram belonging to the same topology-group
+        // channel as invp2_channel (numerators summed over the group, divided by
+        // the denominator, same floor as the ME rescaling above so 0/0 reads as
+        // 0 rather than nan).
         double invp2_alpha = 0.;
         if( invp2_channel > 0 && allNumerators != nullptr && allDenominators != nullptr )
         {
-          const double invp2_num = (double)allNumerators[ievt * processConfig::ndiagrams + ( invp2_channel - 1 )];
+          const int invp2_group = mgOnGpu::diagram2channelgroup[invp2_channel - 1];
+          double invp2_num = 0.;
+          for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
+            if( mgOnGpu::diagram2channelgroup[idiag] == invp2_group )
+              invp2_num += (double)allNumerators[ievt * processConfig::ndiagrams + idiag];
           const double invp2_den = (double)allDenominators[ievt] + std::numeric_limits<double>::min();
           invp2_alpha = invp2_num / invp2_den;
         }

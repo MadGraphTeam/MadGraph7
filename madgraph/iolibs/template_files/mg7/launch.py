@@ -1068,6 +1068,9 @@ class MadgraphProcess:
         if not nb_core or nb_core < 0:
             nb_core = os.cpu_count() or 1
 
+        invp2_dump_count = self.run_card["phasespace"]["number_of_weighted_events_dumped"]
+        sampled_diagram = self.run_card["phasespace"]["sampled_diagram"]
+
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
             missing = [
@@ -1081,12 +1084,19 @@ class MadgraphProcess:
                 f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
                 f"see log detail in {log_path}"
             )
+            args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            if invp2_dump_count > 0:
+                cppflags = f"-DMGONGPU_INVP2_DUMP={invp2_dump_count}"
+                # the dump's channel/alpha_c columns are only meaningful when the
+                # whole run is restricted to a single diagram (sampled_diagram);
+                # every event then belongs to that diagram by construction, so it
+                # can be a compile-time constant rather than a genuine per-event
+                # ME-supplied channel id
+                if sampled_diagram >= 0:
+                    cppflags += f" -DMGONGPU_INVP2_CHANNEL={sampled_diagram + 1}"
+                args.append(f"CPPFLAGS={cppflags}")
             start_time = time.time()
-            self.make_subprocesses(
-                subproc_path,
-                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
-                nb_core, log_path,
-            )
+            self.make_subprocesses(subproc_path, args, nb_core, log_path)
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
@@ -1801,7 +1811,8 @@ def build_topologies(
 
 
 def build_multi_channel_data(
-    meta: dict, process: MadgraphProcess, unmerged_meta: dict | None = None
+    meta: dict, process: MadgraphProcess, unmerged_meta: dict | None = None,
+    sampled_channel: int = -1, sampled_diagram: int = -1,
 ) -> MultiChannelData:
     incoming_masses = [
         process.get_mass(pid) for pid in clean_pids(meta["incoming"])
@@ -1830,7 +1841,22 @@ def build_multi_channel_data(
     channel_index = 0
     qcd_s_channel_count = []
 
-    for channel in meta["channels"]:
+    channels = meta["channels"]
+    if sampled_channel >= 0:
+        channel = dict(channels[sampled_channel])
+        if sampled_diagram >= 0:
+            diagrams = [
+                d for d in channel["diagrams"] if d["diagram"] == sampled_diagram
+            ]
+            if not diagrams:
+                raise ValueError(
+                    f"sampled_diagram {sampled_diagram} does not belong to "
+                    f"sampled_channel {sampled_channel}"
+                )
+            channel["diagrams"] = diagrams
+        channels = [channel]
+
+    for channel in channels:
         if unmerged_meta is None:
             topo_channel = channel
         else:
@@ -2010,13 +2036,23 @@ class MadgraphSubprocess:
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
             return self.multi_channel_data
+        sampled_channel = self.process.run_card["phasespace"]["sampled_channel"]
+        sampled_diagram = self.process.run_card["phasespace"]["sampled_diagram"]
         self.multi_channel_data = build_multi_channel_data(
-            self.meta, self.process, self.unmerged_meta
+            self.meta, self.process, self.unmerged_meta,
+            sampled_channel, sampled_diagram,
         )
         return self.multi_channel_data
 
     def build_multichannel_phasespace(self) -> PhaseSpace:
         mcdata = self.build_multi_channel_data()
+        sampled_channel = self.process.run_card["phasespace"]["sampled_channel"]
+        if sampled_channel >= 0:
+            logger.info(
+                f"subproc{self.subproc_id}: sampled_channel={sampled_channel} "
+                f"selected, diagrams={mcdata.diagram_indices} "
+                f"permutations={mcdata.permutations}"
+            )
         channel_count = sum(len(topos) for topos in mcdata.topologies)
         drop_threshold = self.process.run_card["phasespace"]["drop_qcd_s_channel"]
         if drop_threshold >= 0 and channel_count > drop_threshold:
@@ -2026,23 +2062,47 @@ class MadgraphSubprocess:
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
+        pass_invariants = self.process.run_card["phasespace"][
+            "pass_invariants_to_matrix_element"
+        ]
+
+        def make_mapping(chan_topologies, chan_permutations, invariant_pad_count=0):
+            return ms.PhaseSpaceMapping(
+                chan_topologies[0],
+                self.process.e_cm,
+                t_channel_mode=t_channel_mode,
+                cuts=self.cuts,
+                invariant_power=self.process.run_card["phasespace"]["invariant_power"],
+                permutations=chan_permutations,
+                leptonic=self.process.leptonic,
+                return_invariants=pass_invariants,
+                invariant_pad_count=invariant_pad_count,
+            )
+
+        # Every channel's MatrixElement of a subprocess shares one fixed-stride
+        # invariant buffer (see MatrixElement.invariant_count), but a channel's
+        # own topology (e.g. its number of T-channel legs or s-channel decay
+        # nodes) can sample fewer invariants than another channel of the same
+        # subprocess. Size each mapping's own output to the widest channel here
+        # first, so every one of them fills that shared stride (#537).
+        invariant_pad_count = 0
+        if pass_invariants:
+            invariant_pad_count = max(
+                (make_mapping(chan_topologies, chan_permutations).invariant_count()
+                 for chan_topologies, chan_permutations in zip(
+                     mcdata.topologies, mcdata.permutations
+                 )),
+                default=0,
+            )
+
         for channel_id, (chan_topologies, chan_permutations, chan_indices, active_flavors) in enumerate(zip(
             mcdata.topologies, mcdata.permutations, mcdata.channel_weight_indices,
             mcdata.active_flavors
         )):
             topo_count = len(chan_topologies)
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
-                mapping = ms.PhaseSpaceMapping(
-                    chan_topologies[0],
-                    self.process.e_cm,
-                    t_channel_mode=t_channel_mode,
-                    cuts=self.cuts,
-                    invariant_power=self.process.run_card["phasespace"]["invariant_power"],
-                    permutations=chan_permutations,
-                    leptonic=self.process.leptonic,
-                    return_invariants=self.process.run_card["phasespace"][
-                        "pass_invariants_to_matrix_element"
-                    ],
+                mapping = make_mapping(
+                    chan_topologies, chan_permutations, invariant_pad_count
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:

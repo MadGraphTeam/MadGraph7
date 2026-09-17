@@ -725,7 +725,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
                 const std::optional<std::vector<std::size_t>>&,
-                bool>(),
+                bool,
+                std::size_t>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -734,7 +735,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = std::vector<Topology>{},
             py::arg("color_order") = std::nullopt,
-            py::arg("return_invariants") = false
+            py::arg("return_invariants") = false,
+            py::arg("invariant_pad_count") = 0
         )
         .def(
             py::init<

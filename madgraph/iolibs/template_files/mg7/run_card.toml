@@ -103,6 +103,17 @@ invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 pass_invariants_to_matrix_element = %(phasespace.pass_invariants_to_matrix_element)s
 adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
+# restrict multichannel phase-space generation to a single topology-group channel,
+# 0-based, matching subprocesses.json's "channels" list index. -1 samples every channel
+sampled_channel = %(phasespace.sampled_channel)s
+# within sampled_channel, further restrict to a single diagram, 0-based, matching
+# subprocesses.json's global "diagram" id (must belong to sampled_channel). -1 samples
+# every diagram of the selected channel; ignored if sampled_channel is -1
+sampled_diagram = %(phasespace.sampled_diagram)s
+# dump this many weighted phase-space samples to invp2_dump.dat during generation.
+# 0 disables the dump. This is a compile-time flag: changing it requires deleting the
+# built SubProcesses libraries to force a recompile
+number_of_weighted_events_dumped = %(phasespace.number_of_weighted_events_dumped)s
 
 [multiparticles]
 $multiparticles

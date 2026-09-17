@@ -17,6 +17,11 @@ class PhaseSpaceMapping : public Mapping {
 public:
     enum TChannelMode { propagator, rambo, chili, color_ordered };
 
+    // invariant_pad_count pads invariant_pids_and_masks/masses/virtualities up to
+    // a caller-chosen width (zero-filled beyond this channel's own natural count)
+    // so multiple channels sharing one MatrixElement's fixed-stride invariant
+    // buffers (see launch.py's per-subprocess max over channels) can differ in
+    // how many invariants their own topology naturally samples.
     PhaseSpaceMapping(
         const Topology& topology,
         double cm_energy,
@@ -26,7 +31,8 @@ public:
         const std::optional<Cuts>& cuts = std::nullopt,
         const std::vector<std::vector<std::size_t>>& permutations = {},
         const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
-        bool return_invariants = false
+        bool return_invariants = false,
+        std::size_t invariant_pad_count = 0
     );
 
     PhaseSpaceMapping(
@@ -91,6 +97,7 @@ private:
     std::vector<std::variant<TwoBodyDecay, ThreeBodyDecay, FastRamboMapping>> _s_decays;
     nested_vector2<me_int_t> _permutations;
     bool _return_invariants;
+    std::size_t _invariant_pad_count;
 };
 
 } // namespace madspace

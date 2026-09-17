@@ -63,6 +63,13 @@ namespace mgOnGpu
 %(is_LC)s
   };
 
+  // Map diagram (C indexing) to its topology-group channel index (C indexing, see
+  // export_mg7.py's self.channels / subprocesses.json's "channels" list), or -1 if
+  // the diagram has no associated channel group
+  constexpr int diagram2channelgroup[%(nb_diag_total)i] = { // note: a trailing comma in the initializer list is allowed
+%(diagram2channelgroup_lines)s
+  };
+
 }
 
 #endif // COLORAMPS_H

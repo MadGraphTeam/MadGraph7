@@ -391,6 +391,11 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 self.active_color_map.append(active_colors)
                 i += 1
 
+        self.diagram_channel_group = [-1] * len(self.sym_indices)
+        for group_index, channel in enumerate(self.channels):
+            for diag in channel["diagrams"]:
+                self.diagram_channel_group[diag["diagram"]] = group_index
+
     def get_subprocess_info(self, proc_dir, lib_me_path):
         n_external, n_initial = self.matrix_element.get_nexternal_ninitial()
         if self.color_basis:

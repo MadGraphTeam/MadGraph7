@@ -6661,6 +6661,20 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
         self.add_toml_param('phasespace', 'pass_invariants_to_matrix_element', False)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
+        self.add_toml_param('phasespace', 'sampled_channel', -1,
+            comment="restrict multichannel phase-space generation to a single "
+                    "topology-group channel, 0-based, matching subprocesses.json's "
+                    "\"channels\" list index. -1 samples every channel")
+        self.add_toml_param('phasespace', 'sampled_diagram', -1,
+            comment="within sampled_channel, further restrict to a single diagram, "
+                    "0-based, matching subprocesses.json's global \"diagram\" id "
+                    "(must belong to sampled_channel). -1 samples every diagram of "
+                    "the selected channel; ignored if sampled_channel is -1")
+        self.add_toml_param('phasespace', 'number_of_weighted_events_dumped', 0,
+            comment="dump this many weighted phase-space samples to invp2_dump.dat "
+                    "during generation. 0 disables the dump. This is a compile-time "
+                    "flag: changing it requires deleting the built SubProcesses "
+                    "libraries to force a recompile")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True)

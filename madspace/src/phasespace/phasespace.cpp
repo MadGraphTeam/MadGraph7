@@ -147,7 +147,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
     const std::optional<std::vector<std::size_t>>& color_order,
-    bool return_invariants
+    bool return_invariants,
+    std::size_t invariant_pad_count
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -179,8 +180,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 {"x2", batch_float},
             };
             if (return_invariants) {
-                std::size_t invariant_count =
-                    ps_invariant_count(topology, leptonic, t_channel_mode);
+                std::size_t invariant_count = std::max(
+                    ps_invariant_count(topology, leptonic, t_channel_mode),
+                    invariant_pad_count
+                );
                 out.push_back(
                     "invariant_pids_and_masks", batch_int_array(invariant_count)
                 );
@@ -213,7 +216,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
          t_channel_mode != PhaseSpaceMapping::chili)
     ),
     _t_mapping(std::monostate{}),
-    _return_invariants(return_invariants) {
+    _return_invariants(return_invariants),
+    _invariant_pad_count(invariant_pad_count) {
     bool has_t_channel = _topology.t_propagator_count() > 0;
     struct DecayInfo {
         double m_min, pt_min, eta_max;
@@ -711,6 +715,14 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
 
     if (_return_invariants) {
+        // Zero-pad up to the shared stride other channels of this subprocess may
+        // need (see invariant_pad_count): mask 0 never matches a real propagator's
+        // leg-bitmask, so the padding is inert on the matrix-element side.
+        while (invariant_pids_and_masks.size() < _invariant_pad_count) {
+            invariant_pids_and_masks.push_back(me_int_t(0));
+            invariant_masses.push_back(0.0);
+            invariant_virtualities.push_back(0.0);
+        }
         Value pids_and_masks = fb.stack(invariant_pids_and_masks);
         if (_permutations.size() > 1) {
             pids_and_masks =

@@ -2685,6 +2685,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             lines.append(text % {'diag':diag-1, 'iconfigf':iconfigf, 'iconfigftxt':iconfigftxt}) # diag - 1 is to follow MadSpace indexing
         replace_dict['channelc2iconfig_lines'] = '\n'.join(lines)
 
+        diagram2channelgroup_lines = []
+        for diag, group in enumerate(self.diagram_channel_group):
+            diagram2channelgroup_lines.append(
+                '    %i, // DIAGRAM=%i --> CHANNELGROUP' % (group, diag)
+            )
+        replace_dict['diagram2channelgroup_lines'] = '\n'.join(diagram2channelgroup_lines)
+        replace_dict['nb_diag_total'] = len(self.diagram_channel_group)
+
         replace_dict['nb_channel'] = len(self.active_color_map)
         # here I can do the conversion in between the active color map and true, false, and obtain a C++ compatible thing immediately
         replace_dict['nb_diag'] = nb_diag
