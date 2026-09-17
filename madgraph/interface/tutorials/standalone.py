@@ -22,7 +22,7 @@ from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  output_name)
+                                                  counts_line, output_name)
 
 P = 'MG7>'
 RUN = 'MY_SA_RUN'
@@ -54,7 +54,10 @@ standalone API that is not obvious:
      title='welcome',
      solution='generate p p > j j QCD=2 QED=0'),
 
-Step('generate', """
+Step('generate', lambda interface: """
+%(counts)sNo events anywhere in sight, and none coming: this path stops at the
+matrix element.
+
 Now the output. The formats, and what each is for:
 
   standalone_fortran   the Fortran standalone -- this tutorial's main path
@@ -66,15 +69,15 @@ Now the output. The formats, and what each is for:
 
 (`output standalone_cpp` was removed; `standalone` is the C++ one now.)
 
-%(p)s output standalone_fortran %(run)s --prefix=int
-
 `--prefix` is the flag that matters if you ever load two processes into one
 Python session. It prefixes the routine names -- `--prefix=int` gives `M1_`,
 `M2_`, ... per subprocess group, `--prefix=proc` uses the process name -- so
 the symbols and COMMON blocks of two modules cannot collide. With no prefix
 you get bare `SMATRIX`, which is fine for exactly one module and a trap for
 two.
-""" % {'p': P, 'run': RUN},
+
+%(p)s output standalone_fortran %(run)s --prefix=int
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='generate a process',
      hint="`output standalone_fortran DIR --prefix=int`",
      solution='output standalone_fortran %s --prefix=int' % RUN),
@@ -138,6 +141,9 @@ Which to reach for:
      solution='history my_standalone_session.dat'),
 
 Step('history', lambda interface: (lambda FORTRAN_RUN: """
+That file replays the session -- `import command my_standalone_session.dat`,
+or `./bin/madgraph my_standalone_session.dat` from a shell.
+
 The rest happens outside MG7, in the Fortran output directory.
 
 **Evaluate one point with no Python at all.** `check_sa` is built for you;

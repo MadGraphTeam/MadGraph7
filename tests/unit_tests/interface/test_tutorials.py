@@ -37,7 +37,8 @@ import madgraph.interface.tutorial_text_nlo as legacy_nlo
 import madgraph.interface.tutorial_text_madloop as legacy_madloop
 
 from madgraph.interface.tutorials._port import retarget
-from madgraph.interface.tutorials.session import Step, Tutorial, TutorialSession
+from madgraph.interface.tutorials.session import (Exercise, Step, Tutorial,
+                                                  TutorialSession)
 
 
 class _Capture(logging.Handler):
@@ -475,26 +476,88 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
                 'step %d (%s) asks for %r, which jumps to step %d rather than %d'
                 % (index, step.title, solution, found[0], expected))
 
-    def test_every_syntax_step_ends_on_the_command_it_waits_for(self):
+    # `lo` puts the command mid-lesson in three of its steps and `exercises`
+    # opens on a question rather than on a command; every other sequenced
+    # tutorial follows the two rules below.
+    OLDER_LAYOUT = ('lo', 'exercises')
+
+    @classmethod
+    def sequenced(cls):
+        return [t for t in tutorials.all_tutorials(include_hidden=True)
+                if t.order == 'sequence' and t.name not in cls.OLDER_LAYOUT]
+
+    def test_every_step_ends_on_the_command_it_waits_for(self):
         """A lesson that ends on prose leaves the reader with nothing to type.
 
         Several of these steps run to thirty lines, and the command used to sit
         somewhere in the middle of them, under the caveats -- by the end of the
         lesson there was no telling what would make the next one appear.  Every
-        step but the closing one now ends on the command it is waiting for.
+        step but the closing one ends on the command it is waiting for.
         """
 
-        tutorial = tutorials.get('syntax')
-        for step in tutorial.steps[:-1]:
-            solution = step.get_solution()
-            self.assertTrue(solution,
-                            'syntax step %r waits for nothing' % step.title)
-            lines = [line for line in step.render(None).splitlines()
-                     if line.strip()]
-            self.assertEqual(
-                lines[-1].strip(), 'MG7> %s' % solution,
-                'syntax step %r ends on %r rather than on the command it '
-                'waits for' % (step.title, lines[-1].strip()))
+        for tutorial in self.sequenced():
+            for step in tutorial.steps[:-1]:
+                if isinstance(step, Exercise):
+                    continue        # an exercise ends on its question
+                solution = step.get_solution()
+                self.assertTrue(
+                    solution, '%s step %r waits for nothing'
+                    % (tutorial.name, step.title))
+                lines = [line for line in step.render(None).splitlines()
+                         if line.strip()]
+                self.assertEqual(
+                    lines[-1].strip(), 'MG7> %s' % solution,
+                    '%s step %r ends on %r rather than on the command it '
+                    'waits for'
+                    % (tutorial.name, step.title, lines[-1].strip()))
+
+    def test_a_lesson_after_a_process_opens_on_its_diagram_count(self):
+        """And the step a command leads to has to say what the command did.
+
+        The reader has just watched MG5 print a process and diagram count; the
+        lesson that follows opens on those numbers -- read back from the
+        session by counts_line(), never written into the text -- so it starts
+        from what they did rather than from a standing start.
+        """
+
+        from madgraph.interface.tutorials.session import counts
+
+        class _Amplitude(object):
+            @staticmethod
+            def get_number_of_diagrams():
+                return 9
+
+        class _Generated(object):
+            _curr_amps = [_Amplitude(), _Amplitude()]
+            options = {}
+            _curr_model = None
+            _comparisons = None
+            _done_export = None
+
+        interface = _Generated()
+        expected = counts(interface)
+        self.assertTrue(expected, 'the stub interface counts nothing')
+
+        for tutorial in self.sequenced():
+            session = TutorialSession(tutorial)
+            for index, step in enumerate(tutorial.steps[:-1]):
+                solution = step.get_solution() or ''
+                if not (solution.startswith('generate')
+                        or solution.startswith('add process')):
+                    continue
+                session.index = index
+                found = session.step_for(solution)
+                if found is None:
+                    continue
+                target = found[1]
+                if target.sticky or isinstance(target, Exercise):
+                    # a sticky step answers in its own words, and an exercise
+                    # marks an answer rather than reporting a count
+                    continue
+                self.assertIn(
+                    expected, target.render(interface),
+                    '%s: %r leaves %r, which does not say what it produced'
+                    % (tutorial.name, solution, target.title))
 
     def test_no_syntax_command_is_asked_for_twice_running(self):
         """Leaving a lesson on the command the next one teaches asks the reader

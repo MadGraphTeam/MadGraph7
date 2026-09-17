@@ -332,6 +332,83 @@ def output_name(interface, default):
     return default
 
 
+def model_line(interface=None):
+    """What model is loaded, in its own numbers, or '' if none is.
+
+    The counterpart of counts_line() for an `import model` step: the lesson
+    after it opens on the model the reader actually loaded rather than on the
+    one the text assumed.
+    """
+
+    model = getattr(interface, '_curr_model', None)
+    if not model:
+        return ''
+    try:
+        name = model.get('name')
+        particles = len(model.get('particles'))
+        interactions = len(model.get('interactions'))
+    except Exception:
+        return ''
+    if not name:
+        return ''
+    return ('**%s** is loaded: %d particles, %d interactions.\n'
+            % (name, particles, interactions))
+
+
+def check_line(interface=None):
+    """The verdict of the last `check permutation`, or '' if there is none.
+
+    `do_check` keeps the permutation comparisons on the interface
+    (`_comparisons`), so the lesson that follows can quote the reader's own
+    numbers instead of describing a table they have to trust.  Only the
+    permutation check is stored -- gauge, lorentz and flavor print and move on.
+    """
+
+    comparisons = getattr(interface, '_comparisons', None)
+    if not comparisons:
+        return ''
+    try:
+        results = [r for r in comparisons[0] if len(r.get('values', [])) > 1]
+    except Exception:
+        return ''
+    if not results:
+        return ''
+    passed = sum(1 for r in results if r.get('passed'))
+    worst = max(r.get('difference', 0.0) for r in results)
+    return ('**%d/%d passed**, the largest relative difference %.1e.\n'
+            % (passed, len(results), worst))
+
+
+def counts(interface=None):
+    """`**N processes with M diagrams**`, or '' when there is nothing to count.
+
+    These are the numbers MG5 has just printed for the command the reader
+    typed: `total_diagrams` sums exactly what its own `Total:` line reports,
+    decay chains and accumulated `add process` included.
+    """
+
+    amps = len(getattr(interface, '_curr_amps', None) or [])
+    total = total_diagrams(interface)
+    if not total:
+        return ''
+    return '**%d process%s with %d diagram%s**' % (
+        amps, '' if amps == 1 else 'es', total, '' if total == 1 else 's')
+
+
+def counts_line(interface=None):
+    """The counts sentence a lesson opens on, or nothing at all.
+
+    Every step begins with this: the reader is told what the command they just
+    typed produced before the next subject starts, rather than being moved on
+    from a standing start.  It carries its own newline, so the hand-wrapped
+    prose after it starts fresh -- a markup span that wrapped would colour the
+    next line's indentation.
+    """
+
+    found = counts(interface)
+    return '%s.\n' % found if found else ''
+
+
 def total_diagrams(interface):
     """How many diagrams the current process(es) came to, over all of them."""
 

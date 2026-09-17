@@ -17,9 +17,36 @@
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  counts_line)
 
 P = 'MG7>'
+# the file the width lesson asks for, and reads back
+WIDTH_FILE = 'my_widths.dat'
+
+
+def _computed_width(pdg=6, name='top'):
+    """The width `compute_widths` just wrote, quoted back at the reader.
+
+    The lesson asks for `--output=./my_widths.dat`, so when the reader does
+    that there is a number on disk to show them instead of a description of
+    what MadWidth would have done.  Anything else -- a different file name, a
+    command that failed -- and the lesson simply says less.
+    """
+
+    try:
+        with open(WIDTH_FILE) as handle:
+            for line in handle:
+                bits = line.split()
+                if (len(bits) >= 3 and bits[0].upper() == 'DECAY'
+                        and bits[1] == str(pdg)):
+                    return ('MadWidth put the %s width at **%.3g GeV** '
+                            'and wrote it to\n`%s`, leaving the card in '
+                            'your model directory alone.\n'
+                            % (name, float(bits[2]), WIDTH_FILE))
+    except Exception:
+        return ''
+    return ''
 
 
 tutorial = Tutorial(
@@ -50,10 +77,10 @@ widths you have to get right. Start with the first:
      title='welcome',
      solution='generate p p > t t~, t > w+ b, t~ > w- b~'),
 
-Step('generate', """
-Look at the diagram count against plain `p p > t t~`. That growth is the whole
-argument: a decay chain computes the full matrix element for production and
-decay together, so it is exact, and it gets expensive fast. Add
+Step('generate', lambda interface: """
+%(counts)sPlain `p p > t t~` is four. That growth is the whole argument: a
+decay chain computes the full matrix element for production and decay
+together, so it is exact, and it gets expensive fast. Add
 `w+ > l+ vl, w- > l- vl~` and watch it grow again.
 
 Two things about the syntax that catch people (`tutorial syntax` has more):
@@ -68,15 +95,15 @@ that disagrees with the masses and couplings in the same card is not caught
 anywhere. Which is why the next command matters more than it looks:
 
 %(p)s compute_widths t --body_decay=2 --output=./my_widths.dat
-""" % {'p': P},
+""" % {'p': P, 'counts': counts_line(interface)},
      title='decay chains',
      hint="A comma opens the decay; each decaying particle gets one statement.",
      solution='compute_widths t --body_decay=2 --output=./my_widths.dat'),
 
-Step('compute_widths', """
-That is MadWidth: it finds the decay channels in the model and integrates them,
-giving you a param card with widths that match the model rather than whatever
-benchmark the card shipped with.
+Step('compute_widths', lambda interface: """
+%(width)sThat is MadWidth: it finds the decay channels in the model and
+integrates them, giving you a param card with widths that match the model
+rather than whatever benchmark the card shipped with.
 
   --body_decay=N   consider up to N-body decays. An integer means "all
                    channels up to N-body"; a value below 1 means "stop when the
@@ -94,12 +121,15 @@ you should be worrying about, not the last digit.
 `decay_diagram PARTICLE` shows which channels exist without integrating them.
 
 %(p)s history my_decays_session.dat
-""" % {'p': P},
+""" % {'p': P, 'width': _computed_width()},
      title='computing widths',
      hint="`compute_widths PARTICLE --body_decay=2 --output=FILE`",
      solution='history my_decays_session.dat'),
 
 Step('history', lambda interface: """
+That file replays the session -- `import command my_decays_session.dat`, or
+`./bin/madgraph my_decays_session.dat` from a shell.
+
 **MadSpin** is the run-time option, and for most studies it is the right one.
 It takes undecayed events and decays them, keeping the spin correlations, by
 reweighting against the decay matrix element. Cost is roughly independent of

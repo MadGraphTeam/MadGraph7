@@ -21,9 +21,26 @@ connection.
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial, check_line,
+                                                  counts_line, model_line)
 
 P = 'MG7>'
+
+
+def _orders(interface=None):
+    """The coupling orders the loaded model declares, as the reader just saw
+    them.  Read back rather than asserted: which orders a model defines is the
+    whole subject of the step, so it has to be the model's own answer."""
+
+    model = getattr(interface, '_curr_model', None)
+    try:
+        orders = sorted(model.get('coupling_orders'))
+    except Exception:
+        return ''
+    if not orders:
+        return 'This model declares no coupling order at all.\n'
+    return ('This model declares only %s, and nothing else.\n'
+            % ' and '.join('**%s**' % order for order in orders))
 
 
 tutorial = Tutorial(
@@ -54,9 +71,10 @@ We will use one that ships with MG7:
      title='welcome',
      solution='import model MSSM_SLHA2'),
 
-Step('import_model', """
-That is the MSSM. `display particles` now lists the superpartners alongside the
-SM content -- `go` (gluino), `ul`/`ur`/`t1`/`t2` and friends (squarks),
+Step('import_model', lambda interface: """
+%(model)sThat is the MSSM. `display particles` now lists the superpartners
+alongside the SM content -- `go` (gluino), `ul`/`ur`/`t1`/`t2` and friends
+(squarks),
 `n1`..`n4` (neutralinos), `x1+`/`x2+` (charginos), and an extended Higgs sector
 `h01`, `h2`, `h3`, `h+`.
 
@@ -64,15 +82,15 @@ Before generating anything, it is worth asking how this model labels its BSM
 content:
 
 %(p)s display coupling_order
-""" % {'p': P},
+""" % {'p': P, 'model': model_line(interface)},
      title='load a BSM model',
      hint="`import model NAME` -- MSSM_SLHA2 ships with MG7.",
      solution='display coupling_order'),
 
-Step('display', """
-Only `QCD` and `QED`. That is the first thing to check in any new model,
-because it tells you how to ask for the physics you want, and models split into
-two camps:
+Step('display', lambda interface: """
+%(orders)sThe orders a model declares are the first thing to look at in one
+you did not write: they are how you ask for the physics you want. Models
+split into two camps:
 
   * **No dedicated order**, like this one. New physics is identified by the
     *particles* -- you get BSM by putting `go` or `n1` in the process, and the
@@ -92,14 +110,14 @@ two camps:
 
 With this model the BSM is in the particles, so:
 %(p)s generate p p > go go
-""" % {'p': P},
+""" % {'p': P, 'orders': _orders(interface)},
      title='how the model labels new physics',
      hint="`display coupling_order` lists the orders a model defines.",
      solution='generate p p > go go'),
 
-Step('generate', """
-Gluino pair production, from the model's own vertices -- you did not have to
-tell MG7 anything about SUSY.
+Step('generate', lambda interface: """
+%(counts)sGluino pair production, out of the model's own vertices -- you did
+not have to tell MG7 anything about SUSY.
 
 New states usually decay, and there are two ways to handle that:
   * a **decay chain** in the process line,
@@ -114,7 +132,7 @@ as the widths in the card. Which is the thing that goes wrong most often in
 BSM studies, so:
 
 %(p)s compute_widths go --body_decay=2 --output=./mssm_widths.dat
-""" % {'p': P},
+""" % {'p': P, 'counts': counts_line(interface)},
      title='generate a BSM signal',
      hint="Just name the new particles; the model supplies the vertices.",
      solution='compute_widths go --body_decay=2 --output=./mssm_widths.dat'),
@@ -148,10 +166,10 @@ to trust it. Test it:
      hint="`compute_widths PARTICLE --body_decay=2 --output=FILE`",
      solution='check permutation p p > go go'),
 
-Step('check', """
-That regenerated the process with the external legs permuted and checked the
-matrix element came out the same. It is a real test of the model and the
-machinery, and it costs a couple of seconds.
+Step('check', lambda interface: """
+%(verdict)sThat regenerated the process with the external legs permuted and
+checked the matrix element came out the same. It is a real test of the model
+and of the machinery, and it costs a couple of seconds.
 
 The family:
   check permutation   relabelling the legs must not change |M|^2
@@ -167,12 +185,15 @@ A new UFO model that fails `check gauge` has a bug in its Lagrangian or its
 conversion, and no amount of careful running will fix the answer.
 
 %(p)s history my_bsm_session.dat
-""" % {'p': P},
+""" % {'p': P, 'verdict': check_line(interface)},
      title='validate the model',
      hint="`check permutation PROCESS`",
      solution='history my_bsm_session.dat'),
 
 Step('history', lambda interface: """
+That file replays the session -- `import command my_bsm_session.dat`, or
+`./bin/madgraph my_bsm_session.dat` from a shell.
+
 Two last things that bite in BSM work.
 
 **Big models are slow.** A full BSM model can have hundreds of particles, and

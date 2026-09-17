@@ -21,8 +21,9 @@ command-name -> text lookup could not express.
 
 from __future__ import absolute_import
 
-from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  output_name, total_diagrams)
+from madgraph.interface.tutorials.session import (Step, Tutorial, counts,
+                                                  counts_line, output_name,
+                                                  total_diagrams)
 
 P = 'MG7>'
 
@@ -124,48 +125,18 @@ def _pure_qcd_comparison(interface=None):
     now = total_diagrams(interface)
     before = getattr(interface, '_tutorial_syntax_ndiag', None)
 
-    counts = _counts(interface)
-    if counts:
+    opening = counts(interface)
+    if opening:
         if before and before != now:
-            counts += ', against **%d** a moment ago' % before
-        counts += '.\n'
+            opening += ', against **%d** a moment ago' % before
+        opening += '.\n'
 
-    return counts + (
+    return opening + (
 """More subprocesses than the interference had, and fewer diagrams: the
 gluon-initiated ones are back, because they do have a QCD-squared term, and
 every electroweak diagram has gone. It is also, to the diagram, what a bare
 `generate p p > j j` gives you -- the search from the first lesson, choosing
 the pure QCD term on your behalf.""")
-
-
-def _counts(interface=None):
-    """`**N processes with M diagrams**`, or '' when there is nothing to count.
-
-    These are the numbers MG5 has just printed for the command the reader
-    typed: `total_diagrams` sums exactly what its own `Total:` line reports,
-    decay chains and accumulated `add process` included.
-    """
-
-    amps = len(getattr(interface, '_curr_amps', None) or [])
-    total = total_diagrams(interface)
-    if not total:
-        return ''
-    return '**%d process%s with %d diagram%s**' % (
-        amps, '' if amps == 1 else 'es', total, '' if total == 1 else 's')
-
-
-def _counts_line(interface=None):
-    """The counts sentence a lesson opens on, or nothing at all.
-
-    Every step begins with this: the reader is told what the command they just
-    typed produced before the next subject starts, rather than being moved on
-    from a standing start.  It carries its own newline, so the hand-wrapped
-    prose after it starts fresh -- a markup span that wrapped would colour the
-    next line's indentation.
-    """
-
-    counts = _counts(interface)
-    return '%s.\n' % counts if counts else ''
 
 
 def _run_dir(interface=None):
@@ -247,7 +218,7 @@ and the three add up to `generate p p > j j` with no constraints at all.
 
 Generate the interference term on its own:
 %(p)s generate p p > j j QCD^2==2 QED^2==2
-""" % {'p': P, 'counts': _counts_line(interface)},
+""" % {'p': P, 'counts': counts_line(interface)},
      title='coupling orders: amplitude and squared',
      hint="'^2' makes the constraint apply to the squared matrix element.",
      solution='generate p p > j j QCD^2==2 QED^2==2'),
@@ -274,7 +245,7 @@ Either way, what carries on is the pure QCD term of the same process -- the
 first line of the table above, and worth generating for what it does to the
 subprocess list:
 %(p)s %(qcd)s
-""" % {'counts': _counts_line(interface), 'p': P, 'qcd': PURE_QCD},
+""" % {'counts': counts_line(interface), 'p': P, 'qcd': PURE_QCD},
      title='the interference is not in the diagrams',
      setup=_remember_counts,
      hint="`output standalone` takes the side quest; `%s` carries on."
@@ -391,7 +362,7 @@ Sometimes it is not, and nothing in the output tells you which you are in.
 
 Ask for the W explicitly:
 %(p)s generate p p > w+ > l+ vl
-""" % {'p': P, 'counts': _counts_line(interface)},
+""" % {'p': P, 'counts': counts_line(interface)},
      title='required s-channels',
      hint="Put the intermediate particle between two '>'.",
      solution='generate p p > w+ > l+ vl'),
@@ -428,7 +399,7 @@ imported, which `generate` does for you but `check` does not.)
 
 Forbid the photon everywhere and see what is left:
 %(p)s %(exclusion)s
-""" % {'p': P, 'exclusion': EXCLUSION, 'counts': _counts_line(interface)},
+""" % {'p': P, 'exclusion': EXCLUSION, 'counts': counts_line(interface)},
      title='excluding particles and s-channels',
      hint="'/ a' forbids the photon everywhere; '$ a' only removes it on shell.",
      solution=EXCLUSION),
@@ -454,7 +425,7 @@ all of it, and everything you have added goes into the next `output`.
 
 Add a second process beside the one you have:
 %(p)s add process p p > w+ j, w+ > l+ vl
-""" % {'p': P, 'counts': _counts_line(interface)},
+""" % {'p': P, 'counts': counts_line(interface)},
      title='several processes at once',
      hint="'add process' takes the same syntax as 'generate'.",
      solution='add process p p > w+ j, w+ > l+ vl'),
@@ -471,7 +442,7 @@ particles before a decay chain.
 Give the two Z bosons different decays, so that each one can be told from the
 other -- it matters in a moment:
 %(p)s %(pol)s
-""" % {'p': P, 'counts': _counts_line(interface), 'pol': POLARISED},
+""" % {'p': P, 'counts': counts_line(interface), 'pol': POLARISED},
      title='polarisation',
      hint="Append '{0}' or '{T}' to a particle name, and give each Z its own "
           "decay in its own parentheses.",
@@ -494,7 +465,7 @@ If you would rather see the frame being chosen than read that it exists, you
 can write the code out and stay a minute longer. Today that setting lives in
 the madevent run card, so take that path:
 %(p)s output madevent %(dir)s
-""" % {'counts': _counts_line(interface), 'p': P, 'dir': POL_DIR,
+""" % {'counts': counts_line(interface), 'p': P, 'dir': POL_DIR,
        'closing': CLOSING},
      title='polarisation needs a frame, and that is the tour',
      hint="`output madevent NAME` writes the MG5-compatible directory, which "
