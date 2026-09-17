@@ -31,7 +31,7 @@
 //#include <iomanip>
 //#include <iostream>
 
-namespace madgraph
+namespace madmatrix
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API

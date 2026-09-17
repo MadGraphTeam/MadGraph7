@@ -28,7 +28,7 @@
 
 #include <memory>
 
-using namespace madgraph;
+using namespace madmatrix;
 
 // Host-accessible copy of mgOnGpu::channel2iconfig, needed only by setChannelIds()
 #ifndef MGONGPUCPP_GPUIMPL

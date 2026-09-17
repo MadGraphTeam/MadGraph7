@@ -22,7 +22,7 @@
 #include <iostream>
 
 // Simplified rambo version for 2 to N (with N>=2) processes with massless particles
-namespace madgraph
+namespace madmatrix
 {
 namespace massless_rambo {
 

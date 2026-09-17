@@ -15,7 +15,7 @@
 
 #include <cassert>
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

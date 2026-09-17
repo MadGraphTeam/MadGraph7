@@ -28,7 +28,7 @@ inline void assertHiprand( hiprandStatus_t code, const char *file, int line, boo
 }
 #endif /* clang-format on */
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 #ifndef MGONGPU_HAS_NO_HIPRAND

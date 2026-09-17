@@ -12,8 +12,8 @@
 #include "MemoryAccessVectors.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
@@ -99,9 +99,9 @@ namespace madgraph
     {
       const unsigned int& out = kernelAccessConst_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
-      static_assert( madgraph::HostBufferIflavorVec::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      static_assert( madmatrix::HostBufferIflavorVec::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return madgraph::uintvFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+      return madmatrix::uintvFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
   };
 
@@ -112,6 +112,6 @@ namespace madgraph
 
   //----------------------------------------------------------------------------
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MemoryAccessIflavorVec_H

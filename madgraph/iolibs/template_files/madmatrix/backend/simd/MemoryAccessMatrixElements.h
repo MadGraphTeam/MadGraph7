@@ -13,8 +13,8 @@
 #include "MemoryAccessVectors.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
@@ -116,9 +116,9 @@ namespace madgraph
     {
       fptype& out = kernelAccess_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
-      static_assert( madgraph::HostBufferMatrixElements::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      static_assert( madmatrix::HostBufferMatrixElements::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+      return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
@@ -134,6 +134,6 @@ namespace madgraph
 
   //----------------------------------------------------------------------------
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MemoryAccessMatrixElements_H

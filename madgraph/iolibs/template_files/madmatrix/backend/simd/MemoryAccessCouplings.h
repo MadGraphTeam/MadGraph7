@@ -15,8 +15,8 @@
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
@@ -189,9 +189,9 @@ namespace madgraph
       constexpr int neppC = MemoryAccessCouplingsBase::neppC;
       static_assert( neppC >= neppV );                              // ASSUME CONTIGUOUS ARRAYS
       static_assert( neppC % neppV == 0 );                          // ASSUME CONTIGUOUS ARRAYS
-      static_assert( madgraph::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      static_assert( madmatrix::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 );      // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+      return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
@@ -218,9 +218,9 @@ namespace madgraph
       constexpr int neppC = MemoryAccessCouplingsBase::neppC;
       static_assert( neppC >= neppV ); // ASSUME CONTIGUOUS ARRAYS
       static_assert( neppC % neppV == 0 ); // ASSUME CONTIGUOUS ARRAYS
-      static_assert( madgraph::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      static_assert( madmatrix::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      return madgraph::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
+      return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
 #endif
     }
     */
@@ -263,6 +263,6 @@ namespace madgraph
 
   //----------------------------------------------------------------------------
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MemoryAccessCouplings_H

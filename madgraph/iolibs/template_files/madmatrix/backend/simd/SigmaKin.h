@@ -15,7 +15,7 @@
 #include "mgOnGpuCxtypes.h" // for cxtype
 #include "mgOnGpuVectors.h" // for fptype_amp_sv
 
-namespace madgraph
+namespace madmatrix
 {
   __global__ void
   computeDependentCouplings( const fptype* allgs,  // input: Gs[nevt]

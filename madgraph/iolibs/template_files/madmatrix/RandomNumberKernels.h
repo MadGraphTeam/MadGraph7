@@ -18,7 +18,7 @@ struct curandGenerator_st;
 struct rocrand_generator_base_type;
 typedef rocrand_generator_base_type hiprandGenerator_st;
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

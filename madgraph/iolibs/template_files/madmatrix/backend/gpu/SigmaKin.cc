@@ -31,7 +31,7 @@
 
 #include <cfloat>
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;

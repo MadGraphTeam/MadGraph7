@@ -11,7 +11,7 @@
 
 #include "mgOnGpuCxtypes.h"
 
-namespace madgraph // this is only needed for CPU SIMD vectorization
+namespace madmatrix // this is only needed for CPU SIMD vectorization
 {
 
 

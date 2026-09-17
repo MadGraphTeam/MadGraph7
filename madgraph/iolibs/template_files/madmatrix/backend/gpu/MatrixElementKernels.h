@@ -16,7 +16,7 @@
 #include <map>
 #include <memory>
 
-namespace madgraph
+namespace madmatrix
 {
   //--------------------------------------------------------------------------
 

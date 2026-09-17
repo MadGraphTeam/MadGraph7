@@ -12,7 +12,7 @@
 #include "MemoryAccessMatrixElements.h"
 #include "mgOnGpuVectors.h"
 
-namespace madgraph
+namespace madmatrix
 {
   using namespace ColorMatrixData; // colorMatrix, colorDenom, ncolor
 

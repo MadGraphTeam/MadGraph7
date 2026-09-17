@@ -15,8 +15,8 @@
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   //----------------------------------------------------------------------------
 
@@ -235,6 +235,6 @@ namespace madgraph
 
   //----------------------------------------------------------------------------
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MemoryAccessCouplings_H

@@ -13,11 +13,11 @@
 #include <cmath>
 #include <type_traits>
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+//One namespace. Split ber backend.
 #ifdef MGONGPUCPP_GPUIMPL // cuda
-namespace madgraph
+namespace madmatrix
 #else
-namespace madgraph
+namespace madmatrix
 #endif
 {
   //==========================================================================
@@ -125,6 +125,6 @@ namespace madgraph
 
   //==========================================================================
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif // MGONGPUFPTYPES_H

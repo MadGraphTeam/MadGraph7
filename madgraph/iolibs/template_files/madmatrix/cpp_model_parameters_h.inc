@@ -34,8 +34,8 @@
 
 #include "read_slha.h"
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Define FLV_COUPLING struct
   struct FLV_COUPLING {
@@ -124,15 +124,15 @@ namespace madgraph
     for( int i = 0; i < N; ++i ) out[i] = cxmake( pars->*members[i] );
   }
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #else%(eftwarn1)s
 
 #include <cassert>
 #include <limits>
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Hardcoded constexpr physics parameters
   namespace Parameters // keep the same name rather than HardcodedParameters for simplicity
@@ -164,14 +164,14 @@ namespace madgraph
     %(hasbsmip)s__device__ constexpr double mdl_bsmIndepParam[nBsmIndepParam] = { %(bsmip)s };
   }
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 #endif
 
 //==========================================================================
 
-// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
-namespace madgraph
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   namespace Parameters_dependentCouplings
   {
@@ -261,7 +261,7 @@ namespace madgraph
   }
 #pragma GCC diagnostic pop
 
-} // end namespace madgraph
+} // end namespace madmatrix
 
 //==========================================================================
 
