@@ -537,8 +537,6 @@ class AskRun(cmd.ControlSwitch):
             self.available_module.add('PGS')
         if options['pythia8_path']:
             self.available_module.add('PY8')
-        if options['madanalysis_path']:
-            self.available_module.add('MA4')
         if options['madanalysis5_path']:
             self.available_module.add('MA5')
         if options['exrootanalysis_path']:
@@ -764,8 +762,6 @@ class AskRun(cmd.ControlSwitch):
         self.allowed_analysis = []
         if 'ExRoot' in self.available_module:
             self.allowed_analysis.append('ExRoot')
-        if 'MA4' in self.available_module:
-            self.allowed_analysis.append('MadAnalysis4')
         if 'MA5' in self.available_module:
             self.allowed_analysis.append('MadAnalysis5') 
         if 'Rivet' in self.available_module:
@@ -781,15 +777,11 @@ class AskRun(cmd.ControlSwitch):
         
         if value in self.get_allowed_analysis():
             return True
-        if value.lower() in ['ma4', 'madanalysis4', 'madanalysis_4','4']:
-            return 'MadAnalysis4'
         if value.lower() in ['ma5', 'madanalysis5', 'madanalysis_5','5']:
             return 'MadAnalysis5'
         if value.lower() in ['ma', 'madanalysis']:
             if 'MA5' in self.available_module:
                 return 'MadAnalysis5'
-            elif 'MA4' in self.available_module:
-                return 'MadAnalysis4'
             else:
                 return False
         else:
@@ -823,10 +815,7 @@ class AskRun(cmd.ControlSwitch):
     def set_default_analysis(self):
         """initialise the switch for analysis"""
         
-        if 'MA4' in self.available_module and \
-                     os.path.exists(pjoin(self.me_dir,'Cards','plot_card.dat')):
-            self.switch['analysis'] = 'MadAnalysis4'
-        elif 'MA5' in self.available_module and\
+        if 'MA5' in self.available_module and\
              (os.path.exists(pjoin(self.me_dir,'Cards','madanalysis5_parton_card.dat'))\
              or os.path.exists(pjoin(self.me_dir,'Cards', 'madanalysis5_hadron_card.dat'))):
             self.switch['analysis'] = 'MadAnalysis5'
@@ -1010,8 +999,6 @@ class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
         {'card': 'madanalysis5_hadron_card.dat', 'key': 'analysis',
          'on': lambda s: s['analysis'] == 'MadAnalysis5' and s['shower'] != 'OFF',
          'set': 'MadAnalysis5'},
-        {'card': 'plot_card.dat', 'key': 'analysis',
-         'on': lambda s: s['analysis'] == 'MadAnalysis4', 'set': 'MadAnalysis4'},
         {'card': 'rivet_card.dat', 'key': 'analysis',
          'on': lambda s: s['analysis'] == 'Rivet', 'set': 'Rivet'},
     ]
@@ -1586,53 +1573,6 @@ class CheckValidForCmd(object):
                                               % arg)
             return tmp_args[0], tag, tmp_args[1:]
 
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid MadAnalysis path set.\n'
-            error_msg += 'Please use the set command to define the path and retry.\n'
-            error_msg += 'You can also define it in the configuration file.\n'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid td path set.\n'
-            error_msg += 'Please use the set command to define the path and retry.\n'
-            error_msg += 'You can also define it in the configuration file.\n'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name currently define. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name currently define. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
-    
     def check_syscalc(self, args):
         """Check the argument for the syscalc command
         syscalc run_name modes"""
@@ -2263,17 +2203,9 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
                                      os.path.exists(pjoin(path, 'DelphesSTDHEP')):
                         logger.info("No valid Delphes path found")
                         continue
-                elif key == "madanalysis_path":
-                    if not os.path.exists(pjoin(path, 'plot_events')):
-                        logger.info("No valid MadAnalysis path found")
-                        continue
                 elif key == "rivet_path":
                     if not os.path.exists(pjoin(path, 'bin', 'rivet')):
                         logger.info("No valid rivet path found")
-                        continue
-                elif key == "td_path":
-                    if not os.path.exists(pjoin(path, 'td')):
-                        logger.info("No valid td path found")
                         continue
                 elif key == "syscalc_path":
                     if not os.path.exists(pjoin(path, 'sys_calc')):
@@ -2791,7 +2723,6 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         self.run_syscalc('parton')
                 
                     
-                self.create_plot('parton')            
                 self.exec_cmd('store_events', postcmd=False) 
                 if self.run_card['boost_event'].strip()  and self.run_card['boost_event'] != 'False':
                     self.boost_events()
@@ -2872,7 +2803,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         options = self.check_initMadLoop(args)
         
         if not options['force']:
-            self.ask_edit_cards(['MadLoopParams.dat'], mode='fixed', plot=False)
+            self.ask_edit_cards(['MadLoopParams.dat'], mode='fixed')
             self.exec_cmd('treatcards loop --no_MadLoopInit')
 
         if options['refresh']:
@@ -3311,12 +3242,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             self.create_root_file('%s/unweighted_events.lhe' % self.run_name,
                                   '%s/unweighted_events.root' % self.run_name)
             
-        path = pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe")        
-        self.create_plot('parton', path,
-                         pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                         )
-        
-
+        path = pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe")
         if not os.path.exists('%s.gz' % path):        
             misc.gzip(path)
 
@@ -6017,8 +5943,6 @@ tar -czf split_$1.tar.gz split_$1
         
         pydir = pjoin(self.options['pythia-pgs_path'], 'src')
         eradir = self.options['exrootanalysis_path']
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
 
         #Update the banner
         self.banner.add(pjoin(self.me_dir, 'Cards','pythia_card.dat'))
@@ -6057,9 +5981,6 @@ tar -czf split_$1.tar.gz split_$1
                                                   '%s_syscalc.dat' % self.run_tag)
                         misc.gzip(pjoin(self.me_dir, 'Events','syscalc.dat'),
                                   stdout = "%s.gz" % filename)
-
-        # Plot for pythia
-        self.create_plot('Pythia')
 
         if os.path.exists(pjoin(self.me_dir,'Events','pythia_events.lhe')):
             misc.gzip(pjoin(self.me_dir,'Events','pythia_events.lhe'),
@@ -6226,73 +6147,6 @@ tar -czf split_$1.tar.gz split_$1
 
 
     ############################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        self.store_result()
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        if not self.force:
-            self.ask_edit_cards(['plot_card.dat'], args, plot=True)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'unweighted_events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip('%s.gz' % filename, keep=True)
-            if  os.path.exists(filename):
-                files.ln(filename, pjoin(self.me_dir, 'Events'))
-                self.create_plot('parton')
-                if not os.path.exists(filename+'.gz'):
-                    misc.gzip(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'),
-                          stdout= "%s.gz" % filename)
-                else:
-                    try:
-                        os.remove(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                        os.remove(filename)
-                    except Exception:
-                        pass
-            else:
-                logger.info('No valid files for partonic plot') 
-                
-        if any([arg in ['all','pythia'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events' ,self.run_name,
-                                          '%s_pythia_events.lhe' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                shutil.move(filename, pjoin(self.me_dir, 'Events','pythia_events.lhe'))
-                self.create_plot('Pythia')
-                misc.gzip(pjoin(self.me_dir, 'Events','pythia_events.lhe'),
-                          stdout= "%s.gz" % filename)
-            else:
-                logger.info('No valid files for pythia plot')
-                
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)
-            else:
-                logger.info('No valid files for pgs plot')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                self.create_plot('Delphes')
-                misc.gzip(filename)              
-            else:
-                logger.info('No valid files for delphes plot')
-
     def do_compile(self, line):
         """compile the current directory    """
 
@@ -6321,7 +6175,7 @@ tar -czf split_$1.tar.gz split_$1
     
         logger.info('Calculating systematics for run %s' % self.run_name)
         
-        self.ask_edit_cards(['run_card.dat'], args, plot=False)
+        self.ask_edit_cards(['run_card.dat'], args)
         self.run_card = banner_mod.RunCard(pjoin(self.me_dir, 'Cards', 'run_card.dat'))
         if any([arg in ['all','parton'] for arg in args]):
             filename = pjoin(self.me_dir, 'Events', self.run_name, 'unweighted_events.lhe')
@@ -6998,7 +6852,6 @@ tar -czf split_$1.tar.gz split_$1
                        'delphes':['delphes'],
                        'madanalysis5_hadron':['madanalysis5_hadron'],
                        'madanalysis5_parton':['madanalysis5_parton'],
-                       'plot':[],
                        'syscalc':[],
                        'rivet':['rivet']}
 
@@ -7416,8 +7269,6 @@ tar -czf split_$1.tar.gz split_$1
             cards.append('madanalysis5_parton_card.dat')
         if switch['analysis'].upper() in ['MADANALYSIS5'] and not switch['shower']=='OFF':
             cards.append('madanalysis5_hadron_card.dat')
-        elif switch['analysis'].upper() in ['MADANALYSIS4']:
-            cards.append('plot_card.dat')
         elif switch['analysis'].upper() in ['RIVET']:
             cards.append('rivet_card.dat')
 
@@ -7484,8 +7335,8 @@ tar -czf split_$1.tar.gz split_$1
             if os.path.exists(pjoin(self.options['delphes_path'], 'data')):
                 delphes3 = False
                 cards.append('delphes_trigger.dat')
-        self.keep_cards(cards, ignore=['madanalysis5_parton_card.dat','madanalysis5_hadron_card.dat',
-                      'plot_card.dat'])
+        self.keep_cards(cards, ignore=['madanalysis5_parton_card.dat',
+                      'madanalysis5_hadron_card.dat'])
         
         if self.force:
             return mode
@@ -7495,11 +7346,11 @@ tar -czf split_$1.tar.gz split_$1
             
         if auto:
             self.ask_edit_cards(cards, from_banner=['param', 'run'], 
-                                mode='auto', plot=(pythia_version==6), banner=banner
+                                mode='auto', banner=banner
                                 )
         else:
             self.ask_edit_cards(cards, from_banner=['param', 'run'],
-                                 plot=(pythia_version==6), banner=banner)
+                                 banner=banner)
 
         return mode
                 

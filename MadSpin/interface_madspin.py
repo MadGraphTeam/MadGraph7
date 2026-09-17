@@ -3361,7 +3361,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                 decay_dir), options=options)
                         me5_cmd.options["automatic_html_opening"] = False
                         me5_cmd.options["madanalysis5_path"] = None
-                        me5_cmd.options["madanalysis_path"] = None
                         me5_cmd.allow_notification_center = False
                         try:
                             os.remove(pjoin(decay_dir, 'Cards', 'madanalysis5_parton_card_default.dat'))
@@ -3436,7 +3435,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                     me5_cmd.options["automatic_html_opening"] = False
                     me5_cmd.options["automatic_html_opening"] = False
                     me5_cmd.options["madanalysis5_path"] = None
-                    me5_cmd.options["madanalysis_path"] = None
                     me5_cmd.allow_notification_center = False
                     try:
                         os.remove(pjoin(decay_dir, 'Cards', 'madanalysis5_parton_card_default.dat'))

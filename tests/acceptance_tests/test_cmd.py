@@ -177,7 +177,6 @@ class TestCmdShell1(unittest.TestCase):
                     'golem': 'auto',
                     'run_mode': 2,
                     'pythia-pgs_path': './pythia-pgs', 
-                    'td_path': './td', 
                     'delphes_path': './Delphes', 
                     'default_unset_couplings': 99,
                     'checkpointing': False,
@@ -186,7 +185,6 @@ class TestCmdShell1(unittest.TestCase):
                     'cluster_vacatetime': '120',
                     'enforce_shared_disk': False,
                     'cluster_status_update': (600, 30),
-                    'madanalysis_path': './MadAnalysis', 
                     'cluster_temp_path': None, 
                     'fortran_compiler': None, 
                     'cpp_compiler': None,
@@ -362,8 +360,6 @@ class TestCmdShell2(unittest.TestCase,
         #                                            'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                     'Source',
                                                     'maxconfigs.inc')))
@@ -3694,8 +3690,6 @@ set boost_choice [6, -6] pt [0, 0]
                                                     'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         devnull = open(os.devnull,'w')
         # Check that the Source directory compiles
         status = subprocess.call(['make'],
@@ -3850,8 +3844,6 @@ set boost_choice [6, -6] pt [0, 0]
                                                     'ident_card.dat')))
         self.assertTrue(os.path.exists(os.path.join(self.out_dir,
                                                  'Cards', 'run_card_default.dat')))
-        self.assertTrue(os.path.exists(os.path.join(self.out_dir,
-                                                 'Cards', 'plot_card_default.dat')))
         devnull = open(os.devnull,'w')
         # Check that the Source directory compiles
         status = subprocess.call(['make'],

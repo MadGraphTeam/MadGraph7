@@ -117,8 +117,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # bin/generate_events can offer to enable and edit them.
                      'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
                                   ['madspin_card_default.dat', 'reweight_card_default.dat',
-                                   'density_card_default.dat', 'delphes_card_default.dat',
-                                   'plot_card.dat']) +
+                                   'density_card_default.dat',
+                                   'delphes_card_default.dat']) +
                               relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
                                   ['pythia8_card_default.dat',
                                    'madanalysis5_parton_card_default.dat',

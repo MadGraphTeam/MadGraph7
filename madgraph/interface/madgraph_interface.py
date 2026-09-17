@@ -1503,9 +1503,8 @@ class CheckValidForCmd(cmd.CheckCmd):
             args = args[:1]
 
         if args[0] not in self._install_opts + hidden_prog + self._advanced_install_opts: 
-            if not args[0].startswith('td'):
-                self.help_install()
-                raise self.InvalidCmd('Not recognize program %s ' % args[0])
+            self.help_install()
+            raise self.InvalidCmd('Not recognize program %s ' % args[0])
 
         if args[0] in ["ExRootAnalysis", "Delphes", "Delphes2"]:
             if not misc.which('root'):
@@ -3256,7 +3255,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
                    'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
-    _install_opts = ['Delphes', 'MadAnalysis4', 'ExRootAnalysis',
+    _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'MadSTR', 'RunningCoupling', 'madspace']
     
@@ -3305,13 +3304,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
-                       'madanalysis_path': './MadAnalysis',
                        'madanalysis5_path':'./HEPTools/madanalysis5/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'rivet_path' : './HEPTools/rivet',
                        'yoda_path' : './HEPTools/yoda',
                        'contur_path' : './HEPTools/contur',
-                       'td_path':'./td',
                        'delphes_path':'./Delphes',
                        'exrootanalysis_path':'./ExRootAnalysis',
                        'syscalc_path': './SysCalc',
@@ -7331,7 +7328,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                           'mg5amc_py8_interface':['arXiv:1410.3012','arXiv:XXXX.YYYYY'],
                           'ninja':['arXiv:1203.0291','arXiv:1403.1229','arXiv:1604.01363'],
                           'MadAnalysis5':['arXiv:1206.1599'],
-                          'MadAnalysis':['arXiv:1206.1599'],
                           'collier':['arXiv:1604.06792'],
                           'oneloop':['arXiv:1007.4716'],
                           'maddm':['arXiv:1804.00444'],
@@ -7341,10 +7337,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
     install_server = ['http://madgraph.phys.ucl.ac.be/package_info.dat',
                          'http://madgraph.mi.infn.it/package_info.dat']
 
-    install_name = {'td_mac': 'td', 'td_linux':'td', 'Delphes2':'Delphes',
+    install_name = {'Delphes2':'Delphes',
                 'Delphes3':'Delphes', 'pythia-pgs':'pythia-pgs',
                 'ExRootAnalysis': 'ExRootAnalysis','MadAnalysis':'madanalysis5',
-                'MadAnalysis4':'MadAnalysis',
                 'SysCalc':'SysCalc', 'Golem95': 'golem95',
                     'lhapdf6' : 'lhapdf6_py3',
                 'QCDLoop':'QCDLoop','MadAnalysis5':'madanalysis5',
@@ -7472,9 +7467,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             name = name[args[0]]
         except KeyError:
             name = args[0]
-        if args[0] == 'MadAnalysis4':
-            args[0] = 'MadAnalysis'
-        elif args[0] in ['madstr', 'madSTR']:
+        if args[0] in ['madstr', 'madSTR']:
             args[0] = 'MadSTR'
             name = 'MadSTR'
             
@@ -7587,8 +7580,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             base_compiler= ['FC=g77','FC=gfortran']
             if args[0] == "pythia-pgs":
                 path = os.path.join(MG5DIR, 'pythia-pgs', 'src', 'make_opts')
-            elif args[0] == 'MadAnalysis':
-                path = os.path.join(MG5DIR, 'MadAnalysis', 'makefile')
             if path:
                 text = open(path).read()
                 for base in base_compiler:
@@ -7757,43 +7748,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 logger.warning('Error detected during the compilation. Please check the compilation error and run make manually.')
 
 
-        # Special treatment for TD/Ghostscript program (require by MadAnalysis)
-        if args[0] == 'MadAnalysis':
-            try:
-                os.system('rm -rf td')
-                os.mkdir(pjoin(MG5DIR, 'td'))
-            except Exception as error:
-                print(error)
-                pass
-
-            if sys.platform == "darwin":
-                logger.info('Downloading TD for Mac')
-                target = 'https://home.fnal.gov/~parke/TD/td_mac_intel64.tar.gz'
-                misc.wget(target, 'td.tgz', cwd=pjoin(MG5DIR,'td'))
-                misc.call(['tar', '-xzpvf', 'td.tgz'],
-                                                  cwd=pjoin(MG5DIR,'td'))
-                files.mv(MG5DIR + '/td/td_intel_mac64',MG5DIR+'/td/td')
-            else:
-                if sys.maxsize > 2**32:
-                    logger.info('Downloading TD for Linux 64 bit')
-                    target = 'https://home.fnal.gov/~parke/TD/td_linux_64bit.tar.gz'
-                    #logger.warning('''td program (needed by MadAnalysis) is not compile for 64 bit computer.
-                #In 99% of the case, this is perfectly fine. If you do not have plot, please follow 
-                #instruction in https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/TopDrawer .''')
-                else:                    
-                    logger.info('Downloading TD for Linux 32 bit')
-                    target = 'http://madgraph.phys.ucl.ac.be/Downloads/td'
-                misc.wget(target, 'td', cwd=pjoin(MG5DIR,'td'))
-            os.chmod(pjoin(MG5DIR,'td','td'), 0o775)
-            self.options['td_path'] = pjoin(MG5DIR,'td')
-
-            if not misc.which('gs'):
-                logger.warning('''gosthscript not install on your system. This is not required to run MA.
-                    but this prevent to create jpg files and therefore to have the plots in the html output.''')
-                if sys.platform == "darwin":
-                    logger.warning('''You can download this program at the following link:
-                    http://www.macupdate.com/app/mac/9980/gpl-ghostscript''')
-
         if args[0] == 'Delphes2':
             data = open(pjoin(MG5DIR, 'Delphes','data','DetectorCard.dat')).read()
             data = data.replace('data/', 'DELPHESDIR/data/')
@@ -7819,7 +7773,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                            'Delphes2': 'delphes_path',
                            'Delphes3': 'delphes_path',
                            'ExRootAnalysis': 'exrootanalysis_path',
-                           'MadAnalysis': 'madanalysis_path',
                            'SysCalc': 'syscalc_path',
                            'pythia-pgs':'pythia-pgs_path',
                            'Golem95': 'golem'}
@@ -9955,11 +9908,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
 #hepmc_path               	hwpp_path                	
-#madanalysis_path         	mg5amc_py8_interface_path
+#mg5amc_py8_interface_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
-#td_path                  	              	thepeg_path
-#              	yoda_path
+#thepeg_path              	yoda_path
 
     def set_default(self, name, args, log=True):
         """Generic function to set default options.

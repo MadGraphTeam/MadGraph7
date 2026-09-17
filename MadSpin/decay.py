@@ -1881,7 +1881,7 @@ class width_estimate(object):
         if not opts['path']:
             opts['path'] = pjoin(self.me_dir, 'Cards', 'param_card.dat')
             if not opts['force'] :
-                self.ask_edit_cards(['param_card'],[], plot=False)
+                self.ask_edit_cards(['param_card'],[])
         
         
         commandline = 'import model %s' % model.get('modelpath+restriction') 
