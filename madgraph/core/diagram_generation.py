@@ -243,6 +243,7 @@ class DiagramTag(object):
             return base_objects.Leg({'number':link.links[0][1],
                                      'id':link.links[0][0][0],
                                      'state':(link.links[0][0][1] == 0),
+                                     'onium': {},
                                      'onshell':False})
 
         # This shouldn't happen
@@ -274,7 +275,7 @@ class DiagramTag(object):
 
     @staticmethod
     def link_from_leg(leg, model):
-        """Returns the default end link for a leg: ((id, state), number).
+        """Returns the default end link for a leg: ((id, state, onium), number).
         Note that the number is not taken into account if tag comparison,
         but is used only to extract leg permutations."""
         if leg.get('state'):
@@ -282,7 +283,7 @@ class DiagramTag(object):
             return [((leg.get('id'), 0), leg.get('number'))]
         else:
             # Distinguish identical initial state particles
-            return [((leg.get('id'), leg.get('number')), leg.get('number'))]
+            return [((leg.get('id'), leg.get('number'), leg.get('onium')), leg.get('number'))]
 
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -2516,6 +2517,7 @@ class MultiProcess(base_objects.PhysicsObject):
                 islegs = [\
                         fks_tag.TagLeg({'id':id, 'state': False, 
                                         'polarization': isleg['polarization'],
+                                        'onium': isleg['onium'],
                                         'offshell': isleg['offshell'], 
                                         'is_tagged': tag}) \
                         for id, isleg, tag in zip(prod, islegs_orig, istags)]
@@ -2533,6 +2535,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         base_objects.Leg({'id':id, 'state': False,
                                           'polarization': islegs_orig[i]['polarization'],
                                           'flavor': get_flavor(i,id),
+                                          'onium': islegs_orig[i]['onium'],
                                           'offshell': islegs_orig[i]['offshell']}) \
                     for i,id in enumerate(prod)]
 
@@ -2576,11 +2579,12 @@ class MultiProcess(base_objects.PhysicsObject):
                             base_objects.Leg({'id':id, 'state': True,
                                               'polarization': fsleg['polarization'],
                                               'flavor': get_flavor(id, fsleg),
+                                              'onium': fsleg['onium'],
                                               'offshell': fsleg['offshell']}) \
                             for id, fsleg in zip(prod, fslegs)])
                 else:
                     leg_list.extend([\
-                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'is_tagged': tag}) \
+                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'onium': fsleg['onium'], 'is_tagged': tag}) \
                             for id, fsleg, tag in zip(prod, fslegs, fstags)])
 
 

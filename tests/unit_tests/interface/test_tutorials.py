@@ -1387,6 +1387,88 @@ class TestTerminalStyling(unittest.TestCase):
 
 
 #===============================================================================
+# the process lines a tutorial proposes have to exist in the model it runs on
+#===============================================================================
+
+class TestProposedProcessesAreValid(unittest.TestCase):
+    """Every particle a tutorial tells the user to type must be in its model.
+
+    `syntax` and `lo` run on the plain SM, so a process line quoting a charged
+    Higgs -- as the alternative-s-channel lesson once did -- is a command the
+    reader cannot run.  Only the particle names are checked here: the rest of
+    the line (orders, `[QCD]`, decay chains) is the tutorial's own subject and
+    is exercised by the exercises tutorial.
+    """
+
+    SM_TUTORIALS = ('syntax', 'lo')
+
+    # a proposed command: after the prompt, or indented in an example block
+    COMMAND = re.compile(
+        r'^\s*(?:MG7>\s*)?(?:generate|add process|check +\w+)\s+(.*)$')
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.interface.master_interface as master
+        cls.interface = master.MasterCmd()
+        cls.interface.exec_cmd('import model sm', printcmd=False)
+
+    def proposals(self, tutorial):
+        """(step title, command) for every process line the steps quote."""
+
+        out = []
+        for step in tutorial.steps:
+            for line in (step.render(self.interface) or '').splitlines():
+                found = self.COMMAND.match(line)
+                if found:
+                    out.append((step.title, found.group(1).strip()))
+            solution = step.get_solution()
+            found = solution and self.COMMAND.match(solution)
+            if found:
+                out.append((step.title, found.group(1).strip()))
+        return out
+
+    @staticmethod
+    def particle_names(process):
+        """The particle names in a process line, orders and operators dropped."""
+
+        # the example blocks align a comment after the command, two spaces or
+        # more from it: 'generate p p > t t~     initial state, `>`, ...'
+        process = re.split(r'\s{2,}', process)[0]
+        process = process.split('[')[0]                  # [QCD] and friends
+        process = re.sub(r'\{[^}]*\}', '', process)       # {0}, {T} ...
+        process = re.sub(r'[(),]', ' ', process)          # decay chains
+        names = []
+        for token in process.split():
+            if token in ('>', '|', '/', '$', '$$') or token.startswith('@'):
+                continue
+            if '=' in token or '^' in token:             # a coupling order
+                continue
+            names.append(token)
+        return names
+
+    def test_every_proposed_process_is_in_the_sm(self):
+        for name in self.SM_TUTORIALS:
+            tutorial = tutorials.get(name)
+            self.assertIsNotNone(tutorial, '%s is not registered' % name)
+            for title, process in self.proposals(tutorial):
+                for particle in self.particle_names(process):
+                    try:
+                        self.interface.extract_particle_ids([particle])
+                    except madgraph.InvalidCmd:
+                        self.fail('%s / %s proposes %r, but %r is not in the '
+                                  'SM' % (name, title, process, particle))
+
+    def test_the_check_would_have_caught_the_charged_higgs(self):
+        """The guard is only worth having if it fires -- this is the line that
+        used to sit in the alternative-s-channel lesson."""
+
+        names = self.particle_names('b b~ > W+ W- | H+ H- > ta+ vt ta- vt~')
+        self.assertIn('H+', names)
+        self.assertRaises(madgraph.InvalidCmd,
+                          self.interface.extract_particle_ids, ['H+'])
+
+
+#===============================================================================
 # menu sections and provenance
 #===============================================================================
 
@@ -1397,34 +1479,49 @@ class TestMenuSections(unittest.TestCase):
     def sections(self):
         return list(tutorials.by_section())
 
-    def test_the_order_is_basic_advanced_exercises(self):
+    def named(self, key):
+        for section_key, _title, group, notice in self.sections():
+            if section_key == key:
+                return [t.name for t in group], notice
+        self.fail('no %s section' % key)
+
+    def test_the_order_is_basic_advanced_more_exercises(self):
         keys = [key for key, _title, _group, _notice in self.sections()]
-        self.assertEqual(keys, ['basic', 'advanced', 'exercises'])
+        self.assertEqual(keys, ['basic', 'advanced', 'more', 'exercises'])
 
     def test_basic_is_lo_and_nlo(self):
-        for key, _title, group, _notice in self.sections():
-            if key == 'basic':
-                self.assertEqual([t.name for t in group], ['lo', 'nlo'])
-                return
-        self.fail('no basic section')
+        self.assertEqual(self.named('basic')[0], ['lo', 'nlo'])
+
+    def test_advanced_is_the_validated_ones(self):
+        """'advanced' is the developer-validated group, not 'everything that
+        is not basic' -- which is what it used to collect by default."""
+
+        self.assertEqual(sorted(self.named('advanced')[0]),
+                         ['madloop', 'model'])
 
     def test_exercises_is_its_own_section(self):
-        for key, _title, group, _notice in self.sections():
-            if key == 'exercises':
-                self.assertIn('exercises', [t.name for t in group])
-                return
-        self.fail('no exercises section')
+        self.assertIn('exercises', self.named('exercises')[0])
 
-    def test_basic_carries_no_ai_notice(self):
-        for key, _title, _group, notice in self.sections():
-            if key == 'basic':
-                self.assertIsNone(notice, 'the Basic section is flagged')
+    def test_basic_and_advanced_say_they_are_validated(self):
+        for key in ('basic', 'advanced'):
+            notice = self.named(key)[1]
+            self.assertEqual(notice, tutorials.VALIDATED_NOTICE,
+                             '%s does not claim validation' % key)
 
-    def test_advanced_and_exercises_carry_it(self):
-        for key, _title, _group, notice in self.sections():
-            if key in ('advanced', 'exercises'):
-                self.assertIsNotNone(notice, '%s is not flagged' % key)
-                self.assertIn('not yet validated', notice)
+    def test_more_and_exercises_carry_the_ai_notice(self):
+        for key in ('more', 'exercises'):
+            notice = self.named(key)[1]
+            self.assertIn('not yet validated', notice,
+                          '%s is not flagged' % key)
+
+    def test_every_tutorial_in_a_validated_section_is_validated(self):
+        for key, title, group, _notice in self.sections():
+            if key not in Tutorial.VALIDATED_SECTIONS:
+                continue
+            for tutorial in group:
+                self.assertFalse(tutorial.ai_generated,
+                                 '%s is AI-generated but sits under %s'
+                                 % (tutorial.name, title))
 
     def test_the_ported_tutorials_are_not_called_ai_generated(self):
         """nlo and madloop are the pre-2026 text, near verbatim."""
@@ -1436,6 +1533,22 @@ class TestMenuSections(unittest.TestCase):
     def test_an_unknown_section_is_refused(self):
         self.assertRaises(ValueError, Tutorial, name='x', title='x',
                           steps=[], section='nonsense')
+
+    def test_an_ai_tutorial_cannot_claim_a_validated_section(self):
+        """The heading promises validation, so the promise is enforced here
+        rather than left to whoever adds the next tutorial."""
+
+        for key in Tutorial.VALIDATED_SECTIONS:
+            self.assertRaises(ValueError, Tutorial, name='x', title='x',
+                              steps=[], section=key, ai_generated=True)
+            Tutorial(name='x', title='x', steps=[], section=key,
+                     ai_generated=False)
+
+    def test_the_default_section_is_not_a_validated_one(self):
+        """A new tutorial has to opt in to the validated groups."""
+
+        self.assertNotIn(Tutorial(name='x', title='x', steps=[]).section,
+                         Tutorial.VALIDATED_SECTIONS)
 
 
 #===============================================================================
@@ -1607,3 +1720,233 @@ class TestRealRunNumbers(unittest.TestCase):
         self.assertIn('380.57(28)', text)
         self.assertIn('+26.6%', text)
         self.assertNotIn('503.1(1.4)', text)
+
+
+class TutorialFailedCommandTest(unittest.TestCase):
+    """A command which raises must not advance the tutorial, and must not
+    leave the user in front of an error message with the tutorial silent."""
+
+    class FakeBase(object):
+        def postcmd(self, stop, line):
+            return stop
+        def notify_failed_command(self, line):
+            pass
+
+    def interface(self, name='model'):
+        import madgraph.interface.tutorials as tutorials
+        from madgraph.interface.tutorials.mixin import TutorialMixin
+
+        class Fake(TutorialMixin, self.FakeBase):
+            pass
+
+        obj = Fake()
+        obj._tutorial_session = tutorials.start(name)
+        obj.exec_cmd_depth = 0
+        return obj
+
+    def test_a_failed_command_does_not_advance(self):
+        obj = self.interface()
+        session = obj._tutorial_session
+        for line in ['import model sm', 'display particles',
+                     'import model sm-no_b_mass', 'set gauge Feynman']:
+            obj.postcmd(None, line)
+        here = session.index
+
+        obj.notify_failed_command('check gauge')   # needs a process: it raised
+        obj.postcmd(None, 'check gauge')           # the interactive path
+        self.assertEqual(session.index, here)
+
+        # and the command the step waits for is still accepted afterwards
+        obj.postcmd(None, 'define v = w+ w- z a')
+        self.assertEqual(session.current.title, 'multiparticle labels')
+
+    def test_a_successful_command_still_advances(self):
+        obj = self.interface()
+        session = obj._tutorial_session
+        obj.postcmd(None, 'import model sm')
+        self.assertEqual(session.current.title, 'load a model')
+
+    def test_a_step_can_say_why_its_command_failed(self):
+        """'check gauge' needs a process the user has no reason to guess"""
+
+        import madgraph.interface.tutorials as tutorials
+
+        step = [s for s in tutorials.get('model').steps
+                if s.title == 'a detour: check gauge'][0]
+        advice = step.get_failure_advice()
+        self.assertTrue(advice)
+        self.assertTrue('check gauge p p > e+ e-' in advice)
+
+    def test_a_step_without_advice(self):
+        import madgraph.interface.tutorials as tutorials
+
+        step = [s for s in tutorials.get('model').steps
+                if s.title == 'multiparticle labels'][0]
+        self.assertEqual(step.get_failure_advice(), None)
+
+    def test_only_the_first_report(self):
+        """a script command fails, and the 'import' running it fails in turn"""
+
+        obj = self.interface()
+        obj.notify_failed_command('check gauge')
+        self.assertEqual(obj._tutorial_failed_line, 'check gauge')
+        obj.notify_failed_command('import /tmp/script.txt')
+        self.assertEqual(obj._tutorial_failed_line, 'check gauge')
+
+    def test_nothing_happens_without_a_tutorial(self):
+        obj = self.interface()
+        obj._tutorial_session = None
+        obj.notify_failed_command('check gauge')
+        self.assertEqual(getattr(obj, '_tutorial_failed_line', None), None)
+
+    def test_the_hook_never_masks_the_real_error(self):
+        """a failure inside the tutorial must not replace the user's error"""
+
+        from madgraph.interface.extended_cmd import Cmd
+
+        class Broken(object):
+            def notify_failed_command(self, line):
+                raise RuntimeError('tutorial is broken')
+
+        Cmd.safe_notify_failed_command(Broken(), 'anything')  # must not raise
+        Cmd.safe_notify_failed_command(object(), 'anything')  # no hook at all
+
+
+class StickyStepTest(unittest.TestCase):
+    """A lesson which invites the user to try several commands must answer them
+    without being consumed, and without jumping to a later step that happens to
+    share the key."""
+
+    def session(self):
+        import madgraph.interface.tutorials as tutorials
+        return tutorials.start('model')
+
+    def at_the_display_lesson(self):
+        session = self.session()
+        for line in ['import model sm', 'display particles']:
+            session.advance(session.step_for(line)[0])
+        self.assertEqual(session.current.title, 'look inside the model')
+        return session
+
+    def test_a_display_does_not_end_the_tutorial(self):
+        """'display multiparticles' used to match the closing step"""
+
+        session = self.at_the_display_lesson()
+        for line in ['display multiparticles', 'display interactions',
+                     'display couplings', 'display modellist']:
+            index, step = session.step_for(line)
+            self.assertEqual(step.title, 'trying the display commands', line)
+            self.assertEqual(step.sticky, True)
+            # sticky: the mixin renders it and does not advance
+            self.assertEqual(session.current.title, 'look inside the model')
+
+    def test_the_lesson_still_continues(self):
+        session = self.at_the_display_lesson()
+        index, step = session.step_for('import model sm-no_b_mass')
+        self.assertEqual(step.title, 'restrictions')
+
+    def test_the_closing_step_is_still_reachable(self):
+        session = self.session()
+        for line in ['import model sm', 'display particles',
+                     'import model sm-no_b_mass', 'set gauge Feynman',
+                     'define v = w+ w- z a']:
+            session.advance(session.step_for(line)[0])
+        index, step = session.step_for('display multiparticles')
+        self.assertEqual(step.title, 'customise, merge, save')
+
+    def test_a_later_display_does_not_end_it_either(self):
+        """the closing step only answers the command it asks for"""
+
+        session = self.session()
+        for line in ['import model sm', 'display particles',
+                     'import model sm-no_b_mass']:
+            session.advance(session.step_for(line)[0])
+        self.assertEqual(session.step_for('display particles'), None)
+
+    def test_explain_restriction_is_answered_too(self):
+        """the lesson names the command, so the user will try it"""
+
+        session = self.session()
+        for line in ['import model sm', 'display particles',
+                     'import model sm-no_b_mass']:
+            session.advance(session.step_for(line)[0])
+
+        for line in ['explain_restriction', 'explain_restriction sm-full',
+                     'explain_restriction --all']:
+            index, step = session.step_for(line)
+            self.assertEqual(step.title, 'a detour: explain_restriction', line)
+            self.assertEqual(step.sticky, True)
+        # the lesson is untouched and still continues
+        self.assertEqual(session.current.title, 'restrictions')
+        self.assertEqual(session.step_for('set gauge Feynman')[1].title,
+                         'gauge and scheme')
+
+    def test_the_define_lesson_says_it_too(self):
+        """the lesson about multiparticles is where it matters most"""
+
+        import madgraph.interface.tutorials as tutorials
+
+        step = [s for s in tutorials.get('model').steps
+                if s.title == 'multiparticle labels'][0]
+        text = step.render(None)
+        self.assertTrue('massless flavours' in text)
+        self.assertTrue('sm-no_b_mass' in text)
+
+    def test_explain_restriction_works_from_the_first_import(self):
+        """the import of a restricted model suggests it right away"""
+
+        session = self.session()
+        session.advance(session.step_for('import model sm')[0])
+        index, step = session.step_for('explain_restriction')
+        self.assertEqual(step.title, 'a detour: explain_restriction')
+
+    def test_the_multiparticle_note_says_what_p_and_j_follow(self):
+        import madgraph.interface.tutorials.model as model
+
+        note = model.display_note(None, 'display multiparticles')
+        self.assertTrue('massless flavours' in note)
+
+    def test_each_display_has_its_own_note(self):
+        import madgraph.interface.tutorials.model as model
+
+        for what in ['particles', 'interactions', 'couplings', 'parameters',
+                     'multiparticles', 'modellist', 'coupling_order']:
+            note = model.display_note(None, 'display %s' % what)
+            self.assertTrue(note, what)
+            # every one of them hands the user back to the tutorial
+            self.assertTrue('import model sm-no_b_mass' in note, what)
+
+    def test_coupling_order_points_at_the_syntax_tutorial(self):
+        """the orders are what one constrains to filter the diagrams"""
+
+        import madgraph.interface.tutorials as tutorials
+        import madgraph.interface.tutorials.model as model
+
+        note = model.display_note(None, 'display coupling_order')
+        self.assertTrue('QED=0' in note)
+        self.assertTrue('syntax' in note)
+        # and that tutorial does exist, and does teach it
+        self.assertNotEqual(tutorials.get('syntax'), None)
+        self.assertTrue(any('coupling orders' in s.title
+                            for s in tutorials.get('syntax').steps),
+                        'the syntax tutorial no longer has an orders lesson')
+
+    def test_an_unknown_display_still_answers(self):
+        import madgraph.interface.tutorials.model as model
+
+        self.assertTrue('import model sm-no_b_mass' in
+                        model.display_note(None, 'display nonsense'))
+        self.assertTrue('import model sm-no_b_mass' in
+                        model.display_note(None, 'display'))
+
+    def test_render_passes_the_line(self):
+        """a sticky step's text takes the command, an ordinary one does not"""
+
+        import madgraph.interface.tutorials as tutorials
+
+        steps = tutorials.get('model').steps
+        sticky = [s for s in steps if s.sticky][0]
+        self.assertTrue('interactions' in
+                        sticky.render(None, 'display interactions'))
+        plain = [s for s in steps if s.title == 'customise, merge, save'][0]
+        self.assertTrue(plain.render(None, 'display multiparticles'))

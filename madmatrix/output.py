@@ -271,11 +271,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         return out
 
     # AV (default from OM's tutorial) - add a debug printout
-    def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[]):
+    def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
+        # **opts: an option meant for one exporter (npwave, for the dual HELAS
+        # libraries of P-wave bound states) is passed by keyword to all of them
         if hasattr(model , 'cudacpp_wanted_ordered_couplings'):
             wanted_couplings = model.cudacpp_wanted_ordered_couplings
             del model.cudacpp_wanted_ordered_couplings
-        return super().convert_model(model, wanted_lorentz, wanted_couplings)
+        return super().convert_model(model, wanted_lorentz, wanted_couplings, **opts)
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout
     def modify_grouping(self, matrix_element):
