@@ -74,7 +74,11 @@ class Step(object):
               ... -- none of which is the one it is waiting for.  A sticky step
               has to sit *before* any later step sharing its key, since
               step_for scans forward from the current position and would
-              otherwise jump the user to that one.
+              otherwise jump the user to that one.  When the invited commands
+              cannot be told apart from the lesson's own by their first two
+              words -- `generate ... $ a` against `generate ... / a` -- give it
+              a callable key; step_for tries sticky callables first, so it
+              still shields the steps behind it.
     """
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
@@ -514,7 +518,8 @@ class TutorialSession(object):
         is what reproduces the old getattr() chain exactly: 'open index.html'
         resolves to the 'open_index' step even if a plain 'open' step sits
         earlier in the list.  Steps with a callable key are tried last, since
-        they cannot be indexed by key.
+        they cannot be indexed by key -- except a *sticky* one, which is tried
+        first (see below).
 
         The session is left untouched; advance() commits.
         """
@@ -531,6 +536,19 @@ class TutorialSession(object):
             # the same command several times over, so re-matching the step we
             # just fired would pin the user on lesson one forever
             allowed = list(range(self.index + 1, len(steps)))
+
+        # A sticky step exists to answer a command the current lesson invited
+        # without ending it, which only works if it wins over the later step
+        # that would otherwise swallow that command.  A plain-keyed one wins by
+        # sitting at a lower index; a callable-keyed one -- the only way to
+        # separate `generate ... $ a` from `generate ... / a`, which share both
+        # their keys -- needs the priority stated, since the callable pass runs
+        # after the plain one.
+        for i in allowed:
+            step = steps[i]
+            if (step.sticky and callable(step.key)
+                    and step.matches(keys, line, interface)):
+                return i, step
 
         for key in keys:
             for i in allowed:

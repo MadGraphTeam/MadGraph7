@@ -423,15 +423,37 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
     step that command triggers is the next one.  So walking a sequenced
     tutorial by typing its own solutions must visit every step in order.  If a
     lesson ever asks for a command that does not lead anywhere, this fails.
+
+    Two kinds of step sit off the main line and are stepped over.  A *side
+    quest* is an optional detour offered by a step, whose own steps are titled
+    'side quest: ...'; it still has to lead back.  A *sticky* step answers a
+    command the lesson invited without consuming it, so it is never reached by
+    walking solutions at all.
     """
+
+    SIDE_QUEST = 'side quest'
+
+    @classmethod
+    def off_main_line(cls, step):
+        return step.sticky or step.title.startswith(cls.SIDE_QUEST)
+
+    @classmethod
+    def main_line_after(cls, steps, index):
+        """The step the main line reaches from `index`, skipping the detours."""
+
+        following = index + 1
+        while following < len(steps) and cls.off_main_line(steps[following]):
+            following += 1
+        return following
 
     def test_syntax_solutions_lead_to_the_next_step(self):
         tutorial = tutorials.get('syntax')
         self.assertIsNotNone(tutorial, 'the syntax tutorial is not registered')
         self.assertEqual(tutorial.order, 'sequence')
 
+        steps = tutorial.steps
         session = TutorialSession(tutorial)
-        for index, step in enumerate(tutorial.steps[:-1]):
+        for index, step in enumerate(steps[:-1]):
             solution = step.get_solution()
             self.assertTrue(solution,
                             'step %d (%s) asks for no command' % (index, step.title))
@@ -440,10 +462,136 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
             self.assertIsNotNone(
                 found, 'step %d (%s) asks for %r, which triggers nothing'
                 % (index, step.title, solution))
+            # inside the detour the rule is the plain one; on the main line the
+            # detour is stepped over
+            expected = (index + 1 if step.title.startswith(self.SIDE_QUEST)
+                        else self.main_line_after(steps, index))
+            if step.sticky:
+                # a sticky step does not consume its lesson: it points back at
+                # the command that does, which is the one it sits in front of
+                expected = self.main_line_after(steps, index)
             self.assertEqual(
-                found[0], index + 1,
+                found[0], expected,
                 'step %d (%s) asks for %r, which jumps to step %d rather than %d'
-                % (index, step.title, solution, found[0], index + 1))
+                % (index, step.title, solution, found[0], expected))
+
+    def test_every_syntax_step_ends_on_the_command_it_waits_for(self):
+        """A lesson that ends on prose leaves the reader with nothing to type.
+
+        Several of these steps run to thirty lines, and the command used to sit
+        somewhere in the middle of them, under the caveats -- by the end of the
+        lesson there was no telling what would make the next one appear.  Every
+        step but the closing one now ends on the command it is waiting for.
+        """
+
+        tutorial = tutorials.get('syntax')
+        for step in tutorial.steps[:-1]:
+            solution = step.get_solution()
+            self.assertTrue(solution,
+                            'syntax step %r waits for nothing' % step.title)
+            lines = [line for line in step.render(None).splitlines()
+                     if line.strip()]
+            self.assertEqual(
+                lines[-1].strip(), 'MG7> %s' % solution,
+                'syntax step %r ends on %r rather than on the command it '
+                'waits for' % (step.title, lines[-1].strip()))
+
+    def test_no_syntax_command_is_asked_for_twice_running(self):
+        """Leaving a lesson on the command the next one teaches asks the reader
+        for the same line twice -- once to get there, once to get out."""
+
+        tutorial = tutorials.get('syntax')
+        steps = tutorial.steps
+        solutions = [step.get_solution() for step in steps[:-1]]
+        for index, solution in enumerate(solutions[1:], start=1):
+            if steps[index].sticky or steps[index - 1].sticky:
+                # a sticky step does not consume the lesson: pointing back at
+                # the same command is exactly its job
+                continue
+            self.assertNotEqual(
+                solution, solutions[index - 1],
+                'syntax steps %r and %r both wait for %r'
+                % (steps[index - 1].title, steps[index].title, solution))
+
+    def test_the_exclusion_extras_do_not_jump_a_lesson(self):
+        """`generate ... $ a` and `... $$ a` are the comparison the exclusion
+        lesson invites; `generate ... / a` is the way on.  All three are
+        `generate` commands over the same particles, so only the line tells
+        them apart -- before the sticky step they all counted as the way on,
+        and trying the comparison skipped the reader a lesson."""
+
+        tutorial = tutorials.get('syntax')
+        titles = [step.title for step in tutorial.steps]
+        lesson = titles.index('excluding particles and s-channels')
+
+        for extra in ('generate p p > e+ e- $ a', 'generate p p > e+ e- $$ a'):
+            session = TutorialSession(tutorial)
+            session.index = lesson
+            found = session.step_for(extra)
+            self.assertIsNotNone(found, '%r is answered by nothing' % extra)
+            self.assertTrue(found[1].sticky,
+                            '%r reaches %r, which would end the lesson'
+                            % (extra, found[1].title))
+            # and it answers again, as many times as it is tried
+            self.assertEqual(session.index, lesson)
+            self.assertIsNotNone(session.step_for(extra))
+
+        session = TutorialSession(tutorial)
+        session.index = lesson
+        found = session.step_for('generate p p > e+ e- / a')
+        self.assertIsNotNone(found)
+        self.assertFalse(found[1].sticky,
+                         'the exclusion lesson no longer has a way on')
+        self.assertEqual(found[0], self.main_line_after(tutorial.steps, lesson))
+
+    def test_the_sticky_answer_says_which_operator_was_tried(self):
+        """The two are answered differently or the step is not worth having:
+        `$` keeps the diagram count, `$$` does not."""
+
+        step = [s for s in tutorials.get('syntax').steps
+                if s.title == 'what $ and $$ did'][0]
+
+        class _Interface(object):
+            _curr_amps = []
+            options = {}
+
+        single = step.render(_Interface(), 'generate p p > e+ e- $ a')
+        double = step.render(_Interface(), 'generate p p > e+ e- $$ a')
+        self.assertNotEqual(single, double)
+        self.assertIn('on-shell', single)
+        self.assertIn('dropped', double)
+
+    def test_the_syntax_side_quest_is_reachable_and_comes_back(self):
+        """A detour nothing can reach is dead text; one that does not come back
+        strands the reader.  The offer is the `output standalone` the step
+        before it names."""
+
+        tutorial = tutorials.get('syntax')
+        steps = tutorial.steps
+        detour = [i for i, step in enumerate(steps)
+                  if step.title.startswith(self.SIDE_QUEST)]
+        self.assertTrue(detour, 'the syntax side quest has gone')
+        self.assertEqual(detour, list(range(detour[0], detour[-1] + 1)),
+                         'the side quest steps are not contiguous')
+
+        offered_at = detour[0] - 1
+        session = TutorialSession(tutorial)
+
+        # the offer is taken
+        session.index = offered_at
+        found = session.step_for('output standalone')
+        self.assertIsNotNone(found, 'the side quest cannot be reached')
+        self.assertEqual(found[0], detour[0],
+                         'the side quest offer lands on the wrong step')
+        self.assertIn('output standalone', steps[offered_at].render(None),
+                      'the step before the side quest does not name its command')
+
+        # ... and it leads back to where skipping it would have gone
+        session.index = detour[-1]
+        found = session.step_for(steps[detour[-1]].get_solution())
+        self.assertIsNotNone(found, 'the side quest does not lead back')
+        self.assertEqual(found[0], self.main_line_after(steps, offered_at),
+                         'the side quest comes back to the wrong step')
 
     def test_every_sequenced_step_makes_progress(self):
         """Weaker rule, applied to every sequenced tutorial: doing what a step
@@ -1497,7 +1645,7 @@ class TestMenuSections(unittest.TestCase):
         is not basic' -- which is what it used to collect by default."""
 
         self.assertEqual(sorted(self.named('advanced')[0]),
-                         ['madloop', 'model'])
+                         ['madloop', 'model', 'syntax'])
 
     def test_exercises_is_its_own_section(self):
         self.assertIn('exercises', self.named('exercises')[0])
