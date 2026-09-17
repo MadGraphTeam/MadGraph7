@@ -247,6 +247,49 @@ class MadgraphProcess:
             self.merged_subprocess_data = None
 
         self.init_decay_mode()
+        self.init_me_frame()
+
+    def init_me_frame(self) -> None:
+        """Resolve the run card's me_frame into the list of external particles
+        whose momentum sum defines the frame the matrix element is evaluated in.
+
+        Empty (the default) means no boost: the matrix element sees the momenta
+        in the frame they are generated in. Unlike madevent, which hands its
+        matrix element momenta that are already in the partonic centre of mass,
+        madspace generates them in the lab frame, so asking for madevent's own
+        frame ([1, 2]) does mean an actual boost here. It changes nothing for a
+        Lorentz invariant matrix element (only the rounding), but it is what
+        defines the polarisation axes of a polarised one.
+
+        The particle numbers are checked here rather than only in madspace,
+        which would not see them until the integrands are built -- long after
+        the matrix-element libraries have been compiled.
+        """
+        me_frame = list(self.run_card["run"]["me_frame"])
+        pdgs = [clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+                for meta in self.subprocess_data]
+        particle_count = len(pdgs[0])
+        for index in me_frame:
+            if index < 1 or index > particle_count:
+                raise ValueError(
+                    f"me_frame particle {index} out of range: this process has "
+                    f"{particle_count} external particles"
+                )
+        if len(me_frame) == 1:
+            # A massless particle has no rest frame: its momentum squares to
+            # zero, so the boost divides by it and every momentum comes back as
+            # a NaN, silently. Name the mistake instead.
+            massless = [pdg_list[me_frame[0] - 1] for pdg_list in pdgs
+                        if self.get_mass(pdg_list[me_frame[0] - 1]) == 0.]
+            if massless:
+                raise ValueError(
+                    f"me_frame = {me_frame} asks for the rest frame of particle "
+                    f"{me_frame[0]}, which is massless (pdg "
+                    f"{sorted(set(massless))}) and has none. Name a massive "
+                    "particle, or several particles whose sum is massive."
+                )
+        self.me_frame = me_frame
+        self.incoming_count = 1 if self.is_decay else 2
 
     def init_decay_mode(self) -> None:
         """Decide whether this directory is a decay (1 -> n) or a collision.
@@ -787,6 +830,8 @@ class MadgraphProcess:
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
+            "me_frame": self.me_frame,
+            "incoming_count": self.incoming_count,
         }
         return self.systematics
 
@@ -860,6 +905,8 @@ class MadgraphProcess:
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                self.me_frame,
+                self.incoming_count,
             ))
         logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
                     "subprocess(es) for the renormalisation scale variations", len(need))
@@ -2566,6 +2613,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             else:
                 #TODO: not working in merged mode
@@ -2576,6 +2625,8 @@ class MadgraphSubprocess:
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,
+                    self.process.me_frame,
+                    self.process.incoming_count,
                 )
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()

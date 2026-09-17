@@ -5,6 +5,21 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: mg7 (madspace) now supports the run_card "me_frame", with the same meaning
+       as in madevent: it names the external particles whose momentum sum is put
+       at rest, and the matrix element is evaluated on momenta boosted into that
+       frame. Only the matrix element sees them -- the cuts, the scales, the
+       momentum fractions and the written event all keep the momenta as
+       generated. It only changes the result for a matrix element that is not
+       Lorentz invariant, i.e. a polarised one, and it is then the frame the
+       polarisations are defined in; the default [] applies no boost, so every
+       other run is unaffected and pays nothing. [1, 2] asks for the partonic
+       centre of mass, which is the frame madevent evaluates in, and [1] is its
+       equivalent for a 1 -> n decay. madspace generates its momenta in the lab
+       frame, so unlike madevent it reaches the requested frame in two steps,
+       through the rest frame of the incoming system: a single boost from the
+       lab would leave a Wigner rotation behind and pick different polarisation
+       axes than madevent.
    OM: BUG FIX (mg7): the initial-state mirror paired each event with a matrix
        element evaluated on the momenta *before* the mirror was applied. madspace
        covers the beam-swapped copy of an asymmetric initial state by rotating

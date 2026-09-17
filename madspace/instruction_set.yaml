@@ -1787,6 +1787,21 @@ momenta_to_x1x2:
       type: [float]
       desc:
 
+boost_to_frame:
+  inputs:
+    - name: p_ext
+      type: [float, n, 4]
+      desc: external momenta
+    - name: frame_mask
+      type: [int, single, n]
+      desc: >
+        1 for every particle whose momenta are summed up to define the
+        rest frame, 0 for the others
+  outputs:
+    - name: p_frame
+      type: [float, n, 4]
+      desc: all momenta boosted into that rest frame
+
 
 ---
 title: Invariants

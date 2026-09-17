@@ -3639,6 +3639,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external (adding #ifdef CUDA) is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
     def get_external_line(self, wf, argument):
+        # NB: always the generic ixxxxx/oxxxxx/vxxxxx/sxxxxx, never the
+        # z-axis-optimised ipzxxx/imzxxx/ixzxxx (and their o counterparts) that
+        # the base GPUFOHelasCallWriter picks for a massless external fermion.
+        # Those assume px == py == 0 and E == +-pz for legs 1 and 2, which only
+        # holds in the frames where the beams run along z. The matrix element is
+        # called on momenta boosted into the frame the run card's me_frame asks
+        # for (madevent: boost_to_frame in genps.f; mg7: the boost_to_frame
+        # instruction madspace applies before the call), and in e.g. the rest
+        # frame of one final-state particle the incoming partons are not along z
+        # at all. Do not reintroduce them without gating on me_frame.
         call = ''
         call = call + helas_call_writers.HelasCallWriter.mother_dict[\
             argument.get_spin_state_number()].lower()
