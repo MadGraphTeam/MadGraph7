@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 3.8.0 (XX/XX/XX):
+   OM: Bug fix: OrganizeModelExpression.track_dependant is a class attribute that
+       analyze_parameters() was extending in place, so the tracked variables of one
+       UFO model leaked into every model imported afterwards in the same process.
+       Importing a Gmu-scheme model (no external aEWM1) added 'Gf' to the class
+       list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
+       ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
+       Each instance now works on its own copy.
    OM: Removed MadAnalysis4 support. The 'install MadAnalysis4' command, the
        'madanalysis_path'/'td_path' configuration options, the 'plot' command of
        both madevent and aMC@NLO, the plot_card.dat and the topdrawer-based

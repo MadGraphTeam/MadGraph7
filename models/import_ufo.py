@@ -2559,6 +2559,13 @@ class OrganizeModelExpression:
     def __init__(self, model):
     
         self.model = model  # UFOMODEL
+        # track_dependant is a class attribute, and analyze_parameters() extends
+        # it in place ('Gf' for a model without an external aEWM1, then the
+        # running scales). Without this private copy those entries stay on the
+        # class and every model imported later in the same process inherits
+        # them: importing a Gmu model first then makes loop_sm group mdl_MW
+        # under ('aEWM1','Gf') instead of ('aEWM1',).
+        self.track_dependant = list(self.track_dependant)
         self.perturbation_couplings = {}
         try:
             for order in model.all_orders: # Check if it is a loop model or not
