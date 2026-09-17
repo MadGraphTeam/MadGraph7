@@ -609,8 +609,12 @@ JAMP(:,:) = (0d0,0d0)
 %(jampflow_lines)s
 
     if(init_mode)then
+      ampmax_zero = 0d0
+      DO I=1, NGRAPHS
+        ampmax_zero = max(ampmax_zero, abs(AMP(I)%COMP(2**NPWAVE-1)))
+      ENDDO
       DO I=1, NGRAPHS	
-        if (AMP(I)%COMP(2**NPWAVE-1).ne.0) then
+        if (abs(AMP(I)%COMP(2**NPWAVE-1)).gt.zeroamp_tol*ampmax_zero) then
        	  zeroamp_%(proc_id)s(ihel,i) = .false.
        endif
       ENDDO

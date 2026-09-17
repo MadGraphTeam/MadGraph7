@@ -10228,7 +10228,11 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         printzeroamp = []
         for iproc in range(len(matrix_elements)):
             printzeroamp.append(\
-                "        call print_zero_amp%i()" % ( iproc + 1))
+                # PRINT_ZERO_AMP_<n> is the reporter defined by the matrix
+                # template; PRINT_ZERO_AMP<n> (no underscore) is the empty stub
+                # auto_dsig_v4.inc emits.  Calling the stub silently disabled
+                # the whole hel_zeroamp optimisation.
+                "        call print_zero_amp_%i()" % ( iproc + 1))
         replace_dict['print_zero_amp'] = "\n".join(printzeroamp)
         
         
