@@ -101,8 +101,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # (see backend_variants below); only genuinely backend-agnostic files
                      # (no backend/ counterpart) are copied flat into SubProcesses/. umami.h
                      # is the only one needed outside standalone mode too (it's the header
-                     # for backend/<variant>/umami.cc's UMAMI API); nvtx.h/rambo.h are
-                     # standalone-driver-only (see _standalone_extra_files below).
+                     # for backend/<variant>/umami.cc's UMAMI API); nvtx.h is
+                     # standalone-driver-only (see _standalone_extra_files below). The
+                     # rambo/random-number sources live once in src/rambo/
                      'SubProcesses': relative_path_list(madmatrix_templates, ['umami.h']),
                      # run_card.toml is generated in finalize() (ProcessExporterMG7.create_run_card)
                      # from the template, not copied verbatim.
@@ -130,6 +131,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             sorted(os.listdir(pjoin(backend_template_dir, _backend_variant))))
     del _backend_variant
 
+    # Rambo/random-number files copy in src/rambo/
+    rambo_template_dir = pjoin(madmatrix_templates, 'src', 'rambo')
+    from_template['src/rambo'] = relative_path_list(
+        rambo_template_dir, sorted(os.listdir(rambo_template_dir)))
+
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
     # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
     # etc.) are NOT linked into P* at all: they are compiled straight from the
@@ -149,7 +155,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # 'makefile'.
     p_makefiles = ['madmatrix.mk']
 
-    dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses',
+    dirs_to_create = ['bin', 'src', 'src/rambo', 'lib', 'Cards', 'SubProcesses',
                       'backend',
                       'backend/cpu',
                       'backend/simd',
@@ -301,11 +307,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     p_makefiles = ProcessExporterMadMatrix.p_makefiles + ['madmatrix_standalone.mk']
 
     # Standalone-only template files needed to build check_sa.exe
-    _standalone_extra_files = ['check_sa.cc', 'nvtx.h', 'rambo.h',
-                               'RamboSamplingKernels.cc', 'RamboSamplingKernels.h',
-                               'CommonRandomNumberKernel.cc', 'CommonRandomNumbers.h',
-                               'RandomNumberKernels.h',
-                               'massless_rambo.h', 'timer.h', 'timermap.h']
+    _standalone_extra_files = ['check_sa.cc', 'nvtx.h', 'timer.h', 'timermap.h']
 
     from_template = dict(ProcessExporterMadMatrix.from_template)
     from_template['SubProcesses'] = (ProcessExporterMadMatrix.from_template['SubProcesses']
