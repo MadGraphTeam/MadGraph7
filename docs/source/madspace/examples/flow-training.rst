@@ -12,12 +12,11 @@ Setting up the physics
 --------------------------
 
 The mapping, cuts, matrix element, PDF and scale are exactly the same building blocks as the
-:doc:`earlier integrator <integrator>`, generated with ``output mg7 PROC_ggttg`` beforehand:
+:doc:`earlier integrator <integrator>`, generated with ``output mg7 PROC_ggttg`` and
+``make BACKEND=scalar`` beforehand:
 
 .. code-block:: python
 
-    import glob
-    import json
     import os
 
     import numpy as np
@@ -41,8 +40,7 @@ The mapping, cuts, matrix element, PDF and scale are exactly the same building b
     mapping = ms.PhaseSpaceMapping(masses, E_CM, mode="propagator", cuts=cuts)
 
     proc_dir = "PROC_ggttg"
-    meta = json.load(open(os.path.join(proc_dir, "SubProcesses", "subprocesses.json")))[0]
-    me_path = glob.glob(os.path.join(proc_dir, meta["me_path"].format(device="*")))[0]
+    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_P0_gg_ttxg_scalar.so")
     param_card = os.path.join(proc_dir, "Cards", "param_card.dat")
 
     ctx = ms.default_context()
@@ -54,7 +52,7 @@ The mapping, cuts, matrix element, PDF and scale are exactly the same building b
     )
 
     PDF_SET = "NNPDF40_lo_as_01180"
-    import lhapdf
+    import lhapdf  # only used below to locate the installed PDF set
     pdf_dir = os.path.join(lhapdf.paths()[0], PDF_SET)
     pdf_grid = ms.PdfGrid(os.path.join(pdf_dir, f"{PDF_SET}_0000.dat"))
     pdf_grid.initialize_globals(ctx)
@@ -90,21 +88,26 @@ globals, created by ``initialize_globals``:
     )
     flow.initialize_globals(ctx, seed=0)
 
-Building the fused graph
-----------------------------
+Building the fused sampling graph
+--------------------------------------
 
 :py:meth:`FunctionBuilder.random <madspace.FunctionBuilder.random>` draws the random numbers
 inside the graph itself, given a symbolic batch size. Every other piece is embedded the same
 way each building block embeds any other: ``build_forward`` for a
 :py:class:`Mapping <madspace.Mapping>`, ``build_function`` for a
 :py:class:`FunctionGenerator <madspace.FunctionGenerator>`. The three Jacobians, from the flow,
-the mapping and the cross section itself, multiply into one weight:
+the mapping and the cross section itself, multiply into one weight. Besides that weight, the
+graph also returns ``y``, the point the flow produced before the mapping turned it into
+momenta, needed below to train the flow:
 
 .. code-block:: python
 
     fb = ms.FunctionBuilder(
         ms.NamedTypes([("batch_size", ms.Type([ms.batch_size]))]),
-        ms.NamedTypes([("weight", ms.batch_float)]),
+        ms.NamedTypes([
+            ("weight", ms.batch_float),
+            ("y", ms.batch_float_array(mapping.random_dim())),
+        ]),
     )
     n = fb.input(0)
     r = fb.random(n, ms.Value(mapping.random_dim()))
@@ -116,59 +119,74 @@ the mapping and the cross section itself, multiply into one weight:
     )
     weight = fb.mul(fb.mul(flow_out["det"], mapping_out["det"]), xsec_out["matrix_element"])
     fb.output(0, weight)
-    func = fb.function()
+    fb.output(1, flow_out["data"])
+    sampling_func = fb.function()
 
-The compiled function takes a single argument, how many events to generate, and returns the
-fully differential weight for each of them.
+The compiled function takes a single argument, how many events to generate.
+
+The flow's own probability
+------------------------------
+
+Training needs the density the flow assigns to a point it already produced, not just the point
+itself. A :py:class:`Flow <madspace.Flow>` is invertible, so :py:meth:`Mapping.inverse_function
+<madspace.Mapping.inverse_function>` builds that as a standalone function of ``y``, with
+:py:class:`madspace.torch.FunctionModule` wrapping it so PyTorch can differentiate through it
+with respect to the flow's parameters:
+
+.. code-block:: python
+
+    flow_prob_module = FunctionModule(flow.inverse_function(), ctx)
 
 Training
 -----------
 
-:py:class:`madspace.torch.FunctionModule` wraps the graph as an ``nn.Module``, exposing every
-trainable global as a parameter. Because a normalizing flow always integrates to one, the
-average weight over its own samples already equals the cross section however the flow is
-trained; minimizing the average of the squared weight reduces its variance without biasing
-that estimate, the same principle behind Kleiss and Pittau's multichannel weight optimization:
+Sampling and evaluating the cross section, done through ``sampling_func`` above, does not
+support PyTorch autograd, since the matrix element is not differentiable with respect to the
+flow's parameters this way. Training instead follows MadNIS: draw a batch from the current
+flow with ``sampling_func``, treat its weight as a constant, and adjust the flow's parameters
+so that its own density tracks that weight, minimizing the self-normalized Kullback-Leibler
+divergence between the two:
 
 .. code-block:: python
 
-    module = FunctionModule(func, ctx)
-    optimizer = torch.optim.Adam(module.parameters(), lr=1e-4)
-    batch_size = torch.tensor([4096], dtype=torch.int32)
+    sampling_runtime = ms.FunctionRuntime(sampling_func, ctx)
+    optimizer = torch.optim.Adam(flow_prob_module.parameters(), lr=1e-3)
+    batch_size = np.array([256], dtype=np.int32)
 
     for step in range(300):
+        weight, y = sampling_runtime(batch_size)
+        weight, y = torch.tensor(weight), torch.tensor(y)
+
         optimizer.zero_grad()
-        weight = module(batch_size)
-        loss = weight.square().mean()
+        _, flow_prob = flow_prob_module(y)
+        loss = -(weight / weight.mean() * torch.log(flow_prob)).mean()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(module.parameters(), 1.0)
         optimizer.step()
 
-The matrix element has long tails, so a few batches produce a very large gradient; clipping
-keeps those from derailing the training.
+Because the flow already integrates to one over its own samples, the average weight is an
+unbiased estimate of the cross section no matter how well the flow is trained; this loss only
+reshapes the flow to reduce that estimate's variance.
 
 Checking the result
 -----------------------
 
-The trained weights already live in ``ctx``, so evaluating the same graph without going
-through PyTorch, with a plain :py:class:`FunctionRuntime <madspace.FunctionRuntime>` and
-NumPy, reports the trained integrator's performance:
+The trained weights already live in ``ctx``, so evaluating ``sampling_func`` again with the
+same NumPy runtime reports the trained integrator's performance:
 
 .. code-block:: python
 
     def integrate(n_events):
-        runtime = ms.FunctionRuntime(func, ctx)
-        w = runtime(np.array([n_events], dtype=np.int32))
-        return w.mean(), w.std() / np.sqrt(n_events)
+        weight, _ = sampling_runtime(np.array([n_events], dtype=np.int32))
+        return weight.mean(), weight.std() / np.sqrt(n_events)
 
     sigma, error = integrate(50000)
     print(f"sigma = {sigma:.2f} +- {error:.2f} pb  (rel. error {error / sigma * 100:.2f}%)")
 
 ::
 
-    sigma = 238.64 +- 5.47 pb  (rel. error 2.29%)
+    sigma = 239.42 +- 1.15 pb  (rel. error 0.48%)
 
 This is a shorter, less tuned training loop than either MadGraph7's own event generator or the
 external MadNIS package, both of which use more sophisticated losses and training schedules.
-Even so, the relative error is roughly half of what an untrained flow gives for the same
-number of samples.
+Even so, the relative error is well below what an untrained flow gives for the same number of
+samples.
