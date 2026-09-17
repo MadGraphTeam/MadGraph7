@@ -273,7 +273,7 @@ namespace
       << "  " << argv0 << " [matrix] [-v|--verbose] [<energy>]\n"
       << "  " << argv0 << " perf [-v|--verbose] [-f|--flavor <int>] [--rambo-massless]"
       << " [-e|--events <file.lhe>] [--momenta <file>] [--dump-momenta <file>] [--dump-me <file>]"
-      << " [--energy <GeV>] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
+      << " [--channel-loop|-cl] [--energy <GeV>] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
       << "  " << argv0 << " -p [opts]   (legacy alias for `perf`)\n"
       << "\n"
       << "Subcommands:\n"
@@ -301,6 +301,12 @@ namespace
       << "                    (E,px,py,pz per leg per event) as written by --dump-momenta.\n"
       << "  --dump-momenta <file>  (perf only) Write the momenta of every event, raw doubles.\n"
       << "  --dump-me <file>  (perf only) Write the matrix element of every event, raw doubles.\n"
+      << "  --channel-loop|-cl  (perf only, CPU builds only) For every event, print every\n"
+      << "                    diagram's (\"channel\"'s, 1-based = diagram index + 1) share\n"
+      << "                    alpha = numerator_diagram / denominator and alpha * ME, to see\n"
+      << "                    which channel actually dominates that event. Independent of -v;\n"
+      << "                    prints CPPProcess::ndiagrams lines per event, so this is slow and\n"
+      << "                    verbose for large event counts.\n"
       << "  --energy <GeV>    (perf only) Ecms for RAMBO (default 1500 GeV).\n"
       << "\n"
       << "perf-mode defaults if positional args are omitted:\n"
@@ -422,30 +428,39 @@ namespace
     const std::vector<int>& invWordSoa,
     const std::vector<double>& invMassSoa,
     const std::vector<unsigned int>& invCountSoa,
-    int ninvar
+    int ninvar,
+    // --channel-loop: per-diagram alpha_c = numerator/denominator, SoA [i_diag*nevt+ievt];
+    // nullptr (default) => not requested
+    double* amp2Out = nullptr
 #endif
   )
   {
     constexpr unsigned int UmamiInKeyMax = 5;
     timermap.start( "3a SigmaKin" );
     UmamiInputKey in_keys[UmamiInKeyMax] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
-    UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+    UmamiOutputKey out_keys[2] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_DIAGRAM_AMP2 };
     unsigned int nkeys = 2;
+    unsigned int nkeysOut = 1;
 #ifdef MGONGPUCPP_GPUIMPL
     const void* inputs[UmamiInKeyMax] = { devUmamiMomenta.data(), devFlv.data() };
-    void* outputs[1] = { devUmamiMEs.data() };
+    void* outputs[2] = { devUmamiMEs.data(), nullptr };
 #else
     const void* inputs[UmamiInKeyMax] = { umamiMomenta.data(), flvVec.data() };
-    void* outputs[1] = { umamiMEs.data() };
+    void* outputs[2] = { umamiMEs.data(), nullptr };
     if( ninvar > 0 )
     {
       in_keys[nkeys] = UMAMI_IN_INVARIANT_COUNT;          inputs[nkeys] = invCountSoa.data(); ++nkeys;
       in_keys[nkeys] = UMAMI_IN_INVARIANT_PIDS_AND_MASKS; inputs[nkeys] = invWordSoa.data();  ++nkeys;
       in_keys[nkeys] = UMAMI_IN_INVARIANT_MASSES;         inputs[nkeys] = invMassSoa.data();  ++nkeys;
     }
+    if( amp2Out != nullptr )
+    {
+      outputs[nkeysOut] = amp2Out;
+      nkeysOut = 2;
+    }
 #endif
     UmamiStatus st = umami_matrix_element(
-      handle, nevt, nevt, 0, nkeys, in_keys, inputs, 1, out_keys, outputs );
+      handle, nevt, nevt, 0, nkeys, in_keys, inputs, nkeysOut, out_keys, outputs );
     wavetime += timermap.stop();
     if( st != UMAMI_SUCCESS )
     {
@@ -905,9 +920,17 @@ namespace
                      bool noInvariants = false,
                      const std::string& momentaFile = "",
                      const std::string& dumpMomentaFile = "",
-                     const std::string& dumpMEFile = "" )
+                     const std::string& dumpMEFile = "",
+                     bool channelLoop = false )
   {
     const unsigned int nevt = gpublocks * gputhreads;
+#ifdef MGONGPUCPP_GPUIMPL
+    if( channelLoop )
+    {
+      std::cerr << "ERROR: --channel-loop is not supported for GPU backends; use a CPU build." << std::endl;
+      return 2;
+    }
+#endif
 
     // LHE (or raw binary momenta) instead of generating. Processed in batches of
     // nevt and niter is derived from the number of events read.
@@ -993,6 +1016,9 @@ namespace
     std::vector<int> invWordSoa( (std::size_t)std::max( ninvar, 1 ) * nevt );
     std::vector<double> invMassSoa( (std::size_t)std::max( ninvar, 1 ) * nevt );
     std::vector<unsigned int> invCountSoa( nevt, (unsigned int)ninvar );
+    // --channel-loop: per-diagram alpha_c = numerator/denominator, SoA [i_diag*nevt+ievt]
+    std::vector<double> amp2Buf;
+    if( channelLoop ) amp2Buf.assign( (std::size_t)CPPProcess::ndiagrams * nevt, 0. );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -1146,7 +1172,8 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
                       devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
 #else
-                      umamiMomenta, flvVec, umamiMEs, invWordSoa, invMassSoa, invCountSoa, ninvar
+                      umamiMomenta, flvVec, umamiMEs, invWordSoa, invMassSoa, invCountSoa, ninvar,
+                      channelLoop ? amp2Buf.data() : nullptr
 #endif
                       ) )
       {
@@ -1223,6 +1250,32 @@ namespace
           std::cout << std::string( SEP79, '-' ) << std::endl;
         }
       }
+
+#ifndef MGONGPUCPP_GPUIMPL
+      if( channelLoop )
+      {
+        for( unsigned int ievt = 0; ievt < nreal; ++ievt )
+        {
+          std::cout << std::string( SEP79, '-' ) << std::endl
+                    << "channel contribution for event #" << ( (std::size_t)iiter * nevt + ievt + 1 ) << std::endl
+                    << "channel alpha alphaME" << std::endl;
+          double alphaSum = 0.;
+          for( int idiag = 0; idiag < CPPProcess::ndiagrams; ++idiag )
+          {
+            double alpha = amp2Buf[(std::size_t)idiag * nevt + ievt];
+            double alphaME = alpha * mes[ievt];
+            alphaSum += alpha;
+            // channel is 1-based (diagram index + 1), matching the dump's "channel" /
+            // MGONGPU_SELECTED_CHANNEL / MGONGPU_INVP2_CHANNEL convention
+            std::cout << ( idiag + 1 ) << " " << std::scientific << std::setprecision( 8 )
+                      << alpha << " " << alphaME << std::defaultfloat << std::endl;
+          }
+          std::cout << "alphaSum " << std::scientific << std::setprecision( 8 )
+                    << alphaSum << " " << mes[ievt] << std::defaultfloat << std::endl
+                    << std::string( SEP79, '-' ) << std::endl;
+        }
+      }
+#endif
     }
 
     double sumgtim = 0, sumrtim = 0, sumwtim = 0;
@@ -1303,6 +1356,7 @@ int main( int argc, char** argv )
   std::string momentaFile;     // --momenta: read momenta from this raw binary file (perf mode only)
   std::string dumpMomentaFile; // --dump-momenta: write the momenta of every event (perf mode only)
   std::string dumpMEFile;      // --dump-me: write the matrix element of every event (perf mode only)
+  bool channelLoop = false;    // --channel-loop|-cl: print every diagram's alpha/alpha*ME per event
   double perfEnergy = -1.;     // --energy: Ecms for the perf-mode RAMBO
 
   // Optional leading subcommand (no leading dash).
@@ -1351,6 +1405,11 @@ int main( int argc, char** argv )
     else if( arg == "--dump-me" && argn + 1 < argc )
     {
       dumpMEFile = argv[++argn];
+      mode = MODE_PERF;
+    }
+    else if( arg == "--channel-loop" || arg == "-cl" )
+    {
+      channelLoop = true;
       mode = MODE_PERF;
     }
     else if( arg == "--energy" && argn + 1 < argc && is_float( argv[argn + 1] ) )
@@ -1420,5 +1479,5 @@ int main( int argc, char** argv )
   }
 
   return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile,
-                        noInvariants, momentaFile, dumpMomentaFile, dumpMEFile );
+                        noInvariants, momentaFile, dumpMomentaFile, dumpMEFile, channelLoop );
 }
