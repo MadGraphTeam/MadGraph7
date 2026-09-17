@@ -16,8 +16,6 @@ the soft and collinear regions where it diverges:
 
 .. code-block:: python
 
-    import glob
-    import json
     import os
 
     import numpy as np
@@ -39,13 +37,12 @@ Loading the matrix element and the PDF
 ------------------------------------------
 
 The same pattern as the :doc:`matrix element <matrix-element>` and :doc:`PDF <pdf>`
-examples, generated with ``output mg7 PROC_ggttg`` beforehand:
+examples, generated with ``output mg7 PROC_ggttg`` and ``make BACKEND=scalar`` beforehand:
 
 .. code-block:: python
 
     proc_dir = "PROC_ggttg"
-    meta = json.load(open(os.path.join(proc_dir, "SubProcesses", "subprocesses.json")))[0]
-    me_path = glob.glob(os.path.join(proc_dir, meta["me_path"].format(device="*")))[0]
+    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_P0_gg_ttxg_scalar.so")
     param_card = os.path.join(proc_dir, "Cards", "param_card.dat")
 
     ctx = ms.default_context()

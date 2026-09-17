@@ -56,18 +56,3 @@ for points outside its support. The fraction of points that pass depends on the 
 ``"rambo"`` samples the full phase space and lets these cuts reject part of it afterwards::
 
     physical fraction: 0.9743
-
-Checking the cut
--------------------
-
-No accepted event falls below the transverse-momentum cut:
-
-.. code-block:: python
-
-    passed = det != 0
-    pt = np.hypot(momenta[passed, 4, 1], momenta[passed, 4, 2])
-    print(f"smallest gluon pT among passing events: {pt.min():.2f} GeV")
-
-::
-
-    smallest gluon pT among passing events: 20.05 GeV

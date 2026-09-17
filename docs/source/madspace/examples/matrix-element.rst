@@ -16,37 +16,37 @@ At the MadGraph7 prompt::
 Then compile the matrix elements it wrote::
 
     cd PROC_ggttg/SubProcesses
-    make
+    make BACKEND=scalar
 
-This produces one shared library per subprocess under ``PROC_ggttg/lib/``, together with
-``PROC_ggttg/SubProcesses/subprocesses.json``, which describes every subprocess and points
-at its library.
+``launch`` does the same compilation automatically before starting a run, so this step can be
+skipped when going through ``launch`` instead. ``BACKEND=scalar`` picks the portable backend
+that every machine can compile, which keeps the library name the same everywhere; a plain
+``make`` instead lets it pick a faster backend suited to the local CPU, at the cost of a
+machine-dependent name.
+
+This produces one shared library per subprocess under ``PROC_ggttg/lib/``.
 
 Loading the matrix element
 -----------------------------
 
-``subprocesses.json`` gives the library path as a template, with ``{device}`` standing in
-for the compute backend the library was built for. A glob picks up whichever backend
-``make`` chose:
-
 .. code-block:: python
 
-    import glob
-    import json
     import os
 
     import numpy as np
     import madspace as ms
 
     proc_dir = "PROC_ggttg"
-    meta = json.load(open(os.path.join(proc_dir, "SubProcesses", "subprocesses.json")))[0]
-    me_glob = os.path.join(proc_dir, meta["me_path"].format(device="*"))
-    me_path = glob.glob(me_glob)[0]
+    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_P0_gg_ttxg_scalar.so")
     param_card = os.path.join(proc_dir, "Cards", "param_card.dat")
 
     ctx = ms.default_context()
     api = ctx.load_matrix_element(me_path, param_card)
     print(f"particle count: {api.particle_count()}, diagrams: {api.diagram_count()}")
+
+The library name also appears, alongside every other subprocess of the process, in
+``PROC_ggttg/SubProcesses/subprocesses.json``, as ``me_path`` with a ``{device}`` placeholder
+for the backend.
 
 :py:meth:`Context.load_matrix_element <madspace.Context.load_matrix_element>` returns a
 :py:class:`MatrixElementApi <madspace.MatrixElementApi>`, which reads the parameters from

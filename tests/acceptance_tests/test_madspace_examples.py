@@ -227,8 +227,12 @@ def ggttg_process_dir():
         mg.exec_cmd(c)
     mg.exec_cmd('output mg7 %s' % proc_dir)
 
+    # BACKEND=scalar matches the docs pages, which hardcode the resulting
+    # library name -- a plain 'make' would pick a machine-dependent SIMD
+    # backend instead.
     make = subprocess.run(
-        ['make'], cwd=pjoin(proc_dir, 'SubProcesses'), capture_output=True, text=True,
+        ['make', 'BACKEND=scalar'],
+        cwd=pjoin(proc_dir, 'SubProcesses'), capture_output=True, text=True,
     )
     if make.returncode != 0:
         _GGTTG_PROCESS_CACHE['dir'] = None

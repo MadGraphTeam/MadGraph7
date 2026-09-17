@@ -16,10 +16,9 @@ random numbers are now PyTorch tensors, since MadNIS trains with PyTorch:
 
 .. code-block:: python
 
-    import glob
-    import json
     import os
 
+    import lhapdf  # only used below to locate the installed PDF set
     import torch
     import madspace as ms
     from madnis.integrator import Integrator
@@ -39,8 +38,7 @@ random numbers are now PyTorch tensors, since MadNIS trains with PyTorch:
     mapping = ms.PhaseSpaceMapping(masses, E_CM, mode="propagator", cuts=cuts)
 
     proc_dir = "PROC_ggttg"
-    meta = json.load(open(os.path.join(proc_dir, "SubProcesses", "subprocesses.json")))[0]
-    me_path = glob.glob(os.path.join(proc_dir, meta["me_path"].format(device="*")))[0]
+    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_P0_gg_ttxg_scalar.so")
     param_card = os.path.join(proc_dir, "Cards", "param_card.dat")
 
     ctx = ms.default_context()
@@ -52,7 +50,6 @@ random numbers are now PyTorch tensors, since MadNIS trains with PyTorch:
     )
 
     PDF_SET = "NNPDF40_lo_as_01180"
-    import lhapdf
     pdf_dir = os.path.join(lhapdf.paths()[0], PDF_SET)
     pdf_grid = ms.PdfGrid(os.path.join(pdf_dir, f"{PDF_SET}_0000.dat"))
     pdf_grid.initialize_globals(ctx)
