@@ -10,7 +10,7 @@
 // pulled in via ProcessTables::name from backend-owned function bodies.
 //
 // Namespace-wrapped (unlike ProcessData.h) because it needs FLV_COUPLING,
-// which is itself backend-namespaced (mg5amcCpu::/mg5amcGpu::, see Parameters.h).
+// which is itself backend-namespaced (madgraph::/madgraph::, see Parameters.h).
 
 #ifndef PROCESSTABLES_H
 #define PROCESSTABLES_H 1
@@ -19,11 +19,7 @@
 #include "ProcessData.h"
 #include "Parameters.h" // for FLV_COUPLING::max_flavor
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madgraph
 {
   namespace ProcessTables
   {

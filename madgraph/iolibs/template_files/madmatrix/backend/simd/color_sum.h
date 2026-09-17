@@ -18,7 +18,7 @@
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
-namespace mg5amcCpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 

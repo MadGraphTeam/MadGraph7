@@ -16,7 +16,7 @@
 #include "mgOnGpuVectors.h" // for fptype_amp_sv
 #include "GpuAbstraction.h"
 
-namespace mg5amcGpu
+namespace madgraph
 {
   __global__ void
   computeDependentCouplings( const fptype* allgs,    // input: Gs[nevt]

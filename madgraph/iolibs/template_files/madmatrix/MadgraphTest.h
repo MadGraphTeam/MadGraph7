@@ -28,9 +28,9 @@
 #include <vector>
 
 #ifdef MGONGPUCPP_GPUIMPL
-using mg5amcGpu::CPPProcess;
+using madgraph::CPPProcess;
 #else
-using mg5amcCpu::CPPProcess;
+using madgraph::CPPProcess;
 #endif
 
 namespace

@@ -31,7 +31,7 @@
 
 #include <cfloat>
 
-namespace mg5amcGpu
+namespace madgraph
 {
   using namespace ProcessData;
   using namespace ProcessTables;

@@ -58,11 +58,7 @@
 
 namespace
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madgraph;
 
   // Fixed physics inputs
   fptype kEnergy = 1500.;                  // Ecms = 1.5 TeV and changed for the matrix mode to 1TeV

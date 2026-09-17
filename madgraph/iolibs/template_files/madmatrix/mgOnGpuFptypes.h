@@ -13,11 +13,11 @@
 #include <cmath>
 #include <type_traits>
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
 #ifdef MGONGPUCPP_GPUIMPL // cuda
-namespace mg5amcGpu
+namespace madgraph
 #else
-namespace mg5amcCpu
+namespace madgraph
 #endif
 {
   //==========================================================================
@@ -125,6 +125,6 @@ namespace mg5amcCpu
 
   //==========================================================================
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MGONGPUFPTYPES_H

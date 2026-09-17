@@ -32,12 +32,8 @@
 
 #include "read_slha.h"
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   // Define FLV_COUPLING struct
   struct FLV_COUPLING {
@@ -126,19 +122,15 @@ namespace mg5amcCpu
     for( int i = 0; i < N; ++i ) out[i] = cxmake( pars->*members[i] );
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #else%(eftwarn1)s
 
 #include <cassert>
 #include <limits>
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   // Hardcoded constexpr physics parameters
   namespace Parameters // keep the same name rather than HardcodedParameters for simplicity
@@ -170,18 +162,14 @@ namespace mg5amcCpu
     %(hasbsmip)s__device__ constexpr double mdl_bsmIndepParam[nBsmIndepParam] = { %(bsmip)s };
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif
 
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   namespace Parameters_dependentCouplings
   {
@@ -271,7 +259,7 @@ namespace mg5amcCpu
   }
 #pragma GCC diagnostic pop
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 //==========================================================================
 

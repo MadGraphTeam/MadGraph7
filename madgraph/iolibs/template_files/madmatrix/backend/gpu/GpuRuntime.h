@@ -43,7 +43,7 @@ inline void assertGpuBlas( gpuBlasStatus_t code, const char *file, int line, boo
 
 //--------------------------------------------------------------------------
 
-namespace mg5amcGpu
+namespace madgraph
 {
   // Instantiate a GpuRuntime at the beginnining of the application's main to
   // invoke gpuSetDevice(0) in the constructor and book a gpuDeviceReset() call in the destructor

@@ -31,12 +31,8 @@
 
 #define XTESTID( s ) TESTID( s )
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
 #ifdef MGONGPU_CPPSIMD /* clang-format off */
 #define EXPECT_TRUE_sv( cond ) { bool_v mask( cond ); EXPECT_TRUE( maskand( mask ) ); }
@@ -65,11 +61,7 @@ namespace mg5amcCpu
 
 TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testmisc )
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madgraph;
 
   //--------------------------------------------------------------------------
 

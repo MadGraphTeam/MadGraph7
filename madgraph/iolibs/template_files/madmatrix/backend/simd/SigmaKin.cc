@@ -34,7 +34,7 @@
 #include <limits>
 #include <vector>
 
-namespace mg5amcCpu
+namespace madgraph
 {
   using namespace ProcessData;
   using namespace ProcessTables;

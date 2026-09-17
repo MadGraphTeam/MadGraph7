@@ -11,8 +11,8 @@
 
 #include "MemoryAccessHelpers.h"
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-namespace mg5amcGpu
+// NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
+namespace madgraph
 {
   //----------------------------------------------------------------------------
 
@@ -141,6 +141,6 @@ namespace mg5amcGpu
 
   //----------------------------------------------------------------------------
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madgraph
 
 #endif // MemoryAccessWeights_H

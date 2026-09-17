@@ -18,7 +18,7 @@
 #include <array>
 #include <utility>
 
-using namespace mg5amcCpu;
+using namespace madgraph;
 
 namespace
 {
@@ -331,7 +331,7 @@ extern "C"
     }
 
     HostBufferBase<fptype_momenta, false> momenta( rounded_count * ProcessData::npar * 4 );
-    HostBufferBase<fptype, false> couplings( rounded_count * mg5amcCpu::Parameters_dependentCouplings::ndcoup * 2 );
+    HostBufferBase<fptype, false> couplings( rounded_count * madgraph::Parameters_dependentCouplings::ndcoup * 2 );
     HostBufferBase<fptype, false> g_s( rounded_count );
     HostBufferBase<fptype, false> helicity_random( rounded_count );
     HostBufferBase<fptype, false> color_random( rounded_count );

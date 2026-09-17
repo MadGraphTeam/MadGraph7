@@ -17,7 +17,7 @@
 #include <limits>
 #include <string>
 
-namespace mg5amcCpu
+namespace madgraph
 {
   //--------------------------------------------------------------------------
 
