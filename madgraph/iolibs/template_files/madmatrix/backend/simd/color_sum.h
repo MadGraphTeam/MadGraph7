@@ -22,7 +22,9 @@ namespace madgraph
 {
   //--------------------------------------------------------------------------
 
-
+  // No-op on cpu/simd: the normalized color matrix is already a compile-time
+  // constexpr there (see color_sum.cc); only gpu needs a runtime push to device memory.
+  inline void createNormalizedColorMatrix() {}
 
   //--------------------------------------------------------------------------
 
