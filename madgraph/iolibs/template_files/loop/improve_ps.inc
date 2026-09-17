@@ -389,7 +389,7 @@ C     frame z axis instead of its momentum, and a permutation moving z
 C     would change |M|^2 and fake an instability (blocker B11). The
 C     rotations are then taken about z (pi/2 and pi), which are just as
 C     exact and leave that spin axis where it is. Moving and massless
-C     particles carry their helicity axis along, so nothing else changes.
+C     particles carry their helicity axis along, so nothing changes.
 	  SUBROUTINE %(proc_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
@@ -464,7 +464,7 @@ C     frame z axis instead of its momentum, and a permutation moving z
 C     would change |M|^2 and fake an instability (blocker B11). The
 C     rotations are then taken about z (pi/2 and pi), which are just as
 C     exact and leave that spin axis where it is. Moving and massless
-C     particles carry their helicity axis along, so nothing else changes.
+C     particles carry their helicity axis along, so nothing changes.
 	  SUBROUTINE %(proc_prefix)s%(mp_prefix)sROTATE_PS(P_IN,P,ROTATION)
 	  IMPLICIT NONE
 C  
