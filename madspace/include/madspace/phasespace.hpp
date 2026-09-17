@@ -16,6 +16,7 @@
 #include "phasespace/luminosity.hpp"
 #include "phasespace/madnis.hpp"
 #include "phasespace/matrix_element.hpp"
+#include "phasespace/mlm_clustering.hpp"
 #include "phasespace/mlp.hpp"
 #include "phasespace/multichannel.hpp"
 #include "phasespace/observable.hpp"

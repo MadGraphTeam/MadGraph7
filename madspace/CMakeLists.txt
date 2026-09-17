@@ -250,6 +250,7 @@ add_library(
     src/phasespace/channel_weight_network.cpp
     src/phasespace/pdf.cpp
     src/phasespace/matrix_element.cpp
+    src/phasespace/mlm_clustering.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
     include/madspace/util.hpp
@@ -306,6 +307,7 @@ add_library(
     include/madspace/phasespace/channel_weight_network.hpp
     include/madspace/phasespace/pdf.hpp
     include/madspace/phasespace/matrix_element.hpp
+    include/madspace/phasespace/mlm_clustering.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/mixmax/mixmax.hpp
@@ -354,6 +356,7 @@ set(
     src/kernels/rambo.hpp
     src/kernels/cuts.hpp
     src/kernels/chili.hpp
+    src/kernels/mlm.hpp
     src/kernels/nn.hpp
     src/kernels/observables.hpp
     src/kernels/discrete.hpp

@@ -994,6 +994,50 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("seed") = std::nullopt
         );
 
+    py::classh<MLMClustering, FunctionGenerator> mlm(m, "MLMClustering");
+    add_enum<JetScaleScheme>(
+        mlm,
+        "JetScaleScheme",
+        {
+            {"emission", JetScaleScheme::emission},
+            {"production", JetScaleScheme::production},
+        }
+    );
+    mlm
+        .def(
+            py::init<
+                std::vector<Topology>,
+                nested_vector3<std::size_t>,
+                nested_vector2<std::size_t>,
+                double,
+                JetScaleScheme,
+                std::unordered_map<int, int>,
+                double,
+                double,
+                double,
+                bool,
+                std::vector<int>,
+                int>(),
+            py::arg("topologies"),
+            py::arg("permutations"),
+            py::arg("diagram_indices"),
+            py::arg("cm_energy"),
+            py::arg("jet_scale_scheme") = JetScaleScheme::production,
+            py::arg("pdg_color_types") = std::unordered_map<int, int>{},
+            py::arg("xqcut") = 0.,
+            py::arg("bw_cutoff") = 15.,
+            py::arg("jet_radius") = 0.4,
+            py::arg("hadronic") = true,
+            py::arg("external_pdg_ids") = std::vector<int>{},
+            py::arg("max_jet_flavor") = 4
+        )
+        .def_property_readonly(
+            "cluster_state_machine", &MLMClustering::cluster_state_machine
+        )
+        .def_property_readonly("external_masses", &MLMClustering::external_masses)
+        .def_property_readonly("bw_masses", &MLMClustering::bw_masses)
+        .def_property_readonly("bw_widths", &MLMClustering::bw_widths);
+
     py::classh<VegasGridOptimizer>(m, "VegasGridOptimizer")
         .def(
             "add_data",
@@ -1193,7 +1237,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2")
-        );
+        )
+        .def(py::init<const MLMClustering&>(), py::arg("clustering"))
+        .def("is_mlm", &EnergyScale::is_mlm);
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
     py::classh<DifferentialCrossSection::CachedScale>(m, "CachedScale")

@@ -540,18 +540,26 @@ class MadgraphProcess:
             "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
             "partonic_energy": ms.EnergyScale.partonic_energy,
         }
-        if beam_args["dynamical_scale_choice"] in dynamical_scales:
-            dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+        # "mlm" is not one of the closed-form scale choices: it needs the diagram
+        # topologies of each subprocess, so the EnergyScale is built later, in
+        # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
+        if beam_args["dynamical_scale_choice"] == "mlm":
+            self.mlm_clustering = True
+            self.scale_kwargs = {}
+        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
+            self.mlm_clustering = False
+            self.scale_kwargs = dict(
+                dynamical_scale_type=dynamical_scales[
+                    beam_args["dynamical_scale_choice"]
+                ],
+                ren_scale_fixed=beam_args["fixed_ren_scale"],
+                fact_scale_fixed=beam_args["fixed_fact_scale"],
+                ren_scale=beam_args["ren_scale"],
+                fact_scale1=beam_args["fact_scale1"],
+                fact_scale2=beam_args["fact_scale2"],
+            )
         else:
             raise ValueError("Unknown dynamical scale choice")
-        self.scale_kwargs = dict(
-            dynamical_scale_type=dynamical_scale_type,
-            ren_scale_fixed=beam_args["fixed_ren_scale"],
-            fact_scale_fixed=beam_args["fixed_fact_scale"],
-            ren_scale=beam_args["ren_scale"],
-            fact_scale1=beam_args["fact_scale1"],
-            fact_scale2=beam_args["fact_scale2"],
-        )
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for.
@@ -1986,9 +1994,34 @@ class MadgraphSubprocess:
             else None
         )
 
-        self.scale = ms.EnergyScale(
-            particle_count=self.particle_count, **self.process.scale_kwargs
-        )
+        if self.process.mlm_clustering:
+            mc_data = self.build_multi_channel_data()
+            self.scale = ms.EnergyScale(
+                ms.MLMClustering(
+                    topologies=[topo[0] for topo in mc_data.topologies],
+                    permutations=mc_data.permutations,
+                    diagram_indices=mc_data.diagram_indices,
+                    cm_energy=self.process.e_cm,
+                    jet_scale_scheme=getattr(
+                        ms.MLMClustering.JetScaleScheme,
+                        self.process.run_card["beam"]["jet_scale_scheme"],
+                    ),
+                    pdg_color_types={
+                        int(key): value
+                        for key, value in self.meta["pdg_color_types"].items()
+                    },
+                    xqcut=self.process.run_card["phasespace"]["xqcut"],
+                    bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+                    jet_radius=self.process.run_card["beam"]["jet_radius"],
+                    hadronic=not self.process.leptonic,
+                    external_pdg_ids=all_pids,
+                    max_jet_flavor=self.process.run_card["beam"]["max_jet_flavor"],
+                )
+            )
+        else:
+            self.scale = ms.EnergyScale(
+                particle_count=self.particle_count, **self.process.scale_kwargs
+            )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(all_api_paths)
@@ -2558,12 +2591,24 @@ class MadgraphSubprocess:
             flavor_factors.append(len(flav["options"]))
             flavor_mirror.append(flav["mirror"])
 
+        # With MLM the clustering already selects a diagram, so the matrix element
+        # takes it as an input instead of drawing one from its own random number.
+        if self.scale.is_mlm():
+            me_inputs = [
+                ms.MatrixElement.diagram_in
+                if inp == ms.MatrixElement.random_diagram_in
+                else inp
+                for inp in ms.Integrand.matrix_element_inputs
+            ]
+        else:
+            me_inputs = ms.Integrand.matrix_element_inputs
+
         cross_sections = []
         for matrix_element in self.matrix_elements:
             if matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    ms.Integrand.matrix_element_inputs,
+                    me_inputs,
                     ms.Integrand.matrix_element_outputs,
                     True,
                 )
@@ -2572,7 +2617,7 @@ class MadgraphSubprocess:
                 mat = ms.MatrixElement(
                     0xBADCAFE,
                     self.particle_count,
-                    ms.Integrand.matrix_element_inputs,
+                    me_inputs,
                     ms.Integrand.matrix_element_outputs,
                     self.meta["diagram_count"],
                     True,

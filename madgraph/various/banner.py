@@ -6633,7 +6633,23 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'fact_scale2', 91.188)
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
-                     'half_transverse_mass', 'partonic_energy'])
+                     'half_transverse_mass', 'partonic_energy', 'mlm'])
+        # Jet radius entering the kt clustering measure of the MLM back-clustering
+        # (only used when dynamical_scale_choice = "mlm").
+        self.add_toml_param('beam', 'jet_radius', 0.4)
+        # Heaviest quark flavour treated as a jet by the MLM back-clustering
+        # (the counterpart of maxjetflavor in the legacy run_card).
+        self.add_toml_param('beam', 'max_jet_flavor', 4)
+        # How the MLM back-clustering assigns a clustering scale to each
+        # outgoing jet (written to the LHE as pt_clust_i, and used by Pythia as
+        # the shower starting scale for that parton).
+        #   "production": the hardest vertex on the parton line the leg belongs
+        #                 to, i.e. the scale at which that line was produced.
+        #                 This is what madevent does.
+        #   "emission":   the vertex at which the leg itself was emitted, i.e.
+        #                 the softest clustering it takes part in.
+        self.add_toml_param('beam', 'jet_scale_scheme', "production",
+            allowed=['production', 'emission'])
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True)
@@ -6714,6 +6730,11 @@ class RunCardMG7(RunCard):
                     "(-1 keeps all channels)")
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
+        # Generation-level merging cut, the counterpart of xqcut in the legacy
+        # run_card: a matrix-element jet emission below this scale is left to
+        # the parton shower, so the event is dropped. Only used with
+        # dynamical_scale_choice = "mlm"; 0 disables it.
+        self.add_toml_param('phasespace', 'xqcut', 0.0)
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True)
 
         # ----------------------------- [madnis] -----------------------

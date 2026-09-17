@@ -25,10 +25,17 @@ EnergyScale::EnergyScale(
     _fact_scale1(fact_scale1),
     _fact_scale2(fact_scale2) {}
 
+EnergyScale::EnergyScale(const MLMClustering& clustering) :
+    FunctionGenerator("EnergyScale", clustering.arg_types(), clustering.return_types()),
+    _clustering(clustering) {}
+
 NamedVector<Value> EnergyScale::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto momenta = args.at(0);
+    if (_clustering) {
+        return _clustering.value().build_function(fb, args);
+    }
     if (_ren_scale_fixed && _fact_scale_fixed) {
         auto batch_size = fb.batch_size({momenta});
         return {
