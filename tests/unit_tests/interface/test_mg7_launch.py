@@ -786,3 +786,62 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7MeFrameTest(unittest.TestCase):
+    """run_card me_frame -> the particle list the matrix element is boosted
+    into, and the number of incoming particles the boost starts from."""
+
+    # a collision of two gluons into a Z plus gluons, so that particle 3 is
+    # massive (a frame can be asked for it) and the others are not
+    MASSES = {21: 0.0, 23: 91.188}
+
+    def resolve(self, me_frame, is_decay, particle_count=4):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        process = object.__new__(mg7_launch.MadgraphProcess)
+        process.run_card = {'run': {'me_frame': me_frame}}
+        process.is_decay = is_decay
+        incoming = [23] if is_decay else [21, 21]
+        outgoing = [23] + [21] * (particle_count - len(incoming) - 1)
+        process.subprocess_data = [{'incoming': incoming, 'outgoing': outgoing}]
+        process.get_mass = lambda pid: self.MASSES[pid]
+        process.init_me_frame()
+        return process.me_frame, process.incoming_count
+
+    def test_the_default_applies_no_boost(self):
+        """[] is the default: the matrix element sees the momenta in the frame
+        they are generated in, which is what mg7 did before me_frame existed."""
+        self.assertEqual(self.resolve([], False), ([], 2))
+        self.assertEqual(self.resolve([], True), ([], 1))
+
+    def test_an_explicit_frame_is_passed_through(self):
+        self.assertEqual(self.resolve([1, 2], False), ([1, 2], 2))
+        self.assertEqual(self.resolve([3], False), ([3], 2))   # the Z, massive
+        self.assertEqual(self.resolve([3, 4], False), ([3, 4], 2))
+
+    def test_a_decay_keeps_what_the_card_asks_for(self):
+        """[1] is a decay's equivalent of the partonic centre of mass, but the
+        card is never second-guessed: [1, 2] on a decay is the rest frame of
+        the decaying particle plus the first decay product, and is left alone."""
+        self.assertEqual(self.resolve([1], True), ([1], 1))
+        self.assertEqual(self.resolve([1, 2], True), ([1, 2], 1))
+
+    def test_a_massless_particle_has_no_rest_frame(self):
+        """Boosting to it divides by its vanishing mass and turns every
+        momentum into a NaN, with nothing to say what went wrong."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False)          # leg 4 is a gluon
+        self.assertIn('massless', str(caught.exception))
+        # two particles whose sum is massive are fine, even if each is massless
+        self.assertEqual(self.resolve([2, 4], False), ([2, 4], 2))
+
+    def test_out_of_range_particle_is_rejected_before_the_compile(self):
+        """madspace would catch this too, but only once the integrands are
+        built -- after every matrix-element library has been compiled."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([5], False, particle_count=4)
+        self.assertIn('4 external particles', str(caught.exception))
+        with self.assertRaises(ValueError):
+            self.resolve([0], False)

@@ -118,8 +118,16 @@ Cuts that are **not representable** in the current MG7 cut engine ([x] unless no
   `generation.survey_*`/`[vegas]`), but most are **[x] engine-specific** and
   should just keep MG7 defaults, not be ported.
 - Misc LO: `time_of_flight`, `allow_overshoot_events`, `bypass_check`,
-  `python_seed`, `lhe_version`, `boost_event`/`me_frame`/`frame_id`,
+  `python_seed`, `lhe_version`, `boost_event`,
   `event_norm`, `keep_log`, `custom_fcts`, `ievo_eva/evaorder/eva_xcut` → [x].
+  `me_frame` → `run.me_frame` [=] (same convention: the list of external
+  particles whose momentum sum defines the rest frame the matrix element is
+  evaluated in; `frame_id` is the fortran-side encoding of it and has no MG7
+  counterpart). Values port as they are, but the *defaults* differ: LO defaults
+  to `[1,2]`, which is free there because madevent already works in the partonic
+  centre of mass, while MG7 defaults to `[]` (no boost) because madspace works
+  in the lab frame. A converter should therefore carry `me_frame` over
+  explicitly rather than treat `[1,2]` as "the default, nothing to do".
 
 ## 9. MG7-only (no LO source, keep default) — [mg7-only]
 

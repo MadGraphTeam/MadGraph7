@@ -26,6 +26,16 @@ combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
 verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
+# Lorentz frame in which the matrix element is evaluated, given as the list of
+# external particles whose momenta are summed up to define it. [] applies no
+# boost: the matrix element sees the momenta in the frame they are generated in
+# (the lab frame for a collision, the decaying particle's rest frame for a
+# decay). [1, 2] is the partonic centre of mass, which is the frame madevent
+# evaluates in, and [1] its equivalent for a 1 -> n decay; [3] would be the rest
+# frame of the third external particle. This only changes the result for a
+# matrix element that is not Lorentz invariant, i.e. a polarised one -- it is
+# then the frame the polarisations are defined in.
+me_frame = %(run.me_frame)s
 
 [gridpack]
 save_gridpack = %(gridpack.save_gridpack)s

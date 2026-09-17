@@ -273,6 +273,29 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_flavor_grouping_consistency_mg7 -pA -t0 -l INFO
 
+  acceptancetest_mg7_polarised_mirror:
+    needs: build_madspace
+    # The initial-state mirror against a polarised (non Lorentz invariant)
+    # matrix element: sigma(p p > z{+} j) and sigma(p p > z{-} j) evaluated in
+    # the Z rest frame (me_frame = [3]) must agree, because the two beams of a
+    # symmetric pp collider cannot be told apart and the mirror is what
+    # averages over them. Guards that the matrix element is evaluated on the
+    # momenta the event is written with. Self-skips if the madspace + LHAPDF
+    # stack is unavailable.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+      - name: test one of the test test_polarised_mirror_symmetry_mg7
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_polarised_mirror_symmetry_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_vegas_reproducibility:
     needs: build_madspace
     # mg7 seeded-generation reproducibility (p p > t t~, plain VEGAS-optimized

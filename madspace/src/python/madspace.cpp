@@ -177,6 +177,18 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<Value>(m, "Value")
         .def(py::init<me_int_t>(), py::arg("value"))
         .def(py::init<double>(), py::arg("value"))
+        // constant (non-batched) tensors, e.g. the frame_mask of
+        // boost_to_frame or the permutations of permute_momenta
+        .def(
+            py::init<const std::vector<me_int_t>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
+        .def(
+            py::init<const std::vector<double>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
         .def("__str__", &to_string<Value>)
         .def("__repr__", &to_string<Value>)
         .def_readonly("type", &Value::type)
@@ -792,28 +804,38 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
                 std::size_t,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2
         )
         .def(
             py::init<
                 const MatrixElementApi&,
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
-            py::arg("sample_random_inputs") = false
+            py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2
         )
         .def("matrix_element_index", &MatrixElement::diagram_count)
         .def("diagram_count", &MatrixElement::diagram_count)
-        .def("particle_count", &MatrixElement::particle_count);
+        .def("particle_count", &MatrixElement::particle_count)
+        .def("frame_mask", &MatrixElement::frame_mask)
+        .def("reference_mask", &MatrixElement::reference_mask);
 
     py::classh<MLP, FunctionGenerator> mlp(m, "MLP");
     add_enum<MLP::Activation>(
