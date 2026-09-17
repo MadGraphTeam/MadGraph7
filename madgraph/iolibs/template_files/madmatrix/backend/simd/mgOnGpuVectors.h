@@ -230,16 +230,6 @@ namespace madgraph
 
 //--------------------------------------------------------------------------
 
-// DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
-// DO NOT expose typedefs outside the namespace
-//using mgOnGpu::neppV;
-//#ifdef MGONGPU_CPPSIMD
-//using mgOnGpu::fptype_v;
-//using mgOnGpu::fptype2_v;
-//using mgOnGpu::cxtype_v;
-//using mgOnGpu::bool_v;
-//#endif
-
 //==========================================================================
 
 // NB: the madgraph namespace: types are now split per backend file, not per namespace (see #318 and #725)
@@ -258,19 +248,6 @@ namespace madgraph
   }
 #endif
 
-  /*
-#ifdef MGONGPU_CPPSIMD
-  inline std::ostream&
-  operator<<( std::ostream& out, const bool_v& v )
-  {
-    out << "{ " << v[0];
-    for ( int i=1; i<neppV; i++ ) out << ", " << (bool)(v[i]);
-    out << " }";
-    return out;
-  }
-#endif
-  */
-
   inline std::ostream&
   operator<<( std::ostream& out, const fptype_v& v )
   {
@@ -280,7 +257,7 @@ namespace madgraph
     return out;
   }
 
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
   inline std::ostream&
   operator<<( std::ostream& out, const fptype2_v& v )
   {
@@ -316,24 +293,6 @@ namespace madgraph
 
   //--------------------------------------------------------------------------
 
-  /*
-  // Printout to std::cout for user defined types
-
-  inline void print( const fptype& f ) { std::cout << f << std::endl; }
-
-#ifdef MGONGPU_CPPSIMD
-  inline void print( const fptype_v& v ) { std::cout << v << std::endl; }
-#endif
-
-  inline void print( const cxtype& c ) { std::cout << c << std::endl; }
-
-#ifdef MGONGPU_CPPSIMD
-  inline void print( const cxtype_v& v ) { std::cout << v << std::endl; }
-#endif
-  */
-
-  //--------------------------------------------------------------------------
-
   // Functions and operators for fptype_v
 
   inline fptype_v
@@ -366,18 +325,6 @@ namespace madgraph
     for( int i = 0; i < neppV; i++ ) out[i] = std::signbit( v[i] );
     return out;
   }
-
-  /*
-#ifdef MGONGPU_CPPSIMD
-  inline fptype_v
-  fpvmake( const fptype v[neppV] )
-  {
-    fptype_v out = {}; // see #594
-    for ( int i=0; i<neppV; i++ ) out[i] = v[i];
-    return out;
-  }
-#endif
-  */
 
   //--------------------------------------------------------------------------
 
@@ -827,7 +774,7 @@ namespace madgraph
 
   // Functions and operators for fptype2_v
 
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
 
   inline fptype2_v
   fpvmerge( const fptype_v& v1, const fptype_v& v2 )
@@ -908,7 +855,7 @@ namespace madgraph
   }
 
 
-#endif // #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#endif // #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
 
 
   //==========================================================================
