@@ -2,8 +2,9 @@
 
 ## 1. Install prerequisites
 
+Install doxygen (via your system/package manager of choice), then:
+
 ```bash
-brew install doxygen        # or: micromamba install -c conda-forge doxygen
 pip install -r docs/requirements.txt
 ```
 
