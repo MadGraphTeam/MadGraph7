@@ -1185,6 +1185,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1192,7 +1193,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale_fixed"),
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
-            py::arg("fact_scale2")
+            py::arg("fact_scale2"),
+            py::arg("scale_factor") = 1.
         );
 
     py::classh<DifferentialCrossSection::CachedPdf>(m, "CachedPdf").def(py::init<>());
@@ -1860,6 +1862,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("muf", &SystematicsConfig::muf)
         .def_readwrite("together", &SystematicsConfig::together)
         .def_readwrite("dyn_scales", &SystematicsConfig::dyn_scales)
+        .def_readwrite("scale_factor", &SystematicsConfig::scale_factor)
         .def_readwrite("pdf_members", &SystematicsConfig::pdf_members)
         .def_readwrite("nominal_set_name", &SystematicsConfig::nominal_set_name)
         .def_readwrite("nominal_lhaid", &SystematicsConfig::nominal_lhaid)

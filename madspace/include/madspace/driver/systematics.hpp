@@ -40,6 +40,11 @@ struct SystematicsConfig {
     // transverse energies, 2 = sum of transverse masses, 3 = half of it,
     // 4 = partonic centre-of-mass energy); combined with mur/muf
     std::vector<int> dyn_scales;
+    // the run card's `scalefact`: the factor already folded into the scale the
+    // events were generated with.  The alternative dynamical scales are
+    // recomputed here from the momenta, so they need it too, or they would
+    // silently be the unscaled H_T / E_T / sqrt(s-hat).
+    double scale_factor = 1.;
     // varied PDF members, in output order
     std::vector<PdfMemberSpec> pdf_members;
     // the PDF the events were generated with

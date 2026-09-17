@@ -34,7 +34,14 @@ public:
         bool fact_scale_fixed,
         double ren_scale,
         double fact_scale1,
-        double fact_scale2
+        double fact_scale2,
+        // Multiplies the DYNAMICAL scale only, like the LO run card's
+        // `scalefact` ("scale factor for event-by-event scales",
+        // Template/LO/SubProcesses/setscales.f).  A fixed scale is an absolute
+        // value and is left alone, so half of H_T is
+        // half_transverse_mass with scale_factor = 1 and a quarter of it is the
+        // same choice with scale_factor = 0.5.
+        double scale_factor = 1.
     );
 
 private:
@@ -48,6 +55,7 @@ private:
     double _ren_scale;
     double _fact_scale1;
     double _fact_scale2;
+    double _scale_factor;
 };
 
 } // namespace madspace

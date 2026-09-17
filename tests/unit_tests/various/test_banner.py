@@ -1560,6 +1560,7 @@ class TestRunCardMG7(unittest.TestCase):
         lo['ptj'] = 30
         lo['etaj'] = 4.5
         lo['dynamical_scale_choice'] = 3
+        lo['scalefact'] = 0.5
         lo['SDE_strategy'] = 2
         lo['maxjetflavor'] = 5
         lo['xqcut'] = 20          # merging -> not supported
@@ -1569,6 +1570,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['beam']['e_cm'], 13000.0)
         self.assertEqual(mg7['generation']['events'], 25000)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        self.assertEqual(mg7['beam']['scalefact'], 0.5)
         self.assertEqual(mg7['phasespace']['sde_strategy'], 'denominators')
         self.assertIn(5, mg7['multiparticles']['jet'])
         self.assertEqual(mg7['cuts']['jet-pt'], {'min': 30.0})
@@ -1582,6 +1584,28 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_scalefact(self):
+        """[beam] scalefact: default, legacy view, and the fixed-scale warning"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['scalefact'], 1.0)
+        # the legacy (madevent-shaped) view reports the real value for a
+        # dynamical-scale run, and 1.0 when both scales are fixed (where the
+        # factor is not applied at all)
+        rc['beam']['scalefact'] = 0.25
+        self.assertEqual(rc['scalefact'], 0.25)
+        rc['beam']['fixed_ren_scale'] = True
+        rc['beam']['fixed_fact_scale'] = True
+        self.assertEqual(rc['scalefact'], 1.0)
+        # ... and that combination warns rather than silently doing nothing
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc.check_validity()
+        self.assertIn('scalefact', ' '.join(cm.output))
+        # a non-positive factor is refused
+        rc['beam']['fixed_ren_scale'] = False
+        rc['beam']['fixed_fact_scale'] = False
+        rc['beam']['scalefact'] = 0.0
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
