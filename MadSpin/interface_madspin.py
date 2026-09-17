@@ -8463,6 +8463,83 @@ class MadSpinInterface(extended_cmd.Cmd):
         return counter
 
 
+    def _density_leg_positions(self, production, decays_key):
+        """The decaying particles of ``production``, and the 1-based leg each
+        of them occupies *in the density matrix element*.
+
+        ``GET_DENSITY``'s ``POS`` indexes ``THISNHEL``/``P``, i.e. the leg
+        order of the standalone matrix element MadSpin generated for the
+        density (``orig_order``).  The LHE is free to write its particles in
+        another order, and ``get_density`` bridges the two by asking
+        ``event.get_momenta(orig_order)`` for the momenta in the matrix
+        element's order.  A position read off the *event* instead is the same
+        number only as long as the two orders happen to agree.
+
+        With several **identical** resonances they do not.  ``p p > t t~ t t~``
+        has its density generated as ``t t~ t t~`` while aMC@NLO writes the
+        event as ``t t t~ t~``: the flavour-aware ``get_momenta`` puts the
+        event's second top at ME leg 5 and the first anti-top at ME leg 4,
+        while an event-order position would claim leg 4 for that second top.
+        Every resonance's density block is then contracted with another
+        resonance's decay.  Because the particles are identical, |M|^2, the
+        cross section and every single-particle spectrum come out right and
+        only the spin correlations die -- silently and completely.  A single
+        resonance pair cannot expose it, which is why the earlier ZZ and
+        t t~ validations passed.
+
+        The same LHE-record index also counted the status-2 resonances
+        MadEvent writes (the Z/W -> j j of ``p p > z z j j``), which put the
+        open helicity indices on a quark leg outright -- Tr(rho_prod) up to
+        20x |M_prod|^2 there.  ``get_mapping`` keys on the external
+        (|status| == 1) particles, so both go away together.
+
+        Returning both lists from one traversal is what keeps them consistent:
+        ``position[k]`` is by construction the density leg of ``init_part[k]``,
+        and ``init_part[k]`` is the k-th factor of the decay tensor product
+        (the caller walks the decays in the same order -- for pdg in
+        ``decays_key``, in production-event order within a pdg).
+
+        mg5amcnlo fixes the same thing on its 3.8.1 branch (6c057c97b), found
+        through the status-2 symptom, by reading the positions straight off
+        ``orig_order[1]`` per pdg.  The two agree wherever both apply -- that
+        enumeration is exactly the slot assignment ``get_momenta`` makes -- and
+        deriving them from the mapping instead keeps them right if a particle
+        ever reaches the matrix element crossed or charge-reversed, which
+        ``get_momenta`` allows and a re-derivation from ``orig_order`` alone
+        cannot see.  Should this file be merged with upstream's, the two hunks
+        are the same fix; keep one.
+        """
+        # get_iden, which _density_basis calls first, has already been through
+        # get_pdir for this event, so this is a cache hit.
+        _, orig_order, _, _, _ = self.get_pdir(production)
+        # Exactly the call get_density's get_momenta makes underneath, with the
+        # same defaults: event_pos2order maps the index among the |status| == 1
+        # particles, in event order, onto the matrix element's leg index.
+        event_pos2order, _ = production.get_mapping(
+            orig_order, merged_map=self._revert_merged or None)
+
+        # (particle, density leg) for every external particle, in event order.
+        # get_mapping keys on the position among the |status| == 1 particles,
+        # which is not the index in the event whenever the record carries
+        # intermediate (status 2) lines -- the s-channel Z/W -> j j MadEvent
+        # writes for 'p p > z z j j'.
+        legs = []
+        curr_pos = -1
+        for part in production:
+            if abs(part.status) != 1:
+                continue
+            curr_pos += 1
+            legs.append((part, event_pos2order[curr_pos] + 1))
+
+        init_part = []
+        position = []
+        for pdg in decays_key:
+            for part, leg in legs:
+                if part.pid == pdg and part.status == 1:
+                    init_part.append(part)
+                    position.append(leg)
+        return init_part, position
+
     def _density_basis(self, production, decays_key):
         """Helicity-basis bookkeeping for the production density matrix: which
         particles decay, where they sit (``position``, ``init_part``), their
@@ -8486,19 +8563,17 @@ class MadSpinInterface(extended_cmd.Cmd):
             if n > 1:
                 sym_factor_prod_ident *= math.factorial(n)
 
-        # Find particles that should decay (status==1 and pid in decays keys)
-        init_part = [part for pdg in decays_key for part in production
-                     if part.pid == pdg and part.status == 1]
+        # Find the particles that should decay (status==1 and pid in
+        # decays_key) and, for each, the leg it occupies in the density matrix
+        # element. The two are built together so that position[k] is the
+        # density leg of init_part[k] -- see _density_leg_positions.
+        init_part, position = self._density_leg_positions(production, decays_key)
         nchanging = len(init_part)
 
         # Allowed helicities per spin
         hel_dict = {1: [0], 2: [1, -1], 3: [-1, 0, 1]}
 
-        # Decaying-particle positions (+1 for Fortran), spins, helicities
-        position = [i + 1 for pdg in decays_key
-                    for i in range(len(production))
-                    if production[i].pid == pdg and production[i].status == 1]
-        decaying_pdg = [int(production[i - 1].pid) for i in position]
+        decaying_pdg = [int(part.pid) for part in init_part]
         decaying_spins = [self.model.get_particle(i).get('spin') for i in decaying_pdg]
         helicities = [hel_dict[i] for i in decaying_spins]
 
@@ -8689,11 +8764,16 @@ class MadSpinInterface(extended_cmd.Cmd):
           them anywhere between the amplitude and the event file;
 
         * ``lhe_parser.Event.get_momenta`` maps the event's k-th particle of a
-          pdg onto the k-th slot of that pdg in the matrix element's leg order.
-          The momentum the matrix element sees at leg number ``position[k]`` is
-          therefore the event particle slot k stands for. The brace read off
-          leg ``position[k]`` of the process line and the density matrix
-          computed at ``position[k]`` describe the same object by construction.
+          pdg onto the k-th slot of that pdg in the matrix element's leg order,
+          and ``position[k]`` is built from that very mapping
+          (``_density_leg_positions``). The momentum the matrix element sees at
+          leg number ``position[k]`` is therefore the event particle slot k
+          stands for. The brace read off leg ``position[k]`` of the process
+          line and the density matrix computed at ``position[k]`` describe the
+          same object by construction. (Before ``position`` was mapped rather
+          than read off the event, that last step was an assumption, and a
+          false one as soon as the event ordered identical particles
+          differently from the process line.)
 
         A wrong assignment could not go unnoticed either: ``GET_DENSITY``
         selects the NHEL rows of the *polarised* process by matching them
