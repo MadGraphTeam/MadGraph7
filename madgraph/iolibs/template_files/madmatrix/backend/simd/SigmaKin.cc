@@ -29,6 +29,7 @@
 #include "MemoryAccessWavefunctions.h"
 #include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
+#include "mgOnGpuConfig.h"
 
 #include <cassert>
 #include <limits>
