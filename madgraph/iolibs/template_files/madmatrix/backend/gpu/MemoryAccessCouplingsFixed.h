@@ -10,7 +10,6 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuCxtypes.h"
-#include "mgOnGpuVectors.h"
 
 //#include "MemoryAccessHelpers.h"
 

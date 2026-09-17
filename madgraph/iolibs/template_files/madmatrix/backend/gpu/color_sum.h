@@ -9,7 +9,7 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "mgOnGpuCxtypes.h"
 
 #include "ProcessData.h"
 #include "GpuAbstraction.h"

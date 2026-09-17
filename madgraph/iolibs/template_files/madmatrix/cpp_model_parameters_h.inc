@@ -17,7 +17,9 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuCxtypes.h"
+#if __has_include("mgOnGpuVectors.h") // simd only
 #include "mgOnGpuVectors.h"
+#endif
 
 #include "constexpr_math.h"
 

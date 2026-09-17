@@ -9,7 +9,7 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "mgOnGpuCxtypes.h"
 
 namespace madgraph // this is only needed for CPU SIMD vectorization
 {
