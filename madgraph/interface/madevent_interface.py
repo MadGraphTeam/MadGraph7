@@ -1130,6 +1130,10 @@ class CheckValidForCmd(object):
             self.help_set()
             raise self.InvalidCmd('set needs an option and an argument')
 
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
+
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
             raise self.InvalidCmd('Possible options for set are %s' % \

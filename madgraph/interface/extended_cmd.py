@@ -56,6 +56,39 @@ question_hint = None
 suppress_timeout = False
 
 
+# Options MG7 used to have and does not support any more. Setting one must not
+# be an error: old command files, old process directories and old configuration
+# files still carry them, and a crash there is far worse than a dead setting.
+# The value is dropped instead -- silently when it would only have switched the
+# option off, with a warning otherwise, so a user who really was relying on it
+# hears about it once.
+removed_options = {
+    'madanalysis_path': 'MadAnalysis4 support has been removed, use MadAnalysis5',
+    'td_path': 'topdrawer was only used by MadAnalysis4, which has been removed',
+}
+
+
+def is_removed_option(name):
+    """True if `name` is an option that is not supported any more."""
+
+    return name in removed_options
+
+
+def warn_removed_option(name, value=None):
+    """Tell the user that a retired option is being ignored.
+
+    A value that would only have disabled the option (None/False/empty) says
+    nothing new -- the option is gone, so it is already off -- and stays quiet.
+    """
+
+    if not is_removed_option(name):
+        return
+    if str(value).strip().lower() in ('none', 'false', ''):
+        return
+    logger.warning("'%s' is not supported any more (%s). Ignoring it.",
+                   name, removed_options[name])
+
+
 def record_answer_in_history(interface, answer):
     """Append an answer to the history of `interface` and everything above it.
 

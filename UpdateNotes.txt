@@ -10,6 +10,11 @@ ANNOUNCEMENT:
        block ('set decay all 0'), to change a formula, to choose the values written in
        param_NAME.dat ('set default'), and --explain to say what each choice removes.
    OM: New command 'explain_restriction': report what a restriction card removes.
+   OM: 'set madanalysis_path'/'set td_path' no longer raise: the options are gone
+       with MadAnalysis4, so a value that would only disable them is ignored
+       silently and any other value warns once and is dropped. Stale entries in an
+       old configuration file are dropped the same way. This keeps old command
+       files and old process directories working.
    OM: Removed MadAnalysis4 support. The 'install MadAnalysis4' command, the
        'madanalysis_path'/'td_path' configuration options, the 'plot' command of
        both madevent and aMC@NLO, the plot_card.dat and the topdrawer-based

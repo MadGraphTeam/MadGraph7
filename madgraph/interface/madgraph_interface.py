@@ -1850,6 +1850,10 @@ This will take effect only in a NEW terminal
                                                              (args[0], default))
             args[1] = str(default)
 
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
+
         if args[0] not in self._set_options:
             if not args[0] in self.options and not args[0] in self.options:
                 self.help_set()
@@ -8614,6 +8618,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             else:
                 name = name.strip()
                 value = value.strip()
+                if cmd.is_removed_option(name):
+                    # an old configuration file: drop the entry rather than
+                    # carrying a dead option around in self.options
+                    continue
                 if name not in ['mg5_path', 'f2py_compiler', 'f2py_compiler_py2','f2py_compiler_py3', 'lhapdf']:
                     self.options[name] = value
                 elif hasattr(self, 'set2_%s' % name) and value:
@@ -11322,6 +11330,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # This command mainly delegates to set2_xxx functions.
         # which is the recomend way to provide help via docstrings.
         args = self.split_arg(line)
+
+        if args and cmd.is_removed_option(args[0]):
+            cmd.warn_removed_option(args[0], args[1] if len(args) > 1 else None)
+            return
 
         if hasattr(self, 'set2_%s' % args[0]):
             func = getattr(self, 'set2_%s' % args[0])

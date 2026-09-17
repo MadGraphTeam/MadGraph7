@@ -223,6 +223,10 @@ class CheckValidForCmd(object):
                 self.help_set()
                 raise self.InvalidCmd('set needs an option and an argument')
 
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
+
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
             raise self.InvalidCmd('Possible options for set are %s' % \
@@ -3718,6 +3722,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
 
         args = self.split_arg(line)
+        if args and cmd.is_removed_option(args[0]):
+            cmd.warn_removed_option(args[0], args[1] if len(args) > 1 else None)
+            return
         # Check the validity of the arguments
         self.check_set(args)
         # Check if we need to save this in the option file
@@ -4334,6 +4341,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             else:
                 name = name.strip()
                 value = value.strip()
+                if cmd.is_removed_option(name):
+                    # an old configuration file: drop the entry rather than
+                    # carrying a dead option around in self.options
+                    continue
                 # 'cluster_local_path' and 'cvmfs_lhapdf_path' name a
                 # directory on the *worker node*: it may well not exist here,
                 # and resolving symlinks ('.../lhapdfsets/current') would pin a
