@@ -22,6 +22,7 @@
 namespace madmatrix
 {
   using namespace ProcessData;
+  using namespace ProcessTables; // for nMF (flavor-coupling setup in initProc)
 
   //--------------------------------------------------------------------------
 
