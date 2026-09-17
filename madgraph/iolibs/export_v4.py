@@ -1719,11 +1719,11 @@ C
         path = pjoin(_file_path,'iolibs','template_files','madevent_makefile_source')
         set_of_lib = ' '.join(self.get_source_libraries_list()+['$(LIBRARIES)'])
         if self.opt['model'] == 'mssm' or self.opt['model'].startswith('mssm-'):
-            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL; make
+            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
 MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent treatcards param
 param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent treatcards param\n'''
         else:
-            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL; make    
+            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
 param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         
         dual_libs = ''

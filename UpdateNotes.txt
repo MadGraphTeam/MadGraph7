@@ -10,6 +10,17 @@ ANNOUNCEMENT:
        block ('set decay all 0'), to change a formula, to choose the values written in
        param_NAME.dat ('set default'), and --explain to say what each choice removes.
    OM: New command 'explain_restriction': report what a restriction card removes.
+   OM: Bug fix: a parallel build of a generated Source/ could fail and still be
+       reported as a success. Every library rule read 'cd DIR; make; cd ..', so
+       the recipe returned the exit status of the final 'cd' -- always 0 -- and a
+       failed sub-make went unnoticed until a subprocess directory later died
+       with "No rule to make target '../../lib/libdhelas.a', needed by 'gensym'".
+       They now use 'cd DIR && make'.
+       The underlying failure was a 'make -j' race on Fortran module files: the
+       Majorana-flip DHELAS routines and PDF/pdfwrap_lhapdf.f 'use model_object'
+       (from MODEL/flavor_couplings.f), the other MODEL sources use it too, and
+       the ALOHA routines 'use aloha_object' (from DHELAS/aloha_functions.f).
+       Order-only prerequisites now enforce those three orderings.
    OM: 'set madanalysis_path'/'set td_path' no longer raise: the options are gone
        with MadAnalysis4, so a value that would only disable them is ignored
        silently and any other value warns once and is dropped. Stale entries in an
