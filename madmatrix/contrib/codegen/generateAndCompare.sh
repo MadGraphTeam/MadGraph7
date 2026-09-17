@@ -370,8 +370,6 @@ function codeGenAndDiff()
     \rm -f ${outproc}/index.html
     \rm -f ${outproc}/madevent.tar.gz
     \rm -f ${outproc}/Cards/delphes_trigger.dat
-    \rm -f ${outproc}/Cards/plot_card.dat
-    \rm -f ${outproc}/bin/internal/run_plot*
     \rm -f ${outproc}/HTML/*
     \rm -rf ${outproc}/bin/internal/__pycache__
     \rm -rf ${outproc}/bin/internal/ufomodel/py3_model.pkl

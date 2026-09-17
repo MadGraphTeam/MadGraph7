@@ -114,14 +114,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to move " + card + ".dat to default")
             
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -4721,14 +4713,6 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to copy " + card + ".dat to default")
 
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:

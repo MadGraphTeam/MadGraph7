@@ -41,22 +41,32 @@ $(LIBDIR)libgeneric.$(libext): $(GENERIC)
 	rm -f $@ 2>/dev/null
 	$(call CREATELIB, $@, $^)
 	rm -f $(alfas_to_clean) 2>/dev/null
-$(LIBDIR)libdhelas.$(libext): DHELAS
-	cd DHELAS; make; cd ..%(dhelas_dual)s
-$(LIBDIR)libpdf.$(libext): PDF $(alfas_functions).o
-	cd PDF; make; cd ..
+# 'cd X && make', never 'cd X; make; cd ..': with ';' the recipe's exit status
+# is the one of the final 'cd', so a failed sub-make was reported as success and
+# the missing library only surfaced later, in a subprocess directory, as the
+# baffling "No rule to make target '../../lib/libdhelas.a', needed by 'gensym'".
+#
+# The '|' prerequisites below are order-only: DHELAS (the Majorana-flip FF*M*
+# routines) and PDF/pdfwrap_lhapdf.f both 'use model_object', whose .mod file is
+# produced by MODEL/flavor_couplings.f. Under 'make -j' they would otherwise
+# start before MODEL is done. Order-only, so touching libmodel.a does not force
+# libdhelas.a to be rebuilt.
+$(LIBDIR)libdhelas.$(libext): DHELAS | $(LIBDIR)libmodel.$(libext)
+	cd DHELAS && make%(dhelas_dual)s
+$(LIBDIR)libpdf.$(libext): PDF $(alfas_functions).o | $(LIBDIR)libmodel.$(libext)
+	cd PDF && make
 ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
 $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
-	cd PDF/gammaUPC; make ; cd ../../
+	cd PDF/gammaUPC && make
 else
 $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
-				cd PDF/gammaUPC; make -f makefile_dummy; cd ../../
+	cd PDF/gammaUPC && make -f makefile_dummy
 endif	
 $(LIBDIR)libcernlib.$(libext): CERNLIB
-	cd CERNLIB; make; cd ..
+	cd CERNLIB && make
 # The bias library is here the dummy by default; compilation of other ones specified in the run_card will be done by MadGraph7 directly.
 $(LIBDIR)libbias.$(libext): BIAS/dummy
-	cd BIAS/dummy; make; cd ../../
+	cd BIAS/dummy && make
 
 %(model)s
 
