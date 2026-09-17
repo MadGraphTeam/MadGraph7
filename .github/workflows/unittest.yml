@@ -794,3 +794,19 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_write_model -t0
+
+
+  unittest_customize_model:
+    # tests/unit_tests/various/test_customize_model.py: the options and the
+    # commands of the customize_model question, the restriction cards it
+    # writes, and the explain_restriction reports
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the customize_model unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_customize_model -t0

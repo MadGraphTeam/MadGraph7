@@ -7679,6 +7679,9 @@ CALL IOSXXX(W(7),W(2),W(3),MGVX350,AMP(2))""".split('\n'))
 
         me = matrix_elements[0]
 
+        (nexternal, ninitial) = me.get_nexternal_ninitial()
+        nonia = me.get_nonia()
+
         #print me.get_base_amplitude().nice_string()
 
         # This has been checked against v4
@@ -7933,7 +7936,7 @@ C     used fake id
 
         # Test decayBW file
         exporter.write_decayBW_file(writer,
-                                     s_and_t_channels)
+                                     s_and_t_channels,nexternal,nonia)
 
         writer.close()
         #print open(self.give_pos('test')).read()

@@ -128,9 +128,9 @@ MadGraph7>display multiparticles
 which show information on the particles and the vertices of the model
 or presently defined multiparticle labels.
 
-Some of the model (including mssm) allow to modify the model (setting some
-mass to zero, put some matrices diagonal, remove some interaction, ...). You can
-see the possibility for each model by using the following command:
+You can modify the model (choosing the flavour scheme, setting some mass to
+zero, put some matrices diagonal, changing the formula of a coupling, ...) with
+the following command:
 MadGraph7> customize_model 
 
 To define a multiparticle label, i.e. a label corresponding to a set

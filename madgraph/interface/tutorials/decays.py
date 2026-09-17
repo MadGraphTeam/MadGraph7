@@ -61,9 +61,11 @@ Two things about the syntax that catch people (`tutorial syntax` has more):
     not write `t > w+ b` twice;
   * parentheses nest a sub-decay: `(t > w+ b, w+ > l+ vl)`.
 
-And one thing about the physics: the cross section of a decay chain carries a
-branching ratio built from the widths in your **param card**. Which is why the
-next command matters more than it looks:
+And one thing about the physics: no branching ratio is ever formed. The width
+in your **param card** goes into the resonance propagator, the decay rate comes
+out of the matrix element, and nothing divides one by the other -- so a width
+that disagrees with the masses and couplings in the same card is not caught
+anywhere. Which is why the next command matters more than it looks:
 
 %(p)s compute_widths t --body_decay=2 --output=./my_widths.dat
 """ % {'p': P},
@@ -122,10 +124,11 @@ cross-check to see how much they mattered.
   * shower -- hadron and tau decays, where the correlations do not matter to
     your observable.
 
-**The trap that catches everyone**, whichever you choose: a decayed cross
-section is the production cross section times a branching ratio built from the
-card's widths. Change a mass and forget the width, and you get a branching
-ratio above 1 -- a decayed cross section larger than the undecayed one. Put
+**The trap that catches everyone**, whichever you choose: the card's width
+sets the size of the resonance propagator and nothing normalises it against
+the decay the model actually computes. Change a mass and forget the width and
+the effective fraction goes above 1 -- a decayed cross section larger than the
+undecayed one, which nothing in the machinery is there to prevent. Put
 `DECAY <pdg> Auto` in the param card and the width is recomputed with the mass.
 `tutorial exercises` and `tutorial madevent` both go through this.
 
