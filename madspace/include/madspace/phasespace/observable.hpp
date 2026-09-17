@@ -49,6 +49,12 @@ public:
         const std::string& name = ""
     );
     ObservableOption observable() const { return _observable; }
+    // Unchanged by the initial-state mirror, the rotation by pi about x
+    // (py, pz -> -py, -pz) that moves each leg onto the other beam? Both the
+    // observable itself and the one it is ordered by have to be: sorting by a
+    // quantity that flips picks a different particle out of the event.
+    static bool mirror_invariant(ObservableOption observable);
+    bool mirror_invariant() const;
     const nested_vector2<me_int_t>& indices() const { return _indices; }
     bool sum_momenta() const { return _sum_momenta; }
     std::vector<std::size_t> simple_observable_indices() const {

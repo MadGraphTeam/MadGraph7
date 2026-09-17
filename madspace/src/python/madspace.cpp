@@ -585,6 +585,10 @@ PYBIND11_MODULE(_madspace_py, m) {
            py::arg("ignore_incoming") = true,
            py::arg("name") = ""
     )
+        .def(
+            "mirror_invariant",
+            py::overload_cast<>(&Observable::mirror_invariant, py::const_)
+        )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
         .def_readonly_static("lepton_pids", &Observable::lepton_pids)
@@ -614,6 +618,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly("mode", &Cuts::CutItem::mode);
     cuts.def(py::init<const std::vector<Cuts::CutItem>&>(), py::arg("cut_data"))
         .def(py::init<std::size_t>(), py::arg("particle_count"))
+        .def("non_mirror_invariant_cuts", &Cuts::non_mirror_invariant_cuts)
+        .def("mirror_invariant", &Cuts::mirror_invariant)
         .def("sqrt_s_min", &Cuts::sqrt_s_min)
         .def("eta_max", &Cuts::eta_max)
         .def("pt_min", &Cuts::pt_min)
@@ -757,6 +763,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("random_dim", &PhaseSpaceMapping::random_dim)
         .def("beam_rapidity", &PhaseSpaceMapping::beam_rapidity)
         .def("mirror_beams", &PhaseSpaceMapping::mirror_beams)
+        .def("cuts", &PhaseSpaceMapping::cuts)
         .def("discrete_dim", &PhaseSpaceMapping::discrete_dim)
         .def("particle_count", &PhaseSpaceMapping::particle_count)
         .def("channel_count", &PhaseSpaceMapping::channel_count);

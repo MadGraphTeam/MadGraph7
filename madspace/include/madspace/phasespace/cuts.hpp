@@ -5,6 +5,7 @@
 #include "madspace/phasespace/observable.hpp"
 
 #include <functional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,13 @@ public:
 
     Cuts(const std::vector<CutItem>& cut_data);
     Cuts(std::size_t particle_count);
+    // Names of the configured cuts that are not invariant under the
+    // initial-state mirror (py, pz -> -py, -pz); empty if every cut is.
+    // Mirroring an accepted event after the cuts only reproduces the mirrored
+    // half of the initial state if the cuts cannot tell the two orientations
+    // apart, since the event that gets written is the mirrored one.
+    std::vector<std::string> non_mirror_invariant_cuts() const;
+    bool mirror_invariant() const { return non_mirror_invariant_cuts().empty(); }
     double sqrt_s_min() const;
     std::vector<double> eta_max() const;
     std::vector<double> pt_min() const;

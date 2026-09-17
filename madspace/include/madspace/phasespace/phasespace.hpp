@@ -79,6 +79,7 @@ public:
     std::size_t channel_count() const { return _permutations.size(); }
     double beam_rapidity() const { return _beam_rapidity; }
     bool mirror_beams() const { return _mirror_beams; }
+    const Cuts& cuts() const { return _cuts; }
 
 private:
     Result build_forward_impl(

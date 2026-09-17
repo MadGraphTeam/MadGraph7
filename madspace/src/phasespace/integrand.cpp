@@ -2,6 +2,7 @@
 
 #include "madspace/util.hpp"
 
+#include <format>
 #include <set>
 
 using namespace madspace;
@@ -260,12 +261,35 @@ Integrand::Integrand(
     // Mirroring an accepted lab-frame event swaps the beams only if they are
     // identical: otherwise the mirrored event has another boost, other cuts
     // and other PDFs, so its orientation must be chosen before the mapping.
-    if (_has_mirror && !mapping.mirror_beams() &&
-        (mapping.beam_rapidity() != 0. || pdf_grid2)) {
-        throw std::invalid_argument(
-            "mirrored flavors with asymmetric beams need a PhaseSpaceMapping "
-            "built with mirror_beams = true"
-        );
+    if (_has_mirror && !mapping.mirror_beams()) {
+        if (mapping.beam_rapidity() != 0. || pdf_grid2) {
+            throw std::invalid_argument(
+                "mirrored flavors with asymmetric beams need a PhaseSpaceMapping "
+                "built with mirror_beams = true"
+            );
+        }
+        // Even with identical beams, mirroring after the cuts hands the event
+        // writer an orientation the cuts never saw. That is only the same
+        // sample if no cut can tell the two orientations apart -- which is
+        // true of every cut on an invariant, a pt or an |eta|, and false as
+        // soon as one is on a signed rapidity, eta, phi or pz.
+        auto bad_cuts = mapping.cuts().non_mirror_invariant_cuts();
+        if (!bad_cuts.empty()) {
+            std::string names;
+            for (auto& name : bad_cuts) {
+                if (!names.empty()) {
+                    names += ", ";
+                }
+                names += name;
+            }
+            throw std::invalid_argument(std::format(
+                "the cut(s) {} are not invariant under the initial-state mirror "
+                "(py, pz -> -py, -pz), so they have to be applied to the mirrored "
+                "event: mirrored flavors then need a PhaseSpaceMapping built with "
+                "mirror_beams = true, which draws the orientation before the cuts",
+                names
+            ));
+        }
     }
     _mirror_before_cuts = _has_mirror && mapping.mirror_beams();
     _channel_part_ret_types = compute_channel_part_ret_types();
@@ -698,6 +722,32 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
+    // The matrix element is evaluated on the momenta the event is written
+    // with, which for the mirrored half of a beam-swapped subprocess is the
+    // mirrored set (mirror_momenta: py, pz -> -py, -pz, the rotation by pi
+    // about x that moves each leg onto the other beam). This is what madevent
+    // does too -- it flips the momentum array that then goes to both the matrix
+    // element and the event record (super_auto_dsig_group_v4.inc, "Flip momenta
+    // (rotate around x axis)") -- and it is what the systematics reweighting
+    // here already assumes, since that reads the momenta back out of the event
+    // buffer.
+    //
+    // Feeding the unmirrored momenta instead only ever worked because |M|^2 is
+    // invariant under that rotation. A polarised matrix element is not, once it
+    // is evaluated in a frame that holds the polarised particle at rest: HELAS
+    // quantises such a particle along the *frame* z axis (the pp == 0 branch of
+    // vxxxxx) rather than along its own momentum, the mirror flips that axis,
+    // and the + and - states swap. Measured at 48% on g q > z{+} q evaluated in
+    // the Z rest frame.
+    //
+    // momenta_mirror_acc is only produced on the post-cut path. With
+    // mirror_beams the mirror is inside the mapping, before the boost into the
+    // lab frame and before the cuts, so momenta_acc is already the orientation
+    // the event is written with and there is nothing to pick.
+    auto momenta_me = args.index_map().contains("momenta_mirror_acc")
+        ? args.at("momenta_mirror_acc")
+        : momenta_acc;
+
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
             return value;
@@ -741,7 +791,7 @@ NamedVector<Value> Integrand::build_common_part(
 
     // Evaluate differential cross section
     ValueVec xs_args{
-        momenta_acc,
+        momenta_me,
         _flavor_remap.size() > 0 ? fb.gather_int(flavor_id, _flavor_remap) : flavor_id,
     };
     xs_args.push_back(x1_acc);

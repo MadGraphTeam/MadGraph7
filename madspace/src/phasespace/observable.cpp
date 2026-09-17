@@ -229,6 +229,45 @@ std::tuple<nested_vector2<me_int_t>, nested_vector2<me_int_t>, Type> build_indic
 
 } // namespace
 
+bool Observable::mirror_invariant(ObservableOption observable) {
+    // The initial-state mirror is the rotation by pi about the x axis
+    // (E, px, py, pz) -> (E, px, -py, -pz). Every case is listed so that a new
+    // observable has to declare which side it falls on.
+    switch (observable) {
+    case obs_py:        // -> -py
+    case obs_pz:        // -> -pz
+    case obs_phi:       // atan2(py, px) -> -phi
+    case obs_theta:     // -> pi - theta
+    case obs_y:         // -> -y
+    case obs_eta:       // -> -eta
+    case obs_delta_eta: // signed difference of two flipped etas -> -delta_eta
+    case obs_delta_phi: // signed difference of two flipped phis -> -delta_phi
+        return false;
+    case obs_e:
+    case obs_px:
+    case obs_mass:
+    case obs_pt:
+    case obs_p_mag:
+    case obs_y_abs:
+    case obs_eta_abs:
+    case obs_delta_r: // sqrt(delta_eta^2 + delta_phi^2): both flip together
+    case obs_pair_mass:
+    case obs_sqrt_s:
+        return true;
+    }
+}
+
+bool Observable::mirror_invariant() const {
+    // An observable that matched no particle is the constant 0, whatever the
+    // orientation: a cut naming a particle this process does not have imposes
+    // nothing, and must not stand in the way of the post-cut mirror.
+    if (not_found()) {
+        return true;
+    }
+    return mirror_invariant(_observable) &&
+        (!_order_observable || mirror_invariant(_order_observable.value()));
+}
+
 const std::vector<int> Observable::jet_pids{1, 2, 3, 4, -1, -2, -3, -4, 21};
 const std::vector<int> Observable::bottom_pids{-5, 5};
 const std::vector<int> Observable::lepton_pids{11, 13, 15, -11, -13, -15};

@@ -2025,6 +2025,24 @@ class MadgraphSubprocess:
             if len(self.process.cut_data) > 0
             else None
         )
+        # Mirroring an accepted event after the cuts hands the event writer an
+        # orientation the cuts never saw. That reproduces the same sample only
+        # if no cut can tell the two orientations apart -- true of pt, |eta|,
+        # delta_r and any invariant, false as soon as one is on a signed
+        # rapidity, eta, phi or pz. Draw the orientation before the mapping in
+        # that case, as asymmetric beams already do; ms.Integrand refuses the
+        # other way round.
+        self.mirror_beams = self.process.asymmetric_beams
+        if (self.cuts is not None and not self.process.is_decay
+                and not self.mirror_beams and self.has_mirrored_flavors()):
+            not_invariant = self.cuts.non_mirror_invariant_cuts()
+            if not_invariant:
+                logger.info(
+                    "subprocess %d: the cut(s) %s change under the initial-state "
+                    "mirror, so the beam orientation is drawn before the phase-"
+                    "space mapping rather than after the cuts",
+                    self.subproc_id, ", ".join(not_invariant))
+                self.mirror_beams = True
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
@@ -2088,7 +2106,7 @@ class MadgraphSubprocess:
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
                     beam_rapidity=self.process.beam_rapidity,
-                    mirror_beams=self.process.asymmetric_beams,
+                    mirror_beams=self.mirror_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -2142,6 +2160,17 @@ class MadgraphSubprocess:
             subchan_weights=subchan_weights,
         )
 
+    def has_mirrored_flavors(self) -> bool:
+        """Does any flavor of this subprocess stand for both beam orientations?
+        Resolved the same way build_integrands resolves flavor_mirror."""
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            if flav["mirror"]:
+                return True
+        return False
+
     def build_flat_phasespace(self) -> PhaseSpace:
         mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
@@ -2150,7 +2179,7 @@ class MadgraphSubprocess:
             cuts=self.cuts,
             leptonic=self.process.leptonic,
             beam_rapidity=self.process.beam_rapidity,
-            mirror_beams=self.process.asymmetric_beams,
+            mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
