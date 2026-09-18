@@ -10,6 +10,36 @@ ANNOUNCEMENT:
        block ('set decay all 0'), to change a formula, to choose the values written in
        param_NAME.dat ('set default'), and --explain to say what each choice removes.
    OM: New command 'explain_restriction': report what a restriction card removes.
+   OM: Bug fix: a parallel build of a generated Source/ could fail and still be
+       reported as a success. Every library rule read 'cd DIR; make; cd ..', so
+       the recipe returned the exit status of the final 'cd' -- always 0 -- and a
+       failed sub-make went unnoticed until a subprocess directory later died
+       with "No rule to make target '../../lib/libdhelas.a', needed by 'gensym'".
+       They now use 'cd DIR && make'.
+       The underlying failure was a 'make -j' race on Fortran module files: the
+       Majorana-flip DHELAS routines and PDF/pdfwrap_lhapdf.f 'use model_object'
+       (from MODEL/flavor_couplings.f), the other MODEL sources use it too, and
+       the ALOHA routines 'use aloha_object' (from DHELAS/aloha_functions.f).
+       Order-only prerequisites now enforce those three orderings.
+   OM: 'set madanalysis_path'/'set td_path' no longer raise: the options are gone
+       with MadAnalysis4, so a value that would only disable them is ignored
+       silently and any other value warns once and is dropped. Stale entries in an
+       old configuration file are dropped the same way. This keeps old command
+       files and old process directories working.
+   OM: Removed MadAnalysis4 support. The 'install MadAnalysis4' command, the
+       'madanalysis_path'/'td_path' configuration options, the 'plot' command of
+       both madevent and aMC@NLO, the plot_card.dat and the topdrawer-based
+       plotting of the parton/Pythia6/PGS/Delphes outputs are all gone. The
+       topdrawer ('td') binary it relied on is no longer downloadable, so the
+       install had been broken for a while. Use MadAnalysis5 or Rivet instead.
+       The Pythia8 merging (DJR/pt) plots are unaffected: they go through HwU.
+   OM: Bug fix: OrganizeModelExpression.track_dependant is a class attribute that
+       analyze_parameters() was extending in place, so the tracked variables of one
+       UFO model leaked into every model imported afterwards in the same process.
+       Importing a Gmu-scheme model (no external aEWM1) added 'Gf' to the class
+       list for good, and a later import of e.g. loop_sm then grouped mdl_MW under
+       ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
+       Each instance now works on its own copy.
 
 
 3.8.0 (15/09/26):

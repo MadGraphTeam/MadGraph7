@@ -178,10 +178,6 @@
 #!  relative path start from main directory
 # delphes_path = ./Delphes
 
-#! MadAnalysis4 fortran-based package [for basic analysis]
-#!  relative path start from main directory
-# madanalysis_path = ./MadAnalysis
-
 #! MadAnalysis5 python-based Package [For advanced analysis]
 #!  relative path start from main directory
 # madanalysis5_path = ./HEPTools/madanalysis5/madanalysis5
@@ -189,11 +185,6 @@
 #! ExRootAnalysis Package
 #!  relative path start from main directory
 # exrootanalysis_path = ./ExRootAnalysis
-
-#! TOPDRAWER PATH
-#!  Path to the directory containing td executables
-#!  relative path start from main directory
-# td_path = ./td
 
 #! lhapdf-config --can be specify differently depending of your python version
 #!  If None: try to find one available on the system

@@ -40,7 +40,6 @@ import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner
 import madgraph.various.lhe_parser as lhe_parser
-import madgraph.various.combine_plots as combine_plots
 import madgraph.various.cluster as cluster
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.diagram_generation as diagram_generation
