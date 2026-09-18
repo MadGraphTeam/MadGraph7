@@ -6,6 +6,8 @@ __pycache__
 *.mod
 *.a
 PROC*
+!madgraph/iolibs/template_files/madmatrix/ProcessData.h
+!madgraph/iolibs/template_files/madmatrix/ProcessTables.h
 cmd*
 ptest*
 *.pkl

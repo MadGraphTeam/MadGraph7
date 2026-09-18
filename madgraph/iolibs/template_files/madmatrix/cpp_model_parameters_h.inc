@@ -17,7 +17,9 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuCxtypes.h"
+#if __has_include("mgOnGpuVectors.h") // simd only
 #include "mgOnGpuVectors.h"
+#endif
 
 #include "constexpr_math.h"
 
@@ -32,12 +34,8 @@
 
 #include "read_slha.h"
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Define FLV_COUPLING struct
   struct FLV_COUPLING {
@@ -112,19 +110,29 @@ namespace mg5amcCpu
     static Parameters* instance;
   };
 
-} // end namespace mg5amcGpu/mg5amcCpu
+  // Generic readers for initProc: dereference an array of pointer-to-Parameters-member
+  // (a per-process compile-time table) into a matching array of tIPD/tIPC values.
+  template<int N>
+  inline void gatherFptype( const Parameters* pars, double Parameters::* const ( &members )[N], fptype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = (fptype)( pars->*members[i] );
+  }
+
+  template<int N>
+  inline void gatherCxtype( const Parameters* pars, cxtype Parameters::* const ( &members )[N], cxtype ( &out )[N] )
+  {
+    for( int i = 0; i < N; ++i ) out[i] = cxmake( pars->*members[i] );
+  }
+
+} // end namespace madmatrix
 
 #else%(eftwarn1)s
 
 #include <cassert>
 #include <limits>
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   // Hardcoded constexpr physics parameters
   namespace Parameters // keep the same name rather than HardcodedParameters for simplicity
@@ -156,18 +164,14 @@ namespace mg5amcCpu
     %(hasbsmip)s__device__ constexpr double mdl_bsmIndepParam[nBsmIndepParam] = { %(bsmip)s };
   }
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madmatrix
 
 #endif
 
 //==========================================================================
 
-// NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+//One namespace. Split ber backend.
+namespace madmatrix
 {
   namespace Parameters_dependentCouplings
   {
@@ -257,7 +261,7 @@ namespace mg5amcCpu
   }
 #pragma GCC diagnostic pop
 
-} // end namespace mg5amcGpu/mg5amcCpu
+} // end namespace madmatrix
 
 //==========================================================================
 

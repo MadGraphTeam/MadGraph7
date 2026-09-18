@@ -35,7 +35,7 @@ so a GPU build of this process would silently sum the wrong thing. Use a CPU bac
 generate the process with a constraint that leaves a single amplitude split order.
 #endif
 
-namespace mg5amcCpu
+namespace madmatrix
 {
   constexpr int ncolor = CPPProcess::ncolor;     // the number of leading colors
   constexpr int nampso = CPPProcess::nampso;     // the amplitude split orders

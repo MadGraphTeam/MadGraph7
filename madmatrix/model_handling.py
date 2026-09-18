@@ -1940,21 +1940,24 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return replace_dict
 
     # AV - replace export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
+    # backend_separation: cIPD/cIPC/cIPF/bsmIndepParam storage now lives in
+    # backend/{cpu,simd,gpu}/SigmaKin.cc. This method still computes the local
+    # tIPD/tIPC/tIPF assignment text (genuinely process-specific: which SM
+    # parameters/couplings this process uses), but ends each with a call to
+    # the corresponding backend setter instead of a storage-declaration
+    # variant + direct memcpy/gpuMemcpyToSymbol.
     def get_process_function_definitions(self, write=True):
         """The complete class definition for the process"""
         replace_dict = super().get_process_function_definitions(write=False) # defines replace_dict['initProc_lines']
-        replace_dict['hardcoded_initProc_lines'] = replace_dict['initProc_lines'].replace( 'm_pars->', 'Parameters::')
-        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
-        # Only pulled into scope when the jamps are split, so that a process
-        # without split orders keeps exactly the constants it always had
-        replace_dict['jampso_aliases'] = '' if not self.split_orders_active() else (
-            '\n  constexpr int nampso = CPPProcess::nampso;   // the amplitude split orders'
-            '\n  constexpr int njampso = CPPProcess::njampso; // ncolor * nampso: the jamps of every order, end to end')
-        couplings2order_indep = []
-        ###replace_dict['ncouplings'] = len(self.couplings2order)
-        ###replace_dict['ncouplingstimes2'] = 2 * replace_dict['ncouplings']
+        replace_dict['hardcoded_initProc_lines'] = self.get_hardcoded_initProc_lines(self.matrix_elements[0])
+        # Cached for edit_processtables(): calculate_jamps' jampTmp_sv shared
+        # sub-expression scratch is backend-owned storage now, sized from this
+        # process-specific count (ProcessTables::nb_tmp_jamp) rather than
+        # hardcoded per-process like the rest of calculate_jamps. A process
+        # with split orders (jamp_ncolor() == 'njampso') gets a process-specific
+        # override of calculate_jamps entirely, same as color_sum.cc.
+        self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
         replace_dict['nparams'] = len(self.params2order)
-        ###replace_dict['nmodels'] = replace_dict['nparams'] + replace_dict['ncouplings'] # AV unused???
         replace_dict['coupling_list'] = ' '
         replace_dict['hel_amps_cc'] = '#include \"HelAmps_%s.cc\"' % self.model_name # AV
         coupling = [''] * len(self.couplings2order)
@@ -1972,59 +1975,52 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 if "aS" in key and coup in coup_list: keep = False
             if keep: coupling_indep.append( coup ) # AV only indep!
         replace_dict['ncouplings'] = len(coupling_indep) # AV only indep!
-        replace_dict['nipc'] = len(coupling_indep)
+
+        # dependent (running-alphas, event-by-event) flavor couplings -> for ProcessTables.h (Step 3).
+        flv_couplings_dep = [''] * len(self.couporderflv_dep)
+        for flv_coup, pos in self.couporderflv_dep.items():
+            flv_couplings_dep[pos] = flv_coup
+
+        # Cache counts for edit_processdata()/edit_processtables(), which run
+        # after generate_process_files() has populated couplings2order etc.
+        self._nipc = len(coupling_indep)
+        self._nipd = len(params)
+        self._nipf = len(flv_couplings)
+        self._ndpf = len(flv_couplings_dep)
+
         if len(coupling_indep) > 0:
-            replace_dict['cipcassign'] = 'const cxtype tIPC[nIPC] = { cxmake( m_pars->%s ) };'\
-                                         % ( ' ), cxmake( m_pars->'.join(coupling_indep) ) # AV only indep!
-            replace_dict['cipcdevice'] = '__device__ __constant__ fptype cIPC[nIPC * 2];'
-            replace_dict['cipcstatic'] = 'static fptype cIPC[nIPC * 2];'
-            replace_dict['cipc2tipcSym'] = 'gpuMemcpyToSymbol( cIPC, tIPC, nIPC * sizeof( cxtype ) );'
-            replace_dict['cipc2tipc'] = 'memcpy( cIPC, tIPC, nIPC * sizeof( cxtype ) );'
-            replace_dict['cipcdump'] = '\n    //for ( int i=0; i<nIPC; i++ ) std::cout << std::setprecision(17) << "tIPC[i] = " << tIPC[i] << std::endl;'
-            coup_str_hrd = '__device__ const fptype cIPC[nIPC * 2] = { '
-            for coup in coupling_indep : coup_str_hrd += '(fptype)Parameters::%s.real(), (fptype)Parameters::%s.imag(), ' % ( coup, coup ) # AV only indep!
-            coup_str_hrd = coup_str_hrd[:-2] + ' };'
-            replace_dict['cipchrdcod'] = coup_str_hrd
+            replace_dict['cipcassign'] = ('static constexpr cxtype Parameters::* const cIPC_members[nIPC] = {\n'
+                                           '      &Parameters::' + ',\n      &Parameters::'.join(coupling_indep) + '\n'
+                                           '    };\n'
+                                           '    cxtype tIPC[nIPC];\n'
+                                           '    gatherCxtype( m_pars, cIPC_members, tIPC );\n'
+                                           '    setIndependentCouplings( tIPC );')
+            coup_str_hrd = 'const cxtype tIPC[nIPC] = { cxmake( Parameters::%s ) };\n    setIndependentCouplings( tIPC );'\
+                                         % ( ' ), cxmake( Parameters::'.join(coupling_indep) )
+            replace_dict['cipchrdassign'] = coup_str_hrd
         else:
             replace_dict['cipcassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
-            replace_dict['cipcdevice'] = '__device__ __constant__ fptype* cIPC = nullptr; // unused as nIPC=0'
-            replace_dict['cipcstatic'] = 'static fptype* cIPC = nullptr; // unused as nIPC=0'
-            replace_dict['cipc2tipcSym'] = '//gpuMemcpyToSymbol( cIPC, tIPC, 0 * sizeof( cxtype ) ); // nIPC=0'
-            replace_dict['cipc2tipc'] = '//memcpy( cIPC, tIPC, nIPC * sizeof( cxtype ) ); // nIPC=0'
-            replace_dict['cipcdump'] = ''
-            replace_dict['cipchrdcod'] = '__device__ const fptype* cIPC = nullptr; // unused as nIPC=0'
-        replace_dict['nipd'] = len(params)
+            replace_dict['cipchrdassign'] = '//const cxtype tIPC[0] = { ... }; // nIPC=0'
+
         if len(params) > 0:
-            replace_dict['cipdassign'] = 'const fptype tIPD[nIPD] = { (fptype)m_pars->%s };'\
-                                         %( ', (fptype)m_pars->'.join(params) )
-            replace_dict['cipddevice'] = '__device__ __constant__ fptype cIPD[nIPD];'
-            replace_dict['cipdstatic'] = 'static fptype cIPD[nIPD];'
-            replace_dict['cipd2tipdSym'] = 'gpuMemcpyToSymbol( cIPD, tIPD, nIPD * sizeof( fptype ) );'
-            replace_dict['cipd2tipd'] = 'memcpy( cIPD, tIPD, nIPD * sizeof( fptype ) );'
-            replace_dict['cipddump'] = '\n    //for ( int i=0; i<nIPD; i++ ) std::cout << std::setprecision(17) << "tIPD[i] = " << tIPD[i] << std::endl;'
-            param_str_hrd = '__device__ const fptype cIPD[nIPD] = { '
-            for para in params : param_str_hrd += '(fptype)Parameters::%s, ' % ( para )
-            param_str_hrd = param_str_hrd[:-2] + ' };'
-            replace_dict['cipdhrdcod'] = param_str_hrd
+            replace_dict['cipdassign'] = ('static constexpr double Parameters::* const cIPD_members[nIPD] = {\n'
+                                           '      &Parameters::' + ',\n      &Parameters::'.join(params) + '\n'
+                                           '    };\n'
+                                           '    fptype tIPD[nIPD];\n'
+                                           '    gatherFptype( m_pars, cIPD_members, tIPD );\n'
+                                           '    setIndependentParams( tIPD );')
+            replace_dict['cipdhrdassign'] = 'const fptype tIPD[nIPD] = { (fptype)Parameters::%s };\n    setIndependentParams( tIPD );'\
+                                         %( ', (fptype)Parameters::'.join(params) )
         else:
             replace_dict['cipdassign'] = '//const fptype tIPD[0] = { ... }; // nIPD=0'
-            replace_dict['cipddevice'] = '//__device__ __constant__ fptype* cIPD = nullptr; // unused as nIPD=0'
-            replace_dict['cipdstatic'] = '//static fptype* cIPD = nullptr; // unused as nIPD=0'
-            replace_dict['cipd2tipdSym'] = '//gpuMemcpyToSymbol( cIPD, tIPD, 0 * sizeof( fptype ) ); // nIPD=0'
-            replace_dict['cipd2tipd'] = '//memcpy( cIPD, tIPD, nIPD * sizeof( fptype ) ); // nIPD=0'
-            replace_dict['cipddump'] = ''
-            replace_dict['cipdhrdcod'] = '//__device__ const fptype* cIPD = nullptr; // unused as nIPD=0'
+            replace_dict['cipdhrdassign'] = '//const fptype tIPD[0] = { ... }; // nIPD=0'
 
         # flavor couplings
         for flv_coup, pos in self.couporderflv.items():
             flv_couplings[pos] = flv_coup
-        replace_dict['nipf'] = len(flv_couplings)
         if len(flv_couplings):
             nMF = max(len(ids) for ids in self.model['merged_particles'].values())
-            # we have 3 arrays:
-            #  - all partner1 arrays combined
-            #  - all partner2 arrays combines
-            #  - all value arrays combined
+            # we have 3 arrays: all partner1/partner2/value arrays combined
             replace_dict['cipfassign'] = """int tIPF_partner1[nMF * nIPF];
     int tIPF_partner2[nMF * nIPF];
     cxtype tIPF_value[nMF * nIPF];
@@ -2034,132 +2030,37 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
       memcpy( tIPF_partner2 + i * nMF, tFLV[i].partner2, nMF * sizeof( int ) );
       for (int j = 0; j < nMF; ++j)
         tIPF_value[i * nMF + j] = tFLV[i].value[j] ? *tFLV[i].value[j] : cxtype{}; // guard from null pointers
-    }""" % ( ', m_pars->'.join(flv_couplings) )
-            replace_dict['cipfdevice'] = """__device__ __constant__ int cIPF_partner1[nMF * nIPF];
-  __device__ __constant__ int cIPF_partner2[nMF * nIPF];
-  __device__ __constant__ fptype cIPF_value[nMF * nIPF * 2];"""
-            replace_dict['cipfstatic'] = """static int cIPF_partner1[nMF * nIPF];
-  static int cIPF_partner2[nMF * nIPF];
-  static fptype cIPF_value[nMF * nIPF * 2];"""
-            replace_dict['cipf2tipfSym'] = """gpuMemcpyToSymbol( cIPF_partner1, tIPF_partner1, nMF * nIPF * sizeof( int )    );
-    gpuMemcpyToSymbol( cIPF_partner2, tIPF_partner2, nMF * nIPF * sizeof( int )    );
-    gpuMemcpyToSymbol( cIPF_value   , tIPF_value   , nMF * nIPF * sizeof( cxtype ) );"""
-            replace_dict['cipf2tipf'] = """memcpy( cIPF_partner1, tIPF_partner1, nMF * nIPF * sizeof( int )    );
-    memcpy( cIPF_partner2, tIPF_partner2, nMF * nIPF * sizeof( int )    );
-    memcpy( cIPF_value   , tIPF_value   , nMF * nIPF * sizeof( cxtype ) );"""
-            replace_dict['cipfdump'] = '''
-    //for ( int i=0; i < nIPD; i++ ) {
-    //  std::cout << std::setprecision(17) << "tIPF[i].partner1 = { ";
-    //  for ( int j=0; j < nMF-1; j++ ) std::cout << std::setprecision(17) << tIPF[i].partner1[j] << ", ";
-    //  std::cout << std::setprecision(17) << tIPF[i].partner1[nMF-1] << " }" << std::endl;
-    //  std::cout << std::setprecision(17) << "tIPF[i].partner2 = { ";
-    //  for ( int j=0; j < nMF-1; j++ ) std::cout << std::setprecision(17) << tIPF[i].partner2[j] << ", ";
-    //  std::cout << std::setprecision(17) << tIPF[i].partner2[nMF-1] << " }" << std::endl;
-    //  std::cout << std::setprecision(17) << "tIPF[i].value = { ";
-    //  for ( int j=0; j < nMF-1; j++ ) std::cout << std::setprecision(17) << tIPF[i].value[j] << ", ";
-    //  std::cout << std::setprecision(17) << tIPF[i].value[nMF-1] << " }" << std::endl;
-    //}
-'''
-            coup_str_hrd_partner1 = '__device__ const int cIPF_partner1[nMF * nIPF] = { '
-            coup_str_hrd_partner2 = '__device__ const int cIPF_partner2[nMF * nIPF] = { '
-            coup_str_hrd_value    = '__device__ const fptype cIPF_value[nMF * nIPF * 2] = { '
-            for flv_coup in flv_couplings:
-                coup_str_hrd_partner1 += ( ('Parameters_%(model_name)s::%(coup)s.param1' % {"model_name": self.model_name, "coup": flv_coup} + '[%d], ') * nMF) % ( *range(nMF), )
-                coup_str_hrd_partner2 += ( ('Parameters_%(model_name)s::%(coup)s.param2' % {"model_name": self.model_name, "coup": flv_coup} + '[%d], ') * nMF) % ( *range(nMF), )
-                # Guard against null value[] slots: flavor combinations with no
-                # coupling are left null by the FLV_COUPLING constructor, so the
-                # hardcoded cIPF_value read must not dereference an uninitialised
-                # pointer.  Mirrors the runtime path (value[j] ? *value[j] : 0).
-                value_base = 'Parameters_%(model_name)s::%(coup)s.value' % {"model_name": self.model_name, "coup": flv_coup}
-                for i in range(nMF):
-                    coup_str_hrd_value += '(fptype)( %(b)s[%(i)d] ? %(b)s[%(i)d]->real() : 0. ), ' % {'b': value_base, 'i': i}
-                    coup_str_hrd_value += '(fptype)( %(b)s[%(i)d] ? %(b)s[%(i)d]->imag() : 0. ), ' % {'b': value_base, 'i': i}
-            coup_str_hrd_partner1 = coup_str_hrd_partner1[:-2] + ' };'
-            coup_str_hrd_partner2 = coup_str_hrd_partner2[:-2] + ' };'
-            coup_str_hrd_value    = coup_str_hrd_value[:-2] + ' };'
-            replace_dict['cipfhrdcod'] = '%s\n  %s\n  %s' % (coup_str_hrd_partner1, coup_str_hrd_partner2, coup_str_hrd_value)
+    }
+    setFlavorCouplings( tIPF_partner1, tIPF_partner2, tIPF_value );""" % ( ', m_pars->'.join(flv_couplings) )
+            # Hardcoded variant: same shape, values come from Parameters:: instead of m_pars->
+            hrd_lines = ['int tIPF_partner1[nMF * nIPF];', '    int tIPF_partner2[nMF * nIPF];', '    cxtype tIPF_value[nMF * nIPF];']
+            for i, flv_coup in enumerate(flv_couplings):
+                base = 'Parameters_%s::%s' % (self.model_name, flv_coup)
+                for j in range(nMF):
+                    hrd_lines.append('    tIPF_partner1[%d] = %s.param1[%d];' % (i * nMF + j, base, j))
+                    hrd_lines.append('    tIPF_partner2[%d] = %s.param2[%d];' % (i * nMF + j, base, j))
+                    hrd_lines.append('    tIPF_value[%d] = %s.value[%d] ? *%s.value[%d] : cxtype{};' % (i * nMF + j, base, j, base, j))
+            hrd_lines.append('    setFlavorCouplings( tIPF_partner1, tIPF_partner2, tIPF_value );')
+            replace_dict['cipfhrdassign'] = '\n    '.join(hrd_lines)
         else:
             replace_dict['cipfassign'] = ''
-            replace_dict['cipfdevice'] = """__device__ __constant__ int* cIPF_partner1 = nullptr; // unused as nIPF=0'
-    __device__ __constant__ int* cIPF_partner2 = nullptr; // unused as nIPF=0'
-    __device__ __constant__ fptype* cIPF_value = nullptr; // unused as nIPF=0'"""
-            replace_dict['cipfstatic'] = """static int* cIPF_partner1 = nullptr; // unused as nIPF=0'
-    static int* cIPF_partner2 = nullptr; // unused as nIPF=0'
-    static fptype* cIPF_value = nullptr; // unused as nIPF=0'"""
-            replace_dict['cipf2tipfSym'] = ''
-            replace_dict['cipf2tipf'] = ''
-            replace_dict['cipfdump'] = ''
-            replace_dict['cipfhrdcod'] = """__device__ const int* cIPF_partner1 = nullptr; // unused as nIPF=0'
-    __device__ const int* cIPF_partner2 = nullptr; // unused as nIPF=0'
-    __device__ const fptype* cIPF_value = nullptr; // unused as nIPF=0'"""
+            replace_dict['cipfhrdassign'] = ''
 
-        # dependent (running-alphas, event-by-event) flavor couplings -> cDPF_* (Step 3).
-        # Unlike cIPF, these have NO baked-in value array: partner1/partner2 and the
-        # per-flavor idcoup (the index of the underlying dependent coupling in the
-        # event-by-event allcouplings buffer) are pure codegen constants. The actual
-        # complex values are gathered per event page in calculate_jamps (see
-        # super_get_matrix_element_calls). The single-leg serialization mirrors the
-        # Fortran side / write_flv_couplings (the unmerged partner has flavor index 1).
-        flv_couplings_dep = [''] * len(self.couporderflv_dep)
-        for flv_coup, pos in self.couporderflv_dep.items():
-            flv_couplings_dep[pos] = flv_coup
-        replace_dict['ndpf'] = len(flv_couplings_dep)
-        if len(flv_couplings_dep):
-            nMF = max(len(ids) for ids in self.model['merged_particles'].values())
-            flv_map = self.helas_call_writer.flv_couplings_map
-            partner1_vals, partner2_vals, idcoup_vals = [], [], []
-            for name in flv_couplings_dep:
-                coupl = flv_map[name]
-                p1 = [-1] * nMF
-                p2 = [-1] * nMF
-                idc = ['-1'] * nMF
-                for key, gc in coupl.flavors.items():
-                    nonzero = [i for i in key if i != 0]
-                    if len(nonzero) == 2:
-                        k1, k2 = nonzero
-                    else:
-                        # single merged leg: unmerged partner has flavor index 1
-                        k1 = nonzero[0]; k2 = 1
-                    p1[k1-1] = k2-1
-                    p2[k2-1] = k1-1
-                    # symbolic idcoup: resolves to the position of this dependent coupling
-                    # in the event-by-event allcouplings buffer (== COUPs index), defined in
-                    # Parameters_dependentCouplings (Parameters_<model>.h)
-                    idc[k1-1] = '(int)Parameters_dependentCouplings::idcoup_%s' % gc
-                partner1_vals += [str(v) for v in p1]
-                partner2_vals += [str(v) for v in p2]
-                idcoup_vals += idc
-            cdpfdecl = '__device__ const int cDPF_partner1[nMF * nDPF] = { %s };\n' % ', '.join(partner1_vals)
-            cdpfdecl += '  __device__ const int cDPF_partner2[nMF * nDPF] = { %s };\n' % ', '.join(partner2_vals)
-            cdpfdecl += '  __device__ const int cDPF_idcoup[nMF * nDPF] = { %s };' % ', '.join(idcoup_vals)
-            replace_dict['cdpfdecl'] = cdpfdecl
-        else:
-            replace_dict['cdpfdecl'] = """__device__ const int* cDPF_partner1 = nullptr; // unused as nDPF=0
-  __device__ const int* cDPF_partner2 = nullptr; // unused as nDPF=0
-  __device__ const int* cDPF_idcoup = nullptr; // unused as nDPF=0"""
+        # mdl_bsmIndepParam only exists as a symbol at all when the model has
+        # BSM params (see MGONGPUCPP_NBSMINDEPPARAM_GT_0, PR #625) - this is a
+        # pre-existing macro, not new, and must stay a #ifdef (not a runtime
+        # check) since the symbol itself may not exist to name-lookup.
+        replace_dict['bsmassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
+    if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( m_pars->mdl_bsmIndepParam, Parameters::nBsmIndepParam );
+#endif'''
+        replace_dict['bsmhrdassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
+    if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
+#endif'''
 
-        # FIXME! Here there should be different code generated depending on MGONGPUCPP_NBSMINDEPPARAM_GT_0 (issue #827)
-        replace_dict['all_helicities'] = self.get_helicity_matrix(self.matrix_elements[0])
-        replace_dict['all_helicities'] = replace_dict['all_helicities'] .replace('helicities', 'tHel')
-        replace_dict['all_flavors'] = self.get_flavor_matrix(self.matrix_elements[0])
-        replace_dict['all_flavors'] = replace_dict['all_flavors'].replace('flavors', 'tFlavors')
-        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False)
-                            for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
-        replace_dict['ncolor'] = len(color_amplitudes[0])
-        # The color sum can run on the (n-2)! DDM basis while the color flow
-        # probabilities keep using the (n-1)! trace one
-        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
-        # broken_symmetry_factor function: use the shared decay-aware symmetry
-        # data (same as the Fortran / standalone_cpp exporters) instead of the
-        # old simple PID-count version, so identical-particle and decay-chain
-        # symmetry factors match across backends.
-        _, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
-        replace_dict['nincoming'] = nincoming
-        process = self.matrix_elements[0].get('processes')[0]
-        sym_data = export_v4.ProcessExporterFortran._get_broken_symmetry_data(
-            process, nincoming)
-        export_v4.ProcessExporterFortran._fill_broken_sym_replace_dict(
-            replace_dict, sym_data)
+        # ncolor_flow/color-flow lines are set on replace_dict by
+        # get_matrix_single_process (process_class.inc); the broken-symmetry
+        # data broken_symmetry_factor now reads moved to ProcessTables.h, see
+        # edit_processtables().
 
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
@@ -2190,7 +2091,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
 
         replace_dict['nb_channel'] = len(self.multi_channel_map)
-        # same meaning as in edit_coloramps: the number of color flows, which
+        # same meaning as in edit_colordata: the number of color flows, which
         # is not the size of the color basis when the color sum runs on the DDM one
         replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
 
@@ -2210,179 +2111,34 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return replace_dict
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
+    # backend_separation: calculate_jamps' prologue (signature, memory-access
+    # typedefs) and epilogue (color-choice bookkeeping, jamp output copy - was
+    # process_matrix.inc) are backend-conditional but process-independent, so
+    # they now live as real files in backend/{cpu,simd,gpu}/CalculateJamps.cc.
+    # Only the diagram/vertex-call sequence (helas_calls) is process-specific;
+    # it is written here to EvaluateDiagrams.inc, which that file #includes.
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
-        """Get sigmaKin_process for all subprocesses for CPPProcess.cc"""
-        ret_lines = []
-        # The jamps are one vector per amplitude split order, njampso long in
-        # total; 'ncolor' without them, so the default output is unchanged.
-        jamp_dim = 'njampso' if self.split_orders_active() else 'ncolor'
+        """Write EvaluateDiagrams.inc for CPPProcess.cc"""
         if self.single_helicities:
-            ###misc.sprint(type(self.helas_call_writer))
-            ###misc.sprint( 'before get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # WRONG value of nwf, eg 7 for gg_tt
             helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
                                                     multi_channel_map = self.multi_channel_map
                                                     )
-            ###misc.sprint( 'after get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # CORRECT value of nwf, eg 5 for gg_tt
             assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
             self.couplings2order = self.helas_call_writer.couplings2order
             self.couporderflv = self.helas_call_writer.couporderflv
             self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
             self.params2order = self.helas_call_writer.params2order
-            ret_lines.append("""
-  // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams
-  // Also compute running sums over helicities adding jamp2, numerator, denominator
-  // (NB: this function no longer handles matrix elements as the color sum has now been moved to a separate function/kernel)
-  // In CUDA, this function processes a single event
-  // ** NB1: NEW Nov2024! In CUDA this is now a kernel function (it used to be a device function)
-  // ** NB2: NEW Nov2024! in CUDA this now takes a channelId array as input (it used to take a scalar channelId as input)
-  // In C++, this function processes a single event "page" or SIMD vector (or for two in "mixed" precision mode, nParity=2)
-  // *** NB: in C++, calculate_jamps accepts a SCALAR channelId because it is GUARANTEED that all events in a SIMD vector have the same channelId #898
-
-  // Accumulate a multichannel numerator contribution in place.
-  // In CUDA all good-helicity blocks/streams for a given event race on the same numerator slot
-  // (the helicity dimension has been removed to save memory), so an atomicAdd is mandatory.
-  // In C++ each event page is processed serially within the helicity loop, so a plain sum suffices.
-#ifdef MGONGPUCPP_GPUIMPL
-#define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
-#else
-#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
-#endif
-
-  __global__ void /* clang-format off */
-  calculate_jamps( int ihel,
-                   const fptype_momenta* allmomenta,          // input: momenta[nevt*npar*4]
-                   const fptype* allcouplings,        // input: couplings[nevt*ndcoup*2]
-                   const unsigned int* iflavorVec,    // input: indices of the flavor combinations
-#ifdef MGONGPUCPP_GPUIMPL
-                   fptype_amp* allJamps,                  // output: jamp[2*ncolor*nevt] buffer for one helicity _within a super-buffer for dcNGoodHel helicities_
-                   bool storeChannelWeights,
-                   fptype_amp* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel
-                   fptype_amp* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel
-                   fptype_amp* colAllJamp2s,              // output: allJamp2s[ncolor_flow][nevt] super-buffer, sum over col/hel (nullptr to disable)
-                   const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
-                   const bool processAllHelicities    // input: if true, use blockIdx.y to index helicities
-#else
-                   cxtype_amp_sv* allJamp_sv,             // output: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for this helicity
-                   bool storeChannelWeights,
-                   fptype_amp* allNumerators,             // input/output: multichannel numerators[nevt], add helicity ihel (channel hel amps -> fptype_amp)
-                   fptype_amp* allDenominators,           // input/output: multichannel denominators[nevt], add helicity ihel (channel hel amps -> fptype_amp)
-                   fptype_amp_sv* jamp2_sv,               // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
-                   const int ievt00                   // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
-#endif
-                   )
-  //ALWAYS_INLINE // attributes are not permitted in a function definition
-  {
-#ifdef MGONGPUCPP_GPUIMPL
-    using namespace mg5amcGpu;
-    using M_ACCESS = DeviceAccessMomenta;         // non-trivial access: buffer includes all events
-    using W_ACCESS = DeviceAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
-    using A_ACCESS = DeviceAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
-    using CD_ACCESS = DeviceAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
-    using CI_ACCESS = DeviceAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
-    using F_ACCESS = DeviceAccessIflavorVec;      // non-trivial access: buffer includes all events
-    using NUM_ACCESS = DeviceAccessNumerators;    // non-trivial access: buffer includes all events
-#else
-    using namespace mg5amcCpu;
-    using M_ACCESS = HostAccessMomenta;         // non-trivial access: buffer includes all events
-    using W_ACCESS = HostAccessWavefunctions;   // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
-    using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
-    using CD_ACCESS = HostAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
-    using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
-    using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
-    using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
-#endif
-    mgDebug( 0, __FUNCTION__ );
-    //bool debug = true;
-#ifndef MGONGPUCPP_GPUIMPL
-    //debug = ( ievt00 >= 64 && ievt00 < 80 && ihel == 3 ); // example: debug #831
-    //if( debug ) printf( \"calculate_jamps: ievt00=%d ihel=%2d\\n\", ievt00, ihel );
-#else
-    //const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
-    //debug = ( ievt == 0 );
-    //if( debug ) printf( \"calculate_jamps: ievt=%6d ihel=%2d\\n\", ievt, ihel );
-    if (processAllHelicities) {
-      int ighel = blockIdx.y;
-      ihel = dcGoodHel[ighel];
-      allJamps = allJamps + ighel * nevt;
-      // NB: the numerators buffer has NO helicity dimension anymore: all good-helicity blocks
-      // for a given event accumulate in place into the same [nevt][ndiagrams] slot via atomicAdd.
-      // The denominators are no longer accumulated here (derived as the sum of numerators later).
-    }
-#endif /* clang-format on */""")
-            nwavefuncs = self.matrix_elements[0].get_number_of_wavefunctions()
-            ret_lines.append("""
-    // The variable nwf (which is specific to each P1 subdirectory, #644) is only used here
-    // It is hardcoded here because various attempts to hardcode it in CPPProcess.h at generation time gave the wrong result...
-    static const int nwf = %i; // #wavefunctions = #external (npar) + #internal: e.g. 5 for e+ e- -> mu+ mu- (1 internal is gamma or Z)"""%nwavefuncs )
-            ret_lines.append("""
-    // Local TEMPORARY variables for a subset of Feynman diagrams in the given CUDA event (ievt) or C++ event page (ipagV)
-    // [NB these variables are reused several times (and re-initialised each time) within the same event or event page]
-    // ** NB: in other words, amplitudes and wavefunctions still have TRIVIAL ACCESS: there is currently no need
-    // ** NB: to have large memory structurs for wavefunctions/amplitudes in all events (no kernel splitting yet)!
-    //MemoryBufferWavefunctions w_buffer[nwf]{ neppV };
-    // Create memory for both momenta and wavefunctions separately, and later wrap them in ALOHAOBJ
-    fptype_momenta_sv pvec_sv[nwf][np4];
-    cxtype_amp_sv w_sv[nwf][nw6]; // particle wavefunctions within Feynman diagrams (nw6 is 4: spin wavefunctions, momenta are no more included, see before)
-    cxtype_amp_sv amp_sv[1];      // invariant amplitude for one given Feynman diagram
-
-    // Wrap the memory into ALOHAOBJ
-    ALOHAOBJ aloha_obj[nwf];
-    for( int iwf = 0; iwf < nwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{pvec_sv[iwf], w_sv[iwf]};
-    fptype_amp* amp_fp;
-    amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );""")
-            if fd_gauge:
-                ret_lines.append("""
-    // special temporary ALOHAOBJ to hold F/Vtmp values in the combined vertex functions while using the FD gauge
-    fptype_momenta_sv pvec_sv_tmp[1][np4];
-    cxtype_amp_sv w_sv_tmp[1][nw6]; 
-    ALOHAOBJ aloha_obj_tmp[1];
-    aloha_obj_tmp[0] = ALOHAOBJ{pvec_sv_tmp[0], w_sv_tmp[0]};
-    
-    // special one value to hold tmp vertex value inside the combined vertex functions while using the FD gauge
-    cxtype_amp_sv amp_tmp_sv[1]; //to ensure proper aligment for vector instructions
-    fptype_amp* amp_tmp_fp;
-    amp_tmp_fp = reinterpret_cast<fptype_amp*>( amp_tmp_sv );
-    """)
-            ret_lines.append("""
-    // Local variables for the given CUDA event (ievt) or C++ event page (ipagV)
-    // [jamp: sum (for one event or event page) of the invariant amplitudes for all Feynman diagrams in a given color combination]
-    cxtype_amp_sv jamp_sv[%s] = {}; // all zeros (NB: vector cxtype_v IS initialized to 0, but scalar cxtype is NOT, if "= {}" is missing!)""" % jamp_dim)
-            # Shared sub-expressions of the color flows, filled in while the
-            # amplitudes go by (see MadMatrixUFOHelasCallWriter.build_jamp_plan).
-            # No "= {}": each one is assigned before it is ever read.
-            nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
-            if nb_tmp_jamp:
-                ret_lines.append("""
-    // [jampTmp: partial sums of amplitudes that several color flows share, so that they are computed only once]
-    cxtype_amp_sv jampTmp_sv[%i];""" % nb_tmp_jamp)
-            ret_lines.append("""
-    // === Calculate wavefunctions and amplitudes for all diagrams in all processes         ===
-    // === (for one event in CUDA, for one - or two in mixed mode - SIMD event pages in C++ ===
-
-    // START LOOP ON IPARITY
-    for( int iParity = 0; iParity < nParity; ++iParity )
-    {
-#ifndef MGONGPUCPP_GPUIMPL
-      const int ievt0 = ievt00 + iParity * neppV;
-#endif""")
-            ret_lines += helas_calls
+            content = []
+            content += helas_calls
         else:
-            ret_lines.extend([self.get_sigmaKin_single_process(i, me) \
-                                  for i, me in enumerate(self.matrix_elements)])
-        #ret_lines.extend([self.get_matrix_single_process(i, me,
-        #                                                 color_amplitudes[i],
-        #                                                 class_name) \
-        #                        for i, me in enumerate(self.matrix_elements)])
-        file_extend = []
-        for i, me in enumerate(self.matrix_elements):
-            file = self.get_matrix_single_process( i, me, color_amplitudes[i], class_name )
-            file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_matrix.inc (copyright)
-            file_extend.append( file )
-            assert i == 0, "more than one ME in get_all_sigmaKin_lines" # AV sanity check (added for color_sum.cc but valid independently)
-        ret_lines.extend( file_extend )
-        return '\n'.join(ret_lines)
+            content = [self.get_sigmaKin_single_process(i, me) \
+                                  for i, me in enumerate(self.matrix_elements)]
+        ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
+        ff.write('\n'.join(content))
+        ff.close()
+        return ''
 
     # AV - modify export_cpp.OneProcessExporterCPP method (replace '# Process' by '// Process')
     def get_process_info_lines(self, matrix_element):
@@ -2396,19 +2152,114 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def generate_process_files(self):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
-        self.edit_mgonGPU()
-        self.edit_processidfile() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
-        self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
-        self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
-        self.edit_coloramps()
-        self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
-        self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
+        self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         super().generate_process_files()
+        # needs to be after get_matrix_element_calls to have nwf ready
+        self.edit_processdata()
+        self.edit_processtables()
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
+
+    # seperate process constants to one truth file
+    def edit_processdata(self):
+        """Generate ProcessData.h"""
+        template = open(pjoin(self.template_path, 'madmatrix', 'ProcessData.h'), 'r').read()
+        me = self.matrix_elements[0]
+        replace_dict = {}
+        nexternal, nincoming = me.get_nexternal_ninitial()
+        replace_dict['nincoming'] = nincoming
+        replace_dict['noutcoming'] = nexternal - nincoming
+        replace_dict['nbhel'] = me.get_helicity_combinations()
+        replace_dict['ndiagrams'] = len(me.get('diagrams'))
+        replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
+        replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
+        replace_dict['ncolor'] = len(me.get_color_amplitudes())
+        replace_dict['nwf'] = me.get_number_of_wavefunctions()
+        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
+        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
+        replace_dict['den_factors'] = ",".join(den_factors)
+        # cached by get_process_function_definitions(), which runs earlier in
+        # super().generate_process_files()
+        replace_dict['nipd'] = self._nipd
+        replace_dict['nipc'] = self._nipc
+        replace_dict['nipf'] = self._nipf
+        replace_dict['ndpf'] = self._ndpf
+        replace_dict['processid'] = self.name
+        replace_dict['processid_uppercase'] = self.name.upper()
+        replace_dict['thel_lines'] = self.get_helicity_matrix(me).replace('helicities', 'tHel')
+        replace_dict['tflavors_lines'] = self.get_flavor_matrix(me).replace('flavors', 'tFlavors')
+        ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
+        ff.write(template % replace_dict)
+        ff.close()
+
+    # backend_separation: process-specific compile-time DATA (arrays, not
+    # scalars) that backend-owned code needs but can't take as a runtime
+    # parameter without losing constexpr-ness (see ProcessTables.h).
+    def edit_processtables(self):
+        """Generate ProcessTables.h"""
+        template = open(pjoin(self.template_path, 'madmatrix', 'ProcessTables.h'), 'r').read()
+        replace_dict = {}
+
+        # jampTmp_sv scratch size for calculate_jamps' shared sub-expressions
+        # (cached by get_process_function_definitions(), see there).
+        replace_dict['nb_tmp_jamp'] = self._nb_tmp_jamp
+
+        # Dependent (event-by-event, running-alphas) flavor couplings: partner
+        # indices and the per-flavor idcoup are pure compile-time constants
+        # (the complex values are gathered per event page in calculate_jamps).
+        flv_couplings_dep = [''] * len(self.couporderflv_dep)
+        for flv_coup, pos in self.couporderflv_dep.items():
+            flv_couplings_dep[pos] = flv_coup
+        if len(flv_couplings_dep):
+            nMF = max(len(ids) for ids in self.model['merged_particles'].values())
+            flv_map = self.helas_call_writer.flv_couplings_map
+            partner1_vals, partner2_vals, idcoup_vals = [], [], []
+            for name in flv_couplings_dep:
+                coupl = flv_map[name]
+                p1 = [-1] * nMF
+                p2 = [-1] * nMF
+                idc = ['-1'] * nMF
+                for key, gc in coupl.flavors.items():
+                    nonzero = [i for i in key if i != 0]
+                    if len(nonzero) == 2:
+                        k1, k2 = nonzero
+                    else:
+                        # single merged leg: unmerged partner has flavor index 1
+                        k1 = nonzero[0]; k2 = 1
+                    p1[k1-1] = k2-1
+                    p2[k2-1] = k1-1
+                    # symbolic idcoup: resolves to the position of this dependent coupling
+                    # in the event-by-event allcouplings buffer (== COUPs index), defined in
+                    # Parameters_dependentCouplings (Parameters_<model>.h)
+                    idc[k1-1] = '(int)Parameters_dependentCouplings::idcoup_%s' % gc
+                partner1_vals += [str(v) for v in p1]
+                partner2_vals += [str(v) for v in p2]
+                idcoup_vals += idc
+            cdpfdecl = '__device__ constexpr int cDPF_partner1[nMF * nDPF] = { %s };\n' % ', '.join(partner1_vals)
+            cdpfdecl += '  __device__ constexpr int cDPF_partner2[nMF * nDPF] = { %s };\n' % ', '.join(partner2_vals)
+            cdpfdecl += '  __device__ constexpr int cDPF_idcoup[nMF * nDPF] = { %s };' % ', '.join(idcoup_vals)
+            replace_dict['cdpfdecl'] = cdpfdecl
+        else:
+            replace_dict['cdpfdecl'] = """__device__ constexpr const int* cDPF_partner1 = nullptr; // unused as nDPF=0
+  __device__ constexpr const int* cDPF_partner2 = nullptr; // unused as nDPF=0
+  __device__ constexpr const int* cDPF_idcoup = nullptr; // unused as nDPF=0"""
+
+        # broken_symmetry_factor data: same shared decay-aware symmetry data
+        # as the Fortran / standalone_cpp exporters.
+        _, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
+        process = self.matrix_elements[0].get('processes')[0]
+        sym_data = export_v4.ProcessExporterFortran._get_broken_symmetry_data(
+            process, nincoming)
+        export_v4.ProcessExporterFortran._fill_broken_sym_replace_dict(
+            replace_dict, sym_data)
+
+        ff = open(pjoin(self.path, 'ProcessTables.h'), 'w')
+        ff.write(template % replace_dict)
+        ff.close()
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2423,18 +2274,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # this is the correct P1-specific nwf, now in CPPProcess.h (#644)
         replace_dict['wavefuncsize'] = 6
         ff = open(pjoin(self.path, '..','..','src','mgOnGpuConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_processidfile(self):
-        """Generate epoch_process_id.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processidfile')
-        template = open(pjoin(self.template_path,'madmatrix','epoch_process_id.h'),'r').read()
-        replace_dict = {}
-        replace_dict['processid'] = self.name
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'epoch_process_id.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
@@ -2578,43 +2417,36 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                  for k in so['chosen']))
         return '\n'.join(lines)
 
-    # AV - new method
-    def edit_colorsum(self):
-        """Generate color_sum.cc"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
-        # A process whose '^2' constraint leaves more than one amplitude split
-        # order gets the dedicated pair-loop color sum instead (see that file).
-        split = self.split_orders_active()
-        name = 'color_sum_splitorders.cc' if split else 'color_sum.cc'
-        template = open(pjoin(self.template_path,'madmatrix',name),'r').read()
+    # generate process specific color matrix data - algo is backend owned
+    # generate process specific color matrix + channel/config maps - algo is backend owned
+    def edit_colordata(self):
+        """Generate ColorData.h"""
+        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colordata')
+        template = open(pjoin(self.template_path,'madmatrix','ColorData.h'),'r').read()
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
-        if split:
-            replace_dict['sqso_tables'] = self.get_sqso_table_lines()
-        replace_dict['cpp_blas_color_sum'] = ''
-        if self.cpp_blas_wanted():
-            replace_dict['cpp_blas_color_sum'] = strip_banner(
-                open(pjoin(self.template_path, self.blas_color_sum_template), 'r').read(),
-                banner_mark='/')
-        ff = open(pjoin(self.path, 'color_sum.cc'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-        
-    def edit_processConfig(self):
-        """Generate process_config.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processConfig')
-        template = open(pjoin(self.template_path,'madmatrix','processConfig.h'),'r').read()
-        replace_dict = {}
-        replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams'))
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'processConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_coloramps(self):
-        """Generate coloramps.h"""
+        # backend/{cpu,simd}/color_sum.cc always compiles the BLAS path (it is
+        # only ever built, never process-specific); this constexpr, not this
+        # file's %-substitution, is what picks it at compile time per process.
+        replace_dict['should_use_blas'] = 'true' if self.cpp_blas_wanted() else 'false'
+        # A process whose '^2' constraint leaves more than one amplitude split
+        # order needs the dedicated pair-loop color sum (different jamp layout:
+        # njampso = ncolor*nampso, not ncolor). backend/{cpu,simd}/color_sum.cc
+        # is now a single file shared by every P* in this output (compiled once,
+        # found via the Makefile's vpath into the top-level backend/ dir - see
+        # "Redundant template file delete"), so it can no longer hold a
+        # process-specific algorithm variant. Fail loudly here rather than
+        # silently emitting the non-split color sum for a split-order process.
+        if self.split_orders_active():
+            raise Exception(
+                "Split amplitude orders ('^2' constraints with more than one "
+                "amplitude order) are not yet supported by the backend-separated "
+                "color sum: backend/{cpu,simd}/color_sum.cc is shared across every "
+                "P* directory in this output, so it cannot carry a process-specific "
+                "pair-loop variant. See color_sum_splitorders.cc for the algorithm "
+                "that still needs folding into the shared file behind a compile-time "
+                "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
 
         # we don't sort self.multi_channel_map, and we rely on MadSpace sorting
         # so, diagrams there may be unsorted
@@ -2623,12 +2455,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for config in config_subproc_map_C:
             config_subproc_map.append([c+1 for c in config])
 
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_coloramps')
-        template = open(pjoin(self.template_path,'madmatrix','coloramps.h'),'r').read()
-        ff = open(pjoin(self.path, 'coloramps.h'),'w')
         # The following five lines from OneProcessExporterCPP.get_sigmaKin_lines (using OneProcessExporterCPP.get_icolamp_lines)
-        replace_dict={}
-
         iconfig_to_diag = {}
         diag_to_iconfig = {}
         iconfig = 0
@@ -2676,28 +2503,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memorybuffers(self):
-        """Generate MemoryBuffers.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memorybuffers')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryBuffers.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryBuffers.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memoryaccesscouplings(self):
-        """Generate MemoryAccessCouplings.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memoryaccesscouplings')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryAccessCouplings.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryAccessCouplings.h'),'w')
+        ff = open(pjoin(self.path, 'ColorData.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
@@ -2838,24 +2644,31 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (improve formatting)
     def get_initProc_lines(self, matrix_element, color_amplitudes):
-        """Get initProc_lines for function definition for CPPProcess::initProc"""
-        initProc_lines = []
-        initProc_lines.append('// Set external particle masses for this matrix element')
+        """initProc_lines for CPPProcess::initProc (non-hardcoded branch): a generated pointer-to-member table read by gatherFptype() (see Parameters.h)."""
+        masses = [part.get('mass') for part in matrix_element.get_external_wavefunctions()]
+        return ('// Set external particle masses for this matrix element\n'
+                '    static constexpr double Parameters::* const massMembers[npar] = {\n'
+                '      &Parameters::' + ',\n      &Parameters::'.join(masses) + '\n'
+                '    };\n'
+                '    fptype tMasses[npar];\n'
+                '    gatherFptype( m_pars, massMembers, tMasses );\n'
+                '    m_masses.assign( tMasses, tMasses + npar );')
+
+    def get_hardcoded_initProc_lines(self, matrix_element):
+        """initProc_lines for CPPProcess::initProc, MGONGPU_HARDCODE_PARAM branch: Parameters has no instance here, so this stays imperative."""
+        initProc_lines = ['// Set external particle masses for this matrix element']
         for part in matrix_element.get_external_wavefunctions():
-            ###initProc_lines.append('mME.push_back(pars->%s);' % part.get('mass'))
-            initProc_lines.append('    m_masses.push_back( m_pars->%s );' % part.get('mass')) # AV
-        ###for i, colamp in enumerate(color_amplitudes):
-        ###    initProc_lines.append('jamp2_sv[%d] = new double[%d];' % (i, len(colamp))) # AV - this was commented out already
+            initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
         return '\n'.join(initProc_lines)
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (fix helicity order and improve formatting)
     def get_helicity_matrix(self, matrix_element):
         """Return the Helicity matrix definition lines for this matrix element"""
-        helicity_line = '    static constexpr short helicities[ncomb][npar] = {\n      '; # AV (this is tHel)
+        helicity_line = '  static constexpr short helicities[ncomb][npar] = {\n    '; # AV (this is tHel)
         helicity_line_list = []
         for helicities in matrix_element.get_helicity_matrix(allow_reverse=True): # AV was False: different order in Fortran and cudacpp! #569
             helicity_line_list.append( '{ ' + ', '.join(['%d'] * len(helicities)) % tuple(helicities) + ' }' ) # AV
-        return helicity_line + ',\n      '.join(helicity_line_list) + ' };' # AV
+        return helicity_line + ',\n    '.join(helicity_line_list) + ' };' # AV
 
     def get_flavor_matrix(self, matrix_element):
         """Return the flavor matrix definition lines for this matrix element"""
@@ -3308,9 +3121,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         self.nb_tmp_jamp = jamp_plan[0] if jamp_plan else 0
         so_index = self.split_order_index(matrix_element)
         ncolor_jamp = len(color_amplitudes)
-        # 'ncolor' unless the jamps carry an amplitude-order index, so that a
-        # process without split orders gets exactly the text it always got
-        jamp_dim = 'njampso' if so_index is not None else 'ncolor'
         if jamp_plan is not None:
             _ntmp, jamp_captures, jamp_combines, jamp_final = jamp_plan
         me = matrix_element.get('diagrams')
@@ -3318,85 +3128,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         ###misc.sprint(multi_channel_map)
         res = []
         ###res.append('for(int i=0;i<%s;i++){jamp[i] = cxtype(0.,0.);}' % len(color_amplitudes))
-        res.append("""//constexpr size_t nxcoup = ndcoup + nicoup; // both dependent and independent couplings (BUG #823)
-      constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings (FIX #823)
-      const fptype* allCOUPs[nxcoup];
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#pragma nv_diagnostic push 
-#pragma nv_diag_suppress 186 // e.g. <<warning #186-D: pointless comparison of unsigned integer with zero>>
-#endif
-      for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
-        allCOUPs[idcoup] = CD_ACCESS::idcoupAccessBufferConst( allcouplings, idcoup ); // dependent couplings, vary event-by-event
-      //for( size_t iicoup = 0; iicoup < nicoup; iicoup++ )                             // BUG #823
-      for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )                                 // FIX #823
-        allCOUPs[ndcoup + iicoup] = CI_ACCESS::iicoupAccessBufferConst( cIPC, iicoup ); // independent couplings, fixed for all events
-#ifdef MGONGPUCPP_GPUIMPL
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
-#pragma nv_diagnostic pop
-#endif
-      // CUDA kernels take input/output buffers with momenta/MEs for all events
-      const fptype_momenta* momenta = allmomenta;
-      const fptype* COUPs[nxcoup];
-      for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
-      fptype_amp* numerators = &allNumerators[ievt * processConfig::ndiagrams];
-#else
-      // C++ kernels take input/output buffers with momenta/MEs for one specific event (the first in the current event page)
-      const fptype_momenta* momenta = M_ACCESS::ieventAccessRecordConst( allmomenta, ievt0 );
-      const fptype* COUPs[nxcoup];
-      for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
-        COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
-      //for( size_t iicoup = 0; iicoup < nicoup; iicoup++ ) // BUG #823
-      for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )     // FIX #823
-        COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
-      fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
-#endif
-      // Create an array of views over the Flavor Couplings
-      FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
-
-      // Dependent (event-by-event, running-alphas) flavor couplings (Step 3): the per-flavor
-      // values are NOT baked in (they run per event). Gather the current values of the
-      // underlying dependent couplings for this event page into an AOSOA buffer dpf_value
-      // (one nx2*neppC SIMD record per (coupling,flavor) slot, matching CD_ACCESS), then build
-      // an ordinary value-based view over it. The flavor index is constant across a SIMD lane
-      // (guaranteed by the phase-space integrator), so each lane gets its own running value
-      // while sharing the same flavor selection. This is the direct analogue of Fortran's
-      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
-      // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
-      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
-#ifndef MGONGPUCPP_GPUIMPL
-      // cppAlign is only defined for SIMD
-      alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
-#else
-      fptype dpf_value[ndpfbuf]{};
-#endif
-      for( int idpf = 0; idpf < nDPF; idpf++ )
-        for( int imf = 0; imf < nMF; imf++ )
-        {
-          const int idc = cDPF_idcoup[idpf * nMF + imf];
-          if( idc >= 0 )
-            CD_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CD_ACCESS::flv_stride ) =
-              CD_ACCESS::kernelAccessConst( COUPs[idc] );
-        }
-      FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
-
-      // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
-      for( int i = 0; i < """ + jamp_dim + """; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
-
-      // Numerators for the current event (CUDA) or SIMD event page (C++)
-      // (denominators are no longer accumulated here: they are derived as the sum of numerators later)
-      fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      // Scalar iflavor for the current event
-      // for GPU it is an int
-      // for SIMD it is also an int, since it is constant across the SIMD vector
-#ifdef MGONGPUCPP_GPUIMPL
-      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
-#else
-      const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
-      const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
-      const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0];
-#endif
-""")
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
         for config in sorted(multi_channel_map.keys()):
