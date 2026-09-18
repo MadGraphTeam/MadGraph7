@@ -153,10 +153,35 @@ class CheckFKS(mg_interface.CheckValidForCmd):
 
     def check_output(self, args):
         """ check the validity of the line"""
-                  
+
+        # '--fks' requests the FKS counter-term standalone output: a lightweight
+        # directory exposing the Born building blocks (Born, color-/charge-linked
+        # Born, spin-correlated Born) for a single phase-space point.
+        self._fks_standalone = '--fks' in args
+        if self._fks_standalone:
+            args.remove('--fks')
+        # '--limits' additionally keeps the real-emission code so that 'launch'
+        # can also run the soft/collinear limit test (test_soft_col_limits)
+        self._fks_limits = '--limits' in args
+        if self._fks_limits:
+            args.remove('--limits')
+            if not self._fks_standalone:
+                raise self.InvalidCmd('"--limits" is only available for the FKS '
+                    'standalone output: "output standalone_fortran --fks --limits".')
+
         if args and args[0] == 'ewsudakovsa':
             self._export_format = 'ewsudsa'
             args.pop(0)
+        elif self._fks_standalone:
+            # accept the optional 'standalone_fortran' keyword
+            # (output standalone_fortran --fks). 'standalone' names the
+            # MadMatrix export, so it is refused rather than taken as a path.
+            if args and args[0] == 'standalone':
+                raise self.InvalidCmd('The FKS Born building-block output is a '
+                    'Fortran output: use "output standalone_fortran --fks".')
+            if args and args[0] == 'standalone_fortran':
+                args.pop(0)
+            self._export_format = 'NLO_SA'
         else:
             self._export_format = 'NLO'
 
@@ -182,6 +207,8 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             if args[0] in forbidden_formats:
                 text = 'You generated a NLO process, which cannot be exported in %s mode.\n' % args[0]
                 text+= 'Please use the command "output DIR_NAME".\n'
+                if args[0] == 'standalone_fortran':
+                    text+= 'For the FKS Born building blocks, use "output standalone_fortran --fks".\n'
                 raise self.InvalidCmd(text)
 
             # This is a path
@@ -778,17 +805,18 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # For NLO, the group_subprocesses is automatically set to false
         group_processes = False
         # initialize the writer
-        if self._export_format in ['NLO','ewsudsa']:
-            output_type_dict = {'NLO': 'amcatnlo', 'ewsudsa': 'ewsudsa'}
-            self._curr_exporter = export_v4.ExportV4Factory(self, noclean, 
+        if self._export_format in ['NLO','ewsudsa','NLO_SA']:
+            output_type_dict = {'NLO': 'amcatnlo', 'ewsudsa': 'ewsudsa',
+                                'NLO_SA': 'amcatnlo_sa'}
+            self._curr_exporter = export_v4.ExportV4Factory(self, noclean,
                       output_type=output_type_dict[self._export_format],
                       group_subprocesses=group_processes)
-            
+
             self._curr_exporter.pass_information_from_cmd(self)
 
         # check if a dir with the same name already exists
         if not force and not noclean and os.path.isdir(self._export_dir)\
-               and self._export_format in ['NLO', 'ewsudsa']:
+               and self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             # Don't ask if user already specified force or noclean
             logger.info('INFO: directory %s already exists.' % self._export_dir)
             logger.info('If you continue this directory will be deleted and replaced.')
@@ -803,7 +831,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             shutil.rmtree(self._export_dir)
 
         # Make a Template Copy
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             self._curr_exporter.copy_fkstemplate(self._curr_model)
 
         # Reset _done_export, since we have new directory
@@ -910,7 +938,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         path = self._export_dir
 
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             path = os.path.join(path, 'SubProcesses')
 
             #_curr_matrix_element is a FKSHelasMultiProcess Object 
@@ -1068,9 +1096,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                                                   shell = isinstance(self, extended_cmd.CmdShell),
                                                   **options)
         ext_program.run()
-        
-                    
-   
+
+
 class aMCatNLOInterfaceWeb(mg_interface.CheckValidForCmdWeb, aMCatNLOInterface):
     pass
 
