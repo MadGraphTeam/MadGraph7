@@ -26,15 +26,30 @@ from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  applied_orders, check_line,
-                                                  counts_line, model_line)
+                                                  applied_orders, counts_line,
+                                                  model_line)
 
 P = 'MG7>'
 MODEL = 'SMEFTatNLO-NLO'
 DEFAULT = 'generate p p > t t~'
 ONE_INSERTION = 'generate p p > t t~ NP<=2'
 LINEAR = 'generate p p > t t~ NP^2==2'
-CHECK = 'check permutation p p > t t~ NP<=2'
+RESTRICTION = 'top'
+CUSTOMIZE = 'customize_model --save=%s' % RESTRICTION
+RELOAD = 'import model SMEFTatNLO-%s' % RESTRICTION
+
+# shown at the customize_model question, where the reader types it
+CUSTOMIZE_AT_QUESTION = """
+Switch off what a top pair never sees -- the operators with leptons in them,
+two whole blocks of the param card:
+
+  set DIM64F2L all 0         two quarks, two leptons
+  set DIM64F4L all 0         four leptons
+
+then `done`. `set NAME 0` does it for one coefficient, and `set NAME = OTHER`
+ties two together. Leave `DIM6` alone as a block: it also holds `Lambda`, and
+a zero scale is a division by zero.
+"""
 
 
 def _orders(interface=None):
@@ -62,6 +77,21 @@ def _orders(interface=None):
                              for order in sorted(orders,
                                                  key=lambda o: hierarchy[o])))
     return text + '.\n'
+
+
+def _saved_restriction(interface=None):
+    """Where customize_model wrote the restriction card, if it did."""
+
+    import os
+
+    try:
+        path = os.path.join(interface._curr_model.get('modelpath'),
+                            'restrict_%s.dat' % RESTRICTION)
+    except Exception:
+        return ''
+    if not os.path.isfile(path):
+        return ''
+    return 'The restriction is saved as\n`%s`.\n' % path
 
 
 def _search_result(interface=None):
@@ -181,18 +211,39 @@ exist. It is also where the model's convention bites a second time. In a
 model counting an insertion as `NP=1`, this same term is `NP^2==1` -- which
 here asks for a term that does not exist, and generates nothing.
 
-Before trusting a number from a model you did not write, check it:
-%(p)s %(check)s
-""" % {'p': P, 'check': CHECK, 'counts': counts_line(interface)},
+A model this size carries far more than any one study needs: most of those
+operators never touch a top pair. `customize_model` builds a restriction of
+your own -- coefficients fixed to zero, to one, or tied together -- and
+`--save` keeps it, so it loads like the ones the model ships:
+%(p)s %(customize)s
+""" % {'p': P, 'customize': CUSTOMIZE, 'counts': counts_line(interface)},
      title='the interference on its own',
-     hint="`check` does not take the `^2` syntax: give it the amplitude "
-          "order.",
-     solution=CHECK),
+     # current while customize_model asks its question
+     question_hint=CUSTOMIZE_AT_QUESTION,
+     hint="`customize_model --save=NAME` opens a question; `done` closes it.",
+     solution=CUSTOMIZE),
 
-Step('check', lambda interface: """
-%(verdict)sThe matrix element does not change when the external legs are
-relabelled, which a mistake in the model's colour or Lorentz structures would
-break. `tutorial checks` goes through the rest of the family.
+Step('customize_model', lambda interface: """
+%(model)s%(saved)sThat is now the model loaded here. The lepton operators are
+gone from it, and so are the vertices they multiplied: a smaller model is a
+faster generation, and a shorter list of coefficients to keep track of.
+
+One thing to know before you rely on it: `customize_model` starts again from
+the full model, with the values of the one you had loaded. A parameter that
+`-NLO` had switched off comes back on, unless you switch it off again.
+
+In a later session, it loads by its name:
+%(p)s %(reload)s
+""" % {'p': P, 'reload': RELOAD, 'model': model_line(interface),
+       'saved': _saved_restriction(interface)},
+     title='a restriction of your own',
+     hint="`import model MODEL-NAME` loads restrict_NAME.dat.",
+     solution=RELOAD),
+
+Step('import_model', lambda interface: """
+%(model)sThe same restriction, loaded by name -- the way you will use it from
+now on. `tutorial checks` is the one to take before you trust a model you did
+not write.
 
 Three things that bite in EFT work:
   * **The convention is the physics.** Which `NP` value is one insertion, and
@@ -208,8 +259,8 @@ Three things that bite in EFT work:
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'verdict': check_line(interface), 'see_also': tutorials.where_next()},
-     title='validate the model, and EFT pitfalls'),
+""" % {'model': model_line(interface), 'see_also': tutorials.where_next()},
+     title='your restriction, and EFT pitfalls'),
 
     ],
 )
