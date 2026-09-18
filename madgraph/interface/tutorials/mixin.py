@@ -93,8 +93,10 @@ class TutorialMixin(object):
             return
         self._tutorial_failed_line = line
 
+        # what the current step waits for is its own solution (before the
+        # intro, there is no current step yet); next_step's is the one after
         expected = None
-        step = session.next_step
+        step = session.current or session.next_step
         if step is not None:
             expected = step.get_solution(self)
 

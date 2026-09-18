@@ -1200,7 +1200,10 @@ class CheckValidForCmd(cmd.CheckCmd):
             self.help_display()
             raise self.InvalidCmd('Invalid arguments for display command: %s' % args[0])
 
-        if not self._curr_model:
+        # the model list is what you read *before* importing one -- the banner
+        # suggests it at startup -- and it lists model directories and the
+        # online database, never the loaded model
+        if not self._curr_model and args[0] not in ('modellist', 'model_list'):
             raise self.InvalidCmd("No model currently active, please import a model!")
 
         # check that either _curr_amps or _fks_multi_proc exists.
