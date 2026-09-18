@@ -19,7 +19,11 @@
 
 #include "mgOnGpuConfig.h"
 
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
 #include "mgOnGpuVectors.h"
+#else
+#include "mgOnGpuCxtypes.h"
+#endif
 
 #include "Parameters.h"
 
@@ -29,11 +33,7 @@
 //#include <iomanip>
 //#include <iostream>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madmatrix
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API
@@ -283,7 +283,10 @@ namespace mg5amcCpu
 //--------------------------------------------------------------------------
 
   // Compute the direction n[5] of the gauge q[5]
-  __host__ __device__ INLINE void
+  // (NB: 'inline', not INLINE, for this and calculate_propagator_factor: unlike
+  // the templates around them they are plain functions defined in a header that
+  // several translation units include, so they must be inline even with HELINL=0)
+  __host__ __device__ inline void
   define_gauge_dir( const fptype_amp_sv q[], // input: gauge
                     fptype_amp_sv n[]        // output: direction
                     ) ALWAYS_INLINE;
@@ -291,7 +294,7 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
   // Compute a propagator factor d out of gauge q[5] and a mass
-  __host__ __device__ INLINE void
+  __host__ __device__ inline void
   calculate_propagator_factor( const fptype_amp_sv q[5], // input: gauge
                                const fptype_amp_sv mass, // input: mass
                                fptype_amp_sv *d          // output: propagator factor
@@ -1177,7 +1180,7 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
   // Compute the direction n[5] of the gauge q[5]
   // TODO: Utilise pvec instead of the whole q
-  __host__ __device__ INLINE void
+  __host__ __device__ inline void
   define_gauge_dir( const cxtype_amp_sv q[5], // input: gauge
                     fptype_amp_sv n[5] )      // output: direction
  {
@@ -1221,7 +1224,7 @@ namespace mg5amcCpu
 
 //--------------------------------------------------------------------------
 // Compute propagator factor d  from the gauge q[5] and mass
-  __host__ __device__ INLINE void
+  __host__ __device__ inline void
   calculate_propagator_factor( const cxtype_amp_sv q[5], // input: gauge
                                const fptype_amp_sv mass,    // input: mass
                                fptype_sv *d )        // output: propagator factor

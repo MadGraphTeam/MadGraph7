@@ -14,7 +14,7 @@
 // sigmaKin and everything it calls (calculate_jamps, good-helicity
 // filtering, color/channel selection) are backend-owned, see
 // backend/{cpu,simd,gpu}/SigmaKin.cc, which #includes the process-specific
-// EvaluateDiagrams.inc generated alongside this file. This file only
+// EvaluateDiagrams.inc and ColorFlows.inc generated alongside this file. This file only
 // contains what's genuinely process-specific: the class constructor,
 // physics-parameter/coupling setup (initProc), and the flavor accessor.
 //==========================================================================
@@ -22,6 +22,7 @@
 namespace madmatrix
 {
   using namespace ProcessData;
+  using ProcessTables::nMF; // max #merged flavors, sizes the tIPF_* arrays in initProc
 
   //--------------------------------------------------------------------------
 

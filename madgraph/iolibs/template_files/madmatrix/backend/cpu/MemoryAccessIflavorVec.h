@@ -9,7 +9,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "MemoryAccessHelpers.h"
-#include "MemoryAccessVectors.h"
+#include "mgOnGpuCxtypes.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
 //One namespace. Split ber backend.

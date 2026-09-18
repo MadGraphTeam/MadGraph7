@@ -32,6 +32,15 @@ from . import launch_plugin
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
 
+def template_sources(dirpath, extensions=('.h', '.cc')):
+    """The C++ sources of a template directory, sorted. Only regular files with
+    a source extension: whatever else lies there (.DS_Store, editor backups
+    such as foo.cc~ or .#foo.cc, merge leftovers) must not be copied into every
+    generated output."""
+    return sorted(f for f in os.listdir(dirpath)
+                  if f.endswith(extensions) and not f.startswith('.')
+                  and os.path.isfile(pjoin(dirpath, f)))
+
 # AV - define the plugin's process exporter
 # (NB: this is the plugin's main class, enabled in the new_output dictionary in __init__.py)
 class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
@@ -120,28 +129,34 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                    'madanalysis5_hadron_card_default.dat',
                                    'rivet_card_default.dat'])}
 
-    # Backend split (step 1, not yet wired into the build): mirror
-    # template_files/madmatrix/backend/{cpu,simd,gpu}/ as a top-level
-    # backend/<variant>/ dir, sibling of SubProcesses/src/lib.
+    # Backend split: mirror template_files/madmatrix/backend/{common,cpu,simd,gpu}/
+    # as a top-level backend/ dir, sibling of SubProcesses/src/lib; madmatrix.mk
+    # picks the variant (BACKENDDIR) at make time.
+    # backend/common/ holds the files that are identical for every variant; it
+    # is searched after backend/<variant>/ and no file name is in both, since a
+    # quoted #include resolves in the including file's own directory first.
     backend_variants = ('cpu', 'simd', 'gpu')
     backend_template_dir = pjoin(madmatrix_templates, 'backend')
-    for _backend_variant in backend_variants:  # plain loop: comprehension wouldn't see the locals above
+    for _backend_variant in ('common',) + backend_variants:  # plain loop: comprehension wouldn't see the locals above
         from_template[pjoin('backend', _backend_variant)] = relative_path_list(
             pjoin(backend_template_dir, _backend_variant),
-            sorted(os.listdir(pjoin(backend_template_dir, _backend_variant))))
+            template_sources(pjoin(backend_template_dir, _backend_variant)))
     del _backend_variant
 
     # Rambo/random-number files copy in src/rambo/
     rambo_template_dir = pjoin(madmatrix_templates, 'src', 'rambo')
     from_template['src/rambo'] = relative_path_list(
-        rambo_template_dir, sorted(os.listdir(rambo_template_dir)))
+        rambo_template_dir, template_sources(rambo_template_dir))
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
     # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
-    # etc.) are NOT linked into P* at all: they are compiled straight from the
-    # single top-level backend/<variant>/ dir via the Makefile's INCFLAGS/vpath
-    # (see BACKENDDIR in madmatrix.mk). Only files with no backend/ counterpart
-    # - genuinely backend-agnostic - stay here.
+    # etc.) are NOT linked into P* at all: they are read straight from the
+    # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
+    # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
+    # once per P* directory, into its own build.<BACKEND>/, and have to be:
+    # they include that directory's generated ProcessData.h, ColorData.h and
+    # ProcessTables.h. Only files with no backend/ counterpart - genuinely
+    # backend-agnostic - stay here.
     to_link_in_P = ['umami.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
@@ -157,6 +172,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     dirs_to_create = ['bin', 'src', 'src/rambo', 'lib', 'Cards', 'SubProcesses',
                       'backend',
+                      'backend/common',
                       'backend/cpu',
                       'backend/simd',
                       'backend/gpu']
@@ -233,7 +249,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         """Report what a squared-order constraint will produce here.
 
         Supported: the jamps carry an amplitude-order index and the color sum
-        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        pairs them (color_sum_cpu_splitorders in backend/{cpu,simd}/color_sum.cc,
+        the Fortran GET_MATRIX contract),
         so a '^2' constraint that keeps only some squared orders gets the
         contribution it asked for rather than the total. That is what makes the
         interference case work -- `u u~ > t t~ QED^2==2` keeps all three
@@ -243,8 +260,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         Not supported: a GPU build of such a process. The device jamp buffers
         are sized for one jamp vector per helicity (ncolor, not njampso), and
         the backend is a make-time choice rather than an output-time one, so
-        the refusal cannot live here: color_sum_splitorders.cc #errors under
-        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the refusal cannot live here: backend/gpu/SigmaKin.cc static_asserts
+        nampso == 1 instead. Say so now rather than let a GPU build be
         the first the user hears of it.
         """
 

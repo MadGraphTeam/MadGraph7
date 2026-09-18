@@ -11,7 +11,7 @@
 
 #include "ProcessData.h"
 #include "MemoryAccessHelpers.h"
-#include "MemoryAccessVectors.h"
+#include "mgOnGpuCxtypes.h"
 
 //One namespace. Split ber backend.
 namespace madmatrix

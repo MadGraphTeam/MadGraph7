@@ -33,7 +33,7 @@ namespace madmatrix
 
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
-                 const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
+                 const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for one specific helicity
                  const int ievt0 );           // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
 
   //--------------------------------------------------------------------------
