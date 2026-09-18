@@ -5,6 +5,15 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: Bug fix: mg7 runs on AMD GPUs (device = ["hip"]) aborted at the start of
+       the survey with "GPU error: an illegal memory access was encountered".
+       The GPU matrix element rounds the batch up to a multiple of 256 events
+       and computes all of them, but only the first 'count' events of the
+       padded batch received inputs. The flavour index of the padding events
+       was whatever the fresh allocation held, and cFlavors[iflavor] then read
+       far out of bounds. The padding events are now copies of the first event.
+       CUDA has the same code; it did not crash there only because the fresh
+       memory happened to hold harmless values.
    OM: 'customize_model' now works for every UFO model: generic options (flavour
        scheme, massive leptons, diagonal CKM), commands to fix a parameter or a whole
        block ('set decay all 0'), to change a formula, to choose the values written in
