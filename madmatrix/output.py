@@ -32,6 +32,15 @@ from . import launch_plugin
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
 
+def template_sources(dirpath, extensions=('.h', '.cc')):
+    """The C++ sources of a template directory, sorted. Only regular files with
+    a source extension: whatever else lies there (.DS_Store, editor backups
+    such as foo.cc~ or .#foo.cc, merge leftovers) must not be copied into every
+    generated output."""
+    return sorted(f for f in os.listdir(dirpath)
+                  if f.endswith(extensions) and not f.startswith('.')
+                  and os.path.isfile(pjoin(dirpath, f)))
+
 # AV - define the plugin's process exporter
 # (NB: this is the plugin's main class, enabled in the new_output dictionary in __init__.py)
 class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
@@ -128,13 +137,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     for _backend_variant in backend_variants:  # plain loop: comprehension wouldn't see the locals above
         from_template[pjoin('backend', _backend_variant)] = relative_path_list(
             pjoin(backend_template_dir, _backend_variant),
-            sorted(os.listdir(pjoin(backend_template_dir, _backend_variant))))
+            template_sources(pjoin(backend_template_dir, _backend_variant)))
     del _backend_variant
 
     # Rambo/random-number files copy in src/rambo/
     rambo_template_dir = pjoin(madmatrix_templates, 'src', 'rambo')
     from_template['src/rambo'] = relative_path_list(
-        rambo_template_dir, sorted(os.listdir(rambo_template_dir)))
+        rambo_template_dir, template_sources(rambo_template_dir))
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
     # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
