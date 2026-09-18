@@ -1869,8 +1869,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     process_class_template = pjoin('madmatrix', 'process_class.inc')
     process_definition_template = pjoin('madmatrix', 'process_function_definitions.inc')
     process_wavefunction_template = pjoin('madmatrix', 'cpp_process_wavefunctions.inc')
-    single_process_template = pjoin('madmatrix', 'process_matrix.inc')
-    blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
     # Below this many colors the SYMM call is not worth setting up and the
     # scalar sum wins (see cpp_blas_wanted_for)
     blas_min_ncolor = 100
@@ -1948,9 +1946,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # Cached for edit_processtables(): calculate_jamps' jampTmp_sv shared
         # sub-expression scratch is backend-owned storage now, sized from this
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
-        # hardcoded per-process like the rest of calculate_jamps. A process
-        # with split orders (jamp_ncolor() == 'njampso') gets a process-specific
-        # override of calculate_jamps entirely, same as color_sum.cc.
+        # hardcoded per-process like the rest of calculate_jamps.
         self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
@@ -2052,10 +2048,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
-        # ncolor_flow/color-flow lines are set on replace_dict by
-        # get_matrix_single_process (process_class.inc); the broken-symmetry
-        # data broken_symmetry_factor now reads moved to ProcessTables.h, see
-        # edit_processtables().
+        # ncolor_flow is set by set_color_flow_lines_cpp in
+        # get_process_class_definitions (process_class.inc), and the color flow
+        # lines go to ColorFlows.inc (edit_colorflows); the broken-symmetry data
+        # broken_symmetry_factor reads is in ProcessTables.h (edit_processtables).
 
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
@@ -2316,29 +2312,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return ''
         return cls._blas_flags
 
-    # AV - new method (add the split-order holes to process_matrix.inc)
-    def get_matrix_single_process(self, i, matrix_element, color_amplitudes,
-                                  class_name, write=True):
-        replace_dict = super().get_matrix_single_process(
-            i, matrix_element, color_amplitudes, class_name, write=False)
-        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
-        # set_color_flow_lines_cpp fills jamp_flow / jamp_flow_col; it runs from
-        # get_process_class_definitions, before this, but be explicit rather
-        # than rely on the ordering of two independent methods.
-        if 'jamp_flow_col' not in replace_dict:
-            self.set_color_flow_lines_cpp(matrix_element, replace_dict)
-        if write:
-            return self.read_template_file(self.single_process_template) % replace_dict
-        return replace_dict
-
-    # AV - new method
-    def jamp_ncolor(self):
-        """The length of a jamp array: 'ncolor', or 'njampso' (= ncolor*nampso)
-        once the jamps carry an amplitude-order index. Templates spell the size
-        through this hole so that a process without split orders gets exactly
-        the text it got before they existed."""
-        return 'njampso' if self.split_orders_active() else 'ncolor'
-
     # AV - new method
     def split_orders_info(self):
         """The squared split-order tables for this process, or None.
@@ -2414,7 +2387,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colordata')
         template = open(pjoin(self.template_path,'madmatrix','ColorData.h'),'r').read()
         replace_dict = {}
-        # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
+        # Extract the color matrix
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
         # backend/{cpu,simd}/color_sum.cc always compiles the BLAS path (it is
         # only ever built, never process-specific); this constexpr, not this
