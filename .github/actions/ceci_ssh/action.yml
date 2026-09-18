@@ -50,6 +50,10 @@ runs:
             '') hint="the secret is empty in this job (not set in the ceci-gpu environment, or the calling workflow lacks 'secrets: inherit')" ;;
             ssh-*|ecdsa-*) hint="this is a PUBLIC key: store the private key instead" ;;
             -----BEGIN*)
+              if grep -q 'ENCRYPTED' ~/.ssh/id_ceci; then
+                echo "::error::the CECI_KEY secret is protected by a passphrase, which the CI cannot type: store a copy without passphrase (ssh-keygen -p -N '' on a copy of the key, see .github/gpu_ci/README.md)"
+                exit 1
+              fi
               body=$(sed '1d;$d' ~/.ssh/id_ceci | tr -d '\n')
               if printf '%s' "$body" | base64 -d > /dev/null 2>&1; then b64=valid; else b64=INVALID; fi
               hint="header '$first', ${#body} base64 characters ($b64 base64): the key is truncated, altered or protected by a passphrase" ;;

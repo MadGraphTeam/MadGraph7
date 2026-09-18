@@ -66,6 +66,15 @@ repository. Hence:
    gh secret set CECI_KEY --env ceci-gpu --repo MadGraphTeam/MadGraph7 < /path/to/ceci_private_key
    ```
 
+   The CI cannot type a passphrase. If your key has one, store a copy without it (the original is
+   not modified; `ssh-keygen -p` asks for the passphrase once):
+
+   ```bash
+   umask 077; K=$(mktemp) && cp ~/.ssh/id_rsa.ceci "$K" && ssh-keygen -p -N '' -f "$K" \
+     && ssh-keygen -y -P '' -f "$K" > /dev/null \
+     && gh secret set CECI_KEY --env ceci-gpu --repo MadGraphTeam/MadGraph7 < "$K"; rm -f "$K"
+   ```
+
    Optionally, add yourself as *required reviewer* of the environment (Settings → Environments →
    ceci-gpu). Nothing then touches the cluster without your approval, which is asked once per
    run, for `start_runner`. To use another CECI account, set the environment variable `CECI_USER`.
