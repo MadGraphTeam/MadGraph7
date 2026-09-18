@@ -132,9 +132,12 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # Backend split (step 1, not yet wired into the build): mirror
     # template_files/madmatrix/backend/{cpu,simd,gpu}/ as a top-level
     # backend/<variant>/ dir, sibling of SubProcesses/src/lib.
+    # backend/common/ holds the files that are identical for every variant; it
+    # is searched after backend/<variant>/ and no file name is in both, since a
+    # quoted #include resolves in the including file's own directory first.
     backend_variants = ('cpu', 'simd', 'gpu')
     backend_template_dir = pjoin(madmatrix_templates, 'backend')
-    for _backend_variant in backend_variants:  # plain loop: comprehension wouldn't see the locals above
+    for _backend_variant in ('common',) + backend_variants:  # plain loop: comprehension wouldn't see the locals above
         from_template[pjoin('backend', _backend_variant)] = relative_path_list(
             pjoin(backend_template_dir, _backend_variant),
             template_sources(pjoin(backend_template_dir, _backend_variant)))
@@ -166,6 +169,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     dirs_to_create = ['bin', 'src', 'src/rambo', 'lib', 'Cards', 'SubProcesses',
                       'backend',
+                      'backend/common',
                       'backend/cpu',
                       'backend/simd',
                       'backend/gpu']
