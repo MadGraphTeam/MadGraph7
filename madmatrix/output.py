@@ -233,7 +233,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         """Report what a squared-order constraint will produce here.
 
         Supported: the jamps carry an amplitude-order index and the color sum
-        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        pairs them (color_sum_cpu_splitorders in backend/{cpu,simd}/color_sum.cc,
+        the Fortran GET_MATRIX contract),
         so a '^2' constraint that keeps only some squared orders gets the
         contribution it asked for rather than the total. That is what makes the
         interference case work -- `u u~ > t t~ QED^2==2` keeps all three
@@ -243,8 +244,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         Not supported: a GPU build of such a process. The device jamp buffers
         are sized for one jamp vector per helicity (ncolor, not njampso), and
         the backend is a make-time choice rather than an output-time one, so
-        the refusal cannot live here: color_sum_splitorders.cc #errors under
-        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the refusal cannot live here: backend/gpu/SigmaKin.cc static_asserts
+        nampso == 1 instead. Say so now rather than let a GPU build be
         the first the user hears of it.
         """
 

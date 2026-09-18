@@ -43,6 +43,13 @@ namespace madmatrix
   // a CPPProcess-generated constant (see process_class.inc/set_color_flow_lines_cpp).
   constexpr int ncolor_flow = CPPProcess::ncolor_flow;
 
+  // Squared split orders are implemented for the CPU backends only: the device jamp
+  // buffers hold a single jamp vector per helicity (ncolor, not njampso), so a GPU build
+  // of such a process would silently sum the wrong thing. Refuse it at compile time.
+  static_assert( nampso == 1,
+                 "The squared split-order color sum is implemented for the CPU backends only: use a CPU "
+                 "backend, or generate the process with a constraint that leaves a single amplitude split order." );
+
   // Per-color running sum of |jamp|^2 over helicities, for event-by-event color choice.
   class DeviceAccessJamp2
   {

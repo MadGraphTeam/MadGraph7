@@ -1913,15 +1913,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
         # Only written when the jamps are actually split, so that a process
         # without squared split orders keeps the header it always had
-        so = self.split_orders_info()
         replace_dict['split_order_constants'] = '' if not self.split_orders_active() else (
-            '\n    // Squared split orders: the amplitudes fall into nampso amplitude'
-            '\n    // orders, the jamps carry one vector per order (njampso long in total)'
-            '\n    // and the color sum pairs them into nsqampso squared orders'
-            '\n    // (see color_sum.cc, written from color_sum_splitorders.cc).'
-            '\n    static constexpr int nampso = %d;'
-            '\n    static constexpr int njampso = ncolor * nampso; // the jamps of every amplitude order, end to end'
-            '\n    static constexpr int nsqampso = %d;' % (so['nampso'], so['nsqampso']))
+            '\n    // Squared split orders (see ProcessData.h, and color_sum_cpu_splitorders'
+            '\n    // in backend/<variant>/color_sum.cc for how the jamps are paired)'
+            '\n    static constexpr int nampso = ProcessData::nampso;'
+            '\n    static constexpr int njampso = ProcessData::njampso; // the jamps of every amplitude order, end to end'
+            '\n    static constexpr int nsqampso = ProcessData::nsqampso;')
         replace_dict['nwave'] = 4
         if (fd_gauge): replace_dict['nwave'] += 1
 
@@ -2200,6 +2197,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
         replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
         replace_dict['ncolor'] = len(me.get_color_amplitudes())
+        so = self.split_orders_info() if self.split_orders_active() else None
+        replace_dict['nampso'] = so['nampso'] if so else 1
+        replace_dict['nsqampso'] = so['nsqampso'] if so else 1
         replace_dict['nwf'] = me.get_number_of_wavefunctions()
         replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
         replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
@@ -2454,22 +2454,15 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # file's %-substitution, is what picks it at compile time per process.
         replace_dict['should_use_blas'] = 'true' if self.cpp_blas_wanted() else 'false'
         # A process whose '^2' constraint leaves more than one amplitude split
-        # order needs the dedicated pair-loop color sum (different jamp layout:
-        # njampso = ncolor*nampso, not ncolor). backend/{cpu,simd}/color_sum.cc
-        # is now a single file shared by every P* in this output (compiled once,
-        # found via the Makefile's vpath into the top-level backend/ dir - see
-        # "Redundant template file delete"), so it can no longer hold a
-        # process-specific algorithm variant. Fail loudly here rather than
-        # silently emitting the non-split color sum for a split-order process.
+        # order pairs its jamps in the color sum instead (color_sum_cpu_splitorders
+        # in backend/{cpu,simd}/color_sum.cc, selected at compile time from
+        # ProcessData::nampso: those files are compiled once per P* directory).
         if self.split_orders_active():
-            raise Exception(
-                "Split amplitude orders ('^2' constraints with more than one "
-                "amplitude order) are not yet supported by the backend-separated "
-                "color sum: backend/{cpu,simd}/color_sum.cc is shared across every "
-                "P* directory in this output, so it cannot carry a process-specific "
-                "pair-loop variant. See color_sum_splitorders.cc for the algorithm "
-                "that still needs folding into the shared file behind a compile-time "
-                "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
+            replace_dict['sqso_tables'] = self.get_sqso_table_lines()
+        else:
+            replace_dict['sqso_tables'] = '\n'.join([
+                '  static constexpr int sqSoIndex[nampso][nampso] = { { 0 } };',
+                '  static constexpr bool chosenSqso[nsqampso] = { true };'])
 
         # we don't sort self.multi_channel_map, and we rely on MadSpace sorting
         # so, diagrams there may be unsorted

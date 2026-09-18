@@ -20,6 +20,12 @@ namespace ProcessData
   constexpr int ncomb = %(nbhel)d; // #helicity combinations
   constexpr int ndiagrams = %(ndiagrams)d;
   constexpr int ncolor = %(ncolor)d;
+  // Squared split orders: the amplitudes fall into nampso amplitude orders, the jamps
+  // carry one vector per order (njampso long in total) and the color sum pairs them into
+  // nsqampso squared orders. 1, ncolor and 1 unless a '^2' constraint splits the amplitudes.
+  constexpr int nampso = %(nampso)d;
+  constexpr int njampso = ncolor * nampso;
+  constexpr int nsqampso = %(nsqampso)d;
   constexpr int nmaxflavor = %(nmaxflavor)d;
   constexpr int nwf = %(nwf)d; // #wavefunctions = #external (npar) + #internal (see #644)
   constexpr int nproc = %(nproc)d; // 2 if this process has a mirror process, else 1
