@@ -160,6 +160,14 @@ class CheckFKS(mg_interface.CheckValidForCmd):
         self._fks_standalone = '--fks' in args
         if self._fks_standalone:
             args.remove('--fks')
+        # '--limits' additionally keeps the real-emission code so that 'launch'
+        # can also run the soft/collinear limit test (test_soft_col_limits)
+        self._fks_limits = '--limits' in args
+        if self._fks_limits:
+            args.remove('--limits')
+            if not self._fks_standalone:
+                raise self.InvalidCmd('"--limits" is only available for the FKS '
+                    'standalone output: "output standalone_fortran --fks --limits".')
 
         if args and args[0] == 'ewsudakovsa':
             self._export_format = 'ewsudsa'

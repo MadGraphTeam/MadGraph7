@@ -1218,7 +1218,8 @@ jobs:
 
   acceptancetest_fks_standalone:
     # FKS Born building-block standalone output ('output standalone_fortran --fks'):
-    # hardcoded-value regression and consistency vs a plain aMC@NLO output.
+    # hardcoded-value regression, consistency vs a plain aMC@NLO output, and
+    # the '--limits' soft/collinear limit test.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -1226,10 +1227,27 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_all
 
-      - name: test FKS Born building-block standalone (value + vs aMC@NLO)
+      - name: test FKS Born building-block standalone (value + vs aMC@NLO + limits)
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo -pA -t0 -l INFO
+            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_limits -pA -t0 -l INFO
+
+  acceptancetest_fks_standalone_limits_pp_ttx:
+    # soft and collinear limits of p p > t t~ [QCD] via the FKS standalone
+    # output ('output standalone_fortran --fks --limits'): launch runs
+    # test_soft_col_limits in every partonic channel (built-in PDF set, no
+    # LHAPDF) and the test requires all of them to pass.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: test soft/collinear limits of p p > t t~ [QCD] (FKS standalone --limits)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_limits_pp_ttx -pA -t0 -l INFO
 
   acceptancetest_density:
     # The type of runner that the job will run on
