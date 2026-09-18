@@ -810,3 +810,19 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_customize_model -t0
+
+
+  unittest_madspace_install:
+    # tests/unit_tests/various/test_madspace_install.py: how madspace/install.py
+    # resolves the source-build options (a command-line flag beats the saved
+    # settings under --yes); pip and cmake are stubbed, nothing is built
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the madspace installer option-resolution unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspace_install -t0
