@@ -626,6 +626,39 @@ def replay_line(command):
     return command
 
 
+# Commands whose second word says which command it is: `display particles` is
+# not `display modellist`, `check gauge` is not `check lorentz`.
+SUBCOMMANDED = ('display', 'import', 'set', 'add', 'install', 'save')
+OUTPUT_FORMATS = ('madevent', 'standalone_fortran', 'standalone_msP',
+                  'standalone_msF', 'matrix', 'standalone_rw', 'aloha',
+                  'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7', 'standalone')
+CHECKS = ('full', 'timing', 'stability', 'profile', 'permutation', 'gauge',
+          'lorentz', 'brs', 'cms', 'flavor', 'language', 'precision')
+
+
+def command_signature(line):
+    """What makes a command the one a lesson asks for, and nothing more.
+
+    The command, and for the ones that have one its sub-command -- the output
+    format, the check, the thing displayed.  Not the arguments the reader is
+    free to choose: another directory name, another process, another model.
+    """
+
+    words = (line or '').split()
+    if not words:
+        return ()
+    command = words[0]
+    rest = words[1] if len(words) > 1 else ''
+    if command == 'output':
+        # `output DIR` is the default format
+        return ('output', rest if rest in OUTPUT_FORMATS else 'mg7')
+    if command == 'check':
+        return ('check', rest if rest in CHECKS else 'full')
+    if command in SUBCOMMANDED:
+        return (command, rest)
+    return (command,)
+
+
 class Tutorial(object):
     """An ordered list of steps, addressable by name.
 
@@ -729,15 +762,81 @@ class TutorialSession(object):
     def step_for(self, line, interface=None):
         """Return (index, step) for the step triggered by `line`, or None.
 
+        In a sequenced tutorial that has started, only the command the current
+        step asks for moves it on -- its solution, or the entry of a detour it
+        offers -- and only has to be close to it (command_signature): the
+        directory, the process, the model are the reader's to choose, the
+        command is not.  A command the lesson merely mentions -- `display
+        modellist` in passing -- used to fire the first later step sharing its
+        key, skipping the reader lessons ahead.  Sticky steps still answer in
+        place, and an exercise still marks whatever answer it is given, from
+        the state the command left.
+
+        A free-order tutorial, and the intro, keep the plain lookup (_scan).
+        The session is left untouched; advance() commits.
+        """
+
+        if self.tutorial.order == 'sequence' and self.index >= 0:
+            return self._expected(line, interface)
+        return self._scan(line, interface)
+
+    def _expected(self, line, interface=None):
+        """step_for in a running sequenced tutorial: see there."""
+
+        keys = self.keys_for(line)
+        if not keys:
+            return None
+        steps = self.tutorial.steps
+        ahead = range(self.index + 1, len(steps))
+
+        # a sticky step with a callable key answers a command the lesson
+        # invited; it is specific by construction, so it goes first
+        for i in ahead:
+            if (steps[i].sticky and callable(steps[i].key)
+                    and steps[i].matches(keys, line, interface)):
+                return i, steps[i]
+
+        following = steps[self.index + 1] if self.index + 1 < len(steps) else None
+        # an exercise judges the state the answer produced, never its text
+        if isinstance(following, Exercise):
+            if following.matches(keys, line, interface):
+                return self.index + 1, following
+            return None
+
+        signature = command_signature(line)
+        # the command this step asks for leads where its solution leads
+        solution = self.current.get_solution(interface) if self.current else None
+        if solution and command_signature(solution) == signature:
+            found = self._scan(solution, interface)
+            if found is not None and not found[1].sticky:
+                return found
+        # or into the detour the step offers
+        if (following is not None and following.entry
+                and command_signature(following.entry) == signature):
+            return self.index + 1, following
+        # a step that names no command: the next step's own key says what it
+        # waits for -- the next one only, never one further on
+        if (not solution and following is not None and not following.sticky
+                and following.matches(keys, line, interface)):
+            return self.index + 1, following
+
+        # a plain-key sticky step answers in place what is left
+        for i in ahead:
+            if (steps[i].sticky and not callable(steps[i].key)
+                    and steps[i].matches(keys, line, interface)):
+                return i, steps[i]
+        return None
+
+    def _scan(self, line, interface=None):
+        """The plain lookup: the first allowed step whose key matches.
+
         Candidate keys are tried most-specific first, and for each key every
         allowed step is scanned.  That ordering -- key-major, not step-major --
         is what reproduces the old getattr() chain exactly: 'open index.html'
         resolves to the 'open_index' step even if a plain 'open' step sits
         earlier in the list.  Steps with a callable key are tried last, since
         they cannot be indexed by key -- except a *sticky* one, which is tried
-        first (see below).
-
-        The session is left untouched; advance() commits.
+        first (see below).  Also what finds where a step's solution leads.
         """
 
         keys = self.keys_for(line)

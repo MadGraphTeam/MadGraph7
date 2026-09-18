@@ -337,11 +337,53 @@ class TestOrdering(_TutorialTestCase):
         session.advance(1)
         self.assertEqual(session.step_for('generate p p > z')[1].text, 'THIRD')
 
-    def test_sequence_does_not_go_backwards(self):
+    def test_sequence_does_not_jump_past_a_lesson(self):
+        """A command a later step is keyed on does not fire it from here.
+
+        It used to: 'generate' at step one fired step three, skipping the
+        `output` lesson between -- the way `display modellist`, mentioned in
+        passing by the bsm intro, fired the next `display` step two lessons on.
+        Only what the current step waits for moves the tutorial.
+        """
+
         session = TutorialSession(self._tutorial('sequence'))
         session.advance(0)
-        # 'generate' matches step 0 and step 2; already past 0, so it is step 2
-        self.assertEqual(session.step_for('generate p p > z')[1].text, 'THIRD')
+        self.assertIsNone(session.step_for('generate p p > z'))
+
+    def test_only_the_command_asked_for_moves_it(self):
+        """Close enough is the command and its sub-command; the rest is the
+        reader's to choose."""
+
+        def at(name, index, line):
+            session = TutorialSession(tutorials.get(name))
+            session.index = index
+            found = session.step_for(line)
+            return found[0] if found else None
+
+        self.assertIsNone(at('bsm', 0, 'display modellist'))
+        self.assertEqual(at('bsm', 0, 'import model MSSM_SLHA2'), 1)
+        self.assertIsNone(at('checks', 2, 'check lorentz p p > e+ e-'))
+        self.assertEqual(at('checks', 2, 'check gauge p p > mu+ mu-'), 3)
+        # another directory is fine, another output format is not
+        self.assertEqual(at('decays', 1, 'output MY_DIR'), 2)
+        self.assertIsNone(at('decays', 1, 'output madevent MY_DIR'))
+        # another process is fine too
+        self.assertEqual(at('syntax', 0, 'generate p p > w+ w- QED<=4'), 1)
+
+    def test_the_signature_of_a_command(self):
+        from madgraph.interface.tutorials.session import command_signature
+
+        self.assertEqual(command_signature('output TT'), ('output', 'mg7'))
+        self.assertEqual(command_signature('output madevent TT'),
+                         ('output', 'madevent'))
+        self.assertEqual(command_signature('check p p > e+ e-'),
+                         ('check', 'full'))
+        self.assertEqual(command_signature('display modellist'),
+                         ('display', 'modellist'))
+        self.assertEqual(command_signature('generate p p > t t~'),
+                         ('generate',))
+        self.assertEqual(command_signature('add process p p > z'),
+                         ('add', 'process'))
 
     def test_sequence_does_not_refire_the_current_step(self):
         session = TutorialSession(self._tutorial('sequence'))
@@ -2443,3 +2485,48 @@ class TutorialEditorTest(unittest.TestCase):
         self.assertEqual(len(captured), 2)
         for key in (':wq', ':q!', 'Esc'):
             self.assertIn(key, captured[0])
+
+
+class TutorialWaitingForTest(unittest.TestCase):
+    """What a failed command is told the tutorial is still waiting for."""
+
+    def test_it_is_the_current_steps_command(self):
+        """It used to quote the solution of the step *after* the current one:
+        at the bsm intro, a failed command was told the tutorial waited for
+        `display coupling_order`, two commands ahead of `import model`."""
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            interface = _Recording()
+            tutorial_mixin.attach(interface, tutorials.start('bsm'))
+            interface._tutorial_session.advance(0)
+            interface.notify_failed_command('display modellist')
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+            tutorial_mixin.detach(interface)
+        self.assertTrue(captured)
+        self.assertIn('import model MSSM_SLHA2', captured[-1])
+        self.assertNotIn('display coupling_order', captured[-1])
+
+
+class DisplayModellistTest(unittest.TestCase):
+
+    def test_the_model_list_needs_no_model(self):
+        """It lists model directories and the online database: the banner
+        suggests it at startup, before any model is loaded."""
+
+        interface = _BareMadGraphCmd()
+        interface._curr_model = None
+        interface.check_display(['modellist'])      # does not raise
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_display, ['particles'])
