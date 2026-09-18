@@ -42,8 +42,9 @@ easier ways to get a wrong answer that looks right.
   3. **The parton shower** (Pythia8). Cheapest, and it throws the spin
      correlations away.
 
-All three assume the decaying particle is on shell, and all three depend on
-widths you have to get right. Start with the first:
+All three rely on the narrow-width approximation to be valid -- the width small
+against the mass -- and all three depend on widths you have to get right.
+Start with the first:
 
 %(p)s generate p p > t t~, t > w+ b, t~ > w- b~
 """ % {'p': P},
