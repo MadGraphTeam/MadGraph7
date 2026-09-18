@@ -9,13 +9,61 @@
 
 namespace madspace {
 
+/**
+ * `t`-channel part of a phase-space mapping: a chain of @f$2 \to 2@f$ blocks.
+ *
+ * Builds the @f$\kappa@f$ space-like momentum transfers of a topology and the
+ * associated outgoing momenta [1]. Restricting to orderings that grow inward
+ * from the two incoming legs reduces the @f$\kappa!@f$ possible orders to
+ * @f$2^{\kappa-1}@f$. The mapping first draws @f$\kappa-1@f$ time-like
+ * invariants. It then walks @f$i = 1 \dots \kappa@f$, emitting one
+ * @ref TwoToTwoParticleScattering block per step and updating the incoming
+ * momentum on the chosen side by subtraction (Sec. 2.2.8 of [1], following
+ * [2]).
+ *
+ * `batch` is the leading batch dimension. `kappa` is the number of `t`-channel
+ * propagators, `len(integration_order)`.
+ *
+ * **Inputs**
+ * - `random_i` – `float`, shape `(batch,)` – the `3 * kappa - 1` random numbers
+ *   (`i = 0 … 3*kappa-2`).
+ *
+ * **Conditions**
+ * - `com_energy` – `float`, shape `(batch,)` – total collision energy.
+ * - `mass_i` – `float`, shape `(batch,)` – the `kappa + 1` outgoing masses.
+ *
+ * **Outputs**
+ * - `momentum_i` – `float`, shape `(batch, 4)` – the `kappa + 3` momenta
+ *   (incoming and outgoing) of the `t`-channel chain.
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 2.2.8)
+ * - [2] O. Mattelaer, K. Ostrolenk, "Speeding up MadGraph5_aMC@NLO",
+ *   https://arxiv.org/abs/2102.00773
+ */
 class TPropagatorMapping : public Mapping {
 public:
+    /**
+     * @param integration_order Order in which the `t`-channel invariants are
+     *                          sampled; 0-based, and each step must extend the
+     *                          currently sampled range at its low or high end
+     *                          (see @ref Topology).
+     * @param invariant_power   Exponent of the `1/|t|^p` sampling of every
+     *                          momentum transfer; see @ref Invariant.
+     * @param pt_min            Per-outgoing-particle minimum transverse
+     *                          momentum; empty disables the cut. See @ref Cuts.
+     */
     TPropagatorMapping(
         const std::vector<std::size_t>& integration_order,
         double invariant_power = 0.8,
         const std::vector<double>& pt_min = {}
     );
+    /// Number of uniform random inputs consumed by the forward mapping,
+    /// equal to `3 * len(integration_order) - 1`.
     std::size_t random_dim() const { return 3 * _integration_order.size() - 1; }
 
 private:

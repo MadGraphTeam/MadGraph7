@@ -856,7 +856,9 @@ class ProcCard(list):
     def append(self, line):
         """"add a line in the proc_card perform automatically cleaning"""
         
-        line = line.strip()
+        # type(line), not str: a question answer (extended_cmd.QuestionAnswer)
+        # has to stay recognisable once stored, so write() can leave it out
+        line = type(line)(line.strip()) if isinstance(line, str) else line.strip()
         cmds = line.split()
         if len(cmds) == 0:
             return
@@ -980,6 +982,12 @@ class ProcCard(list):
         fsock = open(path, 'w')
         fsock.write(self.history_header)
         for line in self:
+            # an answer given at a question belongs to the run that asked it,
+            # not to how the process was generated -- and MadSpin and the
+            # reweighting replay every `set` line of a proc card on a bare MG5
+            # prompt, which has no `set width` (extended_cmd.QuestionAnswer)
+            if getattr(line, 'is_answer', False):
+                continue
             while len(line) > 70:
                 sub, line = line[:70]+"\\" , line[70:] 
                 fsock.write(sub+"\n")
@@ -5859,7 +5867,7 @@ class RunCardNLO(RunCard):
      
     LO = False
     
-    blocks = [heavy_ion_block, running_block_nlo]
+    blocks = [heavy_ion_block, frame_block, running_block_nlo]
 
     dummy_fct_file = {"dummy_cuts": pjoin("SubProcesses","dummy_fct.f"),
                       "user_dynamical_scale": pjoin("SubProcesses","dummy_fct.f"),
@@ -5967,6 +5975,10 @@ class RunCardNLO(RunCard):
         self.add_param('systematics_program', 'none', include=False, hidden=True, comment='Choose which program to use for systematics computation: none, systematics')
         self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the argment to pass to the systematics command. like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
 
+        #frame in which to evaluate the matrix-element (polarization)
+        self.add_param("me_frame", [1,2], hidden=True, include=False, comment="choose lorentz frame where to evaluate the matrix-element [for non lorentz invariant matrix-element/polarization]:\n  the entries are the leg numbers of the process as written by the user; the rest-frame of their momentum sum is used.\n  [1,2] (the initial state) and the full final state both mean the partonic center of mass, and are skipped rather than applied.\n  Define the frame from final-state particles only: a frame built from the initial state is not infrared safe at NLO.")
+        self.add_param('frame_id', 6, system=True)
+
         #technical
         self.add_param('folding', [1,1,1], include=False)
 
@@ -6025,8 +6037,42 @@ class RunCardNLO(RunCard):
         
     def check_validity(self):
         """check the validity of the various input"""
-        
+
         super(RunCardNLO, self).check_validity()
+
+        # me_frame built out of initial-state legs is not infrared safe at NLO:
+        # the real emission and the reduced Born carry different momentum
+        # fractions, by a finite amount even in the singular limit, so the
+        # frame jumps across that limit and the subtraction stops cancelling.
+        # Selecting exactly the initial state (or, equivalently, exactly the
+        # whole final state) is the partonic c.m. and is simply skipped; any
+        # other use of an initial-state leg is a genuine mistake.
+        if 'me_frame' in self.user_set:
+            initial = [n for n in self['me_frame'] if n in (1, 2)]
+            # Exactly the initial state is the partonic c.m. and is skipped
+            # downstream; anything else that names an initial-state leg is
+            # the mistake this guard is for. Testing only for a *mix* let a
+            # bare me_frame=[1] through: for a massless beam that dies later
+            # in get_me_frame_boost with an opaque 'not timelike' stop, and
+            # for a massive one (a DIS-like e- b{+} > e- b [QCD]) m2 > 0, so
+            # the boost silently succeeds and builds exactly the frame this
+            # message says is refused.
+            if initial and len(initial) < 2:
+                raise InvalidRunCard(
+                    'me_frame %s selects part of the initial state. Use '
+                    'either both beams, which name the partonic c.m. and '
+                    'are skipped, or final-state particles only: a frame '
+                    'built from a single beam is not infrared safe at NLO.'
+                    % self['me_frame'])
+            if initial and len(self['me_frame']) > len(initial):
+                raise InvalidRunCard(
+                    'me_frame %s mixes initial-state legs with final-state '
+                    'ones. A frame defined using the initial state is not '
+                    'infrared safe at NLO: the real emission and the reduced '
+                    'Born have different momentum fractions even in the '
+                    'collinear limit, so the frame is discontinuous there. '
+                    'Define the frame from final-state particles only.'
+                    % self['me_frame'])
 
         # if heavy ion mode use for one beam, forbid lpp!=1
         if self['lpp1'] not in [1,2]:
@@ -6246,6 +6292,26 @@ class RunCardNLO(RunCard):
 
     def update_system_parameter_for_include(self):
 
+        # polarization: rest-frame in which to evaluate the matrix-element.
+        # Same encoding as at LO (see mapid in cluster.f): bit n of frame_id is
+        # set for each leg n listed in me_frame.
+        #
+        # frame_id=0 selects no leg at all, which the fortran reads as "skip
+        # the boost". That is the right default here, and it is not the same
+        # as the LO default: at LO the momenta reach the matrix element in the
+        # lab frame, so me_frame=[1,2] is a real boost to the partonic c.m.,
+        # whereas MadFKS already works in a frame close to it. Close, but not
+        # equal -- the real emission lives in a frame boosted along z, since
+        # its two initial momenta carry different energies -- so honouring
+        # [1,2] literally would apply a longitudinal boost to every unpolarised
+        # run. That is an identity for |M|^2 but not bit for bit, and it is
+        # enough to send the adaptive grids down a different path. So the boost
+        # runs only when a frame was actually asked for.
+        if 'me_frame' in self.user_set:
+            self['frame_id'] = sum(2**(n) for n in self['me_frame'])
+        else:
+            self['frame_id'] = 0
+
         # set the pdg_for_cut fortran parameter
         pdg_to_cut = set(list(self['pt_min_pdg'].keys()) +list(self['pt_max_pdg'].keys())+
                          list(self['mxx_min_pdg'].keys())+ list(self['mxx_only_part_antipart'].keys()))
@@ -6354,7 +6420,21 @@ class RunCardNLO(RunCard):
         # If model has running functionality add the additional parameter
         model = proc_def[0].get('model')
         if model['running_elements']:
-            self.display_block.append('RUNNING') 
+            self.display_block.append('RUNNING')
+
+        # if polarization is used, expose the choice of the frame in the run_card.
+        # Only needed for massive particles: for massless ones the helicity is
+        # boost invariant along the momentum, so the frame does not matter.
+        for proc in proc_def:
+            for l in proc.get('legs'):
+                if l.get('polarization'):
+                    particle = proc.get('model').get_particle(l.get('id'))
+                    if particle.get('mass').lower() != 'zero':
+                        self.display_block.append('frame')
+                        break
+            else:
+                continue
+            break
 
         # 4-flavour scheme: a massive b is not a parton of the proton, so the
         # default PDF has to be the nf_4 set rather than the 5-flavour one.

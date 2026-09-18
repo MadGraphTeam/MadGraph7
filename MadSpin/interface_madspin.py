@@ -36,6 +36,7 @@ if '__main__' == __name__:
     import sys
     sys.path.append(pjoin(os.path.dirname(__file__), '..'))
 
+import madgraph
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.madgraph_interface as mg_interface
 import madgraph.interface.master_interface as master_interface
@@ -1043,6 +1044,42 @@ class MadSpinInterface(extended_cmd.Cmd):
                   (key, total, count, total / max(1, count)))
         
      
+    @staticmethod
+    def frame_and_beampol_from_run_card(options, run_card):
+        """Take ``frame_id`` and ``beampol`` from the run_card of the production.
+
+        The run_card is the default source for both, but an explicit
+        "set frame_id"/"set beampol" in the MadSpin card wins -- otherwise
+        neither option could be set from the card the rest of the MadSpin
+        options live in.
+
+        ``frame_id`` is the leg bitmask ``sum(2**n for n in me_frame)``. An NLO
+        run_card carries ``me_frame`` too, since polarised fixed-order and
+        NLO+PS generation, and it used to be ignored: every NLO sample got the
+        partonic c.m. (6), so an ``me_frame = [3,4]`` sample had its
+        polarisation projected in a different frame from the one it was
+        generated in. The mask is built from ``me_frame`` itself rather than
+        read from ``RunCardNLO['frame_id']``: that one is 0 unless a frame was
+        explicitly asked for (the fortran then skips the boost), whereas 0 means
+        "no frame at all" to MadSpin. The default ``me_frame = [1,2]`` gives 6,
+        i.e. exactly the value NLO samples always had. An NLO run_card has no
+        beam polarisation.
+        """
+        if isinstance(run_card, banner.RunCardLO):
+            run_card.update_system_parameter_for_include()
+            frame_id = run_card['frame_id']
+            beampol = [run_card['polbeam1'], run_card['polbeam2']]
+        elif isinstance(run_card, banner.RunCardNLO):
+            frame_id = sum(2**n for n in run_card['me_frame'])
+            beampol = [0., 0.]
+        else:
+            frame_id = 6
+            beampol = [0., 0.]
+        if 'frame_id' not in options.user_set:
+            options['frame_id'] = frame_id
+        if 'beampol' not in options.user_set:
+            options['beampol'] = beampol
+
     def do_import(self, inputfile):
         """import the event file"""
         
@@ -1118,22 +1155,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if self.options['BW_cut'] > 25:
                     logger.critical("value of bwcutoff set to %s from the input file. This is much too large value for Madspin and the validity of the Narrow-width-Approximation. Please ensure that you overwrite that value via \"set BW_cut X\"  to a smaller value (like X=10)", self.options['BW_cut'])
             
-            if isinstance(run_card, banner.RunCardLO):
-                run_card.update_system_parameter_for_include()
-                # The run_card of the production is the default source for both,
-                # but an explicit "set frame_id"/"set beampol" in the MadSpin
-                # card wins -- otherwise neither option could be set from the
-                # card the rest of the MadSpin options live in.
-                if 'frame_id' not in self.options.user_set:
-                    self.options['frame_id'] = run_card['frame_id']
-                if 'beampol' not in self.options.user_set:
-                    self.options['beampol'] = [run_card['polbeam1'],
-                                               run_card['polbeam2']]
-            else:
-                if 'frame_id' not in self.options.user_set:
-                    self.options['frame_id'] = 6
-                if 'beampol' not in self.options.user_set:
-                    self.options['beampol'] = [0., 0.]
+            self.frame_and_beampol_from_run_card(self.options, run_card)
 
         else:
             if not self.options['Nevents_for_max_weight']:
@@ -1173,7 +1195,16 @@ class MadSpinInterface(extended_cmd.Cmd):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
             if line.startswith('set'):
-                self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
+                                         postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
         
@@ -1209,7 +1240,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                         if key in self.multiparticles_ms:
                             del self.multiparticles_ms[key]            
             elif line.startswith('set') and not line.startswith('set gauge'):
-                self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
+                                         postcmd=False)
+                except madgraph.InvalidCmd:
+                    # not an MG5 option: see the proc card loop above
+                    logger.debug('proc card line ignored: %s', line)
             elif line.startswith('import model'):
                 if model_name in line:
                     final_model = True
@@ -3361,7 +3397,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                 decay_dir), options=options)
                         me5_cmd.options["automatic_html_opening"] = False
                         me5_cmd.options["madanalysis5_path"] = None
-                        me5_cmd.options["madanalysis_path"] = None
                         me5_cmd.allow_notification_center = False
                         try:
                             os.remove(pjoin(decay_dir, 'Cards', 'madanalysis5_parton_card_default.dat'))
@@ -3436,7 +3471,6 @@ class MadSpinInterface(extended_cmd.Cmd):
                     me5_cmd.options["automatic_html_opening"] = False
                     me5_cmd.options["automatic_html_opening"] = False
                     me5_cmd.options["madanalysis5_path"] = None
-                    me5_cmd.options["madanalysis_path"] = None
                     me5_cmd.allow_notification_center = False
                     try:
                         os.remove(pjoin(decay_dir, 'Cards', 'madanalysis5_parton_card_default.dat'))
@@ -8591,8 +8625,16 @@ class MadSpinInterface(extended_cmd.Cmd):
             source = {}
             multi_id = set()
             for line in lines:
+                # The perturbation-order bracket of an NLO process line
+                # ('p p > z{0} z{0} [QCD]') is irrelevant to the polarisation
+                # braces, which sit on the legs -- but MadSpin's mg5cmd holds
+                # the TREE-level model, so extract_process refuses it with
+                # "Perturbation order QCD is not among the perturbation orders
+                # allowed for by the loop model" and every NLO polarised
+                # production silently lost its restriction.  Strip it.
+                bare = re.sub(r'\[[^\]]*\]', '', line).strip()
                 try:
-                    procdef = self.mg5cmd.extract_process(line)
+                    procdef = self.mg5cmd.extract_process(bare)
                 except Exception as error:
                     logger.warning('MadSpin could not re-read the polarisation of '
                                    'the production process "%s" (%s); the density '
@@ -9916,6 +9958,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         Evaluated on a round-tripped copy, like ``_upfront_production``'s
         ``prod_off``, so the two sides of the ratio see the same %.10e
         truncation.
+
+        Any residual inaccuracy of the boosted density evaluation is already
+        inside the numerator of every ``me_frame`` run; taking the denominator
+        in the same frame is what makes it cancel.
         """
         frame_boost = self._frame_boost(production)
         if frame_boost is None:
@@ -10630,11 +10676,13 @@ class MadSpinInterface(extended_cmd.Cmd):
             me_prod_on = getattr(production, 'me_wgt', None)
             if not me_prod_on:
                 # The denominator has to be the same quantity as the numerator,
-                # in the same frame: Tr(rho_off) is built in the me_frame while
-                # calculate_matrix_element hands the matrix element the LAB
-                # momenta, and a helicity-restricted matrix element is not
-                # Lorentz invariant.  Unpolarised runs have no frame boost and
-                # keep the matrix-element call, bit for bit.
+                # in the same frame: Tr(rho_off) is built in the me_frame, and a
+                # helicity-restricted matrix element is not Lorentz invariant,
+                # so the lab-frame calculate_matrix_element is a different
+                # projection (on a boosted polarised event, by orders of
+                # magnitude -- which then sets the mass-stage bound).
+                # Unpolarised runs have no frame boost and keep the
+                # matrix-element call, bit for bit.
                 me_prod_on = self._onshell_production_norm(production,
                                                            prod_static)
                 production.me_wgt = me_prod_on
@@ -11614,15 +11662,21 @@ class MadSpinInterface(extended_cmd.Cmd):
             #VALENTIN: except for the mode "full", we should not compute the matrix element here
             MEdenom_prod, MEdenom_decay = None, None
             if not density_pole_approximation:
-                # compute the denominator and then reshuffle the event before 
-                # computing the numerator 
-                # same frame-consistency fix as on the sequential mass
-                # stage: the numerator is the contraction of the (possibly
-                # restricted) production density built in the me_frame, so the
-                # denominator cannot be the lab-frame matrix element.
+                # compute the denominator and then reshuffle the event before
+                # computing the numerator
+                #
+                # The denominator has to be taken in the same frame as the
+                # numerator (see _onshell_production_norm), as on the
+                # sequential mass stage.
+                #
+                # Not polarised-only: keep_weight_for_polarization_* or
+                # 'unweighting = auto' can bring an unbraced production here with
+                # the frame axis on. That is safe: the denominator is a constant
+                # per production event, identical across its joint trials, so it
+                # cancels out of the accept/reject.
                 MEdenom_prod = self._onshell_production_norm(production,
                                                              prod_static)
-                MEdenom_decay = 1.0              
+                MEdenom_decay = 1.0
                 for key in decays:
                     for dec in decays[key]:
                         MEdenom_decay *= self.calculate_matrix_element(dec)
@@ -11945,7 +11999,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if frame_id <= 0:
             return None
         _, orig_order, _, _, _ = self.get_pdir(event)
-        momenta = event.get_momenta(orig_order)
+        # merged_map: orig_order comes out of all_me, which is keyed by the
+        # MERGED-pdg tag when apply_flavor_grouping is on (81/-81 in place of
+        # u/d/...).  Without the map the raw event pdgs are looked up in a
+        # merged block and get_mapping dies with
+        # "ValueError: list.index(x): x not in list" -- exactly as the matrix
+        # element call twenty lines below already guards against.
+        momenta = event.get_momenta(orig_order,
+                                    merged_map=self._revert_merged or None)
         selected = [n for n in range(1, len(momenta) + 1) if frame_id >> n & 1]
         if not selected:
             return None
@@ -12020,8 +12081,18 @@ class MadSpinInterface(extended_cmd.Cmd):
         if orig_order is None:
             _, orig_order, _, _, tag = self.get_pdir(event)
             event._ms_orig_order_for_density = orig_order
+            # cache the tag get_pdir resolved rather than recomputing it: it is
+            # the MERGED-pdg tag (all_me is keyed by 81/-81, not by the raw
+            # event pdgs, so a bare get_tag_and_order() raises KeyError on the
+            # lookup below -- e.g. ((-1, 1), (23, 23)) against ((-81, 81),
+            # (23, 23))), and get_pdir also owns the 1 -> N antiparticle
+            # fallback, which no recomputation here would reproduce.
+            event._ms_tag_for_density = tag
         else: #in any case, we need tag to differentiate between production and decay
-            tag, _ = event.get_tag_and_order()
+            tag = getattr(event, '_ms_tag_for_density', None)
+            if tag is None:
+                tag, _ = event.get_tag_and_order(
+                    merged_particle=self._revert_merged or None)
 
 
         # Fast path: single-point momentum extraction without permutation
