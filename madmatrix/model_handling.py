@@ -2072,13 +2072,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
     # backend_separation: calculate_jamps' prologue (signature, memory-access
-    # typedefs) and epilogue (color-choice bookkeeping, jamp output copy - was
-    # process_matrix.inc) are backend-conditional but process-independent, so
-    # they now live as real files in backend/{cpu,simd,gpu}/CalculateJamps.cc.
-    # Only the diagram/vertex-call sequence (helas_calls) is process-specific;
-    # it is written here to EvaluateDiagrams.inc, which that file #includes.
+    # typedefs) and epilogue (color-choice bookkeeping, jamp output copy) are
+    # backend-conditional but process-independent, so they live in
+    # backend/{cpu,simd,gpu}/SigmaKin.cc. Only the diagram/vertex-call sequence
+    # (helas_calls) is process-specific; it is written here to
+    # EvaluateDiagrams.inc, which SigmaKin.cc #includes (as it does the color
+    # flows of ColorFlows.inc, see edit_colorflows).
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
-        """Write EvaluateDiagrams.inc for CPPProcess.cc"""
+        """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
         if self.single_helicities:
             helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
@@ -2380,7 +2381,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                  for k in so['chosen']))
         return '\n'.join(lines)
 
-    # generate process specific color matrix data - algo is backend owned
     # generate process specific color matrix + channel/config maps - algo is backend owned
     def edit_colordata(self):
         """Generate ColorData.h"""

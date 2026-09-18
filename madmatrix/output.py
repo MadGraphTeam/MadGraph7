@@ -129,9 +129,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                    'madanalysis5_hadron_card_default.dat',
                                    'rivet_card_default.dat'])}
 
-    # Backend split (step 1, not yet wired into the build): mirror
-    # template_files/madmatrix/backend/{cpu,simd,gpu}/ as a top-level
-    # backend/<variant>/ dir, sibling of SubProcesses/src/lib.
+    # Backend split: mirror template_files/madmatrix/backend/{common,cpu,simd,gpu}/
+    # as a top-level backend/ dir, sibling of SubProcesses/src/lib; madmatrix.mk
+    # picks the variant (BACKENDDIR) at make time.
     # backend/common/ holds the files that are identical for every variant; it
     # is searched after backend/<variant>/ and no file name is in both, since a
     # quoted #include resolves in the including file's own directory first.
@@ -150,10 +150,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
     # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
-    # etc.) are NOT linked into P* at all: they are compiled straight from the
-    # single top-level backend/<variant>/ dir via the Makefile's INCFLAGS/vpath
-    # (see BACKENDDIR in madmatrix.mk). Only files with no backend/ counterpart
-    # - genuinely backend-agnostic - stay here.
+    # etc.) are NOT linked into P* at all: they are read straight from the
+    # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
+    # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
+    # once per P* directory, into its own build.<BACKEND>/, and have to be:
+    # they include that directory's generated ProcessData.h, ColorData.h and
+    # ProcessTables.h. Only files with no backend/ counterpart - genuinely
+    # backend-agnostic - stay here.
     to_link_in_P = ['umami.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
