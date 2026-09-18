@@ -1,0 +1,4 @@
+batch_four_vec_array
+====================
+
+.. autofunction:: madspace.batch_four_vec_array

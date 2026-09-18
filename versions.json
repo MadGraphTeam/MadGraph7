@@ -1,0 +1,10 @@
+{
+  "default": "latest",
+  "versions": [
+    {
+      "name": "latest",
+      "title": "latest (main)",
+      "url": "latest/"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+Logger
+======
+
+.. autoclass:: madspace.Logger
+   :members:
+   :undoc-members:
+   :show-inheritance:

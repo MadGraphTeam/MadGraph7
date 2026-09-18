@@ -1,0 +1,6 @@
+ObservableHistograms
+====================
+
+.. doxygenclass:: madspace::ObservableHistograms
+   :members:
+   :undoc-members:

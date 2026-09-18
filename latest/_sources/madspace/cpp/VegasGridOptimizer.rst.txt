@@ -1,0 +1,6 @@
+VegasGridOptimizer
+==================
+
+.. doxygenclass:: madspace::VegasGridOptimizer
+   :members:
+   :undoc-members:

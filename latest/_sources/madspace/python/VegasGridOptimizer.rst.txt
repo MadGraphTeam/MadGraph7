@@ -1,0 +1,7 @@
+VegasGridOptimizer
+==================
+
+.. autoclass:: madspace.VegasGridOptimizer
+   :members:
+   :undoc-members:
+   :show-inheritance:

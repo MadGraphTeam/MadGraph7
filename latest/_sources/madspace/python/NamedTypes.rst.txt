@@ -1,0 +1,7 @@
+NamedTypes
+==========
+
+.. autoclass:: madspace.NamedTypes
+   :members:
+   :undoc-members:
+   :show-inheritance:

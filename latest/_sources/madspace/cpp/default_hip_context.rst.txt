@@ -1,0 +1,4 @@
+default_hip_context
+===================
+
+.. doxygenfunction:: madspace::default_hip_context

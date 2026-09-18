@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Not found</title>
+<script>
+var m = location.pathname.match(/^\/(?:en|[a-z]{2})\/(latest|stable|v[\d.]+(?:-[^/]+)?)\/(.*)$/);
+if (m) {
+  location.replace("/" + m[1] + "/" + m[2] + location.hash);
+} else {
+  location.replace("/latest/" + location.hash);
+}
+</script>
+<p>Redirecting&hellip;</p>

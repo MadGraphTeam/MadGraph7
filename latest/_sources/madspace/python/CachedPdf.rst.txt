@@ -1,0 +1,7 @@
+CachedPdf
+=========
+
+.. autoclass:: madspace.CachedPdf
+   :members:
+   :undoc-members:
+   :show-inheritance:

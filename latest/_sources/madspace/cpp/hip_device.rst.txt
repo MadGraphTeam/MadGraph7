@@ -1,0 +1,4 @@
+hip_device
+==========
+
+.. doxygenfunction:: madspace::hip_device

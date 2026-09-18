@@ -1,0 +1,7 @@
+ChannelWeightNetwork
+====================
+
+.. autoclass:: madspace.ChannelWeightNetwork
+   :members:
+   :undoc-members:
+   :show-inheritance:

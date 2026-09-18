@@ -1,0 +1,6 @@
+Invariant
+=========
+
+.. doxygenclass:: madspace::Invariant
+   :members:
+   :undoc-members:

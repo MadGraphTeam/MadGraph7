@@ -1,0 +1,6 @@
+MultiChannelIntegrand
+=====================
+
+.. doxygenclass:: madspace::MultiChannelIntegrand
+   :members:
+   :undoc-members:

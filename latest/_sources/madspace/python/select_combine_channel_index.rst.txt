@@ -1,0 +1,4 @@
+select_combine_channel_index
+============================
+
+.. autofunction:: madspace.select_combine_channel_index

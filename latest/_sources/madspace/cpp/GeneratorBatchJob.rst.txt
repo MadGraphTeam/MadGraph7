@@ -1,0 +1,6 @@
+GeneratorBatchJob
+=================
+
+.. doxygenstruct:: madspace::GeneratorBatchJob
+   :members:
+   :undoc-members:

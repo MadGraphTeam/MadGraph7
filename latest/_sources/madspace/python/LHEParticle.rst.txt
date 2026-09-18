@@ -1,0 +1,7 @@
+LHEParticle
+===========
+
+.. autoclass:: madspace.LHEParticle
+   :members:
+   :undoc-members:
+   :show-inheritance:

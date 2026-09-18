@@ -1,0 +1,7 @@
+MatrixElement
+=============
+
+.. autoclass:: madspace.MatrixElement
+   :members:
+   :undoc-members:
+   :show-inheritance:

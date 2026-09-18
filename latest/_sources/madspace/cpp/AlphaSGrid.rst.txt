@@ -1,0 +1,6 @@
+AlphaSGrid
+==========
+
+.. doxygenstruct:: madspace::AlphaSGrid
+   :members:
+   :undoc-members:

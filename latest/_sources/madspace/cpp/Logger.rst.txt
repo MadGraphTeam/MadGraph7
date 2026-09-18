@@ -1,0 +1,6 @@
+Logger
+======
+
+.. doxygenclass:: madspace::Logger
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+SubprocessObservables
+=====================
+
+.. autoclass:: madspace.SubprocessObservables
+   :members:
+   :undoc-members:
+   :show-inheritance:

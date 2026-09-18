@@ -1,0 +1,7 @@
+Integrand
+=========
+
+.. autoclass:: madspace.Integrand
+   :members:
+   :undoc-members:
+   :show-inheritance:

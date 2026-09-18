@@ -1,0 +1,4 @@
+compute_generation_batch_event_count
+====================================
+
+.. autofunction:: madspace.compute_generation_batch_event_count

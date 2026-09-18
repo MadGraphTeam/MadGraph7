@@ -1,0 +1,7 @@
+Type
+====
+
+.. autoclass:: madspace.Type
+   :members:
+   :undoc-members:
+   :show-inheritance:

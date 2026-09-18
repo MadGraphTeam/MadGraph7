@@ -1,0 +1,6 @@
+Context
+=======
+
+.. doxygenclass:: madspace::Context
+   :members:
+   :undoc-members:

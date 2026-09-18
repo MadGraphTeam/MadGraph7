@@ -1,0 +1,4 @@
+default_context
+===============
+
+.. autofunction:: madspace.default_context

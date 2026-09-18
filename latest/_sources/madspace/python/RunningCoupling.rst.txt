@@ -1,0 +1,7 @@
+RunningCoupling
+===============
+
+.. autoclass:: madspace.RunningCoupling
+   :members:
+   :undoc-members:
+   :show-inheritance:

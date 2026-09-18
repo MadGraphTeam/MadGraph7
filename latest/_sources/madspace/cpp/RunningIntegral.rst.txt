@@ -1,0 +1,6 @@
+RunningIntegral
+===============
+
+.. doxygenclass:: madspace::RunningIntegral
+   :members:
+   :undoc-members:

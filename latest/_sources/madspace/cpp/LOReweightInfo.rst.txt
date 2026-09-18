@@ -1,0 +1,6 @@
+LOReweightInfo
+==============
+
+.. doxygenstruct:: madspace::LOReweightInfo
+   :members:
+   :undoc-members:

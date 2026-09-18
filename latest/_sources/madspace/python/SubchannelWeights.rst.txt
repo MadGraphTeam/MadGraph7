@@ -1,0 +1,7 @@
+SubchannelWeights
+=================
+
+.. autoclass:: madspace.SubchannelWeights
+   :members:
+   :undoc-members:
+   :show-inheritance:

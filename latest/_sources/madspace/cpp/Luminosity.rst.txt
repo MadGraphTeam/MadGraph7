@@ -1,0 +1,6 @@
+Luminosity
+==========
+
+.. doxygenclass:: madspace::Luminosity
+   :members:
+   :undoc-members:

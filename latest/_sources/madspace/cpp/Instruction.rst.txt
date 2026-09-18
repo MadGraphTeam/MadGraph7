@@ -1,0 +1,6 @@
+Instruction
+===========
+
+.. doxygenclass:: madspace::Instruction
+   :members:
+   :undoc-members:

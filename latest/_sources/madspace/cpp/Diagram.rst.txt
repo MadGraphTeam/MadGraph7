@@ -1,0 +1,6 @@
+Diagram
+=======
+
+.. doxygenclass:: madspace::Diagram
+   :members:
+   :undoc-members:

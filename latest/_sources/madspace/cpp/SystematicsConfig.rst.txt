@@ -1,0 +1,6 @@
+SystematicsConfig
+=================
+
+.. doxygenstruct:: madspace::SystematicsConfig
+   :members:
+   :undoc-members:

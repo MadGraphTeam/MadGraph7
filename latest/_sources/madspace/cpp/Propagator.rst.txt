@@ -1,0 +1,6 @@
+Propagator
+==========
+
+.. doxygenstruct:: madspace::Propagator
+   :members:
+   :undoc-members:

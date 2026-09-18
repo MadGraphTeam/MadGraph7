@@ -1,0 +1,7 @@
+Topology
+========
+
+.. autoclass:: madspace.Topology
+   :members:
+   :undoc-members:
+   :show-inheritance:

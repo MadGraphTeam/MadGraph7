@@ -1,0 +1,4 @@
+batch_float_array
+=================
+
+.. autofunction:: madspace.batch_float_array

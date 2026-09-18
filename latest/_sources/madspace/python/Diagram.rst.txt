@@ -1,0 +1,7 @@
+Diagram
+=======
+
+.. autoclass:: madspace.Diagram
+   :members:
+   :undoc-members:
+   :show-inheritance:

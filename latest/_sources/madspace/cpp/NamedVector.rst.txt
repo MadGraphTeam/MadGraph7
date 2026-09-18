@@ -1,0 +1,6 @@
+NamedVector
+===========
+
+.. doxygenclass:: madspace::NamedVector
+   :members:
+   :undoc-members:

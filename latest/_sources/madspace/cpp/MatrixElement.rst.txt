@@ -1,0 +1,6 @@
+MatrixElement
+=============
+
+.. doxygenclass:: madspace::MatrixElement
+   :members:
+   :undoc-members:

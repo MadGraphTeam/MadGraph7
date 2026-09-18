@@ -1,0 +1,6 @@
+MixMaxRandom
+============
+
+.. doxygenclass:: madspace::MixMaxRandom
+   :members:
+   :undoc-members:

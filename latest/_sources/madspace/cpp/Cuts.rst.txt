@@ -1,0 +1,6 @@
+Cuts
+====
+
+.. doxygenclass:: madspace::Cuts
+   :members:
+   :undoc-members:

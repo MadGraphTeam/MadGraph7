@@ -1,0 +1,6 @@
+MultiChannelFunction
+====================
+
+.. doxygenclass:: madspace::MultiChannelFunction
+   :members:
+   :undoc-members:

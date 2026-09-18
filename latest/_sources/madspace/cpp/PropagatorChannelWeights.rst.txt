@@ -1,0 +1,6 @@
+PropagatorChannelWeights
+========================
+
+.. doxygenclass:: madspace::PropagatorChannelWeights
+   :members:
+   :undoc-members:

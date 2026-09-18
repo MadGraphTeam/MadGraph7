@@ -1,0 +1,6 @@
+PrettyBox
+=========
+
+.. doxygenclass:: madspace::PrettyBox
+   :members:
+   :undoc-members:

@@ -1,0 +1,4 @@
+set_lib_path
+============
+
+.. autofunction:: madspace.set_lib_path

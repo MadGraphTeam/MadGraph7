@@ -1,0 +1,7 @@
+EventHistograms
+===============
+
+.. autoclass:: madspace.EventHistograms
+   :members:
+   :undoc-members:
+   :show-inheritance:

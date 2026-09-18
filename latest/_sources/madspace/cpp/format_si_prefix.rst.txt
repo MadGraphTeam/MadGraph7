@@ -1,0 +1,4 @@
+format_si_prefix
+================
+
+.. doxygenfunction:: madspace::format_si_prefix

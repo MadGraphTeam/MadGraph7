@@ -1,0 +1,7 @@
+Variation
+=========
+
+.. autoclass:: madspace.Variation
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,6 @@
+ParticleRecord
+==============
+
+.. doxygenclass:: madspace::ParticleRecord
+   :members:
+   :undoc-members:

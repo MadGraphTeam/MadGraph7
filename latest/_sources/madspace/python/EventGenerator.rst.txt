@@ -1,0 +1,7 @@
+EventGenerator
+==============
+
+.. autoclass:: madspace.EventGenerator
+   :members:
+   :undoc-members:
+   :show-inheritance:

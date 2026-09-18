@@ -1,0 +1,6 @@
+StatusFile
+==========
+
+.. doxygenclass:: madspace::StatusFile
+   :members:
+   :undoc-members:

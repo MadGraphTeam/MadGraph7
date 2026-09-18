@@ -1,0 +1,7 @@
+Instruction
+===========
+
+.. autoclass:: madspace.Instruction
+   :members:
+   :undoc-members:
+   :show-inheritance:

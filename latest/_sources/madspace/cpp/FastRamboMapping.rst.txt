@@ -1,0 +1,6 @@
+FastRamboMapping
+================
+
+.. doxygenclass:: madspace::FastRamboMapping
+   :members:
+   :undoc-members:

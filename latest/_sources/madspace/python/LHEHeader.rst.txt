@@ -1,0 +1,7 @@
+LHEHeader
+=========
+
+.. autoclass:: madspace.LHEHeader
+   :members:
+   :undoc-members:
+   :show-inheritance:

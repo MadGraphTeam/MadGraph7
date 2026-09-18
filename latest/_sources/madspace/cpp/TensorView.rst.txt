@@ -1,0 +1,6 @@
+TensorView
+==========
+
+.. doxygenclass:: madspace::TensorView
+   :members:
+   :undoc-members:

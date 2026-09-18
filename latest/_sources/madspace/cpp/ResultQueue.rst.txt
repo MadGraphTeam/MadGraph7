@@ -1,0 +1,6 @@
+ResultQueue
+===========
+
+.. doxygenclass:: madspace::ResultQueue
+   :members:
+   :undoc-members:

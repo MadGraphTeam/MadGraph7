@@ -1,0 +1,6 @@
+MultiChannelMapping
+===================
+
+.. doxygenclass:: madspace::MultiChannelMapping
+   :members:
+   :undoc-members:

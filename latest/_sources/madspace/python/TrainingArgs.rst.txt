@@ -1,0 +1,7 @@
+TrainingArgs
+============
+
+.. autoclass:: madspace.TrainingArgs
+   :members:
+   :undoc-members:
+   :show-inheritance:

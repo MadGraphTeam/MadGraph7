@@ -1,0 +1,7 @@
+ObservableHistograms
+====================
+
+.. autoclass:: madspace.ObservableHistograms
+   :members:
+   :undoc-members:
+   :show-inheritance:

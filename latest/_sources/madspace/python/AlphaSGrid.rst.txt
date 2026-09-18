@@ -1,0 +1,7 @@
+AlphaSGrid
+==========
+
+.. autoclass:: madspace.AlphaSGrid
+   :members:
+   :undoc-members:
+   :show-inheritance:

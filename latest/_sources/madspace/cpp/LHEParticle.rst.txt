@@ -1,0 +1,6 @@
+LHEParticle
+===========
+
+.. doxygenstruct:: madspace::LHEParticle
+   :members:
+   :undoc-members:

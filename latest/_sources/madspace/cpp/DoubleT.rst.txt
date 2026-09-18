@@ -1,0 +1,6 @@
+DoubleT
+=======
+
+.. doxygenclass:: madspace::DoubleT
+   :members:
+   :undoc-members:

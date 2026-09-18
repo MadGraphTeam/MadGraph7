@@ -1,0 +1,6 @@
+ThreeBodyDecay
+==============
+
+.. doxygenclass:: madspace::ThreeBodyDecay
+   :members:
+   :undoc-members:

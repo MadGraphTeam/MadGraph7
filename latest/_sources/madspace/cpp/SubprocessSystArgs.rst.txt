@@ -1,0 +1,6 @@
+SubprocessSystArgs
+==================
+
+.. doxygenstruct:: madspace::SubprocessSystArgs
+   :members:
+   :undoc-members:

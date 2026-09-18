@@ -1,0 +1,6 @@
+UnalignedRef
+============
+
+.. doxygenclass:: madspace::UnalignedRef
+   :members:
+   :undoc-members:

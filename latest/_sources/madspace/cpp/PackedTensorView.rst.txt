@@ -1,0 +1,6 @@
+PackedTensorView
+================
+
+.. doxygenstruct:: madspace::PackedTensorView
+   :members:
+   :undoc-members:

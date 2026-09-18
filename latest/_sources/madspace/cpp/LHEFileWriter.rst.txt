@@ -1,0 +1,6 @@
+LHEFileWriter
+=============
+
+.. doxygenclass:: madspace::LHEFileWriter
+   :members:
+   :undoc-members:

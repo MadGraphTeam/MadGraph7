@@ -1,0 +1,6 @@
+TPropagatorMapping
+==================
+
+.. doxygenclass:: madspace::TPropagatorMapping
+   :members:
+   :undoc-members:

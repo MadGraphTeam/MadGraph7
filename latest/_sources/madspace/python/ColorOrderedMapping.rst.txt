@@ -1,0 +1,7 @@
+ColorOrderedMapping
+===================
+
+.. autoclass:: madspace.ColorOrderedMapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

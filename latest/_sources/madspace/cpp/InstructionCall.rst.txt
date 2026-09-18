@@ -1,0 +1,6 @@
+InstructionCall
+===============
+
+.. doxygenstruct:: madspace::InstructionCall
+   :members:
+   :undoc-members:

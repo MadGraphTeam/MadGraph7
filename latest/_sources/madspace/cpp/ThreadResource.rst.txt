@@ -1,0 +1,6 @@
+ThreadResource
+==============
+
+.. doxygenclass:: madspace::ThreadResource
+   :members:
+   :undoc-members:

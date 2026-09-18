@@ -1,0 +1,7 @@
+CachedScale
+===========
+
+.. autoclass:: madspace.CachedScale
+   :members:
+   :undoc-members:
+   :show-inheritance:

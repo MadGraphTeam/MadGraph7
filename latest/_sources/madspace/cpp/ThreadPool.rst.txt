@@ -1,0 +1,6 @@
+ThreadPool
+==========
+
+.. doxygenclass:: madspace::ThreadPool
+   :members:
+   :undoc-members:

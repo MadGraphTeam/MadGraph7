@@ -1,0 +1,6 @@
+RunningCoupling
+===============
+
+.. doxygenclass:: madspace::RunningCoupling
+   :members:
+   :undoc-members:

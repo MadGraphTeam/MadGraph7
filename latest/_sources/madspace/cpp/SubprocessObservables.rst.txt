@@ -1,0 +1,6 @@
+SubprocessObservables
+=====================
+
+.. doxygenstruct:: madspace::SubprocessObservables
+   :members:
+   :undoc-members:

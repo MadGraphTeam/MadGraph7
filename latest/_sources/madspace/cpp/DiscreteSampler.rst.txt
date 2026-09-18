@@ -1,0 +1,6 @@
+DiscreteSampler
+===============
+
+.. doxygenclass:: madspace::DiscreteSampler
+   :members:
+   :undoc-members:

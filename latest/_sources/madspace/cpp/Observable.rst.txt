@@ -1,0 +1,6 @@
+Observable
+==========
+
+.. doxygenclass:: madspace::Observable
+   :members:
+   :undoc-members:

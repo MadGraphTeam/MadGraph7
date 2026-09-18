@@ -1,0 +1,7 @@
+Tensor
+======
+
+.. autoclass:: madspace.Tensor
+   :members:
+   :undoc-members:
+   :show-inheritance:

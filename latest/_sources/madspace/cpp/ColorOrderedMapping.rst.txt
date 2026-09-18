@@ -1,0 +1,6 @@
+ColorOrderedMapping
+===================
+
+.. doxygenclass:: madspace::ColorOrderedMapping
+   :members:
+   :undoc-members:

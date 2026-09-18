@@ -1,0 +1,6 @@
+PartonDensity
+=============
+
+.. doxygenclass:: madspace::PartonDensity
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+Mapping
+=======
+
+.. autoclass:: madspace.Mapping
+   :members:
+   :undoc-members:
+   :show-inheritance:

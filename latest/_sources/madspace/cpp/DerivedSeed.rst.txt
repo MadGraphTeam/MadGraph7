@@ -1,0 +1,6 @@
+DerivedSeed
+===========
+
+.. doxygenstruct:: madspace::DerivedSeed
+   :members:
+   :undoc-members:

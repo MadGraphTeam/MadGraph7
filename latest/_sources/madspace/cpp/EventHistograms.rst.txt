@@ -1,0 +1,6 @@
+EventHistograms
+===============
+
+.. doxygenclass:: madspace::EventHistograms
+   :members:
+   :undoc-members:

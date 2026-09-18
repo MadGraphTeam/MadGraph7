@@ -1,0 +1,4 @@
+compute_generation_batch_event_count
+====================================
+
+.. doxygenfunction:: madspace::compute_generation_batch_event_count

@@ -1,0 +1,6 @@
+BufferUnweighter
+================
+
+.. doxygenclass:: madspace::BufferUnweighter
+   :members:
+   :undoc-members:

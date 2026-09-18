@@ -1,0 +1,6 @@
+TwoBodyDecay
+============
+
+.. doxygenclass:: madspace::TwoBodyDecay
+   :members:
+   :undoc-members:

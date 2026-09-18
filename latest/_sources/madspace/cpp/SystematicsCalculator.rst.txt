@@ -1,0 +1,6 @@
+SystematicsCalculator
+=====================
+
+.. doxygenclass:: madspace::SystematicsCalculator
+   :members:
+   :undoc-members:

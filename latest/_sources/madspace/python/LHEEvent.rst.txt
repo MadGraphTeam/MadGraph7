@@ -1,0 +1,7 @@
+LHEEvent
+========
+
+.. autoclass:: madspace.LHEEvent
+   :members:
+   :undoc-members:
+   :show-inheritance:

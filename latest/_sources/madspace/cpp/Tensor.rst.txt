@@ -1,0 +1,6 @@
+Tensor
+======
+
+.. doxygenclass:: madspace::Tensor
+   :members:
+   :undoc-members:

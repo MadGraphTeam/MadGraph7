@@ -1,0 +1,7 @@
+Invariant
+=========
+
+.. autoclass:: madspace.Invariant
+   :members:
+   :undoc-members:
+   :show-inheritance:

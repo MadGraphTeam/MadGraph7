@@ -1,0 +1,4 @@
+available_backends
+==================
+
+.. autofunction:: madspace.available_backends

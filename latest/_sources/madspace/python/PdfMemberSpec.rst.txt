@@ -1,0 +1,7 @@
+PdfMemberSpec
+=============
+
+.. autoclass:: madspace.PdfMemberSpec
+   :members:
+   :undoc-members:
+   :show-inheritance:

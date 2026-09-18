@@ -1,0 +1,6 @@
+BatchSampler
+============
+
+.. doxygenclass:: madspace::BatchSampler
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+BatchSize
+=========
+
+.. doxygenclass:: madspace::BatchSize
+   :members:
+   :undoc-members:

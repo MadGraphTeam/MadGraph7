@@ -1,0 +1,7 @@
+AdamOptimizer
+=============
+
+.. autoclass:: madspace.AdamOptimizer
+   :members:
+   :undoc-members:
+   :show-inheritance:

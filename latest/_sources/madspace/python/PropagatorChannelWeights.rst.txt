@@ -1,0 +1,7 @@
+PropagatorChannelWeights
+========================
+
+.. autoclass:: madspace.PropagatorChannelWeights
+   :members:
+   :undoc-members:
+   :show-inheritance:

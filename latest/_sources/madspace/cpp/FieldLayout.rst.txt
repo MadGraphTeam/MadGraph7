@@ -1,0 +1,6 @@
+FieldLayout
+===========
+
+.. doxygenstruct:: madspace::FieldLayout
+   :members:
+   :undoc-members:

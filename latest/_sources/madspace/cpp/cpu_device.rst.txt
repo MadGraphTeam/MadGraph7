@@ -1,0 +1,4 @@
+cpu_device
+==========
+
+.. doxygenfunction:: madspace::cpu_device

@@ -1,0 +1,4 @@
+select_combine_channel_index
+============================
+
+.. doxygenfunction:: madspace::select_combine_channel_index

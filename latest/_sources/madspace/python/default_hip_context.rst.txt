@@ -1,0 +1,4 @@
+default_hip_context
+===================
+
+.. autofunction:: madspace.default_hip_context

@@ -1,0 +1,6 @@
+SubchannelWeights
+=================
+
+.. doxygenclass:: madspace::SubchannelWeights
+   :members:
+   :undoc-members:

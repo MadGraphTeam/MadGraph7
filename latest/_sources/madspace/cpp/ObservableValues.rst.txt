@@ -1,0 +1,6 @@
+ObservableValues
+================
+
+.. doxygenclass:: madspace::ObservableValues
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+Observable
+==========
+
+.. autoclass:: madspace.Observable
+   :members:
+   :undoc-members:
+   :show-inheritance:

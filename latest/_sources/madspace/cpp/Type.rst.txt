@@ -1,0 +1,6 @@
+Type
+====
+
+.. doxygenstruct:: madspace::Type
+   :members:
+   :undoc-members:

@@ -1,0 +1,7 @@
+DoubleT
+=======
+
+.. autoclass:: madspace.DoubleT
+   :members:
+   :undoc-members:
+   :show-inheritance:

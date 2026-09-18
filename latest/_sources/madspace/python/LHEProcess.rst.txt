@@ -1,0 +1,7 @@
+LHEProcess
+==========
+
+.. autoclass:: madspace.LHEProcess
+   :members:
+   :undoc-members:
+   :show-inheritance:

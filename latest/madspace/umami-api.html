@@ -1,0 +1,1161 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Python API" href="python-api.html"><link rel="prev" title="Fusing RNG, flow, mapping and matrix element into one graph" href="examples/flow-training.html">
+        <link rel="canonical" href="https://docs.madgraph.org/latest/madspace/umami-api.html">
+        <link rel="prefetch" href="../_static/logo-light.png" as="image">
+        <link rel="prefetch" href="../_static/logo-dark.png" as="image">
+
+    <!-- Generated with Sphinx 9.0.4 and Furo 2025.12.19 -->
+        <title>UMAMI API - MadGraph7 0.2.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=acfd86a5" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">MadGraph7 0.2.0 documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="../_static/logo-light.png" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="../_static/logo-dark.png" alt="Dark Logo"/>
+  </div>
+  
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div>
+<div class="mg7-versions" id="mg7-versions" hidden>
+  <label class="mg7-versions__label" for="mg7-version-select">Version</label>
+  <select id="mg7-version-select" aria-label="Documentation version"></select>
+</div>
+<style>
+  .mg7-versions {
+    margin: 0 var(--sidebar-item-spacing-horizontal, 1rem) .75rem;
+  }
+  .mg7-versions__label {
+    display: block;
+    margin-bottom: .2rem;
+    font-size: var(--font-size--small--2, .75rem);
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--color-foreground-muted);
+  }
+  .mg7-versions select {
+    width: 100%;
+    padding: .3rem .4rem;
+    border-radius: .25rem;
+    font-size: var(--font-size--small, .875rem);
+    color: var(--color-foreground-primary);
+    background: var(--color-background-primary);
+    border: 1px solid var(--color-background-border);
+  }
+</style>
+<script>
+(function () {
+  var current = "latest";
+  var versionRoot = new URL("../" || "./", window.location.href);
+  var siteRoot = new URL("../", versionRoot);
+
+  fetch(new URL("versions.json", siteRoot).href, { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      var sel = document.getElementById("mg7-version-select");
+      var seen = false;
+
+      (data.versions || []).forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = new URL(v.url, siteRoot).href;
+        opt.textContent = v.title || v.name;
+        if (v.name === current) {
+          opt.selected = true;
+          seen = true;
+        }
+        sel.appendChild(opt);
+      });
+
+      if (!seen) {
+        // The build running this page isn't in versions.json (e.g. a
+        // workflow_dispatch dry run). Label it rather than silently
+        // selecting the wrong entry, and don't navigate away from it.
+        var opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = current + " (this build)";
+        opt.selected = true;
+        sel.insertBefore(opt, sel.firstChild);
+      }
+
+      sel.addEventListener("change", function () {
+        // Navigate to the other version's root, not the current page path:
+        // this exact page may not exist in that version.
+        if (sel.value) {
+          window.location.assign(sel.value);
+        }
+      });
+
+      document.getElementById("mg7-versions").hidden = false;
+    })
+    .catch(function () {
+      // No versions.json reachable (local build, or served off-site):
+      // leave the switcher hidden rather than show a broken control.
+    });
+})();
+</script><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../first_steps.html">First steps</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">MadSpace</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="examples.html">Examples</a><input aria-label="Toggle navigation of Examples" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple-mappings.html">Constructing and calling a phase-space mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/cuts.html">Defining fiducial cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/diagram-mapping.html">Building a mapping for a Feynman diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/integration-order.html">Multiple on-shell configurations and integration order</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/matrix-element.html">Calling a MadGraph-generated matrix element</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/gpu.html">Running on a GPU</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/pdf.html">The built-in PDF interpolator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/integrator.html">Building a simple integrator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/integrator-madnis.html">Neural importance sampling with MadNIS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/flow-training.html">Fusing RNG, flow, mapping and matrix element into one graph</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">UMAMI API</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="python/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/CachedPdf.html">CachedPdf</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/CachedScale.html">CachedScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/CutItem.html">CutItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/HistItem.html">HistItem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Decay.html">Decay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LineRef.html">LineRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DataType.html">DataType</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/FunctionRuntime.html">FunctionRuntime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MadnisConfig.html">MadnisConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SubprocArgs.html">SubprocArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TrainingArgs.html">TrainingArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/Verbosity.html">Verbosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/NamedTypes.html">NamedTypes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/NamedValues.html">NamedValues</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ChiliMapping.html">ChiliMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteFlow.html">DiscreteFlow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteSampler.html">DiscreteSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DoubleT.html">DoubleT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/FastRamboMapping.html">FastRamboMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Flow.html">Flow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Invariant.html">Invariant</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Luminosity.html">Luminosity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Mapping.html">Mapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MultiChannelMapping.html">MultiChannelMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PhaseSpaceMapping.html">PhaseSpaceMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TPropagatorMapping.html">TPropagatorMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ThreeBodyDecay.html">ThreeBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TwoBodyDecay.html">TwoBodyDecay</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TwoToThreeParticleScattering.html">TwoToThreeParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TwoToTwoParticleScattering.html">TwoToTwoParticleScattering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/VegasMapping.html">VegasMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/BatchSampler.html">BatchSampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/BufferUnweighter.html">BufferUnweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ChannelWeightNetwork.html">ChannelWeightNetwork</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Cuts.html">Cuts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DifferentialCrossSection.html">DifferentialCrossSection</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteHistogram.html">DiscreteHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EnergyScale.html">EnergyScale</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/FunctionGenerator.html">FunctionGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/GradientClipper.html">GradientClipper</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Integrand.html">Integrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/IntegrandChannelPart.html">IntegrandChannelPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/IntegrandCommonPart.html">IntegrandCommonPart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/IntegrandConcatenator.html">IntegrandConcatenator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/IntegrandProbability.html">IntegrandProbability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MLP.html">MLP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MadnisLoss.html">MadnisLoss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MatrixElement.html">MatrixElement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MomentumPreprocessing.html">MomentumPreprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MultiChannelFunction.html">MultiChannelFunction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MultiChannelIntegrand.html">MultiChannelIntegrand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Observable.html">Observable</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ObservableHistograms.html">ObservableHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ObservableValues.html">ObservableValues</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PartonDensity.html">PartonDensity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/RunningCoupling.html">RunningCoupling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Unweighter.html">Unweighter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/VegasHistogram.html">VegasHistogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/AlphaSGrid.html">AlphaSGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Diagram.html">Diagram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PdfGrid.html">PdfGrid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Propagator.html">Propagator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Topology.html">Topology</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/initialize_vegas_grid.html">initialize_vegas_grid</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/BatchSize.html">BatchSize</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Function.html">Function</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/FunctionBuilder.html">FunctionBuilder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Instruction.html">Instruction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/InstructionCall.html">InstructionCall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Type.html">Type</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Value.html">Value</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/batch_float_array.html">batch_float_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/batch_four_vec_array.html">batch_four_vec_array</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/multichannel_batch_size.html">multichannel_batch_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/AdamOptimizer.html">AdamOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ChannelEventGenerator.html">ChannelEventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Context.html">Context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DataLayout.html">DataLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DerivedSeed.html">DerivedSeed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Device.html">Device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteOptimizer.html">DiscreteOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventBuffer.html">EventBuffer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventFile.html">EventFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventGenerator.html">EventGenerator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventHistogramSpec.html">EventHistogramSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventHistograms.html">EventHistograms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/EventRecord.html">EventRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/FieldLayout.html">FieldLayout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/GeneratorBatchJob.html">GeneratorBatchJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/GeneratorConfig.html">GeneratorConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/GeneratorStatus.html">GeneratorStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Histogram.html">Histogram</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHECompleter.html">LHECompleter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEEvent.html">LHEEvent</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEFileWriter.html">LHEFileWriter</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEHeader.html">LHEHeader</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEMeta.html">LHEMeta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEParticle.html">LHEParticle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LHEProcess.html">LHEProcess</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/LOReweightInfo.html">LOReweightInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Logger.html">Logger</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MadnisTraining.html">MadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MatrixElementApi.html">MatrixElementApi</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MixMaxRandom.html">MixMaxRandom</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/MultiMadnisTraining.html">MultiMadnisTraining</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PackedTensorView.html">PackedTensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ParticleRecord.html">ParticleRecord</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PdfGroupInfo.html">PdfGroupInfo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PdfMemberSpec.html">PdfMemberSpec</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/PrettyBox.html">PrettyBox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ReadyJob.html">ReadyJob</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ResultQueue.html">ResultQueue</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/RunSeedSkip.html">RunSeedSkip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/RunningIntegral.html">RunningIntegral</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Runtime.html">Runtime</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Sizes.html">Sizes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/StatusFile.html">StatusFile</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/SubprocessObservables.html">SubprocessObservables</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/SystematicsConfig.html">SystematicsConfig</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Tensor.html">Tensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TensorView.html">TensorView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ThreadPool.html">ThreadPool</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/ThreadResource.html">ThreadResource</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/UnalignedRef.html">UnalignedRef</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Variation.html">Variation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/VegasGridOptimizer.html">VegasGridOptimizer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/available_backends.html">available_backends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/compute_generation_batch_event_count.html">compute_generation_batch_event_count</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/cpu_device.html">cpu_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/cuda_device.html">cuda_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/default_context.html">default_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/default_cuda_context.html">default_cuda_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/default_hip_context.html">default_hip_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/format_progress.html">format_progress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/format_si_prefix.html">format_si_prefix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/format_with_error.html">format_with_error</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/hip_device.html">hip_device</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/select_combine_channel_index.html">select_combine_channel_index</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/set_lib_path.html">set_lib_path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/set_simd_vector_size.html">set_simd_vector_size</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/NamedVector.html">NamedVector</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/Overloaded.html">Overloaded</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/madspace/umami-api.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="umami-api">
+<h1>UMAMI API<a class="headerlink" href="#umami-api" title="Link to this heading">¶</a></h1>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-defines">Defines</p>
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.UMAMI_MAJOR_VERSION">
+<span class="target" id="umami_8h_1afda2a03ea27ee1331dc0a6a1f9d5b3d0"></span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_MAJOR_VERSION</span></span></span><a class="headerlink" href="#c.UMAMI_MAJOR_VERSION" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Major version number of the UMAMI interface. </p>
+<p>If the major version is the same between caller and implementation, binary compatibility is ensured. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.UMAMI_MINOR_VERSION">
+<span class="target" id="umami_8h_1a9ad42cdf6014f446dbbdd4a15c9ba89c"></span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_MINOR_VERSION</span></span></span><a class="headerlink" href="#c.UMAMI_MINOR_VERSION" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Minor version number of the UMAMI interface. </p>
+<p>Between minor versions, new keys for errors, devices, metadata, inputs and outputs can be added. </p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.UMAMI_INPUT_KEY_COUNT">
+<span class="target" id="umami_8h_1aa65e6f035ca93f64446e0217a551c633"></span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_INPUT_KEY_COUNT</span></span></span><a class="headerlink" href="#c.UMAMI_INPUT_KEY_COUNT" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Number of values in <code class="docutils literal notranslate"><span class="pre">UmamiInputKey</span></code></p>
+</dd></dl>
+
+<dl class="cpp macro">
+<dt class="sig sig-object cpp" id="c.UMAMI_OUTPUT_KEY_COUNT">
+<span class="target" id="umami_8h_1a06cc183397b9533db42e302892ec06c1"></span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUTPUT_KEY_COUNT</span></span></span><a class="headerlink" href="#c.UMAMI_OUTPUT_KEY_COUNT" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Number of values in <code class="docutils literal notranslate"><span class="pre">UmamiOutputKey</span></code></p>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-typedefs">Typedefs</p>
+<dl class="cpp type">
+<dt class="sig sig-object cpp" id="_CPPv411UmamiHandle">
+<span id="_CPPv311UmamiHandle"></span><span id="_CPPv211UmamiHandle"></span><span id="UmamiHandle"></span><span class="target" id="umami_8h_1a0a0e94b6e320b4ad466e6ff8a1216084"></span><span class="k"><span class="pre">typedef</span></span><span class="w"> </span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="sig-name descname"><span class="n"><span class="pre">UmamiHandle</span></span></span><a class="headerlink" href="#_CPPv411UmamiHandle" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Implementation-defined pointer to a matrix element instance. </p>
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-enums">Enums</p>
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv411UmamiStatus">
+<span id="_CPPv311UmamiStatus"></span><span id="_CPPv211UmamiStatus"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2ded"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UmamiStatus</span></span></span><a class="headerlink" href="#_CPPv411UmamiStatus" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus13UMAMI_SUCCESSE">
+<span id="_CPPv3N11UmamiStatus13UMAMI_SUCCESSE"></span><span id="_CPPv2N11UmamiStatus13UMAMI_SUCCESSE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2deda3ce2971721a944007bae31a1078b514f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_SUCCESS</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus13UMAMI_SUCCESSE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>operation was executed successfully </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus11UMAMI_ERRORE">
+<span id="_CPPv3N11UmamiStatus11UMAMI_ERRORE"></span><span id="_CPPv2N11UmamiStatus11UMAMI_ERRORE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2dedab465fecc1396ac4b081892c751293269"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus11UMAMI_ERRORE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>an unspecified error </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus27UMAMI_ERROR_NOT_IMPLEMENTEDE">
+<span id="_CPPv3N11UmamiStatus27UMAMI_ERROR_NOT_IMPLEMENTEDE"></span><span id="_CPPv2N11UmamiStatus27UMAMI_ERROR_NOT_IMPLEMENTEDE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2deda70fe903c60944bc1761032669dc0abf5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_NOT_IMPLEMENTED</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus27UMAMI_ERROR_NOT_IMPLEMENTEDE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>operation not implemented </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus29UMAMI_ERROR_UNSUPPORTED_INPUTE">
+<span id="_CPPv3N11UmamiStatus29UMAMI_ERROR_UNSUPPORTED_INPUTE"></span><span id="_CPPv2N11UmamiStatus29UMAMI_ERROR_UNSUPPORTED_INPUTE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2dedae2439db859ca6bc7be3bc426e7799285"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_UNSUPPORTED_INPUT</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus29UMAMI_ERROR_UNSUPPORTED_INPUTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>the provided input key is not supported by this matrix element implementation </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus30UMAMI_ERROR_UNSUPPORTED_OUTPUTE">
+<span id="_CPPv3N11UmamiStatus30UMAMI_ERROR_UNSUPPORTED_OUTPUTE"></span><span id="_CPPv2N11UmamiStatus30UMAMI_ERROR_UNSUPPORTED_OUTPUTE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2dedac112213da5ee36b679906d9b694092f6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_UNSUPPORTED_OUTPUT</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus30UMAMI_ERROR_UNSUPPORTED_OUTPUTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>the provided output key is not supported by this matrix element implementation </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE">
+<span id="_CPPv3N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE"></span><span id="_CPPv2N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2deda4ba45681ffc2f735ab85f548e271889a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_UNINITIALIZED_META</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>the meta_key was not yet initialized </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE">
+<span id="_CPPv3N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE"></span><span id="_CPPv2N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2deda4d36e16afac9a9caca733ed4764c251d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_UNSUPPORTED_META</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>the provided metadata key is not supported by this matrix element implementation </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE">
+<span id="_CPPv3N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE"></span><span id="_CPPv2N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE"></span><span class="target" id="umami_8h_1a6a393254335838442cb7dc749ebd2deda9b6221f45571449f135457139124471b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_ERROR_MISSING_INPUT</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>a mandatory matrix element input was not provided </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv411UmamiDevice">
+<span id="_CPPv311UmamiDevice"></span><span id="_CPPv211UmamiDevice"></span><span class="target" id="umami_8h_1ab65fdafd7b73827b16843ca435b8c61d"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UmamiDevice</span></span></span><a class="headerlink" href="#_CPPv411UmamiDevice" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiDevice16UMAMI_DEVICE_CPUE">
+<span id="_CPPv3N11UmamiDevice16UMAMI_DEVICE_CPUE"></span><span id="_CPPv2N11UmamiDevice16UMAMI_DEVICE_CPUE"></span><span class="target" id="umami_8h_1ab65fdafd7b73827b16843ca435b8c61daf01f4efa9aa2f12f6011c9ec6470dc6b"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_DEVICE_CPU</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiDevice16UMAMI_DEVICE_CPUE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiDevice17UMAMI_DEVICE_CUDAE">
+<span id="_CPPv3N11UmamiDevice17UMAMI_DEVICE_CUDAE"></span><span id="_CPPv2N11UmamiDevice17UMAMI_DEVICE_CUDAE"></span><span class="target" id="umami_8h_1ab65fdafd7b73827b16843ca435b8c61daac9cf273846ef47ec852efeacd88f500"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_DEVICE_CUDA</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiDevice17UMAMI_DEVICE_CUDAE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N11UmamiDevice16UMAMI_DEVICE_HIPE">
+<span id="_CPPv3N11UmamiDevice16UMAMI_DEVICE_HIPE"></span><span id="_CPPv2N11UmamiDevice16UMAMI_DEVICE_HIPE"></span><span class="target" id="umami_8h_1ab65fdafd7b73827b16843ca435b8c61da8436bb0a490f915d1e6327e3a38bdec6"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_DEVICE_HIP</span></span></span><a class="headerlink" href="#_CPPv4N11UmamiDevice16UMAMI_DEVICE_HIPE" title="Link to this definition">¶</a><br /></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv412UmamiMetaKey">
+<span id="_CPPv312UmamiMetaKey"></span><span id="_CPPv212UmamiMetaKey"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UmamiMetaKey</span></span></span><a class="headerlink" href="#_CPPv412UmamiMetaKey" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey17UMAMI_META_DEVICEE">
+<span id="_CPPv3N12UmamiMetaKey17UMAMI_META_DEVICEE"></span><span id="_CPPv2N12UmamiMetaKey17UMAMI_META_DEVICEE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65a2678516da728967cef3a38733d35008f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_DEVICE</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey17UMAMI_META_DEVICEE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">UmamiDevice</span></code> specifying the type of device </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey25UMAMI_META_PARTICLE_COUNTE">
+<span id="_CPPv3N12UmamiMetaKey25UMAMI_META_PARTICLE_COUNTE"></span><span id="_CPPv2N12UmamiMetaKey25UMAMI_META_PARTICLE_COUNTE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65ae52383dd71b34b49c14a1f3085ceaf87"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_PARTICLE_COUNT</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey25UMAMI_META_PARTICLE_COUNTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">int</span></code> specifying the number of external particles </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey24UMAMI_META_DIAGRAM_COUNTE">
+<span id="_CPPv3N12UmamiMetaKey24UMAMI_META_DIAGRAM_COUNTE"></span><span id="_CPPv2N12UmamiMetaKey24UMAMI_META_DIAGRAM_COUNTE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65a3e3bb4f41bc55f1ac22b5da00af176dc"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_DIAGRAM_COUNT</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey24UMAMI_META_DIAGRAM_COUNTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">int</span></code> specifying the number of Feynman diagrams </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey25UMAMI_META_HELICITY_COUNTE">
+<span id="_CPPv3N12UmamiMetaKey25UMAMI_META_HELICITY_COUNTE"></span><span id="_CPPv2N12UmamiMetaKey25UMAMI_META_HELICITY_COUNTE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65aa7aa88803cb475bbc9f11b1e538ecca3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_HELICITY_COUNT</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey25UMAMI_META_HELICITY_COUNTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">int</span></code> specifying the number of helicities </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey22UMAMI_META_COLOR_COUNTE">
+<span id="_CPPv3N12UmamiMetaKey22UMAMI_META_COLOR_COUNTE"></span><span id="_CPPv2N12UmamiMetaKey22UMAMI_META_COLOR_COUNTE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65a53ecc1444fd133c4a3ea6653ec4e4953"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_COLOR_COUNT</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey22UMAMI_META_COLOR_COUNTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">int</span></code> specifying the number of colors </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N12UmamiMetaKey17UMAMI_META_MASSESE">
+<span id="_CPPv3N12UmamiMetaKey17UMAMI_META_MASSESE"></span><span id="_CPPv2N12UmamiMetaKey17UMAMI_META_MASSESE"></span><span class="target" id="umami_8h_1a6cc5b195955592907f243f1fa2879b65a618d913a5761fcaedfea6db9e984480d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_META_MASSES</span></span></span><a class="headerlink" href="#_CPPv4N12UmamiMetaKey17UMAMI_META_MASSESE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">double</span></code> array of length particle count: the external-leg masses (GeV) </p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv413UmamiInputKey">
+<span id="_CPPv313UmamiInputKey"></span><span id="_CPPv213UmamiInputKey"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UmamiInputKey</span></span></span><a class="headerlink" href="#_CPPv413UmamiInputKey" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey16UMAMI_IN_MOMENTAE">
+<span id="_CPPv3N13UmamiInputKey16UMAMI_IN_MOMENTAE"></span><span id="_CPPv2N13UmamiInputKey16UMAMI_IN_MOMENTAE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a00382f29e63c0bf7cd01965f0b547815"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_MOMENTA</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_MOMENTAE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>momenta of the external legs, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(particle</span> <span class="pre">count,</span> <span class="pre">4)</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey16UMAMI_IN_ALPHA_SE">
+<span id="_CPPv3N13UmamiInputKey16UMAMI_IN_ALPHA_SE"></span><span id="_CPPv2N13UmamiInputKey16UMAMI_IN_ALPHA_SE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a446e63a605c5dd5b01fe320f13822058"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_ALPHA_S</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_ALPHA_SE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>value for the strong coupling, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey21UMAMI_IN_FLAVOR_INDEXE">
+<span id="_CPPv3N13UmamiInputKey21UMAMI_IN_FLAVOR_INDEXE"></span><span id="_CPPv2N13UmamiInputKey21UMAMI_IN_FLAVOR_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483adf2f870a2150835ff40a9186db9a6747"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_FLAVOR_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey21UMAMI_IN_FLAVOR_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>flavor index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE">
+<span id="_CPPv3N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE"></span><span id="_CPPv2N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483ac4f78b77a9a18d7dce41df7b8beecc19"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_RANDOM_COLOR</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>random number for color selection, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE">
+<span id="_CPPv3N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE"></span><span id="_CPPv2N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a59a33ae80e2296382db42a3d87fd6e7e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_RANDOM_HELICITY</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>random number for helicity selection, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME">
+<span id="_CPPv3N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME"></span><span id="_CPPv2N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a7093d1702df4c727e93db2133d59ae02"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_RANDOM_DIAGRAM</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME" title="Link to this definition">¶</a><br /></dt>
+<dd><p>random number for diagram selection, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE">
+<span id="_CPPv3N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE"></span><span id="_CPPv2N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483ab9f946a323c6a000c4cc7582e4e729c3"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_HELICITY_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>externally selected helicity index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE">
+<span id="_CPPv3N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"></span><span id="_CPPv2N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a3c87d32e55f4aa2538b0ea85fb3f81b1"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_DIAGRAM_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>externally selected diagram index, type: <code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE">
+<span id="_CPPv3N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE"></span><span id="_CPPv2N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483ae4d6ac2a410ac81d74371a7fc514a064"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_CHANNEL_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>externally selected channel index, type: <code class="docutils literal notranslate"><span class="pre">unsigned</span> <span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="cpp enum">
+<dt class="sig sig-object cpp" id="_CPPv414UmamiOutputKey">
+<span id="_CPPv314UmamiOutputKey"></span><span id="_CPPv214UmamiOutputKey"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09"></span><span class="k"><span class="pre">enum</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UmamiOutputKey</span></span></span><a class="headerlink" href="#_CPPv414UmamiOutputKey" title="Link to this definition">¶</a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey24UMAMI_OUT_MATRIX_ELEMENTE">
+<span id="_CPPv3N14UmamiOutputKey24UMAMI_OUT_MATRIX_ELEMENTE"></span><span id="_CPPv2N14UmamiOutputKey24UMAMI_OUT_MATRIX_ELEMENTE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a2172d84c599ed4dc3fa2b55802828fe7"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_MATRIX_ELEMENT</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey24UMAMI_OUT_MATRIX_ELEMENTE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>value of the matrix element, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E">
+<span id="_CPPv3N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E"></span><span id="_CPPv2N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a316fd3aacc84b6a738f2d72d9e5fbf08"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_DIAGRAM_AMP2</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E" title="Link to this definition">¶</a><br /></dt>
+<dd><p>selected color index, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(diagram</span> <span class="pre">count)</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey21UMAMI_OUT_COLOR_INDEXE">
+<span id="_CPPv3N14UmamiOutputKey21UMAMI_OUT_COLOR_INDEXE"></span><span id="_CPPv2N14UmamiOutputKey21UMAMI_OUT_COLOR_INDEXE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09aafd3bad5d38ed4b5371b6a0083e53d0d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_COLOR_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey21UMAMI_OUT_COLOR_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>selected color index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE">
+<span id="_CPPv3N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE"></span><span id="_CPPv2N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a0a175e6d6478c987de009a9789fe955a"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_HELICITY_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>selected helicity index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE">
+<span id="_CPPv3N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE"></span><span id="_CPPv2N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09ac7121cb511c44cac71a45e2d5627b350"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_DIAGRAM_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>selected diagram index, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME">
+<span id="_CPPv3N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"></span><span id="_CPPv2N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a3a618584a08e8529ef7002ecdef736a4"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_GPU_STREAM</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME" title="Link to this definition">¶</a><br /></dt>
+<dd><p>CUDA or HIP stream for asynchronous execution. </p>
+<p>Listed as an output as it is a mutable pointer </p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-functions">Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv414umami_get_meta12UmamiMetaKeyPv">
+<span id="_CPPv314umami_get_meta12UmamiMetaKeyPv"></span><span id="_CPPv214umami_get_meta12UmamiMetaKeyPv"></span><span id="umami_get_meta__UmamiMetaKey.voidP"></span><span class="target" id="umami_8h_1a608a275eea2a995404f4085328b06552"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_get_meta</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv412UmamiMetaKey" title="UmamiMetaKey"><span class="n"><span class="pre">UmamiMetaKey</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">meta_key</span></span>, <span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">result</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv414umami_get_meta12UmamiMetaKeyPv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Retrieve metadata about the implemented matrix element. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>meta_key</strong> – key specifying the type of metadata to be retrieved </p></li>
+<li><p><strong>result</strong> – pointer to store the result. It’s type depends on the metadata key </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv422umami_supported_inputsPPKbPi">
+<span id="_CPPv322umami_supported_inputsPPKbPi"></span><span id="_CPPv222umami_supported_inputsPPKbPi"></span><span id="umami_supported_inputs__bCPP.iP"></span><span class="target" id="umami_8h_1a1209d42c6e9fbf355c4a281e0049aff8"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_supported_inputs</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">supported</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">count</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv422umami_supported_inputsPPKbPi" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Reports which input keys can be passed to this matrix element implementation, to be written by whoever implements the UMAMI interface. </p>
+<p>Implementing this function is optional; a caller that fails to resolve it should treat it as unavailable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>supported</strong> – pointer set on return to an implementation-owned array of booleans, where element <code class="docutils literal notranslate"><span class="pre">i</span></code> indicates whether the input key with numeric value <code class="docutils literal notranslate"><span class="pre">i</span></code> (see <code class="docutils literal notranslate"><span class="pre">UmamiInputKey</span></code>) is accepted by this implementation. </p></li>
+<li><p><strong>count</strong> – pointer set on return to the number of elements in <code class="docutils literal notranslate"><span class="pre">*supported</span></code>, reflecting the number of <code class="docutils literal notranslate"><span class="pre">UmamiInputKey</span></code> values known to this implementation. A caller built against a newer header should treat any key index beyond <code class="docutils literal notranslate"><span class="pre">*count</span></code> as not supported. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv421umami_required_inputsPPKbPi">
+<span id="_CPPv321umami_required_inputsPPKbPi"></span><span id="_CPPv221umami_required_inputsPPKbPi"></span><span id="umami_required_inputs__bCPP.iP"></span><span class="target" id="umami_8h_1abdf9c9ebdcd7b6426d2106b23f436ca9"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_required_inputs</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">required</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">count</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv421umami_required_inputsPPKbPi" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Reports which input keys must be passed to this matrix element implementation for <code class="docutils literal notranslate"><span class="pre">umami_matrix_element</span></code> to succeed, to be written by whoever implements the UMAMI interface. </p>
+<p>This is a subset of the keys reported by <code class="docutils literal notranslate"><span class="pre">umami_supported_inputs</span></code>. Implementing this function is optional; a caller that fails to resolve it should treat it as unavailable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>required</strong> – pointer set on return to an implementation-owned array of booleans, where element <code class="docutils literal notranslate"><span class="pre">i</span></code> indicates whether the input key with numeric value <code class="docutils literal notranslate"><span class="pre">i</span></code> (see <code class="docutils literal notranslate"><span class="pre">UmamiInputKey</span></code>) is mandatory for this implementation. </p></li>
+<li><p><strong>count</strong> – pointer set on return to the number of elements in <code class="docutils literal notranslate"><span class="pre">*required</span></code>. A caller built against a newer header should treat any key index beyond <code class="docutils literal notranslate"><span class="pre">*count</span></code> as not required. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv423umami_supported_outputsPPKbPi">
+<span id="_CPPv323umami_supported_outputsPPKbPi"></span><span id="_CPPv223umami_supported_outputsPPKbPi"></span><span id="umami_supported_outputs__bCPP.iP"></span><span class="target" id="umami_8h_1a0c16cf71762fcaee2ada00a2029e6866"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_supported_outputs</span></span></span><span class="sig-paren">(</span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">supported</span></span>, <span class="kt"><span class="pre">int</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">count</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv423umami_supported_outputsPPKbPi" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Reports which output keys can be requested from this matrix element implementation, to be written by whoever implements the UMAMI interface. </p>
+<p>Implementing this function is optional; a caller that fails to resolve it should treat it as unavailable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>supported</strong> – pointer set on return to an implementation-owned array of booleans, where element <code class="docutils literal notranslate"><span class="pre">i</span></code> indicates whether the output key with numeric value <code class="docutils literal notranslate"><span class="pre">i</span></code> (see <code class="docutils literal notranslate"><span class="pre">UmamiOutputKey</span></code>) can be produced by this implementation. </p></li>
+<li><p><strong>count</strong> – pointer set on return to the number of elements in <code class="docutils literal notranslate"><span class="pre">*supported</span></code>. A caller built against a newer header should treat any key index beyond <code class="docutils literal notranslate"><span class="pre">*count</span></code> as not supported. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv416umami_initializeP11UmamiHandlePKc">
+<span id="_CPPv316umami_initializeP11UmamiHandlePKc"></span><span id="_CPPv216umami_initializeP11UmamiHandlePKc"></span><span id="umami_initialize__UmamiHandleP.cCP"></span><span class="target" id="umami_8h_1a2e550b1e93d295e4113888ff0aede5ce"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_initialize</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411UmamiHandle" title="UmamiHandle"><span class="n"><span class="pre">UmamiHandle</span></span></a><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">param_card_path</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv416umami_initializeP11UmamiHandlePKc" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Creates an instance of the matrix element. </p>
+<p>Each instance is independent, so thread safety can be achieved by creating a separate one for every thread.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – pointer to an instance of the subprocess. Has to be cleaned up by the caller with <code class="docutils literal notranslate"><span class="pre">free_subprocess</span></code>. </p></li>
+<li><p><strong>param_card_path</strong> – path to the parameter file </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv419umami_set_parameter11UmamiHandlePKcdd">
+<span id="_CPPv319umami_set_parameter11UmamiHandlePKcdd"></span><span id="_CPPv219umami_set_parameter11UmamiHandlePKcdd"></span><span id="umami_set_parameter__UmamiHandle.cCP.double.double"></span><span class="target" id="umami_8h_1a95093f433c23a07a1deb396d3b7d0697"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_set_parameter</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411UmamiHandle" title="UmamiHandle"><span class="n"><span class="pre">UmamiHandle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">name</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">parameter_real</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">parameter_imag</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv419umami_set_parameter11UmamiHandlePKcdd" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Sets the value of a model parameter. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – handle of a matrix element instance </p></li>
+<li><p><strong>name</strong> – name of the parameter </p></li>
+<li><p><strong>parameter_real</strong> – real part of the parameter value </p></li>
+<li><p><strong>parameter_imag</strong> – imaginary part of the parameter value. Ignored for real valued parameters. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv419umami_get_parameter11UmamiHandlePKcPdPd">
+<span id="_CPPv319umami_get_parameter11UmamiHandlePKcPdPd"></span><span id="_CPPv219umami_get_parameter11UmamiHandlePKcPdPd"></span><span id="umami_get_parameter__UmamiHandle.cCP.doubleP.doubleP"></span><span class="target" id="umami_8h_1a86607dcb7d6fd9264d670474dc6bd87b"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_get_parameter</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411UmamiHandle" title="UmamiHandle"><span class="n"><span class="pre">UmamiHandle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="kt"><span class="pre">char</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">name</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">parameter_real</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">parameter_imag</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv419umami_get_parameter11UmamiHandlePKcPdPd" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Retrieves the value of a model parameter. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – handle of a matrix element instance </p></li>
+<li><p><strong>name</strong> – name of the parameter </p></li>
+<li><p><strong>parameter_real</strong> – pointer to double to return real part of the parameter value </p></li>
+<li><p><strong>parameter_imag</strong> – pointer to double to return imaginary part of the parameter value. Ignored for real-valued parameters (i.e. you may pass a null pointer) </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv420umami_matrix_element11UmamiHandle6size_t6size_t6size_t6size_tPK13UmamiInputKeyPPCKv6size_tPK14UmamiOutputKeyPPCv">
+<span id="_CPPv320umami_matrix_element11UmamiHandle6size_t6size_t6size_t6size_tPK13UmamiInputKeyPPCKv6size_tPK14UmamiOutputKeyPPCv"></span><span id="_CPPv220umami_matrix_element11UmamiHandle6size_t6size_t6size_t6size_tPK13UmamiInputKeyPPCKv6size_tPK14UmamiOutputKeyPPCv"></span><span id="umami_matrix_element__UmamiHandle.s.s.s.s.UmamiInputKeyCP.voidCPCP.s.UmamiOutputKeyCP.voidPCP"></span><span class="target" id="umami_8h_1a5b8cfdfb90f26e9b2949d78e04277460"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_matrix_element</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411UmamiHandle" title="UmamiHandle"><span class="n"><span class="pre">UmamiHandle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span>, <span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">count</span></span>, <span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">stride</span></span>, <span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">offset</span></span>, <span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">input_count</span></span>, <a class="reference internal" href="#_CPPv413UmamiInputKey" title="UmamiInputKey"><span class="n"><span class="pre">UmamiInputKey</span></span></a><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">input_keys</span></span>, <span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">inputs</span></span>, <span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">output_count</span></span>, <a class="reference internal" href="#_CPPv414UmamiOutputKey" title="UmamiOutputKey"><span class="n"><span class="pre">UmamiOutputKey</span></span></a><span class="w"> </span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">output_keys</span></span>, <span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="p"><span class="pre">*</span></span><span class="n sig-param"><span class="pre">outputs</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv420umami_matrix_element11UmamiHandle6size_t6size_t6size_t6size_tPK13UmamiInputKeyPPCKv6size_tPK14UmamiOutputKeyPPCv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Evaluates the matrix element as a function of the given inputs, filling the requested outputs. </p>
+<p>Unless otherwise specified, all inputs and outputs have a column-major memory layout and have a batch dimension that is contiguous in memory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>handle</strong> – handle of a matrix element instance </p></li>
+<li><p><strong>count</strong> – number of events to evaluate the matrix element for </p></li>
+<li><p><strong>stride</strong> – stride of the batch dimension of the input and output arrays to simplify parallel execution on CPUs, see memory layout </p></li>
+<li><p><strong>offset</strong> – offset of the event index </p></li>
+<li><p><strong>input_count</strong> – number of inputs to the matrix element </p></li>
+<li><p><strong>input_keys</strong> – pointer to an array of input keys, length <code class="docutils literal notranslate"><span class="pre">input_count</span></code></p></li>
+<li><p><strong>inputs</strong> – pointer to an array of void pointers to the inputs. The type of the inputs depends on the input key </p></li>
+<li><p><strong>output_count</strong> – number of outputs to the matrix element </p></li>
+<li><p><strong>output_keys</strong> – pointer to an array of output keys, length <code class="docutils literal notranslate"><span class="pre">output_count</span></code></p></li>
+<li><p><strong>outputs</strong> – pointer to an array of void pointers to the outputs. The type of the outputs depends on the output key. The caller is responsible for allocating memory for the outputs. </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>UMAMI_SUCCESS on success, error code otherwise </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv410umami_free11UmamiHandle">
+<span id="_CPPv310umami_free11UmamiHandle"></span><span id="_CPPv210umami_free11UmamiHandle"></span><span id="umami_free__UmamiHandle"></span><span class="target" id="umami_8h_1aaf981b9df1048eaf83eacf80ee226bfb"></span><a class="reference internal" href="#_CPPv411UmamiStatus" title="UmamiStatus"><span class="n"><span class="pre">UmamiStatus</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">umami_free</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv411UmamiHandle" title="UmamiHandle"><span class="n"><span class="pre">UmamiHandle</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">handle</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv410umami_free11UmamiHandle" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Frees matrix element instance. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>handle</strong> – handle of a matrix element instance </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="python-api.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Python API</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="examples/flow-training.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Fusing RNG, flow, mapping and matrix element into one graph</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025-2026, The MadGraph7 Development Team
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">UMAMI API</a><ul>
+<li><a class="reference internal" href="#c.UMAMI_MAJOR_VERSION"><code class="docutils literal notranslate"><span class="pre">UMAMI_MAJOR_VERSION</span></code></a></li>
+<li><a class="reference internal" href="#c.UMAMI_MINOR_VERSION"><code class="docutils literal notranslate"><span class="pre">UMAMI_MINOR_VERSION</span></code></a></li>
+<li><a class="reference internal" href="#c.UMAMI_INPUT_KEY_COUNT"><code class="docutils literal notranslate"><span class="pre">UMAMI_INPUT_KEY_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#c.UMAMI_OUTPUT_KEY_COUNT"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUTPUT_KEY_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv411UmamiHandle"><code class="docutils literal notranslate"><span class="pre">UmamiHandle</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv411UmamiStatus"><code class="docutils literal notranslate"><span class="pre">UmamiStatus</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus13UMAMI_SUCCESSE"><code class="docutils literal notranslate"><span class="pre">UMAMI_SUCCESS</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus11UMAMI_ERRORE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus27UMAMI_ERROR_NOT_IMPLEMENTEDE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_NOT_IMPLEMENTED</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus29UMAMI_ERROR_UNSUPPORTED_INPUTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNSUPPORTED_INPUT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus30UMAMI_ERROR_UNSUPPORTED_OUTPUTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNSUPPORTED_OUTPUT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus30UMAMI_ERROR_UNINITIALIZED_METAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNINITIALIZED_META</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus28UMAMI_ERROR_UNSUPPORTED_METAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_UNSUPPORTED_META</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiStatus25UMAMI_ERROR_MISSING_INPUTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_ERROR_MISSING_INPUT</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv411UmamiDevice"><code class="docutils literal notranslate"><span class="pre">UmamiDevice</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N11UmamiDevice16UMAMI_DEVICE_CPUE"><code class="docutils literal notranslate"><span class="pre">UMAMI_DEVICE_CPU</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiDevice17UMAMI_DEVICE_CUDAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_DEVICE_CUDA</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N11UmamiDevice16UMAMI_DEVICE_HIPE"><code class="docutils literal notranslate"><span class="pre">UMAMI_DEVICE_HIP</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv412UmamiMetaKey"><code class="docutils literal notranslate"><span class="pre">UmamiMetaKey</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey17UMAMI_META_DEVICEE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_DEVICE</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey25UMAMI_META_PARTICLE_COUNTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_PARTICLE_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey24UMAMI_META_DIAGRAM_COUNTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_DIAGRAM_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey25UMAMI_META_HELICITY_COUNTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_HELICITY_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey22UMAMI_META_COLOR_COUNTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_COLOR_COUNT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N12UmamiMetaKey17UMAMI_META_MASSESE"><code class="docutils literal notranslate"><span class="pre">UMAMI_META_MASSES</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv413UmamiInputKey"><code class="docutils literal notranslate"><span class="pre">UmamiInputKey</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_MOMENTAE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_MOMENTA</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey16UMAMI_IN_ALPHA_SE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_ALPHA_S</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey21UMAMI_IN_FLAVOR_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_FLAVOR_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_RANDOM_COLOR</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_RANDOM_HELICITY</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_RANDOM_DIAGRAM</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey23UMAMI_IN_HELICITY_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_HELICITY_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_DIAGRAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_DIAGRAM_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_CHANNEL_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_CHANNEL_INDEX</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv414UmamiOutputKey"><code class="docutils literal notranslate"><span class="pre">UmamiOutputKey</span></code></a><ul>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey24UMAMI_OUT_MATRIX_ELEMENTE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_MATRIX_ELEMENT</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_DIAGRAM_AMP2E"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_DIAGRAM_AMP2</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey21UMAMI_OUT_COLOR_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_COLOR_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey24UMAMI_OUT_HELICITY_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_HELICITY_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey23UMAMI_OUT_DIAGRAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_DIAGRAM_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_GPU_STREAM</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#_CPPv414umami_get_meta12UmamiMetaKeyPv"><code class="docutils literal notranslate"><span class="pre">umami_get_meta()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv422umami_supported_inputsPPKbPi"><code class="docutils literal notranslate"><span class="pre">umami_supported_inputs()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv421umami_required_inputsPPKbPi"><code class="docutils literal notranslate"><span class="pre">umami_required_inputs()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv423umami_supported_outputsPPKbPi"><code class="docutils literal notranslate"><span class="pre">umami_supported_outputs()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv416umami_initializeP11UmamiHandlePKc"><code class="docutils literal notranslate"><span class="pre">umami_initialize()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv419umami_set_parameter11UmamiHandlePKcdd"><code class="docutils literal notranslate"><span class="pre">umami_set_parameter()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv419umami_get_parameter11UmamiHandlePKcPdPd"><code class="docutils literal notranslate"><span class="pre">umami_get_parameter()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv420umami_matrix_element11UmamiHandle6size_t6size_t6size_t6size_tPK13UmamiInputKeyPPCKv6size_tPK14UmamiOutputKeyPPCv"><code class="docutils literal notranslate"><span class="pre">umami_matrix_element()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv410umami_free11UmamiHandle"><code class="docutils literal notranslate"><span class="pre">umami_free()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=938c9ccc"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>

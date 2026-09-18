@@ -1,0 +1,6 @@
+VegasHistogram
+==============
+
+.. doxygenclass:: madspace::VegasHistogram
+   :members:
+   :undoc-members:

@@ -1,0 +1,6 @@
+Overloaded
+==========
+
+.. doxygenstruct:: madspace::Overloaded
+   :members:
+   :undoc-members:
