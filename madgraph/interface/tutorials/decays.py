@@ -21,33 +21,6 @@ from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   counts_line)
 
 P = 'MG7>'
-# the file the width lesson asks for, and reads back
-WIDTH_FILE = 'my_widths.dat'
-
-
-def _computed_width(pdg=6, name='top'):
-    """The width `compute_widths` just wrote, quoted back at the reader.
-
-    The lesson asks for `--output=./my_widths.dat`, so when the reader does
-    that there is a number on disk to show them instead of a description of
-    what MadWidth would have done.  Anything else -- a different file name, a
-    command that failed -- and the lesson simply says less.
-    """
-
-    try:
-        with open(WIDTH_FILE) as handle:
-            for line in handle:
-                bits = line.split()
-                if (len(bits) >= 3 and bits[0].upper() == 'DECAY'
-                        and bits[1] == str(pdg)):
-                    return ('MadWidth put the %s width at **%.3g GeV** '
-                            'and wrote it to\n`%s`, leaving the card in '
-                            'your model directory alone.\n'
-                            % (name, float(bits[2]), WIDTH_FILE))
-    except Exception:
-        return ''
-    return ''
-
 
 tutorial = Tutorial(
     name='decays',
@@ -58,12 +31,12 @@ tutorial = Tutorial(
     steps=[
 
 Step('tutorial', """
-Almost nothing you produce is stable. There are three places a decay can
-happen, they do different things, and choosing wrongly is one of the easier
-ways to get a wrong answer that looks right.
+Most massive particles are unstable and decay. There are three places a decay
+can happen, they do different things, and choosing wrongly is one of the
+easier ways to get a wrong answer that looks right.
 
-  1. **In the process line** -- a decay chain. Exact spin correlations,
-     exact matrix element, and the diagram count multiplies with every step.
+  1. **In the process line** -- a decay chain. Exact spin correlations, the
+     exact matrix element, and decay products you can put cuts on.
   2. **MadSpin**, after generation. Spin correlations kept, production
      diagrams untouched, so the cost barely grows with the cascade length.
   3. **The parton shower** (Pythia8). Cheapest, and it throws the spin
@@ -78,52 +51,33 @@ widths you have to get right. Start with the first:
      solution='generate p p > t t~, t > w+ b, t~ > w- b~'),
 
 Step('generate', lambda interface: """
-%(counts)sPlain `p p > t t~` is four. That growth is the whole argument: a
-decay chain computes the full matrix element for production and decay
-together, so it is exact, and it gets expensive fast. Add
-`w+ > l+ vl, w- > l- vl~` and watch it grow again.
+%(counts)sMG7 generates the production and the decays separately and reports
+their diagrams added up. `output` stitches them back together -- one full
+diagram per production diagram here, since each decay has only one, so as
+many as plain `p p > t t~` has. What a decay chain buys is the full matrix
+element: production, propagator and decay together, with each top's spin
+correlations carried into its decay products.
 
 Two things about the syntax that catch people (`tutorial syntax` has more):
   * identical particles are **all** decayed by one decay statement -- you do
     not write `t > w+ b` twice;
   * parentheses nest a sub-decay: `(t > w+ b, w+ > l+ vl)`.
 
-And one thing about the physics: no branching ratio is ever formed. The width
-in your **param card** goes into the resonance propagator, the decay rate comes
-out of the matrix element, and nothing divides one by the other -- so a width
-that disagrees with the masses and couplings in the same card is not caught
-anywhere. Which is why the next command matters more than it looks:
+And one about the physics: this syntax uses no branching ratio. The decay is
+inside the matrix element, so the b quarks and the W bosons are genuine
+final-state particles you can put cuts on -- which a branching ratio applied
+afterwards would not allow.
 
-%(p)s compute_widths t --body_decay=2 --output=./my_widths.dat
-""" % {'p': P, 'counts': counts_line(interface)},
-     title='decay chains',
-     hint="A comma opens the decay; each decaying particle gets one statement.",
-     solution='compute_widths t --body_decay=2 --output=./my_widths.dat'),
-
-Step('compute_widths', lambda interface: """
-%(width)sThat is MadWidth: it finds the decay channels in the model and
-integrates them, giving you a param card with widths that match the model
-rather than whatever benchmark the card shipped with.
-
-  --body_decay=N   consider up to N-body decays. An integer means "all
-                   channels up to N-body"; a value below 1 means "stop when the
-                   estimated error is under this"; and N.M combines the two.
-  --min_br=X       skip channels estimated below X
-  --output=FILE    **use this.** Without it, the result overwrites the param
-                   card inside the model directory, silently changing every
-                   later run with that model.
-  --nlo            NLO widths, if the model supports it
-
-It is tree-level and narrow-width, and it says so when it runs. For a state
-whose width is a sizeable fraction of its mass, that approximation is the thing
-you should be worrying about, not the last digit.
-
-`decay_diagram PARTICLE` shows which channels exist without integrating them.
+What it does rely on is the width in your **param card**: it sits in the
+resonance propagator and is checked against nothing. Rather than typing a
+number, put `DECAY 6 Auto` there. MG7 then computes the top width from the
+model when the run starts, and it follows the mass whenever you change it.
 
 %(p)s history my_decays_session.dat
-""" % {'p': P, 'width': _computed_width()},
-     title='computing widths',
-     hint="`compute_widths PARTICLE --body_decay=2 --output=FILE`",
+""" % {'p': P, 'counts': counts_line(interface)},
+     title='decay chains',
+     hint="A comma opens the decay; each decaying particle gets one "
+          "statement.",
      solution='history my_decays_session.dat'),
 
 Step('history', lambda interface: """
@@ -158,8 +112,8 @@ cross-check to see how much they mattered.
 sets the size of the resonance propagator and nothing normalises it against
 the decay the model actually computes. Change a mass and forget the width and
 the effective fraction goes above 1 -- a decayed cross section larger than the
-undecayed one, which nothing in the machinery is there to prevent. Put
-`DECAY <pdg> Auto` in the param card and the width is recomputed with the mass.
+undecayed one, which nothing in the machinery is there to prevent. That is what
+`DECAY <pdg> Auto` is for.
 `tutorial exercises` and `tutorial madevent` both go through this.
 
 %(see_also)s

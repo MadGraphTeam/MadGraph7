@@ -387,12 +387,36 @@ def counts(interface=None):
     decay chains and accumulated `add process` included.
     """
 
-    amps = len(getattr(interface, '_curr_amps', None) or [])
+    amplitudes = getattr(interface, '_curr_amps', None) or []
     total = total_diagrams(interface)
     if not total:
         return ''
-    return '**%d process%s with %d diagram%s**' % (
-        amps, '' if amps == 1 else 'es', total, '' if total == 1 else 's')
+    text = '**%d process%s with %d diagram%s**' % (
+        len(amplitudes), '' if len(amplitudes) == 1 else 'es',
+        total, '' if total == 1 else 's')
+
+    # A decay chain's total is production PLUS decays, generated separately
+    # (DecayChainAmplitude.get_number_of_diagrams sums them); `output` then
+    # stitches them into full diagrams.  `p p > t t~, t > w+ b, t~ > w- b~`
+    # prints 6 here and writes 4.  Quote MG5's number, but say what it adds up.
+    production = [_production_diagrams(a) for a in amplitudes]
+    if production and None not in production:
+        made = sum(production)
+        text += ' -- %d for the production, %d for the decays' % (
+            made, total - made)
+    return text
+
+
+def _production_diagrams(amplitude):
+    """The production's own diagrams, for a decay chain; None otherwise."""
+
+    try:
+        if not amplitude.get('decay_chains'):
+            return None
+        return sum(len(a.get('diagrams'))
+                   for a in amplitude.get('amplitudes'))
+    except Exception:
+        return None
 
 
 def counts_line(interface=None):

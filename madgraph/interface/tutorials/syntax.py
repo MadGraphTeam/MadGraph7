@@ -330,8 +330,9 @@ Your turn:
      solution='generate p p > t t~, (t > w+ b, w+ > l+ vl), t~ > w- b~'),
 
 Step('generate', lambda interface: """
-%(counts)sProduction and both decays kept as one amplitude -- and every diagram
-in it goes through the tops you asked to decay.
+%(counts)sThe production and the decays are generated separately and counted
+together; `output` stitches them back into full diagrams, every one of them
+going through the tops you asked to decay.
 
 Now the operators that reach inside one amplitude and keep part of it.
 
