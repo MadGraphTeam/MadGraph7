@@ -291,6 +291,7 @@ madspace is in place. Now pick a process:
 between particle names is mandatory.
 """ % {'p': P},
      title='install madspace',
+     entry='install madspace',
      solution='generate p p > t t~'),
 
 Step('generate', lambda interface: """
@@ -318,6 +319,7 @@ The typical next step is to inspect the generated diagrams to check them:
 
 Step('generate', lambda interface: _detour_text(interface),
      title='the electroweak diagrams (detour)',
+     entry='generate p p > t t~ QED<=2',
      hint="Nothing to do here -- `display diagrams` picks the main line back up.",
      solution='display diagrams'),
 

@@ -2161,3 +2161,179 @@ class StickyStepTest(unittest.TestCase):
                         sticky.render(None, 'display interactions'))
         plain = [s for s in steps if s.title == 'customise, merge, save'][0]
         self.assertTrue(plain.render(None, 'display multiparticles'))
+
+
+#===============================================================================
+# the prompt, `tutorial index` and `tutorial skip N`
+#===============================================================================
+
+class _Recording(object):
+    """The interface side the mixin needs, with commands recorded, not run."""
+
+    prompt = 'MG7> '
+
+    def __init__(self):
+        self.ran = []
+        self.exec_cmd_depth = 0
+        self._curr_amps = []
+        self.options = {}
+
+    def postcmd(self, stop, line):
+        return stop
+
+    def notify_failed_command(self, line):
+        pass
+
+    def exec_cmd(self, line, printcmd=True, precmd=False, postcmd=True):
+        self.ran.append(line)
+
+
+class TutorialPromptTest(_TutorialTestCase):
+
+    def interface(self, name='syntax'):
+        interface = _Recording()
+        tutorial_mixin.attach(interface, tutorials.start(name))
+        return interface
+
+    def test_the_prompt_says_where_the_reader_is(self):
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        total = len(tutorials.get('syntax').steps)
+        self.assertIn('TUTO [syntax] 1/%d>' % total, interface.prompt)
+        interface.postcmd(None, 'generate p p > t t~ QED<=2')
+        self.assertIn('TUTO [syntax] 2/%d>' % total, interface.prompt)
+
+    def test_it_follows_a_move_that_fires_no_step(self):
+        """`skip` and `back` move the session without a step firing; the
+        prompt is refreshed after every command, not only the ones that
+        advance."""
+
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        interface.do_skip('')
+        interface.postcmd(None, 'skip')
+        self.assertIn('/%d>' % len(tutorials.get('syntax').steps),
+                      interface.prompt)
+        self.assertIn('2/', interface.prompt)
+
+    def test_stopping_gives_the_prompt_back(self):
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        tutorial_mixin.detach(interface)
+        self.assertEqual(interface.prompt, 'MG7> ')
+
+
+class TutorialPathTest(unittest.TestCase):
+    """What `tutorial skip N` replays is the reader's own route to step N."""
+
+    def path(self, name, number):
+        tutorial = tutorials.get(name)
+        return TutorialSession(tutorial).path_to(number - 1)
+
+    def test_a_main_line_step(self):
+        self.assertEqual(self.path('syntax', 3),
+                         ['generate p p > t t~ QED<=2',
+                          'generate p p > j j QCD^2==2 QED^2==2'])
+
+    def test_a_side_quest_is_entered_by_its_entry(self):
+        """The main line jumps over a side quest; its entry is the way in."""
+
+        path = self.path('syntax', 4)
+        self.assertEqual(path[-1], 'output standalone')
+        self.assertEqual(len(path), 3)
+
+    def test_a_sticky_step_is_nowhere_to_go(self):
+        titles = [s.title for s in tutorials.get('syntax').steps]
+        sticky = titles.index('what $ and $$ did') + 1
+        self.assertIsNone(self.path('syntax', sticky))
+
+    def test_a_free_order_tutorial_has_no_route(self):
+        self.assertIsNone(self.path('nlo', 3))
+
+    def test_every_step_is_reachable(self):
+        """Apart from a sticky step, and the sign-off an exercise tutorial
+        prints when its last answer passes, every step of every sequenced
+        tutorial has a route -- a detour included, through its entry."""
+
+        for tutorial in tutorials.all_tutorials(include_hidden=True):
+            if tutorial.order != 'sequence':
+                continue
+            session = TutorialSession(tutorial)
+            steps = tutorial.steps
+            for index, step in enumerate(steps):
+                if index == 0 or step.sticky:
+                    continue
+                if isinstance(steps[index - 1], Exercise):
+                    continue        # the sign-off after the last exercise
+                reach = index - 1 if isinstance(step, Exercise) else index
+                if reach == 0:
+                    continue
+                self.assertIsNotNone(
+                    session.path_to(reach),
+                    '%s step %d (%s) cannot be reached by `tutorial skip`'
+                    % (tutorial.name, index + 1, step.title))
+
+    def test_what_is_replayed_and_what_is_skipped(self):
+        from madgraph.interface.tutorials.session import replay_line
+
+        self.assertEqual(replay_line('output madevent POL_ZZ'),
+                         'output madevent POL_ZZ -f')
+        self.assertEqual(replay_line('generate p p > t t~'),
+                         'generate p p > t t~')
+        for skipped in ('launch', 'display diagrams', 'history f.dat',
+                        'check gauge p p > e+ e-', 'install madspace',
+                        'compute_widths t'):
+            self.assertIsNone(replay_line(skipped), skipped)
+
+
+class TutorialSkipToStepTest(_TutorialTestCase):
+
+    def interface(self, name='syntax'):
+        interface = _Recording()
+        tutorial_mixin.attach(interface, tutorials.start(name))
+        interface._tutorial_session.advance(0)
+        return interface
+
+    def test_it_runs_the_route_and_lands_on_the_step(self):
+        interface = self.interface()
+        interface.do_skip('6')
+        session = interface._tutorial_session
+        self.assertEqual(session.index, 5)
+        self.assertEqual(interface.ran,
+                         ['generate p p > t t~ QED<=2',
+                          'generate p p > j j QCD^2==2 QED^2==2',
+                          'generate p p > j j QCD^2==4 QED^2==0'])
+        self.assertIn('Step 6 of', self.capture.messages[0])
+        self.assertIn('A comma opens a decay chain', self.capture.messages[1])
+
+    def test_an_output_is_forced_and_a_launch_skipped(self):
+        interface = self.interface('decays')
+        interface.do_skip('5')          # after the decay-chain run
+        self.assertIn('output TT_DECAY -f', interface.ran)
+        self.assertNotIn('launch', interface.ran)
+        self.assertIn('launch', self.capture.messages[0])   # said so
+
+    def test_going_back_replays_from_the_start(self):
+        interface = self.interface()
+        interface.do_skip('6')
+        interface.ran[:] = []
+        interface.do_skip('3')
+        self.assertEqual(interface._tutorial_session.index, 2)
+        self.assertEqual(len(interface.ran), 2)
+
+    def test_what_it_refuses(self):
+        interface = self.interface()
+        titles = [s.title for s in tutorials.get('syntax').steps]
+        for bad in ('0', '99', 'three', str(titles.index('what $ and $$ did') + 1)):
+            self.capture.messages = []
+            interface.do_skip(bad)
+            self.assertEqual(interface._tutorial_session.index, 0, bad)
+            self.assertEqual(interface.ran, [], bad)
+            self.assertTrue(self.capture.messages, bad)
+
+    def test_the_command_accepts_a_step_number(self):
+        interface = _BareMadGraphCmd()
+        interface.check_tutorial(['skip', '3'])
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_tutorial, ['skip', 'three'])
+        self.assertIn('index', interface._tutorial_opts)

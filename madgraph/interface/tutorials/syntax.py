@@ -264,6 +264,7 @@ Run it:
 %(p)s launch
 """ % {'p': P, 'dir': _standalone_dir(interface)},
      title='side quest: a standalone matrix element',
+     entry='output standalone',
      hint="`launch` with no argument runs the directory you just wrote.",
      question_hint="Enter takes the default at both questions. To go straight "
                    "to the interesting numbers, pick the `q q~ > q q~` "

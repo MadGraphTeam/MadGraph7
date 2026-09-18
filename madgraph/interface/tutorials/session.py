@@ -67,6 +67,11 @@ class Step(object):
               not run" line.  For the command a lesson invites the user to try
               and which needs an argument they have no reason to guess.  May be
               a callable(interface) -> str.
+    entry     for the first step of a side quest or a detour: the command that
+              takes the reader into it.  The main line reaches every other step
+              through the solution of the one before, but a detour is entered
+              by a command the previous step only offers -- and `tutorial skip`
+              needs to know it to rebuild the state a detour step expects.
     sticky    the step answers a command without consuming the lesson: its text
               is printed and the session stays where it is, so the same step
               can answer again.  For a lesson which invites the user to try
@@ -83,8 +88,9 @@ class Step(object):
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
                  setup=None, title=None, question_hint=None, on_failure=None,
-                 sticky=False):
+                 sticky=False, entry=None):
         self.key = key
+        self.entry = entry
         self.text = text
         self.hint = hint
         self.solution = solution
@@ -559,6 +565,28 @@ def core_process(amplitude):
         return amplitude.get('amplitudes')[0].get('process')
 
 
+# What `tutorial skip N` runs to rebuild the state step N expects: the commands
+# that define the process and the directories later steps work in.  The rest
+# only print, write a file or take minutes -- a `launch` is a full run and asks
+# questions -- and no later step needs their effect, so they are skipped.
+REPLAYED_COMMANDS = ('import', 'define', 'set', 'generate', 'add', 'output')
+
+
+def replay_line(command):
+    """The line `tutorial skip` runs for `command`, or None to skip it.
+
+    `output` is forced: the directory may already exist from an earlier pass,
+    and the overwrite question would stop the replay.
+    """
+
+    words = command.split()
+    if not words or words[0] not in REPLAYED_COMMANDS:
+        return None
+    if words[0] == 'output' and '-f' not in words:
+        return command + ' -f'
+    return command
+
+
 class Tutorial(object):
     """An ordered list of steps, addressable by name.
 
@@ -710,6 +738,43 @@ class TutorialSession(object):
             if callable(steps[i].key) and steps[i].matches(keys, line, interface):
                 return i, steps[i]
         return None
+
+    def path_to(self, target):
+        """The commands that take a fresh session from its intro to `target`.
+
+        The reader's own route: from each step, the command it asks for -- its
+        solution, or for an exercise the answer the next one expects -- until
+        the target fires.  When that route jumps straight past the target, the
+        target sits in a detour the step before only offers, and the detour's
+        `entry` is taken instead.  Returns None when there is no such route: a
+        free-order tutorial, a step nothing leads to, a sticky step (it answers
+        a command, it is not somewhere to be).
+        """
+
+        steps = self.tutorial.steps
+        if (self.tutorial.order != 'sequence' or not 0 <= target < len(steps)
+                or steps[target].sticky):
+            return None
+
+        walk = TutorialSession(self.tutorial)
+        walk.index = 0                       # `tutorial NAME` fired the intro
+        commands = []
+        while walk.index < target:
+            following = steps[walk.index + 1]
+            if isinstance(following, Exercise):
+                command = following.get_solution()
+            else:
+                command = steps[walk.index].get_solution()
+            found = walk.step_for(command) if command else None
+            if found is not None and found[0] > target:
+                # the main line steps over the target: go in by the detour
+                command = following.entry
+                found = walk.step_for(command) if command else None
+            if found is None or found[0] <= walk.index:
+                return None
+            commands.append(command)
+            walk.advance(found[0])
+        return commands if walk.index == target else None
 
     def advance(self, index):
         self.index = index
