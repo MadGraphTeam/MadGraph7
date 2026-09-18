@@ -7,6 +7,11 @@
 #ifndef MGONGPUCONFIG_H
 #define MGONGPUCONFIG_H 1
 
+// This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
+// shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
+// whether some mgOnGpuVectors.h happens to be reachable on the include path.
+#define MGONGPU_HAS_VECTORS_H 1
+
 // Is this a GPU (CUDA, HIP) or CPU implementation?
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
 #define MGONGPUCPP_GPUIMPL cuda

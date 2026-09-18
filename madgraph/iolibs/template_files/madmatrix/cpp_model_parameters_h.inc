@@ -17,7 +17,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuCxtypes.h"
-#if __has_include("mgOnGpuVectors.h") // simd only
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
 #include "mgOnGpuVectors.h"
 #endif
 
