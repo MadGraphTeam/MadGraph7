@@ -19,7 +19,11 @@
 
 #include "mgOnGpuConfig.h"
 
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
 #include "mgOnGpuVectors.h"
+#else
+#include "mgOnGpuCxtypes.h"
+#endif
 
 #include "Parameters.h"
 
@@ -29,11 +33,7 @@
 //#include <iomanip>
 //#include <iostream>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madmatrix
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API
