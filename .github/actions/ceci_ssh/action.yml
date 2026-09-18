@@ -1,0 +1,49 @@
+name: CECI ssh access
+description: >
+  Install the CECI ssh key, the pinned host keys and an ssh config, so that
+  `ssh manneback` / `ssh lemaitre4` go through the gwceci gateway. Plain shell on
+  purpose: the private key never goes through a third-party action. Used by the
+  GPU CI (gpu_runner_ci.yml), whose job holding the key runs in the protected
+  `ceci-gpu` environment.
+
+inputs:
+  key:
+    description: 'private ssh key registered in the CECI account'
+    required: true
+  user:
+    description: 'CECI login'
+    required: false
+    default: 'omatt'
+
+runs:
+  using: composite
+  steps:
+    - name: install ssh key, host keys and config
+      shell: bash
+      env:
+        CECI_KEY: ${{ inputs.key }}
+        CECI_USER: ${{ inputs.user }}
+      run: |
+        install -d -m 700 ~/.ssh
+        printf '%s\n' "$CECI_KEY" > ~/.ssh/id_ceci
+        chmod 600 ~/.ssh/id_ceci
+        # Pinned host keys. If a cluster gets a new key, update this list with
+        # e.g. `ssh manneback ssh-keyscan manneback`.
+        cat >> ~/.ssh/known_hosts << 'EOF'
+        gwceci.cism.ucl.ac.be ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBlvDUHE7OlmvDCJy9QSKjqfeJ/CYAhT2PU2zYoFRkT
+        manneback ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGaBgO+bW1g7iBNmeO2HiZecq64OSlNGLWmPczWbjbvjZOIWLHiciLPjzR4FnHXABABCgLBSN4JPpCR5VRy82Vs=
+        lemaitre4,lemaitre4.cism.ucl.ac.be ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOOQtD+ss6DxA3utrPLTPU31xdcnSNA8GWH3l4Tzl44Q
+        EOF
+        cat >> ~/.ssh/config << EOF
+        Host gwceci
+          HostName gwceci.cism.ucl.ac.be
+        Host manneback lemaitre4
+          ProxyJump gwceci
+        Host gwceci manneback lemaitre4
+          User $CECI_USER
+          IdentityFile ~/.ssh/id_ceci
+          IdentitiesOnly yes
+          StrictHostKeyChecking yes
+          ServerAliveInterval 60
+          ServerAliveCountMax 5
+        EOF

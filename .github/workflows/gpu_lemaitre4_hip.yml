@@ -1,0 +1,65 @@
+# GPU CI on lemaitre4 (partition apu, AMD MI300A, HIP): madspace build + p p > t t~ with mg7,
+# all in one Slurm allocation through the self-hosted runner 'lemaitre4-apu'.
+# Runs on every push to main and from the Actions tab ("Run workflow"), where the module
+# list (ROCm/GCC/Python versions) and the other inputs can be chosen.
+# Setup and security model: .github/gpu_ci/README.md.
+
+name: GPU CI (lemaitre4, HIP)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'Modules to load, in order (empty = releases/2024a GCC/13.3.0 Python/3.12.3-GCCcore-13.3.0 ROCm/6.3.1)'
+        type: string
+        default: ''
+      gres:
+        description: 'Slurm --gres (one APU = gpu:1)'
+        type: string
+        default: 'gpu:1'
+      gpu_arch:
+        description: 'HIP target, e.g. gfx942 for MI300A (empty = the GPU of the node)'
+        type: string
+        default: ''
+      nevents:
+        description: 'Number of unweighted events'
+        type: string
+        default: '10000'
+      time_limit:
+        description: 'Slurm --time of the allocation (all CI jobs together)'
+        type: string
+        default: '02:00:00'
+      extra_sbatch:
+        description: 'Extra sbatch options, space separated, no quotes (e.g. --qos=preemptible)'
+        type: string
+        default: ''
+      keep_workdir:
+        description: 'Keep the run directory on the cluster after a successful run'
+        type: boolean
+        default: false
+
+# one run at a time per cluster; a newer pending run replaces an older pending one
+concurrency:
+  group: gpu-ci-lemaitre4
+  cancel-in-progress: false
+
+jobs:
+  lemaitre4:
+    uses: ./.github/workflows/gpu_runner_ci.yml
+    with:
+      cluster: lemaitre4
+      runner_label: lemaitre4-apu
+      partition: apu
+      backend: hip
+      # the fallbacks are the defaults, used on push (no inputs) or when left empty
+      modules: ${{ inputs.modules || 'releases/2024a GCC/13.3.0 Python/3.12.3-GCCcore-13.3.0 ROCm/6.3.1' }}
+      gres: ${{ inputs.gres || 'gpu:1' }}
+      gpu_arch: ${{ inputs.gpu_arch }}
+      nevents: ${{ inputs.nevents || '10000' }}
+      time_limit: ${{ inputs.time_limit || '02:00:00' }}
+      extra_sbatch: ${{ inputs.extra_sbatch }}
+      keep_workdir: ${{ inputs.keep_workdir || false }}
