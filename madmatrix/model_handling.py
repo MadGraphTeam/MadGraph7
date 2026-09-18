@@ -2153,6 +2153,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
+        self.edit_colorflows()
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
@@ -2162,6 +2163,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
+
+    def edit_colorflows(self):
+        """Generate ColorFlows.inc: the process-specific amplitudes the color
+        choice in calculate_jamps picks a color flow among.
+
+        These are not always jamp_sv. When the color sum runs on the (n-2)! DDM
+        basis the ncolor_flow trace flows are rebuilt from it (Kleiss-Kuijf),
+        and when the jamps are split by amplitude order the flow is taken from
+        their sum (see set_color_flow_lines_cpp). backend/<variant>/SigmaKin.cc
+        #includes this right after EvaluateDiagrams.inc, in the same scope, and
+        reads the result through jampflow_sv[0..ncolor_flow)."""
+        replace_dict = {'ncolor': len(self.matrix_elements[0].get_color_amplitudes())}
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
+        lines = ['// Color flows for the color choice in calculate_jamps (generated).',
+                 '// #included by backend/<variant>/SigmaKin.cc right after EvaluateDiagrams.inc.',
+                 replace_dict['jampflow_lines'],
+                 '      const auto* jampflow_sv = %s; // the ncolor_flow color flow amplitudes'
+                 % replace_dict['jamp_flow'],
+                 '']
+        ff = open(pjoin(self.path, 'ColorFlows.inc'), 'w')
+        ff.write('\n'.join(lines))
+        ff.close()
 
     # seperate process constants to one truth file
     def edit_processdata(self):

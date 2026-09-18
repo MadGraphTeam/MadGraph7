@@ -279,13 +279,14 @@ namespace madmatrix
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
       const unsigned int iflavor = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
 #include "EvaluateDiagrams.inc"
+#include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
       // *** COLOR CHOICE BELOW ***
       // Store the leading color flows for choice of color
       if( jamp2_sv ) // disable color choice if nullptr
       {
-        for( int icol = 0; icol < ncolor; icol++ )
-          jamp2_sv[ncolor * iParity + icol] += cxabs2( jamp_sv[icol] ); // may underflow #831
+        for( int icol = 0; icol < ncolor_flow; icol++ )
+          jamp2_sv[ncolor_flow * iParity + icol] += cxabs2( jampflow_sv[icol] ); // may underflow #831
       }
 
       // *** PREPARE OUTPUT JAMPS ***

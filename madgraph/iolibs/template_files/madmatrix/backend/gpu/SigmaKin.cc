@@ -257,14 +257,15 @@ namespace madmatrix
     // Scalar iflavor for the current event
     const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
 #include "EvaluateDiagrams.inc"
+#include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
     // *** COLOR CHOICE BELOW ***
     // Store the leading color flows for choice of color
     if( colAllJamp2s ) // disable color choice if nullptr
     {
       using J2_ACCESS = DeviceAccessJamp2;
-      for( int icol = 0; icol < ncolor; icol++ )
-        J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ) += cxabs2( jamp_sv[icol] ); // may underflow #831
+      for( int icol = 0; icol < ncolor_flow; icol++ )
+        J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ) += cxabs2( jampflow_sv[icol] ); // may underflow #831
     }
 
     // *** PREPARE OUTPUT JAMPS ***
