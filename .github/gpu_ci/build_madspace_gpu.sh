@@ -8,12 +8,14 @@
 #   MODULES    modules to load (see load_modules.sh)
 #   GPU_ARCH   CUDA compute capability (e.g. 80) or HIP target (e.g. gfx942);
 #              empty = the GPU of this node
-#   CACHE_DIR  cache root on the cluster
+#   CACHE_DIR  cache root on the cluster (default $GLOBALSCRATCH/mg7-gpu-ci/cache)
 # Writes venv=<python venv> and madspace_prefix=<install prefix> to $GITHUB_OUTPUT.
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 source "$HERE/load_modules.sh"
+CACHE_DIR=${CACHE_DIR:-${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/cache}
+mkdir -p "$CACHE_DIR"
 
 case $BACKEND in
     cuda)

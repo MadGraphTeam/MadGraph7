@@ -11,11 +11,13 @@
 #   WORKDIR          run directory: process, logs and summary.txt
 #   NEVENTS          number of unweighted events
 #   PDF_SET          LHAPDF set of the run, downloaded into $CACHE_DIR/lhapdf if needed
-#   CACHE_DIR        cache root on the cluster
+#   CACHE_DIR        cache root on the cluster (default $GLOBALSCRATCH/mg7-gpu-ci/cache)
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
 section() { echo; echo "=================== $* ($(date +%T))"; }
+CACHE_DIR=${CACHE_DIR:-${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/cache}
+mkdir -p "$CACHE_DIR"
 
 section "Environment"
 if [ -n "$MODULES" ]; then source "$HERE/load_modules.sh"; fi
