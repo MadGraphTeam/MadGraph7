@@ -58,6 +58,14 @@ if [ -e "$PREFIX/.ready" ]; then
 else
     echo "Building madspace into $PREFIX"
     rm -rf "$PREFIX"
+    # EasyBuild modules (e.g. PyTorch) bring an older pybind11 whose include directory is in
+    # CPATH, which the compiler searches before the pybind11 3.x fetched by madspace's CMake:
+    # drop it for this build
+    for var in CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH; do
+        if [ -n "${!var}" ]; then
+            export "$var=$(printf '%s' "${!var}" | tr ':' '\n' | { grep -v '/pybind11/' || true; } | paste -sd: -)"
+        fi
+    done
     CMAKE_BUILD_PARALLEL_LEVEL=${SLURM_CPUS_PER_TASK:-8} \
         "$VENV/bin/python" -m pip install --target="$PREFIX" "$REPO/madspace" \
         "${GPU_FLAGS[@]}" -Ccmake.define.ENABLE_OPENBLAS=ON -Ccmake.build-type=Release
