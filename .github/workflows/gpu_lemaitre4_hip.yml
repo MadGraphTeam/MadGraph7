@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       modules:
-        description: 'Modules to load, in order (empty = releases/2024a GCC/13.3.0 Python/3.12.3-GCCcore-13.3.0 ROCm/6.3.1)'
+        description: 'Modules to load, in order (empty = releases/2024a_apu PyTorch Python ROCm)'
         type: string
         default: ''
       gres:
@@ -56,7 +56,7 @@ jobs:
       partition: apu
       backend: hip
       # the fallbacks are the defaults, used on push (no inputs) or when left empty
-      modules: ${{ inputs.modules || 'releases/2024a GCC/13.3.0 Python/3.12.3-GCCcore-13.3.0 ROCm/6.3.1' }}
+      modules: ${{ inputs.modules || 'releases/2024a_apu PyTorch Python ROCm' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
       nevents: ${{ inputs.nevents || '10000' }}
