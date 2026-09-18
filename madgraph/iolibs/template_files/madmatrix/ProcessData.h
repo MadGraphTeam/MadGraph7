@@ -30,7 +30,9 @@ namespace ProcessData
   constexpr int nwf = %(nwf)d; // #wavefunctions = #external (npar) + #internal (see #644)
   constexpr int nproc = %(nproc)d; // 2 if this process has a mirror process, else 1
   constexpr int proc_id = %(proc_id)d;
-  constexpr int helcolDenominators[1] = { %(den_factors)s }; // spin/color/identical-particle denominators
+  // spin/color/identical-particle denominators. NB: assumes nprocesses == 1 (#272 and #343),
+  // although den_factors has one entry per matrix element: see MadGraph7 issue #168
+  constexpr int helcolDenominators[1] = { %(den_factors)s };
 
   // SM independent parameters/couplings/flavor-couplings used by this process
   // (see #823: nIPC/nIPD/nIPF may vary per P1, unlike nicoup which is model-wide)
