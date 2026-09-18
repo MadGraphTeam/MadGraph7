@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2009 The MadGraph Development team and Contributors
 #
-# This file is a part of the MadGraph 5 project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
@@ -355,8 +355,15 @@ class TestModUFO(unittest.TestCase):
         self.assertEqual(11, 
                 len([1 for name in os.listdir(output) if name.endswith('.py')]))
 
+        # the model dir itself must be in the path since UFO models use
+        # implicit relative imports (import particles) inside __init__.py
         sys.path.insert(0, os.path.dirname(output))
-        import usrmod
+        sys.path.insert(0, output)
+        try:
+            import usrmod
+        finally:
+            sys.path.remove(os.path.dirname(output))
+            sys.path.remove(output)
 
 
     def compare(self, text1, text2, optional=[], default={}):

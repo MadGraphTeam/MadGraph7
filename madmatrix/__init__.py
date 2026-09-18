@@ -1,15 +1,16 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: O. Mattelaer (Sep 2021) for the MG5aMC CUDACPP plugin.
+# Created originally by: O. Mattelaer (Sep 2021) for the MadGraph7 CUDACPP plugin.
 # Further modified by: D. Massaro, O. Mattelaer, A. Valassi, Z. Wettersten (2021-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
 PLUGIN_NAME = __name__ # PLUGIN_NAME can be one of PLUGIN/CUDACPP_OUTPUT or MG5aMC_PLUGIN/CUDACPP_OUTPUT
 
-# AV - Require Python >= 3.8 to ensure that {} dictionaries preserve the order of item insertion
-# (note: python3.7 would probably be enough but this plugin has only been tested using python3.8)
+# Require the same Python as MadGraph itself (see bin/madgraph), so that the
+# plugin never becomes the reason a supported interpreter is refused. It used
+# to ask only for >= 3.8, the version that made {} preserve insertion order.
 import sys
-minpython = (3,8)
+minpython = (3,12)
 if sys.version_info < minpython :
 
     print('ERROR! Cannot load plugin %s: Python >= %s.%s is required' % (PLUGIN_NAME, minpython[0], minpython[1] ))
@@ -40,7 +41,7 @@ else:
     new_cluster = {}
 
     # 3. Define a new interface (allows adding/modifying MG5 command).
-    #    This can be activated via ./bin/mg5_aMC --mode=PLUGINNAME.
+    #    This can be activated via ./bin/madgraph --mode=PLUGINNAME.
     #    Put None if no dedicated command are required
     if PLUGIN_NAME.rsplit('.',1)[0] == 'MG5aMC_PLUGIN':
         import madgraph.interface.master_interface as interface

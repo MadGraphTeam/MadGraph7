@@ -6,6 +6,12 @@ name: running unittest
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 # - '.github/**'
@@ -48,22 +54,6 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py -v2 -t0 testIO_modification_to_cuts -e .github/workflows/IOtest.yml
 
-# test_excluded2:
-# # excluded due to side effect
-# # The type of runner that the job will run on
-# runs-on: ubuntu-24.04#
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-# steps:
-# # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-# - uses: actions/checkout@v5#
-#
-# # Runs a set of commands using the runners shell
-# - name: test one of the test test_short_mssm_subset_creation
-# run: |
-# cd $GITHUB_WORKSPACE
-# ./tests/test_manager.py -t0 test_write_model #excluded from fast unittest
-
 
   unittest_0:
     # The type of runner that the job will run on
@@ -76,10 +66,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # Runs a set of commands using the runners shell
-      - name: test one of the test test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card
+      - name: test one of the test test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card -t0
+            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card -t0
 
 
 
@@ -184,10 +174,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # Runs a set of commands using the runners shell
-      - name: test one of the test test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list
+      - name: test one of the test test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_loop_Nc_power_survives_a_poisoned_memo test_memo_is_shared_across_loop_bases test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list -t0
+            ./tests/test_manager.py test_color_flow_string_epsilon test_colorize_funny_model test_colorize_uu_gg test_colorize_uux_ggg test_color_matrix_Nc_restrictions test_color_matrix_fixed_indices test_color_matrix_multi_gluons test_color_matrix_multi_quarks test_helper_lcm_functions test_loop_Nc_power_survives_a_poisoned_memo test_memo_is_shared_across_loop_bases test_get_s_and_t_ub_tdg test_diagram_list test_diagram_list_nice_string test_representation test_setget_diagram_correct test_setget_diagram_exceptions test_values_for_prop test_make_unique test_generating_dict_to_0 test_generating_dict_to_1 test_interaction_list test_representation test_setget_interaction_correct test_setget_interaction_exceptions test_values_for_prop test_leg_list -t0
 
 
 
@@ -254,6 +244,10 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
+      # tests.unit_tests.madspin.test_madspin imports numpy (the density
+      # primitives, the sequential accept/reject and the maxwgt decomposition
+      # all work on arrays), which is not on the runner by default.
+      - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
       - name: test one of the test test_decay_chain_different_order1 test_decay_chain_different_order2 test_decay_chain_different_order3 test_decay_chain_different_pdgs test_decay_chain_process_overall_orders test_decay_processes_different_is_particles test_equal_decay_chains test_helas_multi_process test_helas_multiprocess_pp_nj test_majorana_decay_chain_process test_multistage_decay_chain_process test_multistage_symmetryfactor test_non_combine_processes test_setget_wavefunction_exceptions test_values_for_prop test_identify_me_tag_qq_qqg test_non_identify_me_tag_qq_qqg test_identify_me_tag_qq_qg test_extract_info test_get_final_state_particle test_get_proc_with_decay_LO test_get_proc_with_decay_NLO test_madspin_event test_find_symmetry_uu_tt test_find_symmetry_uu_tt_with_subprocess_group
@@ -347,10 +341,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # Runs a set of commands using the runners shell
-      - name: test one of the test test_autodef_nomissmatch test_basic test_check_valid_LO test_custom_fcts test_default test_fixed_fac_scale_block test_guess_entry_fromname test_pdlabel_block test_analyse_card_analyse test_analyse_card_default test_create_param_dict test_define_not_dep_param test_order_param test_write_block test_write_param test_write_qnumber test_define_not_dep_param test_full_write test_write_orders test_write_particles test_write_vertices test_add_external_parameters test_add_particle test_couplings test_identify_particle
+      - name: test one of the test test_autodef_nomissmatch test_basic test_check_valid_LO test_custom_fcts test_default test_fixed_fac_scale_block test_guess_entry_fromname test_negative_iseed test_pdlabel_block test_analyse_card_analyse test_analyse_card_default test_create_param_dict test_define_not_dep_param test_order_param test_write_block test_write_param test_write_qnumber test_define_not_dep_param test_full_write test_write_orders test_write_particles test_write_vertices test_add_external_parameters test_add_particle test_couplings test_identify_particle
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_autodef_nomissmatch test_basic test_check_valid_LO test_custom_fcts test_default test_fixed_fac_scale_block test_guess_entry_fromname test_pdlabel_block test_analyse_card_analyse test_analyse_card_default test_create_param_dict test_define_not_dep_param test_order_param test_write_block test_write_param test_write_qnumber test_define_not_dep_param test_full_write test_write_orders test_write_particles test_write_vertices test_add_external_parameters test_add_particle test_couplings test_identify_particle -t0
+            ./tests/test_manager.py test_autodef_nomissmatch test_basic test_check_valid_LO test_custom_fcts test_default test_fixed_fac_scale_block test_guess_entry_fromname test_negative_iseed test_pdlabel_block test_analyse_card_analyse test_analyse_card_default test_create_param_dict test_define_not_dep_param test_order_param test_write_block test_write_param test_write_qnumber test_define_not_dep_param test_full_write test_write_orders test_write_particles test_write_vertices test_add_external_parameters test_add_particle test_couplings test_identify_particle -t0
 
 
 
@@ -469,7 +463,7 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/restore_ufomodel
+
       # Runs a set of commands using the runners shell
       - name: test one of the test test_is_uptodate test_write_cplusplus_error test_write_cplusplus_line test_write_cplusplus_special_syntax test_multiple_if_statement test_single_if_statement test_remove_routine test_write_fortran_error test_write_fortran_line test_UFOExpressionParserPythonIF test_parse_fortran_IfElseStruct test_parse_fortran_IfElseStruct_MP test_parse_fortran_fct test_parse_fortran_fct_MP test_parse_special_fortran_fct test_error_interaction_save test_error_particle_save test_interaction_save test_particle_save test_fail_on_process_cc_file_uu_six test_write_match_go_process_cc_file
         run: |
@@ -665,7 +659,12 @@ jobs:
     # Tests in tests/unit_tests not previously bound to any CI job:
     # color algebra, base/diagram object merging, miscellaneous I/O and drawing
     # Includes test_fks_ppzz_in_RS using the restored RS UFO model cache.
-    runs-on: ubuntu-22.04
+    # Also the polarisation unit tests added with the NLO me_frame feature:
+    # they guard the IdentifyMETag polarisation tag, carry_polarization /
+    # split_leg, the P-directory name-collision check and the separation of
+    # differently-polarised subprocess groups, and that a HelasWavefunction
+    # carries its polarisation into its identity.
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -676,12 +675,12 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write -t0
+            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization -t0
 
 
   unittest_30:
     # Uncovered unit tests in tests/unit_tests/various/test_lhe_parser.py
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -695,7 +694,7 @@ jobs:
 
   unittest_31:
     # Uncovered unit tests in tests/unit_tests/various/test_process_checks.py
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -709,7 +708,7 @@ jobs:
 
   unittest_32:
     # Uncovered unit tests in tests/unit_tests/various/test_import_ufo.py
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -723,7 +722,7 @@ jobs:
 
   unittest_33:
     # Uncovered unit tests in tests/unit_tests/fks/test_ewsudakov.py
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
@@ -733,3 +732,81 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz -t0
+
+
+  unittest_madspin_sequential:
+    # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
+    # plus the lhe_parser split/merge of the unweighted output. These modules were
+    # not covered by any workflow.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-pip-cache
+
+      - name: test the madspin and lhe_parser unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            sudo pip install numpy
+            ./tests/test_manager.py test_madspin test_lhe_parser -t0
+
+
+  unittest_uncovered:
+    # unit tests that were not listed in any workflow (CI coverage audit).
+    # test_fks_ppzz_in_RS is left out: the RS UFO model is still python2 only.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the previously untriggered unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+
+
+  unittest_config_location:
+    # tests/unit_tests/various/test_lhapdf_resolve.py: where the configuration
+    # files live ($MADGRAPH_BASE, per-user, install) and how LHAPDF is resolved
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the configuration-location and lhapdf-resolve unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_xdg_config_home_wins test_home_fallback test_never_mg5 test_no_home test_no_base test_mg7_file_wins test_mg5_fallback test_neither_file test_absolute_lhapdf test_python_filter_is_not_part_of_the_path test_relative_value_roots_at_the_install test_bare_name_from_path test_missing_executable_does_not_raise test_no_lhapdf_at_all test_lhapdf5_pdfsets_path test_datadir_list_is_split test_env_data_path_comes_first test_env_config_wins_over_options test_lhapdf_py3_fallback test_none_and_auto_are_not_paths test_heptools_fallback_when_datadir_is_read_only test_create_makes_the_download_directory test_cvmfs_mirror_is_searched_last_and_never_downloaded_into test_with_data_path_promotes_a_directory -t0
+
+
+  unittest_write_model:
+    # runs alone: excluded from the shared unittest jobs due to side effects
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run test_write_model (usermod)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_write_model -t0
+
+
+  unittest_customize_model:
+    # tests/unit_tests/various/test_customize_model.py: the options and the
+    # commands of the customize_model question, the restriction cards it
+    # writes, and the explain_restriction reports
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the customize_model unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_customize_model -t0

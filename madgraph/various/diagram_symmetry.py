@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2010 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2010 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -67,7 +67,8 @@ logger = logging.getLogger('madgraph.various.diagram_symmetry')
 # find_symmetry
 #===============================================================================
 
-def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
+def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag,
+                  skip_identical_check=False):
     """Find symmetries between amplitudes by comparing diagram tags
     for all the diagrams in the process. Identical diagram tags
     correspond to different external particle permutations of the same
@@ -123,7 +124,7 @@ def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
             symmetry.append(1)
 
     # Check for matrix elements with no identical particles
-    if matrix_element.get("identical_particle_factor") == 1:
+    if not skip_identical_check and matrix_element.get("identical_particle_factor") == 1:
         return symmetry, \
                permutations,\
                [list(range(nexternal))]
@@ -144,7 +145,6 @@ def find_symmetry(matrix_element, tag_type=diagram_generation.DiagramTag):
             # Only 3-vertices allowed in configs.inc
             continue
         
-        #tag = diagram_generation.DiagramTag(base_diagram)
         tag = tag_type(base_diagram)
         try:
             ind = diagram_tags.index(tag)
@@ -341,7 +341,7 @@ class IdentifySGConfigTag(diagram_generation.DiagramTag):
         
         return [((state, part.get('spin'), part.get('color'), charge,
                   part.get('mass'), part.get('width')),
-                 leg.get('number'))]
+                 leg.get('number'), leg.get('onium'))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -386,6 +386,7 @@ def find_symmetry_subproc_group(subproc_group):
     symmetry = []
     permutations = []
     diagrams = subproc_group.get('mapping_diagrams')
+    nonia = subproc_group.get('matrix_elements')[0].get_nonia()
     nexternal, ninitial = \
                subproc_group.get('matrix_elements')[0].get_nexternal_ninitial()
     model = subproc_group.get('matrix_elements')[0].get('processes')[0].\
@@ -400,6 +401,9 @@ def find_symmetry_subproc_group(subproc_group):
         if diag.get_vertex_leg_numbers()!=[] and \
                                   max(diag.get_vertex_leg_numbers()) > min_vert:
             # Ignore any diagrams with 4-particle vertices
+            symmetry.append(0)
+        elif nonia > 0:
+            # Ignore any diagrams with onia states
             symmetry.append(0)
         else:
             symmetry.append(1)
@@ -417,6 +421,9 @@ def find_symmetry_subproc_group(subproc_group):
         if diag.get_vertex_leg_numbers()!=[] and \
                                   max(diag.get_vertex_leg_numbers()) > min_vert:
             # Only include vertices up to min_vert
+            continue
+        elif nonia > 0:
+            # Ignore any diagrams with onia states
             continue
         tag = IdentifySGConfigTag(diag, model)
         try:
@@ -440,6 +447,8 @@ def find_symmetry_subproc_group(subproc_group):
         # Order permutations according to how to reach the first perm
         permutations[inum] = diagram_generation.DiagramTag.reorder_permutation(perms[idx1][idx2],
                                                             perms[idx1][0])
+    if nonia > 0:
+        symmetry = [x+1 for x in symmetry]
     return (symmetry, permutations, [permutations[0]])
     
 

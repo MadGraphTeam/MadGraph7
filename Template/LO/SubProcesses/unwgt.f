@@ -494,6 +494,7 @@ c
 c
 c     Local
 c
+      logical exists
       integer i,j,k,iini,ifin
       double precision sum_wgt,sum_wgt2, xtarget,targetamp(maxflow)
       integer ip, np, ic, nc
@@ -586,6 +587,17 @@ c
       do while (xtarget .gt. jsym .and. jsym .lt. nsym)
          jsym = jsym+1
       enddo
+c
+c     Guard against an invalid subprocess selection: idup(i,ipsel,numproc)
+c     with ipsel outside 1..maxproc reads outside the array and writes an
+c     event with meaningless PDG codes (see the IPSEL clamp in auto_dsig).
+c     Nothing downstream can recognise such an event, so refuse to write it.
+c
+      if (ipsel.lt.1.or.ipsel.gt.maxproc) then
+         write(*,*) 'Error write_leshouche: invalid ipsel=',ipsel,
+     $        ' (valid range 1 to ',maxproc,'); event not written.'
+         stop 1
+      endif
 c
 c     Fill jpart color and particle info
 c
@@ -737,6 +749,13 @@ c
 c     Add info on resonant mothers
 c     recall onbw since that might have configured onBW for the wrong config (check tt~a ,t >... for checking impact 
       call cut_bw(p)
+c     check if process contains onia (the file is only created in this case)
+c     if the process contains onia set icol to a negative value to force
+c     the flag 'is_LC' set to be false in the routine addmothers to bypass 
+c     the writing of intermediate particles
+#if HAS_ONIA
+      icol = -abs(icol)
+#endif
       call addmothers(ipsel,jpart,pb,isym,jsym,sscale,aaqcd,aaqed,buff,
      $                npart,numproc,flip, icol, ivec)
 

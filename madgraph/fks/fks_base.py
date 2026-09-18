@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -101,7 +101,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         for born in self['born_processes']:
             # the copy.copy is needed as duplicate configurations will be removed on the fly
             for real in copy.copy(born.real_amps):
-                pdgs = ' '.join([ '%d' % pdg for pdg in real.pdgs])
+                # keyed on the polarizations too, for the same reason as
+                # FKSRealProcess.pdgs_pols: same flavours, different helicity
+                # is a different real. (This method has no caller today.)
+                pdgs = '%s' % (real.pdgs_pols,)
                 for info in copy.copy(real.fks_infos):
                     ij = [info['i'], info['j']]
                     try:
@@ -129,6 +132,18 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         legs (stored in pdgs, so that they need to be generated only once and then reicycled
         """
 
+        # The four gluon merging is validated at tree level only, and an NLO
+        # generation is left alone whatever the option says. fks reads the
+        # vertex decomposition of its real diagrams -- link_rb_configs finds
+        # the vertex splitting ij into i and j and takes it out -- and the
+        # unrolling re-roots them, which can put that pair in the closing
+        # vertex, where there is nothing to take out.
+        with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+            self.generate_all(procdef, options)
+
+    def generate_all(self, procdef=None, options={}):
+        """Generates the born amplitudes, the born processes and the reals,
+        see __init__ which is the only caller."""
 
         if 'nlo_mixed_expansion' in options:
             self['nlo_mixed_expansion'] = options['nlo_mixed_expansion']
@@ -444,6 +459,20 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
+        # Key deciding whether two real processes may share one amplitude /
+        # matrix element. The PDGs alone are not enough under a polarization
+        # restriction: two reals can carry the same flavours but fix a
+        # different helicity (p p > t{+} t~ [QCD] and p p > t{-} t~ [QCD] in
+        # one run), and a PDG-only key would bucket them together, silently
+        # giving one born the other's reals. An unpolarized process gets the
+        # PDG tuple plus a tuple of empty tuples, so nothing changes.
+        # Sorted and deduplicated to match IdentifyMETag.link_from_leg and
+        # Process.shell_polarization: '{+-}' and '{-+}' are one restriction,
+        # so they must share their reals just as they share their born.
+        self.pdgs_pols = (self.pdgs,
+                          tuple(MG.canonical_polarization(
+                                    leg.get('polarization'))
+                                for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:
@@ -599,6 +628,8 @@ class FKSProcess(object):
         self.extra_cnt_amp_list = diagram_generation.AmplitudeList()
         self.ncores_for_proc_gen = ncores_for_proc_gen
         self.sudakov_amps = []
+        # user number of each FKS-sorted born leg; see fks_common.get_user_leg_order
+        self.user_leg_order = []
 
         if not remove_reals in [True, False]:
             raise fks_common.FKSProcessError(\
@@ -610,12 +641,18 @@ class FKSProcess(object):
                 pertur = start_proc['perturbation_couplings']
                 if pertur:
                     self.perturbation = sorted(pertur)[0]
+                # record the user's leg numbering before sort_proc discards it
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc, pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                         start_proc, pert = self.perturbation)))
             #initialize with an amplitude
             elif isinstance(start_proc, diagram_generation.Amplitude):
                 pertur = start_proc.get('process')['perturbation_couplings']
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc['process'],
+                                        pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                     start_proc['process'], 
@@ -656,11 +693,11 @@ class FKSProcess(object):
         no_diags_amps = []
         for amp in self.real_amps:
             try:
-                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs)]
+                amp.amplitude = real_amp_list[pdg_list.index(amp.pdgs_pols)]
             except ValueError:
                 amplitude = amp.generate_real_amplitude()
                 if amplitude['diagrams']:
-                    pdg_list.append(amp.pdgs)
+                    pdg_list.append(amp.pdgs_pols)
                     real_amp_list.append(amplitude)
                 else:
                     no_diags_amps.append(amp)
@@ -678,10 +715,10 @@ class FKSProcess(object):
         old_real_amps = copy.copy(self.real_amps)
         for amp in old_real_amps:
             try:
-                real_amps[pdgs.index(amp.pdgs)].fks_infos.extend(amp.fks_infos)
+                real_amps[pdgs.index(amp.pdgs_pols)].fks_infos.extend(amp.fks_infos)
             except ValueError:
                 real_amps.append(amp)
-                pdgs.append(amp.pdgs)
+                pdgs.append(amp.pdgs_pols)
 
         self.real_amps = real_amps
 

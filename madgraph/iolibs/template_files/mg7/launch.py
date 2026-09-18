@@ -1,0 +1,3757 @@
+import argparse
+import os
+import sys
+import time
+from datetime import timedelta
+from pathlib import Path
+import glob
+import shutil
+import json
+import subprocess
+import re
+import logging
+from dataclasses import dataclass, field
+from typing import Literal, NamedTuple
+import resource
+
+# Install madspace on first use, then import it. The bootstrap lives in its own
+# module (which must not import madspace) so that an in-process caller can run
+# it *before* importing this one -- see bootstrap.ensure_madspace.
+from madgraph.iolibs.template_files.mg7.bootstrap import (
+    ensure_madspace as _ensure_madspace,
+    drop_install_path as _drop_install_path,
+    MG_ROOT as _MG_ROOT,
+    MADSPACE_DIR as _MADSPACE_DIR,
+    INSTALL_DIR as _INSTALL_DIR,
+)
+
+_ensure_madspace()
+
+import madspace as ms
+
+# madspace is imported; stop its install directory from shadowing the caller's
+# yaml/packaging/... for the rest of what is now MG5's own session.
+_drop_install_path()
+from models.check_param_card import ParamCard
+from madgraph.iolibs.template_files.mg7 import systematics_summary
+from madgraph.various.banner import RunCardMG7
+from madgraph.various import misc
+from madgraph.interface.extended_cmd import Cmd
+
+_source_hash = subprocess.run(
+    [sys.executable, str(_MADSPACE_DIR / "source_hash.py")],
+    capture_output=True, text=True, check=True,
+).stdout.strip()
+if _source_hash != ms.SOURCE_HASH:
+    print()
+    print(
+        "\033[1m\033[31mWARNING\033[39m: madspace source and installed binaries "
+        "are not compatible (source hash mismatch) — consider recompiling "
+        "madspace (e.g. `install madspace -y`)\033[0m"
+    )
+    print()
+
+logger = logging.getLogger("madgraph7")
+LOG_LEVEL_MAP = {
+    ms.Logger.LogLevel.level_debug: logging.DEBUG,
+    ms.Logger.LogLevel.level_info: logging.INFO,
+    ms.Logger.LogLevel.level_warning: logging.WARNING,
+    ms.Logger.LogLevel.level_error: logging.ERROR,
+}
+def ms_log_handler(level: ms.Logger.LogLevel, message: str):
+    logger.log(LOG_LEVEL_MAP[level], message)
+ms.Logger.set_log_handler(ms_log_handler)
+
+
+def get_start_time():
+    return time.time(), time.process_time()
+
+
+def format_time(t: int, centi: bool = False):
+    hours, t = divmod(t, 3600)
+    minutes, seconds = divmod(t, 60)
+    if centi:
+        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.2f}"
+    else:
+        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.0f}"
+
+
+def resolve_verbosity(verbosity: str) -> str:
+    """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
+    whether stdout is attached to a terminal; other values pass through
+    unchanged."""
+    if verbosity == "auto":
+        return "pretty" if sys.stdout.isatty() else "log"
+    return verbosity
+
+
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
+
+
+def device_type_of(device_name: str) -> str:
+    """The device type of one 'device' run_card entry (the optional ':<index>'
+    suffix is stripped)."""
+    return device_name.split(":")[0]
+
+
+def backend_of(device_name: str, cpu_mode: str) -> str:
+    """The build BACKEND that serves one 'device' run_card entry.
+
+    ``cpu_mode`` describes the SIMD width of the CPU code and is therefore
+    meaningless for the cuda/hip devices: those build the backend named after
+    the device itself.
+    """
+    device_type = device_type_of(device_name)
+    return cpu_mode if device_type == "cpu" else device_type
+
+
+_PRECISION_2_FPTYPE = {"all64": "d", "all32": "f", "color32": "m", "denom64": "v"}
+
+
+def fptype_of(precision: str) -> str:
+    return _PRECISION_2_FPTYPE.get(str(precision).lower(), str(precision).lower())
+
+
+def resolve_auto_backend(build_path: str) -> str:
+    """Ask the matrix-element Makefile to resolve the ``auto`` cpu_mode.
+
+    Given the produced shared library will have its name taken from the resolved
+    backend name, we need to make sure the detection is taking place correctly
+    and catch any possible error.
+    """
+    command = ["make", "-n", "BACKEND=auto", "detect-backend"]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=build_path,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not run make to resolve cpu_mode='auto' in '{build_path}': {exc}"
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        output = "\n".join(
+            part.strip() for part in (exc.stdout, exc.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
+            f"Exit status {exc.returncode}.{detail}"
+        ) from exc
+
+    match = re.search(
+        r"^BACKEND=(\S+) \(was auto\)$", result.stdout, re.MULTILINE
+    )
+    if match is None or match.group(1) == "auto":
+        output = "\n".join(
+            part.strip() for part in (result.stdout, result.stderr) if part.strip()
+        )
+        detail = f"\nmake output:\n{output}" if output else ""
+        raise RuntimeError(
+            f"Could not resolve cpu_mode='auto' in '{build_path}': "
+            f"make failed to report a backend.{detail}"
+        )
+    return match.group(1)
+
+
+@dataclass
+class Channel:
+    phasespace_mapping: ms.PhaseSpaceMapping
+    adaptive_mapping: ms.Flow | ms.VegasMapping
+    discrete_sym: ms.DiscreteSampler | ms.DiscreteFlow | None
+    discrete_flavor: ms.DiscreteSampler | ms.DiscreteFlow | None
+    channel_weight_indices: list[int] | None
+    name: str
+    active_flavors: list[int]
+    event_generator: ms.ChannelEventGenerator | None = None
+
+
+@dataclass
+class PhaseSpace:
+    mode: Literal["multichannel", "flat", "both"]
+    channels: list[Channel]
+    symfact: list[int | None]
+    first_chan_weight_remap: list[list[int]] = field(default_factory=list)
+    first_remapped_chan_count: int = 0
+    second_chan_weight_remap: list[int] = field(default_factory=list)
+    second_remapped_chan_count: int = 0
+    prop_chan_weights: ms.PropagatorChannelWeights | None = None
+    subchan_weights: ms.SubchannelWeights | None = None
+    cwnet: ms.ChannelWeightNetwork | None = None
+
+
+class MultiChannelData(NamedTuple):
+    amp2_remaps: list[list[int]]
+    symfact: list[int | None]
+    topologies: list[list[ms.Topology]]
+    permutations: list[list[list[int]]]
+    channel_indices: list[list[int]]
+    channel_weight_indices: list[list[list[int]]]
+    diagram_indices: list[list[int]]
+    diagram_color_indices: list[list[list[int]]]
+    diagram_propagator_pdgs: list[list[list[int]]]
+    active_flavors: list[list[list[int]]]
+    qcd_s_channel_count: list[int]
+
+
+@dataclass
+class CutItem:
+    observable_kwargs: dict
+    min: float
+    max: float
+    mode: str
+
+
+@dataclass
+class HistItem:
+    observable_kwargs: dict
+    min: float
+    max: float
+    bin_count: int
+
+
+class MadgraphProcess:
+    def __init__(self):
+        self.load_cards()
+        self.init_backend()
+        self.init_event_dir()
+        self.init_context()
+        self.init_cuts()
+        self.init_histograms()
+        self.init_generator_config()
+        self.init_beam()
+        self.init_subprocesses()
+
+    def load_cards(self) -> None:
+        self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        # Resolved once so every generator built during this run shares the same
+        # seed; the concrete value (even if randomly drawn) is recorded in each
+        # generator's info.json.
+        self.run_seed = resolve_seed(self.run_card["run"]["seed"])
+        self.param_card_path = os.path.join("Cards", "param_card.dat")
+        self.param_card = ParamCard(self.param_card_path)
+        with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
+            self.subprocess_data = json.load(f)
+        if self.run_card["phasespace"]["merge_subprocesses"]:
+            with open(os.path.join("SubProcesses", "merged_subprocesses.json")) as f:
+                self.merged_subprocess_data = json.load(f)
+        else:
+            self.merged_subprocess_data = None
+
+        self.init_decay_mode()
+
+    def init_decay_mode(self) -> None:
+        """Decide whether this directory is a decay (1 -> n) or a collision.
+
+        Read off the exported process rather than the run card: the two cannot
+        then disagree. MadSpin generates its decay matrix elements this way.
+        """
+        incoming_counts = {
+            len(clean_pids(meta["incoming"])) for meta in self.subprocess_data
+        }
+        if incoming_counts - {1, 2}:
+            raise ValueError(
+                f"processes with {sorted(incoming_counts)} incoming particles "
+                "are not supported"
+            )
+        if len(incoming_counts) > 1:
+            raise ValueError(
+                "cannot mix decays and collisions in one output directory"
+            )
+        self.is_decay = incoming_counts == {1}
+        if not self.is_decay:
+            self.decaying_mass = None
+            return
+
+        masses = {
+            self.get_mass(clean_pids(meta["incoming"])[0])
+            for meta in self.subprocess_data
+        }
+        if len(masses) > 1:
+            raise ValueError(
+                f"decaying particles have different masses: {sorted(masses)}"
+            )
+        self.decaying_mass = masses.pop()
+        if self.decaying_mass <= 0.0:
+            raise ValueError("the decaying particle must have a non-zero mass")
+        self.drop_closed_channels()
+
+    def drop_closed_channels(self) -> None:
+        """Remove subprocesses the decaying particle is too light to produce.
+
+        A multiparticle decay definition enumerates every vertex the model
+        allows, closed ones included: "t > b w+, w+ > all all" yields
+        t > b t b~ (and b W+ Z, b W+ h, ...), which need more mass than the top
+        has. Their partial width is exactly zero, but the phase-space mapping
+        has no physical point to hand back -- the invariant's lower bound ends
+        up above its upper bound -- so it produces NaN momenta and poisons the
+        whole integral. Drop them here instead.
+        """
+        kept, dropped = [], []
+        for meta in self.subprocess_data:
+            total = sum(
+                self.get_mass(pid) for pid in clean_pids(meta["outgoing"])
+            )
+            if total < self.decaying_mass:
+                kept.append(meta)
+            else:
+                dropped.append((meta["outgoing"], total))
+        if dropped and self.merged_subprocess_data is not None:
+            # merged_subprocesses.json indexes the *unfiltered* subprocess
+            # list, so dropping entries here would silently shift every index
+            # it holds. Refuse rather than mis-map.
+            raise ValueError(
+                "merge_subprocesses is not supported for a decay directory "
+                "with kinematically closed channels"
+            )
+        if dropped:
+            for outgoing, total in dropped:
+                logger.info(
+                    "skipping closed decay channel -> %s (needs %.4g GeV, "
+                    "the decaying particle has %.4g GeV)",
+                    outgoing, total, self.decaying_mass,
+                )
+        if not kept:
+            raise ValueError(
+                "every decay channel is kinematically closed: the decaying "
+                f"particle's mass is {self.decaying_mass} GeV"
+            )
+        self.subprocess_data = kept
+
+    def init_backend(self) -> None:
+        ms.set_simd_vector_size(self.run_card["run"]["simd_vector_size"])
+
+    def init_event_dir(self) -> None:
+        run_name = self.run_card["run"]["run_name"]
+        os.makedirs("Events", exist_ok=True)
+        run_dir_prefix = os.path.join("Events", f"{run_name}_")
+        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+        run_index = 1
+        for run_dir in existing_run_dirs:
+            run_index_str = run_dir[len(run_dir_prefix):]
+            if run_index_str.isnumeric():
+                run_index = max(run_index, int(run_index_str) + 1)
+        while True:
+            try:
+                self.run_path = f"{run_dir_prefix}{run_index:02d}"
+                os.mkdir(self.run_path)
+                break
+            except FileExistsError:
+                run_index += 1
+        # Absolute on purpose. StatusFile is a C++ object that finishes its
+        # write from its destructor (rename info.json.tmp -> info.json), and
+        # that destructor runs whenever Python gets round to collecting the
+        # process object. When the launcher runs in MG5's process, an
+        # interrupted run is collected *after* the launch command has restored
+        # the working directory, and a relative path would then resolve
+        # somewhere else -- the rename throws a C++ filesystem_error out of a
+        # destructor, which is an immediate abort.
+        self.status_file = ms.StatusFile(
+            os.path.abspath(os.path.join(self.run_path, "info.json")))
+
+    def init_context(self) -> None:
+        device_names = self.run_card["run"]["device"]
+        self.contexts = []
+        self.device_types = []
+        self.devices = []
+        self.pool_sizes = []
+        for device_name in device_names:
+            if ":" in device_name:
+                device_type, device_index_str = device_name.split(":")
+                device_index = int(device_index_str)
+            else:
+                device_type = device_name
+                device_index = 0
+            self.device_types.append(device_type)
+            if device_type == "cuda":
+                device = ms.cuda_device(device_index)
+                pool_size = self.run_card["run"]["gpu_thread_pool_size"]
+            elif device_type == "hip":
+                device = ms.hip_device(device_index)
+                pool_size = self.run_card["run"]["gpu_thread_pool_size"]
+            else:
+                device = ms.cpu_device()
+                pool_size = self.run_card["run"]["cpu_thread_pool_size"]
+            self.devices.append(device)
+            self.pool_sizes.append(pool_size)
+            self.contexts.append(ms.Context(device=device, thread_count=pool_size))
+
+    def parse_observable(self, name: str, order_observable: str) -> dict:
+        parts = name.split("-")
+        sum_momenta = False
+        sum_observable = False
+        ordered = False
+        multiparticles = self.run_card["multiparticles"]
+
+        if len(parts) == 0:
+            raise ValueError("Invalid observable name")
+        elif len(parts) == 1:
+            # event-level observables
+            obs_name = parts[0]
+            select_pids = []
+        else:
+            if parts[-1] == "sum":
+                sum_observable = True
+                obs_name = parts[-2]
+                selection = parts[:-2]
+            elif parts[-2] == "sum":
+                sum_momenta = True
+                obs_name = parts[-1]
+                selection = parts[:-2]
+            else:
+                obs_name = parts[-1]
+                selection = parts[:-1]
+            select_pids = []
+            order_indices = []
+            for mp_name in selection:
+                mp_parts = mp_name.split("_")
+                if mp_parts[-1].isnumeric():
+                    order_indices.append(int(mp_parts[-1]))
+                    select_pids.append(multiparticles["_".join(mp_parts[:-1])])
+                    ordered = True
+                else:
+                    order_indices.append(0)
+                    select_pids.append(multiparticles[mp_name])
+
+        return dict(
+            observable=obs_name,
+            select_pids=select_pids,
+            sum_momenta=sum_momenta,
+            sum_observable=sum_observable,
+            order_observable=order_observable if ordered else None,
+            order_indices=order_indices if ordered else [],
+            ignore_incoming=True,
+            name=name,
+        )
+
+    def init_cuts(self) -> None:
+        inf = float("inf")
+        order_observable = self.run_card["cuts"].get("order_by", "pt")
+        self.cut_data = [
+            CutItem(
+                observable_kwargs=self.parse_observable(key, order_observable),
+                min=values.get("min", -inf),
+                max=values.get("max", inf),
+                mode=values.get("mode", "all"),
+            )
+            for key, values in self.run_card["cuts"].items()
+            if key != "order_by"
+        ]
+
+    def init_histograms(self) -> None:
+        inf = float("inf")
+        order_observable = self.run_card["histograms"].get("order_by", "pt")
+        #TODO: add reasonable defaults for min, max, bin_count
+        self.hist_data = [
+            HistItem(
+                observable_kwargs=self.parse_observable(key, order_observable),
+                min=values["min"],
+                max=values["max"],
+                bin_count=values["bin_count"],
+            )
+            for key, values in self.run_card["histograms"].items()
+            if key != "order_by"
+        ]
+
+    def ensure_pdf_set(self, pdf_set: str) -> misc.LhapdfPaths:
+        """Make sure the requested LHAPDF set is available, downloading it into
+        the first writable PDF directory if needed, and return the (possibly
+        updated) LHAPDF resolution. Nothing is downloaded when the set is
+        already present."""
+        paths = lhapdf_paths()
+        if paths.find_set(pdf_set):
+            return paths
+        if not paths.config:
+            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
+            return paths
+        if not paths.download_path:
+            logger.debug("no writable PDF directory: cannot download %s", pdf_set)
+            return paths
+        try:
+            from madgraph.interface.common_run_interface import CommonRunCmd
+            os.makedirs(paths.download_path, exist_ok=True)
+            logger.info("PDF set %s not found; downloading into %s",
+                        pdf_set, paths.download_path)
+            CommonRunCmd.install_lhapdf_pdfset_static(
+                paths.config, paths.download_path, pdf_set)
+        except Exception as err:
+            logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+            return paths
+        global _LHAPDF
+        _LHAPDF = paths.with_data_path(paths.download_path)
+        return _LHAPDF
+
+    def _no_pdf_message(self, pdf_set: str) -> str:
+        """Explain a missing PDF set in terms of the settings that fix it."""
+        searched = os.pathsep.join(self.lhapdf.data_paths) or \
+            "(no PDF set directory could be located)"
+        if self.lhapdf.config:
+            found = "using lhapdf-config: %s" % self.lhapdf.config
+        else:
+            found = ("no usable lhapdf-config was found, so the set could not "
+                     "be downloaded automatically")
+        return (
+            "LHAPDF set %r, requested by [beam] pdf in Cards/run_card.toml, "
+            "was not found.\n"
+            "  searched: %s\n"
+            "  %s\n"
+            "Fix this in one of the following ways:\n"
+            "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
+            "  * point MadGraph at an existing one:\n"
+            "        MG7> set lhapdf /path/to/lhapdf-config\n"
+            "        MG7> save options\n"
+            "  * or set it for this directory only, by adding\n"
+            "        lhapdf = /path/to/lhapdf-config\n"
+            "    to %s\n"
+            "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
+            % (pdf_set, searched, found,
+               os.path.join("Cards", "me5_configuration.txt"), pdf_set))
+
+    def init_beam(self) -> None:
+        beam_args = self.run_card["beam"]
+
+        # built lazily by build_systematics (needs the subprocess data)
+        self.systematics = None
+        self.systematics_data = None
+        self.systematics_context = None
+        self.event_histograms = None
+        self.event_histograms_context = None
+
+        if self.is_decay:
+            # No beams: the total energy is the decaying particle's mass, and
+            # "leptonic" is what the mappings call "no parton luminosity".
+            self.e_cm = self.decaying_mass
+            self.leptonic = True
+        else:
+            self.e_cm = beam_args["e_cm"]
+            self.leptonic = beam_args["leptonic"]
+
+        dynamical_scales = {
+            "transverse_energy": ms.EnergyScale.transverse_energy,
+            "transverse_mass": ms.EnergyScale.transverse_mass,
+            "half_transverse_mass": ms.EnergyScale.half_transverse_mass,
+            "partonic_energy": ms.EnergyScale.partonic_energy,
+        }
+        if beam_args["dynamical_scale_choice"] in dynamical_scales:
+            dynamical_scale_type = dynamical_scales[beam_args["dynamical_scale_choice"]]
+        else:
+            raise ValueError("Unknown dynamical scale choice")
+        self.scale_kwargs = dict(
+            dynamical_scale_type=dynamical_scale_type,
+            ren_scale_fixed=beam_args["fixed_ren_scale"],
+            fact_scale_fixed=beam_args["fixed_fact_scale"],
+            ren_scale=beam_args["ren_scale"],
+            fact_scale1=beam_args["fact_scale1"],
+            fact_scale2=beam_args["fact_scale2"],
+        )
+        if self.is_decay:
+            # One scale is available for a decay -- the decaying mass -- so use
+            # it, fixed, whatever the card asks for.
+            self.scale_kwargs.update(
+                ren_scale_fixed=True,
+                fact_scale_fixed=True,
+                ren_scale=self.decaying_mass,
+                fact_scale1=self.decaying_mass,
+                fact_scale2=self.decaying_mass,
+            )
+            self.pdf_grid = None
+            self.lhapdf = None
+            self.pdf_dir = None
+            self.fixed_alphas_info = self.write_fixed_alphas_info()
+            self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
+            for context in self.contexts:
+                self.alphas_grid.initialize_globals(context)
+            self.running_coupling = ms.RunningCoupling(self.alphas_grid)
+            return
+
+        pdf_set = beam_args["pdf"]
+        self.pdf_set = pdf_set
+        self.fixed_alphas_info = None
+        self.lhapdf = self.ensure_pdf_set(pdf_set)
+        self.pdf_dir = self.lhapdf.find_set(pdf_set)
+        if self.pdf_dir is None:
+            raise RuntimeError(self._no_pdf_message(pdf_set))
+        self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
+        self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
+        for context in self.contexts:
+            self.pdf_grid.initialize_globals(context)
+            self.alphas_grid.initialize_globals(context)
+        self.running_coupling = ms.RunningCoupling(self.alphas_grid)
+
+    # ------------------------------------------------------------------
+    # scale / PDF systematics
+    # ------------------------------------------------------------------
+    def systematics_enabled(self) -> bool:
+        """The native scale/PDF weights are requested ([systematics] enable, or
+        the legacy [generation] systematics alias)."""
+        try:
+            if self.run_card["systematics"]["enable"]:
+                return True
+        except Exception:
+            pass
+        try:
+            return bool(self.run_card["generation"]["systematics"])
+        except Exception:
+            return False
+
+    @staticmethod
+    def pdf_set_info(info_path: str) -> dict:
+        """Read SetIndex, NumMembers, ErrorType and SetDesc from an LHAPDF
+        .info file (missing keys get neutral defaults)."""
+        info = {"SetIndex": 0, "NumMembers": 1, "ErrorType": "", "SetDesc": ""}
+        try:
+            with open(info_path) as f:
+                for line in f:
+                    key, sep, value = line.partition(":")
+                    key = key.strip()
+                    if not sep or key not in info:
+                        continue
+                    value = value.strip().strip('"').strip("'")
+                    if key in ("SetIndex", "NumMembers"):
+                        info[key] = int(value)
+                    else:
+                        info[key] = value
+        except OSError as err:
+            logger.warning("could not read %s: %s", info_path, err)
+        return info
+
+    def resolve_pdf_set_name(self, entry: str) -> tuple[str, int | None]:
+        """Turn a [systematics] pdf entry ("<set>", "<lhaid>", "<set>@<member>",
+        "<lhaid>@<member>") into (set name, member or None) using the LHAPDF
+        pdfsets.index when an id is given."""
+        member = None
+        if "@" in entry:
+            entry, member_str = entry.split("@", 1)
+            member = int(member_str)
+        entry = entry.strip()
+        if not entry.isdigit():
+            return entry, member
+        lhaid = int(entry)
+        index_path = os.path.join(self.pdf_dir or "", "pdfsets.index")
+        sets = []
+        try:
+            with open(index_path) as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[0].isdigit():
+                        sets.append((int(parts[0]), parts[1]))
+        except OSError:
+            raise ValueError(
+                "cannot resolve LHAPDF id %s: no %s" % (lhaid, index_path))
+        for set_id, name in sets:
+            if set_id == lhaid:
+                return name, member
+        # an id inside a set's member range
+        sets.sort()
+        for (set_id, name), (next_id, _) in zip(sets, sets[1:] + [(None, None)]):
+            if set_id < lhaid and (next_id is None or lhaid < next_id):
+                return name, lhaid - set_id if member is None else member
+        raise ValueError("cannot resolve LHAPDF id %s" % lhaid)
+
+    def resolve_pdf_variations(self) -> list:
+        """Expand the [systematics] pdf entries into ms.PdfMemberSpec objects
+        (downloading the sets when needed). The nominal member itself is never
+        listed: the calculator adds it as the central weight of its group."""
+        entries = self.run_card["systematics"]["pdf"]
+        if isinstance(entries, str):
+            entries = [entries]
+        specs = []
+        seen = set()
+        for raw in entries:
+            entry = str(raw).strip()
+            if not entry or entry.lower() in ("none", "no", "false"):
+                continue
+            if entry.lower() == "central":
+                continue
+            if entry.lower() == "errorset":
+                set_name, member = self.pdf_set, None
+            else:
+                set_name, member = self.resolve_pdf_set_name(entry)
+            variation_lhapdf = self.ensure_pdf_set(set_name)
+            variation_dir = variation_lhapdf.find_set(set_name)
+            if variation_dir is None:
+                logger.warning("PDF set %s not available; its variation is skipped", set_name)
+                continue
+            info_path = os.path.join(variation_dir, set_name, f"{set_name}.info")
+            if not os.path.exists(info_path):
+                logger.warning("PDF set %s not available; its variation is skipped", set_name)
+                continue
+            info = self.pdf_set_info(info_path)
+            is_nominal = set_name == self.pdf_set
+            if member is not None:
+                members = [member]
+            else:
+                members = list(range(info["NumMembers"]))
+                if is_nominal:
+                    members = members[1:]
+                    if not members:
+                        logger.warning(
+                            "PDF set %s has a single member: no PDF uncertainty can be "
+                            "computed from it. Use a set with error members in "
+                            "[systematics] pdf (e.g. a PDF4LHC or NNPDF error set).",
+                            set_name)
+            for m in members:
+                if is_nominal and m == 0:
+                    continue
+                if (set_name, m) in seen:
+                    continue
+                seen.add((set_name, m))
+                grid_file = os.path.join(variation_dir, set_name, f"{set_name}_{m:04d}.dat")
+                if not os.path.exists(grid_file):
+                    logger.warning("PDF member file %s not found; skipped", grid_file)
+                    continue
+                specs.append(ms.PdfMemberSpec(
+                    set_name=set_name, set_lhaid=info["SetIndex"], member=m,
+                    grid_file=grid_file, info_file=info_path,
+                    error_type=info["ErrorType"], description=info["SetDesc"],
+                ))
+        return specs
+
+    def build_systematics_args(self) -> list:
+        """One ms.SubprocessSystArgs per (unmerged) subprocess: the alpha_s power
+        of |M|^2 and the beam parton ids of every flavor index, indexed like the
+        LHECompleter (subprocess_index / flavor_index of the combined events)."""
+        args = []
+        for meta in self.subprocess_data:
+            beam_pdgs = [
+                [int(flavor["options"][0][0]), int(flavor["options"][0][1])]
+                for flavor in meta["flavors"]
+            ]
+            args.append(ms.SubprocessSystArgs(
+                qcd_power=int(meta.get("qcd_power", -1)), beam_pdgs=beam_pdgs))
+        return args
+
+    def build_systematics(self):
+        """Create the ms.SystematicsCalculator from the [systematics] section, or
+        None when disabled. Also keeps the JSON description needed by gridpacks."""
+        if not self.systematics_enabled():
+            self.systematics = None
+            return None
+        syst = self.run_card["systematics"]
+        config = ms.SystematicsConfig()
+        config.mur = [float(v) for v in syst["mur"]]
+        config.muf = [float(v) for v in syst["muf"]]
+        config.together = bool(syst["together"])
+        config.dyn_scales = self.resolve_dynamical_scales()
+        config.write_inputs = bool(syst["write_inputs"])
+        config.has_pdf = not self.leptonic
+        # Without parton luminosity -- a decay, or leptonic beams -- there is no
+        # nominal PDF *set* to describe and no PDF variation to compute, so
+        # has_pdf gates the nominal-set metadata and the member list below.
+        # The alpha_s grid is a separate matter: the mu_R variations always need
+        # one, so its .info file has to be recorded whatever has_pdf says.
+        # init_beam() skips the PDF lookup for a decay only -- leptonic beams
+        # still resolve a set and take alpha_s from it -- so the path follows
+        # self.pdf_dir, and falls back to the constant grid written for a decay.
+        if self.pdf_dir is not None:
+            info_path = os.path.join(self.pdf_dir, self.pdf_set, f"{self.pdf_set}.info")
+        else:
+            info_path = self.fixed_alphas_info
+        if config.has_pdf:
+            info = self.pdf_set_info(info_path)
+            config.nominal_set_name = self.pdf_set
+            config.nominal_lhaid = info["SetIndex"]
+            config.nominal_error_type = info["ErrorType"]
+            config.nominal_description = info["SetDesc"]
+            config.pdf_members = self.resolve_pdf_variations()
+        else:
+            config.pdf_members = []
+        args = self.build_systematics_args()
+        # the PDFs, alpha_s and (for mixed-order subprocesses) the matrix
+        # elements are evaluated with the batched madspace functions on this
+        # CPU context
+        self.systematics_context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        matrix_elements, flavor_remap, me_backend = self.build_systematics_matrix_elements(
+            args, self.systematics_context)
+        self.systematics = ms.SystematicsCalculator(
+            config, args, self.pdf_grid, self.alphas_grid,
+            self.systematics_context, matrix_elements, flavor_remap)
+        for warning in self.systematics.warnings:
+            logger.warning("systematics: %s", warning)
+        self.systematics_data = {
+            "config": json.loads(config.to_json()),
+            "subproc_args": [json.loads(a.to_json()) for a in args],
+            "nominal_grid_file": os.path.join(
+                self.pdf_dir, self.pdf_set, f"{self.pdf_set}_0000.dat")
+                if config.has_pdf else None,
+            "nominal_info_file": info_path,
+            # matrix elements re-evaluated for the mixed-order subprocesses
+            "me_paths": [meta["me_path"] for meta in self.subprocess_data],
+            "me_backend": me_backend,
+            "flavor_remap": flavor_remap,
+        }
+        return self.systematics
+
+    _DYN_SCALE_CODES = {
+        "transverse_energy": 1, "transverse_mass": 2,
+        "half_transverse_mass": 3, "partonic_energy": 4,
+    }
+
+    def resolve_dynamical_scales(self) -> list:
+        """[systematics] dynamical_scale entries (names or systematics.py codes
+        1-4) as codes, without the choice the events were generated with."""
+        try:
+            entries = self.run_card["systematics"]["dynamical_scale"]
+        except Exception:
+            return []
+        if isinstance(entries, str):
+            entries = [entries]
+        beam = self.run_card["beam"]
+        generated = None
+        if not (beam["fixed_ren_scale"] and beam["fixed_fact_scale"]):
+            generated = self._DYN_SCALE_CODES.get(beam["dynamical_scale_choice"])
+        codes = []
+        for raw in entries:
+            entry = str(raw).strip().lower()
+            if not entry:
+                continue
+            if entry.isdigit():
+                code = int(entry)
+            elif entry in self._DYN_SCALE_CODES:
+                code = self._DYN_SCALE_CODES[entry]
+            else:
+                raise ValueError("unknown dynamical scale choice %r in [systematics] "
+                                 "dynamical_scale" % raw)
+            if code not in (1, 2, 3, 4):
+                raise ValueError("dynamical scale code %s must be 1-4" % code)
+            if code == generated or code in codes:
+                continue
+            codes.append(code)
+        return codes
+
+    def build_systematics_matrix_elements(self, args, context):
+        """For the subprocesses whose |M|^2 mixes several powers of alpha_s
+        (qcd_power = -1), load the matrix element into the systematics CPU
+        context so that the renormalisation scale variations can re-evaluate it
+        at the varied alpha_s. Returns ([MatrixElement or None per subprocess],
+        flavor remap, backend name); empty when nothing is needed or no CPU
+        library exists."""
+        need = [i for i, a in enumerate(args) if a.qcd_power < 0]
+        empty = ([], [], None)
+        if not need or self.run_card["run"]["dummy_matrix_element"]:
+            return empty
+        cpu_backends = [b for b in self.backends if not b.startswith(("cuda", "hip"))]
+        if not cpu_backends:
+            logger.warning("systematics: no CPU matrix-element library available, the "
+                           "renormalisation scale variations of the mixed-order "
+                           "subprocesses cannot be computed")
+            return empty
+        backend = cpu_backends[0]
+        matrix_elements = []
+        flavor_remap = []
+        for i, meta in enumerate(self.subprocess_data):
+            flavor_remap.append([int(f["index"]) for f in meta["flavors"]])
+            if i not in need:
+                matrix_elements.append(None)
+                continue
+            api = context.load_matrix_element(
+                meta["me_path"].format(device=backend), self.param_card_path)
+            matrix_elements.append(ms.MatrixElement(
+                api,
+                [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                 ms.MatrixElement.flavor_in],
+                [ms.MatrixElement.matrix_element_out],
+                False,
+            ))
+        logger.info("systematics: re-evaluating the matrix element of %d mixed-order "
+                    "subprocess(es) for the renormalisation scale variations", len(need))
+        return matrix_elements, flavor_remap, backend
+
+    def build_event_histograms(self):
+        """ms.EventHistograms for the [histograms] observables, filled with the
+        written events and all their variation weights (info.json
+        "event_histograms"); None without histograms."""
+        if not self.hist_data:
+            self.event_histograms = None
+            return None
+        context = ms.Context(device=ms.cpu_device(), thread_count=1)
+        specs = [
+            ms.EventHistogramSpec(
+                name=item.observable_kwargs["name"], min=item.min, max=item.max,
+                bin_count=item.bin_count)
+            for item in self.hist_data
+        ]
+        observables = []
+        for meta in self.subprocess_data:
+            all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
+            values = ms.ObservableValues([
+                ms.Observable(all_pids, **item.observable_kwargs)
+                for item in self.hist_data
+            ])
+            observables.append(ms.SubprocessObservables(values, len(all_pids)))
+        self.event_histograms_context = context
+        self.event_histograms = ms.EventHistograms(context, specs, observables)
+        return self.event_histograms
+
+    def log_systematics_summary(self) -> None:
+        """Print the scale/PDF uncertainties on the total cross section (the
+        per-variation cross sections are in events.weights.json / info.json)."""
+        if self.systematics is None or self.systematics.weight_count == 0:
+            return
+        summary = json.loads(self.systematics.summary())
+        # the percentages come from systematics_summary, which get_result()
+        # reads too: the box and the scan row must not disagree, so neither
+        # computes them itself
+        xsec = systematics_summary.nominal_cross_section(summary)
+        if xsec is None:
+            return
+        def format_variation(up, down):
+            # right-justify the signed numbers (not the sign alone) so the %
+            # values line up across rows, with extra spacing between the two
+            return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
+
+        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        member_count = len(self.systematics.members)
+        rows = [("Variations per event:",
+                 f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
+        for pdf in summary.get("pdf", []):
+            rows.append(("PDF set:", f"{pdf['pdf_set']}, {pdf['error_type']}"))
+        rows.append(("Original cross-section:", f"{xsec} pb"))
+        scale = systematics_summary.scale_percentages(summary)
+        if scale is not None:
+            rows.append(("Scale variation:", format_variation(*scale)))
+        for _entry, up, down in systematics_summary.pdf_percentages(summary):
+            rows.append(("PDF variation:", format_variation(up, down)))
+        if self.event_generator_config.verbosity == ms.Verbosity.pretty:
+            box = ms.PrettyBox("Systematics", len(rows), [24, 0])
+            box.set_column(0, [label for label, _ in rows])
+            box.set_column(1, [value for _, value in rows])
+            box.print_first()
+        else:
+            for label, value in rows:
+                logger.info("systematics, %s %s", label, value)
+
+    def write_fixed_alphas_info(self) -> str:
+        """Write a minimal LHAPDF ``.info`` holding a constant alpha_s.
+
+        A decay has no beams, so there is no PDF set to take alpha_s from --
+        and demanding one (possibly downloading it) just to evaluate a coupling
+        would be absurd. The renormalisation scale of a decay is fixed at the
+        decaying mass anyway, so a constant alpha_s is the right answer, not an
+        approximation: take it from the param card, exactly as the Fortran
+        decay matrix elements do.
+        """
+        # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
+        # parameter setup feeds to G.
+        alpha_s = float(self.param_card.get_value("sminputs", 3))
+        path = os.path.join(self.run_path, "fixed_alphas.info")
+        # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
+        # comfortable number of nodes rather than the bare minimum of three.
+        q_values = [10 ** (i / 4.0) for i in range(-4, 21)]
+        with open(path, "w") as f:
+            f.write("SetDesc: constant alpha_s for a decay (no beams)\n")
+            f.write("AlphaS_Qs: [%s]\n" % ", ".join(f"{q:g}" for q in q_values))
+            f.write(
+                "AlphaS_Vals: [%s]\n"
+                % ", ".join(f"{alpha_s:g}" for _ in q_values)
+            )
+        logger.info(
+            "decay mode: fixed alpha_s = %g at mu = %g GeV", alpha_s, self.e_cm
+        )
+        return path
+
+    def needs_systematics_matrix_elements(self) -> bool:
+        """The systematics will re-evaluate a matrix element per scale point.
+
+        True when the native weights are on and some subprocess mixes alpha_s
+        powers (qcd_power < 0), i.e. when build_systematics_matrix_elements()
+        loads a matrix element. Conservative: it does not check that a CPU
+        backend exists, so it can be True where that call ends up loading
+        nothing.
+        """
+        if not self.systematics_enabled():
+            return False
+        if self.run_card["run"]["dummy_matrix_element"]:
+            return False
+        return any(int(meta.get("qcd_power", -1)) < 0
+                   for meta in self.subprocess_data)
+
+    def init_generator_config(self) -> None:
+        run_args = self.run_card["run"]
+        gen_args = self.run_card["generation"]
+        vegas_args = self.run_card["vegas"]
+        cfg = ms.GeneratorConfig()
+        cfg.target_count = gen_args["events"]
+        cfg.vegas_damping = vegas_args["damping"]
+        cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
+        cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
+        cfg.start_batch_size = vegas_args["start_batch_size"]
+        cfg.max_batch_size = vegas_args["max_batch_size"]
+        cfg.survey_min_iters = gen_args["survey_min_iters"]
+        cfg.survey_max_iters = gen_args["survey_max_iters"]
+        cfg.survey_target_precision = gen_args["survey_target_precision"]
+        cfg.optimization_patience = vegas_args["optimization_patience"]
+        cfg.optimization_threshold = vegas_args["optimization_threshold"]
+        cfg.cpu_batch_size = gen_args["cpu_batch_size"]
+        cfg.gpu_batch_size = gen_args["gpu_batch_size"]
+        cfg.verbosity = resolve_verbosity(run_args["verbosity"])
+        cfg.combine_thread_count = run_args["combine_thread_pool_size"]
+        if self.needs_systematics_matrix_elements() and cfg.combine_thread_count != 1:
+            # SystematicsCalculator::compute() runs inside the combine workers,
+            # and a matrix element's per-thread process instances live in a
+            # ThreadResource indexed by ThreadPool::thread_index() -- the
+            # *calling* thread's index. A parallel combine pool would therefore
+            # need one process instance per worker; building N of them to index
+            # them safely is not worth it, the more so as
+            # SystematicsCalculator::matrix_elements() already serialises every
+            # evaluation on its own mutex, so that parallelism was not being
+            # used anyway. Run the combine stage single-threaded instead.
+            logger.info(
+                "systematics: the combine stage runs single-threaded because a "
+                "subprocess needs its matrix element re-evaluated for the "
+                "renormalisation scale variations")
+            cfg.combine_thread_count = 1
+        cfg.cut_efficiency_threshold = gen_args["cut_efficiency_threshold"]
+        cfg.max_cut_repetitions = gen_args["max_cut_repetitions"]
+        self.event_generator_config = cfg
+        self.event_generator = None
+
+    def init_subprocesses(self) -> None:
+        self.backends = self.compile_matrix_elements()
+        self.subprocesses = []
+        if self.merged_subprocess_data is None:
+            for subproc_id, meta in enumerate(self.subprocess_data):
+                self.subprocesses.append(MadgraphSubprocess(self, meta, subproc_id))
+        else:
+            for subproc_id, meta in enumerate(self.merged_subprocess_data):
+                self.subprocesses.append(
+                    MadgraphSubprocess(self, meta, subproc_id, self.subprocess_data)
+                )
+
+    def compile_matrix_elements(self) -> list[str]:
+        """Build the matrix-element library of every subprocess, and return the
+        build backend of each requested device (in the same order).
+
+        A 'cpu' device builds the backend named by the 'cpu_mode' entry; the
+        cuda/hip devices ignore cpu_mode and build their own backend. A
+        cpu_mode of 'auto' is resolved to the actual SIMD backend chosen on
+        this machine.
+
+        SubProcesses/makefile is a dispatcher over the P* directories, so a
+        single 'make -j N' there builds all the subprocesses at once with one
+        shared pool of N jobs: no subprocess is built with N jobs while the
+        others wait, and none is limited to N/#subprocesses jobs either.
+        """
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        cpu_mode = self.run_card["run"]["cpu_mode"]
+        backends = [backend_of(name, cpu_mode) for name in device_names]
+        if not self.subprocess_data:
+            return backends
+
+        first_proc_path = self.subprocess_data[0]["path"]
+        subproc_path = os.path.dirname(first_proc_path)
+
+        fptype = fptype_of(self.run_card["run"]["precision"])
+
+        # Resolve cpu_mode='auto' once (the build rules pick the best SIMD
+        # backend available here), so all subprocesses agree on the library names.
+        auto_backend = None
+        if "auto" in backends:
+            auto_backend = resolve_auto_backend(first_proc_path)
+            logger.info("cpu_mode 'auto' resolved as '%s'", auto_backend)
+        resolved = [
+            auto_backend if backend == "auto" else backend
+            for backend in backends
+        ]
+
+        nb_core = self.run_card["run"]["cpu_thread_pool_size"]
+        if not nb_core or nb_core < 0:
+            nb_core = os.cpu_count() or 1
+
+        log_path = os.path.join(self.run_path, "compile_subprocesses.log")
+        for backend in resolved:
+            missing = [
+                meta for meta in self.subprocess_data
+                if not os.path.isfile(meta["me_path"].format(device=backend))
+            ]
+            if not missing:
+                continue
+            logger.info(
+                f"Start compilation of SubProcesses for device '{backend}' "
+                f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
+                f"see log detail in {log_path}"
+            )
+            start_time = time.time()
+            self.make_subprocesses(
+                subproc_path,
+                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
+                nb_core, log_path,
+            )
+            logger.info(
+                f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
+            )
+        return resolved
+
+    @staticmethod
+    def make_subprocesses(
+        subproc_path: str, args: list[str], nb_core: int, log_path: str
+    ) -> None:
+        """Run 'make -j nb_core' in SubProcesses/, appending the full build
+        output to log_path (one run per device, so the file is appended to)."""
+        command = ["make", f"-j{nb_core}"] + args
+        with open(log_path, "a") as log:
+            log.write(f"\n$ cd {subproc_path} && {' '.join(command)}\n")
+            log.flush()
+            returncode = subprocess.call(
+                command, cwd=subproc_path, stdout=log, stderr=subprocess.STDOUT
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"Compilation of the SubProcesses failed with exit status "
+                f"{returncode}; see {log_path} for details"
+            )
+
+    def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
+        channel_generators = []
+        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
+            for integrand, channel in zip(
+                subproc.build_integrands(phasespace), phasespace.channels
+            ):
+                if channel.event_generator is None:
+                    channel.event_generator = ms.ChannelEventGenerator(
+                        contexts=self.contexts,
+                        integrand=integrand,
+                        event_file=os.path.join(self.run_path, f"events.{i}.{channel.name}.npy"),
+                        weight_file=os.path.join(self.run_path, f"weights.{i}.{channel.name}.npy"),
+                        config=self.event_generator_config,
+                        subprocess_index=i,
+                        name=f"{i}.{channel.name}",
+                        histograms=subproc.histograms
+                    )
+                channel_generators.append(channel.event_generator)
+
+        event_generator = ms.EventGenerator(
+            contexts=self.contexts,
+            channels=channel_generators,
+            status_file=self.status_file,
+            config=self.event_generator_config,
+            seed=self.run_seed,
+        )
+        unused_globals = (
+            set(self.contexts[0].global_names()) - event_generator.used_globals()
+        )
+        for context in self.contexts:
+            for global_name in unused_globals:
+                context.delete_global(global_name)
+        return event_generator
+
+    def survey_phasespaces(
+        self, phasespaces: list[PhaseSpace | None], survey_pass: int = 0
+    ) -> ms.EventGenerator | None:
+        ps_filtered = [ps for ps in phasespaces if ps is not None]
+        if len(ps_filtered) == 0:
+            return None
+        event_generator = self.build_event_generator(ps_filtered)
+        event_generator.survey(survey_pass)
+        return event_generator
+
+    def survey(self) -> None:
+        # survey_pass distinguishes the survey() calls below: "both" mode can
+        # re-survey a channel carried over unchanged from the multichannel pass
+        # into the final (simplified) pass, and both passes schedule jobs on the
+        # same underlying ChannelEventGenerator. The explicit pass index keeps each
+        # pass's job seeds independent of the other passes' job counts, rather than
+        # depending on call history.
+        phasespace_mode = self.run_card["phasespace"]["mode"]
+        if self.is_decay and phasespace_mode != "multichannel":
+            # The flat mapping is built from a synthetic two-incoming diagram,
+            # which a decay has no counterpart for -- and 'both'/'auto' end up
+            # simplifying towards it. Decays have few channels, so the
+            # multichannel phase space is the right one regardless.
+            logger.info(
+                "decay mode: using the multichannel phase space instead of "
+                "'%s'", phasespace_mode
+            )
+            phasespace_mode = "multichannel"
+        if phasespace_mode in ["multichannel", "both", "auto"]:
+            self.phasespaces = [
+                subproc.build_multichannel_phasespace()
+                for subproc in self.subprocesses
+            ]
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
+        elif phasespace_mode == "flat":
+            self.phasespaces = [
+                subproc.build_flat_phasespace()
+                for subproc in self.subprocesses
+            ]
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 0)
+        else:
+            raise ValueError("Unknown phasespace mode")
+
+        channel_status = self.event_generator.channel_status()
+        chan_offset = 0
+        madnis_enabled = False
+        for subproc, ps in zip(self.subprocesses, self.phasespaces):
+            mean = 0.
+            variance = 0.
+            count_opt = 0
+            for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
+                mean += status.mean_abs
+                variance += status.error_abs**2
+                count_opt += status.count_opt
+            # A subprocess whose matrix element is identically zero (an FCNC
+            # channel with every Wilson coefficient at zero, say) integrates to
+            # exactly zero, so there is no relative spread to speak of. Report 0
+            # rather than dividing by it: that asks for the smallest networks and
+            # leaves MadNIS off, which is what an empty subprocess wants.
+            rsd = (variance * count_opt)**0.5 / mean if mean else 0.
+            subproc.set_madnis_auto_settings(rsd)
+            chan_offset += len(ps.channels)
+            if subproc.madnis_settings["enable"]:
+                madnis_enabled = True
+        if not (
+            phasespace_mode == "both" or (phasespace_mode == "auto" and madnis_enabled)
+        ):
+            return
+
+        phasespaces_multi = self.phasespaces
+        cross_sections = []
+        index = 0
+        for phasespace in phasespaces_multi:
+            channel_count = len(phasespace.channels)
+            cross_sections.append([
+                abs(status.mean)
+                for status in channel_status[index:index + channel_count]
+            ])
+            index += channel_count
+
+        self.phasespaces = [
+            subproc.simplify_phasespace(ps_multi, cross_secs)
+            for subproc, ps_multi, cross_secs in zip(
+                self.subprocesses, phasespaces_multi, cross_sections
+            )
+        ]
+        if any(
+            ps_multi is not ps_both
+            for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
+        ):
+            # distinct survey_pass: a channel carried over unchanged from the
+            # multichannel pass (pass 0) into this resurvey must not share its
+            # seed stream with that earlier pass.
+            self.event_generator = self.survey_phasespaces(self.phasespaces, 1)
+
+    def train_madnis(self) -> None:
+        madnis_args = self.run_card["madnis"]
+        if not any(subproc.madnis_settings["enable"] for subproc in self.subprocesses):
+            return
+
+        gen_args = self.run_card["generation"]
+        run_args = self.run_card["run"]
+
+        verbosity = resolve_verbosity(run_args["verbosity"])
+        madnis_phasespaces = []
+        training_args = []
+        self.event_generator = None
+        for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            for channel in phasespace.channels:
+                channel.event_generator = None
+
+            config = ms.MadnisConfig()
+            config.learning_rate = subproc.madnis_settings["lr"]
+            config.batches = subproc.madnis_settings["train_batches"]
+            config.log_interval = madnis_args["log_interval"]
+            config.integration_history_length = madnis_args["integration_history_length"]
+            config.channel_dropping_interval = madnis_args["channel_dropping_interval"]
+            config.channel_dropping_threshold = madnis_args["channel_dropping_threshold"]
+            config.cpu_generator_batch_size = gen_args["cpu_batch_size"]
+            config.gpu_generator_batch_size = gen_args["gpu_batch_size"]
+            config.gpu_generator_batch_granularity = madnis_args["gpu_generator_batch_granularity"]
+            config.generator_target_size_factor = madnis_args["generator_target_size_factor"]
+            config.batch_size_offset = madnis_args["batch_size_offset"]
+            config.batch_size_per_channel = subproc.madnis_settings["batch_size_per_channel"]
+            config.uniform_channel_ratio = madnis_args["uniform_channel_ratio"]
+            config.lr_schedule = madnis_args["lr_scheduler"]
+            config.adam_beta1 = madnis_args["adam_beta1"]
+            config.adam_beta2 = madnis_args["adam_beta2"]
+            config.adam_eps = madnis_args["adam_eps"]
+            config.adam_weight_decay = madnis_args["adam_weight_decay"]
+            config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
+            config.buffer_capacity = madnis_args["buffer_capacity"]
+            config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
+            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
+            config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
+            config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
+            config.softclip_threshold = madnis_args["softclip_threshold"]
+            config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
+            phasespace = subproc.build_madnis(phasespace)
+            madnis_phasespaces.append(phasespace)
+            training_args.append(
+                ms.TrainingArgs(
+                    config=config,
+                    integrands=subproc.build_integrands(
+                        phasespace,
+                        madnis_training=True,
+                        drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
+                    ),
+                    cwnet=phasespace.cwnet,
+                )
+            )
+
+        gen_context = self.contexts[0]
+        opt_context = ms.Context(
+            device=self.devices[0], thread_count=self.pool_sizes[0]
+        )
+        opt_context.copy_globals_from(gen_context)
+
+        madnis_training = ms.MultiMadnisTraining(
+            generator_context=gen_context,
+            optimizer_context=opt_context,
+            training_args=training_args,
+            verbosity=verbosity,
+            status_file=self.status_file,
+            # Reuses the run's resolved seed (also used by build_event_generator()).
+            # Only the single-channel CPU sample-generation path is currently seeded
+            # -- buffered training and GPU multi-channel batches are still
+            # non-deterministic.
+            seed=self.run_seed,
+        )
+        madnis_training.train()
+        for phasespace, active_channels in zip(
+            madnis_phasespaces, madnis_training.active_channels()
+        ):
+            phasespace.channels = [
+                phasespace.channels[index] for index in active_channels
+            ]
+        del madnis_training
+        del opt_context
+        self.phasespaces = madnis_phasespaces
+        for context in self.contexts[1:]:
+            context.copy_globals_from(self.contexts[0])
+        self.event_generator = self.build_event_generator(madnis_phasespaces)
+
+    def update_madnis_status_single(
+        self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
+    ) -> None:
+        now = time.time()
+        if batch + 1 < batch_target:
+            if now - self.last_update_time < 0.1:
+                return
+            self.last_update_time = now
+            progress_bar = ms.format_progress((batch + 1) / batch_target, 52)
+            time_diff = now - self.madnis_wall_time
+            time_str = f"{format_time(time_diff)}"
+        else:
+            progress_bar = ""
+            wall_diff = now - self.madnis_wall_time
+            cpu_diff = time.process_time() - self.madnis_cpu_time
+            time_str = (
+                f"{format_time(wall_diff, centi=True)} wall, "
+                f"{format_time(cpu_diff, centi=True)} cpu"
+            )
+        batch_str = f"{batch + 1} / {batch_target}"
+        self.madnis_box.set_column(1, [
+            f"{batch_str:<15} {progress_bar}",
+            f"{loss:>.4f}",
+            f"{channel_count}",
+            time_str
+        ])
+        self.madnis_box.print_update()
+
+    def update_madnis_status_multi(
+        self,
+        subproc_id: int,
+        batch: int,
+        batch_target: int,
+        loss: float,
+        lr: float,
+        channel_count: int
+    ) -> None:
+        now = time.time()
+        subproc_count = len(self.subprocesses)
+        if batch + 1 < batch_target:
+            if now - self.last_update_time < 0.1:
+                return
+            self.last_update_time = now
+            progress_bar = ms.format_progress((batch + 1) / batch_target, 34)
+            progress_bar_all = ms.format_progress(
+                (subproc_id * batch_target + batch + 1) / (subproc_count * batch_target),
+                52
+            )
+            time_str = f"{format_time(now - self.madnis_wall_time)}"
+            subproc_str = f"{subproc_id} / {subproc_count}"
+        elif subproc_id < subproc_count - 1:
+            progress_bar = ""
+            progress_bar_all = ms.format_progress(
+                ((subproc_id + 1) * batch_target + 1) / (subproc_count * batch_target),
+                52
+            )
+            time_str = f"{format_time(now - self.madnis_wall_time)}"
+            subproc_str = f"{subproc_id} / {subproc_count}"
+        else:
+            progress_bar = ""
+            progress_bar_all = ""
+            wall_diff = now - self.madnis_wall_time
+            cpu_diff = time.process_time() - self.madnis_cpu_time
+            time_str = (
+                f"{format_time(wall_diff, centi=True)} wall, "
+                f"{format_time(cpu_diff, centi=True)} cpu"
+            )
+            subproc_str = f"{subproc_count} / {subproc_count}"
+        batch_str = f"{batch + 1} / {batch_target}"
+        self.madnis_upper_box.set_column(1, [
+            f"{subproc_str:<15} {progress_bar_all}",
+            time_str,
+        ])
+        self.madnis_lower_box.set_row(subproc_id + 1, [
+            f"{subproc_id}",
+            f"{loss:>.4f}",
+            f"{channel_count}",
+            f"{batch_str:<15} {progress_bar}",
+        ])
+        self.madnis_upper_box.print_update()
+        self.madnis_lower_box.print_update()
+
+    def generate_events(self) -> None:
+        start_time = get_start_time()
+        self.event_generator.generate()
+        output_format = self.run_card["run"]["output_format"]
+        systematics = self.build_systematics()
+        histograms = self.build_event_histograms()
+        if output_format == "compact_npy":
+            self.lhe_completer = None
+            self.event_generator.combine_to_compact_npy(
+                os.path.join(self.run_path, "events.npy"), systematics, histograms
+            )
+        elif output_format == "lhe_npy":
+            self.lhe_completer = self.build_lhe_completer()
+            self.event_generator.combine_to_lhe_npy(
+                os.path.join(self.run_path, "events.npy"), self.lhe_completer,
+                systematics, histograms
+            )
+        elif output_format == "lhe":
+            self.lhe_completer = self.build_lhe_completer()
+            lhe_path = os.path.join(self.run_path, "events.lhe")
+            self.event_generator.combine_to_lhe(
+                lhe_path, self.lhe_completer,
+                self.build_lhe_meta(), systematics, histograms
+            )
+            # Ship the LHE compressed by default. These files are large and
+            # very compressible, madevent has always stored its events
+            # gzipped, and every consumer here already accepts either form
+            # (see _find_event_file). misc.gzip replaces events.lhe with
+            # events.lhe.gz, and switches to an external multithreaded tool
+            # above 256 MB.
+            misc.gzip(lhe_path)
+        else:
+            raise ValueError("Unknown output format")
+        if systematics is not None:
+            self.write_systematics_sidecar()
+            self.log_systematics_summary()
+        self.save_gridpack()
+
+    def write_systematics_sidecar(self) -> None:
+        """Describe the variation weights next to the event file
+        (events.weights.json): ids, scale factors, PDF set/member and the
+        <initrwgt> text, so npy consumers get the same metadata as the LHE
+        header, plus the per-variation cross sections."""
+        if self.systematics is None:
+            return
+        data = json.loads(self.systematics.summary())
+        data["initrwgt"] = self.systematics.initrwgt()
+        data["columns"] = ["rwgt_%d" % i for i in self.systematics.weight_ids]
+        with open(os.path.join(self.run_path, "events.weights.json"), "w") as f:
+            json.dump(data, f, indent=1)
+
+    @staticmethod
+    def _histogram_mean(hist):
+        """Cross-section-weighted mean of a histogrammed observable."""
+        values = list(hist.bin_values)
+        n = len(values)
+        total = sum(values)
+        if n == 0 or total == 0:
+            return None
+        width = (hist.max - hist.min) / n
+        return sum(v * (hist.min + (i + 0.5) * width)
+                   for i, v in enumerate(values)) / total
+
+    def get_result(self) -> dict:
+        """Return the run result: cross-section (pb) with MC error, the number
+        of (unweighted) events, and the mean of every observable declared in the
+        [histograms] section. Used to build the scan summary."""
+        status = self.event_generator.status()
+        result = {'cross(pb)': status.mean, 'error(pb)': status.error,
+                  'nb_event': status.count_unweighted}
+        try:
+            if self.systematics is not None and self.systematics.weight_count:
+                summary = json.loads(self.systematics.summary())
+                scale = systematics_summary.scale_percentages(summary)
+                if scale is not None:
+                    result['scale_up(%)'], result['scale_down(%)'] = scale
+                pdf = systematics_summary.pdf_percentages(summary)
+                if pdf:
+                    # one column pair; the nominal set's entry comes first
+                    _entry, up, down = pdf[0]
+                    result['pdf_up(%)'], result['pdf_down(%)'] = up, down
+        except Exception as err:
+            logger.warning("could not extract the systematics summary: %s", err)
+        try:
+            for hist in self.event_generator.histograms():
+                mean = self._histogram_mean(hist)
+                if mean is not None:
+                    result['<%s>' % hist.name] = mean
+        except Exception as err:
+            logger.warning("could not extract observable means: %s", err)
+        return result
+
+    def _beam_info(self):
+        """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
+
+        `incoming` holds the *partonic* initial state (e.g. gluons), not the
+        beam particle, so hadronic beams are protons (2212); leptonic beams are
+        the incoming leptons themselves."""
+        half_e = float(self.e_cm) / 2.
+        if self.is_decay:
+            # No beams. LHE has no way to say that, so report the decaying
+            # particle at rest as a single "beam"; the second slot is empty.
+            data = self.subprocess_data[0]
+            pdg = clean_pids(data["incoming"])[0]
+            return [pdg, 0], [float(self.e_cm), 0.0]
+        if not self.leptonic:
+            # hadronic collider: proton beams (p-pbar is not distinguished)
+            return [2212, 2212], [half_e, half_e]
+        data = self.subprocess_data[0]
+        incoming = data["incoming"]
+        flavor0 = data["flavors"][0]["options"][0]
+        init_pdgs = flavor0[:len(incoming)]
+        beam_pdgs = [pdg if abs(code) in (81, 82) else code
+                     for code, pdg in zip(incoming, init_pdgs)]
+        return beam_pdgs, [half_e, half_e]
+
+    def _lhapdf_id(self):
+        """Central LHAPDF id of the beam PDF set (read from its .info SetIndex),
+        or -1 for a leptonic beam (no PDF)."""
+        if self.leptonic or not self.pdf_dir:
+            return -1
+        pdf_set = self.run_card["beam"]["pdf"]
+        info = os.path.join(self.pdf_dir, pdf_set, "%s.info" % pdf_set)
+        try:
+            for line in open(info):
+                if line.strip().startswith("SetIndex:"):
+                    return int(line.split(":", 1)[1].strip())
+        except Exception as err:
+            logger.warning("could not read LHAPDF id from %s: %s", info, err)
+        return -1
+
+    def build_lhe_meta(self):
+        """Build the LHE header/<init> metadata: the param_card (<slha>) and the
+        run_card.toml (<MG7RunCard>) headers plus the beam/PDF/cross-section info
+        needed by downstream tools (systematics, MadSpin, ...)."""
+        beam_pdgs, energies = self._beam_info()
+        lhaid = self._lhapdf_id()
+        pdf_group = -1 if self.leptonic else 0
+        status = self.event_generator.status()
+        xsec, err = status.mean, status.error
+        with open(self.param_card_path) as f:
+            param_text = f.read()
+        with open(os.path.join("Cards", "run_card.toml")) as f:
+            run_text = f.read()
+        headers = []
+        # generation commands (model + process): read by MadSpin/reweight/...
+        proc_card = os.path.join("Cards", "proc_card_mg5.dat")
+        if os.path.exists(proc_card):
+            with open(proc_card) as f:
+                headers.append(ms.LHEHeader(name="MG5ProcCard", content=f.read()))
+        headers.append(ms.LHEHeader(name="slha", content=param_text))
+        headers.append(ms.LHEHeader(name="MG7RunCard", content=run_text))
+        # The resolved seed (even when the run_card requested a random one via
+        # seed = -1), so the run can be reproduced from the LHE file alone.
+        headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
+        return ms.LHEMeta(
+            beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
+            beam1_energy=energies[0], beam2_energy=energies[1],
+            beam1_pdf_authors=pdf_group, beam2_pdf_authors=pdf_group,
+            beam1_pdf_id=lhaid, beam2_pdf_id=lhaid,
+            weight_mode=3,
+            # positional: the pybind arg name for max_weight is non-kwarg-safe
+            processes=[ms.LHEProcess(xsec, err, xsec, 1)],
+            headers=headers,
+        )
+
+    def build_lhe_completer(self):
+        all_mcdata = (
+            [subproc.build_multi_channel_data() for subproc in self.subprocesses]
+            if self.merged_subprocess_data is None else
+            [build_multi_channel_data(meta, self) for meta in self.subprocess_data]
+        )
+        subproc_args = [
+            ms.SubprocArgs(
+                topologies = [topo[0] for topo in mcdata.topologies],
+                permutations = mcdata.permutations,
+                diagram_indices = mcdata.diagram_indices,
+                diagram_color_indices = mcdata.diagram_color_indices,
+                diagram_propagator_pdgs = mcdata.diagram_propagator_pdgs,
+                color_flows = meta["color_flows"],
+                pdg_color_types = {
+                    int(key): value
+                    for key, value in meta["pdg_color_types"].items()
+                },
+                helicities = meta["helicities"],
+                pdg_ids = [flavor["options"] for flavor in meta["flavors"]],
+            )
+            for mcdata, meta in zip(all_mcdata, self.subprocess_data)
+        ]
+        return ms.LHECompleter(
+            subproc_args=subproc_args,
+            bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
+        )
+
+    def save_gridpack(self) -> None:
+        if not self.run_card["gridpack"]["save_gridpack"]:
+            return
+
+        gridpack_path = os.path.join(self.run_path, "gridpack")
+        data_path = os.path.join(gridpack_path, "data")
+        events_path = os.path.join(gridpack_path, "Events")
+        os.mkdir(gridpack_path)
+        os.mkdir(data_path)
+        os.mkdir(events_path)
+        self.contexts[0].save_globals(os.path.join(data_path, "globals"))
+
+        channel_path = os.path.join(data_path, "channels")
+        os.mkdir(channel_path)
+        channel_files = {}
+        for channel in self.event_generator.channels():
+            name = channel.status().name
+            file = f"channel{name}.json"
+            channel_files[name] = file
+            channel.save(os.path.join(channel_path, file))
+
+        lib_path = os.path.join(gridpack_path, "lib")
+        if self.run_card["gridpack"]["include_source"]:
+            os.mkdir(lib_path)
+            shutil.copytree("src", os.path.join(gridpack_path, "src"))
+            shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
+        else:
+            shutil.copytree("lib", lib_path)
+
+        if self.run_card["gridpack"]["include_madspace_source"]:
+            shutil.copytree(
+                _MADSPACE_DIR,
+                os.path.join(gridpack_path, "madspace"),
+                ignore=shutil.ignore_patterns("build", "install"),
+            )
+
+        if self.run_card["gridpack"]["include_madspace"]:
+            shutil.copytree(
+                _INSTALL_DIR / "madspace",
+                os.path.join(gridpack_path, "madspace", "install", "madspace"),
+            )
+
+        matrix_elements = []
+        for subproc in self.subprocess_data:
+            me_path = subproc["me_path"]
+            matrix_elements.append(me_path)
+
+        cards_path = os.path.join(gridpack_path, "Cards")
+        os.mkdir(cards_path)
+        shutil.copy(os.path.join("Cards", "param_card.dat"), cards_path)
+        # Full run card with a header noting it is read-only in gridpack context.
+        import io as _io
+        _buf = _io.StringIO()
+        self.run_card.write(_buf)
+        _header = (
+            "# This is the run card used to generate this gridpack.\n"
+            "# Modifying this file will have no effect on gridpack execution.\n"
+            "# To change event-generation settings, edit grid_run_card.toml.\n\n"
+        )
+        with open(os.path.join(cards_path, "run_card.toml"), 'w') as _f:
+            _f.write(_header + _buf.getvalue())
+        # Minimal card containing only the settings used by generate_events.
+        # The gridpack ships the libraries that were actually built, and their
+        # names carry the resolved backend, so the card it runs from has to name
+        # that backend as well: a cpu_mode of 'auto' would send the gridpack
+        # looking for a ..._auto.so that was never built. The full run_card.toml
+        # written just above keeps 'auto', since that is what was asked for.
+        device_names = self.run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        resolved_cpu_mode = None
+        for name, backend in zip(device_names, getattr(self, "backends", [])):
+            if name.split(":")[0] == "cpu":
+                resolved_cpu_mode = backend
+                break
+        previous_cpu_mode = self.run_card["run"]["cpu_mode"]
+        if resolved_cpu_mode is not None:
+            self.run_card["run"]["cpu_mode"] = resolved_cpu_mode
+        try:
+            self.run_card.write_gridpack_card(
+                os.path.join(cards_path, "grid_run_card.toml"))
+        finally:
+            self.run_card["run"]["cpu_mode"] = previous_cpu_mode
+
+        bin_path = os.path.join(gridpack_path, "bin")
+        os.mkdir(bin_path)
+        gen_events_file = os.path.join(bin_path, "generate_events")
+        shutil.copy(
+            os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
+        )
+        os.chmod(gen_events_file, 0o755)
+
+        data = {
+            "channels": channel_files,
+            "matrix_elements": matrix_elements,
+            "source_hash": ms.SOURCE_HASH,
+        }
+        with open(os.path.join(data_path, "data.json"), "w") as f:
+            json.dump(data, f)
+
+        if self.lhe_completer is None:
+            self.lhe_completer = self.build_lhe_completer()
+        self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
+        if self.systematics_data is not None:
+            systematics_data = dict(self.systematics_data)
+            # A decay takes alpha_s from a constant grid written into the run
+            # directory rather than from an LHAPDF set, so the gridpack cannot
+            # look that file up: ship it and point at the shipped copy.
+            if self.fixed_alphas_info and \
+                    systematics_data["nominal_info_file"] == self.fixed_alphas_info:
+                name = os.path.basename(self.fixed_alphas_info)
+                shutil.copy(self.fixed_alphas_info, os.path.join(data_path, name))
+                systematics_data["nominal_info_file"] = os.path.join("data", name)
+            with open(os.path.join(data_path, "systematics.json"), "w") as f:
+                json.dump(systematics_data, f)
+
+    def get_mass(self, pid: int) -> float:
+        return self.param_card.get_value("mass", pid)
+
+    def get_width(self, pid: int) -> float:
+        return self.param_card.get_value("width", pid)
+
+
+# Flavor-merged legs carry a group id instead of a pdg. Every member of a group
+# shares the same mass -- that is what makes them mergeable -- so any member is
+# a valid representative for the kinematics.
+_MERGED_PID_REPRESENTATIVE = {
+    81: 1,   # light quarks   d u s c
+    82: 11,  # charged leptons e mu
+    83: 12,  # neutrinos      ve vm vt
+}
+
+
+def clean_pids(pids: list[int]) -> list[int]:
+    pids_out = []
+    for pid in pids:
+        pid = abs(pid)
+        if pid in _MERGED_PID_REPRESENTATIVE:
+            pid = _MERGED_PID_REPRESENTATIVE[pid]
+        elif 81 <= pid <= 99:
+            # Reserved for flavor merging. Anything outside this window is a
+            # real pdg (BSM models use codes in the millions), so let it pass.
+            raise ValueError(
+                f"unknown flavor-merged particle id {pid}; add its "
+                "representative to _MERGED_PID_REPRESENTATIVE"
+            )
+        pids_out.append(pid)
+    return pids_out
+
+
+def pid_is_qcd(pid: int):
+    return abs(pid) in [21, 1, 2, 3, 4, 5, 6, 81]
+
+
+def build_topologies(
+    incoming_masses: list[float],
+    outgoing_masses: list[float],
+    channel: dict,
+    process: MadgraphProcess
+) -> list[ms.Topology]:
+    propagators = []
+    for i, (pid, signed_pid) in enumerate(zip(
+        clean_pids(channel["propagators"]), channel["propagators"]
+    )):
+        mass = process.get_mass(pid)
+        width = process.get_width(pid)
+        if i in channel["on_shell_propagators"]:
+            bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
+            e_min = mass - bw_cutoff * width
+            e_max = mass + bw_cutoff * width
+        else:
+            e_min = 0
+            e_max = 0
+        propagators.append(ms.Propagator(
+            mass=mass,
+            width=width,
+            integration_order=0,
+            e_min=e_min,
+            e_max=e_max,
+            pdg_id=signed_pid,
+        ))
+    vertices = channel["vertices"]
+    diag = ms.Diagram(
+        incoming_masses, outgoing_masses, propagators, vertices
+    )
+    return ms.Topology.topologies(diag)
+
+
+def build_multi_channel_data(
+    meta: dict, process: MadgraphProcess, unmerged_meta: dict | None = None
+) -> MultiChannelData:
+    incoming_masses = [
+        process.get_mass(pid) for pid in clean_pids(meta["incoming"])
+    ]
+    outgoing_masses = [
+        process.get_mass(pid) for pid in clean_pids(meta["outgoing"])
+    ]
+
+    if unmerged_meta is None:
+        diagram_count = meta["diagram_count"]
+        amp2_remaps = [[-1] * diagram_count]
+    else:
+        amp2_remaps = [
+            [-1] * unmerged_meta[subproc]["diagram_count"]
+            for subproc in meta["subprocesses"]
+        ]
+    symfact = []
+    topologies = []
+    permutations = []
+    channel_indices = []
+    channel_weight_indices = []
+    diagram_indices = []
+    diagram_color_indices = []
+    diagram_propagator_pdgs = []
+    active_flavors = []
+    channel_index = 0
+    qcd_s_channel_count = []
+
+    for channel in meta["channels"]:
+        if unmerged_meta is None:
+            topo_channel = channel
+        else:
+            topo_subproc = channel["subprocess"]
+            topo_channel_index = channel["channel"]
+            topo_channel = unmerged_meta[topo_subproc]["channels"][topo_channel_index]
+        chan_topologies = build_topologies(
+            incoming_masses, outgoing_masses, topo_channel, process
+        )
+        topo_count = len(chan_topologies)
+        if topo_count == 0:
+            continue
+
+        topo = chan_topologies[0]
+        s_chan_count = [0] * len(topo.decays)
+        non_qcd = [False] * len(topo.decays)
+        pdg_ids = [decay.pdg_id for decay in topo.decays]
+        for i, pid in zip(topo.outgoing_indices, meta["outgoing"]):
+            pdg_ids[i] = pid
+        for decay in reversed(topo.decays):
+            if len(decay.child_indices) == 0:
+                continue
+            if decay.index == 0 and topo.t_propagator_count > 0:
+                s_chan_count[0] = sum(s_chan_count[i] for i in decay.child_indices)
+                break
+
+            is_qcd = pid_is_qcd(pdg_ids[decay.index]) and all(
+                pid_is_qcd(pdg_ids[i]) for i in decay.child_indices
+            )
+            is_non_qcd = decay.on_shell or not is_qcd or any(
+                non_qcd[i] for i in decay.child_indices
+            )
+            non_qcd[decay.index] = is_non_qcd
+            s_chan_count[decay.index] = (
+                0 if is_non_qcd else sum(s_chan_count[i] for i in decay.child_indices) + 1
+            )
+        qcd_s_channel_count.append(s_chan_count[0])
+
+        diagrams = channel["diagrams"]
+        chan_permutations = [d["permutation"] for d in diagrams]
+        if unmerged_meta is None:
+            amp2_remaps[0][diagrams[0]["diagram"]] = channel_index
+        else:
+            for amp2_remap, diag in zip(amp2_remaps, diagrams[0]["diagram"]):
+                if diag != -1:
+                    amp2_remap[diag] = channel_index
+
+        channel_index_first = channel_index
+        symfact_index_first = len(symfact)
+        channel_index += 1
+        symfact.extend([None] * topo_count)
+        for d in diagrams[1:]:
+            if unmerged_meta is None:
+                amp2_remaps[0][d["diagram"]] = channel_index
+            else:
+                for amp2_remap, diag in zip(amp2_remaps, d["diagram"]):
+                    if diag != -1:
+                        amp2_remap[diag] = channel_index
+            channel_index += 1
+            symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
+
+        topologies.append(chan_topologies)
+        permutations.append(chan_permutations)
+        channel_indices.append(list(range(channel_index_first, channel_index)))
+        channel_weight_indices.append([
+            [
+                symfact_index_first + topo_index + i * topo_count
+                for i in range(len(chan_permutations))
+            ]
+            for topo_index in range(topo_count)
+        ])
+        diagram_indices.append([d["diagram"] for d in diagrams])
+        if unmerged_meta is None:
+            diagram_color_indices.append([d["active_colors"] for d in diagrams])
+            diagram_propagator_pdgs.append(
+                [d["propagator_pdgs"] for d in diagrams]
+            )
+        active_flavors.append([d["active_flavors"] for d in diagrams])
+
+    return MultiChannelData(
+        amp2_remaps,
+        symfact,
+        topologies,
+        permutations,
+        channel_indices,
+        channel_weight_indices,
+        diagram_indices,
+        diagram_color_indices,
+        diagram_propagator_pdgs,
+        active_flavors,
+        qcd_s_channel_count,
+    )
+
+
+class MadgraphSubprocess:
+    def __init__(
+        self,
+        process: MadgraphProcess,
+        meta: dict,
+        subproc_id: int,
+        unmerged_meta: dict | None = None
+    ):
+        self.process = process
+        self.meta = meta
+        self.subproc_id = subproc_id
+        self.multi_channel_data = None
+
+        self.unmerged_meta = None
+        if unmerged_meta is None:
+            api_path_formats = [self.meta["me_path"]]
+        else:
+            api_path_formats = []
+            for subproc in self.meta["subprocesses"]:
+                submeta = unmerged_meta[subproc]
+                api_path_formats.append(submeta["me_path"])
+            if len(api_path_formats) == 1:
+                self.meta = submeta
+            else:
+                self.unmerged_meta = unmerged_meta
+
+        # The libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        all_api_paths = [
+            [api_path_format.format(device=backend) for backend in self.process.backends]
+            for api_path_format in api_path_formats
+        ]
+
+        self.incoming_masses = [
+            self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])
+        ]
+        self.outgoing_masses = [
+            self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
+        ]
+        self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
+        all_pids = clean_pids(self.meta["incoming"]) + clean_pids(self.meta["outgoing"])
+        self.cuts = (
+            ms.Cuts([
+                ms.CutItem(
+                    observable=ms.Observable(all_pids, **cut_item.observable_kwargs),
+                    min=cut_item.min,
+                    max=cut_item.max,
+                    mode=cut_item.mode,
+                )
+                for cut_item in self.process.cut_data
+            ])
+            if len(self.process.cut_data) > 0
+            else None
+        )
+        self.histograms = (
+            ms.ObservableHistograms([
+                ms.HistItem(
+                    observable=ms.Observable(all_pids, **hist_item.observable_kwargs),
+                    min=hist_item.min,
+                    max=hist_item.max,
+                    bin_count=hist_item.bin_count,
+                )
+                for hist_item in self.process.hist_data
+            ])
+            if len(self.process.hist_data) > 0
+            else None
+        )
+
+        self.scale = ms.EnergyScale(
+            particle_count=self.particle_count, **self.process.scale_kwargs
+        )
+
+        if self.process.run_card["run"]["dummy_matrix_element"]:
+            self.matrix_elements = [None] * len(all_api_paths)
+        else:
+            self.matrix_elements = []
+            for api_paths in all_api_paths:
+                for context, api_path in zip(self.process.contexts, api_paths):
+                    mat = context.load_matrix_element(
+                        api_path, self.process.param_card_path
+                    )
+                self.matrix_elements.append(mat)
+
+    def build_multi_channel_data(self) -> MultiChannelData:
+        if self.multi_channel_data is not None:
+            return self.multi_channel_data
+        self.multi_channel_data = build_multi_channel_data(
+            self.meta, self.process, self.unmerged_meta
+        )
+        return self.multi_channel_data
+
+    def build_multichannel_phasespace(self) -> PhaseSpace:
+        mcdata = self.build_multi_channel_data()
+        channel_count = sum(len(topos) for topos in mcdata.topologies)
+        drop_threshold = self.process.run_card["phasespace"]["drop_qcd_s_channel"]
+        if drop_threshold >= 0 and channel_count > drop_threshold:
+            mcdata = self.drop_qcd_s_channels(mcdata)
+
+        channels = []
+        t_channel_mode = self.t_channel_mode(
+            self.process.run_card["phasespace"]["t_channel"]
+        )
+        for channel_id, (chan_topologies, chan_permutations, chan_indices, active_flavors) in enumerate(zip(
+            mcdata.topologies, mcdata.permutations, mcdata.channel_weight_indices,
+            mcdata.active_flavors
+        )):
+            topo_count = len(chan_topologies)
+            for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
+                mapping = ms.PhaseSpaceMapping(
+                    chan_topologies[0],
+                    self.process.e_cm,
+                    t_channel_mode=t_channel_mode,
+                    cuts=self.cuts,
+                    invariant_power=self.process.run_card["phasespace"]["invariant_power"],
+                    permutations=chan_permutations,
+                    leptonic=self.process.leptonic,
+                )
+                prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+                if topo_count > 1:
+                    prefix += f".subchan{topo_index}"
+                discrete_sym, discrete_flavor = self.build_discrete(
+                    len(chan_permutations), len(self.meta["flavors"]), prefix
+                )
+                channels.append(Channel(
+                    phasespace_mapping = mapping,
+                    adaptive_mapping = self.build_vegas(mapping, prefix),
+                    discrete_sym = discrete_sym,
+                    discrete_flavor = discrete_flavor,
+                    channel_weight_indices = indices,
+                    name = f"{channel_id}",
+                    active_flavors = active_flavors,
+                ))
+
+        remapped_chan_count = sum(
+            len(indices) for indices in mcdata.channel_indices
+        )
+        if self.process.run_card["phasespace"]["sde_strategy"] == "denominators":
+            prop_chan_weights = ms.PropagatorChannelWeights(
+                [topo[0] for topo in mcdata.topologies], mcdata.permutations,
+                mcdata.channel_indices
+            )
+            chan_weight_remap = []
+        else:
+            prop_chan_weights = None
+            chan_weight_remap = [
+                [
+                    len(mcdata.symfact) if remap == -1 else remap
+                    for remap in amp2_remap
+                ]
+                for amp2_remap in mcdata.amp2_remaps
+            ]
+
+        if any(len(topos) > 1 for topos in mcdata.topologies):
+            subchan_weights = ms.SubchannelWeights(
+                mcdata.topologies, mcdata.permutations, mcdata.channel_indices
+            )
+        else:
+            subchan_weights = None
+
+        return PhaseSpace(
+            mode="multichannel",
+            channels=channels,
+            first_chan_weight_remap=chan_weight_remap,
+            first_remapped_chan_count=remapped_chan_count,
+            symfact=mcdata.symfact,
+            prop_chan_weights=prop_chan_weights,
+            subchan_weights=subchan_weights,
+        )
+
+    def build_flat_phasespace(self) -> PhaseSpace:
+        mapping = ms.PhaseSpaceMapping(
+            self.incoming_masses + self.outgoing_masses,
+            self.process.e_cm,
+            mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
+            cuts=self.cuts,
+            leptonic=self.process.leptonic,
+        )
+        prefix = f"subproc{self.subproc_id}.flat"
+        discrete_sym, discrete_flavor = self.build_discrete(
+            1, len(self.meta["flavors"]), prefix
+        )
+        channel = Channel(
+            phasespace_mapping = mapping,
+            adaptive_mapping = self.build_vegas(mapping, prefix),
+            discrete_sym = discrete_sym,
+            discrete_flavor = discrete_flavor,
+            channel_weight_indices = [0],
+            name = "F",
+            active_flavors = [],
+        )
+        if self.unmerged_meta is None:
+            remap = [list(range(self.meta["diagram_count"]))]
+        else:
+            remap = [
+                list(range(self.unmerged_meta[subproc]["diagram_count"]))
+                for subproc in self.meta["subprocesses"]
+            ]
+        return PhaseSpace(
+            mode="flat",
+            channels=[channel],
+            first_chan_weight_remap=remap,
+            first_remapped_chan_count=1,
+            symfact=[None],
+        )
+
+    def simplify_phasespace(
+        self,
+        multi_phasespace: PhaseSpace,
+        cross_sections: list[float]
+    ) -> PhaseSpace | None:
+        assert multi_phasespace.mode == "multichannel"
+
+        threshold = 1 - self.process.run_card["phasespace"]["combine_channel_threshold"]
+        kept_channels = []
+        tot_cs = sum(cross_sections)
+        cum_cs = 0.
+        seen_active_flavors = set()
+        #seen_resonances = set()
+        for index, (cs, chan) in sorted(
+            enumerate(zip(cross_sections, multi_phasespace.channels)),
+            key=lambda pair: pair[1][0],
+            reverse=True
+        ):
+            cum_cs += cs
+            has_unseen_flavors = False
+            has_unseen_resonances = False
+            for flavs in chan.active_flavors:
+                for flav in flavs:
+                    if flav not in seen_active_flavors:
+                        has_unseen_flavors = True
+                        seen_active_flavors.add(flav)
+            #for resonance in chan.resonances:
+            #    if resonance not in seen_resonances:
+            #        has_unseen_resonances = True
+            #        seen_resonances.add(flav)
+            if has_unseen_flavors or has_unseen_resonances or cum_cs / tot_cs < threshold:
+                kept_channels.append(index)
+        if len(kept_channels) >= len(cross_sections) - 1:
+            return multi_phasespace
+
+        channels = []
+        channel_map = {}
+        symfact = []
+        for old_chan_index in kept_channels:
+            channel = multi_phasespace.channels[old_chan_index]
+            perm_count = max(1, channel.phasespace_mapping.channel_count())
+            channel_index = len(symfact)
+            symfact.append(None)
+            symfact.extend([channel_index] * (perm_count - 1))
+            channel_map.update({
+                old_index: new_index
+                for new_index, old_index in enumerate(
+                    channel.channel_weight_indices, start=channel_index
+                )
+            })
+            channels.append(Channel(
+                phasespace_mapping = channel.phasespace_mapping,
+                adaptive_mapping = channel.adaptive_mapping,
+                discrete_sym = channel.discrete_sym,
+                discrete_flavor = channel.discrete_flavor,
+                channel_weight_indices = list(range(
+                    channel_index, channel_index + perm_count
+                )),
+                name = channel.name,
+                active_flavors = channel.active_flavors,
+                event_generator = channel.event_generator,
+            ))
+
+        flat_phasespace = self.build_flat_phasespace()
+        flat_channel = flat_phasespace.channels[0]
+        channels.append(Channel(
+            phasespace_mapping = flat_channel.phasespace_mapping,
+            adaptive_mapping = flat_channel.adaptive_mapping,
+            discrete_sym = flat_channel.discrete_sym,
+            discrete_flavor = flat_channel.discrete_flavor,
+            channel_weight_indices = [len(symfact)],
+            name = flat_channel.name,
+            active_flavors = flat_channel.active_flavors,
+        ))
+        flat_index = len(symfact)
+        symfact.append(None)
+        channel_map[len(multi_phasespace.symfact)] = len(symfact)
+        if multi_phasespace.subchan_weights is None and len(multi_phasespace.first_chan_weight_remap) > 0:
+            first_chan_weight_remap = [
+                [
+                    channel_map.get(remap, flat_index)
+                    for remap in cw_remap
+                ]
+                for cw_remap in multi_phasespace.first_chan_weight_remap
+            ]
+            first_remapped_chan_count = len(symfact)
+            second_chan_weight_remap = []
+            second_remapped_chan_count = 0
+        else:
+            first_chan_weight_remap = multi_phasespace.first_chan_weight_remap
+            first_remapped_chan_count = multi_phasespace.first_remapped_chan_count
+            chan_count = multi_phasespace.first_remapped_chan_count if multi_phasespace.subchan_weights is None else multi_phasespace.subchan_weights.channel_count()
+            second_chan_weight_remap = [
+                channel_map.get(i, flat_index)
+                for i in range(chan_count)
+            ]
+            second_remapped_chan_count = len(symfact)
+
+        return PhaseSpace(
+            mode="both",
+            channels=channels,
+            first_chan_weight_remap=first_chan_weight_remap,
+            first_remapped_chan_count=first_remapped_chan_count,
+            second_chan_weight_remap=second_chan_weight_remap,
+            second_remapped_chan_count=second_remapped_chan_count,
+            symfact=symfact,
+            prop_chan_weights=multi_phasespace.prop_chan_weights,
+            subchan_weights=multi_phasespace.subchan_weights,
+        )
+
+    def drop_qcd_s_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
+        """Drop channels with non-resonant QCD s-channel propagators, to reduce the
+        channel count for processes with many diagrams. Channels are grouped by the
+        number of QCD s-channels, allowing for more if necessary to map out all flavor
+        indices. Channel weights belonging to a dropped channel are left unmapped."""
+        groups_by_s_count = {}
+        for index, count in enumerate(mcdata.qcd_s_channel_count):
+            groups_by_s_count.setdefault(count, []).append(index)
+
+        covered_flavors = set()
+        kept_groups = set()
+        for s_count in sorted(groups_by_s_count):
+            s_count_groups = groups_by_s_count[s_count]
+            if s_count == 0:
+                selected = s_count_groups
+            else:
+                selected = [
+                    index
+                    for index in s_count_groups
+                    if any(
+                        flav not in covered_flavors
+                        for flavs in mcdata.active_flavors[index]
+                        for flav in flavs
+                    )
+                ]
+            kept_groups.update(selected)
+            for index in selected:
+                for flavs in mcdata.active_flavors[index]:
+                    covered_flavors.update(flavs)
+
+        kept_groups = sorted(kept_groups)
+        if len(kept_groups) == len(mcdata.topologies):
+            return mcdata
+
+        amp2_remaps = [[-1] * len(remap) for remap in mcdata.amp2_remaps]
+        symfact = []
+        topologies = []
+        permutations = []
+        channel_indices = []
+        channel_weight_indices = []
+        diagram_indices = []
+        diagram_color_indices = []
+        diagram_propagator_pdgs = []
+        active_flavors = []
+        qcd_s_channel_count = []
+        channel_index = 0
+
+        for group in kept_groups:
+            chan_topologies = mcdata.topologies[group]
+            chan_permutations = mcdata.permutations[group]
+            chan_diagram_indices = mcdata.diagram_indices[group]
+            topo_count = len(chan_topologies)
+
+            channel_index_first = channel_index
+            symfact_index_first = len(symfact)
+            for i, diag in enumerate(chan_diagram_indices):
+                if self.unmerged_meta is None:
+                    amp2_remaps[0][diag] = channel_index
+                else:
+                    for amp2_remap, d in zip(amp2_remaps, diag):
+                        if d != -1:
+                            amp2_remap[d] = channel_index
+                if i == 0:
+                    symfact.extend([None] * topo_count)
+                else:
+                    symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
+                channel_index += 1
+
+            topologies.append(chan_topologies)
+            permutations.append(chan_permutations)
+            channel_indices.append(list(range(channel_index_first, channel_index)))
+            channel_weight_indices.append([
+                [
+                    symfact_index_first + topo_index + i * topo_count
+                    for i in range(len(chan_permutations))
+                ]
+                for topo_index in range(topo_count)
+            ])
+            diagram_indices.append(chan_diagram_indices)
+            if mcdata.diagram_color_indices:
+                diagram_color_indices.append(mcdata.diagram_color_indices[group])
+            if mcdata.diagram_propagator_pdgs:
+                diagram_propagator_pdgs.append(
+                    mcdata.diagram_propagator_pdgs[group]
+                )
+            active_flavors.append(mcdata.active_flavors[group])
+            qcd_s_channel_count.append(mcdata.qcd_s_channel_count[group])
+
+        return MultiChannelData(
+            amp2_remaps,
+            symfact,
+            topologies,
+            permutations,
+            channel_indices,
+            channel_weight_indices,
+            diagram_indices,
+            diagram_color_indices,
+            diagram_propagator_pdgs,
+            active_flavors,
+            qcd_s_channel_count,
+        )
+
+    def set_madnis_auto_settings(self, rsd: float):
+        madnis_args = self.process.run_card["madnis"]
+        n_out = len(self.meta["outgoing"])
+        n_events = self.process.run_card["generation"]["events"]
+        is_gridpack = self.process.run_card["gridpack"]["save_gridpack"]
+        train_batches = madnis_args["train_batches"]
+        hidden_dim = min(max(int((7 * rsd) / 32) * 32 + 64, 64), 256)
+        flow_layers = 3 if rsd < 32 else 4
+        lr = min(max((10000 - train_batches) / 8000 * 7e-4 + 3e-4, 3e-4), 1e-3)
+        if n_out <= 2:
+            enable = False
+        elif n_out == 3:
+            enable = rsd > 10. or n_events > 1000000 or is_gridpack
+        else:
+            enable = True
+        fixed_cwnet_fraction = max(0.33, 1.0 - 10000. / train_batches)
+        batch_size_per_channel = min(max(int((7 * rsd) / 32) * 32 + 64, 128), 512)
+
+        self.madnis_settings = {
+            "enable": enable,
+            "flow_layers": flow_layers,
+            "flow_hidden_dim": hidden_dim,
+            "discrete_hidden_dim": hidden_dim,
+            "cwnet_hidden_dim": hidden_dim,
+            "train_batches": train_batches,
+            "lr": lr,
+            "fixed_cwnet_fraction": fixed_cwnet_fraction,
+            "batch_size_per_channel": batch_size_per_channel,
+        }
+        for key, value in self.madnis_settings.items():
+            run_card_value = madnis_args[key]
+            if run_card_value != "auto":
+                self.madnis_settings[key] = run_card_value
+
+    def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
+        madnis_args = self.process.run_card["madnis"]
+        # Shared across all networks below: initialize_globals() derives an
+        # independent, non-colliding stream per tensor from this one base seed.
+        seed = self.process.run_seed
+        channels = []
+        for channel_id, channel in enumerate(phasespace.channels):
+            prefix = f"subproc{self.subproc_id}.channel{channel_id}"
+            cond_dim = 0
+
+            flow_dim = channel.phasespace_mapping.random_dim()
+            flow = ms.Flow(
+                input_dim=flow_dim,
+                condition_dim=cond_dim,
+                prefix=prefix,
+                bin_count=madnis_args["flow_spline_bins"],
+                subnet_hidden_dim=self.madnis_settings["flow_hidden_dim"],
+                subnet_layers=self.madnis_settings["flow_layers"],
+                subnet_activation=self.activation(madnis_args["flow_activation"]),
+                invert_spline=madnis_args["flow_invert_spline"],
+            )
+            if channel.adaptive_mapping is None:
+                flow.initialize_globals(self.process.contexts[0], seed)
+            else:
+                flow.initialize_from_vegas(
+                    self.process.contexts[0], channel.adaptive_mapping.grid_name(),
+                    seed
+                )
+            cond_dim += flow_dim
+
+            # discrete_sym runs after the adaptive map, so it can condition on its latent.
+            discrete_sym = channel.discrete_sym
+            if discrete_sym is not None:
+                perm_count = channel.phasespace_mapping.channel_count()
+                discrete_sym = ms.DiscreteFlow(
+                    option_counts=[perm_count],
+                    prefix=f"{prefix}.discrete_flow_sym",
+                    dims_with_prior=[],
+                    condition_dim=cond_dim,
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                )
+                discrete_sym.initialize_globals(self.process.contexts[0], seed)
+                cond_dim += perm_count
+
+            discrete_flavor = channel.discrete_flavor
+            if discrete_flavor is not None:
+                discrete_flavor = ms.DiscreteFlow(
+                    option_counts=[len(self.meta["flavors"])],
+                    prefix=f"{prefix}.discrete_flow_flavor",
+                    dims_with_prior=[0],
+                    condition_dim=cond_dim,
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                )
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
+
+            channels.append(Channel(
+                phasespace_mapping = channel.phasespace_mapping,
+                adaptive_mapping = flow,
+                discrete_sym = discrete_sym,
+                discrete_flavor = discrete_flavor,
+                channel_weight_indices = channel.channel_weight_indices,
+                name = channel.name,
+                active_flavors = channel.active_flavors,
+            ))
+
+        return PhaseSpace(
+            mode="both",
+            channels=channels,
+            first_chan_weight_remap=phasespace.first_chan_weight_remap,
+            first_remapped_chan_count=phasespace.first_remapped_chan_count,
+            second_chan_weight_remap=phasespace.second_chan_weight_remap,
+            second_remapped_chan_count=phasespace.second_remapped_chan_count,
+            symfact=phasespace.symfact,
+            cwnet=self.build_cwnet(len(phasespace.symfact)),
+            prop_chan_weights=phasespace.prop_chan_weights,
+            subchan_weights=phasespace.subchan_weights,
+        )
+
+    def build_vegas(self, mapping: ms.PhaseSpaceMapping, prefix: str) -> ms.VegasMapping:
+        if not self.process.run_card["vegas"]["enable"]:
+            return None
+
+        vegas = ms.VegasMapping(
+            mapping.random_dim(),
+            self.process.run_card["vegas"]["bins"],
+            prefix,
+        )
+        for context in self.process.contexts:
+            vegas.initialize_globals(context)
+        return vegas
+
+    def build_discrete(
+        self, permutation_count: int, flavor_count: int, prefix: str
+    ) -> tuple[ms.DiscreteSampler | None, ms.DiscreteSampler | None]:
+        is_adaptive = self.process.run_card["phasespace"]["adaptive_symmetry_sampling"]
+        if is_adaptive and permutation_count > 1:
+            discrete_sym = ms.DiscreteSampler(
+                [permutation_count], f"{prefix}.discrete_sym"
+            )
+            for context in self.process.contexts:
+                discrete_sym.initialize_globals(context)
+        else:
+            discrete_sym = None
+
+        if flavor_count > 1:
+            discrete_flavor = ms.DiscreteSampler(
+                [flavor_count], f"{prefix}.discrete_flavor", [0]
+            )
+            for context in self.process.contexts:
+                discrete_flavor.initialize_globals(context)
+        else:
+            discrete_flavor = None
+
+        return discrete_sym, discrete_flavor
+
+    def build_cwnet(self, channel_count: int) -> ms.ChannelWeightNetwork:
+        #if channel_count == 1:
+        #    return None
+        madnis_args = self.process.run_card["madnis"]
+        cwnet = ms.ChannelWeightNetwork(
+            channel_count=channel_count,
+            particle_count=self.particle_count,
+            hidden_dim=self.madnis_settings["cwnet_hidden_dim"],
+            layers=madnis_args["cwnet_layers"],
+            activation=self.activation(madnis_args["cwnet_activation"]),
+            prefix=f"subproc{self.subproc_id}.cwnet",
+        )
+        cwnet.initialize_globals(
+            self.process.contexts[0], self.process.run_seed
+        )
+        return cwnet
+
+    def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
+        modes = {
+            "propagator": ms.PhaseSpaceMapping.propagator,
+            "rambo": ms.PhaseSpaceMapping.rambo,
+            "chili": ms.PhaseSpaceMapping.chili,
+        }
+        if name in modes:
+            return modes[name]
+        else:
+            raise ValueError(f"Invalid t-channel mode '{name}'")
+
+    def activation(self, name: str) -> ms.MLP.Activation:
+        activations = {
+            "relu": ms.MLP.relu,
+            "leaky_relu": ms.MLP.leaky_relu,
+            "elu": ms.MLP.elu,
+            "gelu": ms.MLP.gelu,
+            "sigmoid": ms.MLP.sigmoid,
+            "softplus": ms.MLP.softplus,
+        }
+        if name in activations:
+            return activations[name]
+        else:
+            raise ValueError(f"Invalid activation function '{name}'")
+
+    def build_integrands(
+        self,
+        phasespace: PhaseSpace,
+        madnis_training: bool = False,
+        drop_cuts_and_rescale: bool = False
+    ) -> list[ms.Integrand]:
+        flavors = []
+        flavor_remap = []
+        flavor_factors = []
+        flavor_mirror = []
+        flavor_diff_xs_indices = []
+        flavor_subproc_indices = []
+        flavor_per_subproc_remap = []
+
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                diff_xs_index = flav["subprocess"]
+                subproc_index = self.meta["subprocesses"][diff_xs_index]
+                ps_flavor = flav["flavor"]
+                flavor_diff_xs_indices.append(diff_xs_index)
+                flavor_subproc_indices.append(subproc_index)
+                flavor_per_subproc_remap.append(ps_flavor)
+                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
+            flavors.append(flav["options"][0])
+            flavor_remap.append(flav["index"])
+            flavor_factors.append(len(flav["options"]))
+            flavor_mirror.append(flav["mirror"])
+
+        cross_sections = []
+        for matrix_element in self.matrix_elements:
+            if matrix_element:
+                mat = ms.MatrixElement(
+                    matrix_element,
+                    ms.Integrand.matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    True,
+                )
+            else:
+                #TODO: not working in merged mode
+                mat = ms.MatrixElement(
+                    0xBADCAFE,
+                    self.particle_count,
+                    ms.Integrand.matrix_element_inputs,
+                    ms.Integrand.matrix_element_outputs,
+                    self.meta["diagram_count"],
+                    True,
+                )
+            pdf_grid = None if self.process.leptonic else self.process.pdf_grid
+            pdf_arg = None if self.process.leptonic else ms.CachedPdf()
+            cross_sections.append(
+                ms.DifferentialCrossSection(
+                    matrix_element=mat,
+                    # For a decay this is the decaying particle's mass, and the
+                    # flux becomes 1/(2M): the result is a partial width in
+                    # GeV, not a cross section in pb.
+                    cm_energy=self.process.e_cm,
+                    running_coupling=None,
+                    energy_scale=ms.CachedScale(),
+                    pid_options=[],
+                    pdf1=pdf_arg,
+                    pdf2=pdf_arg,
+                    input_momentum_fraction=True,
+                    decay=self.process.is_decay,
+                )
+            )
+        partial_weights = self.process.systematics_enabled()
+        madnis_args = self.process.run_card["madnis"]
+        integrands = []
+        for channel in phasespace.channels:
+            integrands.append(ms.Integrand(
+                channel.phasespace_mapping,
+                cross_sections,
+                channel.adaptive_mapping,
+                channel.discrete_sym,
+                channel.discrete_flavor,
+                flavors,
+                pdf_grid,
+                self.process.running_coupling,
+                self.scale,
+                phasespace.prop_chan_weights,
+                phasespace.subchan_weights,
+                phasespace.cwnet,
+                phasespace.first_chan_weight_remap,
+                phasespace.first_remapped_chan_count,
+                phasespace.second_chan_weight_remap,
+                phasespace.second_remapped_chan_count,
+                madnis_training,
+                drop_cuts_and_rescale,
+                partial_weights,
+                channel.channel_weight_indices,
+                channel.active_flavors,
+                flavor_remap,
+                flavor_factors,
+                flavor_mirror,
+                flavor_diff_xs_indices,
+                flavor_subproc_indices,
+                flavor_per_subproc_remap,
+                madnis_args["compressed_channel_weight_count"]
+            ))
+        #print(integrands[1].function())
+        #for i in integrands: print(i.function())
+        return integrands
+
+    def train_madnis(self, phasespace: PhaseSpace, status_func) -> None:
+        # do import here to make pytorch and MadNIS optional dependencies
+        from .train_madnis import train_madnis
+        train_madnis(
+            self.build_integrands(phasespace, madnis_training=True),
+            phasespace,
+            self.process.run_card["madnis"],
+            self.process.contexts[0],
+            status_func
+        )
+
+
+_ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
+
+def load_mg5_options(me_dir=None) -> dict:
+    """Read the tool paths from the MadGraph configuration, so the launcher
+    knows where LHAPDF and the optional programs (Pythia8/Delphes/MadSpin/
+    reweight/analysis) live.
+
+    Files are read least- to most-specific, each overriding the previous, which
+    is the same layering CommonRunCmd.set_configuration uses: the card inside
+    this process directory has the last word, then this installation, then the
+    per-user file. Relative values are resolved against the root of the file
+    they came from.
+
+    ``me_dir`` is the process directory whose Cards/me5_configuration.txt has
+    the last word. It defaults to the working directory, which is right for
+    bin/generate_events (it chdirs there first) but not for an in-process
+    caller, which has not moved yet.
+    """
+
+    import madgraph
+    mg5dir = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+    me_dir = os.getcwd() if me_dir is None else me_dir
+
+    options = {
+        'pythia-pgs_path': None, 'pythia8_path': None,
+        'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
+        'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
+        'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,
+        'mg5amc_py8_interface_path': None, 'heptools_install_dir': None,
+    }
+    config_files = []
+    base_config = misc.base_config_file()
+    if base_config:
+        config_files.append((base_config, mg5dir))
+    user_config = misc.user_config_file()
+    if user_config:
+        config_files.append((user_config, mg5dir))
+    config_files.append((misc.install_config_file(mg5dir), mg5dir))
+    config_files.append((os.path.join(me_dir, 'Cards', 'me5_configuration.txt'),
+                         me_dir))
+    for cfg, root in config_files:
+        if not os.path.exists(cfg):
+            continue
+        with open(cfg) as fsock:
+            for line in fsock:
+                line = line.split('#', 1)[0]
+                if '=' not in line:
+                    continue
+                name, value = (x.strip() for x in line.split('=', 1))
+                if name not in options or value in ('', 'None'):
+                    continue
+                if (name.endswith('_path') or name in _ROOTED_OPTIONS) and \
+                        not os.path.isabs(value) and \
+                        (os.sep in value or value.startswith('.')):
+                    value = os.path.normpath(os.path.join(root, value))
+                options[name] = value
+    options['mg5_path'] = mg5dir  # enables MadSpin/reweight
+    return options
+
+
+_LHAPDF = None
+
+def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
+    """The LHAPDF installation this run should use, resolved once.
+
+    Uses the same helper as the 'launch' command, so driving a process
+    directory straight through bin/generate_events behaves identically to
+    launching it from MadGraph.
+    """
+
+    global _LHAPDF
+    if _LHAPDF is None or refresh:
+        _LHAPDF = misc.resolve_lhapdf(load_mg5_options())
+        # Export what we found: the real LHAPDF library, systematics and the
+        # MadSpin/reweight subprocesses read these from the environment.
+        if _LHAPDF.data_paths:
+            os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
+        if _LHAPDF.config:
+            os.environ["MADGRAPH_LHAPDF_CONFIG"] = _LHAPDF.config
+    return _LHAPDF
+
+
+class MG7Cmd(Cmd):
+    """The mg7 run interface: the command object that drives a launch.
+
+    It plays two roles, and they are the same object on purpose.
+
+    1. It is the *mother* of the merged switch/card question (the thing
+       ``AskRunEditCard`` calls back into for ``keep_cards``/``do_open``/
+       ``compute_widths``).
+    2. It is the child command interface MG5 registers via
+       ``define_child_cmd_interface`` when you type ``launch`` on an mg7 output.
+
+    Role 2 is what makes role 1 behave. ``Cmd.ask`` resolves a scripted answer
+    through ``self.check_answer_in_input_file``, where ``self`` is the mother --
+    so once MG5 hands us its ``inputfile`` and registers itself as our
+    ``mother``, the question reads the very lines that follow ``launch`` in the
+    user's command file, and any line it does not recognise goes back up to MG5
+    through ``store_line`` instead of being silently consumed. This is exactly
+    how a madevent output already behaves; before this class existed the mg7
+    branch shelled out to ``bin/generate_events`` and had to guess which
+    following lines belonged to the run, which quietly swallowed every ``set``.
+    """
+
+    prompt = 'MG7> '
+
+    def __init__(self, me_dir='.', options=None, *args, **opts):
+        super().__init__(*args, **opts)
+        self.me_dir = os.path.abspath(me_dir) if me_dir != '.' else '.'
+        # The rest of the launcher is written against the process directory as
+        # the working directory, so do_generate_events chdirs there; but at
+        # construction time MG5 has not moved, hence the explicit me_dir.
+        self.options = load_mg5_options(
+            self.me_dir if self.me_dir != '.' else None)
+        if options:
+            # MG5's own resolved tool paths win: they are the ones the user
+            # configured in the session that is doing the launching.
+            self.options.update({k: v for k, v in options.items()
+                                 if k in self.options and v is not None})
+        self.plugin_path = []
+        self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
+        self._model = None  # lazily imported by get_model()
+
+    # ------------------------------------------------------------------
+    # the contract the card question expects from its mother
+    # ------------------------------------------------------------------
+    def keep_cards(self, need_card=[], ignore=[]):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        return CommonRunCmd.keep_cards(self, need_card, ignore)
+
+    def do_open(self, line):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.do_open(self, line)
+
+    def check_open(self, args):
+        from madgraph.interface.common_run_interface import CommonRunCmd
+        CommonRunCmd.check_open(self, args)
+
+    def get_model(self):
+        """The model this process was generated with (an ``import_ufo`` model).
+
+        This is the hook the card question goes through for everything that
+        needs the model rather than the card: 'update dependent' (which resets
+        the masses/widths the model computes from the free parameters) and the
+        generic auto-width handler both call ``mother_interface.get_model()``.
+        Without it the launch question could only warn that it had failed to
+        update the dependent parameters, and MadSpin/the shower then read
+        whatever inconsistent values the param_card still held.
+
+        None when the process recorded no model (an output made before
+        SubProcesses/model.txt existed) -- the caller warns in that case.
+        """
+        if self._model is None:
+            me_dir = self.me_dir if self.me_dir != '.' else None
+            # False (not None) so a model that cannot be imported is not
+            # retried at every question.
+            self._model = load_process_model(me_dir) or False
+        return self._model or None
+
+    def do_compute_widths(self, line):
+        # The interactive card editor delegates 'auto' width computation to
+        # the mother interface. Reuse the runtime helper (madgraph subprocess
+        # + the model stored at output time). ``line`` looks like
+        # "<pdgs> --path=<param_card> [--nlo]"; we only need the card path.
+        m = re.search(r'--path=(\S+)', line or "")
+        path = m.group(1) if m else os.path.join("Cards", "param_card.dat")
+        compute_auto_widths(path)
+        # return an empty mapping: the caller iterates out.items() for the
+        # small-width treatment, which mg7 does not apply.
+        return {}
+
+    # ------------------------------------------------------------------
+    # running
+    # ------------------------------------------------------------------
+    def do_generate_events(self, line):
+        """generate_events [-f] [-n NAME] [--laststep=parton]
+
+        Run the mg7 generation and the selected post-processing tools."""
+
+        opts = self._parse_run_options(line)
+        cwd = os.getcwd()
+        target = self.me_dir if self.me_dir != '.' else cwd
+        try:
+            os.chdir(target)
+            _setup_logging()
+            if opts['name']:
+                self._set_run_name(opts['name'])
+            switch = {}
+            if not opts['force']:
+                switch = ask_edit_cards(mother=self)
+            switch = self._apply_laststep(switch, opts)
+            force_lhe_output_if_needed(switch)
+            _raise_open_file_limit()
+            run_generation(switch)
+        finally:
+            os.chdir(cwd)
+
+    # ``launch`` is the name MG5 users type; keep it working here too.
+    do_launch = do_generate_events
+
+    def do_quit(self, line):
+        """Leave the mg7 run interface."""
+        return super().do_quit(line)
+
+    do_exit = do_quit
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _parse_run_options(self, line):
+        """Understand the subset of MG5's `launch` options that mean something
+        for an mg7 run, and say so out loud for the ones that do not."""
+        out = {'force': False, 'name': '', 'laststep': ''}
+        args = self.split_arg(line)
+        index = 0
+        while index < len(args):
+            arg = args[index]
+            index += 1
+            if arg in ('-f', '--force'):
+                out['force'] = True
+            elif arg in ('-n', '--name') and index < len(args):
+                out['name'] = args[index]
+                index += 1
+            elif arg.startswith(('-n=', '--name=')):
+                out['name'] = arg.split('=', 1)[1]
+            elif arg in ('-s', '--laststep') and index < len(args):
+                out['laststep'] = args[index]
+                index += 1
+            elif arg.startswith(('-s=', '--laststep=')):
+                out['laststep'] = arg.split('=', 1)[1]
+            elif arg.startswith('-'):
+                logger.warning(
+                    "'%s' is not supported by the mg7 output and is ignored; "
+                    "the equivalent settings live in Cards/run_card.toml", arg)
+            elif arg and not out['name']:
+                out['name'] = arg
+        return out
+
+    def _set_run_name(self, name):
+        """Honour `launch -n NAME`: the mg7 run directory is
+        Events/<run.run_name>_NN, so the name is a run_card setting."""
+        path = os.path.join("Cards", "run_card.toml")
+        run_card = RunCardMG7(path, consistency=False)
+        if run_card["run"]["run_name"] != name:
+            run_card["run"]["run_name"] = name
+            run_card.write(path)
+            logger.info("run name set to '%s'", name)
+
+    def _apply_laststep(self, switch, opts):
+        """`--laststep=parton` means: generate the events, run nothing on them.
+
+        The mg7 tool selection is the switch dict the question returns, so
+        stopping at parton level is switching those entries off.
+        """
+        if opts['laststep'] not in ('parton', 'auto', ''):
+            logger.warning(
+                "--laststep=%s is not supported by the mg7 output; "
+                "select the programs to run in the launch question instead",
+                opts['laststep'])
+            return switch
+        if opts['laststep'] != 'parton' or not switch:
+            return switch
+        switch = dict(switch)
+        for key in ('shower', 'detector', 'analysis', 'madspin', 'reweight'):
+            if not _off(switch.get(key, 'OFF')):
+                logger.info("--laststep=parton: not running %s", key)
+                switch[key] = 'OFF'
+        return switch
+
+
+def build_selector_cmd(mother=None):
+    """Build the (monkey-patched) mother command + merged switch/card selector
+    used by the mg7 output.  Returns the selector *class* and a mother instance
+    understood by AskRun/AskforEditCard.
+
+    ``mother`` lets an in-process caller supply its own :class:`MG7Cmd` -- the
+    one MG5 registered as its child -- so that the question resolves scripted
+    answers against MG5's own command file (see :class:`MG7Cmd`). When it is
+    omitted a standalone instance is built, which is what ``bin/generate_events``
+    gets.
+    """
+
+    from madgraph.interface.madevent_interface import AskRunEditCard
+
+    from madgraph.various import banner as _banner_mod
+    from madgraph.various import misc as _misc
+
+    class MG7Selector(AskRunEditCard):
+        """Merged switch/card question for the mg7 output.
+
+        The mg7 run_card is a TOML file, so define_paths/init_run/do_set are
+        overridden *on this class* (not globally on AskforEditCard) to treat it
+        as such. Scoping them here is important: MadSpin/reweight spawn their own
+        legacy madevent runs in the same process, and a global patch would break
+        their (run_card.dat based) card editing."""
+
+        # param_card + the TOML run_card are always offered
+        always_cards = ['param_card.dat', 'run_card.toml']
+        optional_cards = []
+
+        def define_paths(self, **opt):
+            super().define_paths(**opt)
+            self.paths["run"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            self.paths["run_card.toml"] = os.path.join(self.me_dir, "Cards", "run_card.toml")
+            # the TOML run_card uses its own default file (concrete defaults
+            # written at output time); this powers "set <param> default".
+            self.paths["run_default"] = os.path.join(self.me_dir, "Cards", "run_card_default.toml")
+
+        def init_run(self, cards):
+            # Make sure the run_card is loaded as a RunCardMG7 (the generic
+            # editor does not recognise run_card.toml), else "set <param>" fails.
+            out = super().init_run(cards)
+            if not isinstance(getattr(self, "run_card", None), RunCardMG7):
+                toml_path = self.paths.get("run") or os.path.join(
+                    self.me_dir, "Cards", "run_card.toml")
+                if os.path.exists(toml_path):
+                    try:
+                        # allow_scan so a run_card holding scan:[...] values loads
+                        with _misc.TMP_variable(_banner_mod.RunCard, "allow_scan", True):
+                            self.run_card = RunCardMG7(toml_path, consistency="warning")
+                        self.run_set = list(self.run_card.keys())
+                    except Exception as err:
+                        logger.warning("could not load %s: %s", toml_path, err)
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                self.run_card.allow_scan = True
+            return getattr(self, "run_set", out)
+
+        def do_set(self, line, *args, **kwargs):
+            # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
+            # editing, energy units and arithmetic/mass expressions on the TOML
+            # run_card, intercepted before delegating to the generic editor.
+            targs = self.split_arg(line)
+            run_card = getattr(self, "run_card", None)
+            if isinstance(run_card, RunCardMG7) and targs:
+                start = 1 if targs[0] == "run_card" else 0
+                if len(targs) > start:
+                    name = targs[start]
+                    nlow = name.lower()
+                    rest = " ".join(targs[start + 1:]).split("#")[0].strip()
+                    masses = run_card.get_mass_shortcuts(getattr(self, "param_card", None))
+
+                    if nlow in ("no_parton_cut", "nocut", "no_cut"):
+                        run_card.remove_all_cut()
+                        logger.info("removing all cuts from the run_card.toml")
+                        self.modified_card.add("run")
+                        return
+                    if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
+                        ecm = run_card.set_collider(nlow, rest, masses)
+                        logger.info("set %s collider: e_cm = %s GeV", nlow, ecm)
+                        self.modified_card.add("run")
+                        return
+                    if nlow == "fixed_scale" and rest:
+                        val = run_card.set_fixed_scale(rest, masses)
+                        logger.info("set fixed scales to %s GeV", val)
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and run_card.is_cut_name(name):
+                        cut, bound, val = run_card.set_cut(name, run_card.evaluate(rest, masses))
+                        logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # 'iseed' is the madevent spelling of the mg7 run.seed,
+                    # but the two disagree on how to ask for a random seed:
+                    # madevent uses 0, mg7 uses -1 (0 being a perfectly good
+                    # fixed seed there). Translate here rather than in
+                    # _LO_SCALAR_MAP, which also drives the LO -> MG7 run_card
+                    # conversion and would silently pin those runs to seed 0.
+                    if rest and nlow == 'iseed':
+                        value = run_card.evaluate(rest, masses)
+                        try:
+                            value = int(value)
+                        except (TypeError, ValueError):
+                            value = None
+                        if value is None:
+                            logger.warning("ignoring 'set iseed %s': not an integer", rest)
+                            return
+                        seed = -1 if value == 0 else value
+                        run_card.set('run.seed', seed, user=True)
+                        logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
+                                    seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
+                    # legacy madevent run_card names -> mg7 "section.key", so a
+                    # madevent-style launch script ("set nevents 500", "set
+                    # use_syst F", "set bwcutoff 10", ...) edits the mg7
+                    # run_card.toml verbatim. RunCardMG7._LO_SCALAR_MAP is the
+                    # same rename table used by the LO->MG7 run_card conversion.
+                    if rest and nlow in run_card._LO_SCALAR_MAP \
+                            and nlow not in [k.lower() for k in run_card.keys()]:
+                        target = run_card._LO_SCALAR_MAP[nlow]
+                        run_card.set(target, rest, user=True)
+                        logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                    nlow, target, run_card[target])
+                        self.modified_card.add("run")
+                        return
+
+                    if rest and nlow in [k.lower() for k in run_card.keys()]:
+                        current = run_card[nlow]
+                        if isinstance(current, (int, float)) and not isinstance(current, bool):
+                            resolved = run_card.evaluate(rest, masses)
+                            if not isinstance(resolved, str):
+                                prefix = "run_card " if start == 1 else ""
+                                line = "%s%s %s" % (prefix, name, resolved)
+            return super().do_set(line, *args, **kwargs)
+
+    return MG7Selector, (mother if mother is not None else MG7Cmd())
+
+
+def ask_edit_cards(mother=None) -> dict:
+    """Single (MadDM-style) question letting the user both pick which programs
+    to run after generation and edit the associated cards.  Returns the switch
+    dict describing the selected tools.
+
+    ``mother`` is the :class:`MG7Cmd` asking the question. Passing the instance
+    MG5 registered as its child is what lets a scripted ``launch`` answer this
+    question from MG5's own command file.
+    """
+
+    selector_class, mother = build_selector_cmd(mother)
+    # path_msg is what makes Cmd.check_answer_in_input_file accept a bare path as
+    # an answer (its "elif path:" branch), so that a scripted launch can hand the
+    # question a card/banner path -- as the question itself advertises -- and have
+    # it replace the corresponding card. Without it the path is rejected ("This
+    # answer is not valid for current question") and the default is used instead.
+    try:
+        switch, question = mother.ask('', '0', [], path_msg='enter path',
+                                      ask_class=selector_class,
+                                      mode='auto', line_args=[], force=False,
+                                      return_instance=True)
+    except BaseException:
+        # interrupted (e.g. ctrl-C) before the prune below could run: prune
+        # here too, using the instance ask() stashed pre-interrupt, or the
+        # eagerly-materialised tool cards get misread as "left ON" next time.
+        instance = getattr(mother, '_last_ask_instance', None)
+        if instance is not None and hasattr(instance, 'active_cards'):
+            try:
+                mother.keep_cards(instance.active_cards())
+            except Exception as error:
+                logger.debug('could not prune tool cards after aborted launch question: %s', error)
+        raise
+    switch = dict(switch)
+    prune_unselected_tool_cards(mother, question, switch)
+    return switch
+
+
+def prune_unselected_tool_cards(mother, question, switch) -> None:
+    """Hide the cards of the tools that were NOT selected in the question.
+
+    The question materialises every candidate tool card (copying the
+    *_default.dat) so that it can offer them all for edition; madevent's
+    ask_run_configuration prunes them again afterwards (keep_cards on the
+    selected cards), but the mg7 launcher had no such cleanup. The materialised
+    cards therefore persisted, and a later re-launch of the same output saw them
+    all present and defaulted every switch to ON (set_default_<tool> keys off
+    card presence). Prune here too, using the question's own switch->card map, so
+    a re-launch reflects the previous selection instead of turning everything on.
+    """
+    try:
+        keep = list(question.always_cards)
+        for spec in question.switch_cards:
+            if spec['on'](switch):
+                keep.append(spec['card'])
+        mother.keep_cards(keep)
+    except Exception as error:
+        logger.debug('could not prune unselected tool cards: %s', error)
+
+
+def _find_event_file(run_path):
+    """Locate the LHE event file produced by generate_events (if any)."""
+    for name in ("events.lhe", "events.lhe.gz"):
+        path = os.path.join(run_path, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _report_failure(log, what, error, directory=None):
+    """Log a post-processing failure and write the full traceback to a file
+    (whose path is printed) so the problem can be investigated."""
+    import traceback
+    if not directory or not os.path.isdir(directory):
+        directory = os.getcwd()
+    path = os.path.join(directory, "%s_crash.log" % what.replace(" ", "_"))
+    try:
+        with open(path, "w") as fsock:
+            fsock.write(traceback.format_exc())
+    except Exception:
+        path = None
+    log.warning("%s failed: %s", what, error)
+    if path:
+        log.warning("full traceback written to: %s", path)
+
+
+def _off(value) -> bool:
+    """True when a switch value means the tool was not selected."""
+    return value in (None, "OFF", "Not Avail.", "Not Avail. (numpy missing)")
+
+
+def _has_effective_handler(lg) -> bool:
+    """True when ``lg`` (or an ancestor it propagates to) already has a handler,
+    i.e. some other party is already displaying these records."""
+    while lg:
+        if lg.handlers:
+            return True
+        if not lg.propagate:
+            return False
+        lg = lg.parent
+    return False
+
+
+_TOOL_LOGGING_READY = False
+
+
+def _setup_logging():
+    """Make the reused madevent tool drivers' progress visible on screen.
+
+    The drivers already narrate what they do through logger.info /
+    update_status ("Running Pythia8 [arXiv:...]", "Splitting .lhe event
+    file...", the live Idle/Running/Completed job counters, "Running
+    MadSpin", ...), but the standalone mg7 launcher never attaches a handler
+    to the 'madgraph'/'madevent' loggers, so all of it is swallowed. Attach a
+    colored INFO console handler to them (idempotent)."""
+    global _TOOL_LOGGING_READY
+    if _TOOL_LOGGING_READY:
+        return
+    if _has_effective_handler(logging.getLogger("madgraph")):
+        # Someone already configured logging for us -- in practice MG5, which
+        # now runs the launch in its own process. Its configuration is
+        # authoritative (it owns stdout_level and the tutorial logger); adding
+        # a second handler here would print every line twice.
+        _TOOL_LOGGING_READY = True
+        return
+    try:
+        import madgraph.interface.coloring_logging  # registers ColorFormatter
+        formatter = logging.ColorFormatter("%(message)s")
+    except Exception:
+        formatter = logging.Formatter("%(message)s")
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler._mg7_tool_handler = True
+    for name in ("madgraph", "madevent", "cmdprint", "madgraph7"):
+        lg = logging.getLogger(name)
+        if not any(getattr(h, "_mg7_tool_handler", False) for h in lg.handlers):
+            lg.addHandler(handler)
+        lg.setLevel(logging.INFO)
+        lg.propagate = False
+    _TOOL_LOGGING_READY = True
+
+
+def run_selected_tools(switch, process) -> None:
+    """Run the optional post-processing programs selected in the merged
+    question on the generated events.
+
+    All the tools are driven through :class:`MG7RunCmd`, a thin adapter around
+    the standard madevent run interface (``MadEventCmd``). This means the mg7
+    output reuses the *exact* madevent tool drivers -- in particular Pythia8 is
+    showered in parallel over the cluster/multicore backend, identically to a
+    madevent run -- instead of re-implementing each tool here. The command
+    sequence mirrors ``MadEventCmd.do_launch`` (reweight, MadSpin, MA5 parton,
+    shower, Delphes, MA5 hadron, Rivet); each tool checks its own card, so a
+    tool is invoked only when its switch is on.
+    """
+    log = logging.getLogger("madevent")
+
+    active = {k: v for k, v in switch.items() if not _off(v)}
+    if not active:
+        return
+
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        log.warning("No LHE event file in %s; cannot run %s.",
+                    process.run_path, ", ".join(sorted(active)))
+        return
+
+    run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
+    run_dir = os.path.dirname(os.path.abspath(lhe_path))
+
+    # MadAnalysis5 hadron level analyses the shower/detector output, so it only
+    # makes sense when a shower ran (mirrors madevent's card gating:
+    # analysis == 'MadAnalysis5' and shower != 'OFF').
+    ma5 = switch.get("analysis") == "MadAnalysis5"
+    showered = not _off(switch.get("shower"))
+    tools = [t for t, on in (
+        ("reweighting", not _off(switch.get("reweight"))),
+        ("MadSpin", not _off(switch.get("madspin"))),
+        ("MadAnalysis5 (parton level)", ma5),
+        ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+        ("Delphes", switch.get("detector") == "Delphes"),
+        ("MadAnalysis5 (hadron level)", ma5 and showered),
+        ("Rivet", switch.get("analysis") == "Rivet"),
+    ) if on]
+    if not tools:
+        # `active` above counts any switch that is not off, which is not the
+        # same question: "Not Avail." is not off, and a shower switch set to
+        # something other than Pythia8 selects no driver here either. Without
+        # this a plain generate/output/launch announced a post-processing step
+        # with nothing after the colon, and paid for building the run
+        # interface to do nothing.
+        return
+
+    log.info("")
+    log.info("Post-processing the generated events with: %s", ", ".join(tools))
+
+    try:
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+        cmd = MG7RunCmd(os.getcwd(), load_mg5_options(), run_name, lhe_path)
+        cmd.set_run_name(run_name, None, "parton")
+    except Exception as error:
+        _report_failure(log, "post-processing setup", error, run_dir)
+        return
+
+    def run(tool, command):
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: %s", tool)
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.exec_cmd(command, postcmd=False, printcmd=False)
+        except Exception as error:
+            _report_failure(log, tool, error, run_dir)
+        else:
+            log.info("  -> %s done (%.1fs)", tool, time.time() - start)
+
+    # Same order as MadEventCmd.do_launch. The commands take no run name and so
+    # act on cmd.run_name: reweight runs on the generated events, then
+    # decay_events (MadSpin) repoints cmd.run_name to the "<run>_decayed_i" run,
+    # so the shower and the analyses that follow act on the decayed events --
+    # exactly as a madevent run does. Each driver still guards on its own card.
+    if not _off(switch.get("reweight")):
+        run("reweight", "reweight -from_cards")
+    if not _off(switch.get("madspin")):
+        run("MadSpin", "decay_events -from_cards")
+    if ma5:
+        run("MadAnalysis5 (parton)", "madanalysis5_parton --no_default")
+    if switch.get("shower") == "Pythia8":
+        run("Pythia8 shower", "shower --no_default")
+    if switch.get("detector") == "Delphes":
+        run("Delphes", "delphes --no_default")
+    # hadron-level MA5 needs the shower/detector output: only run it if a shower
+    # was requested (otherwise there is no hadron-level event file to analyse).
+    if ma5 and showered:
+        run("MadAnalysis5 (hadron)", "madanalysis5_hadron --no_default")
+    if switch.get("analysis") == "Rivet":
+        run("Rivet", "rivet --no_default")
+
+    # Finalize the run exactly as MadEventCmd.do_launch does after the
+    # shower/detector/analysis tools: store_result() processes the deferred
+    # "to_store" actions -- in particular it gzips the Pythia8 HepMC to
+    # <tag>_pythia8_events.hepmc.gz (the pythia8_card default is HEPMCoutput:file
+    # = hepmc.gz). The deferred Rivet job reads exactly that .gz path, so this
+    # must run before the Rivet/Contur postprocessor below.
+    try:
+        cmd.store_result()
+    except Exception as error:
+        _report_failure(log, "store_result", error, run_dir)
+
+    if switch.get("analysis") == "Rivet":
+        # do_rivet only *prepared* the run (wrote Events/<run>/run_rivet.sh) and
+        # deferred execution to the postprocessor -- the rivet_card default has
+        # run_rivet_later = True, so with --no_default it logged "Skipping Rivet
+        # for now, passing it to postprocessor" and appended the run to
+        # cmd.postprocessing_dirs. MadEventCmd.do_launch runs that postprocessor
+        # at the end of a run; do the same here so the .yoda (and, when
+        # run_contur = True, the Contur limits) are actually produced.
+        bar = "=" * 60
+        log.info("")
+        log.info(bar)
+        log.info("  post-processing step: Rivet/Contur postprocessing")
+        log.info(bar)
+        start = time.time()
+        try:
+            cmd.postprocessing()
+        except Exception as error:
+            _report_failure(log, "Rivet-Contur postprocessing", error, run_dir)
+        else:
+            log.info("  -> Rivet/Contur postprocessing done (%.1fs)",
+                     time.time() - start)
+
+
+def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
+    """Add invariant-lifetime (vtim) information to the LHE events, drawing each
+    unstable particle's decay length from its width (in mm). Mirrors
+    common_run_interface.CommonRunCmd.do_add_time_of_flight but reads the widths
+    from the local param_card instead of the LHE banner."""
+    import random
+    try:
+        import madgraph.various.lhe_parser as lhe_parser
+    except ImportError:
+        import internal.lhe_parser as lhe_parser
+    from models import check_param_card as param_card_mod
+    from madgraph.various import misc as _misc
+    import madgraph.iolibs.files as files
+
+    need_zip = lhe_path.endswith('.gz')
+    if need_zip:
+        _misc.gunzip(lhe_path)
+        lhe_path = lhe_path[:-3]
+
+    param_card = param_card_mod.ParamCard(param_card_path)
+    cst = 6.58211915e-25   # hbar in GeV s
+    c = 299792458000       # speed of light in mm/s
+    log.info('Adding time of flight information on %s', lhe_path)
+    lhe = lhe_parser.EventFile(lhe_path)
+    out = open('%s_2vertex.lhe' % lhe_path, 'w')
+    out.write(lhe.banner)
+    for event in lhe:
+        for particle in event:
+            # default=0 -> particles without a decay entry are treated as stable
+            width = param_card['decay'].get((abs(particle.pid),), 0.).value
+            if width:
+                vtim = c * random.expovariate(width / cst)
+                if vtim > threshold:
+                    particle.vtim = vtim
+        out.write(str(event))
+    out.write('</LesHouchesEvents>\n')
+    out.close()
+    lhe.close()
+    files.mv('%s_2vertex.lhe' % lhe_path, lhe_path)
+    if need_zip:
+        _misc.gzip(lhe_path)
+
+
+def _lhapdf_config_path():
+    """Path to lhapdf-config so systematics can import the python lhapdf
+    module (required to compute PDF/scale variations)."""
+    return lhapdf_paths().config
+
+
+def _run_systematics(lhe_path, cfg, log):
+    """Run systematics.py (scale/PDF variations) on the LHE file, reusing the
+    exact worker madevent uses (systematics.call_systematics)."""
+    try:
+        import madgraph.various.systematics as systematics
+    except ImportError:
+        import internal.systematics as systematics
+
+    def fmt(vals):
+        return ','.join(str(v) for v in vals)
+
+    opts = []
+    if cfg.get('systematics_mur'):
+        opts.append('--mur=%s' % fmt(cfg['systematics_mur']))
+    if cfg.get('systematics_muf'):
+        opts.append('--muf=%s' % fmt(cfg['systematics_muf']))
+    if cfg.get('systematics_pdf'):
+        opts.append('--pdf=%s' % fmt(cfg['systematics_pdf']))
+    extra = cfg.get('systematics_str_options', '')
+    if extra:
+        opts.extend(extra.split())
+    # The mg7 LHE has no <mgrwt> block, so systematics cannot read the per-event
+    # LO reweighting info. For a process with a single alpha_s power (stored in
+    # SubProcesses/proc_characteristics at output time) it can be reconstructed
+    # from the events: pass that power as --lo_nqcd. -1 means the QCD power is
+    # not uniform, so the reconstruction is not applicable.
+    if not any(o.startswith('--lo_nqcd') for o in opts):
+        try:
+            from madgraph.various import banner as _banner_mod
+        except ImportError:
+            import internal.banner as _banner_mod
+        pc_path = os.path.join('SubProcesses', 'proc_characteristics')
+        if os.path.exists(pc_path):
+            try:
+                nqcd = int(_banner_mod.ProcCharacteristic(pc_path)['single_qcd_order'])
+            except Exception:
+                nqcd = -1
+            if nqcd >= 0:
+                opts.append('--lo_nqcd=%d' % nqcd)
+    # tell systematics where to find lhapdf (so it can link the python module)
+    if not any(o.startswith('--lhapdf_config') for o in opts):
+        lhapdf_config = _lhapdf_config_path()
+        if lhapdf_config:
+            opts.append('--lhapdf_config=%s' % lhapdf_config)
+
+    log.info('Running systematics on %s %s', lhe_path, ' '.join(opts))
+    systematics.call_systematics([lhe_path, lhe_path] + opts,
+                                 log=lambda x: log.info(str(x)))
+
+
+def run_lhe_postprocessing(process) -> None:
+    """Run the LHE-level post-processings configured in the run_card
+    [postprocessing] section on the generated event file (displaced-vertex
+    time-of-flight and systematics). Only applies when an LHE file exists."""
+    lhe_path = _find_event_file(process.run_path)
+    if lhe_path is None:
+        return
+    # process.run_card is a RunCardMG7; the section view exposes .get(key, def)
+    try:
+        cfg = process.run_card["postprocessing"]
+    except Exception:
+        return
+    log = logging.getLogger('madevent')
+
+    if cfg.get('systematics') and getattr(process, 'is_decay', False):
+        # Scale and PDF variations are a beam quantity. A decay has neither, so
+        # systematics can only fail here ("not supported for pdlabel=none") --
+        # and it is not free: MadSpin reruns the launcher for every pool refill.
+        log.info("decay mode: skipping systematics (no beams to vary)")
+    elif cfg.get('systematics'):
+        native = getattr(process, 'systematics', None)
+        if native is not None and native.weight_count > 0:
+            log.warning("[postprocessing] systematics is ignored: the scale/PDF "
+                        "weights were already computed by madspace ([systematics] "
+                        "section); set systematics.enable = false to use the legacy "
+                        "systematics.py path instead.")
+        else:
+            try:
+                _run_systematics(lhe_path, cfg, log)
+            except Exception as error:
+                _report_failure(log, "systematics computation", error,
+                                os.path.dirname(lhe_path))
+
+    tof = cfg.get('time_of_flight', -1.0)
+    try:
+        if tof is not None and float(tof) >= 0:
+            _add_time_of_flight(lhe_path, float(tof), process.param_card_path, log)
+    except Exception as error:
+        _report_failure(log, "add_time_of_flight", error,
+                        os.path.dirname(lhe_path))
+
+
+_model_hash_warned = set()
+_model_cache = {}
+
+
+def read_stored_model(me_dir=None) -> "str | None":
+    """The model this process was generated with, as recorded at output time in
+    ``SubProcesses/model.txt``: a UFO path carrying its restriction (e.g.
+    ``.../models/sm-no_b_mass``) or a model name -- in either case something
+    ``import model`` understands. Returns None when the process was written
+    without that information.
+
+    Warns (once per directory) when the model on disk no longer matches the
+    hash stored on the second line, i.e. it changed since the output was made.
+    """
+    base = me_dir or os.getcwd()
+    model_file = os.path.join(base, "SubProcesses", "model.txt")
+    if not os.path.exists(model_file):
+        return None
+    with open(model_file) as f:
+        lines = f.read().splitlines()
+    model = lines[0].strip() if lines else ""
+    stored_hash = lines[1].strip() if len(lines) > 1 else ""
+    if not model:
+        logger.warning("SubProcesses/model.txt is empty; the model of this "
+                       "process is unknown.")
+        return None
+
+    # verify the model on disk still matches the one used at output time. The
+    # reference may carry a restriction suffix ('sm-no_b_mass'); the hash was
+    # taken on the UFO directory itself ('sm').
+    model_dir = model if os.path.isdir(model) else model.rsplit('-', 1)[0]
+    if stored_hash and os.path.isdir(model_dir) \
+            and model_file not in _model_hash_warned:
+        current_hash = misc.hash_model_files(model_dir)
+        if current_hash and current_hash != stored_hash:
+            _model_hash_warned.add(model_file)
+            logger.warning(
+                "The model at %s has changed since this process was generated "
+                "(hash mismatch); anything computed from it now (the 'auto' "
+                "widths, the dependent masses/widths of the param_card) may be "
+                "inconsistent with the matrix element.", model_dir)
+    return model
+
+
+def _proc_characteristic(me_dir=None) -> dict:
+    """SubProcesses/proc_characteristics as a plain dict (empty when the file is
+    missing or unreadable). Plain, because ProcCharacteristic is a ConfigFile,
+    whose get() is the parameter accessor and takes no default."""
+    from madgraph.various import banner as _banner_mod
+    path = os.path.join(me_dir or os.getcwd(), 'SubProcesses',
+                        'proc_characteristics')
+    if os.path.exists(path):
+        try:
+            return dict(_banner_mod.ProcCharacteristic(path))
+        except Exception as error:
+            logger.debug("could not read %s: %s", path, error)
+    return {}
+
+
+def load_process_model(me_dir=None):
+    """Import the UFO model this process was generated with, as
+    :func:`models.import_ufo.import_model` builds it -- the object every
+    model-level consumer of the param_card expects (see
+    :meth:`MG7Cmd.get_model`). None when the process recorded no model, or when
+    that model no longer imports.
+
+    Cached per (reference, complex-mass-scheme): importing a model is slow and
+    the card question asks for it again at every 'update dependent'."""
+    ref = read_stored_model(me_dir)
+    if not ref:
+        return None
+    cms = _proc_characteristic(me_dir).get('complex_mass_scheme', False)
+    key = (ref, bool(cms))
+    if key not in _model_cache:
+        import models.import_ufo as import_ufo
+        try:
+            with misc.MuteLogger(['madgraph.model'], [50]):
+                _model_cache[key] = import_ufo.import_model(
+                    ref, complex_mass_scheme=bool(cms))
+        except Exception as error:
+            # 'update dependent' calls this under a SIGALRM whose handler
+            # raises a TimeOutError of its own (a class defined inside the
+            # caller, so it can only be recognised by name). Let it through:
+            # the caller then says the model took too long to load and how to
+            # force it, instead of reporting a model that does not import.
+            if type(error).__name__ == 'TimeOutError':
+                raise
+            logger.debug("could not import the model %s: %s", ref, error)
+            _model_cache[key] = None
+    return _model_cache[key]
+
+
+def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat")) -> None:
+    """Fill any width set to ``auto`` in the param_card, using madgraph and the
+    model stored at output time (``SubProcesses/model.txt``), and write the
+    result back into the card. A no-op when the card has no ``auto`` width.
+
+    Called before every generation, so a single run and each scan point (whose
+    param_card is rewritten just before ``run_single``) both get model-computed
+    widths."""
+    try:
+        with open(param_card_path) as f:
+            text = f.read()
+    except OSError:
+        return
+    # matches "DECAY <pdg> auto" (optionally "auto@NLO"), as in
+    # common_run_interface.static_check_param_card
+    pdgs = re.findall(r"(?im)^\s*decay\s+([+-]?\d+)\s+auto", text)
+    if not pdgs:
+        return
+    pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
+
+    model = read_stored_model()
+    if not model:
+        logger.warning(
+            "The param_card requests 'auto' width(s) for %s but the model of "
+            "this process is unknown; leaving them as-is.", " ".join(pdgs))
+        return
+
+    mg5 = str(_MG_ROOT / "bin" / "madgraph")
+    if not os.path.exists(mg5):
+        logger.warning("Cannot find madgraph at %s; 'auto' widths not computed.", mg5)
+        return
+
+    import tempfile
+    cmds = "import model %s\ncompute_widths %s --path=%s\n" % (
+        model, " ".join(pdgs), os.path.abspath(param_card_path))
+    with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as fh:
+        fh.write(cmds)
+        cmdfile = fh.name
+    try:
+        logger.info("Computing 'auto' width(s) for %s ...", " ".join(pdgs))
+        proc = subprocess.run([mg5, cmdfile])
+        if proc.returncode != 0:
+            logger.warning(
+                "compute_widths returned a non-zero exit code; the param_card "
+                "may still contain 'auto' entries.")
+    finally:
+        try:
+            os.remove(cmdfile)
+        except OSError:
+            pass
+
+
+def run_single(switch=None) -> "MadgraphProcess":
+    """Run a single generation and return the process (for its result)."""
+    compute_auto_widths()
+    process = MadgraphProcess()
+    process.survey()
+    process.train_madnis()
+    process.generate_events()
+    # run_card-driven LHE post-processing (displaced vertex + systematics)
+    run_lhe_postprocessing(process)
+    # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
+    # selected in the merged question above on the generated events.
+    if switch:
+        run_selected_tools(switch, process)
+    return process
+
+
+def detect_run_scan(run_card_path):
+    """Return a banner.RunCardIterator if the run_card contains scan:[...]
+    values, else None."""
+    from madgraph.various import banner as banner_mod
+    from madgraph.various import misc as _misc
+    with _misc.TMP_variable(banner_mod.RunCard, 'allow_scan', True):
+        rc = banner_mod.RunCard(run_card_path, consistency=False)
+    if getattr(rc, 'scan_set', None):
+        return banner_mod.RunCardIterator(run_card_path)
+    return None
+
+
+def detect_param_scan(param_card_path):
+    """Return a ParamCardIterator if the param_card contains scan:[...] values,
+    else None."""
+    if not os.path.exists(param_card_path):
+        return None
+    from models import check_param_card as param_card_mod
+    it = param_card_mod.ParamCardIterator(param_card_path)
+    for block in it.order:
+        for param in block:
+            if isinstance(param.value, str) and param.value.strip().lower().startswith('scan'):
+                return it
+    return None
+
+
+def run_scan(iterator, card_path, switch=None) -> None:
+    """Iterate over all scan points, running a full generation for each and
+    accumulating the results, then write the scan summary. Works for both the
+    run_card (RunCardIterator) and the param_card (ParamCardIterator); their
+    interface (__iter__/write/store_entry/get_next_name/write_summary) is the
+    same. The scan card is restored afterwards."""
+    import tomllib
+    with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
+        run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
+
+    from models import check_param_card as param_card_mod
+    is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
+
+    backup = card_path + ".scan_bak"
+    shutil.copy(card_path, backup)
+    try:
+        for i, point in enumerate(iterator):
+            point.write(card_path)
+            logger.info("=== scan point %d ===", i + 1)
+            process = run_single(switch)
+            # use the run directory the process actually created, so the
+            # per-point params.dat written by write_summary has a home
+            name = os.path.basename(process.run_path)
+            if is_param_scan:
+                # pass the (possibly auto-width-updated) card so the summary
+                # records the model-computed width for each 'auto' entry
+                iterator.store_entry(name, process.get_result(),
+                                     param_card_path=card_path)
+            else:
+                iterator.store_entry(name, process.get_result())
+        os.makedirs("Events", exist_ok=True)
+        summary = os.path.join("Events", "scan_%s.txt" % run_name)
+        iterator.write_summary(summary)
+        logger.info("scan results written to %s", summary)
+    finally:
+        shutil.move(backup, card_path)
+
+
+def run_generation(switch=None) -> None:
+    """Run the generation, expanding a scan over the run_card or the param_card
+    when one is present (scanning both simultaneously is not allowed)."""
+    run_card_path = os.path.join("Cards", "run_card.toml")
+    param_card_path = os.path.join("Cards", "param_card.dat")
+    run_iter = detect_run_scan(run_card_path)
+    param_iter = detect_param_scan(param_card_path)
+    if run_iter and param_iter:
+        raise RuntimeError(
+            "Scanning simultaneously over the run_card and the param_card is "
+            "not allowed. Please keep the scan:[...] entries in only one card.")
+    if run_iter:
+        run_scan(run_iter, run_card_path, switch)
+    elif param_iter:
+        run_scan(param_iter, param_card_path, switch)
+    else:
+        run_single(switch)
+
+
+def force_lhe_output_if_needed(switch) -> None:
+    """Any post-processing tool (shower/detector/madspin/reweight/analysis)
+    operates on an LHE file, so make sure the events are written in that format
+    when one of them is enabled."""
+    if not switch:
+        return
+    if not any(switch.get(k, "OFF") not in ("OFF", "Not Avail.")
+               for k in ("shower", "detector", "madspin", "reweight", "analysis")):
+        return
+    from madgraph.various.banner import RunCardMG7
+    path = os.path.join("Cards", "run_card.toml")
+    run_card = RunCardMG7(path, consistency=False)
+    if run_card["run"]["output_format"] != "lhe":
+        run_card["run"]["output_format"] = "lhe"
+        run_card.write(path)
+        logging.getLogger("madevent").info(
+            "output_format set to 'lhe' (required by the selected post-processing).")
+
+
+def _raise_open_file_limit() -> None:
+    """Remove the soft limit on the number of open files: it can be quite low
+    on some systems and the event-combination step opens one file per channel."""
+    soft_lim, hard_lim = resource.getrlimit(resource.RLIMIT_NOFILE)
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard_lim, hard_lim))
+    except (ValueError, OSError) as error:
+        logger.debug("could not raise the open-file limit: %s", error)
+
+
+def main() -> None:
+    """``bin/generate_events`` entry point.
+
+    It runs the same :class:`MG7Cmd` command MG5's in-process ``launch`` uses,
+    so the two entry points cannot drift apart; the only difference is that
+    nothing here supplies a ``mother``/``inputfile``, so the question falls back
+    to reading this process's own stdin.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    args = parser.parse_args()
+
+    MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

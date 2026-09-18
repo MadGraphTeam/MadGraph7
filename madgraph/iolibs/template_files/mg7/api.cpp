@@ -26,6 +26,30 @@ UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result) {
     return UMAMI_SUCCESS;
 }
 
+UmamiStatus umami_supported_inputs(bool const** supported, int* count) {
+    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true };
+    *supported = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+}
+
+UmamiStatus umami_required_inputs(bool const** required, int* count) {
+    // MOMENTA and FLAVOR_INDEX (both dereferenced unconditionally in umami_matrix_element)
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, false, true };
+    *required = data;
+    *count = UMAMI_INPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+}
+
+UmamiStatus umami_supported_outputs(bool const** supported, int* count) {
+    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
+    *supported = data;
+    *count = UMAMI_OUTPUT_KEY_COUNT;
+    return UMAMI_SUCCESS;
+}
+
 UmamiStatus umami_initialize(UmamiHandle* handle, char const* param_card_path) {
     CPPProcess* process = new CPPProcess(param_card_path);
     std::vector<double*>& momenta = process->getMomenta();

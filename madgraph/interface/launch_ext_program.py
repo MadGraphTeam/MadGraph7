@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -72,7 +72,7 @@ class ExtLauncher(object):
         self.cmd_int.me_dir = self.running_dir
         if self.cards:
             common_run_interface.CommonRunCmd.ask_edit_card_static(self.cards,
-                             mode='fixed', plot=False,
+                             mode='fixed',
                              timeout=0, ask=self.cmd_int.ask, force=self.force)
              
         #for card in self.cards:
@@ -437,6 +437,8 @@ class SALauncher(ExtLauncher):
         
         ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
         self.cards = ['param_card.dat']
+        if os.path.isfile(running_dir+'/Cards/onia_card.dat'):
+            self.cards += ['onia_card.dat']
 
     
     def launch_program(self):

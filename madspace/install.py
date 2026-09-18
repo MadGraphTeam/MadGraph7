@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Install madspace either using pre-compiled binaries or built from source.
 
+The pre-compiled PyPI wheel (--bin) is only offered/defaulted-to in an
+official MadGraph release tarball, where it is guaranteed to match the
+bundled source; a plain git checkout always builds from source.
+
 Interactive usage (no arguments):  python install.py
 Non-interactive examples:
   python install.py --bin
   python install.py --source
   python install.py --source --cuda --cuda-arch "75;80;86"
+  python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
 """
 
@@ -71,6 +76,7 @@ class _Prompter:
         if cls._cmd is False:
             try:
                 from madgraph.interface.extended_cmd import Cmd
+
                 cls._cmd = Cmd()
             except Exception:
                 cls._cmd = None
@@ -83,8 +89,11 @@ class _Prompter:
         if cmd is not None:
             try:
                 ans = cmd.ask(
-                    question, default, choices=list(choices or []),
-                    timeout=0, force=_NONINTERACTIVE,
+                    question,
+                    default,
+                    choices=list(choices or []),
+                    timeout=0,
+                    force=_NONINTERACTIVE,
                 )
                 return default if ans is None else str(ans)
             except Exception:
@@ -124,7 +133,10 @@ def ask_string(prompt: str, default: str) -> str:
 
 
 def ask_compile_options(
-    saved: dict | None = None, from_saved: bool = False
+    saved: dict | None = None,
+    from_saved: bool = False,
+    keys: tuple[str, ...] | None = None,
+    show_expert_option: bool = False,
 ) -> dict[str, bool]:
     """Multi-select menu for compile options; returns {output_key: bool}.
 
@@ -133,6 +145,11 @@ def ask_compile_options(
     This lets the BLAS item be opt-in on Apple ("build OpenBLAS") and opt-out
     on Linux ("use system BLAS") while the default behavior of pressing Enter
     always matches the platform default.
+
+    *keys*, if given, restricts the menu to entries whose output_key is in
+    it (used to split the compile-options prompt into a basic and an expert
+    stage). *show_expert_option* appends a pseudo entry ("_expert") used to
+    let the user opt into seeing the expert stage.
 
     *from_saved* controls the Enter hint wording.
     """
@@ -167,6 +184,10 @@ def ask_compile_options(
     ]
     # CUDA and HIP are not available on Apple; hide them in interactive mode
     entries = [e for e in all_entries if not (_IS_APPLE and e[0] in ("cuda", "hip"))]
+    if keys is not None:
+        entries = [e for e in entries if e[2] in keys]
+    if show_expert_option:
+        entries.append(("expert", "Show expert/developer options", "_expert", False))
 
     # Derive the checkbox state for each menu item from the saved output values.
     # For normal items: checked = saved output value.
@@ -282,16 +303,17 @@ def _cmake_version_ok(path, minimum=CMAKE_MIN_VERSION) -> bool:
 
 
 def _heptools_dir_from_config() -> str | None:
-    """Read heptools_install_dir from the MG5 configuration files (same
-    locations MG5 itself uses), so the value is available even when the
-    installer is run directly rather than launched from MG5."""
-    home = os.environ.get("HOME") or os.path.expanduser("~")
-    candidates = []
-    if home:
-        candidates.append(os.path.join(home, ".mg5", "mg5_configuration.txt"))
-        xdg = os.environ.get("XDG_CONFIG_HOME", os.path.join(home, ".config"))
-        candidates.append(os.path.join(xdg, "mg5_configuration.txt"))
-    candidates.append(str(SCRIPT_DIR.parent / "input" / "mg5_configuration.txt"))
+    """Read heptools_install_dir from the MadGraph configuration files (same
+    locations MadGraph itself uses -- see misc.user_config_file), so the value
+    is available even when the installer is run directly rather than launched
+    from MadGraph. This installation's own config wins over the per-user one."""
+    candidates = [str(SCRIPT_DIR.parent / "input" / "mg7_configuration.txt")]
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    home = os.environ.get("HOME")
+    if xdg:
+        candidates.append(os.path.join(xdg, "mg7", "mg7_configuration.txt"))
+    elif home:
+        candidates.append(os.path.join(home, ".mg7", "mg7_configuration.txt"))
     for cfg in candidates:
         try:
             with open(cfg) as f:
@@ -308,20 +330,11 @@ def _heptools_dir_from_config() -> str | None:
     return None
 
 
-def find_cmake() -> str | None:
-    """Return a path to a cmake >= CMAKE_MIN_VERSION, or None."""
-    # 1. explicit override
-    for var in ("MADGRAPH_CMAKE", "CMAKE"):
-        p = os.environ.get(var)
-        if p and _cmake_version_ok(p):
-            return p
-    # 2. system cmake on PATH (ignored if too old)
-    p = shutil.which("cmake")
-    if p and _cmake_version_ok(p):
-        return p
-    # 3. cmake installed via MadGraph's HEPTools installer. The HEPTools
-    #    location is configurable in MG5 (heptools_install_dir); MG5 passes it
-    #    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
+def find_heptools_cmake() -> str | None:
+    """find cmake installed via MadGraph's HEPTools installer. The HEPTools
+    location is configurable in MG5 (heptools_install_dir); MG5 passes it
+    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
+    """
     hep_dirs = []
     env_hep = os.environ.get("MADGRAPH_HEPTOOLS_DIR")
     if env_hep:
@@ -332,8 +345,13 @@ def find_cmake() -> str | None:
     hep_dirs.append(SCRIPT_DIR.parent / "HEPTools")
     seen = set()
     for heptools in hep_dirs:
-        for pattern in ("cmake/bin/cmake", "bin/cmake", "cmake",
-                        "cmake*/bin/cmake", "*/bin/cmake"):
+        for pattern in (
+            "cmake/bin/cmake",
+            "bin/cmake",
+            "cmake",
+            "cmake*/bin/cmake",
+            "*/bin/cmake",
+        ):
             for cand in sorted(heptools.glob(pattern)):
                 cand = cand.resolve()
                 if cand in seen:
@@ -347,7 +365,12 @@ def find_cmake() -> str | None:
 def add_cmake_to_path(env: dict) -> dict:
     """Ensure a suitable cmake (and co-located tools such as ninja) is on the
     PATH of the build environment."""
-    cmake = find_cmake()
+    cmake = shutil.which("cmake")
+    if cmake and _cmake_version_ok(cmake):
+        print(f"Using cmake: {cmake}")
+        return env
+
+    cmake = find_heptools_cmake()
     if cmake:
         cmake_dir = os.path.dirname(os.path.abspath(cmake))
         parts = [cmake_dir]
@@ -355,13 +378,46 @@ def add_cmake_to_path(env: dict) -> dict:
             parts.append(existing)
         env["PATH"] = os.pathsep.join(parts)
         print(f"Using cmake: {cmake}")
-    else:
-        print(
-            "WARNING: no cmake >= %d.%d found. The source build will likely fail.\n"
-            "  Install one with MG5 ('install cmake'), via your package manager,\n"
-            "  or point to it with MADGRAPH_CMAKE=/path/to/cmake."
-            % CMAKE_MIN_VERSION
-        )
+        return env
+
+    print(
+        "WARNING: no cmake >= %d.%d found. The source build will likely fail.\n"
+        "  Install one with MG5 ('install cmake'), via your package manager,\n"
+        "  or point to it with MADGRAPH_CMAKE=/path/to/cmake." % CMAKE_MIN_VERSION
+    )
+    return env
+
+
+def default_jobs() -> int:
+    """Number of compilation jobs to use when none was requested."""
+    try:
+        return len(os.sched_getaffinity(0))  # Linux: respects cgroup/taskset
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def set_build_parallelism(env: dict, jobs: int | None) -> dict:
+    """Tell CMake how many compilation jobs it may run in parallel.
+
+    scikit-build-core calls ``cmake --build`` without any ``-j``, so the job
+    count comes entirely from the environment. With the Ninja generator that
+    goes unnoticed (ninja parallelises on its own), but whenever ninja is
+    missing scikit-build-core falls back to "Unix Makefiles", and make without
+    ``-j`` compiles one file at a time -- which is why a gcc/make build took
+    minutes while the ninja one did not.
+
+    ``CMAKE_BUILD_PARALLEL_LEVEL`` is read by ``cmake --build`` itself, so it
+    works for either generator, and being an environment variable it is also
+    inherited by the nested OpenBLAS build.
+    """
+    if jobs is not None and jobs <= 0:
+        jobs = None  # 0 / negative = "as many as there are cores"
+    if jobs is None:
+        if env.get("CMAKE_BUILD_PARALLEL_LEVEL"):
+            return env  # an explicit setting in the caller's environment wins
+        jobs = default_jobs()
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    print(f"Compiling with {jobs} parallel job(s) (-j to change).")
     return env
 
 
@@ -378,6 +434,10 @@ def run(cmd: list, env: dict | None = None) -> None:
 
 def install_build_deps(system: bool = False) -> dict:
     """Install build-system dependencies and return an updated env.
+
+    Reads the list from pyproject.toml's [build-system] requires, which now
+    also includes pyyaml and pybind11-stubgen for the CMake-driven code
+    generation (see CMakeLists.txt).
 
     When *system* is False (default) deps are installed into INSTALL_DIR and
     PYTHONPATH is set so the subsequent pip invocation picks them up.
@@ -406,6 +466,61 @@ def install_build_deps(system: bool = False) -> dict:
     # make sure the source build can find a recent-enough cmake
     env = add_cmake_to_path(env)
     return env
+
+
+def _madspace_version() -> str:
+    """The version a wheel built from this checkout would carry. Comes from the
+    MadGraph VERSION file, the same source pyproject.toml's dynamic version
+    reads, so madspace and MadGraph are always released in lockstep."""
+    for line in (SCRIPT_DIR.parent / "VERSION").read_text().splitlines():
+        name, _, value = line.partition("=")
+        if name.strip() == "version":
+            return value.strip()
+    raise RuntimeError("no 'version' line in the MadGraph VERSION file")
+
+
+def _release_info() -> dict[str, str]:
+    """Parse input/.release, the marker a MadGraph release tarball carries
+    (written by bin/create_release.py), or {} in a plain git checkout."""
+    marker = SCRIPT_DIR.parent / "input" / ".release"
+    if not marker.is_file():
+        return {}
+    info = {}
+    for line in marker.read_text().splitlines():
+        name, _, value = line.partition("=")
+        info[name.strip()] = value.strip()
+    return info
+
+
+def _release_version() -> str | None:
+    """Version recorded in input/.release, or None in a plain git checkout.
+    Used to decide whether the PyPI wheel -- built from the exact same
+    release -- may be offered instead of a source build."""
+    return _release_info().get("version")
+
+
+def _release_wheel_available() -> bool:
+    """Whether input/.release lists a wheel matching this exact interpreter
+    and platform. The list is the actual filenames cibuildwheel produced for
+    this release (see bin/create_release.py --wheels-dir), so this is a
+    purely local check -- no PyPI query, no guessing at the CI build matrix."""
+    wheels = _release_info().get("wheels", "")
+    if not wheels:
+        return False
+
+    system, machine = platform.system(), platform.machine()
+    if system == "Linux" and machine in ("x86_64", "AMD64"):
+        platform_tags = ("manylinux", "x86_64")
+    elif system == "Darwin" and machine in ("arm64", "aarch64"):
+        platform_tags = ("macosx", "arm64")
+    else:
+        return False  # release wheels only ever target those two platforms
+
+    python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return any(
+        python_tag in name and all(tag in name for tag in platform_tags)
+        for name in wheels.split(",")
+    )
 
 
 def load_settings() -> dict:
@@ -453,6 +568,16 @@ def main() -> None:
         default=False,
         help="Non-interactive: accept defaults / reuse saved settings, no prompts. "
         "Combine with --source/--bin to force the install mode.",
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of parallel compilation jobs for the source build "
+        f"(default: every available core, {default_jobs()} here). MG5's "
+        "'nb_core' option is forwarded here by 'install madspace'.",
     )
     parser.add_argument(
         "--system",
@@ -503,6 +628,20 @@ def main() -> None:
         "--no-simd", dest="simd", action="store_false", help="Disable SIMD backend."
     )
 
+    docs_grp = parser.add_mutually_exclusive_group()
+    docs_grp.add_argument(
+        "--docs",
+        dest="docs",
+        action="store_true",
+        help="Generate API docstrings (requires doxygen) and .pyi type stubs.",
+    )
+    docs_grp.add_argument(
+        "--no-docs",
+        dest="docs",
+        action="store_false",
+        help="Skip docstring and .pyi generation (default; no doxygen needed).",
+    )
+
     debug_grp = parser.add_mutually_exclusive_group()
     debug_grp.add_argument(
         "--debug",
@@ -543,35 +682,61 @@ def main() -> None:
     )
 
     # None = not provided by user; overridden by set_defaults below
-    parser.set_defaults(cuda=None, hip=None, openblas=None, simd=None, build_type=None)
+    parser.set_defaults(
+        cuda=None, hip=None, openblas=None, simd=None, docs=None, build_type=None
+    )
     args = parser.parse_args()
     _set_noninteractive(args.yes)
 
     # Load saved settings when a previous installation is present
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
 
+    # The PyPI wheel is only offered/defaulted-to in an actual release tarball
+    # (input/.release, written by bin/create_release.py) that still matches
+    # this checkout's madspace version -- otherwise pip would pull in an
+    # unrelated madspace release -- and only when that release actually built
+    # a wheel for this exact platform/Python (checked locally against the
+    # wheel filenames recorded in the marker, no PyPI query).
+    release_version = _release_version()
+    is_release = release_version is not None and release_version == _madspace_version()
+    bin_available = is_release and _release_wheel_available()
+
     # Determine install mode. An explicit --bin/--source always wins; --yes
-    # alone reuses the saved mode (built-in default otherwise).
+    # alone reuses the saved mode, defaulting to bin only when available.
     if args.bin:
+        if not bin_available:
+            print(
+                "WARNING: no madspace wheel was published for this platform/Python "
+                "version; --bin will likely fail."
+            )
         from_source = False
     elif args.source:
         from_source = True
     elif args.yes:
-        from_source = saved.get("mode", "bin") == "source"
+        from_source = (
+            saved.get("mode", "bin" if bin_available else "source") == "source"
+        )
     else:
         print("Welcome to the MadSpace interactive installer")
         print()
-        # commented out the option to use the pre-compiled binaries
-        # TODO: add this again once we build release build
-        # default_is_bin = saved.get("mode", "bin") != "source"
-        # from_source = not ask_yes_no(
-        #     "Install pre-compiled package? (recommended)", default=default_is_bin
-        # )
-        from_source = True
+        if bin_available:
+            default_is_bin = saved.get("mode", "bin") != "source"
+            from_source = not ask_yes_no(
+                "Install pre-compiled package? (recommended)", default=default_is_bin
+            )
+        else:
+            from_source = True
 
-    # PyPI installation
+    # PyPI installation, pinned to this checkout's madspace version so the
+    # wheel matches the bundled source (see SOURCE_HASH check in mg7/launch.py).
     if not from_source:
-        pip_cmd = [sys.executable, "-m", "pip", "install", PACKAGE_NAME]
+        pip_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            f"{PACKAGE_NAME}=={_madspace_version()}",
+        ]
         if not args.system:
             pip_cmd.append(f"--target={INSTALL_DIR}")
         run(pip_cmd)
@@ -608,12 +773,39 @@ def main() -> None:
         # Show saved source settings if available, else platform-appropriate defaults
         from_saved = saved.get("mode") == "source"
         menu_defaults = saved if from_saved else _PLATFORM_SOURCE_DEFAULTS
-        opts = ask_compile_options(menu_defaults, from_saved=from_saved)
-        enable_cuda = opts.get("cuda", menu_defaults.get("cuda", False))
-        enable_hip = opts.get("hip", menu_defaults.get("hip", False))
-        enable_openblas = opts["openblas"]
-        enable_simd = opts["simd"]
-        build_type = ask_build_type(menu_defaults)
+
+        # Basic prompt: just CUDA/HIP plus an opt-in to the expert options below
+        basic = ask_compile_options(
+            menu_defaults,
+            from_saved=from_saved,
+            keys=("cuda", "hip"),
+            show_expert_option=True,
+        )
+        enable_cuda = basic.get("cuda", menu_defaults.get("cuda", False))
+        enable_hip = basic.get("hip", menu_defaults.get("hip", False))
+
+        if basic.get("_expert", False):
+            expert = ask_compile_options(
+                menu_defaults, from_saved=from_saved, keys=("openblas", "simd")
+            )
+            enable_openblas = expert["openblas"]
+            enable_simd = expert["simd"]
+            build_type = ask_build_type(menu_defaults)
+        else:
+            enable_openblas = menu_defaults.get(
+                "openblas", _PLATFORM_SOURCE_DEFAULTS["openblas"]
+            )
+            enable_simd = menu_defaults.get("simd", False)
+            build_type = _saved_build_type(menu_defaults)
+
+    # Docs/.pyi generation: explicit flag wins, else reuse saved value under
+    # --yes, else off. Not part of the interactive menu (niche / CI use).
+    if args.docs is not None:
+        enable_docs = args.docs
+    elif args.yes:
+        enable_docs = saved.get("docs", False)
+    else:
+        enable_docs = False
 
     # Compute capability prompts
     cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)
@@ -670,9 +862,12 @@ def main() -> None:
     cmd.append(f"-Ccmake.define.ENABLE_OPENBLAS={'ON' if enable_openblas else 'OFF'}")
     if enable_simd:
         cmd.append("-Ccmake.define.ENABLE_SIMD=ON")
+    if enable_docs:
+        cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
 
     env = install_build_deps(system=args.system)
+    env = set_build_parallelism(env, args.jobs)
     run(cmd, env=env)
     save_settings(
         {
@@ -683,6 +878,7 @@ def main() -> None:
             "hip_arch": hip_arch,
             "openblas": enable_openblas,
             "simd": enable_simd,
+            "docs": enable_docs,
             "build_type": build_type,
         }
     )

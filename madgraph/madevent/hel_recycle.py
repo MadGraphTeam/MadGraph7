@@ -497,8 +497,12 @@ class HelicityRecycler():
     def add_indices(self, line):
         '''Add loop_var index to amp and output variable. 
            Also update name of output variable.'''
-        # Doesnt work if the AMP arguments contain brackets
-        new_line = re.sub(r'\WAMP\(.*?\)', self.add_amp_index, line)
+        # Doesnt work if the AMP arguments contain brackets.
+        # The character in front is looked at rather than eaten, so that an
+        # AMP( opening the statement is indexed too -- which is what a line
+        # like "AMP(31) = AMP(31) + AMP(1)" needs.
+        new_line = re.sub(r'(?<![A-Za-z0-9_])AMP\(.*?\)',
+                          self.add_amp_index, line)
         new_line = re.sub(r'MATRIX\d+', 'TS(K)', new_line)
         return new_line
 
@@ -960,7 +964,12 @@ def do_multiline(line):
         remaining = line
         while len(remaining) > char_limit:
             split_at = remaining.rfind(' ', 0, char_limit + 1)
-            if split_at <= 0:
+            # A split which leaves nothing but blanks on the current line --
+            # the only space is the statement's own indentation, as for the
+            # space-free Kleiss-Kuijf JAMPF lines -- emits an empty physical
+            # line, and the continuation which follows it is then attached to
+            # the *previous* statement. Break mid-token instead.
+            if split_at <= 0 or not remaining[:split_at+1].strip():
                 split_line.append(remaining[:char_limit])
                 remaining = remaining[char_limit:]
             else:

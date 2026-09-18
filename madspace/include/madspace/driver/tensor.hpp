@@ -15,50 +15,76 @@ namespace madspace {
 
 using SizeVec = std::vector<std::size_t>;
 
+/**
+ * Fixed-capacity vector of up to @ref max_size dimension sizes.
+ *
+ * The shape and stride type used throughout @ref Tensor; a small
+ * stack-allocated alternative to `std::vector<std::size_t>` since every
+ * tensor has at most @ref max_size dimensions.
+ */
 class Sizes {
 public:
+    /// Maximum number of dimensions a `Sizes` can hold.
     static constexpr std::size_t max_size = 4;
 
+    /// Empty (0-dimensional) sizes.
     Sizes() : _size(0) {};
+    /// `size` dimensions, all zero.
     explicit Sizes(std::size_t size) : _size(size) {
         if (size > max_size) {
             throw std::out_of_range("maximum dimension exceeded");
         }
         std::fill(begin(), end(), 0);
     };
+    /// `size` dimensions, each set to `value`.
     Sizes(std::size_t size, std::size_t value) : _size(size) {
         if (size > max_size) {
             throw std::out_of_range("maximum dimension exceeded");
         }
         std::fill(begin(), end(), value);
     };
+    /// One dimension per entry of `values`.
     Sizes(std::initializer_list<std::size_t> values) : _size(values.size()) {
         if (values.size() > max_size) {
             throw std::out_of_range("maximum dimension exceeded");
         }
         std::copy(values.begin(), values.end(), begin());
     }
+    /// One dimension per entry of `values`.
     Sizes(const SizeVec& values) : _size(values.size()) {
         if (values.size() > max_size) {
             throw std::out_of_range("maximum dimension exceeded");
         }
         std::copy(values.begin(), values.end(), begin());
     }
+    /// The dimension size at `index`.
     std::size_t& operator[](std::size_t index) { return _values[index]; }
+    /// The dimension size at `index`.
     const std::size_t& operator[](std::size_t index) const { return _values[index]; }
+    /// Number of dimensions.
     std::size_t size() const { return _size; }
+    /// Iterator over the dimension sizes.
     std::size_t* begin() { return &_values[0]; }
+    /// Iterator past the last dimension size.
     std::size_t* end() { return &_values[_size]; }
+    /// Iterator over the dimension sizes.
     const std::size_t* begin() const { return &_values[0]; }
+    /// Iterator past the last dimension size.
     const std::size_t* end() const { return &_values[_size]; }
+    /// Append one more dimension.
     void push_back(std::size_t item) {
         _values[_size] = item;
         ++_size;
     }
+    /// Raw pointer to the dimension sizes.
     std::size_t* data() { return &_values[0]; }
+    /// Raw pointer to the dimension sizes.
     const std::size_t* data() const { return &_values[0]; }
+    /// Size of the last dimension.
     std::size_t& back() { return _values[_size - 1]; }
+    /// Size of the last dimension.
     const std::size_t& back() const { return _values[_size - 1]; }
+    /// Product of all dimension sizes, i.e. the total element count.
     std::size_t product() const {
         std::size_t size = 1;
         for (std::size_t dim_size : *this) {
@@ -77,6 +103,8 @@ inline bool operator==(const Sizes& a, const Sizes& b) {
 }
 inline bool operator!=(const Sizes& a, const Sizes& b) { return !(a == b); }
 
+/// A @ref Tensor's raw data pointer, stride and shape, passed by value to a
+/// compute kernel (CPU or GPU).
 template <ScalarType T, int _dim>
 struct PackedTensorView {
     using DType = T;
@@ -86,6 +114,13 @@ struct PackedTensorView {
     Sizes shape;
 };
 
+/**
+ * Typed, dimension-checked view onto a @ref Tensor's data.
+ *
+ * Indexing with `operator[]` or `get` peels off leading dimensions until
+ * `_dim` reaches 0, at which point the view converts to and from a single
+ * element of type `T`.
+ */
 template <ScalarType T, int _dim>
 class TensorView {
 public:
@@ -180,38 +215,65 @@ private:
 class Tensor;
 using TensorVec = std::vector<Tensor>;
 
+/// Kind of compute device a @ref Device represents.
 enum class DeviceType { cpu, cuda, hip };
 
+/// Hint passed to @ref Device::allocate describing how a tensor will be used,
+/// so the allocator can reuse scratch buffers or skip a zero-fill.
 enum class AllocHint {
     normal,
     output,
     local,
+    /// Short-lived scratch storage, recycled from a pool.
     temporary,
     input_grad,
     local_grad,
     global_grad,
 };
 
+/// Whether newly allocated storage for `hint` must be zero-initialized.
 inline bool needs_zero_init(AllocHint hint) {
     return hint == AllocHint::input_grad || hint == AllocHint::local_grad ||
         hint == AllocHint::global_grad;
 }
 
+/**
+ * Compute backend a @ref Tensor's storage lives on.
+ *
+ * One instance per physical device (CPU, or a specific CUDA or HIP GPU);
+ * obtained through `cpu_device()`, `cuda_device()` or `hip_device()`
+ * rather than constructed directly. Every device-dependent tensor operation
+ * (allocation, copy, the elementary kernels used to train the network
+ * globals) is dispatched through this interface.
+ */
 class Device {
 public:
     virtual ~Device() = default;
+    /// Allocate `size` bytes for `hint`; the returned @ref Tensor, if not
+    /// empty, is the pool allocation this storage was carved out of.
     virtual std::pair<void*, Tensor>
     allocate(std::size_t size, AllocHint hint) const = 0;
+    /// Free a pointer returned by @ref allocate.
     virtual void free(void* ptr) const = 0;
+    /// Copy `size` bytes from `from` to `to`, both on this device.
     virtual void memcpy(void* to, void* from, std::size_t size) const = 0;
+    /// Copy the elements of `source` into `target`.
     virtual void tensor_copy(const Tensor& source, Tensor& target) const = 0;
+    /// Set every element of `tensor` to zero.
     virtual void tensor_zero(Tensor& tensor) const = 0;
+    /// Add `source` into `target` element-wise.
     virtual void tensor_add(const Tensor& source, Tensor& target) const = 0;
+    /// Copy `source` into `target`, which lives on the CPU.
     virtual void tensor_cpu(const Tensor& source, Tensor& target) const = 0;
+    /// This device, as the pointer type used elsewhere in the API.
     virtual const Device* device_ptr() const = 0;
+    /// Block until every operation queued on this device has completed.
     virtual void sync_barrier() const {}
+    /// The kind of device this is.
     virtual DeviceType device_type() const = 0;
+    /// Make this device current for the calling thread.
     virtual void activate() const = 0;
+    /// One Adam optimizer update step; see @ref AdamOptimizer.
     virtual void adam_step(
         const Tensor& gradient,
         Tensor& parameter,
@@ -221,31 +283,52 @@ public:
         double beta1,
         double beta2,
         double eps,
-        double bias_corr2_sqrt
+        double bias_corr2_sqrt,
+        double weight_decay
     ) const = 0;
 };
 
+/// Non-owning handle to a @ref Device.
 using DevicePtr = const Device*;
-// defined in runtime_base.cpp, but need to declare them here
+/// The CPU device.
 DevicePtr cpu_device();
+/// CUDA device `index`.
 DevicePtr cuda_device(std::size_t index);
+/// HIP device `index`.
 DevicePtr hip_device(std::size_t index);
 
+/**
+ * Reference-counted, device-aware N-dimensional array.
+ *
+ * The runtime's tensor type: a typed, strided view onto a block of memory on
+ * a specific @ref Device (CPU, CUDA, or HIP), shared through reference
+ * counting so copying a `Tensor` is cheap. Compute-graph values, matrix
+ * element results, trainable globals and event data all flow through this
+ * type. From Python a `Tensor` is only ever obtained from another madspace
+ * call, never constructed directly; it exports itself through the
+ * `__dlpack__` / `__dlpack_device__` protocol so it converts to a NumPy array
+ * or a PyTorch tensor without copying.
+ */
 class Tensor {
 public:
+    /// Empty tensor holding no storage.
     Tensor() : impl(nullptr) {}
 
+    /// Shares `other`'s storage.
     Tensor(const Tensor& other) : impl(other.impl) {
         if (impl != nullptr) {
             impl->incref();
         }
     }
 
+    /// Takes ownership of `other`'s storage, leaving it empty.
     Tensor(Tensor&& other) noexcept : impl(other.impl) { other.impl = nullptr; }
 
+    /// Allocates a new tensor of `dtype` and `shape` on the CPU.
     Tensor(DataType dtype, const Sizes& shape, AllocHint hint = AllocHint::normal) :
         Tensor(dtype, shape, cpu_device(), hint) {}
 
+    /// Allocates a new tensor of `dtype` and `shape` on `device`.
     Tensor(
         DataType dtype,
         const Sizes& shape,
@@ -257,6 +340,7 @@ public:
         allocate(size, *device, hint);
     }
 
+    /// Same as above, statically dispatched to a compile-time device type.
     template <typename D>
     Tensor(
         DataType dtype,
@@ -269,6 +353,8 @@ public:
         allocate(size, device, hint);
     }
 
+    /// Wraps externally-owned CPU memory; `external_reset` runs when the last
+    /// reference is dropped, instead of freeing `data`.
     Tensor(
         DataType dtype,
         const Sizes& shape,
@@ -277,6 +363,7 @@ public:
     ) :
         Tensor(dtype, shape, cpu_device(), data, external_reset) {}
 
+    /// Wraps externally-owned memory on `device`; see the CPU overload above.
     Tensor(
         DataType dtype,
         const Sizes& shape,
@@ -288,6 +375,8 @@ public:
         init_stride();
     }
 
+    /// Wraps externally-owned memory with an explicit `stride`, for a
+    /// non-contiguous view onto existing data.
     Tensor(
         DataType dtype,
         const Sizes& shape,
@@ -314,6 +403,7 @@ public:
         }
     }
 
+    /// A `DataType::batch_sizes` tensor holding literal per-channel batch sizes.
     Tensor(const SizeVec& batch_sizes) :
         impl(new TensorImpl{
             DataType::batch_sizes,
@@ -329,6 +419,7 @@ public:
             batch_sizes
         }) {}
 
+    /// Single-value tensor holding `value`, allocated on `device`.
     template <ScalarType T>
     Tensor(T value, DevicePtr device, AllocHint hint = AllocHint::normal) :
         impl(new TensorImpl{
@@ -359,6 +450,7 @@ public:
         }
     }
 
+    /// Tensor built from a literal `TensorValue` (nested int/float data).
     Tensor(TensorValue value, DevicePtr device, AllocHint hint = AllocHint::normal) :
         impl(new TensorImpl{
             std::visit(
@@ -385,8 +477,10 @@ public:
         );
     }
 
+    /// Releases this reference; frees the storage once the last one drops.
     ~Tensor() { reset(); }
 
+    /// Shares the assigned tensor's storage, releasing the previous one.
     Tensor& operator=(const Tensor& other) {
         reset();
         impl = other.impl;
@@ -396,6 +490,7 @@ public:
         return *this;
     }
 
+    /// Takes ownership of the assigned tensor's storage.
     Tensor& operator=(Tensor&& other) noexcept {
         reset();
         impl = other.impl;
@@ -403,9 +498,11 @@ public:
         return *this;
     }
 
+    /// Whether this tensor holds any storage.
     operator bool() const { return impl != nullptr; }
 
     template <class T, int dim>
+    /// Typed, dimension-checked view onto the data for direct element access.
     TensorView<T, dim> view() {
         check_impl();
         T* data = static_cast<T*>(impl->data);
@@ -413,6 +510,7 @@ public:
     }
 
     template <class T, int dim>
+    /// Typed, dimension-checked view onto the data for direct element access.
     const TensorView<T, dim> view() const {
         check_impl();
         T* data = static_cast<T*>(impl->data);
@@ -420,6 +518,7 @@ public:
     }
 
     template <class T, int dim>
+    /// Like @ref view, with the leading `flatten_count` dimensions merged into one.
     PackedTensorView<T, dim> flat_view(std::size_t flatten_count) const {
         check_impl();
         T* data = static_cast<T*>(impl->data);
@@ -441,38 +540,47 @@ public:
         return {data, stride, shape};
     }
 
+    /// Raw pointer to the underlying storage.
     void* data() {
         check_impl();
         return impl->data;
     }
+    /// Raw pointer to the underlying storage.
     void* data() const {
         check_impl();
         return impl->data;
     }
+    /// Size of each dimension.
     const Sizes& shape() const {
         check_impl();
         return impl->shape;
     }
+    /// Element stride of each dimension.
     const Sizes& stride() const {
         check_impl();
         return impl->stride;
     }
+    /// Size of dimension `i`.
     std::size_t size(std::size_t i) const {
         check_impl();
         return impl->shape[i];
     }
+    /// Element type.
     DataType dtype() const {
         check_impl();
         return impl->dtype;
     }
+    /// Per-channel batch sizes, for a `DataType::batch_sizes` tensor.
     const SizeVec& batch_sizes() const {
         check_impl();
         return impl->batch_sizes;
     }
+    /// The device this tensor's storage lives on.
     DevicePtr device() const {
         check_impl();
         return impl->device;
     }
+    /// The single integer value of a scalar `DataType::batch_sizes` tensor.
     std::size_t index_value() const {
         check_impl();
         if (impl->batch_sizes.size() > 0) {
@@ -482,6 +590,7 @@ public:
         return cpu_tensor.view<me_int_t, 1>()[0];
     }
 
+    /// Size in bytes of one element.
     std::size_t dtype_size() const {
         check_impl();
         switch (impl->dtype) {
@@ -496,8 +605,10 @@ public:
         }
     }
 
+    /// Total size in bytes of the storage.
     std::size_t byte_size() const { return dtype_size() * shape().product(); }
 
+    /// Releases this reference; the tensor is empty afterwards.
     void reset() {
         if (impl == nullptr) {
             return;
@@ -507,6 +618,7 @@ public:
     }
 
     template <typename D>
+    /// Releases this reference on `device`; the tensor is empty afterwards.
     void reset(const D& device) {
         if (impl == nullptr) {
             return;
@@ -515,17 +627,28 @@ public:
         impl = nullptr;
     }
 
+    /// A single index along `axis`, dropping that dimension.
     Tensor select(std::size_t axis, std::size_t index) const;
+    /// A contiguous range `[start, stop)` along `axis`.
     Tensor slice(std::size_t axis, std::size_t start, std::size_t stop) const;
+    /// Splits `axis` into consecutive chunks of the given `sizes`.
     std::vector<Tensor> split(std::size_t axis, const SizeVec& sizes) const;
+    /// Splits `axis` into one tensor per index, dropping that dimension.
     std::vector<Tensor> unstack(std::size_t axis) const;
+    /// Inserts a size-1 dimension at `axis`.
     Tensor unsqueeze(std::size_t axis) const;
+    /// Broadcasts size-1 dimensions to `shape`, without copying.
     Tensor expand(const Sizes& shape) const;
+    /// A view with a different `shape` over the same elements.
     Tensor reshape(const Sizes& shape) const;
+    /// Splits dimension `axis` into two, the second of size `factor`.
     Tensor factor_dim(std::size_t axis, std::size_t factor);
+    /// Splits along the batch dimension and reshapes each piece.
     std::vector<Tensor> split_and_reshape(const std::vector<Sizes>& shapes) const;
 
     template <typename D>
+    /// A copy of this tensor on the CPU, allocated through `device`, or
+    /// `*this` if it is already there.
     Tensor cpu(const D& device) const {
         check_impl();
         if (impl->device == cpu_device()) {
@@ -536,16 +659,20 @@ public:
             return tensor;
         }
     }
+    /// A copy of this tensor on the CPU, or `*this` if it is already there.
     Tensor cpu() const { return cpu(*impl->device); }
 
     template <typename D>
+    /// Sets every element to zero.
     void zero(const D& device) {
         check_impl();
         device.tensor_zero(*this);
     }
+    /// Sets every element to zero.
     void zero() { zero(*impl->device); }
 
     template <typename D>
+    /// Copies `source`'s data into this tensor's storage.
     void copy_from(const Tensor& source, const D& device) {
         check_impl();
         if (source.device() == this->device()) {
@@ -559,41 +686,53 @@ public:
             );
         }
     }
+    /// Copies `source`'s data into this tensor's storage.
     void copy_from(const Tensor& source) { copy_from(source, *impl->device); }
 
     template <typename D>
+    /// Adds `source` into this tensor element-wise.
     void add(const Tensor& source, const D& device) {
         check_impl();
         device.tensor_add(source, *this);
     }
+    /// Adds `source` into this tensor element-wise.
     void add(const Tensor& source) { add(source, *impl->device); }
 
     template <typename D>
+    /// An independent copy of this tensor, allocated through `device`.
     Tensor copy(const D& device, AllocHint hint = AllocHint::normal) const {
         check_impl();
         Tensor tensor(impl->dtype, impl->shape, device, hint);
         device.tensor_copy(*this, tensor);
         return tensor;
     }
+    /// An independent copy of this tensor.
     Tensor copy(AllocHint hint = AllocHint::normal) const {
         return copy(*impl->device, hint);
     }
 
+    /// Whether the elements are stored without gaps in row-major order.
     bool is_contiguous() const { return impl->contiguous_dims == impl->shape.size(); }
 
+    /// Number of leading dimensions that are contiguous.
     std::size_t contiguous_dims() const { return impl->contiguous_dims; }
 
     template <typename D>
+    /// A contiguous copy allocated through `device`, or `*this` if already
+    /// contiguous.
     Tensor contiguous(const D& device, AllocHint hint = AllocHint::normal) const {
         check_impl();
         return is_contiguous() ? *this : copy(device, hint);
     }
 
+    /// A contiguous copy, or `*this` if already contiguous.
     Tensor contiguous(AllocHint hint = AllocHint::normal) const {
         return contiguous(*impl->device, hint);
     }
 
     template <typename D>
+    /// Like @ref contiguous, broadcasting a leading size-1 dimension to
+    /// `batch_size`.
     Tensor contiguous(
         std::size_t batch_size, const D& device, AllocHint hint = AllocHint::normal
     ) const {
@@ -611,10 +750,13 @@ public:
         }
     }
 
+    /// Like @ref contiguous, broadcasting a leading size-1 dimension to
+    /// `batch_size`.
     Tensor contiguous(std::size_t batch_size) const {
         return contiguous(batch_size, *impl->device);
     }
 
+    /// Whether this is the only reference to its storage.
     bool is_only_reference() const {
         check_impl();
         return impl->ref_count.load() == 1;
@@ -641,6 +783,7 @@ private:
             }
             if (owns_data && data != nullptr) {
                 device.free(data);
+                --Tensor::tensor_count;
             } else if (data_owner != nullptr) {
                 data_owner->reset(device);
             } else if (external_reset) {
@@ -673,10 +816,16 @@ private:
             parent.impl->incref();
             impl->owns_data = false;
             impl->data_owner = parent.impl;
+        } else if (data != nullptr) {
+            ++tensor_count;
         }
     }
 
     TensorImpl* impl;
+
+public:
+    /// Number of live tensors that currently own their storage.
+    static inline std::size_t tensor_count = 0;
 };
 
 } // namespace madspace

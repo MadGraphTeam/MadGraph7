@@ -16,7 +16,7 @@ tests/status
 input/default_run_card_lo.dat
 input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
-input/mg5_configuration.txt
+input/mg7_configuration.txt
 TEST_MW_*
 .vscode/
 HEPTools/*
@@ -60,7 +60,7 @@ ME5_debug
 MS_debug
 Template/LO/Source/make_opts
 additional_command
-input/mg5_configuration.txt
+input/mg7_configuration.txt
 input/default_run_card_lo.dat
 input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
@@ -77,5 +77,11 @@ tests/status
 nsqso_born.inc
 # Sphinx documentation
 docs/build/
+# per-class API pages written by docs/generate_api_pages.py
+docs/source/madspace/cpp/
+docs/source/madspace/python/
 tests/input_files/IOTestsComparison_BackUp/
 tests/input_files/IOTestsComparison/**/*.BackUp
+
+# output of ./tests/test_manager.py
+UNITTEST_proc/

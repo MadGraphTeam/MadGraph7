@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -24,6 +24,7 @@ root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.insert(0, os.path.join(root_path,'..','..'))
 
 import tests.unit_tests as unittest
+import madgraph
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.base_objects as MG
 import madgraph.core.color_algebra as color
@@ -2933,8 +2934,15 @@ class TestLinkRBConfHEFT(unittest.TestCase):
     (only processes with 3 point interactions)"""
 
     def setUp(self):
+        # link_rb_configs reads the vertex decomposition of the real diagrams,
+        # so it runs with the four gluon merging off, as FKSMultiProcess does
+        self.merge_quartic = madgraph.merge_quartic_vertices
+        madgraph.merge_quartic_vertices = False
         if not hasattr(self, 'base_model'):
             TestLinkRBConfHEFT.base_model = import_ufo.import_model('heft')
+
+    def tearDown(self):
+        madgraph.merge_quartic_vertices = self.merge_quartic
 
 
     def test_link_gghg_ggh(self):
@@ -3062,8 +3070,15 @@ class TestLinkRBConfSM(unittest.TestCase):
     (only processes with 3 point interactions)"""
 
     def setUp(self):
+        # link_rb_configs reads the vertex decomposition of the real diagrams,
+        # so it runs with the four gluon merging off, as FKSMultiProcess does
+        self.merge_quartic = madgraph.merge_quartic_vertices
+        madgraph.merge_quartic_vertices = False
         if not hasattr(self, 'base_model'):
             TestLinkRBConfSM.base_model = import_ufo.import_model('sm', options={'apply_flavor_grouping':False})
+
+    def tearDown(self):
+        madgraph.merge_quartic_vertices = self.merge_quartic
 
     def test_link_udxwpg_udxwp(self):
         """tests that the real emission process ud~>w+g and born process u u~>w+ are

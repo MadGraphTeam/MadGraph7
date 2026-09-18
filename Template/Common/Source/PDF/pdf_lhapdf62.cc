@@ -600,11 +600,12 @@ extern "C" {
 
   /// Set PDF data path
   void setpdfpath_(const char* s, size_t len) {
-    /// @todo Works? Need to check C-string copying, null termination
-    char s2[1024];
-    s2[len] = '\0';
-    strncpy(s2, s, len);
-    LHAPDF::pathsPrepend(s2);
+    // The trailing blank padding of the Fortran string must be stripped:
+    // a padded path never matches an existing directory, so LHAPDF would
+    // silently ignore it and fall back to its global data directory.
+    const string path = fstr_to_ccstr(s, len);
+    if (path.empty()) return;
+    LHAPDF::pathsPrepend(path);
   }
 
   /// Get PDF data path (colon-separated if there is more than one element)
@@ -736,7 +737,7 @@ extern "C" {
   void evolvepartm_(const int& nset, const int& ipart, const double& x, const double& q, double& fxq) {
     if (ACTIVESETS.find(nset) == ACTIVESETS.end())
     throw LHAPDF::UserError("Trying to use LHAGLUE set #" + LHAPDF::to_str(nset) + " but it is not initialised");
-    int ipart_copy; // this is to deal with photons, which are labeled 7 in MG5aMC
+    int ipart_copy; // this is to deal with photons, which are labeled 7 in MadGraph7
     ipart_copy = ipart;
     if (ipart==7) ipart_copy = 22;
     try {

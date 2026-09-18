@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -72,6 +72,35 @@ class HelasWavefunctionTest(unittest.TestCase):
         self.assertRaises(helas_objects.HelasWavefunction.PhysicsObjectError,
                           mywavefunction.set,
                           'wrongparam', 0)
+
+    def test_eq_distinguishes_polarization(self):
+        """Two wavefunctions that differ only by polarization are not equal.
+
+        get_call_key() includes the polarization, so it decides which HELAS
+        call is written. If __eq__ ignored it, the wavefunction dedup could
+        merge a transverse and a longitudinal wavefunction and write one of
+        them with the other's call -- wrong physics, no error."""
+
+        def wf(pol):
+            w = helas_objects.HelasWavefunction()
+            w.set('number_external', 3)
+            w.set('state', 'final')
+            w.set('polarization', pol)
+            return w
+
+        # differing polarizations
+        self.assertNotEqual(wf([0]), wf([1, -1]))
+        self.assertNotEqual(wf([1]), wf([-1]))
+        # polarized vs unpolarized
+        self.assertNotEqual(wf([0]), wf([]))
+        self.assertNotEqual(wf([]), wf([0]))
+        # same polarization still compares equal, both ways round
+        self.assertEqual(wf([0]), wf([0]))
+        self.assertEqual(wf([1, -1]), wf([1, -1]))
+        self.assertEqual(wf([]), wf([]))
+        # and __ne__ agrees with __eq__
+        self.assertTrue(wf([0]) != wf([1]))
+        self.assertFalse(wf([0]) != wf([0]))
 
     def test_values_for_prop(self):
         """Test filters for wavefunction properties"""
@@ -5090,6 +5119,53 @@ class TestIdentifyMETag(unittest.TestCase):
                         for d in myamplitude2.get('diagrams')])
 
         self.assertEqual(tags1, tags2)        
+
+    def test_identify_me_tag_polarization(self):
+        """The tag has to separate two processes which differ only by the
+        polarization restriction of one of their legs, and it has to do so
+        through the *canonical* form of that restriction.
+
+        Canonical because the P directory name is rendered from
+        sorted(set(polarization)) (Process.shell_polarization): were the tag
+        built on the raw list, '{+-}' and '{-+}' would get two different tags
+        -- hence two matrix elements -- which then render to the very same
+        directory name.  The two canonicalisations must agree.
+        """
+
+        def amplitude(polarization):
+            myleglist = base_objects.LegList()
+            myleglist.append(base_objects.Leg({'id': 21, 'state': False}))
+            myleglist.append(base_objects.Leg({'id': 21, 'state': False}))
+            myleglist.append(base_objects.Leg({'id': 6, 'state': True}))
+            myleglist.append(base_objects.Leg({'id': -6, 'state': True,
+                                               'polarization': polarization}))
+            myproc = base_objects.Process({'legs': myleglist,
+                                           'model': self.base_model,
+                                           'orders': {'QED': 0}})
+            return diagram_generation.Amplitude(myproc)
+
+        def tag(polarization):
+            return helas_objects.IdentifyMETag.create_tag(\
+                                                    amplitude(polarization))
+
+        # a restriction is part of the identity of the matrix element
+        self.assertNotEqual(tag([1]), tag([-1]))
+        self.assertNotEqual(tag([1]), tag([]))
+        self.assertNotEqual(tag([1, -1]), tag([1]))
+
+        # ... but only through the set of helicities it allows, exactly as
+        # the directory name is
+        self.assertEqual(tag([1, -1]), tag([-1, 1]))
+        self.assertEqual(base_objects.Process.shell_polarization([1, -1]),
+                         base_objects.Process.shell_polarization([-1, 1]))
+
+        # and an unpolarized process is left strictly alone: every leg
+        # contributes the empty tuple, so the tag keeps its old shape
+        self.assertEqual(tag([]), tag([]))
+        links = helas_objects.IdentifyMETag.link_from_leg(\
+                    base_objects.Leg({'id': 21, 'state': True}),
+                    self.base_model)
+        self.assertEqual(links[0][0][-1], ())
 
     def test_non_identify_me_tag_qq_qqg(self):
         """Test the find_symmetry function"""

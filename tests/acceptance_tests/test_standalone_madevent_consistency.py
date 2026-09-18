@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -73,7 +73,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         self.do('import model %s' % model)
         self.do('generate %s' % process)
         generated_process = self.cmd._curr_amps[0].get('process')
-        self.do('output standalone %s -f' % self.standalone_dir)
+        self.do('output standalone_fortran %s -f' % self.standalone_dir)
         self.do('output madevent %s -f' % self.madevent_dir)
 
         standalone_dir = self._get_single_subprocess_dir(

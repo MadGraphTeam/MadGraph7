@@ -1,6 +1,6 @@
 # Copyright (C) 2023-2026 CERN.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: Z. Wettersten (Sep 2024) for the MG5aMC CUDACPP plugin.
+# Created originally by: Z. Wettersten (Sep 2024) for the MadGraph7 CUDACPP plugin.
 # Further modified by: Z. Wettersten (2024-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -312,7 +312,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         self.param_card = None
         self.reweight_card = []
         self.reweight_names = []
-        self.backend = 'cppauto' # default backend for tRex reweighting
+        self.backend = 'auto' # default backend for tRex reweighting
         self.fptype = 'm' # default floating point type for tRex reweighting
         self.nb_threads = 1
         if self.mother:
@@ -465,7 +465,7 @@ class TREX_ReweightInterface(rwgt_interface.ReweightInterface):
         if len(args) < 2:
             return super().do_change(line)
         if args[0].lower() in ['cudacpp_backend', 'backend']:
-            cudacpp_supported_backends = [ 'cuda', 'hip', 'cpp', 'cppnone', 'cppsse4', 'cppavx2', 'cpp512y', 'cpp512z', 'cppauto' ]
+            cudacpp_supported_backends = [ 'cuda', 'hip', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512', 'auto' ]
             if args[1].lower() in cudacpp_supported_backends:
                 self.backend = args[1].lower()
                 logger.info("Setting tRex reweighting backend to '%s'" % self.backend)

@@ -16,7 +16,7 @@ rng = np.random.default_rng(1234)
 
 def load_processes():
     proc_files = glob(
-        os.path.join(os.path.dirname(os.path.realpath(__file__)), "processes", "*.json")
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "test_data", "*.json")
     )
     ret = []
     for file in proc_files:

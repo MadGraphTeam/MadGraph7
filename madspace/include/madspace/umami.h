@@ -14,6 +14,7 @@
 #ifndef UMAMI_HEADER
 #define UMAMI_HEADER 1
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -94,6 +95,9 @@ typedef enum {
     UMAMI_IN_CHANNEL_INDEX,
 } UmamiInputKey;
 
+/** Number of values in `UmamiInputKey` */
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_CHANNEL_INDEX + 1)
+
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */
     UMAMI_OUT_MATRIX_ELEMENT,
@@ -110,6 +114,9 @@ typedef enum {
     UMAMI_OUT_GPU_STREAM,
 } UmamiOutputKey;
 
+/** Number of values in `UmamiOutputKey` */
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_GPU_STREAM + 1)
+
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;
 
@@ -124,6 +131,64 @@ typedef void* UmamiHandle;
  *     UMAMI_SUCCESS on success, error code otherwise
  */
 UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result);
+
+/**
+ * Reports which input keys can be passed to this matrix element implementation, to
+ * be written by whoever implements the UMAMI interface. Implementing this function
+ * is optional; a caller that fails to resolve it should treat it as unavailable.
+ *
+ * @param supported
+ *     pointer set on return to an implementation-owned array of booleans, where
+ *     element `i` indicates whether the input key with numeric value `i`
+ *     (see `UmamiInputKey`) is accepted by this implementation.
+ * @param count
+ *     pointer set on return to the number of elements in `*supported`, reflecting
+ *     the number of `UmamiInputKey` values known to this implementation. A caller
+ *     built against a newer header should treat any key index beyond `*count` as
+ *     not supported.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
+ */
+UmamiStatus umami_supported_inputs(bool const** supported, int* count);
+
+/**
+ * Reports which input keys must be passed to this matrix element implementation for
+ * `umami_matrix_element` to succeed, to be written by whoever implements the UMAMI
+ * interface. This is a subset of the keys reported by `umami_supported_inputs`.
+ * Implementing this function is optional; a caller that fails to resolve it should
+ * treat it as unavailable.
+ *
+ * @param required
+ *     pointer set on return to an implementation-owned array of booleans, where
+ *     element `i` indicates whether the input key with numeric value `i`
+ *     (see `UmamiInputKey`) is mandatory for this implementation.
+ * @param count
+ *     pointer set on return to the number of elements in `*required`. A caller
+ *     built against a newer header should treat any key index beyond `*count` as
+ *     not required.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
+ */
+UmamiStatus umami_required_inputs(bool const** required, int* count);
+
+/**
+ * Reports which output keys can be requested from this matrix element
+ * implementation, to be written by whoever implements the UMAMI interface.
+ * Implementing this function is optional; a caller that fails to resolve it should
+ * treat it as unavailable.
+ *
+ * @param supported
+ *     pointer set on return to an implementation-owned array of booleans, where
+ *     element `i` indicates whether the output key with numeric value `i`
+ *     (see `UmamiOutputKey`) can be produced by this implementation.
+ * @param count
+ *     pointer set on return to the number of elements in `*supported`. A caller
+ *     built against a newer header should treat any key index beyond `*count` as
+ *     not supported.
+ * @return
+ *     UMAMI_SUCCESS on success, error code otherwise
+ */
+UmamiStatus umami_supported_outputs(bool const** supported, int* count);
 
 /**
  * Creates an instance of the matrix element. Each instance is independent, so thread

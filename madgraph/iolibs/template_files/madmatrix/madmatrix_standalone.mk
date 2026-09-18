@@ -2,7 +2,7 @@
 # Licensed under the GNU Lesser General Public License (version 3 or later).
 # Integrated with the MadGraph7 project in Feb 2026.
 #
-# Standalone (standalone_mg7) Makefile.
+# Standalone (`output standalone`, madmatrix) Makefile.
 # Extends the non-standalone (madmatrix) Makefile by including madmatrix.mk and
 # adding a recipe for check_sa.exe (the standalone driver). Running `make` here
 # will build both the process library AND the standalone executable.
@@ -35,7 +35,7 @@ standalone_all: all.$(TAG) check_sa.exe
 # code (the AOSOA->SoA transposition kernel).
 ifeq ($(GPUCC),)
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
-	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
+	$(CXX) -o $@ $(standalone_objects) $(CXXLIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS) $(CPPBLASLIBFLAGS)
 else
 check_sa.exe: $(standalone_objects) $(LIBDIR)/lib$(MADMATRIX_LIB).so $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 	$(GPUCC) -o $@ $(standalone_objects) $(GPULIBFLAGSRPATH) -L$(LIBDIR) -l$(MADMATRIX_LIB) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)

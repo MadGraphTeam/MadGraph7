@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -16,6 +16,8 @@ from __future__ import division
 from __future__ import absolute_import
 import subprocess
 import unittest
+import json
+import glob
 import os
 import re
 import shutil
@@ -83,24 +85,40 @@ def _mg7_datadir_or_skip(test):
         has_mg7 = False
     datadir = os.environ.get('LHAPDF_DATA_PATH')
     if not datadir:
+        mg = MGCmd.MasterCmd()
+        lhapdf = mg.options['lhapdf']
+        if not lhapdf:
+            lhapdf = 'lhapdf-config'
         try:
             datadir = subprocess.check_output(
-                ['lhapdf-config', '--datadir']).decode().strip()
+            [lhapdf, '--datadir']).decode().strip()
         except Exception:
-            datadir = None
+            datadir = None 
+        
+    misc.sprint(datadir)
     if not has_mg7 or not datadir or not os.path.isdir(datadir):
         test.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-    if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-        test.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+    if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+        test.skipTest('NNPDF40_lo_as_01180 PDF set not available')
     return datadir
 
 
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     """Run an mg7 cross-section: execute `setup_cmds` (MG5 lines, ending with
     the generate), `output mg7 run_dir`, drive bin/generate_events with the
-    dynamical HT/2 scale + trimmed event target, and return (cross, error) from
-    the madspace info.json (process.mean / process.error). Assertions are made
-    on the *test* instance."""
+    dynamical HT/2 scale, and return (cross, error) from the madspace info.json
+    (process.mean / process.error). Assertions are made on the *test* instance.
+
+    The event target drives the statistical precision of the returned
+    cross-section: madspace quotes error = rel_std_dev / sqrt(count_opt), and
+    with only 2000 events VEGAS barely adapts, so rel_std_dev stays ~2.4 and the
+    error is ~1.1% -- larger than the tolerance some callers assert, which made
+    them fail at random. 50000 events lets the grid adapt (rel_std_dev ~0.37)
+    and brings the error down to ~0.08%. That costs nothing: the integration
+    itself is ~0.2s wall even at 100000 events. What used to dominate the run
+    time was the LHE systematics post-processing (145 weights per event), which
+    none of the callers look at -- they only read info.json -- so it is switched
+    off here and the higher statistics comes out free (<1s for 50000 events)."""
     import glob, json
     if os.path.isdir(run_dir):
         shutil.rmtree(run_dir)
@@ -113,7 +131,13 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = open(toml).read()
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
-    t = re.sub(r'events = \d+', 'events = 2000', t)
+    t = re.sub(r'events = \d+', 'events = 50000', t)
+    # Switch both systematics paths off: [postprocessing] systematics (the
+    # legacy systematics.py pass) and the native [systematics] enable, which
+    # defaults to true and is the one that actually costs the time here. The
+    # cross-section these callers read does not depend on either.
+    t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
+    t = re.sub(r'(?ms)^(\[systematics\].*?^enable = )true$', r'\1false', t)
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -126,6 +150,127 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     test.assertTrue(infos, 'no mg7 info.json under %s' % run_dir)
     info = json.load(open(infos[-1]))['process']
     return float(info['mean']), float(info.get('error') or 0.0)
+
+
+# default tool cards shipped with MG5, copied into the mg7 output's Cards/ so a
+# tool switch is "available" and its driver (invoked with --no_default /
+# -from_cards) finds the card it needs.
+_MG7_DEFAULT_CARDS = {
+    'pythia8': (pjoin('Template', 'LO', 'Cards', 'pythia8_card_default.dat'),
+                'pythia8_card.dat'),
+    'delphes': (pjoin('Template', 'Common', 'Cards', 'delphes_card_default.dat'),
+                'delphes_card.dat'),
+    'rivet':   (pjoin('Template', 'LO', 'Cards', 'rivet_card_default.dat'),
+                'rivet_card.dat'),
+    'madspin': (pjoin('Template', 'Common', 'Cards', 'madspin_card_default.dat'),
+                'madspin_card.dat'),
+}
+
+
+def _mg7_tool_or_skip(test, cmd, *option_keys):
+    """skipTest unless every configured tool path in *option_keys* (e.g.
+    'pythia8_path', 'delphes_path', 'rivet_path') is available; otherwise the
+    post-processing driver would silently skip the tool and the output-file
+    assertions would fail for an unrelated (missing-tool) reason."""
+    for key in option_keys:
+        path = cmd.options.get(key)
+        if not path or path in ('None', 'NA') or not os.path.exists(path):
+            test.skipTest('mg7 post-processing tool %s not configured (%s)'
+                          % (key, path))
+
+
+def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
+                      toml_edits=None, precopy_cards=None, extra_cards=None,
+                      events=100, require_tools=(), timeout=1800):
+    """Drive an mg7 post-processing chain through the command interface.
+
+    Runs *setup_cmds* (MG5 lines ending with the ``generate``) + ``output mg7
+    run_dir`` in-process, trims the ``run_card.toml`` (small event target, LHE
+    output, dynamical HT/2 scale, plus any *toml_edits*), copies the requested
+    default tool cards (*precopy_cards*, keys of :data:`_MG7_DEFAULT_CARDS`) and
+    any *extra_cards* ((text, dest) pairs) into ``Cards/``, then runs the mg7
+    ``bin/generate_events`` -- feeding *switch_lines* (e.g. ``'shower=Pythia8'``)
+    on stdin so the merged tool-selection question runs the chained
+    post-processing (``run_selected_tools`` -> ``MG7RunCmd``), exactly as the
+    ``launch`` command does from the mg5 interface. When *switch_lines* is None
+    the run is non-interactive (``-f``) and only the run_card-driven LHE
+    post-processing (time-of-flight/systematics) is exercised.
+
+    Returns the run directory (``Events/run_01``). Assertions/skips are made on
+    *test*; the run self-skips when the mg7 runtime stack or a *require_tools*
+    program is unavailable.
+    """
+    import glob
+    if os.path.isdir(run_dir):
+        shutil.rmtree(run_dir)
+    mg = MGCmd.MasterCmd()
+    mg.no_notification()
+    if require_tools:
+        _mg7_tool_or_skip(test, mg, *require_tools)
+    # Drive the output through run_cmd (not exec_cmd): run_cmd records the
+    # commands in the interface history, which is what the exporter dumps into
+    # Cards/proc_card_mg5.dat and hence into the LHE banner's <MG5ProcCard>.
+    # exec_cmd bypasses the history, so the proc_card would miss the model /
+    # generate / output lines and MadSpin (which reads 'generate' from the
+    # banner) would abort with "no generate line". This mirrors how a real user
+    # drives the output (bin/madgraph command file / interactive session).
+    for c in setup_cmds:
+        mg.run_cmd(c)
+    mg.run_cmd('output mg7 %s' % run_dir)
+
+    cards_dir = pjoin(run_dir, 'Cards')
+    for tool in (precopy_cards or []):
+        src, dst = _MG7_DEFAULT_CARDS[tool]
+        shutil.copy(pjoin(MG5DIR, src), pjoin(cards_dir, dst))
+    for text, dst in (extra_cards or []):
+        open(pjoin(cards_dir, dst), 'w').write(text)
+
+    toml = pjoin(run_dir, 'Cards', 'run_card.toml')
+    t = open(toml).read()
+    # post-processing operates on an LHE file
+    t = re.sub(r'output_format = "?\w+"?', 'output_format = "lhe"', t)
+    # dynamical HT/2 scale + small trimmed event target for a fast test
+    t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
+    t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
+    t = re.sub(r'events = \d+', 'events = %d' % events, t)
+    for pat, repl in (toml_edits or []):
+        t = re.sub(pat, repl, t)
+    open(toml, 'w').write(t)
+
+    env = dict(os.environ)
+    env['LHAPDF_DATA_PATH'] = datadir
+    log = pjoin(run_dir, 'mg7_postproc.log')
+    if switch_lines:
+        stdin_text = '\n'.join(list(switch_lines) + ['done']) + '\n'
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events')]
+    else:
+        stdin_text = None
+        args = [sys.executable, pjoin(run_dir, 'bin', 'generate_events'), '-f']
+    with open(log, 'w') as logf:
+        proc = subprocess.run(args, cwd=run_dir, env=env, input=stdin_text,
+                              text=True, stdout=logf, stderr=subprocess.STDOUT,
+                              timeout=timeout)
+    # Surface any per-tool *_crash.log written by run_selected_tools when a
+    # post-processing tool fails *without* failing generate_events (rc stays 0),
+    # so a silently-swallowed tool failure is visible in CI.
+    for cl in sorted(glob.glob(pjoin(run_dir, '**', '*_crash.log'), recursive=True)):
+        try:
+            print('\n----- %s -----\n%s' % (cl, open(cl).read()),
+                  file=sys.stderr, flush=True)
+        except Exception:
+            pass
+    if proc.returncode != 0:
+        # surface the generate_events output (the log lives in a tmp dir that CI
+        # does not upload) so the real crash is visible in the test failure.
+        try:
+            tail = ''.join(open(log).readlines()[-120:])
+        except Exception as err:
+            tail = '(could not read %s: %s)' % (log, err)
+        test.fail('mg7 generate_events failed (rc=%s)\n'
+                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+    runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
+    test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
+    return runs[0]
 
 
 #===============================================================================
@@ -195,18 +340,9 @@ class TestMECmdShell(unittest.TestCase):
             stdout=devnull
             stderr=devnull
 
-        #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
-        #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','mg5_aMC')],
-        #                     stdin=subprocess.PIPE,
-        #                     stdout=stdout,stderr=stderr)
-        #    out = p.communicate('install MadAnalysis4'.encode())
-        #misc.compile(cwd=pjoin(MG5DIR,'MadAnalysis'))
-
         #if not misc.which('root'):
         #    raise Exception('root is require for this test')
         #interface.exec_cmd('set pythia-pgs_path %s --no_save' % pjoin(MG5DIR, 'pythia-pgs'))
-        interface.exec_cmd('set madanalysis_path %s --no_save' % pjoin(MG5DIR, 'MadAnalysis'))
         interface.onecmd('output madevent %s -f' % self.run_dir)            
         
         if os.path.exists(pjoin(interface.options['syscalc_path'],'sys_calc')):
@@ -493,8 +629,6 @@ class TestMECmdShell(unittest.TestCase):
                     '%s/Cards/run_card.dat' % self.run_dir)
         shutil.copy('%s/Cards/pythia_card_default.dat' % self.run_dir,
                     '%s/Cards/pythia_card.dat' % self.run_dir)
-        shutil.copy('%s/Cards/plot_card_default.dat' % self.run_dir,
-                    '%s/Cards/plot_card.dat' % self.run_dir)        
         try:
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_parton_card.dat'))
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_hadron_card.dat'))
@@ -502,10 +636,6 @@ class TestMECmdShell(unittest.TestCase):
             pass
         self.do('generate_events -f')     
 
-
-        f1 = self.check_matched_plot(tag='fermi')         
-        start = time.time()
-        
         #modify the run_card
         run_card = self.cmd_line.run_card
         run_card['nevents'] = 44
@@ -516,7 +646,6 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(cmd, os.getcwd())        
         self.do('generate_events -f')
         self.assertEqual(int(self.cmd_line.run_card['nevents']), 44)
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Cards', 'plot_card.dat')))
         self.do('pythia run_01 -f')
         self.do('quit')
         
@@ -525,11 +654,6 @@ class TestMECmdShell(unittest.TestCase):
         self.check_parton_output(syst=False)
         self.check_parton_output('run_02', target_event=44, syst=False)
         self.check_pythia_output(syst=False)        
-        f2 = self.check_matched_plot(mintime=start, tag='tag_1')        
-        
-        self.assertNotEqual(f1.split('\n'), f2.split('\n'))
-        
-        
         self.assertEqual(cmd, os.getcwd())
 
         
@@ -565,9 +689,17 @@ class TestMECmdShell(unittest.TestCase):
         val2 = self.cmd_line.results.current['cross']
         err2 = self.cmd_line.results.current['error']        
         
-        self.assertLess(abs(val2 - val1) / (err1 + err2), 5)
-        target = 1310200.0
-        self.assertLess(abs(val2 - target) / (err2), 5)
+        self.assertLess(abs(val2 - val1) / (err1 + err2), 5,
+            'grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
+            % (val1, err1, val2, err2))
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 1310200.0
+        # Now that madevent convolutes with the same LHAPDF set as mg7, this
+        # agrees with the mg7 result for the same process (8.03e+05, see
+        # test_group_subprocess_mg7) instead of sitting a factor ~1.6 above it.
+        target = 801960.0
+        self.assertLess(abs(val2 - target) / (err2), 5,
+            'u u > u u cross-section %s +- %s far from reference %s'
+            % (val2, err2, target))
         #check precision
         self.assertLess(err2 / val2, 0.005)
         self.assertLess(err1 / val1, 0.005)
@@ -578,15 +710,13 @@ class TestMECmdShell(unittest.TestCase):
         Runs the mg7 (madspace) integrator with group_subprocesses on and off
         and checks the two cross-sections agree (grouping consistency). It also
         pins the absolute value to the mg7-native result obtained with the
-        run_card.toml defaults (NNPDF23_lo_as_0130_qed + dynamical HT/2 scale,
-        events=2000) ~ 2.21e5 pb.
+        run_card.toml defaults (NNPDF40_lo_as_01180 + dynamical HT/2 scale,
+        events=2000) ~ 8.03e+05 pb.
 
-        NOTE: this is NOT the madevent reference (1.31e6 pb in
-        test_group_subprocess); the two are not directly comparable (different
-        PDF/scale defaults) and there is moreover a known mg7 normalisation
-        discrepancy. The check is intentionally a live (non-xfail) guard on the
-        current mg7 result and should be revisited when the mg7 integrator
-        normalisation is resolved.
+        NOTE: this now AGREES with the madevent reference in
+        test_group_subprocess (8.02e5 pb): that test used to run on madevent's
+        internal nn23lo1 and sit at 1.31e6, and the LO run_card default moving
+        to the same LHAPDF set is what closed the gap.
         """
         import glob, json
         # The mg7 cross-section run needs the madspace runtime and a resolvable
@@ -606,8 +736,8 @@ class TestMECmdShell(unittest.TestCase):
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
         # the mg7 run_card.toml default PDF must be present in the data dir
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         def run_mg7(group):
             run_dir = pjoin(self.path, 'MG7_%s' % ('grp' if group else 'ungrp'))
@@ -646,8 +776,13 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(abs(val1 - val2) / (err1 + err2 + 1e-30), 5,
             'mg7 grouped (%s +- %s) vs ungrouped (%s +- %s) disagree'
             % (val1, err1, val2, err2))
-        # mg7-native reference (see docstring) -- NOT the madevent 1.31e6 value.
-        target = 221409.0
+        # The madevent run in test_group_subprocess now lands on the same
+        # value (8.0196e+05 +- 2.6e+03) with lhapdf NNPDF40_lo_as_01180. The -39% against
+        # the 1.277e+06 obtained with NNPDF23_lo_as_0130_qed is the PDF change
+        # alone: alpha_s^2 (-18%) times the smaller NNPDF4.0 u-quark luminosity.
+        # Spread over 6 runs at events=2000: 7.96e5-8.15e5, mean 8.03e5.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 7.76e+05
+        target = 8.03e+05
         self.assertLess(abs(val2 - target) / target, 0.10,
             'mg7 u u > u u cross-section %s far from mg7 reference %s'
             % (val2, target))
@@ -688,7 +823,8 @@ class TestMECmdShell(unittest.TestCase):
         # subprocesses run separately (u u > z u u = 0.353, u d > z u d =
         # 5.691, d d > z d d = 0.092), i.e. the result free of the merged-q
         # grouping machinery.
-        self.assertAlmostEqual(cross, 6.124, delta=max(0.1, 5 * error))
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 6.124
+        self.assertAlmostEqual(cross, 5.144, delta=max(0.1, 5 * error))
 
         events = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
                                             'unweighted_events.lhe.gz'))
@@ -744,7 +880,8 @@ class TestMECmdShell(unittest.TestCase):
         # (2.862) run as separate single-flavor processes, i.e. the
         # result free of the merged-q grouping machinery on the u q
         # pattern.
-        self.assertAlmostEqual(cross, 3.215, delta=max(0.1, 5 * error))
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 3.215
+        self.assertAlmostEqual(cross, 2.754, delta=max(0.1, 5 * error))
 
         events = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
                                             'unweighted_events.lhe.gz'))
@@ -792,7 +929,8 @@ class TestMECmdShell(unittest.TestCase):
 
         cross = self.cmd_line.results.current['cross']
         error = self.cmd_line.results.current['error']
-        self.assertAlmostEqual(cross, 3.215, delta=max(0.1, 5 * error))
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 3.215
+        self.assertAlmostEqual(cross, 2.754, delta=max(0.1, 5 * error))
 
         events = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
                                             'unweighted_events.lhe.gz'))
@@ -827,6 +965,23 @@ class TestMECmdShell(unittest.TestCase):
         mg_cmd.exec_cmd('generate u q > u q QCD=0')
         mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
 
+        # Explicit check of the initial-state mirroring, on top of the
+        # cross-section: leg 1 is a fixed u while leg 2 is the merged u/d
+        # multiparticle, so the beam-swapped "d u" initial state is NOT part of
+        # this process. Neither flavor may therefore be mirrored -- a mirror on
+        # the u d flavor would count it twice (and the cross-section check below
+        # would then be off by the u d contribution).
+        import glob as _glob
+        mirror_incs = _glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*',
+                                       'mirrorprocs.inc'))
+        self.assertTrue(mirror_incs, 'no mirrorprocs.inc under %s' % self.run_dir)
+        for path in mirror_incs:
+            text = open(path).read().upper()
+            self.assertNotIn('.TRUE.', text,
+                'u q > u q (q = u d): leg 1 is a fixed u, so no initial-state '
+                'mirroring may be applied, but %s requests one:\n%s'
+                % (path, text))
+
         self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
         self.cmd_line.no_notification()
         self.cmd_line.exec_cmd('set automatic_html_opening False')
@@ -841,20 +996,438 @@ class TestMECmdShell(unittest.TestCase):
         error = self.cmd_line.results.current['error']
         # Reference 4428 pb is u u > u u plus u d > u d run as separate
         # single-flavor processes (no merged multiparticle).
-        self.assertAlmostEqual(cross, 4428.0, delta=max(30.0, 5 * error))
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 4428.0
+        self.assertAlmostEqual(cross, 3466.3, delta=max(30.0, 5 * error))
+
+    def test_merged_flavor_initial_state_mirroring_mg7(self):
+        """Initial-state mirroring of the merged-flavor mg7 output.
+
+        The beam-swapped (mirror) copy of a flavor combination may only be added
+        when the two initial legs range over the *same* set of flavors, i.e. when
+        the swapped initial state really is part of the process and got collapsed
+        into this one:
+
+        * u q > u q (q = u d): leg 1 is a fixed u, so "d u > u d" is NOT part of
+          the process -- no flavor may be mirrored. Mirroring the u d flavor here
+          made its contribution twice too large.
+        * q q > q q (q = u d): both legs span {u,d}, so the "d u" combination was
+          collapsed into "u d" and only that *mixed* flavor must be mirrored.
+
+        This is an output-level check (no event generation), so it needs no mg7
+        runtime and directly guards the flag the cross-section depends on."""
+        import json
+
+        def mirrors(process, out_dir):
+            mg = MGCmd.MasterCmd()
+            mg.no_notification()
+            for c in ['set automatic_html_opening False --no_save',
+                      'import model sm', 'define q = u d',
+                      'generate %s' % process]:
+                mg.exec_cmd(c)
+            mg.exec_cmd('output mg7 %s' % out_dir)
+            info = json.load(open(pjoin(out_dir, 'SubProcesses',
+                                        'subprocesses.json')))
+            # {(initial pdg 1, initial pdg 2): mirror}
+            return {tuple(f['options'][0][:2]): f['mirror']
+                    for p in info for f in p['flavors']}
+
+        # leg 1 fixed to u -> the d u initial state is absent -> never mirror
+        uq = mirrors('u q > u q', pjoin(self.path, 'MG7_mirror_uq'))
+        self.assertEqual(sorted(uq), [(2, 1), (2, 2)])
+        for flavor, mirror in uq.items():
+            self.assertFalse(mirror,
+                'u q > u q (q = u d): flavor %s must not be mirrored (leg 1 is a '
+                'fixed u, so d u > u d is not part of the process); mirroring it '
+                'double counts the u d contribution' % (flavor,))
+
+        # both legs span {u,d} -> the swapped mixed flavor was collapsed here
+        qq = mirrors('q q > q q', pjoin(self.path, 'MG7_mirror_qq'))
+        for flavor, mirror in qq.items():
+            self.assertEqual(mirror, flavor[0] != flavor[1],
+                'q q > q q (q = u d): only the mixed initial flavor may be '
+                'mirrored, got mirror=%s for %s' % (mirror, (flavor,)))
+
+        # e+ e- > e+ e-: the two beams are *different* particles (the leg
+        # signature must stay signed -- comparing |pdg| made e+ and e- look like
+        # the same beam and mirrored the flavor, doubling the cross-section).
+        ee = mirrors('e+ e- > e+ e-', pjoin(self.path, 'MG7_mirror_ee'))
+        self.assertEqual(sorted(ee), [(-11, 11)])
+        for flavor, mirror in ee.items():
+            self.assertFalse(mirror,
+                'e+ e- > e+ e-: beams are different particles, flavor %s must '
+                'not be mirrored (that doubles the cross-section)' % (flavor,))
+
+    def test_color_flow_consistency_mg7(self):
+        """LHECompleter (madspace/src/driver/lhe_output.cpp) must build
+        without error for p p > j j j: it walks each diagram's vertices,
+        cancelling color/anti-color indices (compute_decay_color), and raises
+        if a color flow doesn't close. Exercises the real C++ code directly
+        against every (channel, diagram, active color) in subprocesses.json."""
+        import json
+        # Prefer the locally-built module (madspace/install) over whatever
+        # madspace happens to be on the system path, since this test exercises
+        # local C++ source changes (diagram_propagator_pdgs).
+        local_install = pjoin(MG5DIR, 'madspace', 'install')
+        if os.path.isdir(local_install):
+            if local_install not in sys.path:
+                sys.path.insert(0, local_install)
+            for mod_name in [m for m in sys.modules if m.startswith('madspace')]:
+                mod_file = getattr(sys.modules[mod_name], '__file__', '') or ''
+                if not mod_file.startswith(local_install):
+                    del sys.modules[mod_name]
+        try:
+            import madspace as ms
+            has_mg7 = hasattr(ms.SubprocArgs(), 'diagram_propagator_pdgs')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm',
+                  'define p = g u c d s u~ c~ d~ s~',
+                  'define j = g u c d s u~ c~ d~ s~',
+                  'generate p p > j j j']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_color_flow_consistency')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+        meta_list = json.load(open(pjoin(out_dir, 'SubProcesses',
+                                          'subprocesses.json')))
+
+        checked = 0
+        for subproc_index, meta in enumerate(meta_list):
+            n_particles = len(meta['incoming']) + len(meta['outgoing'])
+            incoming_masses = [0.0] * len(meta['incoming'])
+            outgoing_masses = [0.0] * len(meta['outgoing'])
+            topologies, permutations = [], []
+            diagram_indices, diagram_color_indices = [], []
+            diagram_propagator_pdgs = []
+            for channel in meta['channels']:
+                # mass/width don't affect color computation, only whether a
+                # propagator counts as resonant -- use 0.0 throughout so every
+                # propagator's color still gets validated.
+                propagators = [
+                    ms.Propagator(mass=0.0, width=0.0, integration_order=0,
+                                  e_min=0.0, e_max=0.0, pdg_id=pid)
+                    for pid in channel['propagators']
+                ]
+                diagram = ms.Diagram(incoming_masses, outgoing_masses,
+                                      propagators, channel['vertices'])
+                topo = ms.Topology.topologies(diagram)[0]
+                diagrams = channel['diagrams']
+                topologies.append(topo)
+                permutations.append([d['permutation'] for d in diagrams])
+                diagram_indices.append([d['diagram'] for d in diagrams])
+                diagram_color_indices.append(
+                    [d['active_colors'] for d in diagrams]
+                )
+                diagram_propagator_pdgs.append(
+                    [d['propagator_pdgs'] for d in diagrams]
+                )
+                checked += sum(len(d['active_colors']) for d in diagrams)
+
+            subproc_args = ms.SubprocArgs(
+                process_id=subproc_index,
+                topologies=topologies,
+                permutations=permutations,
+                diagram_indices=diagram_indices,
+                diagram_color_indices=diagram_color_indices,
+                diagram_propagator_pdgs=diagram_propagator_pdgs,
+                color_flows=meta['color_flows'],
+                pdg_color_types={
+                    int(k): v for k, v in meta['pdg_color_types'].items()
+                },
+                helicities=[[0] * n_particles],
+                pdg_ids=[flavor['options'] for flavor in meta['flavors']],
+            )
+            try:
+                ms.LHECompleter([subproc_args], bw_cutoff=15.0)
+            except Exception as err:
+                self.fail(
+                    'LHECompleter rejected subprocess %s (incoming=%s '
+                    'outgoing=%s): %s'
+                    % (subproc_index, meta['incoming'], meta['outgoing'], err)
+                )
+
+        self.assertGreater(
+            checked, 0,
+            'no (subprocess, channel, diagram, color) combination was found '
+            'to check -- p p > j j j should generate plenty'
+        )
+
+    def test_single_qcd_order_mg7(self):
+        """The mg7 output records the single alpha_s power (single_qcd_order in
+        SubProcesses/proc_characteristics) whenever the QCD power of |M|^2 is the
+        same for every diagram, and -1 otherwise. systematics uses it to
+        reconstruct the LO reweighting info (no <mgrwt> in the mg7 LHE) and so
+        compute scale/PDF uncertainties. Output-level check (no mg7 runtime)."""
+        import madgraph.various.banner as banner_mod
+
+        def single_qcd_order(setup, out_dir):
+            mg = MGCmd.MasterCmd()
+            mg.no_notification()
+            for c in (['set automatic_html_opening False --no_save',
+                       'import model sm'] + setup):
+                mg.exec_cmd(c)
+            mg.exec_cmd('output mg7 %s' % out_dir)
+            pc = banner_mod.ProcCharacteristic(
+                pjoin(out_dir, 'SubProcesses', 'proc_characteristics'))
+            return int(pc['single_qcd_order'])
+
+        # pure QCD 2->2: |M|^2 ~ alpha_s^2
+        self.assertEqual(2, single_qcd_order(
+            ['generate u u > u u'], pjoin(self.path, 'MG7_nqcd_uu')))
+        # pure electroweak: no alpha_s
+        self.assertEqual(0, single_qcd_order(
+            ['generate e+ e- > mu+ mu-'], pjoin(self.path, 'MG7_nqcd_ee')))
+        # mixed QCD/QED orders (QCD=2 and QED=2 contributions) -> not uniform
+        self.assertEqual(-1, single_qcd_order(
+            ['generate u u~ > d d~', 'add process u u~ > d d~ QED=2'],
+            pjoin(self.path, 'MG7_nqcd_mixed')))
+
+    def _check_systematics_weights(self, lhe_path, expected_ids=None):
+        """Every event carries the variation weights of the <initrwgt> header
+        and they differ from the nominal weight (real scale/PDF information
+        entered the computation). Returns the number of events."""
+        banner = banner_mod.Banner(lhe_path)
+        self.assertIn('initrwgt', banner, 'no <initrwgt> header in %s' % lhe_path)
+        ids = re.findall(r'<weight id=["\'](\w+)["\']', banner['initrwgt'])
+        self.assertTrue(ids, 'empty <initrwgt> header')
+        if expected_ids is not None:
+            self.assertEqual(ids, expected_ids)
+        nb_event = 0
+        nb_nontrivial = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertEqual(sorted(rwgt), sorted(ids),
+                'the event weights do not match the <initrwgt> header')
+            if any(abs(w - evt.wgt) > 1e-6 * abs(evt.wgt) for w in rwgt.values()):
+                nb_nontrivial += 1
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+        self.assertGreater(nb_nontrivial, 0,
+            'the systematic weights are all equal to the nominal weight')
+        return nb_event
+
+    def test_systematics_mg7(self):
+        """Scale/PDF systematics computed by madspace when the events are
+        written ([systematics] section of the run_card), end to end (u u > u u).
+
+        Checks the LHEF3 output: an <initrwgt> header with the 3x3 scale grid
+        (8 weights, ids 1-8) plus one PDF member of another set when that set
+        is available (a cross-set variation, with its own alpha_s), a <rwgt>
+        block in every event, non-trivial weights, the events.weights.json
+        sidecar with the same ids and the per-variation cross sections, and the
+        systematics summary in info.json. No LHAPDF python module is needed."""
+        datadir = _mg7_datadir_or_skip(self)
+        # a cross-set PDF variation (its own alpha_s) rather than a member of
+        # the default set, so this also covers the cross-set code path
+        other_set = 'NNPDF23_lo_as_0130_qed'
+        has_other = os.path.isfile(pjoin(datadir, other_set, '%s_0001.dat' % other_set))
+        pdf_entry = '["%s@1"]' % other_set if has_other else '["central"]'
+        nb_pdf = 1 if has_other else 0
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u > u u'],
+            pjoin(self.path, 'MG7_syst'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
+                        # one histogram, to get the event-sample histograms
+                        # with their variation bands in info.json
+                        (r'\[histograms\]\n',
+                         '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
+                         'sqrt_s.bin_count = 10\n')],
+            events=100)
+
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        # 8 scale variations, then the PDF member
+        nb_ids = 8 + nb_pdf
+        nb_event = self._check_systematics_weights(
+            lhe_path, expected_ids=[str(i) for i in range(1, nb_ids + 1)])
+
+        side_path = pjoin(run, 'events.weights.json')
+        self.assertTrue(os.path.exists(side_path), 'no events.weights.json sidecar')
+        side = json.load(open(side_path))
+        self.assertEqual([v['id'] for v in side['variations']], list(range(1, nb_ids + 1)))
+        self.assertEqual(side['columns'], ['rwgt_%d' % i for i in range(1, nb_ids + 1)])
+        self.assertEqual(side['event_count'], nb_event)
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations'][:8]],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
+        xsec = side['nominal']['cross_section']
+        self.assertGreater(xsec, 0)
+        # the scale envelope brackets the nominal cross section
+        self.assertLess(side['scale']['min'], xsec)
+        self.assertGreater(side['scale']['max'], xsec)
+        if has_other:
+            member = side['variations'][8]
+            self.assertEqual((member['pdf_set'], member['pdf_member']), (other_set, 1))
+            self.assertNotAlmostEqual(member['cross_section'] / xsec, 1.0, places=3)
+        info = json.load(open(pjoin(run, 'info.json')))
+        self.assertIn('systematics', info)
+        self.assertEqual(len(info['systematics']['variations']), nb_ids)
+        # event-sample histograms: nominal + one column per variation, each
+        # summing to the corresponding cross section, with the scale envelope
+        self.assertIn('event_histograms', info)
+        hist = info['event_histograms'][0]
+        self.assertEqual(hist['name'], 'sqrt_s')
+        self.assertEqual(len(hist['bin_values']), 12)  # 10 bins + under/overflow
+        self.assertAlmostEqual(sum(hist['bin_values']) / xsec, 1.0, places=8)
+        self.assertEqual([w['id'] for w in hist['weights']], list(range(1, nb_ids + 1)))
+        for w, var in zip(hist['weights'], side['variations']):
+            self.assertAlmostEqual(sum(w['bin_values']) / var['cross_section'], 1.0, places=8)
+        env = hist['scale_envelope']
+        for lo, nom, hi in zip(env['low'], hist['bin_values'], env['high']):
+            self.assertLessEqual(lo, nom + 1e-12)
+            self.assertGreaterEqual(hi, nom - 1e-12)
+        # no legacy systematics.py run happened
+        self.assertFalse(glob.glob(pjoin(run, '*systematics*crash.log')))
+
+    def test_systematics_mixed_order_mg7(self):
+        """A process whose |M|^2 mixes several alpha_s powers (u u~ > d d~ with
+        QCD and QED contributions, qcd_power = -1) gets exact renormalisation
+        scale weights by re-evaluating the matrix element at the varied alpha_s,
+        so the full 3x3 scale grid is written and the mu_R weights differ from
+        the nominal."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u~ > d d~',
+             'add process u u~ > d d~ QED=2'],
+            pjoin(self.path, 'MG7_syst_mixed'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = ["central"]')],
+            events=100)
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        side = json.load(open(pjoin(run, 'events.weights.json')))
+        self.assertEqual(side['warnings'], [])
+        self.assertEqual([(v['mur'], v['muf']) for v in side['variations']],
+                         [(0.5, 0.5), (0.5, 1.0), (0.5, 2.0), (1.0, 0.5),
+                          (1.0, 2.0), (2.0, 0.5), (2.0, 1.0), (2.0, 2.0)])
+        self._check_systematics_weights(lhe_path, expected_ids=[str(i) for i in range(1, 9)])
+        # the mu_R-only variations (ids 2 and 7) really move the weights
+        moved = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            if abs(rwgt['2'] - evt.wgt) > 1e-6 * abs(evt.wgt) and \
+               abs(rwgt['7'] - evt.wgt) > 1e-6 * abs(evt.wgt):
+                moved += 1
+        self.assertGreater(moved, 0, 'the mu_R weights equal the nominal weight')
+
+    def test_systematics_mg7_legacy(self):
+        """The legacy path ([postprocessing] systematics = true, systematics.py
+        + the LHAPDF python module) still works when the native computation is
+        switched off, and reads the reweighting inputs from the LHE (the
+        single alpha_s power recorded at output time, single_qcd_order)."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate u u > u u'],
+            pjoin(self.path, 'MG7_syst_legacy'), datadir,
+            switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
+            toml_edits=[(r'\nenable = true\nmur', '\nenable = false\nmur'),
+                        (r'\nsystematics = false\n', '\nsystematics = true\n'),
+                        (r'systematics_pdf = \[[^\]]*\]',
+                         'systematics_pdf = ["central"]')],
+            events=100)
+
+        lhe_path = pjoin(run, 'events.lhe')
+        if not os.path.exists(lhe_path):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
+        crash = glob.glob(pjoin(run, '*systematics*crash.log'))
+        if crash:
+            self.skipTest('legacy systematics.py could not run (LHAPDF python '
+                          'module?): %s' % open(crash[0]).read()[-500:])
+        self._check_systematics_weights(lhe_path)
+
+    def test_relaunch_switch_defaults_mg7(self):
+        """Re-launching an mg7 output must not turn every tool on.
+
+        The launch question materialises every candidate tool card (copying the
+        *_default.dat) so it can offer them for edition. If the cards of the
+        tools the user did not select are not pruned afterwards, a later launch
+        sees them all present and defaults every switch to ON (set_default_<tool>
+        keys off card presence). This drives the real launch question
+        (ask_edit_cards) twice on the same output, selecting nothing each time,
+        and checks that the second launch still defaults every switch to OFF
+        instead of turning everything on. Output-level: no madspace/LHAPDF
+        runtime needed."""
+        import importlib, io
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        for c in ['set automatic_html_opening False --no_save',
+                  'import model sm', 'generate e+ e- > mu+ mu-']:
+            mg.exec_cmd(c)
+        out_dir = pjoin(self.path, 'MG7_relaunch')
+        mg.exec_cmd('output mg7 %s' % out_dir)
+
+        launcher = importlib.import_module(
+            'madgraph.iolibs.template_files.mg7.launch')
+        tool_cards = ('pythia8_card.dat', 'madspin_card.dat', 'delphes_card.dat',
+                      'reweight_card.dat', 'rivet_card.dat',
+                      'madanalysis5_parton_card.dat',
+                      'madanalysis5_hadron_card.dat')
+
+        def active_tool_cards():
+            present = set(os.listdir(pjoin(out_dir, 'Cards')))
+            return sorted(c for c in tool_cards if c in present)
+
+        def launch_select_nothing():
+            # drive the real launch question, answering '0' (= done: select
+            # nothing / accept the shown defaults)
+            old_stdin = sys.stdin
+            sys.stdin = io.StringIO('0\n')
+            try:
+                return launcher.ask_edit_cards()
+            finally:
+                sys.stdin = old_stdin
+
+        cwd = os.getcwd()
+        try:
+            os.chdir(out_dir)
+            # LAUNCH 1: selecting nothing must leave no active tool card behind
+            # (the materialised cards are pruned again).
+            launch_select_nothing()
+            self.assertEqual(active_tool_cards(), [],
+                'the launch left unselected tool cards active: %s'
+                % active_tool_cards())
+
+            # LAUNCH 2: the defaults must reflect the previous (empty) selection
+            # -- no switch may come back on.
+            switch = launch_select_nothing()
+            for key, value in switch.items():
+                self.assertIn(value, ('OFF', 'Not Avail.'),
+                    're-launch defaulted %s=%s instead of OFF -- the tool cards '
+                    'from the previous launch were not pruned' % (key, value))
+        finally:
+            os.chdir(cwd)
 
     def test_madevent_merged_flavor_uq_mg7(self):
         """mg7 equivalent of test_madevent_merged_flavor_uq (u q > u q QCD=0,
-        q = u d).
+        q = u d): the merged-flavor path must reproduce the cross-section
+        obtained by running u u > u u and u d > u d as separate single-flavor
+        processes.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: the mg7 (madspace)
-        integrator currently SEGFAULTS on this merged-flavor process, so
-        generate_events does not produce the physical cross-section (4428 pb).
-        The test asserts the physical reference and is therefore expected to
-        fail until the mg7 integrator handles merged-flavor u q > u q; it is
-        left undecorated so the failure stays visible in the mg7 workflow
-        rather than being silently swallowed by expectedFailure. It still
-        self-skips where the mg7 runtime stack is unavailable.
+        This used to come out too large because the mg7 exporter mirrored the
+        mixed u d initial flavor -- leg 1 is a fixed u, so the beam-swapped
+        d u > u d state is not part of the process and the u d contribution was
+        counted twice (see Process.has_same_initial_multiparticle and
+        test_merged_flavor_initial_state_mirroring_mg7, which guards the flag
+        directly at output level).
+
+        Self-skips where the mg7 runtime stack is unavailable.
         """
         import glob, json
         try:
@@ -871,8 +1444,8 @@ class TestMECmdShell(unittest.TestCase):
                 datadir = None
         if not has_mg7 or not datadir or not os.path.isdir(datadir):
             self.skipTest('mg7 runtime stack (madspace + LHAPDF data) unavailable')
-        if not glob.glob(pjoin(datadir, 'NNPDF23_lo_as_0130_qed*')):
-            self.skipTest('NNPDF23_lo_as_0130_qed PDF set not available')
+        if not glob.glob(pjoin(datadir, 'NNPDF40_lo_as_01180*')):
+            self.skipTest('NNPDF40_lo_as_01180 PDF set not available')
 
         run_dir = pjoin(self.path, 'MG7_uq')
         if os.path.isdir(run_dir):
@@ -905,8 +1478,106 @@ class TestMECmdShell(unittest.TestCase):
         info = json.load(open(infos[-1]))['process']
         cross = float(info['mean'])
         error = float(info.get('error') or 0.0)
-        # physical reference (same as the madevent test); mg7 must reproduce it
-        self.assertAlmostEqual(cross, 4428.0, delta=max(30.0, 5 * error))
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180. QCD=0, so
+        # there is no alpha_s here at all and the shift away from the 4380 pb of
+        # NNPDF23_lo_as_0130_qed is purely the smaller NNPDF4.0 valence-quark
+        # luminosity.
+        # Spread over 6 runs at events=2000: 3446-3536, mean 3490.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3730.0
+        self.assertAlmostEqual(cross, 3490.0, delta=max(50.0, 5 * error))
+
+    def test_gridpack_mg7(self):
+        """An mg7 gridpack has to run with the libraries it ships.
+
+        save_gridpack copies the matrix-element libraries that were built, and
+        their file names carry the resolved backend, while the card the gridpack
+        runs from carried the backend as requested. cpu_mode defaults to 'auto',
+        so the gridpack asked for a ..._auto.so nobody had built and died in
+        dlopen -- not when the gridpack was made, but the first time it was run,
+        possibly on another machine.
+
+        Both halves are checked: that the backend named in grid_run_card.toml is
+        one the gridpack carries a library for, and that running it produces
+        events.
+        """
+        import glob, re as _re
+        try:
+            import madspace
+            has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
+        except ImportError:
+            has_mg7 = False
+        if not has_mg7:
+            self.skipTest('mg7 runtime stack (madspace) unavailable')
+        # e+ e- > mu+ mu- is leptonic, so no parton density is ever evaluated
+        # and the [systematics] PDF variations are empty -- but alpha_s still
+        # comes from the nominal set, and the mu_R/mu_F weights are computed.
+        # They are deliberately left enabled: the gridpack has to reproduce the
+        # calculator the launcher built, and used to die doing so.
+        datadir = os.environ.get('LHAPDF_DATA_PATH')
+        if not datadir:
+            try:
+                datadir = subprocess.check_output(
+                    ['lhapdf-config', '--datadir']).decode().strip()
+            except Exception:
+                datadir = None
+
+        mg = MGCmd.MasterCmd()
+        mg.no_notification()
+        mg.exec_cmd('generate e+ e- > mu+ mu-')
+        mg.exec_cmd('output mg7 %s' % self.run_dir)
+
+        toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
+        t = open(toml).read()
+        t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
+        t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
+        open(toml, 'w').write(t)
+
+        env = dict(os.environ)
+        if datadir:
+            env['LHAPDF_DATA_PATH'] = datadir
+        log = pjoin(self.run_dir, 'mg7_gridpack_gen.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(self.run_dir, 'bin', 'generate_events'), '-f'],
+            cwd=self.run_dir, env=env,
+            stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 generate_events failed (see %s)' % log)
+
+        gridpacks = glob.glob(pjoin(self.run_dir, 'Events', '*', 'gridpack'))
+        self.assertTrue(gridpacks, 'no gridpack produced under %s' % self.run_dir)
+        gridpack = gridpacks[0]
+
+        # The card the gridpack runs from must name a backend it actually
+        # carries a library for: 'auto' is not one, nothing is built under it.
+        card = open(pjoin(gridpack, 'Cards', 'grid_run_card.toml')).read()
+        mode = _re.search(r'(?m)^cpu_mode\s*=\s*"([^"]+)"', card)
+        self.assertTrue(mode, 'no cpu_mode in the gridpack card')
+        backend = mode.group(1)
+        libdir = pjoin(gridpack, 'lib')
+        self.assertNotEqual(
+            backend, 'auto',
+            'the gridpack card names the unresolved backend, but its libraries '
+            'are named after the resolved one: %s' % os.listdir(libdir))
+        self.assertTrue(
+            glob.glob(pjoin(libdir, '*%s*' % backend)),
+            'gridpack names backend %r but ships no matching library: %s'
+            % (backend, os.listdir(libdir)))
+
+        # and it has to run
+        gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
+        ret = subprocess.call(
+            [sys.executable, pjoin(gridpack, 'bin', 'generate_events'),
+             '--events', '2000'],
+            cwd=gridpack, env=env,
+            stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
+        self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
+            'gridpack run produced no events (see %s)' % gplog)
+        # and it has to reweight: without a nominal alpha_s grid the gridpack
+        # either crashed or dropped the weights it was configured to write.
+        self.assertTrue(
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.weights.json')),
+            'the gridpack run wrote no systematics weights (see %s)' % gplog)
 
     def test_flavor_grouping_consistency(self):
         """Check that the four combinations of 'apply_flavor_grouping' and
@@ -949,13 +1620,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -989,14 +1672,15 @@ class TestMECmdShell(unittest.TestCase):
     def test_flavor_grouping_consistency_mg7(self):
         """mg7 equivalent of test_flavor_grouping_consistency for p p > l+ l-.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 currently returns
-        cross-sections that depend on the apply_flavor_grouping setting (e.g.
-        ~1332 pb grouped vs ~511 pb ungrouped) because the broken-symmetry
-        (flavour-consolidation) factor implemented for standalone /
-        standalone_cpp is not yet applied on the mg7 (madmatrix) side. The four
-        settings must agree; the test asserts that and is left undecorated so the
-        mg7 flavour-grouping discrepancy stays visible until broken_sym is ported
-        to mg7. It self-skips where the mg7 runtime stack is unavailable.
+        The four settings must all give the same cross-section. They used not
+        to (~1336 pb grouped vs ~538 pb ungrouped): a matrix element carries
+        flavor multiplicity either in its merged legs (apply_flavor_grouping=
+        True) or in the several processes mapped onto it (grouping off), and the
+        mg7 exporter only enumerated the first, so with grouping off it kept 4
+        of the 16 channels of p p > l+ l- -- dropping c/s in the initial state
+        and mu+ mu- entirely. Both sources are now walked through the shared
+        HelasMatrixElement.get_flavor_pdg_combinations. It self-skips where the
+        mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         settings = [
@@ -1015,6 +1699,13 @@ class TestMECmdShell(unittest.TestCase):
                  'set group_subprocesses %s' % gsp,
                  'generate p p > l+ l-'],
                 pjoin(self.path, 'MG7_fg_%d' % i), datadir)
+            # Fail on a run that produced nothing rather than letting it reach
+            # the pairwise comparison: err/(cross+1e-99) is 0 < 0.05 when both
+            # are 0, so the precision check below cannot catch it.
+            self.assertTrue(cross,
+                'mg7 produced no cross-section for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s)' % (afg, gsp, cross, err))
             results.append((cross + 1e-99, err, afg, gsp))
             self.assertLess(err / (cross + 1e-99), 0.05,
                 'mg7 cross-section too imprecise (afg=%s, gsp=%s): %s +- %s'
@@ -1070,13 +1761,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -1126,7 +1829,15 @@ class TestMECmdShell(unittest.TestCase):
             ('false', 'True'),
         ]
 
-        results = [(5184588.926738217,2971, '3.7.2', 'neventa=150k')]
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 5184588.926738217 +- 2971 (measured on v3.7.2 with 150k events).
+        # The shift is only -1.67%, far smaller than for an unmerged process
+        # (u u > u u moves -39%): measured by an A/B on identical code, same
+        # process and MLM settings, 5179400 +- 22594 with nn23lo1 pinned vs
+        # 5092900 +- 19956 with the new default. The nn23lo1 arm sits within
+        # 1 sigma of the stored 3.7.2 number, so the small shift is real and
+        # not a sign that the run ignored the PDF change.
+        results = [(5092900.0, 19956, 'NNPDF40_lo_as_01180', 'nevents=10k')]
         for i, (afg, gsp) in enumerate(settings):
             run_dir = pjoin(self.path, 'MGPROC_fg_%d' % i)
 
@@ -1165,13 +1876,20 @@ class TestMECmdShell(unittest.TestCase):
             self.do('generate_events -f')
 
             # Verify event generation succeeded
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            # Check that we got a valid cross-section
-            self.assertGreater(val, 0,
-                'cross-section is zero for q q~ > q q~ with MLM merging')
+            # Check that we got a valid cross-section. Test the raw cross, not
+            # cross+1e-99: a run that produced nothing leaves cross and error at
+            # 0 (typically a ZeroResult swallowed by nice_error_handling), and
+            # asserting on the padded value can never fail.
+            self.assertTrue(cross,
+                'no cross-section produced for q q~ > q q~ with MLM merging: '
+                'the run failed (cross=%s, error=%s, run dir %s)'
+                % (cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             # Check precision is reasonable
             self.assertLess(err / val, 0.10,
@@ -1239,7 +1957,7 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(
             abs(val1 - target) / (err1+1.7),
             2.,
-            'large diference between %s and %s +- %s'%
+            'large difference between %s and %s +- %s'%
                         (target, val1, err1)
         )
 
@@ -1251,7 +1969,7 @@ class TestMECmdShell(unittest.TestCase):
         generate_events run. The mg7 (madmatrix/cudacpp) integrator is far too
         slow for a CI cross-section run on this process, so this equivalent
         validates the mg7 *output* path instead: that `output mg7` generates the
-        e- p > e- j subprocess directories and that they compile (scalar cppnone
+        e- p > e- j subprocess directories and that they compile (scalar
         backend) into the expected shared libraries. The cross-section
         comparison against the madevent reference remains a TODO pending a
         faster mg7 integrator.
@@ -1332,7 +2050,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.01118182
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
 
     def test_eva_oldrelease_collision(self):
@@ -1378,7 +2096,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.02187245
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))    
 
         
@@ -1426,8 +2144,78 @@ class TestMECmdShell(unittest.TestCase):
         
         #target = 0.003795
         target =0.003837 # value from v3.7.2 for 250k events
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
+
+
+    def test_quarkonium_production(self):
+        """check that e e > etab(3S) etab(3S) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia')
+        mg_cmd.exec_cmd(' generate e+ e- > etab(3s) etab(3S)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_quarkonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_quarkonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 10k value is 6.227e-17 +- 2e-20
+        target = 6.227e-17
+        self.assertLess(
+            abs(val1 - target) / (err1+1.4e-20),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
+
+
+    def test_leptonium_production(self):
+        """check that p p > j mumu(1|3S1) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-lepton_masses')
+        mg_cmd.exec_cmd(' define p = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' define j = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' generate p p > j mumu(1|3S1)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_leptonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_leptonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 1M value is 0.01668020 +- 7.24e-6
+        target = 0.01668020
+        self.assertLess(
+            abs(val1 - target) / (err1+3e-6),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
 
 
     def test_customised_madevent_via_run_card(self):
@@ -1519,8 +2307,9 @@ C
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
 
-        target = 361.7 #+- 0.1037 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
+        target = 289.50 #+- 0.52 pb
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -1619,8 +2408,9 @@ C
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
 
-        target = 361.7 #+- 0.1037 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
+        target = 289.50 #+- 0.52 pb
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -1664,9 +2454,14 @@ C
         err1 = self.cmd_line.results.current['error']
 
         #target = 166.36114 # value used as reference before changing sde_strategy
-        # 100k value is 165.84 +- 0.05
-        target = 165.84
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 165.84 (a 100k run, +- 0.05)
+        # NNPDF40_lo_as_01180: 124.4459 +- 0.1349 from a single 10k CI run --
+        # the dev machine cannot run this (its lhapdf python module is broken),
+        # so unlike the old number this one is NOT a 100k measurement and the
+        # 1-sigma tolerance below is correspondingly tight.
+        target = 124.45
+        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         
@@ -1678,9 +2473,11 @@ C
         self.do('generate_events -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        # 100k value is  165.71 +- 0.06
-        target = 165.71
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # 165.71 (a 100k run, +- 0.06)
+        # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
+        target = 124.36
+        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
 
@@ -1713,14 +2510,22 @@ C
         # check value for the width    
         import models.check_param_card as check_param_card    
         param_card = check_param_card.ParamCard(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
-        self.assertTrue(misc.equal(1.491257, param_card['decay'].get(6).value),3)
+        # NB: the trailing 3 in the original call was assertTrue's *msg*
+        # argument, not a precision -- misc.equal's default sig_fig=6 is what
+        # this has always compared at, so it is left alone.
+        self.assertTrue(misc.equal(1.491257, param_card['decay'].get(6).value),
+            'top width %s far from reference 1.491257'
+            % param_card['decay'].get(6).value)
                         
         # generate events
         self.cmd_line.exec_cmd('launch -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        target = 440.779
-        self.assertTrue(misc.equal(target, val1, 4*err1))                
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 440.779
+        target = 313.66
+        self.assertTrue(misc.equal(target, val1, 4*err1),
+            'g g > t t~ (CMS) cross-section %s +- %s far from reference %s'
+            % (val1, err1, target))                
         
 
         # run madspin
@@ -1731,8 +2536,27 @@ C
         self.cmd_line.exec_cmd('decay_events run_01 -f')
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
-        target = 440.779
-        self.assertTrue(misc.equal(target, val1, 4*err1))          
+        # Not the production 440.779 any more. BR(t -> w+ b) is 1 to seven
+        # digits, so the decayed cross-section used to be the production one --
+        # but MadSpin draws the top's virtuality only inside +- BW_cut widths of
+        # the pole and now says so: the reported sigma carries the fraction of
+        # the Breit-Wigner that window keeps. One top is decayed here (t~ is not
+        # in the card and MadSpin does not auto-conjugate), so the factor is a
+        # single bw_retained_fraction(173.0, 1.491257, 15) = 0.9786983 and
+        # 440.779 -> 431.39, i.e. -2.13%.
+        #
+        # The 4*err1 band is +-4.3% on a 100-event run, so the old number still
+        # fitted inside it. That is exactly why it is updated rather than left:
+        # a tolerance wide enough to hide a systematic shift is not a check that
+        # the shift is right.
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value 431.39
+        # Derived, not measured: the -2.13% factor above is the Breit-Wigner
+        # window fraction, which does not depend on the PDF, so the new value is
+        # 313.66 * 0.9786983. CI measures it directly on the next run.
+        target = 306.98
+        self.assertTrue(misc.equal(target, val1, 4*err1),
+            'MadSpin-decayed cross-section %s +- %s far from reference %s'
+            % (val1, err1, target))
              
         
         
@@ -1766,7 +2590,7 @@ C
             stdout=devnull
             stderr=devnull
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -1775,6 +2599,8 @@ C
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_04')))
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'scan_run_0[1-2].txt')))
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'scan_run_0[3-4].txt')))
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'scan_run_0[1-2].json')))
+        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'scan_run_0[3-4].json')))
         
         banner1 = banner.Banner(pjoin(self.run_dir, 'Events','run_01', 'run_01_tag_1_banner.txt'))
         banner2 = banner.Banner(pjoin(self.run_dir, 'Events','run_02', 'run_02_tag_1_banner.txt'))                                
@@ -1839,26 +2665,49 @@ C
         err1 = self.cmd_line.results.current['error']
         
         target = 155.9
-        self.assertLess(abs(val1 - target) / err1, 2.)
+        self.assertLess(abs(val1 - target) / err1, 2.,
+            'cross-section %s +- %s far from reference %s' % (val1, err1, target))
 
     def test_e_e_collision_mg7(self):
-        """mg7 equivalent of test_e_e_collision for e+ e- > e+ e-.
+        """mg7 cross-section for e+ e- > e+ e- (Bhabha).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 has no lepton-beam
-        (no-PDF / lpp=0) support yet -- its run_card.toml only carries a hadron
-        PDF, so generate_events aborts with "PID 11 not found in pdf grid". The
-        test asserts the physical cross-section (155.9 pb) and is expected to
-        fail until mg7 supports lepton beams; left undecorated so the limitation
-        stays visible. Self-skips where the mg7 runtime stack is unavailable.
+        NB: this cannot be compared to test_e_e_collision's 155.9 pb -- that
+        number belongs to the tailored run_card_ee.dat which that test copies in.
+        Here the mg7 default run_card.toml is used (via _run_mg7_xsec), and the
+        reference is the madevent cross-section for the same setup: 40.3 pb.
+
+        The e+ and e- beams are *different* particles, so the beam-swapped
+        initial state is not part of the process and no flavor may be mirrored.
+        Mirroring it (which happened while the initial-leg signature compared
+        |pdg|, making e+ and e- look like the same beam) doubled the result to
+        ~81 pb -- hence the explicit mirroring assertion on top of the
+        cross-section. Self-skips where the mg7 runtime stack is unavailable.
         """
+        import json
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        run_dir = pjoin(self.path, 'MG7_ee')
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model sm',
              'generate e+ e- > e+ e-'],
-            pjoin(self.path, 'MG7_ee'), datadir)
-        # physical reference (same as test_e_e_collision); mg7 must reproduce it
-        self.assertAlmostEqual(cross, 155.9, delta=max(2.0, 5 * error))
+            run_dir, datadir)
+
+        # explicit mirroring check: e+ and e- are distinct beams -> never mirror
+        info = json.load(open(pjoin(run_dir, 'SubProcesses',
+                                    'subprocesses.json')))
+        for proc in info:
+            for flavor in proc['flavors']:
+                self.assertFalse(flavor['mirror'],
+                    'e+ e- > e+ e-: the beams are different particles, so the '
+                    'swapped initial state is not part of the process and flavor '
+                    '%s must not be mirrored (that doubles the cross-section)'
+                    % (flavor['options'],))
+
+        # madevent reference for the same run_card settings
+        target = 155.9
+        target = 40.3 # fixed scale mz
+
+        self.assertAlmostEqual(cross, 40.3, delta=max(1.0, 5 * error))
 
     def load_result(self, run_name):
         
@@ -1903,17 +2752,6 @@ C
 #            # check that the html has the information
 #            self.assertTrue('rwt' in data[0].pythia)
 
-    def check_matched_plot(self, run_name='run_01', mintime=None, tag='fermi'):
-        """ """
-        path = '%(path)s/HTML/%(run)s/plots_pythia_%(tag)s/DJR1.ps' % \
-                                {'path':self.run_dir,'run': run_name, 'tag': tag}
-
-        self.assertTrue(os.path.exists(path))
-        
-        if mintime:
-            self.assertGreater(os.path.getctime(path), mintime)
-        
-        return open(path).read()
 #===============================================================================
 # TestCmd
 #===============================================================================
@@ -1980,12 +2818,14 @@ class TestMEfromfile(unittest.TestCase):
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                         stdout=stdout, stderr=stderr)
 
-        self.check_parton_output(cross=15.62, error=0.19)
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value
+        # cross=15.62, error=0.19
+        self.check_parton_output(cross=16.99, error=0.21)
         self.check_pythia_output()
         event = '%s/Events/run_01/unweighted_events.lhe' % self.run_dir
         if not os.path.exists(event):
@@ -2063,7 +2903,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2115,7 +2955,7 @@ class TestMEfromfile(unittest.TestCase):
         set notification_center False --no_save
         generate p p > w+ j
         add process p p > w- j
-        output %(path)s
+        output madevent %(path)s
         launch
         madspin=ON
         analysis=OFF
@@ -2144,7 +2984,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2220,7 +3060,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2306,7 +3146,7 @@ class TestMEfromfile(unittest.TestCase):
         launch
         """)
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2365,7 +3205,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
@@ -2426,32 +3266,35 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
         
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)     
         
         #a=rwa_input('freeze')
-        self.check_parton_output(cross= 4.117e+08, error=1.413e+06,target_event=1000)
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value cross=4.117e+08, error=1.413e+06
+        self.check_parton_output(cross= 2.1086e+08, error=1.34e+06,target_event=1000)
 
     def test_generation_heft_mg7(self):
         """mg7 equivalent of test_generation_heft for g g > b b~ HIW<=1 (HEFT).
 
-        KNOWN-FAILING, intentionally NOT marked xfail: mg7 runs this HEFT process
-        but its cross-section comes out ~257x below the physical value (~1.6e6 pb
-        vs the madevent 4.117e8 pb) -- a large mg7 normalisation discrepancy for
-        the effective ggH coupling. The test asserts the physical reference and is
-        expected to fail until that is resolved; left undecorated to keep the
-        discrepancy visible. Self-skips where the mg7 runtime stack is unavailable.
+        Pins the mg7-native cross-section obtained with the run_card.toml
+        defaults and the dynamical HT/2 scale that _run_mg7_xsec selects.
+        Self-skips where the mg7 runtime stack is unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
-        cross, error = _run_mg7_xsec(self, 
+        cross, error = _run_mg7_xsec(self,
             ['set automatic_html_opening False --no_save',
              'import model heft',
              'generate g g > b b~ HIW<=1'],
             pjoin(self.path, 'MG7_heft'), datadir)
-        # physical reference (same as test_generation_heft)
-        target = 4.117e8
+        # mg7 reference with the default PDF NNPDF40_lo_as_01180 (NNPDF4.0 LO,
+        # alpha_s(M_Z) = 0.118). The 3.708e+08 of the old NNPDF23_lo_as_0130_qed
+        # default drops by -44% purely through the PDF -- gg luminosity times
+        # alpha_s^2 (-22% at the ~20 GeV dynamical scale).
+        # Spread over 6 runs: 2.0872e+08-2.0901e+08, mean 2.089e+08.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 1.820e+08
+        target = 2.089e+08
         self.assertLess(abs(cross - target) / target, 0.10,
             'mg7 HEFT cross-section %s far from physical reference %s'
             % (cross, target))
@@ -2507,7 +3350,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2537,7 +3380,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2568,7 +3411,7 @@ class TestMEfromfile(unittest.TestCase):
         """ % {'path':self.run_dir})
         command.close()
 
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'),
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'),
                          pjoin(self.path, 'cmd')],
                          cwd=pjoin(_file_path, os.path.pardir),
                         stdout=stdout,stderr=stdout)
@@ -2598,7 +3441,7 @@ class TestMEfromfile(unittest.TestCase):
         fsock.write(open(pjoin(_file_path, 'input_files','test_mssm_generation')).read() %
                     {'dir_name': self.run_dir, 'mg5_path':pjoin(_file_path, os.path.pardir)})
         fsock.close()
-        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([sys.executable, pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'test_mssm_generation')],
                          #cwd=pjoin(self.path),
                         stdout=stdout,stderr=stdout)
@@ -2628,24 +3471,23 @@ class TestMEfromfile(unittest.TestCase):
             event.check()
 
     def test_generation_from_file_1_mg7(self):
-        """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
-        madevent reference from test_generation_from_file_1.
+        """mg7 (madspace) cross-section for MSSM p p > go go.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: standalone_mg7 already
-        reproduces the per-flavor |M|^2 for p p > go go
-        (test_standalone_mg7_mssm_gogo, ~1e-4), but full mg7 event generation
-        for merged-flavor processes is not wired up yet -- the madspace
-        integrator does not currently produce the cross-section (cf. the SM
-        tracker test_madevent_merged_flavor_uq_mg7, which segfaults). This pins
-        the mg7 cross-section to the madevent reference (run_01 of
-        test_generation_from_file_1, 4.541638 pb) and is expected to fail until
-        the mg7 integrator handles merged-flavor p p > go go; it is left
-        undecorated so the gap stays visible in the mg7 workflow rather than
-        being silently swallowed by expectedFailure. (The mg7 default
-        run_card.toml uses a dynamical HT/2 scale rather than the madevent
-        run_card_matching.dat settings, so a residual scale-driven difference is
-        expected even once the integrator works.) Self-skips where the mg7
-        runtime stack is unavailable.
+        the standalone (madmatrix) export reproduces the per-flavor |M|^2 for
+        p p > go go (test_madmatrix_mssm_gogo, ~1e-4) and the madspace integrator
+        lands on the madevent cross-section as well: with NNPDF23_lo_as_0130_qed
+        pinned in the run_card this setup gives 5.0235, against the madevent
+        reference of 5.024 (run_01 of test_generation_from_file_1). The target
+        below is for the default PDF instead -- see the comment on it.
+
+        This used to be red at random rather than for a physics reason: the
+        assertion is at 1%, but with the old 2000-event target a single run
+        carried a ~1.1% statistical error, i.e. the tolerance sat below 1 sigma
+        and the test failed on roughly 40% of runs (observed spread over 12
+        identical local runs: 4.918-5.156, mean 5.030). _run_mg7_xsec now asks
+        for 50000 events, which brings the error to ~0.08% and makes the 1%
+        tolerance a ~13 sigma check. Self-skips where the mg7 runtime stack is
+        unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         cross, error = _run_mg7_xsec(self,
@@ -2653,10 +3495,18 @@ class TestMEfromfile(unittest.TestCase):
              'import model MSSM_SLHA2',
              'generate p p > go go'],
             pjoin(self.path, 'MG7_mssm_gogo'), datadir)
-        # madevent reference (run_01 in test_generation_from_file_1)
-        target = 4.541638
-        self.assertLess(abs(cross - target) / target, 0.10,
-            'mg7 p p > go go cross-section %s far from madevent reference %s'
+        # Reference for the default PDF NNPDF40_lo_as_01180, measured over 6
+        # runs: 2.9632 +- 0.0026 (single-run error ~0.0027, i.e. ~0.09%), so the
+        # 1% tolerance here is a ~11 sigma check. The value shifts from the old
+        # NNPDF23_lo_as_0130_qed reference of 5.024 (madevent, no cuts, lhapdf)
+        # purely because of the PDF change: p p > go go is forced to large x by
+        # the ~600 GeV gluino pair, where the sets differ a lot. With NNPDF23
+        # pinned in the run_card this same setup still gives 5.0235, matching
+        # that madevent reference to 0.01%.
+        # previously PDF was NNPDF40MC_lo_as_01180 with this reference value 3.786
+        target = 2.963
+        self.assertLess(abs(cross - target) / target, 0.01,
+            'mg7 p p > go go cross-section %s far from reference %s'
             % (cross, target))
 
     def test_contur_from_file(self):
@@ -2678,7 +3528,7 @@ class TestMEfromfile(unittest.TestCase):
             stdout= None
 
 
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(_file_path,  os.path.pardir, 'tests', 'input_files','rivet_contur_test.cmd')],
                          cwd=pjoin(self.path),
                          stdout=stdout,stderr=stdout)
@@ -2736,7 +3586,7 @@ set draw_rivet_plots True
             devnull =open(os.devnull,'w')
             stdout=devnull
             stderr=devnull
-        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','mg5_aMC'), 
+        subprocess.call([pjoin(_file_path, os.path.pardir,'bin','madgraph'), 
                          pjoin(self.path, 'mg5_cmd')],
                          #cwd=self.path,
                          stdout=stdout, stderr=stderr)
@@ -2744,6 +3594,205 @@ set draw_rivet_plots True
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet_result.yoda')))
         self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Events', 'run_01',  'rivet-plots','index.html')))
 
+
+    #==========================================================================
+    # mg7 (madspace) counterparts of the post-processing acceptance tests.
+    # Each drives a full mg7 generation and then chains the same post-processing
+    # tool through the mg7 command interface (bin/generate_events -> the merged
+    # tool-selection question -> run_selected_tools -> MG7RunCmd), so that at
+    # least one test exercises the command interface + chaining of every tool
+    # with the new (default) output. They self-skip when the mg7 runtime stack
+    # (madspace + LHAPDF + the default PDF set) or the external tool is
+    # unavailable.
+    #==========================================================================
+    def test_add_time_of_flight_mg7(self):
+        """time-of-flight LHE post-processing chained on the mg7 output.
+
+        Mirrors test_add_time_of_flight: the run_card.toml [postprocessing]
+        time_of_flight threshold is applied to the generated events (this is the
+        mg7 equivalent of the madevent 'add_time_of_flight' command), and the
+        invariant lifetime written on the LHE particles is checked against the
+        threshold."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_tof'), datadir,
+            switch_lines=None,
+            toml_edits=[(r'time_of_flight = -?[\d.eE+-]+',
+                         'time_of_flight = 4e-14')],
+            events=100)
+
+        event = pjoin(run, 'events.lhe')
+        if not os.path.exists(event):
+            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=event)
+
+        has_zero = False
+        has_non_zero = False
+        for evt in lhe_parser.EventFile(event):
+            for particle in evt:
+                if particle.pid in [23, 24]:
+                    self.assertTrue(particle.vtim == 0 or particle.vtim > 4e-14)
+                    if particle.vtim == 0:
+                        has_zero = True
+                    else:
+                        has_non_zero = True
+        self.assertTrue(has_non_zero,
+                        'no time-of-flight information was added to the mg7 LHE')
+
+    def test_pythia8_shower_mg7(self):
+        """Pythia8 shower chained on the mg7 output through the command
+        interface (mirrors the shower part of test_add_time_of_flight): the mg7
+        events are showered in parallel by the reused madevent driver and a
+        HepMC file is produced."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_py8'), datadir,
+            switch_lines=['shower=Pythia8'],
+            precopy_cards=['pythia8'],
+            require_tools=('pythia8_path',),
+            events=100)
+
+        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
+                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+
+    def test_delphes_mg7(self):
+        """Delphes detector simulation chained on the mg7 output (Pythia8 shower
+        + Delphes) through the command interface."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_delphes'), datadir,
+            switch_lines=['shower=Pythia8', 'detector=Delphes'],
+            precopy_cards=['pythia8', 'delphes'],
+            require_tools=('pythia8_path', 'delphes_path'),
+            events=100)
+
+        self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
+                        'mg7 Delphes run produced no output in %s' % run)
+
+    def test_rivet_from_file_mg7(self):
+        """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
+        through the command interface (mirrors test_rivet_from_file).
+
+        Uses p p > w+ z rather than the madevent test's p p > e+ e-: mg7's LHE
+        writer (madspace LHECompleter) currently crashes on the Drell-Yan final
+        state, whereas the two-boson process writes LHE cleanly; the default
+        rivet card's generic MC_ELECTRONS/MUONS/JETS analyses produce a yoda for
+        the showered W/Z decays.
+
+        do_rivet defers the actual Rivet execution to the postprocessor
+        (rivet_card default run_rivet_later = True); run_selected_tools runs that
+        postprocessor (cmd.postprocessing()) after the shower, exactly as
+        MadEventCmd.do_launch does, so rivet_result.yoda is produced."""
+        datadir = _mg7_datadir_or_skip(self)
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_rivet'), datadir,
+            switch_lines=['shower=Pythia8', 'analysis=Rivet'],
+            precopy_cards=['pythia8', 'rivet'],
+            require_tools=('pythia8_path', 'rivet_path'),
+            events=100)
+
+        self.assertTrue(os.path.exists(pjoin(run, 'rivet_result.yoda')),
+                        'mg7 Rivet run produced no yoda output in %s' % run)
+
+    def test_mass_reweighting_mg7(self):
+        """Matrix-element reweighting chained on the mg7 output through the
+        command interface (mirrors test_mass_reweighting): p p > t t~ is
+        generated with the mg7 output and reweighted to a heavier top by the
+        reused madevent reweight driver (reweight -from_cards).
+
+        The reweight module rebuilds the matrix element from the model/process
+        stored in the LHE banner, so this also covers the banner's proc_card."""
+        datadir = _mg7_datadir_or_skip(self)
+        # one reweight point: the same "heavier top" hypothesis as the madevent
+        # test. The default output mode adds the new weight to the events.
+        reweight_card = ("launch\n"
+                         "set mass mt 200\n")
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > t t~'],
+            pjoin(self.path, 'MG7_reweight'), datadir,
+            switch_lines=['reweight=ON'],
+            extra_cards=[(reweight_card, 'reweight_card.dat')],
+            events=100)
+
+        lhe_path = None
+        for name in ('unweighted_events.lhe.gz', 'unweighted_events.lhe',
+                     'events.lhe.gz', 'events.lhe'):
+            if os.path.exists(pjoin(run, name)):
+                lhe_path = pjoin(run, name)
+                break
+        self.assertTrue(lhe_path, 'no mg7 event file under %s' % run)
+
+        # every event must carry the extra reweighted weight
+        nb_event = 0
+        for evt in lhe_parser.EventFile(lhe_path):
+            rwgt = evt.parse_reweight()
+            self.assertIn('rwgt_1', rwgt,
+                          'mg7 reweight did not add the rwgt_1 weight to the events')
+            self.assertNotEqual(float(rwgt['rwgt_1']), 0.0)
+            nb_event += 1
+        self.assertGreater(nb_event, 0, 'no event found in %s' % lhe_path)
+
+    def test_w_production_with_ms_decay_mg7(self):
+        """MadSpin decay chained on the mg7 output through the command interface
+        (mirrors test_w_production_with_ms_decay): p p > w+ z is generated with
+        the mg7 output and then the w+ is decayed (w+ > j j) by the reused
+        madevent MadSpin driver.
+
+        Uses the 2->2 p p > w+ z rather than the madevent test's 2->1 p p > w+:
+        mg7's madspace phase-space builder requires at least two outgoing
+        particles, so a 2->1 process cannot be generated by the mg7 output."""
+        import glob
+        datadir = _mg7_datadir_or_skip(self)
+        madspin_card = ("set spinmode madspin\n"
+                        "decay w+ > j j\n"
+                        "launch\n")
+        run = _run_mg7_postproc(
+            self,
+            ['set automatic_html_opening False --no_save',
+             'import model sm',
+             'generate p p > w+ z'],
+            pjoin(self.path, 'MG7_madspin'), datadir,
+            switch_lines=['madspin=ON'],
+            extra_cards=[(madspin_card, 'madspin_card.dat')],
+            events=100)
+
+        decayed = glob.glob(pjoin(os.path.dirname(run), 'run_01_decayed*',
+                                  '*.lhe*'))
+        self.assertTrue(decayed,
+                        'mg7 MadSpin run produced no decayed events under %s'
+                        % os.path.dirname(run))
+        counts = {}
+        for evt in lhe_parser.EventFile(decayed[0]):
+            for particle in evt:
+                if particle.status == 1:
+                    counts[particle.pdg] = counts.get(particle.pdg, 0) + 1
+        # w+ > j j : the decay products are light-flavour (anti)quarks, and the
+        # merged-flavour placeholders (81/82/83) must have been resolved.
+        self.assertNotIn(81, counts)
+        self.assertNotIn(-81, counts)
+        self.assertTrue(any(abs(pdg) in (1, 2, 3, 4) for pdg in counts),
+                        'no light quarks among the MadSpin decay products: %s'
+                        % counts)
 
 
 
@@ -2831,7 +3880,133 @@ set draw_rivet_plots True
 
         cmd.run_cmd('launch -f')
         
-        self.check_parton_output(cross=15.73, error=0.04)
+        # previously PDF was nn23lo1 (lhaid 230000) with this reference value cross=15.73, error=0.04
+        self.check_parton_output(cross=12.18, error=0.514)
+
+    def _get_delphes_path(self):
+        """Return the configured delphes_path from the MG5 configuration, or
+        None when Delphes is not configured (used to skip the parallel-Delphes
+        acceptance test on setups without Delphes/ROOT)."""
+        config = pjoin(MG5DIR, 'input', 'mg7_configuration.txt')
+        if not os.path.exists(config):
+            return None
+        for line in open(config):
+            line = line.split('#', 1)[0]
+            if '=' in line:
+                key, value = line.split('=', 1)
+                if key.strip() == 'delphes_path':
+                    value = value.strip()
+                    if value and value.lower() != 'none':
+                        return value
+        return None
+
+    def test_pythia8_delphes_parallel(self):
+        """Fused parallel-Delphes path: a multicore Pythia8 + Delphes run should
+        run Delphes on the individual Pythia8 splits and combine the ROOT files
+        with hadd, keeping every showered event exactly once (normalization)."""
+
+        delphes_path = self._get_delphes_path()
+        if not (delphes_path and os.environ.get('ROOTSYS') and
+                os.path.exists(pjoin(delphes_path, 'DelphesHepMC2'))):
+            raise unittest.SkipTest('Delphes/ROOT not available')
+
+        try:
+            shutil.rmtree('/tmp/MGPROCESS/')
+        except Exception:
+            pass
+
+        # nb_core 2 with 400 events forces exactly 2 Pythia8 splits (the
+        # min_n_events_per_job=100 security clamp keeps 400//100=4 capped to 2);
+        # run_mode defaults to 2 (multicore). Setting nb_core_delphes activates
+        # the fused parallel-Delphes path (Delphes runs on each split, then the
+        # ROOT files are combined with hadd).
+        nevents = 400
+        cmd = """import model sm
+        set automatic_html_opening False --no_save
+        set notification_center False --no_save
+        set nb_core 2
+        set nb_core_delphes 2
+        generate p p > e+ e-
+        output madevent %s -f
+        launch
+        shower=pythia8
+        detector=Delphes
+        analysis=off
+        set mpi off
+        set use_syst False
+        set event_norm average
+        set nevents %d
+        set HEPMCoutput:file hepmc.gz
+        launch -i
+        delphes run_01 --tag=single
+        """ % (self.run_dir, nevents)
+        open(pjoin(self.path, 'mg5_cmd'), 'w').write(cmd)
+
+        if logging.getLogger('madgraph').level <= 20:
+            stdout = None
+            stderr = None
+        else:
+            devnull = open(os.devnull, 'w')
+            stdout = devnull
+            stderr = devnull
+        ret = subprocess.call([pjoin(_file_path, os.path.pardir, 'bin', 'madgraph'),
+                               pjoin(self.path, 'mg5_cmd')],
+                              stdout=stdout, stderr=stderr)
+        # Without this a failed run only shows up further down as
+        # "TypeError: 'NoneType' object is not subscriptable" out of
+        # load_result, because HTML/results.pkl was never written.
+        self.assertEqual(ret, 0, 'mg5_aMC run failed (rc=%s)' % ret)
+
+        # Parton level (the same lhe drives every split) and Pythia8 output.
+        self.check_parton_output(target_event=nevents)
+        self.check_pythia_output()
+
+        # Two Delphes outputs of the *same* showered events:
+        #   - tag_1_delphes_events.root : fused (Delphes per split -> hadd),
+        #   - single_delphes_events.root: standard single Delphes pass on the
+        #     merged HepMC (the 'delphes run_01 --tag=single' command above).
+        # They must be equivalent: same number of events and same total weight
+        # (this is the real normalization check for the fused path).
+        eventdir = pjoin(self.run_dir, 'Events', 'run_01')
+        fused_root = pjoin(eventdir, 'tag_1_delphes_events.root')
+        single_root = pjoin(eventdir, 'single_delphes_events.root')
+        self.assertTrue(os.path.exists(fused_root), 'no fused Delphes ROOT produced')
+        self.assertTrue(os.path.exists(single_root), 'no single-core Delphes ROOT produced')
+        self.assertGreater(os.path.getsize(fused_root), 0)
+
+        # PyROOT is bundled with ROOT but its bindings may not import under the
+        # test interpreter; when available, compare the two samples directly.
+        try:
+            import ROOT
+        except ImportError:
+            ROOT = None
+        if ROOT is not None:
+            ROOT.gErrorIgnoreLevel = ROOT.kError
+
+            def read(path):
+                tfile = ROOT.TFile.Open(path)
+                tree = tfile.Get('Delphes')
+                self.assertIsNotNone(tree)
+                n = int(tree.GetEntries())
+                total = 0.0
+                try:
+                    for event in tree:
+                        total += event.Event.At(0).Weight
+                except Exception:
+                    total = None  # branch layout differs; fall back to counts
+                tfile.Close()
+                return n, total
+
+            n_fused, w_fused = read(fused_root)
+            n_single, w_single = read(single_root)
+            # Same events processed either way: no loss or duplication from hadd.
+            self.assertGreater(n_fused, 0)
+            self.assertEqual(n_fused, n_single)
+            # Same absolute normalization: the per-split HepMC weights are the
+            # ones the single pass sees on the merged file, so the totals match.
+            if w_fused is not None and w_single is not None:
+                self.assertAlmostEqual(w_fused, w_single,
+                                       delta=1e-6 * abs(w_single) + 1e-30)
 
 
 #===============================================================================

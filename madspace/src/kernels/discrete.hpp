@@ -34,11 +34,13 @@ KERNELSPEC void kernel_sample_discrete_probs(
     for (std::size_t i = 0; i < probs.size(); ++i) {
         prob_norm = prob_norm + probs[i];
     }
-    FVal<T> cum_prob(0.), prob_out(0.);
+    FVal<T> cum_prob(0.), prob_out(1.);
     IVal<T> option(0);
     for (std::size_t i = 0; i < probs.size(); ++i) {
         auto prob = probs[i] / prob_norm;
-        auto mask = r < cum_prob;
+        // never sample entry with zero probability
+        // return first one with probability 1 if all probs are zero
+        auto mask = (r < cum_prob) | (probs[i] == 0);
         cum_prob = cum_prob + prob;
         option = where(mask, option, IVal<T>(i));
         prob_out = where(mask, prob_out, prob);
@@ -58,13 +60,14 @@ KERNELSPEC void kernel_sample_discrete_probs_inverse(
     FVal<T> cum_prob(0.), random(0.), prob_out(0.);
     for (std::size_t i = 0; i < probs.size(); ++i) {
         auto prob = probs[i] / prob_norm;
-        cum_prob = cum_prob + prob;
         auto mask = index == i;
         random = where(mask, cum_prob + 0.5 * prob, random);
+        cum_prob = cum_prob + prob;
         prob_out = where(mask, prob, prob_out);
     }
-    r = random;
-    det = prob_out;
+    auto zero_norm = prob_norm == 0.;
+    r = where(zero_norm, 0.5, random);
+    det = where(zero_norm, 1.0, prob_out);
 }
 
 template <typename T>
@@ -80,11 +83,15 @@ KERNELSPEC void backward_kernel_sample_discrete_probs_inverse(
     for (std::size_t i = 0; i < probs.size(); ++i) {
         prob_norm = prob_norm + probs[i];
     }
+    auto zero_norm = prob_norm == 0.;
     FVal<T> det_grad_out(0.);
     auto prob = probs.gather(index) / prob_norm;
     for (std::size_t i = 0; i < probs.size(); ++i) {
-        probs_grad[i] =
-            (where(index == i, FVal<T>(1.), 0.) - prob) / prob_norm * det_grad;
+        probs_grad[i] = where(
+            zero_norm,
+            0.,
+            (where(index == i, FVal<T>(1.), 0.) - prob) / prob_norm * det_grad
+        );
     }
 }
 

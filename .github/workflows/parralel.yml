@@ -6,6 +6,12 @@ name: running parralel test
 on:
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
+    # All branches, no tags: a release tag points at a commit that already
+    # ran this suite when it was pushed to main, and release.yml gates on
+    # that main run rather than re-testing the same tree. '**' is needed
+    # over '*' so branch names containing a slash still match.
+    branches:
+      - '**'
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
@@ -17,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       message:
-        description: 'running parralel test'     
+        description: 'running parralel test'
         required: true
 
 env:
@@ -42,7 +48,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -64,7 +71,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -85,7 +93,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -106,7 +115,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -128,7 +138,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -150,7 +161,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -172,7 +184,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -193,7 +206,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       # Runs a set of commands using the runners shell
@@ -212,7 +226,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_gauge
@@ -230,7 +245,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_gauge
@@ -248,7 +264,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_gauge_loop
@@ -274,7 +291,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_sm
@@ -291,7 +309,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_sqso
@@ -308,7 +327,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_polarization
@@ -326,7 +346,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -345,7 +366,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -364,7 +386,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_sm2
@@ -382,7 +405,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
 
       - name: test test_short_cross_sm3
@@ -400,7 +424,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Reset MG5 config
-        run: cp input/.mg5_configuration_default.txt input/mg5_configuration.txt
+        run: cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -421,12 +446,13 @@ jobs:
 
   test_short_check_eejjj_lo_lhapdf:
     # e+ e- > p p p [real=QCD] at LO with pdlabel='lhapdf'.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_check_eejjj_lo_lhapdf
@@ -437,12 +463,13 @@ jobs:
 
   test_short_split_evt_gen_zeroev:
     # p p > e+ e- [real=QCD] with split event generation when a channel has zero events.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_split_evt_gen_zeroev
@@ -453,12 +480,13 @@ jobs:
 
   test_short_check_ppwy:
     # p p > w+ y [QCD] using the loop_smgrav model (spin-2 graviton wavefunction).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_check_ppwy
@@ -469,12 +497,13 @@ jobs:
 
   test_short_launch_amcatnlo_name:
     # p p > e+ ve [QCD] launched via aMC@NLO with an explicit run name.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_launch_amcatnlo_name
@@ -485,12 +514,13 @@ jobs:
 
   test_short_calculate_xsect_script:
     # Cross-section computation driven by bin/calculate_xsect for p p > e+ ve [QCD].
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_calculate_xsect_script
@@ -506,12 +536,13 @@ jobs:
   # ---------------------------------------------------------------------------
 
   test_short_ML5_sm_vs_stored_ML5:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_ML5_sm_vs_stored_ML5
@@ -521,12 +552,13 @@ jobs:
 
 
   test_short_ML5_sm_vs_stored_ML4:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_ML5_sm_vs_stored_ML4
@@ -543,12 +575,13 @@ jobs:
 
   test_short_generate_events_nlo_hw6_stdhep:
     # NLO event generation, showered with HERWIG6, output as StdHEP.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_nlo_hw6_stdhep
@@ -560,12 +593,13 @@ jobs:
 
   test_short_generate_events_nlo_hw6_split:
     # NLO event generation split into multiple HERWIG6 shower sub-jobs.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_nlo_hw6_split
@@ -577,12 +611,13 @@ jobs:
 
   test_short_generate_events_nlo_py6_stdhep:
     # NLO event generation, showered with PYTHIA6 (PYTHIA6Q), output as StdHEP.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_nlo_py6_stdhep
@@ -594,12 +629,13 @@ jobs:
 
   test_short_generate_events_nlo_py6pt_stdhep:
     # NLO event generation, showered with PYTHIA6PT, output as StdHEP.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_nlo_py6pt_stdhep
@@ -611,12 +647,13 @@ jobs:
 
   test_short_check_generate_events_nlo_py6pt_fsr:
     # Negative test: PYTHIA6PT must refuse to shower a process with final-state radiation.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_check_generate_events_nlo_py6pt_fsr
@@ -629,12 +666,13 @@ jobs:
   test_short_generate_events_shower_scripts:
     # Exercises bin/generate_events + bin/shower with HERWIG6 hep and top output,
     # including nsplit_jobs > 1 splitting.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_shower_scripts
@@ -646,12 +684,13 @@ jobs:
 
   test_short_generate_events_name:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_short_generate_events_name
@@ -664,12 +703,13 @@ jobs:
 
   test_decay_comparator_mssm:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay_mssm
@@ -680,12 +720,13 @@ jobs:
 
   test_decay_comparator_heft:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -696,12 +737,13 @@ jobs:
 
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -712,12 +754,13 @@ jobs:
 
   test_decay_comparator_nmssm2:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -728,12 +771,13 @@ jobs:
 
   test_decay_comparator_nmssm3:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -744,12 +788,13 @@ jobs:
 
   test_ML5_uux_ddx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -760,12 +805,13 @@ jobs:
 
   test_long_sm_vs_stored_ML5_sqso_ddx_ddx_WEIGHTEDgt6:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -776,12 +822,13 @@ jobs:
 
   test_long_sm_vs_stored_ML5_gg_zccx:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -792,12 +839,13 @@ jobs:
 
   test_long_sm_vs_stored_HCR_uxu_zz_QED:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay
@@ -808,12 +856,13 @@ jobs:
 
   test_long_sm_vs_stored_HCR_uxu_zz_QCD:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
       - name: test test_decay

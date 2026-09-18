@@ -10,24 +10,63 @@
 
 namespace madspace {
 
+/**
+ * Leading-color phase-space mapping following a color-ordered particle chain.
+ *
+ * Generates the full final state as a chain of @f$(\tilde s, t)@f$ two-particle
+ * blocks (@ref TwoToThreeParticleScattering) laid out along a color-ordered
+ * permutation of the particles, peeling one on-shell momentum off at a time
+ * from each beam, with a @ref TwoToTwoParticleScattering or @ref DoubleT
+ * central block joining the two sides [1]. It encodes no specific diagram
+ * topology. The `discrete_i` inputs select, per @f$2 \to 3@f$ peel, which of
+ * the two branches to take. See Sec. 2.2.5 of [1], following [2].
+ *
+ * `batch` is the leading batch dimension. `n_out` is the number of outgoing
+ * particles and `n = n_out + 2` the total.
+ *
+ * **Inputs**
+ * - `random_i` – `float`, shape `(batch,)` – the continuous random numbers
+ *   (`random_dim()` of them).
+ * - `discrete_i` – `int`, shape `(batch,)` – the two-solution choices
+ *   (`discrete_dim()` of them).
+ *
+ * **Conditions**
+ * - `com_energy` – `float`, shape `(batch,)` – total collision energy.
+ * - `mass_i` – `float`, shape `(batch,)` – the `n_out` outgoing masses.
+ *
+ * **Outputs**
+ * - `momentum_i` – `float`, shape `(batch, 4)` – the `n` momenta (incoming
+ *   beams first, then outgoing).
+ *
+ * In addition every mapping returns a `weight` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 2.2.5)
+ * - [2] R. Frederix, T. Vitos, "Leading-colour-based unweighted event
+ *   generation for multi-parton tree-level processes",
+ *   https://arxiv.org/abs/2409.12128
+ */
 class ColorOrderedMapping : public Mapping {
 public:
-    // color_order: 0-indexed permutation of {0, ..., n-1} (n = n_out + 2).
-    // Particles 0 and 1 are the two incoming beams.
-    //
-    // Optional cuts (all indexed by 0-based outgoing-particle index, i.e. the
-    // same indexing as the masses m_out and the entries of the color order
-    // minus 2):
-    //   * pt_min[i]        : minimum transverse momentum of outgoing particle i.
-    //   * m_inv_min[i][j] : minimum invariant mass of the pair (i, j).
-    //   * dr_min[i][j]     : minimum delta-R separation of the pair (i, j).
-    // Passing any non-empty cut container enables cut-aware sampling. The cuts
-    // are translated into invariant-space bounds exactly as in the Fortran
-    // reference (phase_space_gen23): per-subset invariant-mass floors
-    // (invm_min) on the sampled s-channel masses, the adjacent-pair floor on
-    // the 2->3 s23 invariant, and a |t| floor (pt^2) on each peeled particle.
-    // Empty containers (the default) reproduce the previous cut-free behaviour
-    // exactly.
+    /**
+     * @param color_order       0-based permutation of `{0, ..., n-1}`
+     *                          (`n = n_out + 2`) giving the chain order;
+     *                          particles 0 and 1 are the incoming beams. See
+     *                          @ref Topology.
+     * @param t_invariant_power Exponent of the `1/|t|^p` sampling of every
+     *                          momentum transfer; see @ref Invariant.
+     * @param s_invariant_power Exponent of the `1/s^p` sampling of every
+     *                          time-like invariant; see @ref Invariant.
+     * @param pt_min            Per-outgoing-particle minimum transverse
+     *                          momentum; empty disables the cut. See @ref Cuts.
+     * @param m_inv_min         Symmetric matrix of minimum pair invariant
+     *                          masses; empty disables the cut. See @ref Cuts.
+     * @param dr_min            Symmetric matrix of minimum pair `delta_r`
+     *                          separations; empty disables the cut. See
+     *                          @ref Cuts.
+     */
     ColorOrderedMapping(
         const std::vector<std::size_t>& color_order,
         double t_invariant_power = 0.8,
@@ -37,7 +76,9 @@ public:
         const std::vector<std::vector<double>>& dr_min = {}
     );
 
+    /// Number of continuous unit-hypercube inputs consumed by the forward map.
     std::size_t random_dim() const { return _random_dim; }
+    /// Number of discrete two-solution choices (one per 2->3 peel).
     std::size_t discrete_dim() const override { return _discrete_dim; }
 
 private:

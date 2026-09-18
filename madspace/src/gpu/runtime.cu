@@ -4,7 +4,6 @@
 #include <array>
 #include <format>
 #include <functional>
-#include <random>
 #include <tuple>
 
 #include <thrust/copy.h>
@@ -13,12 +12,14 @@
 #include <thrust/fill.h>
 #include <thrust/gather.h>
 #include <thrust/iterator/constant_iterator.h>
+#include <thrust/sequence.h>
 #include <thrust/sort.h>
 
 #include "../kernels/kernels.hpp"
 #include "../kernels/operations.hpp"
 #include "device.hpp"
 #include "madspace/util.hpp"
+#include "random.cuh"
 #include "tensor.cuh"
 
 using namespace madspace;
@@ -506,18 +507,10 @@ void batch_scatter_impl(
     }
 }
 
-void op_batch_scatter(
-    const GpuRuntime::Instruction& instruction,
-    TensorVec& locals,
-    const AsyncGpuDevice& device
+void batch_scatter_dispatch(
+    Tensor& indices, Tensor& source, Tensor& output, const AsyncGpuDevice& device
 ) {
-    auto& indices = locals[instruction.input_indices[0]];
-    auto& target = locals[instruction.input_indices[1]];
-    auto& source = locals[instruction.input_indices[2]];
-
-    auto& output = locals[instruction.output_indices[0]];
-    output = target.copy(device, instruction.output_alloc_hints[0]);
-    switch (target.shape().size()) {
+    switch (output.shape().size()) {
     case 1:
         batch_scatter_impl<1>(indices, source, output, device);
         break;
@@ -535,6 +528,170 @@ void op_batch_scatter(
     }
 }
 
+void op_batch_scatter(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto& indices = locals[instruction.input_indices[0]];
+    auto& target = locals[instruction.input_indices[1]];
+    auto& source = locals[instruction.input_indices[2]];
+
+    auto& output = locals[instruction.output_indices[0]];
+    output = target.copy(device, instruction.output_alloc_hints[0]);
+    batch_scatter_dispatch(indices, source, output, device);
+}
+
+void op_batch_split_by_index(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    auto indices =
+        locals[instruction.input_indices[0]].contiguous(device, AllocHint::temporary);
+    std::size_t count = locals[instruction.input_indices[1]].index_value();
+    std::size_t batch_size = indices.size(0);
+
+    if (batch_size == 0) {
+        for (std::size_t k = 0; k < count; ++k) {
+            locals[instruction.output_indices[k]] = Tensor(
+                DataType::dt_int, {0}, device, instruction.output_alloc_hints[k]
+            );
+        }
+        return;
+    }
+
+    // per-bucket counts, needed on the host to size and split the outputs below
+    Tensor sizes(DataType::dt_int, {count}, device, AllocHint::temporary);
+    {
+        std::size_t temp_storage_bytes = 0;
+        check_error(
+            cub::DeviceHistogram::HistogramEven(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(sizes.data()),
+                static_cast<int>(count) + 1,
+                0,
+                static_cast<int>(count),
+                batch_size,
+                device.stream()
+            )
+        );
+        Tensor temp(
+            DataType::dt_float,
+            {(temp_storage_bytes + 7) / 8},
+            device,
+            AllocHint::temporary
+        );
+        check_error(
+            cub::DeviceHistogram::HistogramEven(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(sizes.data()),
+                static_cast<int>(count) + 1,
+                0,
+                static_cast<int>(count),
+                batch_size,
+                device.stream()
+            )
+        );
+        temp.reset(device);
+    }
+
+    // stable sort of the original positions by bucket index: afterwards each
+    // bucket's positions are contiguous, in their original relative order
+    Tensor values_in(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
+    auto values_in_ptr =
+        thrust::device_pointer_cast(static_cast<me_int_t*>(values_in.data()));
+    thrust::sequence(
+        thrust_par.on(device.stream()), values_in_ptr, values_in_ptr + batch_size
+    );
+    Tensor keys_out(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
+    Tensor values_out(
+        DataType::dt_int, {batch_size}, device, instruction.output_alloc_hints[0]
+    );
+    {
+        std::size_t temp_storage_bytes = 0;
+        check_error(
+            cub::DeviceRadixSort::SortPairs(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(keys_out.data()),
+                static_cast<me_int_t*>(values_in.data()),
+                static_cast<me_int_t*>(values_out.data()),
+                batch_size,
+                0,
+                static_cast<int>(sizeof(me_int_t) * 8),
+                device.stream()
+            )
+        );
+        Tensor temp(
+            DataType::dt_float,
+            {(temp_storage_bytes + 7) / 8},
+            device,
+            AllocHint::temporary
+        );
+        check_error(
+            cub::DeviceRadixSort::SortPairs(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<me_int_t*>(indices.data()),
+                static_cast<me_int_t*>(keys_out.data()),
+                static_cast<me_int_t*>(values_in.data()),
+                static_cast<me_int_t*>(values_out.data()),
+                batch_size,
+                0,
+                static_cast<int>(sizeof(me_int_t) * 8),
+                device.stream()
+            )
+        );
+        temp.reset(device);
+    }
+    values_in.reset(device);
+    keys_out.reset(device);
+    indices.reset(device);
+
+    Tensor sizes_cpu = sizes.cpu(device);
+    check_error(gpuStreamSynchronize(device.stream()));
+    auto sizes_view = sizes_cpu.view<me_int_t, 1>();
+    std::size_t offset = 0;
+    for (std::size_t k = 0; k < count; ++k) {
+        std::size_t bucket_size = sizes_view[k];
+        locals[instruction.output_indices[k]] =
+            values_out.slice(0, offset, offset + bucket_size);
+        offset += bucket_size;
+    }
+    values_out.reset(device);
+    sizes.reset(device);
+}
+
+void op_batch_merge_by_index(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    std::size_t batch_size = 0;
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_size += locals[instruction.input_indices[i]].size(0);
+    }
+    auto& arg0 = locals[instruction.input_indices[0]];
+    auto& output = locals[instruction.output_indices[0]];
+    Sizes shape = arg0.shape();
+    shape[0] = batch_size;
+    output = Tensor(arg0.dtype(), shape, device, instruction.output_alloc_hints[0]);
+    for (std::size_t i = 0; i < instruction.input_indices.size(); i += 2) {
+        batch_scatter_dispatch(
+            locals[instruction.input_indices[i + 1]],
+            locals[instruction.input_indices[i]],
+            output,
+            device
+        );
+    }
+}
+
 __global__ void kernel_div_batch_size(
     std::size_t batch_size,
     GpuTensorView<double, 1, true> input,
@@ -546,11 +703,12 @@ __global__ void kernel_div_batch_size(
     }
 }
 
-void batch_reduce_mean_impl(
+void batch_reduce_sum_mean_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     const AsyncGpuDevice& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto input = locals[instruction.input_indices[0]].contiguous(device);
     auto& output = locals[instruction.output_indices[0]];
@@ -559,35 +717,41 @@ void batch_reduce_mean_impl(
 
     Tensor out(DataType::dt_float, {1}, device, hint);
     std::size_t temp_storage_bytes = 0;
-    cub::DeviceReduce::Sum(
-        nullptr,
-        temp_storage_bytes,
-        static_cast<double*>(input.data()),
-        static_cast<double*>(out.data()),
-        batch_size,
-        device.stream()
+    check_error(
+        cub::DeviceReduce::Sum(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<double*>(input.data()),
+            static_cast<double*>(out.data()),
+            batch_size,
+            device.stream()
+        )
     );
     Tensor temp(
         DataType::dt_float, {(temp_storage_bytes + 7) / 8}, device, AllocHint::temporary
     );
-    cub::DeviceReduce::Sum(
-        temp.data(),
-        temp_storage_bytes,
-        static_cast<double*>(input.data()),
-        static_cast<double*>(out.data()),
-        batch_size,
-        device.stream()
+    check_error(
+        cub::DeviceReduce::Sum(
+            temp.data(),
+            temp_storage_bytes,
+            static_cast<double*>(input.data()),
+            static_cast<double*>(out.data()),
+            batch_size,
+            device.stream()
+        )
     );
     temp.reset(device);
     input.reset(device);
-    launch_kernel(
-        kernel_div_batch_size,
-        1,
-        device.stream(),
-        batch_size,
-        out.view<double, 1>(),
-        out.view<double, 1>()
-    );
+    if (is_mean) {
+        launch_kernel(
+            kernel_div_batch_size,
+            1,
+            device.stream(),
+            batch_size,
+            out.view<double, 1>(),
+            out.view<double, 1>()
+        );
+    }
     if (keepdim) {
         output = out.expand({batch_size});
     } else {
@@ -595,12 +759,13 @@ void batch_reduce_mean_impl(
     }
 }
 
-void batch_reduce_mean_backward_impl(
+void batch_reduce_sum_mean_backward_impl(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
     TensorVec& local_grads,
     const AsyncGpuDevice& device,
-    bool keepdim
+    bool keepdim,
+    bool is_mean
 ) {
     auto& input = locals[instruction.input_indices[0]];
     auto& input_grad = local_grads[instruction.input_indices[0]];
@@ -620,13 +785,15 @@ void batch_reduce_mean_backward_impl(
             local_grads[instruction.output_indices[0]].contiguous(device);
         std::size_t batch_size = output_grad.size(0);
         std::size_t temp_storage_bytes = 0;
-        cub::DeviceReduce::Sum(
-            nullptr,
-            temp_storage_bytes,
-            static_cast<double*>(output_grad.data()),
-            static_cast<double*>(grad.data()),
-            batch_size,
-            device.stream()
+        check_error(
+            cub::DeviceReduce::Sum(
+                nullptr,
+                temp_storage_bytes,
+                static_cast<double*>(output_grad.data()),
+                static_cast<double*>(grad.data()),
+                batch_size,
+                device.stream()
+            )
         );
         Tensor temp(
             DataType::dt_float,
@@ -634,37 +801,64 @@ void batch_reduce_mean_backward_impl(
             device,
             AllocHint::temporary
         );
-        cub::DeviceReduce::Sum(
-            temp.data(),
-            temp_storage_bytes,
-            static_cast<double*>(output_grad.data()),
-            static_cast<double*>(grad.data()),
-            batch_size,
-            device.stream()
-        );
-        launch_kernel(
-            kernel_div_batch_size,
-            1,
-            device.stream(),
-            output_grad.size(0),
-            grad.view<double, 1>(),
-            grad.view<double, 1>()
+        check_error(
+            cub::DeviceReduce::Sum(
+                temp.data(),
+                temp_storage_bytes,
+                static_cast<double*>(output_grad.data()),
+                static_cast<double*>(grad.data()),
+                batch_size,
+                device.stream()
+            )
         );
         temp.reset(device);
         output_grad.reset(device);
+        if (is_mean) {
+            launch_kernel(
+                kernel_div_batch_size,
+                1,
+                device.stream(),
+                batch_size,
+                grad.view<double, 1>(),
+                grad.view<double, 1>()
+            );
+        }
     } else {
         auto& output_grad = local_grads[instruction.output_indices[0]];
-        launch_kernel(
-            kernel_div_batch_size,
-            1,
-            device.stream(),
-            output_grad.size(0),
-            output_grad.view<double, 1>(),
-            grad.view<double, 1>()
-        );
+        if (is_mean) {
+            launch_kernel(
+                kernel_div_batch_size,
+                1,
+                device.stream(),
+                input.size(0),
+                output_grad.view<double, 1>(),
+                grad.view<double, 1>()
+            );
+        } else {
+            grad.copy_from(output_grad, device);
+        }
     }
     input_grad.add(grad, device);
     grad.reset(device);
+}
+
+void op_batch_reduce_sum(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    const AsyncGpuDevice& device
+) {
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, false);
+}
+
+void backward_op_batch_reduce_sum(
+    const GpuRuntime::Instruction& instruction,
+    TensorVec& locals,
+    TensorVec& local_grads,
+    const AsyncGpuDevice& device
+) {
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, false
+    );
 }
 
 void op_batch_reduce_mean(
@@ -672,7 +866,7 @@ void op_batch_reduce_mean(
     TensorVec& locals,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, false);
+    batch_reduce_sum_mean_impl(instruction, locals, device, false, true);
 }
 
 void backward_op_batch_reduce_mean(
@@ -681,7 +875,9 @@ void backward_op_batch_reduce_mean(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, false);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, false, true
+    );
 }
 
 void op_batch_reduce_mean_keepdim(
@@ -689,7 +885,7 @@ void op_batch_reduce_mean_keepdim(
     TensorVec& locals,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_impl(instruction, locals, device, true);
+    batch_reduce_sum_mean_impl(instruction, locals, device, true, true);
 }
 
 void backward_op_batch_reduce_mean_keepdim(
@@ -698,7 +894,9 @@ void backward_op_batch_reduce_mean_keepdim(
     TensorVec& local_grads,
     const AsyncGpuDevice& device
 ) {
-    batch_reduce_mean_backward_impl(instruction, locals, local_grads, device, true);
+    batch_reduce_sum_mean_backward_impl(
+        instruction, locals, local_grads, device, true, true
+    );
 }
 
 void op_offset_indices(
@@ -763,24 +961,28 @@ void op_quantile(
     Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
     tmp.copy_from(input, device);
     std::size_t temp_storage_bytes;
-    cub::DeviceMergeSort::SortKeys(
-        nullptr,
-        temp_storage_bytes,
-        static_cast<double*>(tmp.data()),
-        batch_size,
-        gpu_less_double{},
-        device.stream()
+    check_error(
+        cub::DeviceMergeSort::SortKeys(
+            nullptr,
+            temp_storage_bytes,
+            static_cast<double*>(tmp.data()),
+            batch_size,
+            gpu_less_double{},
+            device.stream()
+        )
     );
     Tensor tmp_sort(
         DataType::dt_float, {(temp_storage_bytes + 7) / 8}, device, AllocHint::temporary
     );
-    cub::DeviceMergeSort::SortKeys(
-        tmp_sort.data(),
-        temp_storage_bytes,
-        static_cast<double*>(tmp.data()),
-        batch_size,
-        gpu_less_double{},
-        device.stream()
+    check_error(
+        cub::DeviceMergeSort::SortKeys(
+            tmp_sort.data(),
+            temp_storage_bytes,
+            static_cast<double*>(tmp.data()),
+            batch_size,
+            gpu_less_double{},
+            device.stream()
+        )
     );
     tmp_sort.reset(device);
 
@@ -797,6 +999,17 @@ void op_quantile(
     tmp.reset(device);
 }
 
+__global__ void
+kernel_random(std::size_t count, mixmax_engine* engines, double* output) {
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < count; i += stride) {
+        output[i] = rng.flat();
+    }
+    engines[t] = rng;
+}
+
 void op_random(
     const GpuRuntime::Instruction& instruction,
     TensorVec& locals,
@@ -808,28 +1021,29 @@ void op_random(
     output = Tensor(
         DataType::dt_float, {batch_size, dim}, device, instruction.output_alloc_hints[0]
     );
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, device.stream()));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(output.data()), batch_size * dim
-    ));
+    launch_rng_kernel(
+        kernel_random,
+        batch_size * dim,
+        instruction.runtime.rng(),
+        device.stream(),
+        static_cast<double*>(output.data())
+    );
 }
 
-__global__ void kernel_double_to_int_range(
-    std::size_t batch_size,
-    me_int_t max_val,
-    GpuTensorView<double, 1, true> double_in,
-    GpuTensorView<me_int_t, 1, true> int_out
+__global__ void kernel_random_int(
+    std::size_t count, mixmax_engine* engines, me_int_t max_val, me_int_t* output
 ) {
-    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= batch_size) {
-        return;
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < count; i += stride) {
+        me_int_t rand_int = rng.flat() * max_val;
+        if (rand_int >= max_val) {
+            rand_int = max_val - 1;
+        }
+        output[i] = rand_int;
     }
-    me_int_t rand_int = double_in[i] * max_val;
-    if (rand_int >= max_val) {
-        rand_int = max_val - 1;
-    }
-    int_out[i] = rand_int;
+    engines[t] = rng;
 }
 
 void op_random_int(
@@ -840,45 +1054,40 @@ void op_random_int(
     auto batch_size = locals[instruction.input_indices[0]].batch_sizes()[0];
     auto max_val = locals[instruction.input_indices[1]].batch_sizes()[0];
     auto& output = locals[instruction.output_indices[0]];
-    Tensor tmp(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
     output = Tensor(
         DataType::dt_int, {batch_size}, device, instruction.output_alloc_hints[0]
     );
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, device.stream()));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(tmp.data()), batch_size
-    ));
-    launch_kernel(
-        kernel_double_to_int_range,
+    launch_rng_kernel(
+        kernel_random_int,
         batch_size,
+        instruction.runtime.rng(),
         device.stream(),
-        batch_size,
         max_val,
-        tmp.view<double, 1>(),
-        output.view<me_int_t, 1>()
+        static_cast<me_int_t*>(output.data())
     );
-    tmp.reset(device);
 }
 
 __global__ void kernel_unweight(
     std::size_t batch_size,
-    GpuTensorView<double, 1, true> rand_in,
+    mixmax_engine* engines,
     GpuTensorView<double, 1, true> weights_in,
     GpuTensorView<double, 1, true> max_weights_in,
     GpuTensorView<double, 1, true> weights_out,
     GpuTensorView<me_int_t, 1, true> indices_out
 ) {
-    me_int_t i = blockDim.x * blockIdx.x + threadIdx.x;
-    if (i >= batch_size) {
-        return;
+    std::size_t stride = blockDim.x * gridDim.x;
+    std::size_t t = blockIdx.x * blockDim.x + threadIdx.x;
+    mixmax_engine rng = engines[t];
+    for (std::size_t i = t; i < batch_size; i += stride) {
+        auto rand = rng.flat();
+        auto weight = weights_in[i], max_weight = max_weights_in[i];
+        auto abs_weight = fabs(weight);
+        bool accepted = max_weight * rand < abs_weight;
+        auto weight_clipped = copysign(fmax(abs_weight, max_weight), weight);
+        weights_out[i] = accepted ? weight_clipped : 0.;
+        indices_out[i] = accepted ? static_cast<me_int_t>(i) : -1;
     }
-
-    auto rand = rand_in[i], weight = weights_in[i], max_weight = max_weights_in[i];
-    bool accepted = max_weight * rand < weight;
-    auto weight_clipped = weight < max_weight ? max_weight : weight;
-    weights_out[i] = accepted ? weight_clipped : 0.;
-    indices_out[i] = accepted ? i : -1;
+    engines[t] = rng;
 }
 
 void op_unweight(
@@ -901,23 +1110,15 @@ void op_unweight(
         return;
     }
 
-    Tensor rand(DataType::dt_float, {batch_size}, device, AllocHint::temporary);
-    gpurandGenerator_t generator = instruction.runtime.gpurand_generator();
-    check_error(gpurandSetStream(generator, stream));
-    check_error(gpurandGenerateUniformDouble(
-        generator, static_cast<double*>(rand.data()), batch_size
-    ));
-
     Tensor indices_tmp(DataType::dt_int, {batch_size}, device, AllocHint::temporary);
     Tensor uw_weights_tmp(
         DataType::dt_float, {batch_size}, device, AllocHint::temporary
     );
-    launch_kernel(
+    launch_rng_kernel(
         kernel_unweight,
         batch_size,
+        instruction.runtime.rng(),
         stream,
-        batch_size,
-        rand.view<double, 1>(),
         weights.view<double, 1>(),
         max_weight.view<double, 1>(),
         uw_weights_tmp.view<double, 1>(),
@@ -954,7 +1155,6 @@ void op_unweight(
         ptr_all_weights,
         ptr_uw_weights
     );
-    rand.reset(device);
     indices_tmp.reset(device);
     uw_weights_tmp.reset(device);
     indices_compacted.reset(device);
@@ -1307,26 +1507,15 @@ private:
 GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     _context(context),
     _input_count(function_arg.inputs().size()),
-    _gpublas_handle(
-        context->thread_pool(),
+    _gpublas_handle(context->global_resource<gpublasHandle_t>(
+        "gpublas_handle",
         []() {
             gpublasHandle_t handle;
             check_error(gpublasCreate(&handle));
             return handle;
         },
         [](gpublasHandle_t handle) { check_error(gpublasDestroy(handle)); }
-    ),
-    _gpurand_generator(
-        context->thread_pool(),
-        []() {
-            gpurandGenerator_t handle;
-            check_error(gpurandCreateGenerator(&handle, GPURAND_RNG_PSEUDO_DEFAULT));
-            std::random_device rand_dev;
-            check_error(gpurandSetPseudoRandomGeneratorSeed(handle, rand_dev()));
-            return handle;
-        },
-        [](gpurandGenerator_t handle) { check_error(gpurandDestroyGenerator(handle)); }
-    ),
+    )),
     _prev_caches(context->thread_pool(), []() { return TensorVec{}; }),
     _prev_caches_backward(context->thread_pool(), []() { return TensorVec{}; }) {
     if (context->device()->device_type() != GpuDevice::gpu_device_type) {
@@ -1352,6 +1541,9 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
     for (auto& instr : function.instructions()) {
         if (instr.stream_index >= stream_count) {
             stream_count = instr.stream_index + 1;
+        }
+        if (instr.instruction->is_random()) {
+            _uses_random = true;
         }
     }
     SyncTracker sync_tracker(stream_count);
@@ -1608,6 +1800,17 @@ GpuRuntime::GpuRuntime(const Function& function_arg, ContextPtr context) :
             }
         }
     );
+    if (_uses_random) {
+        _rng = context->global_resource<GpuRandom>("gpu_rng", []() {
+            return GpuRandom();
+        });
+    }
+}
+
+void GpuRuntime::set_seed(DerivedSeed seed) {
+    if (_uses_random) {
+        rng().set_seed(seed);
+    }
 }
 
 TensorVec GpuRuntime::run(const TensorVec& inputs) {
@@ -1618,6 +1821,9 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
     auto locals = _locals_init;
     std::copy(inputs.begin(), inputs.end(), locals.begin());
     gpuStream_t main_stream = streams.at(0);
+    if (_uses_random) {
+        rng().reseed_if_needed(main_stream);
+    }
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
 
     for (auto& instr : _instructions) {
@@ -1640,7 +1846,7 @@ TensorVec GpuRuntime::run(const TensorVec& inputs) {
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }
     update_pool_size_cache(mem_pool.total_sizes(), false);
-    update_cached_tensors(mem_pool.reset(main_stream), false);
+    // update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
@@ -1665,6 +1871,9 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         input_requires_grad.begin(), input_requires_grad.end(), requires_grad.begin()
     );
     gpuStream_t main_stream = streams.at(0);
+    if (_uses_random) {
+        rng().reseed_if_needed(main_stream);
+    }
     MemPool mem_pool(gpu_device, load_pool_size_cache(false), main_stream);
 
     for (auto [instr, instr_eval_grad] : zip(_instructions, eval_grad)) {
@@ -1709,7 +1918,7 @@ std::tuple<TensorVec, TensorVec, std::vector<bool>> GpuRuntime::run_with_grad(
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }
     update_pool_size_cache(mem_pool.total_sizes(), false);
-    update_cached_tensors(mem_pool.reset(main_stream), false);
+    // update_cached_tensors(mem_pool.reset(main_stream), false);
     TensorVec outputs;
     for (auto index : _output_indices) {
         outputs.push_back(locals[index]);
@@ -1784,7 +1993,7 @@ std::pair<TensorVec, TensorVec> GpuRuntime::run_backward(
         check_error(gpuStreamWaitEvent(main_stream, events.at(event)));
     }*/
     update_pool_size_cache(mem_pool.total_sizes(), true);
-    update_cached_tensors(mem_pool.reset(main_stream), true);
+    // update_cached_tensors(mem_pool.reset(main_stream), true);
     check_error(gpuStreamSynchronize(main_stream));
     return {
         {local_grads.begin(), local_grads.begin() + _input_count},
@@ -1797,16 +2006,16 @@ GpuRuntime::load_pool_size_cache(bool backward) {
     auto cache = backward ? _pool_size_cache_backward.load() : _pool_size_cache.load();
     std::vector<std::tuple<std::size_t, std::size_t, Tensor, bool>> ret;
     if (cache) {
-        auto& thread_prev_caches =
-            backward ? _prev_caches_backward.get() : _prev_caches.get();
+        // auto& thread_prev_caches =
+        // backward ? _prev_caches_backward.get() : _prev_caches.get();
         for (auto [pool_index, size] : *cache) {
-            Tensor new_cache;
-            if (pool_index < thread_prev_caches.size()) {
+            Tensor new_cache = _context->cached_tensor(size);
+            /*if (pool_index < thread_prev_caches.size()) {
                 Tensor& prev_cache = thread_prev_caches.at(pool_index);
                 if (prev_cache && prev_cache.is_only_reference()) {
                     new_cache = prev_cache;
                 }
-            }
+            }*/
             ret.push_back(
                 {pool_index,
                  size,
@@ -1828,9 +2037,7 @@ void GpuRuntime::update_pool_size_cache(
     for (auto [pool_index, size] : total_sizes) {
         auto& cache_size = (*new_cache)[pool_index];
         if (size > cache_size) {
-            // if the cache needs to be resized, add some padding to prevent frequent
-            // resizing
-            cache_size = size * 4 / 3;
+            cache_size = size;
         }
     }
     if (backward) {

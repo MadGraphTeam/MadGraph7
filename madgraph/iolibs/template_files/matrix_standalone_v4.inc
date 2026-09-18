@@ -36,7 +36,7 @@ C ----------
 C
 %(info_lines)s
 C
-C MadGraph5_aMC@NLO StandAlone Version
+C MadGraph7 StandAlone Version
 C
 C Returns amplitude squared summed/avg over colors
 c and helicities
@@ -73,7 +73,15 @@ C  put in common block to expose this variable to python interface
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
       REAL*8 T
       REAL*8 %(proc_prefix)sMATRIX
-      INTEGER IHEL,IDEN, I, J
+      INTEGER IHEL,IDEN, I, J, JJ
+C     beam polarisation. Unpolarised unless something fills
+C     /to_beampol/: PY_SET_BEAMPOL for the MadSpin density
+C     modes, the driver's stdin for the v1 path. Convention as
+C     in madevent's /to_polarization/: 1 is unpolarised,
+C     |BEAMPOL| grows to 2 for a fully polarised beam and its
+C     sign gives the favoured helicity.
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
       DATA (BEAMS_HELAVGFACTOR(I),I=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
@@ -165,6 +173,23 @@ C     For this reason, we simply remove the filterin when there is only three ex
                         CYCLE
                     ENDIF
                     T=%(proc_prefix)sMATRIX(P ,NHEL(1,IHEL),JC(1),FLAV_IDX)
+C Support for polarised beam. Same reweighting of the initial-state
+C helicity sum as madevent's matrix.f and as the v1 MadSpin msP/msF
+C templates. Inert (and skipped) unless /to_beampol/ has been filled:
+C |BEAMPOL| runs from 1 (unpolarised) to 2 (fully polarised), so
+C anything at or below 1 -- including a zero-filled common block --
+C means "no polarisation". 1 -> N matrix elements are left alone: their
+C leg 1 is a decaying resonance, not a beam.
+      IF (NINITIAL.EQ.2) THEN
+        DO JJ=1,NINITIAL
+          IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+          IF (NHEL(JJ,IHEL).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+            T=T*ABS(BEAMPOL(JJ))
+          ELSE
+            T=T*(2D0-ABS(BEAMPOL(JJ)))
+          ENDIF
+        ENDDO
+      ENDIF
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
@@ -228,7 +253,9 @@ C
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jampflow_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -248,6 +275,7 @@ C ----------
 c      WRITE (*,*) '  -> AMP = ', AMP
       call %(proc_prefix)sGET_JAMP(AMP,JAMP)
 c      WRITE (*,*) '  -> JAMP = ', JAMP
+%(jampflow_call)s
       call %(proc_prefix)sGET_MATRIX(JAMP,%(proc_prefix)sMATRIX)
 c      write (*,*) "  -> col.ave. |M|^2 for HEL=[", NHEL ,"] = ", %(proc_prefix)sMATRIX
 
@@ -344,10 +372,14 @@ C
       PARAMETER ( NCOLOR=%(ncolor)d)
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jamp_decl)s
 
 %(jamp_lines)s
       END
+
+%(jampflow_routine)s
 
       SUBROUTINE %(proc_prefix)sGET_MATRIX(JAMP,MATRIX)
 C
@@ -369,32 +401,55 @@ C
 
 C LOCAL VARIABLES
 C
-      INTEGER I,J
-      COMPLEX*16 ZTEMP
+      INTEGER I,J,NJ,NB
+      COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
       INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 JAMP(NCOLOR)
+%(jamp_tmp_decl)s
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
       MATRIX = 0.D0
       CF_INDEX = 0
+C     Four accumulators, not one: with a single one every
+C     term waits for the one before it to come out of the
+C     adder, and that latency is what the loop spends its
+C     time on. No compiler does this by itself, since it
+C     changes the order the terms are summed in.
       DO I = 1, NCOLOR
-        ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLOR
-          CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX)*JAMP(J)
+        Z1 = (0.D0,0.D0)
+        Z2 = (0.D0,0.D0)
+        Z3 = (0.D0,0.D0)
+        Z4 = (0.D0,0.D0)
+        NJ = NCOLOR - I + 1
+        NB = (NJ/4)*4
+        DO J = 0, NB-4, 4
+          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
+          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JAMP(I+J+1)
+          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JAMP(I+J+2)
+          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JAMP(I+J+3)
         ENDDO
+        ZTEMP = (Z1+Z2)+(Z3+Z4)
+        DO J = NB, NJ-1
+          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
+        ENDDO
+        CF_INDEX = CF_INDEX + NJ
         MATRIX = MATRIX+ZTEMP*DCONJG(JAMP(I))/%(proc_prefix)sDENOM
       ENDDO
       END
+
+%(color_init_routine)s
+
+%(jamp_init_routine)s
 
 
 
@@ -416,6 +471,7 @@ CF2PY INTENT(IN) :: JAMP_2
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
       INTER = (0.D0,0.D0)
       CF_INDEX = 0
@@ -469,13 +525,23 @@ C
       INTEGER NB_NHEL
       DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:)
       PARAMETER (NB_NHEL=%(ncomb)d)
+      INTEGER    NINITIAL
+      PARAMETER (NINITIAL=%(nincoming)d)
 c LOCAL
-      INTEGER I,IHEL,IPART
+      INTEGER I,IHEL,IPART,JJ
       DOUBLE PRECISION PI
+      DOUBLE PRECISION POLFACT
 C
       INTEGER NHEL(NEXTERNAL,NB_NHEL)
 C     put in common block to expose this variable to python interface
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+C     beam polarisation, filled from python through PY_SET_BEAMPOL.
+C     Same common block and same convention as the v1 MadSpin path
+C     (matrix_standalone_msP_v4.inc / msF): BEAMPOL = 1 is unpolarised
+C     and |BEAMPOL| runs up to 2 for a fully polarised beam, its sign
+C     giving the favoured helicity.
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 C
 C     include coupling definition to update the value of alphas
 C
@@ -501,11 +567,32 @@ C
         ENDDO
         TMP_INTER(:) = 0
         call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+C       Support for polarised beam: reweight the initial-state helicity
+C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
+C       the process has two incoming legs -- the same shared library
+C       also holds the 1 -> N decay matrix elements, whose leg 1 is the
+C       decaying resonance and not a beam.
+        POLFACT = 1D0
+        IF (NINITIAL.EQ.2) THEN
+          DO JJ=1,NINITIAL
+C           |BEAMPOL| runs from 1 (unpolarised) to 2 (fully
+C           polarised), so anything at or below 1 means "no
+C           polarisation" -- including the zero-filled common
+C           block of an output whose link line does not pull
+C           in BLOCK DATA BEAMPOL_DEFAULT.
+            IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+            IF (THISNHEL(JJ).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+              POLFACT = POLFACT*ABS(BEAMPOL(JJ))
+            ELSE
+              POLFACT = POLFACT*(2D0-ABS(BEAMPOL(JJ)))
+            ENDIF
+          ENDDO
+        ENDIF
         do I = 1, N_COMB*(N_COMB+1)/2
-           INTER(I) = INTER(I) + TMP_INTER(I)
+           INTER(I) = INTER(I) + POLFACT*TMP_INTER(I)
         enddo
  10   enddo
-      return
+      return 
       deallocate(TMP_INTER)
       end
 
@@ -547,7 +634,7 @@ c
       PARAMETER (NCOLOR=%(ncolor)d)
       INTEGER IC(NEXTERNAL)
 
-      DOUBLE COMPLEX AMP(NGRAPHS)
+      DOUBLE COMPLEX AMP(%(namp_dim)s)
       DOUBLE COMPLEX, ALLOCATABLE, SAVE :: JAMP(:,:)
       INTEGER, SAVE :: S_NCOMB = 0
 

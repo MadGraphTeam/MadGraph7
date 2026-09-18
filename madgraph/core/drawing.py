@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -48,6 +48,25 @@ import math
 import madgraph.core.base_objects as base_objects
 import madgraph.loop.loop_base_objects as loop_objects
 import madgraph.various.misc as misc
+
+#===============================================================================
+# Display labels for the merged-flavor particles
+#===============================================================================
+# The merged-flavor particles created by Model.define_merge_particle_for carry
+# internal model names ('_quark', '_anti_quark', '_lepton', ...). Those names
+# are what the user types on the interface (multiparticle definitions, process
+# generation) and what model['name2pdg'] resolves, so they must NOT be renamed.
+# In a *drawn* diagram those underscore-prefixed names are however unreadable,
+# so the labels below are substituted at drawing time only.
+# The sign convention follows the model: the merged '_lepton' is built from the
+# electron (PDG 11, charge -1), hence the particle is 'L-' and its antiparticle
+# 'L+'. The generic '_merged%d' particles (PDG 90+n) have no canonical short
+# label -- their content depends on which PDGs were merged -- so they keep
+# their model name.
+MERGED_PARTICLE_DRAW_NAME = {81: 'Q', -81: 'Qx',
+                             82: 'L-', -82: 'L+',
+                             83: 'v', -83: 'vx'}
+
 #===============================================================================
 # FeynmanLine
 #===============================================================================
@@ -198,7 +217,12 @@ class FeynmanLine(object):
                 name += '_pol'
             return name
 
-        
+        # merged-flavor particles are drawn with a short readable label
+        # (the model name '_quark', ... stays untouched: the interface needs it)
+        # ('name' already means 'antiname' for a negative pid, see below)
+        if name == 'name' and pid in MERGED_PARTICLE_DRAW_NAME:
+            return MERGED_PARTICLE_DRAW_NAME[pid]
+
         if pid > 0:
             return model_info.get(name)
         elif model_info:
@@ -1865,7 +1889,7 @@ class DiagramDrawer(object):
         """Draw the line information.
         First, call the method associate the line type [draw_XXXXXX]
         Then finalize line representation by adding his name and, if it's an 
-        external particle, the MadGraph5_aMC@NLO number associate to it."""
+        external particle, the MadGraph7 number associate to it."""
 
         # Find the type line of the particle [straight, wavy, ...]
         line_type = line.get_info('line')
@@ -1878,7 +1902,7 @@ class DiagramDrawer(object):
         # Finalize the line representation with adding the name of the particle
         name = line.get_name()
         self.associate_name(line, name)
-        # And associate the MadGraph5_aMC@NLO Number if it is an external particle
+        # And associate the MadGraph7 Number if it is an external particle
         if line.is_external():
             number = line.number
             self.associate_number(line, number)
@@ -1965,7 +1989,7 @@ class DiagramDrawer(object):
 
     def associate_number(self, line, number):
         """Method to associate a number to 'line'. By default this method is 
-        call only for external particles and the number is the MadGraph5_aMC@NLO number 
+        call only for external particles and the number is the MadGraph7 number 
         associate to the particle. The default routine doesn't do anything"""
         pass
     

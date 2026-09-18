@@ -1,11 +1,17 @@
 #pragma once
 
+#include <cstdint>
+#include <random>
+
+#include "madspace/driver/random.hpp"
 #include "madspace/driver/tensor.hpp"
 #include "madspace/driver/thread_pool.hpp"
 #include "simd.hpp"
 
 namespace madspace {
 namespace cpu {
+
+class CpuRuntime;
 
 class CpuDevice : public Device {
 public:
@@ -43,7 +49,8 @@ public:
         double beta1,
         double beta2,
         double eps,
-        double bias_corr2_sqrt
+        double bias_corr2_sqrt,
+        double weight_decay
     ) const override;
 
     template <typename F>

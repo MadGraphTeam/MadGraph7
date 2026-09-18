@@ -1,11 +1,11 @@
 // Copyright (C) 2010 The ALOHA Development team and Contributors.
-// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-// Created by: J. Alwall (Sep 2010) for the MG5aMC backend.
+// Copyright (C) 2010 The MadGraph7 development team and contributors.
+// Created by: J. Alwall (Sep 2010) for the MadGraph7 backend.
 //==========================================================================
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Modified originally by: A. Valassi (Sep 2021) for the MG5aMC CUDACPP plugin.
-// Further modified by: J. Teig, A. Valassi (2021-2024) for the MG5aMC CUDACPP plugin.
+// Modified originally by: A. Valassi (Sep 2021) for the MadGraph7 CUDACPP plugin.
+// Further modified by: J. Teig, A. Valassi (2021-2024) for the MadGraph7 CUDACPP plugin.
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
 // This file has been automatically generated for %(output_name)s by
@@ -35,18 +35,52 @@ namespace mg5amcCpu
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API
+
   struct ALOHAOBJ {
 
       static constexpr int np4 = 4; // dimensions of 4-momenta (E,px,py,pz)
       static constexpr int nw6 = %(nwave)d; // dimensions of each wavefunction (notice, this is +1 in case of FD gauge)
-      fptype_sv * pvec;
-      fptype * w;
+      fptype_momenta_sv * pvec;
+      fptype_amp * w;
       int flv_index;
 
       __host__ __device__ ALOHAOBJ() {}
-      __host__ __device__ ALOHAOBJ(fptype_sv * pvec_sv, cxtype_sv * w_sv, int flv = -1)
-          : pvec(pvec_sv), w(reinterpret_cast<fptype*>(w_sv)), flv_index(flv) {}
+      __host__ __device__ ALOHAOBJ(fptype_momenta_sv * pvec_sv, cxtype_amp_sv * w_sv, int flv = -1)
+          : pvec(pvec_sv), w(reinterpret_cast<fptype_amp*>(w_sv)), flv_index(flv) {}
   };
+
+  // Sum two currents standing for the same off shell line: the four gluon
+  // current and the pair of three gluon vertices it factorises into carry the
+  // same colour factor, so the amplitude reading the sum gets both
+  // contributions from a single call. See
+  // HelasMatrixElement.get_quartic_current_sums. The two share their momentum,
+  // so only the wavefunction is added and the rest is taken from the first.
+  template<class W_ACCESS>
+  __device__ inline void
+  SUMW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
+  {
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
+    for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] + wV3[i];
+    V1.flv_index = V2.flv_index;
+    return;
+  }
+
+  // As SUMW_1, for the contributions which enter with a minus sign.
+  template<class W_ACCESS>
+  __device__ inline void
+  SUBW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
+  {
+    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
+    for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] - wV3[i];
+    V1.flv_index = V2.flv_index;
+    return;
+  }
 
   struct FLV_COUPLING_VIEW {
 
