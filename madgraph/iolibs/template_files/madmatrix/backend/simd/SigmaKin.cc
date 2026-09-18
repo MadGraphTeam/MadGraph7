@@ -32,6 +32,7 @@
 #include "mgOnGpuConfig.h"
 
 #include <cassert>
+#include <cstring> // for memcpy
 #include <limits>
 #include <vector>
 
