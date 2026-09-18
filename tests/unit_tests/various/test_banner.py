@@ -1585,6 +1585,17 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_int_with_operator_is_not_silently_zero(self):
+        """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
+        fmt = bannermod.ConfigFile.format_variable
+        self.assertEqual(fmt('10/2', int), 5)
+        self.assertEqual(fmt('2*3', int), 6)
+        for bad in ('ht/4', 'foo*2', '4/0'):
+            self.assertRaises(bannermod.InvalidCmd, fmt, bad, int)
+        lo = bannermod.RunCardLO()
+        self.assertRaises(bannermod.InvalidCmd, lo.__setitem__, 'dynamical_scale_choice', 'ht/4')
+        self.assertEqual(lo['dynamical_scale_choice'], -1)
+
     def test_scale_factor(self):
         """[beam] scale_factor: default, legacy view, and the fixed-scale warning"""
         rc = bannermod.RunCardMG7()

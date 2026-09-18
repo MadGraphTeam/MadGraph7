@@ -1498,12 +1498,12 @@ class ConfigFile(dict):
                                 v *=  float(split[2*i+2])
                             else:
                                 v /=  float(split[2*i+2])
-                    except:
-                        v=0
-                    finally:
-                        value = int(v)
-                        if value != v:
-                            raise InvalidCmd( "%s can not be mapped to an integer" % v)
+                    except (ValueError, ZeroDivisionError, IndexError):
+                        # was silently 0: "ht/4" became dynamical_scale_choice 0
+                        raise InvalidCmd("%s can not be mapped to an integer" % value)
+                    value = int(v)
+                    if value != v:
+                        raise InvalidCmd( "%s can not be mapped to an integer" % v)
                 else:
                     try:
                         value = float(value.replace('d','e'))

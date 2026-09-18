@@ -5714,14 +5714,6 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     'pbp': 'setup heavy ion configuration for lead-proton collision',
     'pp': 'remove setup of heavy ion configuration to set proton-proton collision',
     })
-            # set HT, HT/2, HT/4, HT/8: dynamical mu_R = mu_F = H_T/n
-            for n in (1, 2, 4, 8):
-                name = 'ht' if n == 1 else 'ht/%d' % n
-                self.special_shortcut[name] = \
-                    ([], [lambda self, n=n: lambda: self.set_ht_scale(n)])
-                self.special_shortcut_help[name] = \
-                    'set mu_R = mu_F = %s (sum of transverse masses%s)' % (
-                        name.upper(), '' if n == 1 else ' over %d' % n)
             
         self.update_block += [b.name for b in self.run_card.blocks]
         
@@ -5914,26 +5906,43 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         #we define here the reweight_card for the density mode as a dictionnary. And we read it off the default cards
         return []
 
+    @staticmethod
+    def ht_divisor(value):
+        """n for 'HT' / 'HT/n' (any case, n > 0), else None"""
+        m = re.match(r'^\s*ht\s*(?:/\s*([0-9]*\.?[0-9]+(?:e[-+]?[0-9]+)?))?\s*$',
+                     str(value), re.I)
+        if not m:
+            return None
+        n = float(m.group(1)) if m.group(1) else 1.
+        if n <= 0:
+            raise InvalidCmd('HT/n needs n > 0')
+        return n
+
     def set_ht_scale(self, n):
-        """mu_R = mu_F = H_T/n, dynamical, in whichever run_card is loaded"""
+        """set dynamical_scale_choice HT/n: the choice and its factor"""
         # H_T itself, else H_T/2 times a factor (so HT/2 keeps factor 1)
         half = n != 1
         factor = 2. / n if half else 1.
         if isinstance(self.run_card, banner_mod.RunCardMG7):
-            cmds = ['beam.fixed_ren_scale False', 'beam.fixed_fact_scale False',
-                    'beam.dynamical_scale_choice %s' % (
+            fixed = ['beam.fixed_ren_scale', 'beam.fixed_fact_scale']
+            cmds = ['beam.dynamical_scale_choice %s' % (
                         'half_transverse_mass' if half else 'transverse_mass'),
-                    'beam.scale_factor %s' % factor]
+                    'beam.scale_factor %r' % factor]
         elif isinstance(self.run_card, banner_mod.RunCardNLO):
-            cmds = ['fixed_ren_scale F', 'fixed_fac_scale F',
-                    'dynamical_scale_choice %d' % (3 if half else 2),
-                    'mur_over_ref %s' % factor, 'muf_over_ref %s' % factor]
+            fixed = ['fixed_ren_scale', 'fixed_fac_scale']
+            cmds = ['dynamical_scale_choice %d' % (3 if half else 2),
+                    'mur_over_ref %r' % factor, 'muf_over_ref %r' % factor]
         elif isinstance(self.run_card, banner_mod.RunCardLO):
-            cmds = ['fixed_ren_scale F', 'fixed_fac_scale F',
-                    'dynamical_scale_choice %d' % (3 if half else 2),
-                    'scalefact %s' % factor]
+            fixed = ['fixed_ren_scale', 'fixed_fac_scale1', 'fixed_fac_scale2']
+            cmds = ['dynamical_scale_choice %d' % (3 if half else 2),
+                    'scalefact %r' % factor]
         else:
-            raise InvalidCmd('HT/n shortcut: no supported run_card loaded')
+            raise InvalidCmd('HT/n: no supported run_card loaded')
+        # fixed scales are the user's call; only say that they win
+        still = [f.split('.')[-1] for f in fixed if self.run_card[f]]
+        if still:
+            logger.warning('%s is True: HT/%g only applies to the dynamical '
+                           'scale(s).', ', '.join(still), n)
         for cmd in cmds:
             self.do_set('run_card %s' % cmd)
 
@@ -6672,6 +6681,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     "Ambiguous key %r — use the full section.key form, e.g.: %s",
                     args[start], ' or '.join(matches))
                 return
+
+        # set dynamical_scale_choice HT/n (any n > 0), in every mode
+        if card in ('', 'run_card') and len(args) == start + 2 and \
+                args[start].split('.')[-1] == 'dynamical_scale_choice' and \
+                self.ht_divisor(args[start+1]):
+            self.set_ht_scale(self.ht_divisor(args[start+1]))
+            return
 
         if args[start] in [l.lower() for l in self.run_card.keys()] and card in ['', 'run_card']:
 

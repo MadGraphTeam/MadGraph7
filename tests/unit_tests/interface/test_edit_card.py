@@ -474,8 +474,8 @@ class TestEditCardCmd(unittest.TestCase):
         self.cmd.do_set('ptj 100  200.1, 3e3')
         self.assertEqual(run['ptj'], [100, 200.1, 3000])
 
-    def test_ht_shortcuts(self):
-        """set HT, HT/2, HT/4, HT/8 on the LO, NLO and mg7 run cards"""
+    def test_dynamical_scale_choice_ht(self):
+        """set dynamical_scale_choice HT/n on the LO, NLO and mg7 cards"""
         import shutil
         import tempfile
         import madgraph.various.banner as banner_mod
@@ -484,6 +484,7 @@ class TestEditCardCmd(unittest.TestCase):
 
         def editor(card, name, template=None):
             d = tempfile.mkdtemp()
+            self.addCleanup(shutil.rmtree, d)
             os.mkdir(pjoin(d, 'Cards'))
             paths = {}
             for key, f in (('run', name), ('run_default', name.replace('.', '_default.'))):
@@ -492,52 +493,50 @@ class TestEditCardCmd(unittest.TestCase):
                     card.write(paths[key], template=template)
                 else:
                     card.write(paths[key])
-            self.addCleanup(shutil.rmtree, d)
             return runcmd.AskforEditCard('', cards=paths, mode='auto',
                                          mother_interface=FakeInterface(d))
 
-        # (shortcut, H_T or H_T/2, factor)
+        # (value, H_T rather than H_T/2, factor)
         expected = [('HT/4', False, 0.5), ('ht/8', False, 0.25),
+                    ('HT/3', False, 2/3.), ('HT/2.5', False, 0.8),
                     ('HT/2', False, 1.0), ('HT', True, 1.0)]
 
-        # mg7: starts from fixed scales, which the shortcut must release
         cmd = editor(banner_mod.RunCardMG7(), 'run_card.toml', tpl)
-        for shortcut, full, factor in expected:
-            cmd.do_set('beam.fixed_ren_scale True')
-            cmd.do_set('beam.fixed_fact_scale True')
-            cmd.do_set(shortcut)
+        for value, full, factor in expected:
+            cmd.do_set('dynamical_scale_choice %s' % value)
             beam = cmd.run_card['beam']
-            self.assertFalse(beam['fixed_ren_scale'])
-            self.assertFalse(beam['fixed_fact_scale'])
             self.assertEqual(beam['dynamical_scale_choice'],
                              'transverse_mass' if full else 'half_transverse_mass')
-            self.assertEqual(beam['scale_factor'], factor)
+            self.assertAlmostEqual(beam['scale_factor'], factor)
+        # fixed scales are left alone (a warning says they win)
+        cmd.do_set('beam.fixed_ren_scale True')
+        cmd.do_set('beam.dynamical_scale_choice HT/4')
+        self.assertTrue(cmd.run_card['beam']['fixed_ren_scale'])
+        self.assertEqual(cmd.run_card['beam']['scale_factor'], 0.5)
 
-        # LO: dynamical_scale_choice 2 (H_T) / 3 (H_T/2) and scalefact
         cmd = editor(banner_mod.RunCardLO(), 'run_card.dat')
-        for shortcut, full, factor in expected:
-            cmd.do_set('fixed_ren_scale T')
-            cmd.do_set('fixed_fac_scale T')
-            cmd.do_set(shortcut)
-            run = cmd.run_card
-            self.assertFalse(run['fixed_ren_scale'])
-            self.assertFalse(run['fixed_fac_scale1'])
-            self.assertFalse(run['fixed_fac_scale2'])
-            self.assertEqual(run['dynamical_scale_choice'], 2 if full else 3)
-            self.assertEqual(run['scalefact'], factor)
+        for value, full, factor in expected:
+            cmd.do_set('dynamical_scale_choice %s' % value)
+            self.assertEqual(cmd.run_card['dynamical_scale_choice'], 2 if full else 3)
+            self.assertAlmostEqual(cmd.run_card['scalefact'], factor)
+        # HT/2 means H_T/2: an earlier HT/4 factor does not survive it
+        cmd.do_set('dynamical_scale_choice HT/4')
+        cmd.do_set('run_card dynamical_scale_choice HT/2')
+        self.assertEqual(cmd.run_card['scalefact'], 1.0)
+        # the other value shortcuts are unchanged
+        cmd.do_set('dynamical_scale_choice et')
+        self.assertEqual(cmd.run_card['dynamical_scale_choice'], 1)
+        # a bare "set HT/4" is not a command
+        cmd.do_set('HT/4')
+        self.assertEqual(cmd.run_card['dynamical_scale_choice'], 1)
+        self.assertEqual(cmd.run_card['scalefact'], 1.0)
 
-        # NLO: same codes, factor on mur_over_ref and muf_over_ref
         cmd = editor(banner_mod.RunCardNLO(), 'run_card.dat')
-        for shortcut, full, factor in expected:
-            cmd.do_set('fixed_ren_scale T')
-            cmd.do_set('fixed_fac_scale T')
-            cmd.do_set(shortcut)
-            run = cmd.run_card
-            self.assertFalse(run['fixed_ren_scale'])
-            self.assertFalse(run['fixed_fac_scale'])
-            self.assertEqual(run['dynamical_scale_choice'], [2 if full else 3])
-            self.assertEqual(run['mur_over_ref'], factor)
-            self.assertEqual(run['muf_over_ref'], factor)
+        for value, full, factor in expected:
+            cmd.do_set('dynamical_scale_choice %s' % value)
+            self.assertEqual(cmd.run_card['dynamical_scale_choice'], [2 if full else 3])
+            self.assertAlmostEqual(cmd.run_card['mur_over_ref'], factor)
+            self.assertAlmostEqual(cmd.run_card['muf_over_ref'], factor)
 
     def test_modif_ML_card(self):
 
