@@ -16,6 +16,8 @@
 
 from __future__ import absolute_import
 
+import os
+
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   counts_line, output_name,
@@ -59,8 +61,76 @@ Switch MadSpin on and give it the decays:
 Each `decay` line replaces that particle's line in the MadSpin card. The
 default card also decays the W bosons into light fermions; these two keep them
 undecayed, as in the decay chain, so the two runs describe the same final
-state. Then `0` or Enter to start.
+state.
+
+MadSpin needs the right width as much as the decay chain did: it uses it for
+the Breit-Wigner of each top it decays, and to turn the decay it computes into
+a branching ratio. This is a fresh param card, so set it again:
+
+  set width 6 auto
+
+In general that is what you will do with every width: leave it to `Auto`
+unless you have a reason not to. Then `0` or Enter to start.
 """
+
+
+def _written_width(interface=None, pdg=6):
+    """What `Auto` wrote into the run's param card: the width, and under it
+    the branching ratios -- quoted from the file, the lines the reader can go
+    and look at.  '' when there is no card to read (no output, or a width that
+    was never set to Auto and so has no BR lines under it).
+    """
+
+    try:
+        done = getattr(interface, '_done_export', None)
+        path = os.path.join(done[0], 'Cards', 'param_card.dat')
+        with open(path) as handle:
+            lines = handle.read().split('\n')
+    except Exception:
+        return ''
+
+    width, channels = None, []
+    for i, line in enumerate(lines):
+        bits = line.split('#')[0].split()
+        if (len(bits) >= 3 and bits[0].upper() == 'DECAY'
+                and bits[1] == str(pdg)):
+            try:
+                width = float(bits[2])
+            except ValueError:
+                return ''
+            for rest in lines[i + 1:]:
+                data = rest.split('#')[0].split()
+                if not data:
+                    continue
+                if data[0].upper() in ('DECAY', 'BLOCK'):
+                    break
+                try:
+                    channels.append((float(data[0]),
+                                     [int(x) for x in data[2:]]))
+                except ValueError:
+                    break
+            break
+    if width is None or not channels:
+        return ''
+
+    model = getattr(interface, '_curr_model', None)
+
+    def name(pid):
+        try:
+            part = model.get_particle(abs(pid))
+            return part.get('name') if pid > 0 else part.get('antiname')
+        except Exception:
+            return str(pid)
+
+    rows = '\n'.join('     %5.4g%%   %s'
+                     % (100 * br, ' '.join(name(p) for p in ids))
+                     for br, ids in channels[:4])
+    return ("It wrote the result back into `%s/Cards/param_card.dat`: the "
+            "width, and\nunder it the branching ratios it found --\n\n"
+            "  DECAY  %d  %.6e\n%s\n\n"
+            "so the card now holds numbers computed from the model, not the "
+            "benchmark\nit shipped with.\n\n"
+            % (os.path.basename(os.path.normpath(done[0])), pdg, width, rows))
 
 
 def _ran(interface, what):
@@ -134,14 +204,15 @@ That wrote `%(dir)s`: the process code for the decay chain, with its cards.
      solution='launch'),
 
 Step('launch', lambda interface: """
-%(ran)sThe log shows `Computing 'auto' width(s) for 6` before the
-integration: that is MadWidth, run for you because of `Auto`.
+%(ran)sThe log shows `Computing 'auto' width(s) for 6` before the integration:
+that is MadWidth, run for you because of `Auto`.
 
-Now the same tops, decayed by MadSpin instead. The process line loses its
-decays -- MadSpin will add them to the events afterwards:
+%(width)sNow the same tops, decayed by MadSpin instead. The process line loses
+its decays -- MadSpin will add them to the events afterwards:
 %(p)s %(undecayed)s
 """ % {'p': P, 'undecayed': UNDECAYED,
-       'ran': _ran(interface, 't t~ with both tops decayed to W b')},
+       'ran': _ran(interface, 't t~ with both tops decayed to W b'),
+       'width': _written_width(interface)},
      title='the decay chain, run',
      solution=UNDECAYED),
 
