@@ -31,9 +31,9 @@ tutorial = Tutorial(
     steps=[
 
 Step('tutorial', """
-Most massive particles are unstable and decay. There are three places a decay
-can happen, they do different things, and choosing wrongly is one of the
-easier ways to get a wrong answer that looks right.
+Most massive particles are unstable and decay. There are three places where
+the code can simulate a decay, they do different things, and choosing wrongly
+is one of the easier ways to get a wrong answer that looks right.
 
   1. **In the process line** -- a decay chain. Exact spin correlations, the
      exact matrix element, and decay products you can put cuts on.
