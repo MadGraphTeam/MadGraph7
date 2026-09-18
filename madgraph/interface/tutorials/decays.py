@@ -33,6 +33,36 @@ NESTED = 'generate p p > t t~ w+, (t > w+ b, w+ > l+ vl), t~ > w- b~, w+ > j j'
 FLAT = 'generate p p > t t~ w+, t > w+ b, w+ > l+ vl, t~ > w- b~'
 
 
+# shown at the card question `launch` asks, not before it: that is where the
+# reader can act on it (the same arrangement as lo's LAUNCH_QUESTION_HINT)
+WIDTH_AT_LAUNCH = """
+One thing to settle before it runs: the top width.
+
+It sits in the resonance propagator, and nothing checks it against the masses
+and couplings in the param card. Set it to `Auto` and MG7 computes it from the
+model when the run starts, so it follows the mass whenever you change it:
+
+  set width 6 auto
+
+For the SM the shipped value already agrees with the model, so here it changes
+nothing -- it is the habit that matters, for the day you change a mass or load
+another model. Then `0` or Enter to start.
+"""
+
+MADSPIN_AT_LAUNCH = """
+Switch MadSpin on and give it the decays:
+
+  madspin=ON
+  decay t > w+ b
+  decay t~ > w- b~
+
+Each `decay` line replaces that particle's line in the MadSpin card. The
+default card also decays the W bosons into light fermions; these two keep them
+undecayed, as in the decay chain, so the two runs describe the same final
+state. Then `0` or Enter to start.
+"""
+
+
 def _ran(interface, what):
     """One line on the run that just finished, in its own number."""
 
@@ -94,25 +124,13 @@ Run it:
      solution='output %s' % CHAIN_DIR),
 
 Step('output', lambda interface: """
-That wrote `%(dir)s`. Before it runs, one thing to settle: the top width.
-
-It sits in the resonance propagator, and nothing checks it against the masses
-and couplings in the same param card. Rather than trusting the number there,
-set it to `Auto` and MG7 computes it from the model when the run starts -- so
-it follows the mass whenever you change it. For the SM the shipped value
-already agrees with what the model gives, so here it changes nothing; it is
-the habit that matters, for the day you change a mass or load another model.
-
-At the card question `launch` asks, type
-  set width 6 auto
-and then `0` (or Enter) to start.
-
+That wrote `%(dir)s`: the process code for the decay chain, with its cards.
+`launch` compiles it, integrates it and writes the events:
 %(p)s launch
 """ % {'p': P, 'dir': output_name(interface, CHAIN_DIR)},
-     title='the width, at launch',
-     hint="`set width 6 auto` at the card question, then `0`.",
-     question_hint="Type `set width 6 auto` so the top width is computed from "
-                   "the model, then `0` or Enter to run.",
+     title='the decay chain, ready to run',
+     hint="`launch` with no argument runs the directory you just wrote.",
+     question_hint=WIDTH_AT_LAUNCH,
      solution='launch'),
 
 Step('launch', lambda interface: """
@@ -137,25 +155,13 @@ diagrams, which is why a long cascade costs it so little.
      solution='output %s' % SPIN_DIR),
 
 Step('output', lambda interface: """
-That wrote `%(dir)s`. This time the work is at the first question `launch`
-asks, the one listing the programs to run:
-
-  madspin=ON           switches MadSpin on
-  decay t > w+ b       the decay MadSpin applies to each t, and the same
-  decay t~ > w- b~     for each t~ -- each replaces that particle's line in
-                       the MadSpin card
-
-The default card also decays the W bosons into light fermions; the two `decay`
-lines above keep them undecayed, as in the decay chain, so the two runs
-describe the same final state. Then `0` (or Enter) to start.
-
+That wrote `%(dir)s`: the undecayed top pair, with its cards -- MadSpin's
+among them. Run it:
 %(p)s launch
 """ % {'p': P, 'dir': output_name(interface, SPIN_DIR)},
-     title='MadSpin: switch it on at launch',
-     hint="`madspin=ON`, then `decay t > w+ b` and `decay t~ > w- b~`, then "
-          "`0`.",
-     question_hint="Type `madspin=ON`, then `decay t > w+ b` and "
-                   "`decay t~ > w- b~`, then `0` or Enter to run.",
+     title='MadSpin, ready to run',
+     hint="`launch` with no argument runs the directory you just wrote.",
+     question_hint=MADSPIN_AT_LAUNCH,
      solution='launch'),
 
 Step('launch', lambda interface: """
