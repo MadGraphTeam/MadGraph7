@@ -30,6 +30,7 @@ import os
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
+                                                  last_run_info,
                                                   lhapdf_configured,
                                                   output_name,
                                                   total_diagrams)
@@ -150,27 +151,8 @@ That is the detour. Back to the main line:
 """ % {'count': count, 'p': P}
 
 
-def _last_run_info(interface=None):
-    """The info.json of the most recent run in the output directory, or None.
-
-    Lets the step show the reader their own numbers instead of invented ones.
-    None means there is nothing to read -- no output yet, or a run that made no
-    events -- and the illustrative values are used instead.
-    """
-
-    try:
-        done = getattr(interface, '_done_export', None)
-        if not done:
-            return None
-        events = os.path.join(done[0], 'Events')
-        runs = [os.path.join(events, name) for name in os.listdir(events)]
-        runs = [d for d in runs if os.path.isfile(os.path.join(d, 'info.json'))]
-        if not runs:
-            return None
-        with open(os.path.join(max(runs, key=os.path.getmtime), 'info.json')) as f:
-            return json.load(f)
-    except Exception:
-        return None
+# shared with the other tutorials that run something
+_last_run_info = last_run_info
 
 
 def _result_row(info):

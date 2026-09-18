@@ -332,6 +332,54 @@ def output_name(interface, default):
     return default
 
 
+def last_run_info(interface=None):
+    """The info.json of the most recent run in the output directory, or None.
+
+    Lets a step show the reader their own numbers instead of invented ones.
+    None means there is nothing to read -- no output yet, or a run that made no
+    events.
+    """
+
+    import json
+
+    try:
+        done = getattr(interface, '_done_export', None)
+        if not done:
+            return None
+        events = os.path.join(done[0], 'Events')
+        runs = [os.path.join(events, name) for name in os.listdir(events)]
+        runs = [d for d in runs
+                if os.path.isfile(os.path.join(d, 'info.json'))]
+        if not runs:
+            return None
+        latest = max(runs, key=os.path.getmtime)
+        with open(os.path.join(latest, 'info.json')) as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def run_line(interface=None):
+    """What the last run came to, `**X +- dX pb**`, or '' if there is none.
+
+    Rebuilt the way the run builds it: the channel means summed, their errors
+    in quadrature.
+    """
+
+    import math
+
+    info = last_run_info(interface)
+    try:
+        channels = info['channels']
+        mean = sum(c['mean'] for c in channels)
+        error = math.sqrt(sum(c['error'] ** 2 for c in channels))
+    except Exception:
+        return ''
+    if not mean:
+        return ''
+    return '**%.4g +- %.2g pb**' % (mean, error)
+
+
 def model_line(interface=None):
     """What model is loaded, in its own numbers, or '' if none is.
 
