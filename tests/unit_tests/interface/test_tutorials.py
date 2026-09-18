@@ -361,7 +361,7 @@ class TestOrdering(_TutorialTestCase):
             return found[0] if found else None
 
         self.assertIsNone(at('bsm', 0, 'display modellist'))
-        self.assertEqual(at('bsm', 0, 'import model MSSM_SLHA2'), 1)
+        self.assertEqual(at('bsm', 0, 'import model SMEFTatNLO-NLO'), 1)
         self.assertIsNone(at('checks', 2, 'check lorentz p p > e+ e-'))
         self.assertEqual(at('checks', 2, 'check gauge p p > mu+ mu-'), 3)
         # another directory is fine, another output format is not
@@ -2493,7 +2493,7 @@ class TutorialWaitingForTest(unittest.TestCase):
     def test_it_is_the_current_steps_command(self):
         """It used to quote the solution of the step *after* the current one:
         at the bsm intro, a failed command was told the tutorial waited for
-        `display coupling_order`, two commands ahead of `import model`."""
+        the step after's command rather than `import model`."""
 
         captured = []
 
@@ -2514,9 +2514,10 @@ class TutorialWaitingForTest(unittest.TestCase):
         finally:
             (logger.handlers, logger.propagate, logger.level) = saved
             tutorial_mixin.detach(interface)
+        steps = tutorials.get('bsm').steps
         self.assertTrue(captured)
-        self.assertIn('import model MSSM_SLHA2', captured[-1])
-        self.assertNotIn('display coupling_order', captured[-1])
+        self.assertIn(steps[0].get_solution(), captured[-1])
+        self.assertNotIn(steps[1].get_solution(), captured[-1])
 
 
 class DisplayModellistTest(unittest.TestCase):
