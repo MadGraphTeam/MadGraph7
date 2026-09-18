@@ -54,6 +54,13 @@ namespace madmatrix
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       return buffer[icol * nevt + ievt];
     }
+    static __device__ inline const fptype_amp&
+    kernelAccessIcolConst( const fptype_amp* buffer, const int icol )
+    {
+      const int nevt = gridDim.x * blockDim.x;
+      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      return buffer[icol * nevt + ievt];
+    }
   };
 
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
@@ -265,16 +272,19 @@ namespace madmatrix
     {
       using J2_ACCESS = DeviceAccessJamp2;
       for( int icol = 0; icol < ncolor_flow; icol++ )
-        J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ) += cxabs2( jampflow_sv[icol] ); // may underflow #831
+        // NB: atomicAdd is needed after moving to cuda streams with one helicity per stream!
+        atomicAdd( &J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ), cxabs2( jampflow_sv[icol] ) ); // may underflow #831
     }
 
     // *** PREPARE OUTPUT JAMPS ***
-    // allJamps already points at this helicity's slot in the dcNGoodHel super-buffer
-    // (see processAllHelicities above), so this is nhel=1 from that slot's own view.
+    // allJamps already points at this helicity's slot (ighel * nevt) in the
+    // [2][ncolor][dcNGoodHel][nevt] super-buffer, hence ihel0 = 0; nhel stays
+    // dcNGoodHel because it is the color stride, and color_sum reads with it.
     {
+      constexpr int ihel0 = 0;
       using J_ACCESS = DeviceAccessJamp;
       for( int icol = 0; icol < ncolor; icol++ )
-        J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, 0, 1 ) = jamp_sv[icol];
+        J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, ihel0, dcNGoodHel ) = jamp_sv[icol];
     }
 
     mgDebug( 1, __FUNCTION__ );
