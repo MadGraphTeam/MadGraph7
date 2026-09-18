@@ -282,13 +282,15 @@ Integrand::Integrand(
                 }
                 names += name;
             }
-            throw std::invalid_argument(std::format(
-                "the cut(s) {} are not invariant under the initial-state mirror "
-                "(py, pz -> -py, -pz), so they have to be applied to the mirrored "
-                "event: mirrored flavors then need a PhaseSpaceMapping built with "
-                "mirror_beams = true, which draws the orientation before the cuts",
-                names
-            ));
+            throw std::invalid_argument(
+                std::format(
+                    "the cut(s) {} are not invariant under the initial-state mirror "
+                    "(py, pz -> -py, -pz), so they have to be applied to the mirrored "
+                    "event: mirrored flavors then need a PhaseSpaceMapping built with "
+                    "mirror_beams = true, which draws the orientation before the cuts",
+                    names
+                )
+            );
         }
     }
     _mirror_before_cuts = _has_mirror && mapping.mirror_beams();

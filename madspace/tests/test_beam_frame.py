@@ -93,9 +93,9 @@ def test_beam_rapidity_cut_in_lab_frame(rng):
     e_cm = 2 * math.sqrt(e1 * e2)
     y0 = 0.5 * math.log(e1 / e2)
     pids = [2, -2, 11, -11]
-    cuts = ms.Cuts([
-        ms.CutItem(observable=ms.Observable(pids, "eta", [[11, -11]]), min=0.0)
-    ])
+    cuts = ms.Cuts(
+        [ms.CutItem(observable=ms.Observable(pids, "eta", [[11, -11]]), min=0.0)]
+    )
     mapping = ms.PhaseSpaceMapping(
         [0.0] * 4, e_cm, cuts=cuts, beam_rapidity=y0, mode=ms.PhaseSpaceMapping.rambo
     )
@@ -169,14 +169,16 @@ PIDS = [2, -2, 11, -11]
 
 
 def lepton_cut(observable, **bounds):
-    return ms.Cuts([
-        ms.CutItem(
-            observable=ms.Observable(
-                PIDS, observable, [[11, -11]], name=f"lepton-{observable}"
-            ),
-            **bounds,
-        )
-    ])
+    return ms.Cuts(
+        [
+            ms.CutItem(
+                observable=ms.Observable(
+                    PIDS, observable, [[11, -11]], name=f"lepton-{observable}"
+                ),
+                **bounds,
+            )
+        ]
+    )
 
 
 @pytest.mark.parametrize(
@@ -204,8 +206,12 @@ def test_observable_mirror_invariance(observable, invariant):
 
 @pytest.mark.parametrize(
     "observable, invariant",
-    [("delta_eta", False), ("delta_phi", False), ("delta_r", True),
-     ("pair_mass", True)],
+    [
+        ("delta_eta", False),
+        ("delta_phi", False),
+        ("delta_r", True),
+        ("pair_mass", True),
+    ],
 )
 def test_pairwise_observable_mirror_invariance(observable, invariant):
     obs = ms.Observable(PIDS, observable, [[11, -11], [11, -11]])
@@ -233,20 +239,22 @@ def test_cut_on_absent_particle_is_mirror_invariant():
 
 
 def test_cuts_report_the_offending_cuts_by_name():
-    cuts = ms.Cuts([
-        ms.CutItem(
-            observable=ms.Observable(PIDS, "pt", [[11, -11]], name="lepton-pt"),
-            min=10.0,
-        ),
-        ms.CutItem(
-            observable=ms.Observable(PIDS, "eta", [[11, -11]], name="lepton-eta"),
-            min=0.0,
-        ),
-        ms.CutItem(
-            observable=ms.Observable(PIDS, "y", [[11, -11]], name="lepton-y"),
-            min=0.0,
-        ),
-    ])
+    cuts = ms.Cuts(
+        [
+            ms.CutItem(
+                observable=ms.Observable(PIDS, "pt", [[11, -11]], name="lepton-pt"),
+                min=10.0,
+            ),
+            ms.CutItem(
+                observable=ms.Observable(PIDS, "eta", [[11, -11]], name="lepton-eta"),
+                min=0.0,
+            ),
+            ms.CutItem(
+                observable=ms.Observable(PIDS, "y", [[11, -11]], name="lepton-y"),
+                min=0.0,
+            ),
+        ]
+    )
     assert not cuts.mirror_invariant()
     assert cuts.non_mirror_invariant_cuts() == ["lepton-eta", "lepton-y"]
     mapping = ms.PhaseSpaceMapping([0.0] * 4, 13000.0, cuts=cuts)
@@ -267,8 +275,11 @@ def test_mirror_beams_cuts_the_written_orientation(rng, observable, bounds, sepa
     """
     e_cm, mode = 13000.0, ms.PhaseSpaceMapping.rambo
     cut = ms.PhaseSpaceMapping(
-        [0.0] * 4, e_cm, cuts=lepton_cut(observable, **bounds),
-        mirror_beams=True, mode=mode
+        [0.0] * 4,
+        e_cm,
+        cuts=lepton_cut(observable, **bounds),
+        mirror_beams=True,
+        mode=mode,
     )
     free = ms.PhaseSpaceMapping([0.0] * 4, e_cm, mirror_beams=True, mode=mode)
     r = rng.random((N, cut.random_dim()))
@@ -314,8 +325,9 @@ def running_coupling(tmp_path_factory):
 PID_OPTIONS = [[2, -2], [-2, 2]]
 
 
-def build_integrand(running_coupling, cuts=None, mirror_beams=False,
-                    flavor_mirror=(True, True)):
+def build_integrand(
+    running_coupling, cuts=None, mirror_beams=False, flavor_mirror=(True, True)
+):
     """A 2 -> 2 integrand over a beam-swapped pair of flavors. The matrix
     element is never called; only the compute graph is built."""
     e_cm = 13000.0

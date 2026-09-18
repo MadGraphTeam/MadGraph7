@@ -889,7 +889,8 @@ PYBIND11_MODULE(_madspace_py, m) {
     )
         .def(
             "mirror_invariant",
-            py::overload_cast<>(&Observable::mirror_invariant, py::const_)
+            &Observable::mirror_invariant,
+            pydoc::doc("Observable::mirror_invariant")
         )
         .def_readonly_static("jet_pids", &Observable::jet_pids)
         .def_readonly_static("bottom_pids", &Observable::bottom_pids)
