@@ -65,3 +65,6 @@ jobs:
       time_limit: ${{ inputs.time_limit || '02:00:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
+    # needed for the called workflow to see the CECI_KEY secret of its `ceci-gpu`
+    # environment (the repository itself has no other secrets)
+    secrets: inherit

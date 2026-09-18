@@ -43,6 +43,8 @@ repository. Hence:
 * **The ssh key is in the `ceci-gpu` environment, not in the repository secrets.** Only
   `start_runner` (and the module-listing workflow) use that environment. Restricted to `main`,
   a branch cannot get the key, not even by editing a workflow.
+  The calling workflows use `secrets: inherit`: without it, GitHub does not pass an
+  environment secret to a job of the reusable workflow. The repository has no other secrets.
 * **The runner only executes the jobs of the run that started it.** Its job-started hook,
   `job_started_hook.sh`, compares `GITHUB_RUN_ID` with the run the allocation was started for.
   Any other job fails before its first step: another run, a branch, or a fork PR that

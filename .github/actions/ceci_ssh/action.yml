@@ -47,7 +47,7 @@ runs:
         if ! ssh-keygen -y -P '' -f ~/.ssh/id_ceci > /dev/null 2> /tmp/keycheck; then
           first=$(head -n 1 ~/.ssh/id_ceci)
           case $first in
-            '') hint="the secret is empty" ;;
+            '') hint="the secret is empty in this job (not set in the ceci-gpu environment, or the calling workflow lacks 'secrets: inherit')" ;;
             ssh-*|ecdsa-*) hint="this is a PUBLIC key: store the private key instead" ;;
             -----BEGIN*)
               body=$(sed '1d;$d' ~/.ssh/id_ceci | tr -d '\n')
