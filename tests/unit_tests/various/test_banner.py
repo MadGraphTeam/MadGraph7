@@ -546,6 +546,38 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 import re
 import shutil
+class TestRunCardNLOMeFrame(unittest.TestCase):
+    """me_frame is only meaningful for the whole initial state or for
+    final-state particles; a partial initial state must be refused at parse
+    time rather than reaching the generated Fortran."""
+
+    def _card(self, me_frame):
+        run_card = bannermod.RunCardNLO()
+        run_card.set('me_frame', me_frame, user=True)
+        return run_card
+
+    def test_a_single_beam_is_refused(self):
+        # The regression: this used to pass check_validity because only a
+        # *mix* of initial and final legs was tested. A massless beam then
+        # died in get_me_frame_boost with an opaque 'not timelike' stop, and
+        # a massive one silently built the frame the guard means to refuse.
+        for me_frame in ([1], [2]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+    def test_both_beams_are_the_partonic_cm_and_allowed(self):
+        self._card([1, 2]).check_validity()
+
+    def test_final_state_only_is_allowed(self):
+        self._card([3, 4]).check_validity()
+        self._card([3]).check_validity()
+
+    def test_mixing_initial_and_final_is_refused(self):
+        for me_frame in ([1, 3], [1, 2, 3]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+
 class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
     # a lot of the funtionality are actually already tested in the child
@@ -654,6 +686,7 @@ class TestRunCard(unittest.TestCase):
         text2 = open(fsock2.name).read()
         self.assertFalse("$RUNNING" in text1)
         self.assertFalse("$RUNNING" in text2)
+        text1 = text1.replace('\n\n\n', '\n')
         text1 = text1.replace('\n \n', '\n')
         text2 = text2.replace('\n \n', '\n')
         self.assertEqual(text1, text2)

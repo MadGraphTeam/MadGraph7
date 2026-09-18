@@ -2756,7 +2756,7 @@ def load_mg5_options(me_dir=None) -> dict:
     me_dir = os.getcwd() if me_dir is None else me_dir
 
     options = {
-        'pythia-pgs_path': None, 'pythia8_path': None, 'madanalysis_path': None,
+        'pythia-pgs_path': None, 'pythia8_path': None,
         'madanalysis5_path': None, 'exrootanalysis_path': None, 'delphes_path': None,
         'rivet_path': None, 'contur_path': None, 'f2py_compiler': None,
         'lhapdf': None, 'lhapdf_py3': None, 'lhapdf_py2': None, 'timeout': 0,

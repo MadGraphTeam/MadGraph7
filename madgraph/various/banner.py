@@ -4146,6 +4146,23 @@ frame_block = RunBlock('frame', template_on=template_on, template_off=template_o
 
 
 
+# Momentum reshuffling ------------------------------------------------------------------------------------
+template_on = \
+"""#*********************************************************************
+# Type of momentum-reshuffling algorithm                             *
+# This algorithm is currently implemented only for onium states      *
+# mom_resh_type:                                                     *
+#  0=initial-state reshuffling                                       *
+#  1=smooth final-state reshuffling        [eq.(3.40) in 2607.26739] *
+#  2=step-function final-state reshuffling [eq.(3.41) in 2607.26739] *
+#*********************************************************************
+  %(mom_resh_type)s  = mom_resh_type  ! momentum-reshuffling strategy
+"""
+template_off = ""
+mom_resh_block = RunBlock('mom_resh', template_on=template_on, template_off=template_off)
+
+
+
 # EVA PDF PRECISION ------------------------------------------------------------------------------------
 template_on = \
 """     %(evaorder)s = evaorder         ! 0=EVA@LLA, 1=full LP, 2=NLP [2502.07878]
@@ -4363,12 +4380,39 @@ fixedfacscale = FixedfacscaleBlock('fixed_fact_scale', template_on=template_on, 
 
 
 
+def get_model_flavour_scheme(proc_def):
+    """Return the flavour scheme (number of massless quark flavours) of the
+    model the processes in proc_def were generated with, or None.
+
+    The LO run card receives a list of process lists and the NLO one a flat
+    list of processes, so look through the nesting for the first object that
+    carries a model. The value comes from Model.get_flavour_scheme, which also
+    decides the default 'p'/'j' multiparticles, so maxjetflavor and the jet
+    definition always agree."""
+
+    todo = list(proc_def) if proc_def else []
+    while todo:
+        item = todo.pop(0)
+        try:
+            model = item.get('model')
+        except Exception:
+            model = None
+        if model:
+            try:
+                return model.get_flavour_scheme()
+            except Exception:
+                return None
+        if isinstance(item, (list, tuple)):
+            todo = list(item) + todo
+    return None
+
+
 class RunCardLO(RunCard):
     """an object to handle in a nice way the run_card information"""
     
     blocks = [heavy_ion_block, beam_pol_block, syscalc_block, ecut_block,
              frame_block, eva_pdf_block, mlm_block, ckkw_block, psoptim_block,
-              pdlabel_block, fixedfacscale, running_block]
+              pdlabel_block, fixedfacscale, running_block, mom_resh_block]
 
     dummy_fct_file = {"dummy_cuts": pjoin("SubProcesses","dummy_fct.f"),
                       "get_dummy_x1": pjoin("SubProcesses","dummy_fct.f"),
@@ -4490,6 +4534,8 @@ class RunCardLO(RunCard):
         self.add_param("keep_log", "normal", include=False, hidden=True,
                        comment="none: all log send to /dev/null.\n minimal: keep only log for survey of the last run.\n normal: keep only log for survey of all run. \n debug: keep all log (survey and refine)",
                        allowed=['none', 'minimal', 'normal', 'debug'])
+        #momentum reshuffling
+        self.add_param("mom_resh_type", 1, hidden=True)
         #cut
         self.add_param("auto_ptj_mjj", True, hidden=True)
         self.add_param("bwcutoff", 15.0)
@@ -5016,7 +5062,10 @@ class RunCardLO(RunCard):
                     self.display_block.append('pdlabel')
 
             if any(i in beam_id for i in [1,-1,2,-2,3,-3,4,-4,5,-5,21,22,81,-81]):
-                maxjetflavor = max([4]+[abs(i) for i in beam_id if  -7< i < 7])
+                # the default follows the flavour scheme of the model, the same
+                # number that defines the default 'p'/'j' multiparticles
+                nflav = get_model_flavour_scheme(proc_def) or 4
+                maxjetflavor = max([nflav]+[abs(i) for i in beam_id if  -7< i < 7])
                 self['maxjetflavor'] = maxjetflavor
                 self['asrwgtflavor'] = maxjetflavor
             
@@ -5131,6 +5180,7 @@ class RunCardLO(RunCard):
                     self['polbeam2'] = 100
                     if not all(id  in [-12,-14,-16,-83] for id in beam_id_split[1]):
                         logger.warning('Issue with default beam setup of neutrino in the run_card. Please check it up [polbeam2].')
+            
             
         # Check if need matching
         min_particle = 99
@@ -5313,6 +5363,8 @@ class RunCardLO(RunCard):
         if model['running_elements']:
             self.display_block.append('RUNNING') 
 
+        if model['dual_mass_scheme']:
+          self.display_block.append('mom_resh')
 
         # Read file input/default_run_card_lo.dat
         # This has to be LAST !!
@@ -5807,7 +5859,7 @@ class RunCardNLO(RunCard):
      
     LO = False
     
-    blocks = [heavy_ion_block, running_block_nlo]
+    blocks = [heavy_ion_block, frame_block, running_block_nlo]
 
     dummy_fct_file = {"dummy_cuts": pjoin("SubProcesses","dummy_fct.f"),
                       "user_dynamical_scale": pjoin("SubProcesses","dummy_fct.f"),
@@ -5915,6 +5967,10 @@ class RunCardNLO(RunCard):
         self.add_param('systematics_program', 'none', include=False, hidden=True, comment='Choose which program to use for systematics computation: none, systematics')
         self.add_param('systematics_arguments', [''], include=False, hidden=True, comment='Choose the argment to pass to the systematics command. like --mur=0.25,1,4. Look at the help of the systematics function for more details.')
 
+        #frame in which to evaluate the matrix-element (polarization)
+        self.add_param("me_frame", [1,2], hidden=True, include=False, comment="choose lorentz frame where to evaluate the matrix-element [for non lorentz invariant matrix-element/polarization]:\n  the entries are the leg numbers of the process as written by the user; the rest-frame of their momentum sum is used.\n  [1,2] (the initial state) and the full final state both mean the partonic center of mass, and are skipped rather than applied.\n  Define the frame from final-state particles only: a frame built from the initial state is not infrared safe at NLO.")
+        self.add_param('frame_id', 6, system=True)
+
         #technical
         self.add_param('folding', [1,1,1], include=False)
 
@@ -5973,8 +6029,42 @@ class RunCardNLO(RunCard):
         
     def check_validity(self):
         """check the validity of the various input"""
-        
+
         super(RunCardNLO, self).check_validity()
+
+        # me_frame built out of initial-state legs is not infrared safe at NLO:
+        # the real emission and the reduced Born carry different momentum
+        # fractions, by a finite amount even in the singular limit, so the
+        # frame jumps across that limit and the subtraction stops cancelling.
+        # Selecting exactly the initial state (or, equivalently, exactly the
+        # whole final state) is the partonic c.m. and is simply skipped; any
+        # other use of an initial-state leg is a genuine mistake.
+        if 'me_frame' in self.user_set:
+            initial = [n for n in self['me_frame'] if n in (1, 2)]
+            # Exactly the initial state is the partonic c.m. and is skipped
+            # downstream; anything else that names an initial-state leg is
+            # the mistake this guard is for. Testing only for a *mix* let a
+            # bare me_frame=[1] through: for a massless beam that dies later
+            # in get_me_frame_boost with an opaque 'not timelike' stop, and
+            # for a massive one (a DIS-like e- b{+} > e- b [QCD]) m2 > 0, so
+            # the boost silently succeeds and builds exactly the frame this
+            # message says is refused.
+            if initial and len(initial) < 2:
+                raise InvalidRunCard(
+                    'me_frame %s selects part of the initial state. Use '
+                    'either both beams, which name the partonic c.m. and '
+                    'are skipped, or final-state particles only: a frame '
+                    'built from a single beam is not infrared safe at NLO.'
+                    % self['me_frame'])
+            if initial and len(self['me_frame']) > len(initial):
+                raise InvalidRunCard(
+                    'me_frame %s mixes initial-state legs with final-state '
+                    'ones. A frame defined using the initial state is not '
+                    'infrared safe at NLO: the real emission and the reduced '
+                    'Born have different momentum fractions even in the '
+                    'collinear limit, so the frame is discontinuous there. '
+                    'Define the frame from final-state particles only.'
+                    % self['me_frame'])
 
         # if heavy ion mode use for one beam, forbid lpp!=1
         if self['lpp1'] not in [1,2]:
@@ -6194,6 +6284,26 @@ class RunCardNLO(RunCard):
 
     def update_system_parameter_for_include(self):
 
+        # polarization: rest-frame in which to evaluate the matrix-element.
+        # Same encoding as at LO (see mapid in cluster.f): bit n of frame_id is
+        # set for each leg n listed in me_frame.
+        #
+        # frame_id=0 selects no leg at all, which the fortran reads as "skip
+        # the boost". That is the right default here, and it is not the same
+        # as the LO default: at LO the momenta reach the matrix element in the
+        # lab frame, so me_frame=[1,2] is a real boost to the partonic c.m.,
+        # whereas MadFKS already works in a frame close to it. Close, but not
+        # equal -- the real emission lives in a frame boosted along z, since
+        # its two initial momenta carry different energies -- so honouring
+        # [1,2] literally would apply a longitudinal boost to every unpolarised
+        # run. That is an identity for |M|^2 but not bit for bit, and it is
+        # enough to send the adaptive grids down a different path. So the boost
+        # runs only when a frame was actually asked for.
+        if 'me_frame' in self.user_set:
+            self['frame_id'] = sum(2**(n) for n in self['me_frame'])
+        else:
+            self['frame_id'] = 0
+
         # set the pdg_for_cut fortran parameter
         pdg_to_cut = set(list(self['pt_min_pdg'].keys()) +list(self['pt_max_pdg'].keys())+
                          list(self['mxx_min_pdg'].keys())+ list(self['mxx_only_part_antipart'].keys()))
@@ -6277,7 +6387,10 @@ class RunCardNLO(RunCard):
                 if not leg['state']:
                     beam_id.add(leg['id'])
         if any(i in beam_id for i in [1,-1,2,-2,3,-3,4,-4,5,-5,21,22]):
-            maxjetflavor = max([4]+[abs(i) for i in beam_id if  -7< i < 7])
+            # the default follows the flavour scheme of the model, the same
+            # number that defines the default 'p'/'j' multiparticles
+            nflav = get_model_flavour_scheme(proc_def) or 4
+            maxjetflavor = max([nflav]+[abs(i) for i in beam_id if  -7< i < 7])
             self['maxjetflavor'] = maxjetflavor
             pass
         elif any(id in beam_id for id in [11,-11,13,-13]):
@@ -6299,7 +6412,21 @@ class RunCardNLO(RunCard):
         # If model has running functionality add the additional parameter
         model = proc_def[0].get('model')
         if model['running_elements']:
-            self.display_block.append('RUNNING') 
+            self.display_block.append('RUNNING')
+
+        # if polarization is used, expose the choice of the frame in the run_card.
+        # Only needed for massive particles: for massless ones the helicity is
+        # boost invariant along the momentum, so the frame does not matter.
+        for proc in proc_def:
+            for l in proc.get('legs'):
+                if l.get('polarization'):
+                    particle = proc.get('model').get_particle(l.get('id'))
+                    if particle.get('mass').lower() != 'zero':
+                        self.display_block.append('frame')
+                        break
+            else:
+                continue
+            break
 
         # 4-flavour scheme: a massive b is not a parton of the proton, so the
         # default PDF has to be the nf_4 set rather than the 5-flavour one.

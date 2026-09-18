@@ -444,6 +444,10 @@ class _FrameStub(object):
         self.options['keep_weight_for_polarization_fermion'] = list(fermion)
         self.options['pure_interference'] = pure_interference
         self.model = _PIModelStub()
+        # MadSpinInterface carries this as a class attribute (it is {} unless
+        # flavour grouping is on); _frame_boost passes it to get_momenta as
+        # merged_map, so the stub has to have it too.
+        self._revert_merged = {}
         # what _production_polarization would have parsed out of the banner's
         # proc_card: {} for a brace-free production process
         self._production_polarization_cache = prodpol if prodpol else {}
@@ -473,7 +477,9 @@ class _MomentaEvent(object):
     def __init__(self, momenta):
         self.momenta = momenta
 
-    def get_momenta(self, orig_order):
+    def get_momenta(self, orig_order, merged_map=None):
+        # merged_map mirrors lhe_parser.Event.get_momenta: _frame_boost has
+        # to pass it so the ME ordering resolves under flavour grouping.
         return self.momenta
 
 
@@ -683,6 +689,61 @@ class TestFrameBoost(unittest.TestCase):
         self.assertEqual((boost.E, boost.px, boost.py, boost.pz),
                          (500., 0., 0., 0.))
         self.assertEqual(stub._boost_momenta(momenta, boost), momenta)
+
+
+class TestFrameFromRunCard(unittest.TestCase):
+    """``frame_and_beampol_from_run_card``: MadSpin takes ``frame_id`` and
+    ``beampol`` from the run_card of the production, for LO and NLO samples
+    alike, unless its own card sets them.
+
+    NLO run_cards carry ``me_frame`` since polarised NLO generation, but only
+    the LO card used to be read: every NLO sample was decayed with the partonic
+    c.m. (6), so a ``p p > z{0} z{0} [QCD]`` sample generated with
+    ``me_frame = [3,4]`` had its polarisation projected in the wrong frame."""
+
+    MI = interface_madspin.MadSpinInterface
+
+    def apply(self, run_card, user=()):
+        options = interface_madspin.MadSpinOptions()
+        overrides = {'frame_id': 16, 'beampol': [50., 0.]}
+        for key in user:
+            options[key] = overrides[key]
+            options.user_set.add(key)
+        self.MI.frame_and_beampol_from_run_card(options, run_card)
+        return options
+
+    def test_the_nlo_me_frame_reaches_madspin(self):
+        for frame, wanted in (([3, 4], 24), ([3], 8), ([4], 16)):
+            card = banner.RunCardNLO()
+            card.set('me_frame', frame, user=True)
+            options = self.apply(card)
+            self.assertEqual(options['frame_id'], wanted, frame)
+            self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
+
+    def test_the_nlo_default_is_still_the_partonic_cm(self):
+        """[1,2] -> 6, the value every NLO sample had before: an unpolarised
+        NLO sample decays exactly as it used to. Not RunCardNLO['frame_id'],
+        which is 0 when no frame was asked for -- 'no frame at all' to MadSpin."""
+        card = banner.RunCardNLO()
+        card.update_system_parameter_for_include()
+        self.assertEqual(card['frame_id'], 0)
+        self.assertEqual(self.apply(card)['frame_id'], 6)
+
+    def test_the_lo_path_is_unchanged(self):
+        card = banner.RunCardLO()
+        card.set('me_frame', [3], user=True)
+        card.set('polbeam1', 80., user=True)
+        options = self.apply(card)
+        self.assertEqual(options['frame_id'], 8)
+        self.assertEqual([float(x) for x in options['beampol']], [80., 0.])
+        self.assertEqual(self.apply(banner.RunCardLO())['frame_id'], 6)
+
+    def test_the_madspin_card_wins(self):
+        for card in (banner.RunCardNLO(), banner.RunCardLO()):
+            card.set('me_frame', [3, 4], user=True)
+            options = self.apply(card, user=('frame_id', 'beampol'))
+            self.assertEqual(options['frame_id'], 16, type(card).__name__)
+            self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
 
 
 class TestOnshellProductionNorm(unittest.TestCase):
@@ -5229,6 +5290,11 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
             self.mg5cmd = self
 
         def extract_process(self, line):
+            if '[' in line:
+                # like MadSpin's tree-level mg5cmd on an NLO process line
+                raise self.InvalidCmd('Perturbation order QCD is not among the '
+                                      'perturbation orders allowed for by the '
+                                      'loop model')
             legs = []
             initial, final = line.split('>')
             for state, part in ([(False, p) for p in initial.split()] +
@@ -5265,6 +5331,20 @@ class TestSamePdgProductionPolarization(unittest.TestCase):
         """'z{0} z': the second Z has no brace and stays summed over."""
         self.assertEqual(self.polarization('generate p p > z{0} z'),
                          {23: ((0,), None)})
+
+    def test_nlo_perturbation_bracket_is_ignored(self):
+        """'p p > z{0} z{0} [QCD]': the tree-level parser refuses the bracket,
+        which used to leave every NLO polarised production unrestricted (with
+        only a warning). The bracket says nothing about the braces on the legs,
+        so the restriction must be the bracket-free line's."""
+        for bracket in ('[QCD]', '[virt=QCD]', '[noborn=QCD]'):
+            self.assertEqual(
+                self.polarization('generate p p > z{0} z{0} %s' % bracket),
+                {23: ((0,),)})
+            self.assertEqual(
+                self.polarization('generate p p > w+{0} w+{T} %s' % bracket,
+                                  'add process p p > w+{0} w+{T} j %s' % bracket),
+                {24: ((0,), (-1, 1))})
 
     def test_broadcast_survives_extra_subprocesses(self):
         """The multiplicity of a broadcast pdg does not have to match between
@@ -7070,6 +7150,12 @@ class TestPAUpFrontMass(unittest.TestCase):
         stub._slot_of = {index: slot for slot, index in enumerate(slots)}
         # |M_prod|^2 on shell, the denominator of the offshell mass-set weight
         stub.calculate_matrix_element = lambda *args, **opts: 1.0
+        # The mass stage takes that denominator through
+        # _onshell_production_norm, which returns calculate_matrix_element
+        # unchanged when there is no frame boost -- which is this stub's
+        # case, and the only one it can represent.
+        stub._onshell_production_norm = \
+            lambda production, prod_static: stub.calculate_matrix_element(production)
 
         def _no_pool(*args, **opts):
             raise TestPAUpFrontMass._NoDecayPool()

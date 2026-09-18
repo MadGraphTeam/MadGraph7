@@ -72,7 +72,7 @@ class ExtLauncher(object):
         self.cmd_int.me_dir = self.running_dir
         if self.cards:
             common_run_interface.CommonRunCmd.ask_edit_card_static(self.cards,
-                             mode='fixed', plot=False,
+                             mode='fixed',
                              timeout=0, ask=self.cmd_int.ask, force=self.force)
              
         #for card in self.cards:
@@ -437,6 +437,8 @@ class SALauncher(ExtLauncher):
         
         ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
         self.cards = ['param_card.dat']
+        if os.path.isfile(running_dir+'/Cards/onia_card.dat'):
+            self.cards += ['onia_card.dat']
 
     
     def launch_program(self):

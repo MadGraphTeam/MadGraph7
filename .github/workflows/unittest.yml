@@ -66,10 +66,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # Runs a set of commands using the runners shell
-      - name: test one of the test test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card
+      - name: test one of the test test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card -t0
+            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card -t0
 
 
 
@@ -659,6 +659,11 @@ jobs:
     # Tests in tests/unit_tests not previously bound to any CI job:
     # color algebra, base/diagram object merging, miscellaneous I/O and drawing
     # Includes test_fks_ppzz_in_RS using the restored RS UFO model cache.
+    # Also the polarisation unit tests added with the NLO me_frame feature:
+    # they guard the IdentifyMETag polarisation tag, carry_polarization /
+    # split_leg, the P-directory name-collision check and the separation of
+    # differently-polarised subprocess groups, and that a HelasWavefunction
+    # carries its polarisation into its identity.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
@@ -670,7 +675,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write -t0
+            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization -t0
 
 
   unittest_30:
@@ -789,3 +794,19 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_write_model -t0
+
+
+  unittest_customize_model:
+    # tests/unit_tests/various/test_customize_model.py: the options and the
+    # commands of the customize_model question, the restriction cards it
+    # writes, and the explain_restriction reports
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: run the customize_model unit tests
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_customize_model -t0

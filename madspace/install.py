@@ -10,6 +10,7 @@ Non-interactive examples:
   python install.py --bin
   python install.py --source
   python install.py --source --cuda --cuda-arch "75;80;86"
+  python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
 """
 
@@ -387,6 +388,39 @@ def add_cmake_to_path(env: dict) -> dict:
     return env
 
 
+def default_jobs() -> int:
+    """Number of compilation jobs to use when none was requested."""
+    try:
+        return len(os.sched_getaffinity(0))  # Linux: respects cgroup/taskset
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def set_build_parallelism(env: dict, jobs: int | None) -> dict:
+    """Tell CMake how many compilation jobs it may run in parallel.
+
+    scikit-build-core calls ``cmake --build`` without any ``-j``, so the job
+    count comes entirely from the environment. With the Ninja generator that
+    goes unnoticed (ninja parallelises on its own), but whenever ninja is
+    missing scikit-build-core falls back to "Unix Makefiles", and make without
+    ``-j`` compiles one file at a time -- which is why a gcc/make build took
+    minutes while the ninja one did not.
+
+    ``CMAKE_BUILD_PARALLEL_LEVEL`` is read by ``cmake --build`` itself, so it
+    works for either generator, and being an environment variable it is also
+    inherited by the nested OpenBLAS build.
+    """
+    if jobs is not None and jobs <= 0:
+        jobs = None  # 0 / negative = "as many as there are cores"
+    if jobs is None:
+        if env.get("CMAKE_BUILD_PARALLEL_LEVEL"):
+            return env  # an explicit setting in the caller's environment wins
+        jobs = default_jobs()
+    env["CMAKE_BUILD_PARALLEL_LEVEL"] = str(jobs)
+    print(f"Compiling with {jobs} parallel job(s) (-j to change).")
+    return env
+
+
 # Command execution
 
 
@@ -536,6 +570,16 @@ def main() -> None:
         "Combine with --source/--bin to force the install mode.",
     )
     parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Number of parallel compilation jobs for the source build "
+        f"(default: every available core, {default_jobs()} here). MG5's "
+        "'nb_core' option is forwarded here by 'install madspace'.",
+    )
+    parser.add_argument(
         "--system",
         action="store_true",
         default=False,
@@ -584,6 +628,20 @@ def main() -> None:
         "--no-simd", dest="simd", action="store_false", help="Disable SIMD backend."
     )
 
+    docs_grp = parser.add_mutually_exclusive_group()
+    docs_grp.add_argument(
+        "--docs",
+        dest="docs",
+        action="store_true",
+        help="Generate API docstrings (requires doxygen) and .pyi type stubs.",
+    )
+    docs_grp.add_argument(
+        "--no-docs",
+        dest="docs",
+        action="store_false",
+        help="Skip docstring and .pyi generation (default; no doxygen needed).",
+    )
+
     debug_grp = parser.add_mutually_exclusive_group()
     debug_grp.add_argument(
         "--debug",
@@ -624,7 +682,9 @@ def main() -> None:
     )
 
     # None = not provided by user; overridden by set_defaults below
-    parser.set_defaults(cuda=None, hip=None, openblas=None, simd=None, build_type=None)
+    parser.set_defaults(
+        cuda=None, hip=None, openblas=None, simd=None, docs=None, build_type=None
+    )
     args = parser.parse_args()
     _set_noninteractive(args.yes)
 
@@ -738,6 +798,15 @@ def main() -> None:
             enable_simd = menu_defaults.get("simd", False)
             build_type = _saved_build_type(menu_defaults)
 
+    # Docs/.pyi generation: explicit flag wins, else reuse saved value under
+    # --yes, else off. Not part of the interactive menu (niche / CI use).
+    if args.docs is not None:
+        enable_docs = args.docs
+    elif args.yes:
+        enable_docs = saved.get("docs", False)
+    else:
+        enable_docs = False
+
     # Compute capability prompts
     cuda_arch = saved.get("cuda_arch", DEFAULT_CUDA_ARCH)
     hip_arch = saved.get("hip_arch", DEFAULT_HIP_ARCH)
@@ -793,9 +862,12 @@ def main() -> None:
     cmd.append(f"-Ccmake.define.ENABLE_OPENBLAS={'ON' if enable_openblas else 'OFF'}")
     if enable_simd:
         cmd.append("-Ccmake.define.ENABLE_SIMD=ON")
+    if enable_docs:
+        cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
 
     env = install_build_deps(system=args.system)
+    env = set_build_parallelism(env, args.jobs)
     run(cmd, env=env)
     save_settings(
         {
@@ -806,6 +878,7 @@ def main() -> None:
             "hip_arch": hip_arch,
             "openblas": enable_openblas,
             "simd": enable_simd,
+            "docs": enable_docs,
             "build_type": build_type,
         }
     )

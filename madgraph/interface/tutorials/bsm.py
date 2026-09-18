@@ -108,8 +108,10 @@ New states usually decay, and there are two ways to handle that:
   * **MadSpin** at run time, which keeps spin correlations without touching
     the production diagrams. For long cascades this is the practical choice.
 
-Both are on-shell approximations, and both are only as good as the widths.
-Which is the thing that goes wrong most often in BSM studies, so:
+Neither forces the new state on shell -- both keep it on its Breit-Wigner --
+but both keep only the diagrams that go through it, and both are only as good
+as the widths in the card. Which is the thing that goes wrong most often in
+BSM studies, so:
 
 %(p)s compute_widths go --body_decay=2 --output=./mssm_widths.dat
 """ % {'p': P},
@@ -125,9 +127,10 @@ Three things about widths in BSM models:
   * **The card's widths are not automatically right.** A UFO model ships with
     some benchmark point. Change a mass -- which is the whole point of a scan
     -- and every width that mass feeds is now wrong. The symptom is a decayed
-    cross section larger than the undecayed one: a branching ratio above 1.
-    The fix is `DECAY <pdg> Auto` in the param card, which the scan machinery
-    recomputes at every point.
+    cross section larger than the undecayed one -- nothing forms a branching
+    ratio, so nothing caps the effective fraction at 1. The fix is
+    `DECAY <pdg> Auto` in the param card, which the scan machinery recomputes
+    at every point.
   * **`compute_widths` is tree-level and narrow-width.** Honest for a narrow
     state, not for a wide one, and it says so when you run it. For a resonance
     with a width comparable to its mass, a hand-set width and a hard look at

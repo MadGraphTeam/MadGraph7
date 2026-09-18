@@ -103,7 +103,18 @@ first:
   ptj, etaj, drjj    the jet cuts
   fixed_ren_scale,   scale choices, and the dynamical scale otherwise
   fixed_fac_scale
-  nhel               1 to sum helicities explicitly (needed for polarisation)
+  nhel               0 sums the helicities, 1 samples them. A speed/variance
+                     choice; polarisation does not need either value
+  me_frame           for a polarised process: the legs whose sum defines the
+                     rest frame the polarisation is measured in
+
+`me_frame` is the one to read twice, because a polarisation only means
+something once you say in which frame. It indexes the NORMALISED leg order,
+not the order you wrote in the process line: for
+`p p > w+ z j j, w+ > l+ vl, z > l+ l-` the WZ rest frame is
+`me_frame = [3,4,5,6]`. Get it wrong and you still get a polarisation, just
+not the one you asked for. (Nothing has to be done at generation time --
+`set group_subprocesses False` is not needed for polarised processes.)
 
 Now something that matters more than it looks. A cross section is only as
 good as the widths in your param card, and the widths are not automatically
@@ -131,8 +142,8 @@ Put this in `Cards/param_card.dat` in place of the top mass value:
 and the run repeats for each point, collecting the cross sections into a
 summary table. Now do the same with a decay chain like
 `p p > t t~, t > w+ b` and watch the ratio to the undecayed cross section.
-It is a branching fraction, so it cannot exceed 1 -- and it does, because
-changing the mass did not change the width. The partial width the decay chain
+It plays the role of a branching fraction, so it ought to stay under 1 -- and
+it does not, because changing the mass did not change the width. The partial width the decay chain
 computes grows with the mass while the total width in the card stays frozen.
 
 The fix is to hand the width back to the model:

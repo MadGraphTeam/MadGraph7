@@ -376,8 +376,11 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                 # sometimes has trouble with relative path
                 logger.info('Restrict model %s with file %s .' % (model_name, restrict_file))
                 
-            if logger_mod.getEffectiveLevel() > 10:
-                logger.info('Run \"set stdout_level DEBUG\" before import to write the details of the model import into a file.')
+            # the details of the restriction go to a log file, and only when
+            # the logger is in debug mode: point at the command which reports
+            # them on the screen instead
+            logger.info('Use \'explain_restriction\' to see what that card '
+                        'removes from the model.')
             # Modify the mother class of the object in order to allow restriction
             model = RestrictModel(model)
 
@@ -714,6 +717,12 @@ class UFOMG5Converter(object):
             self.model.set('startfromalpha0', startfromalpha)
         else:
             self.model.set('startfromalpha0', False) 
+
+        if hasattr(model, 'dual_mass_scheme'):
+            dual_mass_scheme = bannermod.ConfigFile.format_variable(model.dual_mass_scheme, bool, name="dual_mass_scheme")
+            self.model.set('dual_mass_scheme', dual_mass_scheme)
+        else:
+            self.model.set('dual_mass_scheme', False)
          
         self.ufomodel = model
         self.checked_lor = set()
@@ -2559,6 +2568,13 @@ class OrganizeModelExpression:
     def __init__(self, model):
     
         self.model = model  # UFOMODEL
+        # track_dependant is a class attribute, and analyze_parameters() extends
+        # it in place ('Gf' for a model without an external aEWM1, then the
+        # running scales). Without this private copy those entries stay on the
+        # class and every model imported later in the same process inherits
+        # them: importing a Gmu model first then makes loop_sm group mdl_MW
+        # under ('aEWM1','Gf') instead of ('aEWM1',).
+        self.track_dependant = list(self.track_dependant)
         self.perturbation_couplings = {}
         try:
             for order in model.all_orders: # Check if it is a loop model or not
@@ -2991,7 +3007,8 @@ class RestrictModel(model_reader.ModelReader):
             self.get('order_hierarchy')
             self.get('expansion_order')
 
-        if os.path.exists(param_card.replace('restrict', 'param')):
+        if isinstance(param_card, str) and \
+                              os.path.exists(param_card.replace('restrict', 'param')):
             path = param_card.replace('restrict', 'param')
             logger.info('default value set as in file %s' % path)
             self.set_parameters_and_couplings(path,

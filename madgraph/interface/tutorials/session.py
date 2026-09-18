@@ -30,6 +30,8 @@ Nothing here talks to the interface; the mixin does that.
 
 from __future__ import absolute_import
 
+import inspect
+
 import os
 
 
@@ -59,10 +61,25 @@ class Step(object):
               `launch` step leads to is the case that matters: it is asked by
               the run interface in the middle of the command, so this is the
               only way a step can say anything there.
+    on_failure
+              printed when a command which would have triggered this step
+              *raised* instead of running, before the generic "that command did
+              not run" line.  For the command a lesson invites the user to try
+              and which needs an argument they have no reason to guess.  May be
+              a callable(interface) -> str.
+    sticky    the step answers a command without consuming the lesson: its text
+              is printed and the session stays where it is, so the same step
+              can answer again.  For a lesson which invites the user to try
+              several commands -- `display particles`, `display interactions`,
+              ... -- none of which is the one it is waiting for.  A sticky step
+              has to sit *before* any later step sharing its key, since
+              step_for scans forward from the current position and would
+              otherwise jump the user to that one.
     """
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
-                 setup=None, title=None, question_hint=None):
+                 setup=None, title=None, question_hint=None, on_failure=None,
+                 sticky=False):
         self.key = key
         self.text = text
         self.hint = hint
@@ -71,13 +88,36 @@ class Step(object):
         self.setup = setup
         self.title = title
         self.question_hint = question_hint
+        self.on_failure = on_failure
+        self.sticky = sticky
 
-    def render(self, interface=None):
-        """The text to print for this step."""
+    def get_failure_advice(self, interface=None):
+        """What to say when a command meant for this step did not run."""
 
-        if callable(self.text):
-            return self.text(interface)
-        return self.text
+        if callable(self.on_failure):
+            try:
+                return self.on_failure(interface)
+            except Exception:
+                return None
+        return self.on_failure
+
+    def render(self, interface=None, line=None):
+        """The text to print for this step.
+
+        A callable text takes the interface, and the command line too when it
+        declares a second argument -- which a sticky step needs, since what it
+        has to say depends on which command the user tried.
+        """
+
+        if not callable(self.text):
+            return self.text
+        try:
+            nb_args = len(inspect.signature(self.text).parameters)
+        except (TypeError, ValueError):
+            nb_args = 1
+        if nb_args > 1:
+            return self.text(interface, line)
+        return self.text(interface)
 
     def get_solution(self, interface=None):
         """The command this step is waiting for, resolved against the session.
@@ -382,8 +422,13 @@ class Tutorial(object):
                 block.  Names that are not registered are dropped, so a
                 tutorial can point at one that has not been written yet
                 without ever advertising a dead end.
-    section     which group of the menu this belongs to: 'basic', 'advanced'
-                or 'exercises'.
+    section     which group of the menu this belongs to: 'basic',
+                'advanced', 'more' or 'exercises'.  'basic' and 'advanced' are
+                the developer-validated ones and refuse an AI-generated
+                tutorial, which is what lets the menu label them as validated
+                without anyone having to keep that claim in step by hand.  The
+                default is 'more', so a tutorial lands in the validated groups
+                only when someone puts it there on purpose.
     ai_generated
                 True when the content was written by an AI and has not been
                 validated by the developers.  The menu says so, per section,
@@ -391,11 +436,13 @@ class Tutorial(object):
                 carried over from the pre-2026 hand-written text.
     """
 
-    SECTIONS = ('basic', 'advanced', 'exercises')
+    SECTIONS = ('basic', 'advanced', 'more', 'exercises')
+    # sections whose heading claims developer validation
+    VALIDATED_SECTIONS = ('basic', 'advanced')
 
     def __init__(self, name, title, steps, description='', aliases=(),
                  order='free', requires=None, hidden=False, see_also=(),
-                 section='advanced', ai_generated=True):
+                 section='more', ai_generated=True):
         self.name = name
         self.title = title
         self.description = description or title
@@ -409,8 +456,12 @@ class Tutorial(object):
         self.see_also = tuple(see_also)
         if section not in self.SECTIONS:
             raise ValueError('unknown tutorial section %r' % section)
-        self.section = section
         self.ai_generated = bool(ai_generated)
+        if self.ai_generated and section in self.VALIDATED_SECTIONS:
+            raise ValueError("tutorial %r is AI-generated and cannot sit in "
+                             "the %r section, which the menu presents as "
+                             "validated by the developers" % (name, section))
+        self.section = section
 
     @property
     def names(self):

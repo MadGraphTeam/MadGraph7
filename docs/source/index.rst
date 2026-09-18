@@ -33,6 +33,7 @@ If you need a stable release, use the
    :hidden:
 
    madspace/installation
+   madspace/examples
    madspace/umami-api
    madspace/python-api
    madspace/cpp-api
