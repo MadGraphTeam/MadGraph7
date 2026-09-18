@@ -11,7 +11,6 @@ on:
     paths-ignore:
       - 'docs/**'
   pull_request:
-    branches-ignore: [main] # TEMPORARY: only the GPU CI on gpu-runner-ci, drop before merging
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:

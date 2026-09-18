@@ -8,7 +8,6 @@ on:
   push:
     branches:
       - '**'
-      - '!gpu-runner-ci' # TEMPORARY: only the GPU CI on this branch, drop before merging
     paths:
       - 'docs/source/madspace/examples/**'
       - 'madspace/**'

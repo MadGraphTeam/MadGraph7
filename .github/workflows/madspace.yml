@@ -8,7 +8,6 @@ on:
     # over '*' so branch names containing a slash still match.
     branches:
       - '**'
-      - '!gpu-runner-ci' # TEMPORARY: only the GPU CI on this branch, drop before merging
   pull_request:
   # Called from release.yml once main's CI for the tagged commit is green,
   # to build the wheels it then publishes. The publishing itself deliberately

@@ -8,9 +8,7 @@ name: GPU CI (lemaitre4, HIP)
 
 on:
   push:
-    # TEMPORARY: gpu-runner-ci runs the GPU CI on every push to the PR branch while
-    # it is being set up; drop it (and its ceci-gpu branch policy) before merging.
-    branches: [main, gpu-runner-ci]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:

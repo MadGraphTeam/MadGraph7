@@ -12,7 +12,6 @@ on:
     # over '*' so branch names containing a slash still match.
     branches:
       - '**'
-      - '!gpu-runner-ci' # TEMPORARY: only the GPU CI on this branch, drop before merging
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
