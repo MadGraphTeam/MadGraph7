@@ -9067,7 +9067,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
@@ -9083,7 +9084,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     MW.exec_cmd(line)
                 stop = self.define_child_cmd_interface(MW)                
