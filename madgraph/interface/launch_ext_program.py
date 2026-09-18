@@ -590,7 +590,7 @@ class SALauncher(ExtLauncher):
 class FKSSALauncher(ExtLauncher):
     """Launch the FKS Born building-block standalone check ('check_fks').
 
-    Produced by 'output standalone --fks'. ExtLauncher.run() first offers to
+    Produced by 'output standalone_fortran --fks'. ExtLauncher.run() first offers to
     edit the param_card (bypassed with -f); launch_program() then compiles the
     Source libraries, builds 'check_fks' in every born subprocess directory and
     runs it, echoing the Born, spin-correlated Born and color/charge-linked

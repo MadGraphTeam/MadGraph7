@@ -1217,7 +1217,7 @@ jobs:
             ./tests/test_manager.py -pA TestMLMReweight
 
   acceptancetest_fks_standalone:
-    # FKS Born building-block standalone output ('output standalone --fks'):
+    # FKS Born building-block standalone output ('output standalone_fortran --fks'):
     # hardcoded-value regression and consistency vs a plain aMC@NLO output.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

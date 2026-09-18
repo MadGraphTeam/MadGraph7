@@ -509,7 +509,7 @@ class Switcher(object):
             # no directory on the line: reuse the directory of the last output
             # and inject it as an explicit path, so the principal command is
             # selected from the actual output type. Without this, a bare
-            # 'launch' after 'output standalone --fks' keeps the aMC@NLO run
+            # 'launch' after 'output standalone_fortran --fks' keeps the aMC@NLO run
             # interface (the principal command set by the [QCD] generation) and
             # wrongly prompts for the MC@NLO/shower run configuration instead of
             # building/running the lightweight FKS 'check_fks'.

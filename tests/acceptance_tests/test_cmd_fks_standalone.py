@@ -13,7 +13,7 @@
 #
 ################################################################################
 """Acceptance tests for the FKS Born building-block standalone output
-('output standalone --fks').
+('output standalone_fortran --fks').
 
 Both tests compile and run Fortran (the lightweight 'check_fks' driver), so
 they live in the acceptance tier rather than unit_tests (whose 1s budget would
@@ -128,7 +128,7 @@ PROCESSES = [
 
 
 class TestFKSStandalone(unittest.TestCase):
-    """'output standalone --fks' end-to-end (generate + launch + check_fks)."""
+    """'output standalone_fortran --fks' end-to-end (generate + launch + check_fks)."""
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='fkssa')
@@ -154,12 +154,12 @@ class TestFKSStandalone(unittest.TestCase):
                      precmd=True, postcmd=True)
 
     def _output_fks_sa(self, process, model, path):
-        """generate + 'output standalone --fks' + launch (builds & runs
+        """generate + 'output standalone_fortran --fks' + launch (builds & runs
         check_fks)."""
         cmd = self._new_cmd()
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
-        self._run(cmd, 'output standalone --fks %s -f' % path)
+        self._run(cmd, 'output standalone_fortran --fks %s -f' % path)
         self._run(cmd, 'launch %s -f' % path)
 
     def _output_amcatnlo(self, process, model, path):
@@ -257,7 +257,7 @@ class TestFKSStandalone(unittest.TestCase):
         makefile already carries the 'check_fks' target), build and run it
         there, and require identical values."""
         workdir = self._workdir(spec)
-        # 1) standalone --fks (driver already built by launch)
+        # 1) standalone_fortran --fks (driver already built by launch)
         path_sa = pjoin(workdir, 'fks_sa')
         self._output_fks_sa(spec['process'], spec['model'], path_sa)
         born_dir_sa = self._born_dir(path_sa)

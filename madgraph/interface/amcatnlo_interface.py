@@ -165,8 +165,13 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             self._export_format = 'ewsudsa'
             args.pop(0)
         elif self._fks_standalone:
-            # accept the optional 'standalone' keyword (output standalone --fks)
+            # accept the optional 'standalone_fortran' keyword
+            # (output standalone_fortran --fks). 'standalone' names the
+            # MadMatrix export, so it is refused rather than taken as a path.
             if args and args[0] == 'standalone':
+                raise self.InvalidCmd('The FKS Born building-block output is a '
+                    'Fortran output: use "output standalone_fortran --fks".')
+            if args and args[0] == 'standalone_fortran':
                 args.pop(0)
             self._export_format = 'NLO_SA'
         else:
@@ -194,6 +199,8 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             if args[0] in forbidden_formats:
                 text = 'You generated a NLO process, which cannot be exported in %s mode.\n' % args[0]
                 text+= 'Please use the command "output DIR_NAME".\n'
+                if args[0] == 'standalone_fortran':
+                    text+= 'For the FKS Born building blocks, use "output standalone_fortran --fks".\n'
                 raise self.InvalidCmd(text)
 
             # This is a path

@@ -5315,7 +5315,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
 
 
 class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
-    """FKS Born building-block standalone output ('output ... --fks').
+    """FKS Born building-block standalone output ('output standalone_fortran --fks').
 
     The full optimized FKS directory is generated as usual (so the Born,
     color/charge-linked Born and spin-correlated Born code is byte-for-byte

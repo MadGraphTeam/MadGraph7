@@ -13858,7 +13858,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             amcatnlo_options['export_format']='FKS5_optimized'
         return ExporterClass(cmd._export_dir, amcatnlo_options)
 
-    # Then the FKS Born building-block standalone output (output ... --fks)
+    # Then the FKS Born building-block standalone output (output standalone_fortran --fks)
     elif output_type=='amcatnlo_sa':
         import madgraph.iolibs.export_fks as export_fks
         amcatnlo_options = dict(opt)
