@@ -9,7 +9,10 @@ difference drowned in rounding, and the block returned Jacobians of up to
 1e14 in place of O(1). One such point in a few million could throw a whole
 ColorOrderedMapping integration off by a factor of up to 1e12.
 
-Both are now computed from where s23 lies in its range. These tests pin that:
+Both are now computed from where s23 lies in its range, and that range from
+momenta in the p12 rest frame: its Byckling-Kajantie form through 3x3 Gram
+determinants cancelled the same way one level down, and gave NaN or zero
+Jacobians below a softness of about 1e-8. These tests pin that:
 the Jacobian follows its smooth soft limit, and ColorOrderedMapping integrates
 the massless n-body phase space to its analytic value.
 """
@@ -60,11 +63,11 @@ def scatter(p3, m1, m2):
 
 
 def assert_smooth(values):
-    """Finite values stay within a factor 2 of the first one. A NaN point has
-    zero weight, which in this corner of measure ~1e-8 costs nothing."""
-    finite = np.isfinite(values)
-    assert np.mean(finite) > 0.5
-    ratio = values[finite] / values[0]
+    """Every value is finite and within a factor 2 of the first one. (The s23
+    sampling moves the limit by a few percent once s23 drops below the 1e-2
+    GeV^2 offset of its power map, so this is not a tighter check.)"""
+    assert np.all(np.isfinite(values)), values
+    ratio = values / values[0]
     assert np.all((ratio > 0.5) & (ratio < 2.0)), ratio
 
 
