@@ -49,6 +49,9 @@ two whole blocks of the param card:
 then `done`. `set NAME 0` does it for one coefficient, and `set NAME = OTHER`
 ties two together. Leave `DIM6` alone as a block: it also holds `Lambda`, and
 a zero scale is a division by zero.
+
+The question starts from `-NLO`: the operators it switches off are already
+listed at 0, and `set NAME free` switches one of them back on.
 """
 
 
@@ -224,13 +227,11 @@ your own -- coefficients fixed to zero, to one, or tied together -- and
      solution=CUSTOMIZE),
 
 Step('customize_model', lambda interface: """
-%(model)s%(saved)sThat is now the model loaded here. The lepton operators are
-gone from it, and so are the vertices they multiplied: a smaller model is a
-faster generation, and a shorter list of coefficients to keep track of.
-
-One thing to know before you rely on it: `customize_model` starts again from
-the full model, with the values of the one you had loaded. A parameter that
-`-NLO` had switched off comes back on, unless you switch it off again.
+%(model)s%(saved)sThat is now the model loaded here, and it started from where
+you were: the operators `-NLO` switches off were already in the question at 0,
+and your two blocks went on top. The lepton operators are gone, and so are
+the vertices they multiplied: a smaller model is a faster generation, and a
+shorter list of coefficients to keep track of.
 
 In a later session, it loads by its name:
 %(p)s %(reload)s
