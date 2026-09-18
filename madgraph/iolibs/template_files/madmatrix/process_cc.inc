@@ -31,6 +31,7 @@
 #include "MemoryAccessNumerators.h"
 #include "ColorData.h"
 #include "ProcessTables.h" // for nMF (cIPF setup in initProc)
+#include "fpe.h"           // for fpeEnable (constructor, MGONGPUCPP_DEBUG builds)
 
 #include <algorithm>
 #include <array>
