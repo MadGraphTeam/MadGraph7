@@ -2701,6 +2701,33 @@ class FLV_Coupling(PhysicsObject):
 #===============================================================================
 # Leg
 #===============================================================================
+def canonical_polarization(polarization):
+    """The canonical form of a polarization restriction: sorted, deduplicated.
+
+    Two legs carry the *same* restriction exactly when this returns equal
+    values, so every key that decides whether two processes may share a
+    matrix element, a directory or a subprocess group has to be built from
+    it and not from its own copy of the expression:
+
+      Process.shell_polarization              P-directory names
+      helas_objects.IdentifyMETag.link_from_leg   matrix-element identity
+      fks_base.FKSRealProcess.pdgs_pols       real-amplitude recycling
+      group_subprocs.SubProcessGroup          subprocess grouping
+
+    Those were four hand-kept copies agreeing only by comment. A divergence
+    between any two of them silently merges physics that must stay separate
+    (one born taking another's reals, two polarisations sharing one matrix
+    element) or splits what should combine -- which is the class of bug the
+    polarised-NLO work exists to fix, so it should not be reintroducible by
+    editing one site and missing three.
+
+    The '{}' parser refuses a repeated helicity outright, so set() is a
+    no-op for anything typed at the prompt; it matters for a list built
+    directly through the Python API, which never passes that parser.
+    """
+    return tuple(sorted(set(polarization or ())))
+
+
 def polarization_to_string(polarization):
     """Render a leg 'polarization' list as the brace content of a process
     string. The propagator-only entries (4,5,6,7,9,99) are printed as the
@@ -3808,6 +3835,31 @@ class Process(PhysicsObject):
         
         return False
 
+    @staticmethod
+    def shell_polarization(polarization):
+        """Render one leg's polarization for use inside a file/directory name.
+
+        The stored list is the typed order, but it means the *set* of allowed
+        helicities -- as get_polarization_key already compares it.  Rendering
+        sorted(set(...)) makes the name identify the restriction and not the
+        spelling, and is injective over subsets of
+        Leg.list_of_allowed_polarizations.  Unpolarized legs return ''.
+
+        The '{}' parser now refuses a repeated helicity outright, so set() is
+        a no-op for anything typed at the prompt; it is kept because a list
+        built directly through the Python API never passes that parser.
+        """
+        if not polarization:
+            return ''
+        pol = list(canonical_polarization(polarization))
+        if pol == [-1, 1]:
+            return 'T'
+        elif pol == [-1]:
+            return 'L'
+        elif pol == [1]:
+            return 'R'
+        return ''.join(str(p).replace('-', 'm') for p in pol)
+
     def set(self, name, value):
         """Special set for forbidden particles - set to abs value."""
 
@@ -4216,15 +4268,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 
@@ -4278,15 +4322,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 
@@ -4788,22 +4824,36 @@ class ProcessDefinition(Process):
                  if leg['state'] == False]
         fsids = [leg['ids'] for leg in self['legs'] \
                  if leg['state'] == True]
+        # The polarization restriction lives on the multileg and has to be
+        # carried onto each expanded leg, or a polarized multiparticle
+        # process silently comes back unpolarized. MultiProcess.
+        # generate_multi_amplitudes (diagram_generation.py) does the same for
+        # the path MG5 itself uses.
+        ispols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == False]
+        fspols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == True]
 
         red_isidlist = []
         # Generate all combinations for the initial state
         for prod in itertools.product(*isids):
-            islegs = [Leg({'id':id, 'state': False}) for id in prod]  
+            # list() so that every yielded process owns its polarization
+            # rather than sharing the definition's list object
+            islegs = [Leg({'id':id, 'state': False, 'polarization': list(pol)})
+                      for id, pol in zip(prod, ispols)]
             if tuple(sorted(prod)) in red_isidlist:
-                    continue        
-            red_isidlist.append(tuple(sorted(prod)))      
+                    continue
+            red_isidlist.append(tuple(sorted(prod)))
             red_fsidlist = []
             for prod in itertools.product(*fsids):
                 # Remove double counting between final states
                 if tuple(sorted(prod)) in red_fsidlist:
-                    continue        
+                    continue
                 red_fsidlist.append(tuple(sorted(prod)))
                 leg_list = [copy.copy(leg) for leg in islegs]
-                leg_list.extend([Leg({'id':id, 'state': True}) for id in prod])
+                leg_list.extend([Leg({'id':id, 'state': True,
+                                      'polarization': list(pol)})
+                                 for id, pol in zip(prod, fspols)])
                 legs = LegList(leg_list)
                 process = self.get_process_with_legs(legs)
                 yield process
@@ -4946,21 +4996,27 @@ class ProcessDefinition(Process):
         """ Return a Process object which has the same properties of this 
             ProcessDefinition but with the specified given leg ids. """
         
+        # The polarization is not passed in argument, it has to be read from the
+        # multi-legs of this process definition, which are ordered in the same
+        # way as the ids given in argument (initial states first).
+        my_islegs = [leg for leg in self.get('legs') if not leg.get('state')]
+        my_fslegs = [leg for leg in self.get('legs') if leg.get('state')]
+
         # First make sure that the desired particle ids belong to those defined
         # in this process definition.
         if __debug__:
-            my_isids = [leg.get('ids') for leg in self.get('legs') \
-                  if not leg.get('state')]
-            my_fsids = [leg.get('ids') for leg in self.get('legs') \
-                 if leg.get('state')]            
             for i, is_id in enumerate(initial_state_ids):
-                assert is_id in my_isids[i]
+                assert is_id in my_islegs[i].get('ids')
             for i, fs_id in enumerate(final_state_ids):
-                assert fs_id in my_fsids[i]
-        
+                assert fs_id in my_fslegs[i].get('ids')
+
         return self.get_process_with_legs(LegList(\
-               [Leg({'id': id, 'state':False, 'polarization':[]}) for id in initial_state_ids] + \
-               [Leg({'id': id, 'state':True, 'polarization':[]}) for id in final_state_ids]))
+               [Leg({'id': id, 'state':False,
+                     'polarization': list(leg.get('polarization'))}) \
+                for id, leg in zip(initial_state_ids, my_islegs)] + \
+               [Leg({'id': id, 'state':True,
+                     'polarization': list(leg.get('polarization'))}) \
+                for id, leg in zip(final_state_ids, my_fslegs)]))
 
     def __eq__(self, other):
         """Overloading the equality operator, so that only comparison
