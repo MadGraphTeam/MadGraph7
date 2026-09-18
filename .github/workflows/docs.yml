@@ -158,7 +158,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y graphviz
-          curl -fsSL https://www.doxygen.nl/files/doxygen-1.9.8.linux.bin.tar.gz | sudo tar xz -C /opt
+          curl -fsSL https://github.com/doxygen/doxygen/releases/download/Release_1_9_8/doxygen-1.9.8.linux.bin.tar.gz | sudo tar xz -C /opt
           echo /opt/doxygen-1.9.8/bin >> "$GITHUB_PATH"
 
       # enable_docs=true builds with ENABLE_DOCS=ON (doxygen-derived pybind11
