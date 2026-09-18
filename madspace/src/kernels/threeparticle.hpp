@@ -1,7 +1,6 @@
 #pragma once
 
 #include "kinematics.hpp"
-#include "lup_det.hpp"
 
 namespace madspace {
 namespace kernels {
@@ -173,163 +172,56 @@ three_body_decay_inverse(FourMom<T> p1, FourMom<T> p2, FourMom<T> p3) {
 }
 
 template <typename T>
-KERNELSPEC FVal<T> bk_V(
-    FVal<T> m0_2,
-    FVal<T> ma_2,
-    FVal<T> mb_2,
-    FVal<T> m1_2,
-    FVal<T> m2_2,
-    FVal<T> m3_2,
-    FVal<T> t1_abs,
-    FVal<T> t2,
-    FVal<T> s12
-) {
-    // Matrix from Byckling-Kajantie eq.(11), 10.1103/PhysRev.187.2008.
-    // Asymmetric (a22 = a33 = 0; a12 = a21 but a13 != a31, a23 != a32).
-    auto a11 = 2.0 * s12;
-    auto a12 = ma_2 + s12 - t2;
-    auto a13 = s12 + m1_2 - m2_2;
-    auto a22 = 2.0 * ma_2;
-    auto a23 = ma_2 + m1_2 + t1_abs;
-    auto a31 = m0_2 + s12 - m3_2;
-    auto a32 = m0_2 + ma_2 - mb_2;
-
-    // Polynomial fallback (the previous implementation), used by the LU
-    // helper if the matrix's leading pivots are below the LU tolerance.
-    // Expansion along row 3, using a22 = a33 = 0 and a21 = a12.
-    auto poly_det = a31 * (a12 * a23 - a13 * a22) + a32 * (a12 * a13 - a11 * a23);
-
-    auto det = lup_det3_general<T>(
-        a11, a12, a13, a12, a22, a23, a31, a32, FVal<T>(0.0), poly_det
-    );
-    return -det / 8.0;
-}
-
-template <typename T>
-KERNELSPEC FVal<T> bk_gram4(
-    FVal<T> m0_2,
-    FVal<T> ma_2,
-    FVal<T> mb_2,
-    FVal<T> m1_2,
-    FVal<T> m2_2,
-    FVal<T> m3_2,
-    FVal<T> t1_abs,
-    FVal<T> t2,
-    FVal<T> s12,
-    FVal<T> s23
-) {
-    // 4x4 Gram determinant, see Eq.(B6) in 10.1103/PhysRev.187.2008.
-    // Note: expects the absolute value of t1.
-
-    // Upper-triangular entries of the symmetric Gram matrix.
-    auto a11 = 2.0 * ma_2;
-    auto a12 = ma_2 - t1_abs - m1_2;
-    auto a13 = ma_2 + t2 - s12;
-    auto a14 = ma_2 + mb_2 - m0_2;
-    auto a22 = -2.0 * t1_abs;
-    auto a23 = t2 - t1_abs - m2_2;
-    auto a24 = mb_2 - t1_abs - s23;
-    auto a33 = 2.0 * t2;
-    auto a34 = t2 + mb_2 - m3_2;
-    auto a44 = 2.0 * mb_2;
-
-    // Polynomial fallback (the previous "hard-coded because easier" expansion),
-    // re-organized to keep the inner 2x2 minors as their own subexpressions.
-    // Used by the LU helper if any pivot is below tolerance.
-    auto poly_det = a14 * a14 * (a23 * a23 - a22 * a33) +
-        a13 * a13 * (a24 * a24 - a22 * a44) + a12 * a12 * (a34 * a34 - a33 * a44) -
-        a23 * a23 * a11 * a44 - a24 * a24 * a11 * a33 - a34 * a34 * a11 * a22 +
-        a11 * a22 * a33 * a44 + 2.0 * a11 * a23 * a24 * a34 +
-        2.0 * a12 * a13 * (a23 * a44 - a24 * a34) +
-        2.0 * a12 * a14 * (a24 * a33 - a23 * a34) +
-        2.0 * a13 * a14 * (a22 * a34 - a23 * a24);
-
-    auto det = lup_det4<T>(a11, a12, a13, a14, a22, a23, a24, a33, a34, a44, poly_det);
-    return det / 16.0;
-}
-
-template <typename T>
-KERNELSPEC FVal<T> bk_sqrt_g3i_g3im1(
-    FVal<T> m0_2,
-    FVal<T> ma_2,
-    FVal<T> mb_2,
-    FVal<T> m1_2,
-    FVal<T> m2_2,
-    FVal<T> m3_2,
-    FVal<T> t1_abs,
-    FVal<T> t2,
-    FVal<T> s12
-) {
-    auto a11 = 2 * s12;
-    auto a12 = s12 + ma_2 - t2;
-    auto a13 = s12 + m0_2 - m3_2;
-    auto b13 = s12 + m1_2 - m2_2;
-    auto a22 = 2 * ma_2;
-    auto a23 = ma_2 + m0_2 - mb_2;
-    auto b23 = ma_2 + m1_2 + t1_abs;
-    auto a33 = 2 * m0_2;
-    auto b33 = 2 * m1_2;
-
-    // Polynomial fallback for each 3x3 Gram (cofactor expansion). Used by the
-    // LU helper independently per matrix if its pivots are below tolerance.
-    auto poly_g3i = a11 * (a22 * a33 - a23 * a23) - a12 * (a12 * a33 - a13 * a23) +
-        a13 * (a12 * a23 - a13 * a22);
-    auto poly_g3im1 = a11 * (a22 * b33 - b23 * b23) - a12 * (a12 * b33 - b13 * b23) +
-        b13 * (a12 * b23 - b13 * a22);
-
-    auto g3i = lup_det3<T>(a11, a12, a13, a22, a23, a33, poly_g3i);
-    auto g3im1 = lup_det3<T>(a11, a12, b13, a22, b23, b33, poly_g3im1);
-
-    return sqrt(g3i * g3im1) / 8.0;
-}
-
-template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> s23_min_max(
-    FVal<T> m0_2,
-    FVal<T> ma_2,
-    FVal<T> mb_2,
-    FVal<T> m1_2,
-    FVal<T> m2_2,
-    FVal<T> m3_2,
+    FourMom<T> pa,
+    FourMom<T> pb,
+    FourMom<T> p3,
+    FourMom<T> p_12,
     FVal<T> t1_abs,
-    FVal<T> t2,
-    FVal<T> s12
+    FVal<T> m1,
+    FVal<T> m2
 ) {
-    auto sqrtGG =
-        bk_sqrt_g3i_g3im1<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
-    auto V = bk_V<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
-    auto lambda = max(kaellen<T>(s12, ma_2, t2), EPS);
+    // Range of s23 = (pa + pb - p1)^2 as p1 turns about pa at fixed s12 and t1.
+    // In the p_12 rest frame, with z along pa and p3 in the phi = 0 half-plane
+    // (the frame of rotate_two_ref),
+    //   s23 = m0^2 + m1^2 - 2 [(sqrt(s12) + E3) E1 - p3_z p1_z]
+    //         + 2 p3_x p1_t cos(phi),
+    // a range of width 4 p3_x p1_t about the phi-independent part. Every factor
+    // of the width is read off momenta, so it keeps its relative precision when
+    // a particle is soft. The Byckling-Kajantie form of the same range, through
+    // 3x3 Gram determinants, cancels down to the square of the width and loses
+    // it all below a softness of about 1e-8.
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto m0_2 = lsquare<T>(p_tot);
+    auto s12 = lsquare<T>(p_12);
+    auto ma_2 = lsquare<T>(pa);
+    auto pa_com = boost<T>(pa, p_12, -1.);
+    auto p3_com = boost<T>(p3, p_12, -1.);
 
-    auto sa = m0_2 + m1_2 + 8 * (V + sqrtGG) / (lambda);
-    auto sb = m0_2 + m1_2 + 8 * (V - sqrtGG) / (lambda);
-    auto s_min = min(sa, sb);
-    auto s_max = max(sa, sb);
-    return {s_min, s_max};
-}
+    // p1 at phi = 0: energy, momentum along pa (p1_z) and across it (p1_t >= 0)
+    auto p1_out = p1com_from_tabs_phi<T>(
+        pa_com, s12, FVal<T>(0.), t1_abs, m1, m2, ma_2, FVal<T>(0.)
+    );
+    auto p1_com = p1_out.first;
 
-template <typename T>
-KERNELSPEC FVal<T> get_phi_from_s23(
-    IVal<T> phi_choice,
-    FVal<T> m0_2,
-    FVal<T> s23,
-    FVal<T> s12,
-    FVal<T> t1_abs,
-    FVal<T> t2,
-    FVal<T> ma_2,
-    FVal<T> mb_2,
-    FVal<T> m1_2,
-    FVal<T> m2_2,
-    FVal<T> m3_2
-) {
-    // Computes the azimuthal angle phi from s23, using the formulae
-    // in appendix B of 10.1103/PhysRev.187.2008
-    auto sqrtGG =
-        bk_sqrt_g3i_g3im1<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
-    auto V = bk_V<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
-    auto lambda = kaellen<T>(s12, ma_2, t2);
-    auto cos_phi = (lambda * (s23 - m0_2 - m1_2) - 8 * V) / (8 * sqrtGG);
-    auto phi = where(phi_choice == 1, -acos(cos_phi), acos(cos_phi));
-    return phi;
+    // p3 along pa (p3_z) and across it (p3_x >= 0)
+    auto pa_mag = sqrt(max(esquare<T>(pa_com), EPS2));
+    auto p3_z =
+        (p3_com[1] * pa_com[1] + p3_com[2] * pa_com[2] + p3_com[3] * pa_com[3]) /
+        pa_mag;
+    auto cross_x = p3_com[2] * pa_com[3] - p3_com[3] * pa_com[2];
+    auto cross_y = p3_com[3] * pa_com[1] - p3_com[1] * pa_com[3];
+    auto cross_z = p3_com[1] * pa_com[2] - p3_com[2] * pa_com[1];
+    auto p3_x =
+        sqrt(cross_x * cross_x + cross_y * cross_y + cross_z * cross_z) / pa_mag;
+
+    auto center = m0_2 + m1 * m1 -
+        2. * ((sqrt(max(s12, 0.)) + p3_com[0]) * p1_com[0] - p3_z * p1_com[3]);
+    auto half_width = 2. * p3_x * p1_com[1];
+    return {center - half_width, center + half_width};
 }
 
 // Kernels
@@ -481,22 +373,13 @@ KERNELSPEC void kernel_s23_min_max(
 ) {
     // this function is based on the sminmax subroutine from Rikkert
     // expects t1_abs (positive t invariant) as input
-    FourMom<T> p_tot, p_12, pt2;
+    FourMom<T> p_12;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
         p_12[i] = pa[i] + pb[i] - p3[i];
-        pt2[i] = pb[i] - p3[i];
     }
-    auto m0_2 = lsquare<T>(p_tot);
-    auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
-    auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto s12 = lsquare<T>(p_12);
-    auto m1_2 = m1 * m1;
-    auto m2_2 = m2 * m2;
-    auto t2 = lsquare<T>(pt2);
-
-    auto s23_out = s23_min_max<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
+    auto s23_out = s23_min_max<T>(
+        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+    );
     s23_min = s23_out.first;
     s23_max = s23_out.second;
 }
@@ -515,23 +398,17 @@ KERNELSPEC void kernel_s23_value_and_min_max(
 ) {
     // this function is based on the sminmax subroutine from Rikkert
     // expects t1_abs (positive t invariant) as input
-    FourMom<T> p_tot, p_12, pt2, p_23;
+    FourMom<T> p_12, p_23;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
         p_12[i] = p1[i] + p2[i];
-        pt2[i] = pb[i] - p3[i];
         p_23[i] = p2[i] + p3[i];
     }
-    auto m0_2 = lsquare<T>(p_tot);
-    auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
-    auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto s12 = lsquare<T>(p_12);
-    auto m1_2 = lsquare<T>(load_mom<T>(p1));
-    auto m2_2 = lsquare<T>(load_mom<T>(p2));
-    auto t2 = lsquare<T>(pt2);
+    auto m1 = sqrt(max(lsquare<T>(load_mom<T>(p1)), 0.));
+    auto m2 = sqrt(max(lsquare<T>(load_mom<T>(p2)), 0.));
 
-    auto s23_out = s23_min_max<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
+    auto s23_out = s23_min_max<T>(
+        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+    );
     s23_min = s23_out.first;
     s23_max = s23_out.second;
     s_23 = lsquare<T>(p_23);
@@ -604,22 +481,17 @@ KERNELSPEC void kernel_s23_min_max_cut(
     FOut<T, 0> s23_min,
     FOut<T, 0> s23_max
 ) {
-    FourMom<T> p_tot, p_12, pt2;
+    FourMom<T> p_12;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
         p_12[i] = pa[i] + pb[i] - p3[i];
-        pt2[i] = pb[i] - p3[i];
     }
-    auto m0_2 = lsquare<T>(p_tot);
-    auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
     auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto s12 = lsquare<T>(p_12);
     auto m1_2 = m1 * m1;
     auto m2_2 = m2 * m2;
-    auto t2 = lsquare<T>(pt2);
 
-    auto s23_out = s23_min_max<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
+    auto s23_out = s23_min_max<T>(
+        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+    );
     auto smn = s23_out.first;
     auto smx = s23_out.second;
 
@@ -663,23 +535,24 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
     FOut<T, 0> s23_min,
     FOut<T, 0> s23_max
 ) {
-    FourMom<T> p_tot, p_12, pt2, p_23;
+    FourMom<T> p_12, p_23;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
         p_12[i] = p1[i] + p2[i];
-        pt2[i] = pb[i] - p3[i];
         p_23[i] = p2[i] + p3[i];
     }
-    auto m0_2 = lsquare<T>(p_tot);
-    auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
     auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto s12 = lsquare<T>(p_12);
     auto m1_2 = lsquare<T>(load_mom<T>(p1));
     auto m2_2 = lsquare<T>(load_mom<T>(p2));
-    auto t2 = lsquare<T>(pt2);
 
-    auto s23_out = s23_min_max<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12);
+    auto s23_out = s23_min_max<T>(
+        load_mom<T>(pa),
+        load_mom<T>(pb),
+        load_mom<T>(p3),
+        p_12,
+        t1_abs,
+        sqrt(max(m1_2, 0.)),
+        sqrt(max(m2_2, 0.))
+    );
     auto smn = s23_out.first;
     auto smx = s23_out.second;
 
@@ -723,31 +596,42 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     FOut<T, 1> p2,
     FOut<T, 0> det
 ) {
-    FourMom<T> p_12, p_c, p_tot;
+    FourMom<T> p_12, p_c;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
         p_12[i] = pa[i] + pb[i] - p3[i];
         p_c[i] = pb[i] - p3[i];
     }
     auto pa_com = boost<T>(load_mom<T>(pa), p_12, -1.);
     auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
-    auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto m0_2 = lsquare<T>(p_tot);
     auto s12 = lsquare<T>(p_12);
     auto t2 = lsquare<T>(p_c);
-    auto m1_2 = m1 * m1;
-    auto m2_2 = m2 * m2;
 
-    auto phi = get_phi_from_s23<T>(
-        phi_index, m0_2, s23, s12, t1_abs, t2, ma_2, mb_2, m1_2, m2_2, m3_2
+    // s23 is linear in cos(phi) across its kinematic range, and the 4x4 Gram
+    // determinant of Byckling-Kajantie factorises on that range:
+    //   cos(phi) = 2 u - 1,  u = (s23 - s23_min) / (s23_max - s23_min),
+    //   -G4 = lambda(s12, ma^2, t2) / 16 * (s23 - s23_min) * (s23_max - s23).
+    // Both are evaluated through u here. Forming G4 (or the equivalent cos(phi)
+    // expression) from the invariants instead cancels terms of order s^4 down
+    // to a result that can be many orders of magnitude smaller whenever the
+    // s23 range is narrow (a soft particle), and returned Jacobians of up to
+    // 1e20 times the typical weight. The range itself comes from momenta for
+    // the same reason, see s23_min_max.
+    auto s23_range = s23_min_max<T>(
+        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
     );
+    auto s23_width = s23_range.second - s23_range.first;
+    auto u = min(max((s23 - s23_range.first) / s23_width, 0.), 1.);
+    auto cos_phi = 2. * u - 1.;
+    auto phi = where(phi_index == 1, -acos(cos_phi), acos(cos_phi));
+    // 8 sqrt(-G4) = sqrt(lambda) * (s23_max - s23_min) * |sin(phi)|
+    auto sqrt_neg_gram4_x8 =
+        sqrt(max(kaellen<T>(s12, ma_2, t2), 0.)) * s23_width * 2. * sqrt(u * (1. - u));
+    // The edges of the range (sin(phi) = 0) are a set of measure zero.
+    auto det_2to3 = where(sqrt_neg_gram4_x8 > 0., 1. / sqrt_neg_gram4_x8, FVal<T>(0.));
 
     auto scatter_out =
         p1com_from_tabs_phi<T>(pa_com, s12, phi, t1_abs, m1, m2, ma_2, t2);
     auto p1_com = scatter_out.first;
-    auto gram4 = bk_gram4<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12, s23);
-    auto det_2to3 = 1 / (8 * sqrt(max(-gram4, EPS2)));
     auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
     auto p1_rot = rotate_two_ref<T>(p1_com, pa_com, p3_p12);
     auto p1_lab = boost<T>(p1_rot, p_12, 1.);
@@ -772,16 +656,12 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     IOut<T, 0> phi_index,
     FOut<T, 0> det
 ) {
-    FourMom<T> p_12, p_c, p_tot;
+    FourMom<T> p_12, p_c;
     for (int i = 0; i < 4; ++i) {
         p_12[i] = pa[i] + pb[i] - p3[i];
-        p_tot[i] = p_12[i] + p3[i];
         p_c[i] = pb[i] - p3[i];
     }
     auto ma_2 = lsquare<T>(load_mom<T>(pa));
-    auto mb_2 = lsquare<T>(load_mom<T>(pb));
-    auto m3_2 = lsquare<T>(load_mom<T>(p3));
-    auto m0_2 = lsquare<T>(p_tot);
     auto s12 = lsquare<T>(p_12);
     auto t2 = lsquare<T>(p_c);
 
@@ -797,8 +677,22 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
         phi < 0, IVal<T>(1), IVal<T>(0)
     ); // choose phi index based on the value of phi
 
-    auto gram4 = bk_gram4<T>(m0_2, ma_2, mb_2, m1_2, m2_2, m3_2, t1_abs, t2, s12, s23);
-    auto det_2to3 = 8 * sqrt(max(-gram4, EPS2));
+    // 8 sqrt(-G4) = sqrt(lambda) * (s23_max - s23_min) * |sin(phi)|, see the
+    // forward kernel; |sin(phi)| is read off the momenta directly.
+    auto s23_range = s23_min_max<T>(
+        load_mom<T>(pa),
+        load_mom<T>(pb),
+        load_mom<T>(p3),
+        p_12,
+        t1_abs,
+        sqrt(max(m1_2, 0.)),
+        sqrt(max(m2_2, 0.))
+    );
+    auto pt2_rot = p1_rot[1] * p1_rot[1] + p1_rot[2] * p1_rot[2];
+    auto sin_phi_abs =
+        where(pt2_rot > 0., fabs(p1_rot[2]) / sqrt(pt2_rot), FVal<T>(0.));
+    auto det_2to3 = sqrt(max(kaellen<T>(s12, ma_2, t2), 0.)) *
+        (s23_range.second - s23_range.first) * sin_phi_abs;
     m1 = sqrt(max(EPS2, m1_2));
     m2 = sqrt(max(EPS2, m2_2));
     det = 2 * det_2to3;
