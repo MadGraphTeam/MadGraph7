@@ -44,10 +44,9 @@ fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
 # options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
-# multiplies the DYNAMICAL scale above, event by event (a fixed scale is an
-# absolute value and is not touched). half_transverse_mass with scalefact = 0.5
-# is H_T/4, the usual central choice for a high-multiplicity final state.
-scalefact = %(beam.scalefact)s
+# factor on the dynamical scale (fixed scales are untouched), e.g. 0.5 with
+# half_transverse_mass is H_T/4. Shortcut: set HT/4 (also HT, HT/2, HT/8)
+scale_factor = %(beam.scale_factor)s
 
 [generation]
 events = %(generation.events)s

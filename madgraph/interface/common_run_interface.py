@@ -5714,6 +5714,14 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     'pbp': 'setup heavy ion configuration for lead-proton collision',
     'pp': 'remove setup of heavy ion configuration to set proton-proton collision',
     })
+            # set HT, HT/2, HT/4, HT/8: dynamical mu_R = mu_F = H_T/n
+            for n in (1, 2, 4, 8):
+                name = 'ht' if n == 1 else 'ht/%d' % n
+                self.special_shortcut[name] = \
+                    ([], [lambda self, n=n: lambda: self.set_ht_scale(n)])
+                self.special_shortcut_help[name] = \
+                    'set mu_R = mu_F = %s (sum of transverse masses%s)' % (
+                        name.upper(), '' if n == 1 else ' over %d' % n)
             
         self.update_block += [b.name for b in self.run_card.blocks]
         
@@ -5905,6 +5913,29 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         self.reweight_vars = [k.lower() for k in self.reweight_card.keys()]
         #we define here the reweight_card for the density mode as a dictionnary. And we read it off the default cards
         return []
+
+    def set_ht_scale(self, n):
+        """mu_R = mu_F = H_T/n, dynamical, in whichever run_card is loaded"""
+        # H_T itself, else H_T/2 times a factor (so HT/2 keeps factor 1)
+        half = n != 1
+        factor = 2. / n if half else 1.
+        if isinstance(self.run_card, banner_mod.RunCardMG7):
+            cmds = ['beam.fixed_ren_scale False', 'beam.fixed_fact_scale False',
+                    'beam.dynamical_scale_choice %s' % (
+                        'half_transverse_mass' if half else 'transverse_mass'),
+                    'beam.scale_factor %s' % factor]
+        elif isinstance(self.run_card, banner_mod.RunCardNLO):
+            cmds = ['fixed_ren_scale F', 'fixed_fac_scale F',
+                    'dynamical_scale_choice %d' % (3 if half else 2),
+                    'mur_over_ref %s' % factor, 'muf_over_ref %s' % factor]
+        elif isinstance(self.run_card, banner_mod.RunCardLO):
+            cmds = ['fixed_ren_scale F', 'fixed_fac_scale F',
+                    'dynamical_scale_choice %d' % (3 if half else 2),
+                    'scalefact %s' % factor]
+        else:
+            raise InvalidCmd('HT/n shortcut: no supported run_card loaded')
+        for cmd in cmds:
+            self.do_set('run_card %s' % cmd)
 
     def set_CM_velocity(self, line):
         """compute sqrts from the velocity in the center of mass frame"""

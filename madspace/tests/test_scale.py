@@ -1,8 +1,5 @@
-"""EnergyScale: the dynamical scale choices and the run card's scalefact.
-
-scalefact multiplies the DYNAMICAL scale only, exactly like the LO run card's
-`scalefact` (Template/LO/SubProcesses/setscales.f, "scale factor for
-event-by-event scales"): a fixed scale is an absolute value and is left alone.
+"""EnergyScale: the dynamical scale choices and `scale_factor`, which multiplies
+the dynamical scale only (as the LO `scalefact`); fixed scales are left alone.
 """
 
 import numpy as np
@@ -65,7 +62,7 @@ def test_dynamical_scale_definitions(dyn_type, expected):
 
 
 @pytest.mark.parametrize("factor", [0.5, 1.0, 2.0])
-def test_scalefact_multiplies_the_dynamical_scale(factor):
+def test_scale_factor_multiplies_the_dynamical_scale(factor):
     momenta = _momenta()
     scale = ms.EnergyScale(
         momenta.shape[1],
@@ -84,7 +81,7 @@ def test_scalefact_multiplies_the_dynamical_scale(factor):
     assert fact2 == approx(reference)
 
 
-def test_scalefact_default_is_one():
+def test_scale_factor_default_is_one():
     momenta = _momenta()
     args = (
         momenta.shape[1],
@@ -101,7 +98,7 @@ def test_scalefact_default_is_one():
         assert a == approx(b)
 
 
-def test_scalefact_leaves_a_fixed_scale_alone():
+def test_scale_factor_leaves_a_fixed_scale_alone():
     momenta = _momenta()
     fixed = 345.0
     scale = ms.EnergyScale(
@@ -120,7 +117,7 @@ def test_scalefact_leaves_a_fixed_scale_alone():
     assert fact2 == approx(np.full(momenta.shape[0], fixed))
 
 
-def test_scalefact_with_a_fixed_renormalisation_scale_only():
+def test_scale_factor_with_a_fixed_renormalisation_scale_only():
     """mu_R fixed, mu_F dynamical: only mu_F picks the factor up."""
     momenta = _momenta()
     fixed = 91.188

@@ -6631,7 +6631,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)
-        self.add_toml_param('beam', 'scalefact', 1.0)
+        self.add_toml_param('beam', 'scale_factor', 1.0)
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
                      'half_transverse_mass', 'partonic_energy'])
@@ -6878,11 +6878,10 @@ class RunCardMG7(RunCard):
         if key == 'store_rwgt_info':
             return True
         if key == 'scalefact':
-            # only the dynamical scale carries it, as at LO; a fixed-scale run
-            # has it folded into the scale itself.
+            # applies to the dynamical scale only
             if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
                 return 1.0
-            return float(beam['scalefact'])
+            return float(beam['scale_factor'])
         if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
         if key in ('ickkw', 'ievo_eva', 'evaorder'):
@@ -7189,14 +7188,13 @@ class RunCardMG7(RunCard):
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
 
         beam = self['beam']
-        if float(beam['scalefact']) <= 0.:
-            raise InvalidRunCard("scalefact must be strictly positive")
-        if (float(beam['scalefact']) != 1. and beam['fixed_ren_scale']
+        if float(beam['scale_factor']) <= 0.:
+            raise InvalidRunCard("scale_factor must be strictly positive")
+        if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
                 and beam['fixed_fact_scale']):
             logger.warning(
-                "scalefact = %s is ignored: it multiplies the dynamical scale, "
-                "and this run fixes both mu_R and mu_F. Put the factor into "
-                "ren_scale / fact_scale1 / fact_scale2 instead.", beam['scalefact'])
+                "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
+                beam['scale_factor'])
 
         # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
         # generic 'allowed' machinery cannot check it on its own.
@@ -7381,7 +7379,7 @@ class RunCardMG7(RunCard):
         'nevents': 'generation.events',
         'gridpack': 'gridpack.save_gridpack',
         'fixed_ren_scale': 'beam.fixed_ren_scale',
-        'scalefact': 'beam.scalefact',
+        'scalefact': 'beam.scale_factor',
         'scale': 'beam.ren_scale',
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',

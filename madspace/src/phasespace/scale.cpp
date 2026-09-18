@@ -56,9 +56,7 @@ NamedVector<Value> EnergyScale::build_function_impl(
     default:
         throw std::runtime_error("invalid dynamical scale type");
     }
-    // `scale_factor` multiplies the dynamical scale only; a fixed scale is an
-    // absolute value and keeps whatever the card asked for.  Same convention as
-    // the LO run card's `scalefact`.
+    // dynamical scale only; a fixed scale is an absolute value
     if (_scale_factor != 1.) {
         scale = fb.mul(scale, _scale_factor);
     }

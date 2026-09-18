@@ -47,7 +47,7 @@ Legend for the mapping:
 | `dsqrt_q2fact1`, `dsqrt_q2fact2` | `beam.fact_scale1`, `beam.fact_scale2` | [=] | rename |
 | `fixed_fac_scale` (and `_scale1/_scale2`) | `beam.fixed_fact_scale` | [!] | MG7 has one flag; LO can fix beam 1 and beam 2 independently. |
 | `dynamical_scale_choice` (int) | `beam.dynamical_scale_choice` (str) | [~] | clean int→string table: `1`(ΣEt)→`transverse_energy`, `2`(HT=Σ transverse mass)→`transverse_mass`, `3`(HT/2)→`half_transverse_mass`, `4`(partonic CM energy)→`partonic_energy`. `-1`(CKKW back-clustering, LO default) and `10` have no MG7 equivalent → fall back to MG7 default `half_transverse_mass` [!]; `0`(user hook) → [x]. |
-| `scalefact` | `beam.scalefact` | [=] | multiplies the dynamical scale event by event, same convention as `setscales.f` (a fixed scale is not touched). |
+| `scalefact` | `beam.scale_factor` | [=] | rename; multiplies the dynamical scale only, as in `setscales.f`. |
 | `mue_over_ref`, `mue_ref_fixed`, `fixed_extra_scale` | — | [x] | EW-scale extras: no MG7 field. |
 
 ## 4. Generation / run
@@ -141,7 +141,7 @@ simplified_channel_count,decays}`, all of `[madnis]`.
 - Beams: `ebeam1/2`→`e_cm`, `lpp`→`leptonic` (common case).
 - PDF: `lhaid`/`pdlabel`→`pdf` (with a label/id → name table).
 - Scales: `fixed_ren_scale`, `scale`→`ren_scale`, `dsqrt_q2fact1/2`→`fact_scale1/2`,
-  `dynamical_scale_choice` (int→str table), `fixed_fac_scale`, `scalefact`.
+  `dynamical_scale_choice` (int→str table), `fixed_fac_scale`, `scalefact`→`scale_factor`.
 - Generation: `nevents`→`events`, `gridpack`, `bwcutoff`, `sde_strategy`,
   `maxjetflavor`→jet multiparticle, `use_syst`→`systematics`.
 - Cuts: pt/eta(max)/deltaR/mass/sqrt_s for jet/bottom/lepton/photon/missing.
