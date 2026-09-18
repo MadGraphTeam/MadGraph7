@@ -100,6 +100,13 @@ public:
     );
     /// The kinematic quantity this observable computes.
     ObservableOption observable() const { return _observable; }
+    /// Whether this observable is unchanged by the initial-state mirror, the
+    /// rotation by pi about x (py, pz -> -py, -pz) that moves each leg onto
+    /// the other beam. Both the observable itself and the one it is ordered by
+    /// have to be: sorting by a quantity that flips picks a different particle
+    /// out of the event. An observable that matched no particle (see
+    /// not_found()) is the constant 0 and counts as invariant.
+    bool mirror_invariant() const;
     /// Per-selection lists of particle indices the observable is evaluated on.
     const nested_vector2<me_int_t>& indices() const { return _indices; }
     /// Whether the tuple momenta are summed before evaluation.

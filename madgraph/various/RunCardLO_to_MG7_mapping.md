@@ -24,7 +24,7 @@ Legend for the mapping:
 
 | LO parameter(s) | MG7 target | class | notes |
 |---|---|---|---|
-| `ebeam1`, `ebeam2` | `beam.e_cm` | [~] | `e_cm = ebeam1 + ebeam2` for a head-on collider. Asymmetric beams keep e_cm but lose the boost. |
+| `ebeam1`, `ebeam2` | `beam.ebeam1`, `beam.ebeam2` | [x] | One energy per beam; asymmetric beams keep their boost (events written and eta cuts applied in the lab frame). `beam.e_cm = 2 sqrt(ebeam1 ebeam2)` is derived. |
 | `lpp1`, `lpp2` | `beam.leptonic` | [!] | `leptonic = |lpp| in {3,4}` (e/µ). MG7 only stores hadronic-vs-leptonic; it cannot express antiproton vs proton (`lpp=±1`), elastic photon (`lpp=2`), EVA (`lpp=±3/±4` variants), plugin (`lpp=9`) or the no-PDF fixed-energy beam (`lpp=0`). |
 | `polbeam1`, `polbeam2` | — | [x] | beam polarization: no MG7 field. |
 | `nb_proton1/2`, `nb_neutron1/2`, `mass_ion1/2` | — | [x] | heavy-ion beams: no MG7 field. |
@@ -137,7 +137,7 @@ simplified_channel_count,decays}`, all of `[madnis]`.
 ## Summary / recommendation
 
 **Safe to port now (the converter should cover these):**
-- Beams: `ebeam1/2`→`e_cm`, `lpp`→`leptonic` (common case).
+- Beams: `ebeam1/2`→`ebeam1/2`, `lpp`→`leptonic` (common case).
 - PDF: `lhaid`/`pdlabel`→`pdf` (with a label/id → name table).
 - Scales: `fixed_ren_scale`, `scale`→`ren_scale`, `dsqrt_q2fact1/2`→`fact_scale1/2`,
   `dynamical_scale_choice` (int→str table), `fixed_fac_scale`.
