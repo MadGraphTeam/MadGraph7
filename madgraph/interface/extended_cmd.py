@@ -89,6 +89,29 @@ def warn_removed_option(name, value=None):
                    name, removed_options[name])
 
 
+class QuestionAnswer(str):
+    """A line of history that answered a question instead of being a command.
+
+    It is kept -- `history` has to replay the answers, or the file it writes
+    reruns a launch with the defaults -- but it is not a command of the prompt
+    whose history holds it.  `set width 6 auto` typed at the launch card
+    question is a card edit; replayed as an MG5 command it is an error.  So
+    everything that turns a history into commands for something else skips
+    these: the proc card an `output` writes (MadSpin and the reweighting replay
+    its `set` lines), and the `set` lines a launch copies into the run it
+    starts.  Test with is_question_answer(), which needs no import of this
+    module.
+    """
+
+    is_answer = True
+
+
+def is_question_answer(line):
+    """True for a history line recorded by record_answer_in_history()."""
+
+    return bool(getattr(line, 'is_answer', False))
+
+
 def record_answer_in_history(interface, answer):
     """Append an answer to the history of `interface` and everything above it.
 
@@ -102,6 +125,7 @@ def record_answer_in_history(interface, answer):
     answer = str(answer).strip() if answer is not None else ''
     if not answer:
         return
+    answer = QuestionAnswer(answer)
     seen = set()
     while interface is not None and id(interface) not in seen:
         seen.add(id(interface))
