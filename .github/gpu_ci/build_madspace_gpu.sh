@@ -2,7 +2,7 @@
 # Runs on the self-hosted runner (GPU node): job build_madspace of gpu_runner_ci.yml.
 # Builds madspace with the CUDA or HIP backend, for the GPU of this node only, and
 # keeps it on the cluster: it is rebuilt only when the madspace sources, the backend,
-# the GPU architecture, the modules or the python version change.
+# the GPU architecture or the loaded module versions change.
 # Environment:
 #   BACKEND    cuda | hip
 #   MODULES    modules to load (see load_modules.sh)
@@ -34,8 +34,9 @@ if [ -z "$ARCH" ]; then
 fi
 echo "Backend $BACKEND, GPU architecture $ARCH"
 
-# python environment (per module list + python version)
-ENV_KEY=$(printf '%s\n' "$MODULES" "$(python3 -VV)" | sha1sum | cut -c1-12)
+# python environment, per set of modules actually loaded (with their versions, so that
+# an unversioned name like "ROCm" triggers a rebuild when its default version changes)
+ENV_KEY=$(printf '%s\n' "$(module -t list 2>&1 | sort)" "$(python3 -VV)" | sha1sum | cut -c1-12)
 ENV_DIR=$CACHE_DIR/env-$ENV_KEY
 VENV=$ENV_DIR/venv
 if [ ! -e "$VENV/.ready" ]; then

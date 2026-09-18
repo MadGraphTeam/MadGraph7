@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       modules:
-        description: 'Modules to load, in order (empty = releases/2023b GCC/13.2.0 CUDA/12.4.0 Python/3.11.5-GCCcore-13.2.0)'
+        description: 'Modules to load, in order (empty = PyTorch CUDA Python foss)'
         type: string
         default: ''
       gres:
@@ -56,7 +56,7 @@ jobs:
       partition: gpu
       backend: cuda
       # the fallbacks are the defaults, used on push (no inputs) or when left empty
-      modules: ${{ inputs.modules || 'releases/2023b GCC/13.2.0 CUDA/12.4.0 Python/3.11.5-GCCcore-13.2.0' }}
+      modules: ${{ inputs.modules || 'PyTorch CUDA Python foss' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
       nevents: ${{ inputs.nevents || '10000' }}
