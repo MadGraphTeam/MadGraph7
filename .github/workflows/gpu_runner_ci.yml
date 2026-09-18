@@ -160,7 +160,7 @@ jobs:
         run: |
           mkdir -p results
           (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt pp_ttx.mg7 output.log generate_events.log \
-              PROC_pp_ttx/Cards PROC_pp_ttx/Events/*/info.json 2> /dev/null) | tar -xf - -C results || true
+              PROC_pp_ttx/Cards PROC_pp_ttx/Events/*/info.json PROC_pp_ttx/Events/*/*.log 2> /dev/null) | tar -xf - -C results || true
           find results -type f | sort
       - name: job summary
         if: always()
