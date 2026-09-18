@@ -96,6 +96,8 @@ jobs:
         with:
           key: ${{ secrets.CECI_KEY }}
           user: ${{ vars.CECI_USER || 'omatt' }}
+      - name: check the ssh access to the cluster
+        run: ssh "$CLUSTER" 'echo "connected to $(hostname) as $USER"'
       - name: copy the runner batch script and job hook to the cluster
         run: |
           scp .github/gpu_ci/runner_batch.sh .github/gpu_ci/job_started_hook.sh "$CLUSTER:mg7-gpu-ci/runner-$LABEL/" || {

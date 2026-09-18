@@ -25,8 +25,22 @@ runs:
         CECI_USER: ${{ inputs.user }}
       run: |
         install -d -m 700 ~/.ssh
-        printf '%s\n' "$CECI_KEY" > ~/.ssh/id_ceci
+        # tolerate a key pasted with Windows line endings
+        printf '%s\n' "$CECI_KEY" | tr -d '\r' > ~/.ssh/id_ceci
         chmod 600 ~/.ssh/id_ceci
+        # check that ssh can load the key; on failure explain why, without printing the key
+        if ! ssh-keygen -y -P '' -f ~/.ssh/id_ceci > /dev/null 2> /tmp/keycheck; then
+          first=$(head -n 1 ~/.ssh/id_ceci)
+          case $first in
+            '') hint="the secret is empty" ;;
+            ssh-*|ecdsa-*) hint="this is a PUBLIC key: store the private key instead" ;;
+            -----BEGIN*) hint="header '$first', $(wc -l < ~/.ssh/id_ceci) lines: the key is truncated, reformatted or protected by a passphrase" ;;
+            *) hint="it does not start with a '-----BEGIN ... PRIVATE KEY-----' line" ;;
+          esac
+          echo "::error::the CECI_KEY secret is not a usable private ssh key ($(tr -d '\n' < /tmp/keycheck)): $hint"
+          exit 1
+        fi
+        echo "CECI key: $(ssh-keygen -l -f ~/.ssh/id_ceci)"
         # Pinned host keys. If a cluster gets a new key, update this list with
         # e.g. `ssh manneback ssh-keyscan manneback`.
         cat >> ~/.ssh/known_hosts << 'EOF'
