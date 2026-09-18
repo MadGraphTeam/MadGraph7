@@ -393,7 +393,7 @@ def attach(interface, session):
         interface.__class__ = _wrap(interface.__class__)
         _suspend_crash_on_error(interface)
     interface._tutorial_session = session
-    _arm_question_hooks(session)
+    _arm_question_hooks(session, interface)
     return session
 
 
@@ -454,7 +454,7 @@ def mixin_command_names():
     return [name for name in vars(TutorialMixin) if name.startswith('do_')]
 
 
-def _arm_question_hooks(session):
+def _arm_question_hooks(session, interface=None):
     """Let the running tutorial speak at any question, and stop the clock.
 
     Both are module-level switches in extended_cmd because a question is often
@@ -463,7 +463,7 @@ def _arm_question_hooks(session):
     at.
     """
 
-    extended_cmd.question_hint = lambda: _question_hint(session)
+    extended_cmd.question_hint = lambda: _question_hint(session, interface)
     extended_cmd.suppress_timeout = True
 
 
@@ -472,8 +472,8 @@ def _disarm_question_hooks():
     extended_cmd.suppress_timeout = False
 
 
-def _question_hint(session):
+def _question_hint(session, interface=None):
     """The current step's hint, styled, or None to keep the generic line."""
 
-    hint = session.question_hint()
+    hint = session.question_hint(interface)
     return to_terminal(hint) if hint else None

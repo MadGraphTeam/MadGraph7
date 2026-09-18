@@ -590,8 +590,30 @@ class OriginalCmd(object):
 #===============================================================================
 # CmdExtended
 #===============================================================================
+# `help vi`: when a card opens in vi, these are the keys that get someone in and
+# out of it.  Answered at every prompt, the card question included.
+VI_BASICS = """vi, in the keys you need to edit a card:
+
+  i            start typing          (the bottom line says -- INSERT --)
+  Esc          stop typing, back to moving around
+  :wq  Enter   save the card and quit
+  :q!  Enter   quit without saving
+  /word Enter  search for "word"; n jumps to the next match
+  x    dd      delete a character / the whole line
+  u            undo
+
+Lost? Press Esc twice and type  :q!  Enter -- nothing is saved.
+Rather have another editor? `set text_editor nano` (or emacs, code, ...)."""
+
+
 class BasicCmd(OriginalCmd):
     """Simple extension for the readline"""
+
+    def help_vi(self, *args):
+        """`help vi`: the few keys needed to edit a card in vi"""
+        # *args: the launch switch question calls help_X with an argument
+        # (SmartQuestion.print_help_for_switch), the MG7 prompt without
+        logger.info(VI_BASICS)
 
     # set by complete() and read back by print_suggestions, which readline
     # calls on the object owning the completer. A question which is answered

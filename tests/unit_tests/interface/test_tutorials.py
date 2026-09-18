@@ -1391,8 +1391,13 @@ class TestLaunchQuestion(unittest.TestCase):
 
         step = self.step('produce the output')
         self.assertTrue(step.question_hint)
+        hint = step.question_hint
+        if callable(hint):
+            # it names the editor a card will open in, so it is worked out
+            # when the question is asked
+            hint = hint(None)
         for detail in ('param_card.dat', 'run_card.toml'):
-            self.assertIn(detail, step.question_hint)
+            self.assertIn(detail, hint)
         self.assertNotIn('question you just answered', self.after())
 
     def test_it_does_not_reprint_the_question(self):
@@ -2337,3 +2342,104 @@ class TutorialSkipToStepTest(_TutorialTestCase):
         self.assertRaises(madgraph.InvalidCmd,
                           interface.check_tutorial, ['skip', 'three'])
         self.assertIn('index', interface._tutorial_opts)
+
+
+#===============================================================================
+# the text editor a card opens in
+#===============================================================================
+
+class TutorialEditorTest(unittest.TestCase):
+    """`lo` says which editor a card will open in before the reader opens one,
+    offers `help vi` when it is vi, and says how to change it afterwards."""
+
+    def setUp(self):
+        import os
+        import madgraph.various.misc as misc
+
+        self.misc = misc
+        self._which = misc.which
+        self._editor = os.environ.get('EDITOR')
+        self.installed = set()
+        misc.which = lambda program: program in self.installed
+
+    def tearDown(self):
+        import os
+
+        self.misc.which = self._which
+        if self._editor is None:
+            os.environ.pop('EDITOR', None)
+        else:
+            os.environ['EDITOR'] = self._editor
+
+    def resolve(self, configured=None):
+        return self.misc.open_file.resolve_text_editor(configured, quiet=True)
+
+    def test_the_order_mg7_resolves_it_in(self):
+        import os
+
+        os.environ.pop('EDITOR', None)
+        self.installed = {'emacs', 'nano'}
+        self.assertEqual(self.resolve(), 'emacs')          # first default found
+        os.environ['EDITOR'] = 'nano'
+        self.assertEqual(self.resolve(), 'nano')           # $EDITOR wins
+        self.installed.add('code')
+        self.assertEqual(self.resolve('code -w'), 'code -w')   # the option wins
+        self.assertEqual(self.resolve('missing'), 'nano')  # unless not installed
+
+    def test_the_question_names_the_editor_and_offers_help_vi(self):
+        import os
+        import madgraph.interface.tutorials.lo as lo
+
+        class _Interface(object):
+            options = {}
+
+        self.installed = {'vi'}
+        os.environ['EDITOR'] = 'vi'
+        hint = lo._launch_question_hint(_Interface())
+        self.assertIn('**vi**', hint)
+        self.assertIn('`help vi`', hint)
+
+        self.installed = {'nano'}
+        os.environ['EDITOR'] = 'nano'
+        hint = lo._launch_question_hint(_Interface())
+        self.assertIn('**nano**', hint)
+        self.assertNotIn('help vi', hint)
+
+    def test_back_at_the_prompt_it_says_how_to_change_it(self):
+        import madgraph.interface.tutorials.lo as lo
+
+        class _Interface(object):
+            options = {'text_editor': 'emacs'}
+
+        self.installed = {'emacs'}
+        text = lo._editor_back_at_the_prompt(_Interface())
+        self.assertIn('**emacs**', text)
+        self.assertIn('`text_editor` option', text)
+        self.assertIn('set text_editor', text)
+        self.assertIn('save options text_editor', text)
+
+    def test_help_vi_answers(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        handler = _Handler()
+        logger = logging.getLogger('cmdprint')
+        logger.addHandler(handler)
+        level = logger.level
+        logger.setLevel(logging.INFO)
+        try:
+            extended_cmd.BasicCmd.help_vi(None)
+            # the launch switch question calls help_X with an argument
+            # (print_help_for_switch); without *args that crashed the launch
+            extended_cmd.BasicCmd.help_vi(None, '')
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+        self.assertEqual(len(captured), 2)
+        for key in (':wq', ':q!', 'Esc'):
+            self.assertIn(key, captured[0])

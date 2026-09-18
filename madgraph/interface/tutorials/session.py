@@ -57,7 +57,8 @@ class Step(object):
     setup     callable(interface) run before the step is announced.
     question_hint
               shown under any question MG7 asks while this step is current, in
-              place of the generic "type 'help'" line. The card question a
+              place of the generic "type 'help'" line.  May be a
+              callable(interface) -> str. The card question a
               `launch` step leads to is the case that matters: it is asked by
               the run interface in the middle of the command, so this is the
               only way a step can say anything there.
@@ -384,6 +385,44 @@ def run_line(interface=None):
     if not mean:
         return ''
     return '**%.4g +- %.2g pb**' % (mean, error)
+
+
+VI_FAMILY = ('vi', 'vim', 'nvim', 'vim.basic', 'vim.tiny')
+
+
+def text_editor(interface=None):
+    """(editor, where it comes from): the program a card will open in.
+
+    Resolved the way MG7 resolves it when the card is opened
+    (misc.open_file.resolve_text_editor), so a tutorial can say in advance
+    which editor the reader is about to be put in.  (None, ...) if there is
+    none at all.
+    """
+
+    import madgraph.various.misc as misc
+
+    try:
+        configured = (getattr(interface, 'options', None) or {}).get(
+            'text_editor')
+    except Exception:
+        configured = None
+    editor = misc.open_file.resolve_text_editor(configured, quiet=True)
+    if configured and editor == configured:
+        source = 'your `text_editor` option'
+    elif editor and editor == os.environ.get('EDITOR'):
+        source = 'your `$EDITOR`'
+    else:
+        source = ("MG7's first choice when neither `text_editor` nor "
+                  "`$EDITOR` names one")
+    return editor, source
+
+
+def is_vi(editor):
+    """True for vi and its relatives, which need a word of explanation."""
+
+    if not editor:
+        return False
+    return os.path.basename(editor.split()[0]) in VI_FAMILY
 
 
 def model_line(interface=None):
@@ -796,7 +835,7 @@ class TutorialSession(object):
     def finished(self):
         return self.index >= len(self.tutorial.steps) - 1
 
-    def question_hint(self):
+    def question_hint(self, interface=None):
         """The hint for whatever step is current, or None.
 
         The step that *asked* for the command is the current one while that
@@ -805,7 +844,15 @@ class TutorialSession(object):
         """
 
         step = self.current
-        return step.question_hint if step is not None else None
+        hint = step.question_hint if step is not None else None
+        if callable(hint):
+            # a hint whose wording depends on the machine -- which editor a
+            # card will open in, say
+            try:
+                return hint(interface)
+            except Exception:
+                return None
+        return hint
 
     def progress(self):
         """(done, total) for the prompt and `status`."""
