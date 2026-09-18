@@ -25,8 +25,23 @@ runs:
         CECI_USER: ${{ inputs.user }}
       run: |
         install -d -m 700 ~/.ssh
-        # tolerate a key pasted with Windows line endings
-        printf '%s\n' "$CECI_KEY" | tr -d '\r' > ~/.ssh/id_ceci
+        # Rebuild a clean key file from the secret, whatever the way it was pasted:
+        # Windows line endings, blank or indented lines, newlines turned into spaces.
+        printf '%s' "$CECI_KEY" | python3 -c '
+        import re, sys
+        raw = sys.stdin.read().replace("\r", "")
+        m = re.search(r"-----BEGIN ([A-Z0-9 ]+)-----(.*?)-----END \1-----", raw, re.S)
+        if not m:
+            sys.stdout.write(raw.strip() + "\n")
+        elif ":" in m.group(2):  # PEM with headers (e.g. encrypted RSA): keep its lines
+            lines = [l.strip() for l in m.group(2).strip().splitlines() if l.strip()]
+            sys.stdout.write("-----BEGIN %s-----\n%s\n-----END %s-----\n" % (m.group(1), "\n".join(lines), m.group(1)))
+        else:
+            body = "".join(m.group(2).split())
+            width = 70 if m.group(1) == "OPENSSH PRIVATE KEY" else 64
+            wrapped = "\n".join(body[i:i + width] for i in range(0, len(body), width))
+            sys.stdout.write("-----BEGIN %s-----\n%s\n-----END %s-----\n" % (m.group(1), wrapped, m.group(1)))
+        ' > ~/.ssh/id_ceci
         chmod 600 ~/.ssh/id_ceci
         # check that ssh can load the key; on failure explain why, without printing the key
         if ! ssh-keygen -y -P '' -f ~/.ssh/id_ceci > /dev/null 2> /tmp/keycheck; then
@@ -34,8 +49,11 @@ runs:
           case $first in
             '') hint="the secret is empty" ;;
             ssh-*|ecdsa-*) hint="this is a PUBLIC key: store the private key instead" ;;
-            -----BEGIN*) hint="header '$first', $(wc -l < ~/.ssh/id_ceci) lines: the key is truncated, reformatted or protected by a passphrase" ;;
-            *) hint="it does not start with a '-----BEGIN ... PRIVATE KEY-----' line" ;;
+            -----BEGIN*)
+              body=$(sed '1d;$d' ~/.ssh/id_ceci | tr -d '\n')
+              if printf '%s' "$body" | base64 -d > /dev/null 2>&1; then b64=valid; else b64=INVALID; fi
+              hint="header '$first', ${#body} base64 characters ($b64 base64): the key is truncated, altered or protected by a passphrase" ;;
+            *) hint="no '-----BEGIN ... PRIVATE KEY-----' line found" ;;
           esac
           echo "::error::the CECI_KEY secret is not a usable private ssh key ($(tr -d '\n' < /tmp/keycheck)): $hint"
           exit 1
