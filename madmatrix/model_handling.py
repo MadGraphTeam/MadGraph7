@@ -1869,10 +1869,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     process_class_template = pjoin('madmatrix', 'process_class.inc')
     process_definition_template = pjoin('madmatrix', 'process_function_definitions.inc')
     process_wavefunction_template = pjoin('madmatrix', 'cpp_process_wavefunctions.inc')
-    process_sigmaKin_function_template = pjoin('madmatrix', 'process_sigmaKin_function.inc')
     single_process_template = pjoin('madmatrix', 'process_matrix.inc')
     blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
-    blas_helicity_loop_template = pjoin('madmatrix', 'color_sum_blas_loop.inc')
     # Below this many colors the SYMM call is not worth setting up and the
     # scalar sum wins (see cpp_blas_wanted_for)
     blas_min_ncolor = 100
@@ -2067,45 +2065,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_function_definitions.inc (copyright)
         return file
 
-    # AV - modify export_cpp.OneProcessExporterCPP method (add debug printouts for multichannel #342)
+    # backend_separation: sigmaKin and everything it calls are backend-owned
+    # (backend/<variant>/SigmaKin.cc), so there is no sigmaKin text to render
+    # into CPPProcess.cc any more; export_cpp still asks for it.
     def get_sigmaKin_lines(self, color_amplitudes, write=True):
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.get_sigmaKin_lines')
-        replace_dict = super().get_sigmaKin_lines(color_amplitudes, write=False)
-        replace_dict['proc_id'] = self.proc_id if self.proc_id>0 else 1
-        replace_dict['proc_id_source'] = 'MadMatrix exporter'
-        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
-
-        # Extract denominator (avoid to extend size for mirroring)
-        den_factors = [str(me.get_denominator_factor()) for me in \
-                            self.matrix_elements]
-        replace_dict['den_factors'] = ",".join(den_factors)
-
-        replace_dict['madE_var_reset'] = """
-        fptype multi_chanel_num = 0.;
-        fptype multi_chanel_denom = 0.;
-        """
-        replace_dict['madE_caclwfcts_call'] = '&multi_chanel_num, &multi_chanel_denom'
-        replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
-
-        replace_dict['nb_channel'] = len(self.multi_channel_map)
-        # same meaning as in edit_colordata: the number of color flows, which
-        # is not the size of the color basis when the color sum runs on the DDM one
-        replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
-
-        replace_dict['cpp_blas_helicity_loop'] = ''
-        replace_dict['cpp_blas_helicity_loop_end'] = ''
-        if self.cpp_blas_wanted():
-            replace_dict['cpp_blas_helicity_loop'] = \
-                self.read_template_file(self.blas_helicity_loop_template)
-            replace_dict['cpp_blas_helicity_loop_end'] = \
-                '\n#endif // MGONGPU_CPP_HAS_BLAS'
-
-        if write:
-            file = self.read_template_file(self.process_sigmaKin_function_template) % replace_dict
-            file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_sigmaKin_function.inc (copyright)
-            return file, replace_dict
-        else:
-            return replace_dict
+        """Nothing process-specific left to write for sigmaKin (see above)."""
+        if self.include_multi_channel and not self.support_multichannel:
+            raise Exception("This standalone format does not support madevent interface")
+        return ('', {}) if write else {}
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
     # backend_separation: calculate_jamps' prologue (signature, memory-access
