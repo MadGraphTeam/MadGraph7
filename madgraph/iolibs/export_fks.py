@@ -5360,10 +5360,27 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             os.path.join(_file_path, 'iolibs/template_files/check_sa_fks.f'),
             os.path.join(born_path, 'check_sa_fks.f'))
 
-        # strip the Born directory down to just what 'check_fks' needs
-        self.trim_born_dir(born_path)
+        if self.opt.get('fks_limits'):
+            # keep the real-emission / counterterm chain that
+            # test_soft_col_limits links; only the virtuals are never used
+            self.drop_virtuals(born_path)
+        else:
+            # strip the Born directory down to just what 'check_fks' needs
+            self.trim_born_dir(born_path)
 
         return result
+
+    @staticmethod
+    def drop_virtuals(born_path):
+        """Remove the one-loop (MadLoop) directory and its resources: neither
+        check_fks nor test_soft_col_limits (which links BinothLHADummy) uses
+        them, and they are by far the heaviest part to compile."""
+        for heavy in glob.glob(os.path.join(born_path, 'V[0-9]*')) + \
+                [os.path.join(born_path, 'MadLoop5_resources')]:
+            if os.path.isdir(heavy) and not os.path.islink(heavy):
+                shutil.rmtree(heavy, ignore_errors=True)
+            elif os.path.lexists(heavy):
+                os.remove(heavy)
 
     # the source files linked into the 'check_fks' executable, i.e. the FKSSA
     # target of the P* makefile. Kept in sync with the makefile template;
@@ -5509,4 +5526,31 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             stub_path = os.path.join(subproc, stub)
             if not os.path.isfile(stub_path):
                 open(stub_path, 'w').write('')
+        if self.opt.get('fks_limits'):
+            # marker for 'launch' to also run test_soft_col_limits, which
+            # links the analysis objects: use the dummy analysis (as the
+            # aMC@NLO launch does for its own tests)
+            open(os.path.join(subproc, 'check_sa_fks_limits'), 'w').write('1\n')
+            open(os.path.join(subproc, 'analyse_opts'), 'w').write(
+                'FO_ANALYSE=analysis_dummy.o dbook.o '
+                'open_output_files_dummy.o HwU_dummy.o\n')
         return result
+
+    def create_run_card(self, processes, history):
+        """Regular NLO run_card, but with --limits use a built-in PDF set.
+
+        test_soft_col_limits only compares the real emission with its
+        counterterms, so PDF values never enter; hadronic beams are still
+        needed when an FKS parton is in the initial state (the momentum
+        fraction must vary), and setrun then initialises the PDF for
+        alpha_s(MZ). The built-in set keeps LHAPDF out of the check."""
+        super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
+                                                                  history)
+        if not self.opt.get('fks_limits'):
+            return
+        for name in ('run_card_default.dat', 'run_card.dat'):
+            path = pjoin(self.dir_path, 'Cards', name)
+            run_card = banner_mod.RunCardNLO(path)
+            run_card['pdlabel'] = 'nn23nlo'
+            run_card['reweight_pdf'] = [False]
+            run_card.write(path)

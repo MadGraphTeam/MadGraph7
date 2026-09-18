@@ -112,6 +112,10 @@ PROCESSES = [
     {'id': 'uux_wpwm',
      'process': 'u u~ > w+ w- [QED]',
      'model': 'loop_sm',
+     # the soft-photon limit test (test_soft_col_limits) fails for this
+     # process in a plain aMC@NLO output too (identical failures), so it is
+     # kept out of the '--limits' check until that is understood
+     'limits': False,
      'born': 0.0053974535211713691,
      'borntilde': 0.0,
      'bij': {(1, 1): 0.00011690478264832319,
@@ -153,13 +157,14 @@ class TestFKSStandalone(unittest.TestCase):
         cmd.exec_cmd(line, errorhandling=False, printcmd=False,
                      precmd=True, postcmd=True)
 
-    def _output_fks_sa(self, process, model, path):
+    def _output_fks_sa(self, process, model, path, limits=False):
         """generate + 'output standalone_fortran --fks' + launch (builds & runs
-        check_fks)."""
+        check_fks, and with limits=True also test_soft_col_limits)."""
         cmd = self._new_cmd()
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
-        self._run(cmd, 'output standalone_fortran --fks %s -f' % path)
+        self._run(cmd, 'output standalone_fortran --fks %s%s -f'
+                  % ('--limits ' if limits else '', path))
         self._run(cmd, 'launch %s -f' % path)
 
     def _output_amcatnlo(self, process, model, path):
@@ -298,6 +303,60 @@ class TestFKSStandalone(unittest.TestCase):
         for spec in PROCESSES:
             with self.subTest(process=spec['process']):
                 self._check_vs_amcatnlo(spec)
+
+    def _check_limits(self, spec):
+        """'--limits' leaves the Born building blocks unchanged, and the
+        soft/collinear limit test that launch runs passes in every born dir.
+
+        The counterterms that test_soft_col_limits checks against the real
+        emission are built from born.f / sborn_sf.f / b_sf_*.f, i.e. from
+        the very building blocks check_fks prints."""
+        path = pjoin(self._workdir(spec), 'fks_sa_limits')
+        # launch raises if any born dir fails the limit test
+        self._output_fks_sa(spec['process'], spec['model'], path, limits=True)
+        born = self.parse_check_fks(
+            self._run_check_fks(self._born_dir(path)))[0]
+        self.assertClose(born, spec['born'], msg='BORN')
+        self._assert_limits_passed(path)
+
+    def _assert_limits_passed(self, path):
+        """every born dir ran test_soft_col_limits and no check FAILED;
+        returns the born dirs checked."""
+        born_dirs = sorted(os.path.dirname(f) for f in glob.glob(
+            pjoin(path, 'SubProcesses', 'P*', 'check_sa_fks.f')))
+        self.assertTrue(born_dirs, 'no FKS standalone born dir in %s' % path)
+        for born_dir in born_dirs:
+            log = pjoin(born_dir, 'test_ME.log')
+            self.assertTrue(os.path.isfile(log),
+                            'limit test not run in %s' % born_dir)
+            content = open(log, errors='replace').read()
+            self.assertNotIn('FAILED', content, 'limit test failed: %s' % log)
+            self.assertNotIn('fixed shat', content,
+                             'limit test not run in %s' % born_dir)
+            self.assertIn('PASSED', content, 'no limit check in %s' % log)
+        return born_dirs
+
+    def test_fks_standalone_limits(self):
+        """'output standalone_fortran --fks --limits' + launch runs the
+        soft/collinear limit test and it passes, for every process in
+        PROCESSES that supports it."""
+        for spec in PROCESSES:
+            if not spec.get('limits', True):
+                continue
+            with self.subTest(process=spec['process']):
+                self._check_limits(spec)
+
+    def test_fks_standalone_limits_pp_ttx(self):
+        """soft and collinear limits of p p > t t~ [QCD] through the
+        '--limits' standalone output: every partonic channel (gg, q q~,
+        q~ q) must pass test_soft_col_limits, the initial-state collinear
+        ones included (hadronic beams with the built-in PDF set)."""
+        path = pjoin(self.tmpdir, 'pp_ttx_limits')
+        self._output_fks_sa('p p > t t~ [QCD]', 'loop_sm', path, limits=True)
+        born_dirs = self._assert_limits_passed(path)
+        names = [os.path.basename(d) for d in born_dirs]
+        self.assertIn('P0_gg_ttx', names)
+        self.assertTrue(any(n.startswith('P0_uux') for n in names), names)
 
 
 if __name__ == '__main__':

@@ -13865,6 +13865,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         amcatnlo_options.update(MadLoop_SA_options)
         amcatnlo_options['running'] = cmd._curr_model.get('running_elements')
         amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
+        amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
         logger.info("Writing out the FKS Born building blocks in a standalone format")
         amcatnlo_options['export_format']='FKS5_optimized'
         return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)
