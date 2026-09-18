@@ -147,6 +147,8 @@ tutorial = Tutorial(
     title='decaying unstable particles',
     description='decay chains, MadSpin, widths, and which to use when',
     order='sequence',
+    section='advanced',
+    ai_generated=False,
     see_also=('syntax', 'madevent', 'model', 'bsm'),
     steps=[
 
