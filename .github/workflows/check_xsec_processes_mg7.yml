@@ -13,8 +13,9 @@ name: systematic cross-section tests (mg7)
 # For every process the framework generates it, runs the mg7 (madspace)
 # integrator with the run_card.toml defaults (fixed scale mu = 91.188 GeV,
 # e_cm = 13000 GeV, NNPDF23_lo_as_0130_qed) and compares the resulting
-# cross-section to the reference. A run passes only if the relative difference
-# stays below `tolerance` for every process in the section.
+# cross-section to the reference. A run passes only if, for every process in
+# the section, the relative difference stays below `tolerance` plus 3 times the
+# combined MC error (MG7_XSEC_NSIGMA): with 10k events the MC error is ~0.25%.
 
 on:
   push:

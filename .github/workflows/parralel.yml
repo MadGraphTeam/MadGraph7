@@ -291,6 +291,12 @@ jobs:
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
+      # StdHEP needs the rpc headers: install them before the first NLO output,
+      # which compiles StdHEP once for all the tests below (a failed compilation
+      # leaves vendor/StdHEP/fail and is not retried)
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
+
       # ---- test_short_check_eejjj_lo_lhapdf ----
       # ---------------------------------------------------------------------------
       # tests/parallel_tests/test_cmd_amcatnlo.py — NLO command tests. These use
@@ -375,6 +381,12 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
+
+      # StdHEP needs the rpc headers: install them before the first NLO output,
+      # which compiles StdHEP once for all the tests below (a failed compilation
+      # leaves vendor/StdHEP/fail and is not retried)
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
 
       # ---- test_short_check_ppwy ----
       # p p > w+ y [QCD] using the loop_smgrav model (spin-2 graviton wavefunction).
@@ -494,6 +506,12 @@ jobs:
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
+      # StdHEP needs the rpc headers: install them before the first NLO output,
+      # which compiles StdHEP once for all the tests below (a failed compilation
+      # leaves vendor/StdHEP/fail and is not retried)
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
+
       # ---- test_short_generate_events_nlo_hw6_stdhep ----
       # ---------------------------------------------------------------------------
       # tests/parallel_tests/test_cmd_amcatnlo.py shower-driven short tests.
@@ -539,6 +557,12 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
+
+      # StdHEP needs the rpc headers: install them before the first NLO output,
+      # which compiles StdHEP once for all the tests below (a failed compilation
+      # leaves vendor/StdHEP/fail and is not retried)
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
 
       # ---- test_short_generate_events_nlo_py6pt_stdhep ----
       # NLO event generation, showered with PYTHIA6PT, output as StdHEP.

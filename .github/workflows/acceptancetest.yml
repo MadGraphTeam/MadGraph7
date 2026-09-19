@@ -600,6 +600,12 @@ jobs:
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore_all
 
+      # StdHEP needs the rpc headers: install them before the first NLO output,
+      # which compiles StdHEP once for all the tests below (a failed compilation
+      # leaves vendor/StdHEP/fail and is not retried)
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
+
       # ---- acceptancetest_83 ----
       - name: "acceptancetest_83"
         if: ${{ !cancelled() }}
