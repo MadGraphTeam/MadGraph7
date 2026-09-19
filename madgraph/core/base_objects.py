@@ -1054,8 +1054,12 @@ class Interaction(PhysicsObject):
                like for lepton-neutrino W interaction 
         """
 
-        assert isinstance(self.get('couplings')[(0,0)], FLV_Coupling)
-        #assert isinstance(other_flavor.get('couplings')[(0,0)], str)
+        self_couplings = self.get('couplings')
+        other_couplings = other_flavor.get('couplings')
+        assert self_couplings and all(
+            isinstance(coupling, FLV_Coupling)
+            for coupling in self_couplings.values())
+        assert other_couplings
 
         debug = False
         #if new_part is anti_part:
@@ -1074,31 +1078,42 @@ class Interaction(PhysicsObject):
         if debug: misc.sprint(self, other_flavor)
         if debug: misc.sprint(flav)
 
-        if isinstance(other_flavor.get('couplings')[(0,0)], str):        
-            for color, lor in other_flavor.get('couplings'):
-                if (color, lor) in self.get('couplings'):
+        if all(isinstance(coupling, str)
+               for coupling in other_couplings.values()):
+            for color, lor in other_couplings:
+                if (color, lor) in self_couplings:
                     # only need to update the flavor content of the existing Flavor coupling
-                    flav_dict = self.get('couplings')[color, lor].get('flavors')
-                    flav_dict[flav] = other_flavor.get('couplings')[color, lor]
+                    flav_dict = self_couplings[color, lor].get('flavors')
+                    flav_dict[flav] = other_couplings[color, lor]
                 else:
                     # need to create a new flavor coupling
                     coupling = FLV_Coupling()
-                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor]})
-                    self.get('couplings')[color, lor] = coupling
+                    coupling.set('flavors', {
+                        flav: other_couplings[color, lor]})
+                    self_couplings[color, lor] = coupling
+        elif all(isinstance(coupling, FLV_Coupling)
+                 for coupling in other_couplings.values()):
+            for color, lor in other_couplings:
+                other_flav_dict = other_couplings[color, lor].get(
+                    'flavors')
+                transformed = {}
+                for base_flav, base_coupling in other_flav_dict.items():
+                    new_flav = tuple(base_flav[i] + flav[i]
+                                     for i in range(len(flav)))
+                    transformed[new_flav] = base_coupling
+                if (color, lor) in self_couplings:
+                    flav_dict = self.get('couplings')[color, lor].get('flavors')
+                    # only need to update the flavor content of the existing Flavor coupling
+                    flav_dict.update(transformed)
+                else:
+                    # need to create a new flavor coupling
+                    coupling = FLV_Coupling()
+                    coupling.set('flavors', transformed)
+                    self_couplings[color, lor] = coupling
         else:
-            for color, lor in other_flavor.get('couplings'):
-                if (color, lor) in self.get('couplings'):
-                    flav_dict = self.get('couplings')[color, lor].get('flavors')
-                    # only need to update the flavor content of the existing Flavor coupling
-                    other_flav_dict = other_flavor.get('couplings')[color, lor].get('flavors') 
-                    for base_flav in other_flav_dict:
-                        new_flav =  [base_flav[i] + flav[i] for i in range(len(flav))]
-                        flav_dict[tuple(new_flav)] = other_flav_dict[base_flav]
-                else:
-                    # need to create a new flavor coupling
-                    coupling = FLV_Coupling()
-                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor].get('flavors').values()[0]})
-                    self.get('couplings')[color, lor] = coupling
+            raise self.PhysicsObjectError(
+                'Cannot merge interaction with mixed plain and flavor '
+                'couplings: %s' % other_couplings)
 
     def check_flavor(self, map_flavor, model):
         """map is "original_pdg (so the merged one) -> flavor index (1 if particle is not merged)
@@ -1336,6 +1351,25 @@ class Model(PhysicsObject):
 
         return True
 
+    def get_flavor_grouping_unsupported_reason(self):
+        """Return why this model cannot use merged flavor generation.
+
+        Perturbative/NLO couplings are not themselves a limitation: the same
+        merged-particle, flavor-coupling, and HELAS validity machinery applies
+        to loop-capable models.  Four-fermion Lorentz structures remain outside
+        the supported grouping contract because merging their independent
+        fermion lines is ambiguous.
+
+        ``None`` means that the model passes the currently defined capability
+        checks.  Keeping the diagnostic on ``Model`` gives import and NLO
+        validation one shared policy.
+        """
+        lorentz = self.get('lorentz') or []
+        if any(lor.spins.count(2) > 2 for lor in lorentz):
+            return ('models with Lorentz structures containing more than two '
+                    'fermions are not supported')
+        return None
+
     def get(self, name):
         """Get the value of the property name."""
 
@@ -1513,6 +1547,18 @@ class Model(PhysicsObject):
         else:
             name = '_merged%d' % nb_merged
             pdg_code = 90 + nb_merged
+
+        # Loop-capable UFO models can already use the conventional 81--83
+        # range (notably loop_sm's color-octet ghost at PDG 82).  Never
+        # overwrite a physical/model particle in particle_dict: choose a
+        # deterministic generic pseudo-PDG when the preferred code is occupied.
+        used_pdgs = set(abs(particle.get('pdg_code'))
+                        for particle in self.get('particles'))
+        used_pdgs.update(abs(pdg) for pdg in self['merged_particles'])
+        if abs(pdg_code) in used_pdgs:
+            pdg_code = 90 + nb_merged
+            while abs(pdg_code) in used_pdgs:
+                pdg_code += 1
 
         new_part['name'] = name
         new_part['pdg_code'] = pdg_code

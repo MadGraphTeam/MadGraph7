@@ -913,4 +913,93 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual(first_physical['born_flavor_index'], 1)
         self.assertEqual(first_physical['extra_cnt_flavor_index'], 4)
 
+    def test_grouped_fks_low_memory_flavor_map(self):
+        """The real multicore/low-memory path must preserve flavor couplings
+        and produce the same physical class cardinality as in-process QCD
+        generation.
+        """
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('set nb_core 1')
+        interface.exec_cmd('set low_mem_multicore_nlo_generation True')
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate p p > w+ w- [QCD]')
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_element_files = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_element_files), 2)
+        try:
+            matrix_elements = []
+            for path in matrix_element_files:
+                with open(path, 'rb') as stream:
+                    matrix_elements.append(pickle.load(stream))
+            self.assertEqual([len(me.get_fks_flavor_map())
+                              for me in matrix_elements], [16, 16])
+            self.assertTrue(all(me.virt_matrix_element is not None
+                                for me in matrix_elements))
+            self.assertTrue(all(
+                entry['virtual_flavor_index'] > 0
+                for me in matrix_elements
+                for entry in me.get_fks_flavor_map()))
+            self.assertTrue(any(isinstance(coupling, MG.FLV_Coupling)
+                                for coupling in helas.get_used_couplings()))
+        finally:
+            for path in matrix_element_files:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    def test_grouped_fks_qed_virtual_flavor_map(self):
+        """A QCD+QED loop model keeps physical QED charges and resolves each
+        virtual row independently for grouped NLO generation.
+        """
+        model_path = os.path.abspath(os.path.join(
+            root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model %s' % model_path)
+        interface.exec_cmd('generate p p > w+ w- [QED]')
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_elements = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_elements), 3)
+        flavor_maps = [me.get_fks_flavor_map() for me in matrix_elements]
+        self.assertEqual([len(mapping) for mapping in flavor_maps],
+                         [30, 30, 22])
+        for me, mapping in zip(matrix_elements, flavor_maps):
+            self.assertIsNotNone(me.virt_matrix_element)
+            self.assertTrue(all(entry['virtual_flavor_index'] > 0
+                                for entry in mapping))
+            self.assertTrue(all(
+                isinstance(charge, float)
+                for entry in mapping for charge in entry['real_charges']))
+
+    def test_grouped_fks_extra_counterterm_flavor_map(self):
+        """Grouped g/a -> q q~ configurations map every physical member to
+        an independently indexed extra-counterterm matrix element.
+        """
+        model_path = os.path.abspath(os.path.join(
+            root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model %s' % model_path)
+        interface.exec_cmd('set include_lepton_initiated_processes True')
+        interface.exec_cmd('define p p a')
+        interface.exec_cmd(
+            'generate p p > t t~ QED^2=4 QCD^2=4 [real=QCD QED]')
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        extra_entries = []
+        merged_pdgs = set(interface._curr_model.get('merged_particles'))
+        for me in helas.get_matrix_elements():
+            extra_entries.extend(
+                entry for entry in me.get_fks_flavor_map()
+                if entry['extra_cnt_flavor_index'] > 0)
+        self.assertEqual(len(extra_entries), 40)
+        for entry in extra_entries:
+            self.assertIsNotNone(entry['extra_cnt_pdgs'])
+            self.assertTrue(all(abs(pdg) not in merged_pdgs
+                                for pdg in entry['real_pdgs']))
+            self.assertTrue(all(abs(pdg) not in merged_pdgs
+                                for pdg in entry['extra_cnt_pdgs']))
+
         

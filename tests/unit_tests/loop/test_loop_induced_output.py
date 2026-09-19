@@ -55,6 +55,7 @@ recommends would be refused along with everything else.
 
 from __future__ import absolute_import
 
+import copy
 import os
 import shutil
 import sys
@@ -66,10 +67,12 @@ sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
 import tests.unit_tests as unittest
 
 import madgraph.interface.master_interface as MGCmd
+import madgraph.interface.loop_interface as loop_interface
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.loop.loop_helas_objects as loop_helas_objects
+import models.import_ufo as import_ufo
 
 from madgraph import InvalidCmd, MG5DIR
 
@@ -148,6 +151,33 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         flavors, pdgs = me.get_external_flavors(return_pdgs=True)
         self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
         self.assertEqual([list(p) for p in pdgs], [[21, 21, 23, 23]])
+
+    def test_validate_model_preserves_supported_flavor_grouping(self):
+        """NLO validation must not reload and replace a supported grouped
+        model or silently flip the user's apply_flavor_grouping option.
+        """
+        model = import_ufo.import_model(
+            'loop_sm', options={'apply_flavor_grouping': False})
+        model.merge_flavor([1, 2, 3, 4])
+
+        interface = loop_interface.LoopInterface()
+        interface._curr_model = model
+        interface.options['apply_flavor_grouping'] = True
+        interface.validate_model(loop_type='virtual', coupling_type=['QCD'])
+
+        self.assertIs(interface._curr_model, model)
+        self.assertTrue(interface.options['apply_flavor_grouping'])
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+
+        unsupported = copy.deepcopy(model)
+        unsupported['lorentz'] = list(unsupported.get('lorentz'))
+        unsupported['lorentz'].append(type(
+            'FourFermionLorentz', (object,), {'spins': [2, 2, 2, 2]})())
+        interface._curr_model = unsupported
+        self.assertRaises(
+            InvalidCmd,
+            lambda: interface.validate_model(
+                loop_type='virtual', coupling_type=['QCD']))
 
 
 #===============================================================================

@@ -48,6 +48,22 @@ if madgraph.ordering:
     set = misc.OrderedSet
 
 
+def make_unique_couplings(couplings):
+    """Deduplicate coupling references without hashing mutable flavor tables.
+
+    ``misc.make_unique`` uses ``dict.fromkeys``.  That is appropriate for
+    coupling-name strings but not for ``FLV_Coupling`` (a mutable
+    ``PhysicsObject``).  Equality here intentionally includes the generated
+    coupling name as well as its table, because every distinct name referenced
+    by HELAS calls must remain available to model export.
+    """
+    unique = []
+    for coupling in couplings:
+        if coupling not in unique:
+            unique.append(coupling)
+    return unique
+
+
 #functions to be used in the ncores_for_proc_gen mode
 def async_generate_real(args):
     i = args[0]
@@ -314,27 +330,46 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             for i,real_amp in enumerate(real_amp_list):
                 realmapin.append([i,real_amp])
 
-            # start the pool instance with a signal instance to catch ctr+c
-            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
-            ctx = multiprocessing.get_context('fork')
-            if fksmulti['ncores_for_proc_gen'] < 0: # use all cores
-                pool = ctx.Pool(maxtasksperchild=1)
-            else:
-                pool = ctx.Pool(processes=fksmulti['ncores_for_proc_gen'],maxtasksperchild=1)
-            signal.signal(signal.SIGINT, original_sigint_handler)
+            def run_in_fresh_pool(function, inputs):
+                """Run one low-memory generation phase in its own pool.
+
+                With ``maxtasksperchild=1``, all workers can exit together at
+                the end of a map.  Reusing that pool immediately for the next
+                phase races its asynchronous worker replenishment and can see
+                an empty ``pool._pool``.  Separate pools also release each
+                phase's peak memory before the next one begins.
+                """
+                original_sigint_handler = signal.signal(
+                    signal.SIGINT, signal.SIG_IGN)
+                ctx = multiprocessing.get_context('fork')
+                if fksmulti['ncores_for_proc_gen'] < 0:
+                    pool = ctx.Pool(maxtasksperchild=1)
+                else:
+                    pool = ctx.Pool(
+                        processes=fksmulti['ncores_for_proc_gen'],
+                        maxtasksperchild=1)
+                signal.signal(signal.SIGINT, original_sigint_handler)
+                try:
+                    output = pool.map_async(function, inputs).get(9999999)
+                except BaseException:
+                    pool.terminate()
+                    pool.join()
+                    raise
+                else:
+                    pool.close()
+                    pool.join()
+                    return output
 
             logger.info('Generating real matrix elements...')
-            import time
-            try:
-                # the very large timeout passed to get is to be able to catch
-                # KeyboardInterrupts
-                modelpath = born_procs[0].born_amp['process']['model'].get('modelpath')
-                #modelpath = self.get('processes')[0].get('model').get('modelpath')
-                with misc.TMP_variable(sys, 'path', sys.path + [pjoin(MG5DIR, 'models'), modelpath]):
-                    realmapout = pool.map_async(async_generate_real,realmapin).get(9999999)
-            except KeyboardInterrupt:
-                pool.terminate()
-                raise KeyboardInterrupt
+            # the very large timeout in run_in_fresh_pool is to be able to
+            # catch KeyboardInterrupts.
+            modelpath = born_procs[0].born_amp['process']['model'].get(
+                'modelpath')
+            with misc.TMP_variable(
+                    sys, 'path',
+                    sys.path + [pjoin(MG5DIR, 'models'), modelpath]):
+                realmapout = run_in_fresh_pool(
+                    async_generate_real, realmapin)
 
             # sometimes empty output from map_async can be there if the amplitude has no diagrams
             # these empty entries need to be discarded
@@ -356,11 +391,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             for i,born in enumerate(born_procs):
                 bornmapin.append([i,born,born_pdg_list,loop_orders,pdg_list,loop_optimized,OLP,realmapfiles])
 
-            try:
-                bornmapout = pool.map_async(async_generate_born,bornmapin).get(9999999)
-            except KeyboardInterrupt:
-                pool.terminate()
-                raise KeyboardInterrupt 
+            bornmapout = run_in_fresh_pool(async_generate_born, bornmapin)
 
             configs_list = [bout[4] for bout in bornmapout]
             nparticles_list = [bout[5] for bout in bornmapout]
@@ -400,11 +431,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     mefile = bornout[0]
                     memapin.append([i,mefile, duplicate_me_lists[i]])
 
-                try:
-                    memapout.append(pool.map_async(async_finalize_matrix_elements,memapin).get(9999999))
-                except KeyboardInterrupt:
-                    pool.terminate()
-                    raise KeyboardInterrupt 
+                memapout.append(run_in_fresh_pool(
+                    async_finalize_matrix_elements, memapin))
 
                 # check the matrix element that were marked as
                 # duplicate but could not be combined
@@ -417,9 +445,6 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
                     if not mefile in not_combined:
                         os.remove(mefile)
                         bornmapout.remove(bornout)
-
-            pool.close()
-            pool.join()
 
             # now we can flatten out memapout
             memapout = sum(memapout, [])
@@ -456,7 +481,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             coupling_list = []
             for meout in memapout:
                 coupling_list.extend([c for l in meout[3] for c in l])
-            self['used_couplings'] = misc.make_unique(coupling_list)
+            self['used_couplings'] = make_unique_couplings(coupling_list)
             
             has_virtuals = False
             for meout in memapout:
@@ -507,7 +532,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             coupling_list = []
             for me in self.get('matrix_elements'):
                 coupling_list.extend([c for l in me.get_used_couplings() for c in l])
-            self['used_couplings'] = misc.make_unique(coupling_list)
+            self['used_couplings'] = make_unique_couplings(coupling_list)
 
         return self['used_couplings']
 

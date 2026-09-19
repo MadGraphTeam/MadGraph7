@@ -17,7 +17,6 @@
 """
 
 from __future__ import absolute_import
-import copy
 import os
 import shutil
 import time
@@ -329,21 +328,15 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 ##            c = ' '.join(coupling_type)
 ##            raise self.InvalidCmd('MadGraph7 can only handle QCD at NLO accuracy.\n We can however compute loop with [virt=%s].\n We can also compute cross-section for loop-induced processes with [noborn=%s]' % (c,c))
         if self._curr_model.merged_particles:
-            logger.debug('Unmerge particles for loop computations')
-            self.exec_cmd('set apply_flavor_grouping False', precmd=False)
-            assert self.options['apply_flavor_grouping'] == False
-            model_name = self._curr_model.get('name')
-            # Preserve user-defined multiparticles: reloading the model triggers
-            # add_default_multiparticles which auto-removes the photon from p/j
-            # when the plain (non-loop) model has no QED perturbation couplings.
-            # Since this reload is an internal NLO operation (not a user model
-            # switch), all previously valid multiparticle definitions must survive.
-            saved_multiparticles = copy.deepcopy(self._multiparticles)
-            self.exec_cmd(" import model %s" % (model_name), precmd=False)
-            if active_interface and hasattr(self, 'change_principal_cmd') and \
-                        getattr(self, 'current_interface', None) != active_interface:
-                self.change_principal_cmd(active_interface)
-            self._multiparticles = saved_multiparticles
+            unsupported_reason = self._curr_model.\
+                get_flavor_grouping_unsupported_reason()
+            if unsupported_reason:
+                raise self.InvalidCmd(
+                    'Flavor grouping is not supported for NLO model %s: %s. '
+                    'Run "set apply_flavor_grouping False" and re-import the '
+                    'model.' % (self._curr_model.get('name'),
+                                unsupported_reason))
+            logger.debug('Keep supported flavor grouping for loop computations')
         
         if not isinstance(self._curr_model,loop_base_objects.LoopModel) or \
            self._curr_model['perturbation_couplings']==[] or \

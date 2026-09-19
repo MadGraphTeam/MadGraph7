@@ -433,20 +433,9 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                 # It might be that the default of the model (i.e. 'CMSParam') is CMS.
                 model.change_mass_to_complex_scheme(toCMS=False, bypass_check=allow_qed)
 
-        # forbid NLO model to use flavor grouping
-        try:
-            perturb = model.get('perturbation_couplings')
-        except Exception:
-            support_flavor = True
-        else:
-            if perturb:
-                support_flavor = False  
-            else:
-                support_flavor = True
-
-        # forbid 4Fermion model to use flavor grouping
-        if any(lor.spins.count(2)>2 for lor in model.get('lorentz')):
-            support_flavor = False
+        unsupported_flavor_reason = \
+            model.get_flavor_grouping_unsupported_reason()
+        support_flavor = unsupported_flavor_reason is None
 
         if options.get('apply_flavor_grouping', True) and support_flavor:
             logger.info("Apply flavor grouping to the model")
@@ -479,6 +468,11 @@ def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                 model.merge_flavor([12,14,16])
             #misc.sprint('W merging')
             #model.merge_part_antipart(24)  # W+/W-
+        elif options.get('apply_flavor_grouping', True) and \
+                unsupported_flavor_reason:
+            logger.warning(
+                'Flavor grouping is disabled for model %s: %s',
+                model.get('name'), unsupported_flavor_reason)
 
         return model
     finally:

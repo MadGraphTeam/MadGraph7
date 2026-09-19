@@ -35,6 +35,62 @@ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 
 
 #===============================================================================
+# TestNLOFlavorGrouping
+#===============================================================================
+class TestNLOFlavorGrouping(unittest.TestCase):
+    """Import policy and coupling-shape coverage for loop-capable models."""
+
+    def test_nlo_model_flavor_grouping_policy(self):
+        """Perturbation couplings alone are not a reason to suppress the
+        existing merged-particle transformation, while the explicit user
+        opt-out must remain authoritative.
+        """
+        grouped = import_ufo.import_model(
+            'loop_sm', options={'apply_flavor_grouping': True})
+        self.assertEqual(grouped.get('merged_particles'), {
+            81: [1, 2, 3, 4],
+            83: [12, 14, 16],
+            92: [11, 13],
+        })
+        self.assertEqual(grouped.get_particle(82).get('name'), 'gh')
+        self.assertEqual(grouped.get_particle(82).get_color(), 8)
+
+        ungrouped = import_ufo.import_model(
+            'loop_sm', options={'apply_flavor_grouping': False})
+        self.assertEqual(ungrouped.get('merged_particles'), {})
+
+        # Loop models can place a coupling at a non-(0,0) color/Lorentz key.
+        # This is still a supported flavor table, not a reason to disable NLO
+        # grouping or assume one distinguished coupling key.
+        loop_ew_path = os.path.abspath(os.path.join(
+            _file_path, os.pardir, 'input_files',
+            'LoopSMEWTest'))
+        loop_ew = import_ufo.import_model(
+            loop_ew_path, options={'apply_flavor_grouping': True})
+        self.assertEqual(
+            sorted(loop_ew.get('merged_particles').values()),
+            sorted([[1, 2, 3, 4, 5], [11, 13, 15], [12, 14, 16]]))
+        interaction = [interaction for interaction in loop_ew['interactions']
+                       if [particle.get_pdg_code()
+                           for particle in interaction['particles']] ==
+                       [-81, 81] and
+                       (0, 2) in interaction.get('couplings')][0]
+        self.assertIn((0, 2), interaction.get('couplings'))
+        self.assertIsInstance(
+            interaction.get('couplings')[(0, 2)],
+            base_objects.FLV_Coupling)
+
+        unsupported_path = os.path.abspath(os.path.join(
+            _file_path, os.pardir, 'input_files', 'fourfermion_UFO'))
+        unsupported = import_ufo.import_model(
+            unsupported_path, options={'apply_flavor_grouping': True})
+        self.assertEqual(unsupported.get('merged_particles'), {})
+        self.assertIn(
+            'more than two fermions',
+            unsupported.get_flavor_grouping_unsupported_reason())
+
+
+#===============================================================================
 # TestImportUFO
 #===============================================================================
 class TestImportUFO(unittest.TestCase):
@@ -55,7 +111,6 @@ class TestImportUFO(unittest.TestCase):
         """Test that the expansion_order is set"""
         self.assertEqual(self.base_model.get('expansion_order'),
                          {'QCD': 99, 'QED': 99, 'HIG':1, 'HIW': 1})
-        
 
     def test_get_symmetric_lorentz(self):
 
