@@ -1,5 +1,9 @@
 """Numerical precision of ColorOrderedMapping in long chains.
 
+- Outgoing momenta stay on their mass shell, and still add up to the incoming
+  ones by construction: they used to come out off shell by up to a few 1e-5 of
+  their energy, from a frame that was not orthonormal and from soft momenta
+  formed as differences of hard ones.
 - The forward/inverse round trip holds with cuts: the azimuthal frame of the
   2->2 block no longer jumps with the rounding of the incoming momentum, and
   the massless branch of the block-B s23 bound no longer switches off when the
@@ -7,6 +11,7 @@
 """
 
 import numpy as np
+import pytest
 
 import madspace as ms
 
@@ -30,6 +35,25 @@ def run(color_order, cm_energy, seed, cuts=None):
     conditions = [np.full(N, cm_energy)] + [np.zeros(N)] * n_out
     *momenta, det = mapping.map_forward(inputs, conditions)
     return mapping, inputs, conditions, momenta, r, np.asarray(det)
+
+
+@pytest.mark.parametrize(
+    "color_order",
+    [[0, 2, 3, 4, 5, 1], [0, 2, 3, 4, 5, 6, 1], [0, 2, 3, 1, 4, 5, 6]],
+    ids=["4 chain", "5 chain", "5 split"],
+)
+def test_massless_on_shell(color_order):
+    cm_energy = 13000.0
+    *_, momenta, _, det = run(color_order, cm_energy, 5)
+    p = np.stack([np.asarray(k) for k in momenta], axis=1)[:, 2:]
+    p = p[det > 0]
+    m2 = p[..., 0] ** 2 - np.sum(p[..., 1:] ** 2, axis=-1)
+    # sqrt(|m^2|) / E is ~1e-8 from rounding alone; it reached 4e-5 before
+    assert np.max(np.sqrt(np.abs(m2)) / p[..., 0]) < 1e-6
+    # momentum conservation to a few ulps of the total energy
+    p_sum = np.sum(p, axis=1)
+    p_sum[:, 0] -= cm_energy
+    assert np.max(np.abs(p_sum)) < 1e-14 * cm_energy
 
 
 def test_round_trip_with_cuts():

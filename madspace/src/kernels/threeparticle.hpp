@@ -174,14 +174,14 @@ three_body_decay_inverse(FourMom<T> p1, FourMom<T> p2, FourMom<T> p3) {
 template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> s23_min_max(
     FourMom<T> pa,
-    FourMom<T> pb,
     FourMom<T> p3,
     FourMom<T> p_12,
+    FVal<T> s12,
     FVal<T> t1_abs,
     FVal<T> m1,
     FVal<T> m2
 ) {
-    // Range of s23 = (pa + pb - p1)^2 as p1 turns about pa at fixed s12 and t1.
+    // Range of s23 = (p_12 + p3 - p1)^2 as p1 turns about pa at fixed s12 and t1.
     // In the p_12 rest frame, with z along pa and p3 in the phi = 0 half-plane
     // (the frame of rotate_two_ref),
     //   s23 = m0^2 + m1^2 - 2 [(sqrt(s12) + E3) E1 - p3_z p1_z]
@@ -193,10 +193,9 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_min_max(
     // it all below a softness of about 1e-8.
     FourMom<T> p_tot;
     for (int i = 0; i < 4; ++i) {
-        p_tot[i] = pa[i] + pb[i];
+        p_tot[i] = p_12[i] + p3[i];
     }
     auto m0_2 = lsquare<T>(p_tot);
-    auto s12 = lsquare<T>(p_12);
     auto ma_2 = lsquare<T>(pa);
     auto pa_com = boost<T>(pa, p_12, -1.);
     auto p3_com = boost<T>(p3, p_12, -1.);
@@ -363,7 +362,7 @@ KERNELSPEC void kernel_three_body_decay_inverse(
 template <typename T>
 KERNELSPEC void kernel_s23_min_max(
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
+    FIn<T, 1> p12,
     FIn<T, 1> p3,
     FIn<T, 0> t1_abs,
     FIn<T, 0> m1,
@@ -373,12 +372,9 @@ KERNELSPEC void kernel_s23_min_max(
 ) {
     // this function is based on the sminmax subroutine from Rikkert
     // expects t1_abs (positive t invariant) as input
-    FourMom<T> p_12;
-    for (int i = 0; i < 4; ++i) {
-        p_12[i] = pa[i] + pb[i] - p3[i];
-    }
+    auto p_12 = load_mom<T>(p12);
     auto s23_out = s23_min_max<T>(
-        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+        load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
     );
     s23_min = s23_out.first;
     s23_max = s23_out.second;
@@ -387,7 +383,6 @@ KERNELSPEC void kernel_s23_min_max(
 template <typename T>
 KERNELSPEC void kernel_s23_value_and_min_max(
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
     FIn<T, 1> p3,
     FIn<T, 0> t1_abs,
     FIn<T, 1> p1,
@@ -407,7 +402,7 @@ KERNELSPEC void kernel_s23_value_and_min_max(
     auto m2 = sqrt(max(lsquare<T>(load_mom<T>(p2)), 0.));
 
     auto s23_out = s23_min_max<T>(
-        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+        load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
     );
     s23_min = s23_out.first;
     s23_max = s23_out.second;
@@ -474,7 +469,7 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
 template <typename T>
 KERNELSPEC void kernel_s23_min_max_cut(
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
+    FIn<T, 1> p12,
     FIn<T, 1> p3,
     FIn<T, 0> t1_abs,
     FIn<T, 0> m1,
@@ -486,16 +481,13 @@ KERNELSPEC void kernel_s23_min_max_cut(
     FOut<T, 0> s23_min,
     FOut<T, 0> s23_max
 ) {
-    FourMom<T> p_12;
-    for (int i = 0; i < 4; ++i) {
-        p_12[i] = pa[i] + pb[i] - p3[i];
-    }
+    auto p_12 = load_mom<T>(p12);
     auto m3_2 = lsquare<T>(load_mom<T>(p3));
     auto m1_2 = m1 * m1;
     auto m2_2 = m2 * m2;
 
     auto s23_out = s23_min_max<T>(
-        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+        load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
     );
     auto smn = s23_out.first;
     auto smx = s23_out.second;
@@ -527,7 +519,6 @@ KERNELSPEC void kernel_s23_min_max_cut(
 template <typename T>
 KERNELSPEC void kernel_s23_value_and_min_max_cut(
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
     FIn<T, 1> p3,
     FIn<T, 0> t1_abs,
     FIn<T, 1> p1,
@@ -551,9 +542,9 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
 
     auto s23_out = s23_min_max<T>(
         load_mom<T>(pa),
-        load_mom<T>(pb),
         load_mom<T>(p3),
         p_12,
+        lsquare<T>(p_12),
         t1_abs,
         sqrt(max(m1_2, 0.)),
         sqrt(max(m2_2, 0.))
@@ -691,7 +682,7 @@ template <typename T>
 KERNELSPEC void kernel_two_to_three_particle_scattering(
     IIn<T, 0> phi_index,
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
+    FIn<T, 1> p12,
     FIn<T, 1> p3,
     FIn<T, 0> s23,
     FIn<T, 0> t1_abs,
@@ -701,10 +692,13 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     FOut<T, 1> p2,
     FOut<T, 0> det
 ) {
-    FourMom<T> p_12, p_c;
+    // p_12 = p1 + p2 comes in directly rather than as pa + pb - p3: in a long
+    // chain it is a soft system next to the beams, and that difference would
+    // leave it with an absolute error of order the beam energy.
+    auto p_12 = load_mom<T>(p12);
+    FourMom<T> p_c;
     for (int i = 0; i < 4; ++i) {
-        p_12[i] = pa[i] + pb[i] - p3[i];
-        p_c[i] = pb[i] - p3[i];
+        p_c[i] = p_12[i] - pa[i];
     }
     auto pa_com = boost<T>(load_mom<T>(pa), p_12, -1.);
     auto ma_2 = lsquare<T>(load_mom<T>(pa));
@@ -722,7 +716,7 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     // 1e20 times the typical weight. The range itself comes from momenta for
     // the same reason, see s23_min_max.
     auto s23_range = s23_min_max<T>(
-        load_mom<T>(pa), load_mom<T>(pb), load_mom<T>(p3), p_12, t1_abs, m1, m2
+        load_mom<T>(pa), load_mom<T>(p3), p_12, s12, t1_abs, m1, m2
     );
     auto s23_width = s23_range.second - s23_range.first;
     auto u = min(max((s23 - s23_range.first) / s23_width, 0.), 1.);
@@ -739,11 +733,16 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     auto p1_com = scatter_out.first;
     auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
     auto p1_rot = rotate_two_ref<T>(p1_com, pa_com, p3_p12);
-    auto p1_lab = boost<T>(p1_rot, p_12, 1.);
-    store_mom<T>(p1, p1_lab);
-    for (int i = 0; i < 4; ++i) {
-        p2[i] = p_12[i] - p1_lab[i];
-    }
+    // p1 and p2 back to back in the p_12 rest frame, the softer one boosted on
+    // its mass shell and the other p_12 minus it (see boost_two_body). Always
+    // forming p2 = p_12 - p1 left a soft p2 off shell by up to a few 1e-5 of
+    // its energy.
+    auto m12_rest = sqrt(max(s12, EPS2));
+    auto e2_com = 0.5 * (m12_rest - (m1 - m2) * (m1 + m2) / m12_rest);
+    FourMom<T> p2_rot{max(e2_com, 0.), -p1_rot[1], -p1_rot[2], -p1_rot[3]};
+    auto p_out = boost_two_body<T>(p1_rot, m1 * m1, p2_rot, m2 * m2, p_12, s12);
+    store_mom<T>(p1, p_out.first);
+    store_mom<T>(p2, p_out.second);
     det = det_2to3 / 2; // factor 1/2 as acos allows for two choices of phi
 }
 
@@ -753,7 +752,7 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     FIn<T, 1> p2,
     FIn<T, 1> p3,
     FIn<T, 1> pa,
-    FIn<T, 1> pb,
+    FIn<T, 1> p12,
     FIn<T, 0> t1_abs,
     FIn<T, 0> s23,
     FOut<T, 0> m1,
@@ -761,10 +760,13 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     IOut<T, 0> phi_index,
     FOut<T, 0> det
 ) {
-    FourMom<T> p_12, p_c;
+    // p_12 = p1 + p2 comes in directly rather than as pa + pb - p3: in a long
+    // chain it is a soft system next to the beams, and that difference would
+    // leave it with an absolute error of order the beam energy.
+    auto p_12 = load_mom<T>(p12);
+    FourMom<T> p_c;
     for (int i = 0; i < 4; ++i) {
-        p_12[i] = pa[i] + pb[i] - p3[i];
-        p_c[i] = pb[i] - p3[i];
+        p_c[i] = p_12[i] - pa[i];
     }
     auto ma_2 = lsquare<T>(load_mom<T>(pa));
     auto s12 = lsquare<T>(p_12);
@@ -786,9 +788,9 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     // forward kernel; |sin(phi)| is read off the momenta directly.
     auto s23_range = s23_min_max<T>(
         load_mom<T>(pa),
-        load_mom<T>(pb),
         load_mom<T>(p3),
         p_12,
+        s12,
         t1_abs,
         sqrt(max(m1_2, 0.)),
         sqrt(max(m2_2, 0.))

@@ -1007,9 +1007,9 @@ two_to_three_particle_scattering:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the already-generated third particle"
@@ -1051,9 +1051,9 @@ two_to_three_particle_scattering_inverse:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: t1_abs
       type: [float]
       desc: "absolute value of the first momentum transfer"
@@ -1561,9 +1561,9 @@ s23_min_max:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1590,9 +1590,6 @@ s23_value_and_min_max:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
-      type: [float, 4]
-      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1622,9 +1619,9 @@ s23_min_max_cut:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1663,9 +1660,6 @@ s23_value_and_min_max_cut:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
-      type: [float, 4]
-      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"

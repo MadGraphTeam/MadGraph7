@@ -119,7 +119,8 @@ private:
  *
  * **Conditions**
  * - `momentum_in1` – `float`, shape `(batch, 4)` – first incoming momentum.
- * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum.
+ * - `momentum_in2` – `float`, shape `(batch, 4)` – second incoming momentum;
+ *   `momentum12`, the system p1 + p2, when @p p12_condition is true.
  * - `momentum3` – `float`, shape `(batch, 4)` – recoil momentum defining the
  *   scattering plane.
  * - `etmin_1`, `etmin_2` – `float`, shape `(batch,)` – transverse-energy cuts.
@@ -164,6 +165,12 @@ public:
      *                          @f$\phi@f$ before the invariant sampling, which
      *                          removes the @f$1/|\sin\phi|@f$ edge peak of the
      *                          weight.
+     * @param p12_condition     If true, the second condition is the outgoing
+     *                          system `momentum12` = p1 + p2 itself instead
+     *                          of the second incoming momentum. A caller that
+     *                          holds it more precisely than pa + pb - p3 (a
+     *                          soft system next to the beams) keeps that
+     *                          precision.
      */
     TwoToThreeParticleScattering(
         double t_invariant_power = 0,
@@ -173,7 +180,8 @@ public:
         double s_mass = 0,
         double s_width = 0,
         bool has_cut = false,
-        bool arcsine_s23 = true
+        bool arcsine_s23 = true,
+        bool p12_condition = false
     );
 
     /// Number of discrete inputs (1): which of the two two-body solutions.
@@ -193,8 +201,12 @@ private:
 
     Invariant _t_invariant;
     Invariant _s_invariant;
+    std::array<Value, 3>
+    split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+
     bool _has_cut;
     bool _arcsine_s23;
+    bool _p12_condition;
 };
 
 } // namespace madspace

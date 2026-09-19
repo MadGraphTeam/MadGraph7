@@ -259,9 +259,17 @@ KERNELSPEC FourMom<T> rotate_two_ref(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_
 
     // x_hat = (q_x perp to z_hat) / |...|
     auto qx_dot_z = q_x[1] * zx + q_x[2] * zy + q_x[3] * zz;
-    auto rx = q_x[1] - qx_dot_z * zx;
-    auto ry = q_x[2] - qx_dot_z * zy;
-    auto rz = q_x[3] - qx_dot_z * zz;
+    auto rx0 = q_x[1] - qx_dot_z * zx;
+    auto ry0 = q_x[2] - qx_dot_z * zy;
+    auto rz0 = q_x[3] - qx_dot_z * zz;
+    // Second Gram-Schmidt pass. When q_x is close to z_hat the first one leaves
+    // a component along z_hat of relative size eps |q_x| / |q_x perp|; the
+    // frame is then not orthonormal, the rotation changes |p|, and the two
+    // back-to-back daughters of the 2->3 block come out off shell.
+    auto r_dot_z = rx0 * zx + ry0 * zy + rz0 * zz;
+    auto rx = rx0 - r_dot_z * zx;
+    auto ry = ry0 - r_dot_z * zy;
+    auto rz = rz0 - r_dot_z * zz;
     auto rn2 = rx * rx + ry * ry + rz * rz;
     auto rn = sqrt(max(rn2, EPS2));
     auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
@@ -291,9 +299,14 @@ rotate_two_ref_inverse(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
     auto zx = q_z[1] / qz_n, zy = q_z[2] / qz_n, zz = q_z[3] / qz_n;
 
     auto qx_dot_z = q_x[1] * zx + q_x[2] * zy + q_x[3] * zz;
-    auto rx = q_x[1] - qx_dot_z * zx;
-    auto ry = q_x[2] - qx_dot_z * zy;
-    auto rz = q_x[3] - qx_dot_z * zz;
+    auto rx0 = q_x[1] - qx_dot_z * zx;
+    auto ry0 = q_x[2] - qx_dot_z * zy;
+    auto rz0 = q_x[3] - qx_dot_z * zz;
+    // second Gram-Schmidt pass, see rotate_two_ref
+    auto r_dot_z = rx0 * zx + ry0 * zy + rz0 * zz;
+    auto rx = rx0 - r_dot_z * zx;
+    auto ry = ry0 - r_dot_z * zy;
+    auto rz = rz0 - r_dot_z * zz;
     auto rn2 = rx * rx + ry * ry + rz * rz;
     auto rn = sqrt(max(rn2, EPS2));
     auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
@@ -323,6 +336,84 @@ KERNELSPEC FourMom<T> boost(FourMom<T> k, FourMom<T> p_boost, FVal<T> sign) {
     return FourMom<T>{
         e, k[1] + c1 * p_boost[1], k[2] + c1 * p_boost[2], k[3] + c1 * p_boost[3]
     };
+}
+
+template <typename T>
+KERNELSPEC FourMom<T>
+boost_light_cone(
+    FourMom<T> k, FVal<T> k_mass2, FourMom<T> p_boost, FVal<T> p_mass2, FVal<T> sign
+) {
+    // Same boost as `boost`, for a momentum k of known mass^2 k_mass2, written
+    // in light-cone components along the boost axis n:
+    //   k_+ -> e^{+y} k_+,  k_- -> e^{-y} k_-,  k_perp unchanged,
+    //   e^{y} = (p0 + |p|) / m.
+    // In `boost` a momentum thrown against a boost with gamma >> 1 comes out of
+    // the cancellation of terms of order gamma E and loses a factor gamma^2 of
+    // its relative precision, which leaves light-like momenta off shell by up
+    // to a few 1e-6 of their energy in the long color-ordered chains. Here the
+    // smaller of k_+, k_- is taken from the mass shell,
+    // k_+ k_- = k_mass2 + k_perp^2, both boosted components are positive
+    // products, and the result is accurate to a few ulps of its own energy,
+    // including its mass. p_mass2 is the mass^2 of p_boost, as the caller has
+    // already computed it, so that the boost is the one of the rest frame the
+    // caller built k in.
+    auto p_mag = sqrt(max(esquare<T>(p_boost), EPS2));
+    auto m_p = sqrt(max(p_mass2, EPS2));
+    auto e_plus = (p_boost[0] + p_mag) / m_p;
+    auto e_minus = m_p / (p_boost[0] + p_mag);
+    auto exp_y = where(sign > 0., e_plus, e_minus);
+    auto exp_my = where(sign > 0., e_minus, e_plus);
+
+    auto nx = p_boost[1] / p_mag, ny = p_boost[2] / p_mag, nz = p_boost[3] / p_mag;
+    auto k_par = k[1] * nx + k[2] * ny + k[3] * nz;
+    auto kx = k[1] - k_par * nx, ky = k[2] - k_par * ny, kz = k[3] - k_par * nz;
+    auto trans2 = max(k_mass2 + kx * kx + ky * ky + kz * kz, 0.);
+    auto k_plus_direct = k[0] + k_par;
+    auto k_minus_direct = k[0] - k_par;
+    auto forward = k_par >= 0.;
+    auto k_plus = where(
+        forward, k_plus_direct, trans2 / max(k_minus_direct, FVal<T>(EPS2))
+    );
+    auto k_minus = where(
+        forward, trans2 / max(k_plus_direct, FVal<T>(EPS2)), k_minus_direct
+    );
+
+    auto k_plus_new = exp_y * k_plus;
+    auto k_minus_new = exp_my * k_minus;
+    auto k_par_new = 0.5 * (k_plus_new - k_minus_new);
+    return FourMom<T>{
+        0.5 * (k_plus_new + k_minus_new),
+        kx + k_par_new * nx,
+        ky + k_par_new * ny,
+        kz + k_par_new * nz
+    };
+}
+
+// Lab momenta of a two-body system p_tot -> k1 + k2 given back to back in its
+// rest frame, with k1 + k2 = p_tot by construction. The softer of the two is
+// boosted with boost_light_cone on its own mass shell and the harder one is
+// p_tot minus it. The harder one carries at least half the energy, so it keeps
+// the relative precision of p_tot; taking the softer one as the difference
+// instead (or boosting it with `boost`) leaves it off shell when it is thrown
+// backwards against a fast p_tot.
+template <typename T>
+KERNELSPEC Pair<FourMom<T>, FourMom<T>> boost_two_body(
+    FourMom<T> k1_rest,
+    FVal<T> k1_mass2,
+    FourMom<T> k2_rest,
+    FVal<T> k2_mass2,
+    FourMom<T> p_tot,
+    FVal<T> p_tot_mass2
+) {
+    auto k1 = boost_light_cone<T>(k1_rest, k1_mass2, p_tot, p_tot_mass2, 1.);
+    auto k2 = boost_light_cone<T>(k2_rest, k2_mass2, p_tot, p_tot_mass2, 1.);
+    auto k1_soft = k1[0] <= k2[0];
+    FourMom<T> k1_out, k2_out;
+    for (int i = 0; i < 4; ++i) {
+        k1_out[i] = where(k1_soft, k1[i], p_tot[i] - k2[i]);
+        k2_out[i] = where(k1_soft, p_tot[i] - k1[i], k2[i]);
+    }
+    return {k1_out, k2_out};
 }
 
 template <typename T>
