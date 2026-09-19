@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 from __future__ import division
@@ -165,7 +165,7 @@ def check_compiler(options, block=False):
     """check that the current fortran compiler is gfortran 4.6 or later.
     If block, stops the execution, otherwise just print a warning"""
 
-    msg = 'In order to be able to run MadGraph5_aMC@NLO at NLO, you need to have ' + \
+    msg = 'In order to be able to run MadGraph7 at NLO, you need to have ' + \
             'gfortran 4.6 or later installed.\n%s has been detected.\n'+\
             'Note that you can still run MadEvent (at LO) without any problem!'
     #first check that gfortran is installed
@@ -217,7 +217,7 @@ class CmdExtended(common_run.CommonRunCmd):
 
 
     keyboard_stop_msg = """stopping all operation
-            in order to quit MadGraph5_aMC@NLO please enter exit"""
+            in order to quit MadGraph7 please enter exit"""
     
     # Define the Error
     InvalidCmd = InvalidCmd
@@ -250,18 +250,26 @@ class CmdExtended(common_run.CommonRunCmd):
         # Remember to fill in time at writeout time!
         self.history_header = \
         '#************************************************************\n' + \
-        '#*                    MadGraph5_aMC@NLO                     *\n' + \
+        '#*                        MadGraph7                         *\n' + \
         '#*                                                          *\n' + \
-        "#*                *                       *                 *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                    * * * * 5 * * * *                     *\n" + \
-        "#*                  *        * *        *                   *\n" + \
-        "#*                *                       *                 *\n" + \
+        "#*                        ..........                        *\n" + \
+        "#*                      @          ....                     *\n" + \
+        "#*                    @               ...                   *\n" + \
+        "#*                  @    M         M    .                   *\n" + \
+        "#*                 @     MM       MM    ..                  *\n" + \
+        "#*                 .     M  M   M  M  ..                    *\n" + \
+        "#*                 ..    M   M M   M ..                     *\n" + \
+        "#*                  .    M    M    M.                       *\n" + \
+        "#*                  ...                   7777777           *\n" + \
+        "#*                    ....                     7            *\n" + \
+        "#*                       .................... 7             *\n" + \
+        "#*                                           7              *\n" + \
+        "#*                                          7               *\n" + \
         "#*                                                          *\n" + \
         "#*                                                          *\n" + \
         info_line + \
         "#*                                                          *\n" + \
-        "#*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "#*       The MadGraph7 Development Team - Find us at        *\n" + \
         "#*    https://server06.fynu.ucl.ac.be/projects/madgraph     *\n" + \
         "#*                           and                            *\n" + \
         "#*                http://amcatnlo.cern.ch                   *\n" + \
@@ -280,18 +288,26 @@ class CmdExtended(common_run.CommonRunCmd):
         logger.info(\
         "************************************************************\n" + \
         "*                                                          *\n" + \
-        "*           W E L C O M E  to  M A D G R A P H 5           *\n" + \
+        "*           W E L C O M E  to  M A D G R A P H 7           *\n" + \
         "*                       a M C @ N L O                      *\n" + \
         "*                                                          *\n" + \
-        "*                 *                       *                *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                     * * * * 5 * * * *                    *\n" + \
-        "*                   *        * *        *                  *\n" + \
-        "*                 *                       *                *\n" + \
+        "*                        ..........                        *\n" + \
+        "*                      @          ....                     *\n" + \
+        "*                    @               ...                   *\n" + \
+        "*                  @    M         M    .                   *\n" + \
+        "*                 @     MM       MM    ..                  *\n" + \
+        "*                 .     M  M   M  M  ..                    *\n" + \
+        "*                 ..    M   M M   M ..                     *\n" + \
+        "*                  .    M    M    M.                       *\n" + \
+        "*                  ...                   7777777           *\n" + \
+        "*                    ....                     7            *\n" + \
+        "*                       .................... 7             *\n" + \
+        "*                                           7              *\n" + \
+        "*                                          7               *\n" + \
         "*                                                          *\n" + \
         info_line + \
         "*                                                          *\n" + \
-        "*    The MadGraph5_aMC@NLO Development Team - Find us at   *\n" + \
+        "*       The MadGraph7 Development Team - Find us at        *\n" + \
         "*                 http://amcatnlo.cern.ch                  *\n" + \
         "*                                                          *\n" + \
         "*               Type 'help' for in-line help.              *\n" + \
@@ -440,54 +456,6 @@ class CheckValidForCmd(object):
 
         self.set_run_name(args[0], level= 'shower')
         args[0] = pjoin(self.me_dir, 'Events', args[0])
-    
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid Madanalysis path set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid path to your topdrawer directory set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name defined. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name defined. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
     
     def check_pgs(self, arg):
         """Check the argument for pythia command
@@ -1536,114 +1504,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
         self.update_status('', level='all', update_results=True)
 
-    ################################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        
-        if not self.force:
-            self.ask_edit_cards([], args, plot=True)
-                
-        if any([arg in ['parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                logger.info('Found events.lhe file for run %s' % self.run_name) 
-                shutil.move(filename, pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                self.create_plot('parton')
-                shutil.move(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'), filename)
-                misc.gzip(filename)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'MADatNLO.top')
-            if  os.path.exists(filename):
-                logger.info('Found MADatNLO.top file for run %s' % \
-                             self.run_name) 
-                output = pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                plot_dir = pjoin(self.me_dir, 'HTML', self.run_name, 'plots_parton')
-                
-                if not os.path.isdir(plot_dir):
-                    os.makedirs(plot_dir) 
-                top_file = pjoin(plot_dir, 'plots.top')
-                files.cp(filename, top_file)
-                madir = self.options['madanalysis_path']
-                tag = self.run_card['run_tag']  
-                td = self.options['td_path']
-                misc.call(['%s/plot' % self.dirbin, madir, td],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=plot_dir)
-
-                misc.call(['%s/plot_page-pl' % self.dirbin, 
-                                    os.path.basename(plot_dir),
-                                    'parton'],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=pjoin(self.me_dir, 'HTML', self.run_name))
-                shutil.move(pjoin(self.me_dir, 'HTML',self.run_name ,'plots.html'),
-                                                                             output)
-
-                os.remove(pjoin(self.me_dir, 'Events', 'plots.top'))
-                
-        if any([arg in ['all','shower'] for arg in args]):
-            filenames = misc.glob('events_*.lhe.gz', pjoin(self.me_dir, 'Events', self.run_name))
-            if len(filenames) != 1:
-                filenames = misc.glob('events_*.hep.gz', pjoin(self.me_dir, 'Events', self.run_name)) 
-                if len(filenames) != 1:
-                    logger.info('No shower-level event file found for run %s' % \
-                                self.run_name)
-                    return
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-                
-                if not os.path.exists(pjoin(self.me_dir, 'Cards', 'pythia_card.dat')):
-                    if aMCatNLO and not self.options['mg5_path']:
-                        raise Exception("plotting NLO HEP files requires MG5 utilities.")
-                    
-                    files.cp(pjoin(self.options['mg5_path'], 'Template','LO', 'Cards', 'pythia_card_default.dat'),
-                             pjoin(self.me_dir, 'Cards', 'pythia_card.dat'))
-                self.run_hep2lhe()
-            else:
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-
-            self.create_plot('shower')
-            lhe_file_name = filename.replace('.hep.gz', '.lhe')
-            shutil.move(pjoin(self.me_dir, 'Events','pythia_events.lhe'), 
-                        lhe_file_name)
-            misc.gzip(lhe_file_name)
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make PGS plots')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                #shutil.move(filename, pjoin(self.me_dir, 'Events','delphes_events.lhco'))
-                self.create_plot('Delphes')
-                #shutil.move(pjoin(self.me_dir, 'Events','delphes_events.lhco'), filename)
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make Delphes plots')
-
-
     ############################################################################      
     def do_calculate_xsect(self, line):
         """Main commands: calculates LO/NLO cross-section, using madevent_mintFO 
@@ -1790,7 +1650,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.setup_citation_tracking()
         if common_run.citation is not None:
             common_run.citation.cite('Alwall:2014hca',
-                'core matrix-element generation (MadGraph5_aMC@NLO)')
+                'core matrix-element generation (MadGraph7)')
             self.cite_nlo_run_options(mode)
             try:
                 self.run_card.add_citation(common_run.citation.cite)
@@ -1949,10 +1809,12 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
 
 
     def update_random_seed(self):
-        """Update random number seed with the value from the run_card. 
+        """Update random number seed with the value from the run_card.
         If this is 0, update the number according to a fresh one.
-        If a specific seed is set, reset it to 0 in the run_card after use
-        to ensure that subsequent runs will be statistically independent."""
+        If a positive seed is set, reset it to 0 in the run_card after use
+        to ensure that subsequent runs will be statistically independent.
+        A negative seed is preserved in the run_card across runs and its
+        absolute value is used as the actual seed for the Fortran code."""
         iseed = self.run_card['iseed']
         if iseed == 0:
             randinit = open(pjoin(self.me_dir, 'SubProcesses', 'randinit'))
@@ -1960,6 +1822,7 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
             randinit.close()
         else:
             self.reset_iseed_in_run_card()
+            iseed = abs(iseed)
         randinit = open(pjoin(self.me_dir, 'SubProcesses', 'randinit'), 'w')
         randinit.write('r=%d' % iseed)
         randinit.close()
@@ -2997,12 +2860,10 @@ RESTART = %(mint_mode)s
             out=pjoin(self.me_dir,'Events',self.run_name,'MADatNLO')
             self.combine_plots_HwU(jobs,out)
             try:
-                misc.call(['gnuplot','MADatNLO.gnuplot'],\
-                          stdout=devnull,stderr=devnull,\
-                          cwd=pjoin(self.me_dir, 'Events', self.run_name))
+                common_run.render_HwU_plot(out, stdout=devnull, stderr=devnull)
             except Exception:
                 pass
-            logger.info('The results of this run and the HwU and GnuPlot files with the plots' + \
+            logger.info('The results of this run and the HwU data with GnuPlot, Matplotlib, and HTML plotting output' + \
                         ' have been saved in %s' % pjoin(self.me_dir, 'Events', self.run_name))
         elif self.analyse_card['fo_analysis_format'].lower() == 'root':
             rootfiles = []
@@ -3451,7 +3312,7 @@ RESTART = %(mint_mode)s
             debug_msg = 'Advanced statistics collection failed with error "%s"\n'%str(e)
             err_string = io.StringIO()
             traceback.print_exc(limit=4, file=err_string)
-            debug_msg += 'Please report this backtrace to a MG5_aMC developer:\n%s'\
+            debug_msg += 'Please report this backtrace to a MadGraph7 developer:\n%s'\
                                                           %err_string.getvalue()
 
         logger.debug(debug_msg+'\n')
@@ -4263,14 +4124,6 @@ RESTART = %(mint_mode)s
                 raise aMCatNLOError('No file has been generated, an error occurred.'+\
              ' More information in %s' % pjoin(os.getcwd(), 'amcatnlo_run.log'))
 
-            # run the plot creation in a secure way
-            if hep_format == 'StdHEP':
-                try:
-                    self.do_plot('%s -f' % self.run_name)
-                except Exception as error:
-                    logger.info("Fail to make the plot. Continue...")
-                    pass
-
         elif out_id == 'TOP' or out_id == 'HWU':
             #copy the topdrawer or HwU file(s) back in events
             if out_id=='TOP':
@@ -4301,7 +4154,7 @@ RESTART = %(mint_mode)s
             if out_id=='TOP':
                 hist_format='TopDrawer format'
             elif out_id=='HWU':
-                hist_format='HwU and GnuPlot formats'
+                hist_format='HwU format, with GnuPlot, Matplotlib, and HTML output'
 
             if not topfiles:
                 # if no topfiles are found just warn the user
@@ -4322,10 +4175,9 @@ RESTART = %(mint_mode)s
                         histos=[{'dirname':pjoin(rundir,file)}]
                         self.combine_plots_HwU(histos,out)
                         try:
-                            misc.call(['gnuplot','%s%d.gnuplot' % (filename,i)],\
-                                      stdout=os.open(os.devnull, os.O_RDWR),\
-                                      stderr=os.open(os.devnull, os.O_RDWR),\
-                                      cwd=pjoin(self.me_dir, 'Events', self.run_name))
+                            common_run.render_HwU_plot(
+                                out, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
                         except Exception:
                             pass
                         plotfile=pjoin(self.me_dir,'Events',self.run_name,
@@ -4389,10 +4241,9 @@ RESTART = %(mint_mode)s
                                 norms.append(norm)
                             self.combine_plots_HwU(histos,out,normalisation=norms)
                             try:
-                                misc.call(['gnuplot','%s%d.gnuplot' % (filename, i)],\
-                                          stdout=os.open(os.devnull, os.O_RDWR),\
-                                          stderr=os.open(os.devnull, os.O_RDWR),\
-                                          cwd=pjoin(self.me_dir, 'Events',self.run_name))
+                                common_run.render_HwU_plot(
+                                    out, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
                             except Exception:
                                 pass
 
@@ -4496,8 +4347,7 @@ RESTART = %(mint_mode)s
         upgrade_tag = {'parton': ['parton','delphes','shower','madanalysis5_hadron'],
                        'shower': ['shower','delphes','madanalysis5_hadron'],
                        'delphes':['delphes'],
-                       'madanalysis5_hadron':['madanalysis5_hadron'],
-                       'plot':[]}
+                       'madanalysis5_hadron':['madanalysis5_hadron']}
         
         if name == self.run_name:        
             if reload_card:
@@ -4819,7 +4669,7 @@ RESTART = %(mint_mode)s
                                    ' of the events using LHAPDF. However, no valid LHAPDF installation found with the'+\
                                    ' needed PDF set. Will use default internal PDF for the shower instead. To use the'+\
                                    ' same set as was used in the event generation install LHAPDF and set the path using'+\
-                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph5_aMC@NLO python shell')
+                                   ' "set /path_to_lhapdf/bin/lhapdf-config" from the MadGraph7 python shell')
                 content += 'LHAPDFPATH=\n' 
                 content += 'PDFCODE=0\n'
         else:
@@ -5094,7 +4944,7 @@ RESTART = %(mint_mode)s
             # Find the correct PDF input file
             input_files, output_files = [], []
             pdfinput = self.get_pdf_input_filename()
-            if os.path.exists(pdfinput):
+            if pdfinput.strip() and os.path.exists(pdfinput):
                 input_files.append(pdfinput)
             input_files.append(pjoin(os.path.dirname(exe), os.path.pardir, 'reweight_xsec_events'))
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
@@ -5277,7 +5127,7 @@ RESTART = %(mint_mode)s
 
         #Find the correct PDF input file
         pdfinput = self.get_pdf_input_filename()
-        if os.path.exists(pdfinput):
+        if pdfinput.strip() and os.path.exists(pdfinput):
             input_files.append(pdfinput)            
         return input_files, output_files, required_output,  args
 
@@ -5598,12 +5448,39 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                 except OSError:
                     raise aMCatNLOError(('No valid %s installation found. \n' + \
                        'Please set the path to %s-config by using \n' + \
-                       'MG5_aMC> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
+                       'MadGraph7> set <absolute-path-to-%s>/bin/%s \n') % (code,code,code,code))
         else:
             self.make_opts_var['pineappl'] = ""
 
+        # Setting fastjet_config makes makefile_fks_dir build
+        # fastjetfortran_madfks_full.cc, which #includes
+        # "fastjet/ClusterSequence.hh" and asks fastjet-config for its cxxflags
+        # and libs.  A path that does not answer therefore turns the documented
+        # fjcore fallback (the else branch of that makefile) into a hard
+        # compilation error for every P* directory.  The option is read
+        # verbatim out of Cards/me5_configuration.txt and, unlike
+        # MadGraphCmd.set2_fastjet, was never re-validated here, so a stale or
+        # broken entry took the whole run down with an unrelated-looking
+        # "A compilation Error occurs when trying to compile .../P0_...".
+        # Check it the same way the shower setup above already does, and fall
+        # back to fjcore when it does not run.
         if 'fastjet' in list(self.options.keys()) and self.options['fastjet']:
-            self.make_opts_var['fastjet_config'] = self.options['fastjet']
+            try:
+                p = subprocess.Popen([self.options['fastjet'], '--version'],
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                p.communicate()
+                valid_fastjet = (p.returncode == 0)
+            except Exception:
+                valid_fastjet = False
+            if valid_fastjet:
+                self.make_opts_var['fastjet_config'] = self.options['fastjet']
+            else:
+                logger.warning('%s does not run: it is not a valid ' % \
+                    self.options['fastjet'] + 'fastjet-config. Compiling the ' +
+                    'Subprocesses with fjcore instead.\n Set the correct path ' +
+                    'with "set fastjet /PATH/TO/fastjet-config" if you need ' +
+                    'the full FastJet.')
 
         # add the make_opts_var to make_opts
         self.update_make_opts()
@@ -5637,7 +5514,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             else:
                 logger.warning('Could not compile StdHEP because its'+\
                    ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies'.\n"+\
+                             " Check the MadGraph7 option 'output_dependencies'.\n"+\
                    " This will prevent the use of HERWIG6/Pythia6 shower.")
 
         # make CutTools (only necessary with MG option output_dependencies='internal')
@@ -5650,7 +5527,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
             else:
                 raise aMCatNLOError('Could not compile CutTools because its'+\
                    ' source directory could not be found in the SOURCE folder.\n'+\
-                             " Check the MG5_aMC option 'output_dependencies.'")
+                             " Check the MadGraph7 option 'output_dependencies.'")
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libcts.a'))) or \
             not os.path.exists(os.path.realpath(pjoin(libdir, 'mpmodule.mod'))):
             raise aMCatNLOError('CutTools compilation failed.')            
@@ -5673,7 +5550,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile CutTools.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5701,7 +5578,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MG5_aMC. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile IREGI.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
@@ -5925,7 +5802,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         first_cmd = cmd_switch.get_cardcmd()
                 
         if not options['force'] and not self.force:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd, switch=switch)
+            self.ask_edit_cards(cards, first_cmd=first_cmd, switch=switch)
 
         self.banner = banner_mod.Banner()
 
@@ -6094,8 +5971,8 @@ if '__main__' == __name__:
     # This can ONLY run a single command !!
     import sys
 
-    if sys.version_info < (3, 7):
-        sys.exit('MadGraph5_aMc@NLO works only with python 3.7 and later.\n'+\
+    if sys.version_info < (3, 12):
+        sys.exit('MadGraph7 works only with python 3.12 and later.\n'+\
                'Please upgrade your version of python or specify a compatible version.')
 
     import os

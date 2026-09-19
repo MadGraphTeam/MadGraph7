@@ -2,7 +2,7 @@ SUBROUTINE SMATRIX%(proc_id)s(P, IFLAV, RHEL, RCOL, channel, IVEC, ANS, IHEL, IC
 C 
 %(info_lines)s
 C 
-C MadGraph5_aMC@NLO for Madevent Version
+C MadGraph7 for Madevent Version
 C 
 C Returns amplitude squared summed/avg over colors
 c and helicities
@@ -216,9 +216,8 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
-    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d) 
-    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
+    INTEGER    NWAVEFUNCS,     NCOLOR
+    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d)
     INTEGER    NCOLOR_FLOW
     PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
@@ -251,12 +250,11 @@ C
 %(jamp_tmp_decl)s
 %(jamp_decl)s
     COMPLEX*16 TMP(%(wavefunctionsize)d)
-    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
+    INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_hel_decl)s
+    COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
 ${hr_gather_decl}
-%(color_fold_decl)s
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -291,7 +289,6 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
-%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -302,7 +299,7 @@ if (first) then
 endif
 C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
-%(flavor_mask_setup)s%(blas_hel_setup)s
+%(flavor_mask_setup)s
     AMP(:,:) = (0d0,0d0)
 ${helas_calls}
 C     END OF RECYCLED HELAS BLOCK
@@ -310,20 +307,19 @@ C     END OF RECYCLED HELAS BLOCK
     JAMP(:,:)  = (0d0,0d0)
     DO ${hr_gather_open}
 ${jamp_lines}
-%(color_fold_gather)s%(blas_hel_gather)s
 %(jampflow_lines)s
         TS(K) = 0.D0 
-    	DO M = 1, NAMPSO%(blas_hel_gate)s
+    	DO M = 1, NAMPSO
           CF_INDEX = 0
-          DO I = 1, NCOLORFOLD
+          DO I = 1, NCOLOR
             ZTEMP = (0.D0,0.D0)
-            DO J = I, NCOLORFOLD
+            DO J = I, NCOLOR
               CF_INDEX = CF_INDEX + 1
-              ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
+              ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
             ENDDO ! J
     		DO N = 1, NAMPSO
 			%(select_configs_if)s
-    		     TS(K) = TS(K) + REAL(ZTEMP*DCONJG(%(color_fold_array)s(I,N)))
+    		     TS(K) = TS(K) + REAL(ZTEMP*DCONJG(JAMP(I,N)))
 			  %(select_configs_endif)s
     		ENDDO ! N
         ENDDO ! I
@@ -343,7 +339,7 @@ ${jamp_lines}
     	  enddo
         Enddo
     ${dead_row_endif}
-    ENDDO ! ${hr_gather_close}%(blas_hel_finish)s
+    ENDDO ! ${hr_gather_close}
 
     END
 
@@ -356,6 +352,6 @@ ${jamp_lines}
     end
 
 
-%(color_init_routine)s%(blas_hel_routine)s
+%(color_init_routine)s
 
     %(broken_sym_function)s

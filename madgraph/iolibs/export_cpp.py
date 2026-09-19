@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import json
+from collections import defaultdict
 
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
@@ -103,7 +104,6 @@ class UFOModelConverterCPP(object):
     def __init__(self, model, output_path, wanted_lorentz = [],
                  wanted_couplings = [], replace_dict={}):
         """ initialization of the objects """
-        misc.sprint('Exporting model to C++ standalone format')
         self.model = model
         self.model_name = ProcessExporterCPP.get_model_name(model['name'])
 
@@ -218,7 +218,6 @@ class UFOModelConverterCPP(object):
         # Handle flavor couplings
         # strategy picke one of the actual coupling and check if this is a running one or not
         flavor_couplings = [c for c in wanted_couplings if isinstance(c, base_objects.FLV_Coupling)]
-        misc.sprint(self.coups_dep)
         deps = [c.name for c in self.coups_dep.values()]
         for one_flv in flavor_couplings:
             one_coupling = one_flv.get_one_coupling()
@@ -350,7 +349,6 @@ class UFOModelConverterCPP(object):
 
         # For each parameter type, write out the definition string
         # type parameters;
-        misc.sprint(type_param_dict)
         res_strings = []
         for key in type_param_dict:
             res_strings.append("%s %s;" % (self.type_dict[key],
@@ -380,7 +378,7 @@ class UFOModelConverterCPP(object):
 
     def _assert_flv_couplings_supported(self, params):
         """Refuse, with a clear and actionable message, the merged-flavor
-        coupling structures the C++ (mg7/standalone_mg7) backend cannot yet
+        coupling structures the C++ (mg7/standalone) backend cannot yet
         generate correctly, instead of crashing or emitting wrong/uncompilable
         code.
 
@@ -397,7 +395,7 @@ class UFOModelConverterCPP(object):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
 
-        The Fortran 'madevent'/'standalone' output supports the remaining cases.
+        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -406,10 +404,10 @@ class UFOModelConverterCPP(object):
                 if nb_merged in (1, 2):
                     continue
                 raise InvalidCmd(
-                    "merged-flavor C++ output (mg7/standalone_mg7) does not yet "
+                    "merged-flavor C++ output (mg7/standalone) does not yet "
                     "support this process: flavor coupling %s connects %d "
                     "merged-flavor legs; only one or two are supported. Use "
-                    "'output madevent' or 'output standalone' for this process. "
+                    "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
 
@@ -797,14 +795,14 @@ class OneProcessExporterCPP(object):
         info = misc.get_pkg_info()
         info_lines = ""
         if info and 'version' in info and  'date' in info:
-            info_lines = "//  MadGraph5_aMC@NLO v. %s, %s\n" % \
+            info_lines = "//  MadGraph7 v. %s, %s\n" % \
                          (info['version'], info['date'])
             info_lines = info_lines + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"
         else:
-            info_lines = "//  MadGraph5_aMC@NLO\n" + \
-                         "//  By the MadGraph5_aMC@NLO Development Team\n" + \
+            info_lines = "//  MadGraph7\n" + \
+                         "//  By the MadGraph7 Development Team\n" + \
                          "//  Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch"        
 
         return info_lines
@@ -1849,9 +1847,7 @@ class OneProcessExporterCPP(object):
                 return replace_dict
 
     def get_flavor_table(self, matrix_element):
-        print(list(matrix_element.get_external_flavors()))
         flavors = list(matrix_element.get_external_flavors_with_iden())
-        print(flavors)
         flavor_dict = {
             1: 0, 2: 1, 3: 2, 4: 3, # quarks
             11: 0, 13: 1, 15: 2,    # charged leptons
@@ -3041,7 +3037,7 @@ class ProcessExporterCPP(VirtualExporter):
 
 
     def convert_model(self, model, wanted_lorentz = [],
-                         wanted_couplings = []):
+                         wanted_couplings = [], **opts):
         # create the model parameter files
         model_builder = self.create_model_class(model,
                                          os.path.join(self.dir_path, 'src'),
@@ -3636,24 +3632,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
     from_template = {'src': [s+'read_slha.h', s+'read_slha.cc', s+'mg7/api.h'],
                      'SubProcesses': [s+'mg7/api.cpp'],
                      'Cards': []}
-    #from_template_simd = [
-    #    s+"mg7/api.h",
-    #    s+"mg7/simd/api_simd.cpp",
-    #    s+"mg7/simd/cudacpp.mk",
-    #    s+"mg7/simd/Makefile",
-    #]
-    #to_link_simd = ["api.h", "api_simd.cpp", "cudacpp.mk", "Makefile"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.me_lib_format = args[1].get("me_lib_format", None)
         self.process_info = []
+        self.merged_subprocesses = defaultdict(list)
 
     def generate_subprocess_directory(
         self, matrix_element, cpp_helas_call_writer, proc_number=None
     ):
         """ Override of super().generate_subprocess_directory """
-        process_exporter_mg7 = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
+        process_exporter_mg7 = self.oneprocessclass(
+            matrix_element,
+            cpp_helas_call_writer,
+            merge_same_topologies=self.opt.get('merge_same_topologies', True)
+        )
 
         # Enable the crossing machinery (extended flavor id) when the process was
         # generated with --use_crossing (default OFF) and the process does not pin
@@ -3695,7 +3689,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
             plot.draw()
 
         me_lib_path = self.me_lib_format.format(process_id = proc_dir_name)
-        self.process_info.append(process_exporter_mg7.get_subprocess_info(dirpath, me_lib_path))
+        # Store the path relative to the process directory (like me_path): an
+        # absolute path would break as soon as the process directory is moved.
+        rel_dirpath = pjoin('SubProcesses', proc_dir_name)
+        subproc_info, diagram_tags, subproc_class = process_exporter_mg7.get_subprocess_info(rel_dirpath, me_lib_path)
+        self.merged_subprocesses[subproc_class].append(
+            (len(self.process_info), diagram_tags)
+        )
+        self.process_info.append(subproc_info)
 
     def copy_template(self, model):
         super().copy_template(model)
@@ -3709,7 +3710,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.madevent import main\n"
+                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
                     "if __name__ == '__main__':\n"
                     "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                     "    try:\n"
@@ -3719,6 +3720,126 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(madnis_bin, 0o755)
 
+    # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
+    # rediscover on its own. LHAPDF above all -- bin/generate_events may be
+    # driven from a shell that never sourced anything MadGraph-related.
+    _me5_config_keys = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2',
+                        'heptools_install_dir')
+
+    def write_me5_configuration(self):
+        """Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration
+        and by the mg7 launcher (load_mg5_options). Edit it to move the
+        directory to a machine where the tools sit elsewhere."""
+
+        lines = ['# configuration for the mg7 run time and post-processing tools',
+                 '# written at output time; edit if you move this directory',
+                 'mg5_path = %s' % MG5DIR]
+        for key in self._me5_config_keys:
+            value = self.opt.get(key)
+            if not value or str(value).strip().lower() in ('none', 'auto'):
+                continue
+            lines.append('%s = %s' % (key, self._portable_tool_value(value)))
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('\n'.join(lines) + '\n')
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
+    @staticmethod
+    def _portable_tool_value(value):
+        """Make a configuration value usable from another working directory.
+
+        A value relative to MG5DIR ('./HEPTools') becomes absolute; a bare
+        program name ('lhapdf-config', the shipped default) is left alone,
+        since resolving it would freeze this machine's PATH into the output.
+        A trailing '--python=X.Y' filter is preserved -- the readers know it.
+        """
+
+        exe, sep, flags = str(value).strip().partition(' ')
+        if not os.path.isabs(exe) and (os.sep in exe or exe.startswith('.')):
+            exe = os.path.realpath(pjoin(MG5DIR, exe))
+        return exe + sep + flags
+
+    def get_merged_info(self):
+        merged_subproc_info = []
+        for subprocesses in self.merged_subprocesses.values():
+            channels = []
+            flavors = []
+            subproc_indices = []
+            unique_diagram_tags = []
+            unique_diagrams = []
+            for subproc_index_in_group, (subproc_index, diagram_tags) in enumerate(
+                subprocesses
+            ):
+                subproc_indices.append(subproc_index)
+                subproc_info = self.process_info[subproc_index]
+                flavor_offset = len(flavors)
+                flavors.extend(
+                    {
+                        "subprocess": subproc_index_in_group,
+                        "flavor": ps_flavor,
+                    }
+                    for ps_flavor, flavor in enumerate(
+                        subproc_info["flavors"]
+                    )
+                )
+
+                for unmerged_chan_index, (chan_info, chan_tags) in enumerate(
+                    zip(subproc_info["channels"], diagram_tags)
+                ):
+                    chan_index = len(channels)
+
+                    same_diags = []
+                    for tag in chan_tags:
+                        try:
+                            index = unique_diagram_tags.index(tag)
+                            chan_index, diag_index = unique_diagrams[index]
+                            same_diags.append(diag_index)
+                        except ValueError:
+                            same_diags.append(None)
+
+                    if chan_index == len(channels):
+                        channels.append(
+                            {
+                                "subprocess": subproc_index,
+                                "channel": unmerged_chan_index,
+                                "diagrams": [],
+                            }
+                        )
+
+                    diagrams = channels[chan_index]["diagrams"]
+                    for diag_info, same_diag, tag in zip(
+                        chan_info["diagrams"], same_diags, chan_tags
+                    ):
+                        if same_diag is None:
+                            unique_diagram_tags.append(tag)
+                            diag_index = len(diagrams)
+                            unique_diagrams.append((chan_index, diag_index))
+                            diagrams.append(
+                                {
+                                    "diagram": [-1] * len(subprocesses),
+                                    "permutation": diag_info["permutation"],
+                                    "active_flavors": [],
+                                }
+                            )
+                        else:
+                            diag_index = same_diag
+                        diag_dict = diagrams[diag_index]
+                        diag_dict["diagram"][subproc_index_in_group] = diag_info["diagram"]
+                        diag_dict["active_flavors"].extend(
+                            flavor_offset + flav for flav in diag_info["active_flavors"]
+                        )
+
+            merged_subproc_info.append({
+                "incoming": subproc_info["incoming"],
+                "outgoing": subproc_info["outgoing"],
+                "subprocesses": subproc_indices,
+                "channels": channels,
+                "flavors": flavors,
+            })
+        return merged_subproc_info
+
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
@@ -3726,25 +3847,25 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with open(file_name, 'w') as f:
             json.dump(self.process_info, f)
 
-        # Generate Cards/run_card.toml from the template, filling in
-        # process-dependent defaults (mirrors the LO run_card.dat logic).
-        self.create_run_card(matrix_elements, history)
+        merged_file_name = os.path.normpath(os.path.join(
+            self.dir_path, "SubProcesses", "merged_subprocesses.json"
+        ))
+        with open(merged_file_name, 'w') as f:
+            json.dump(self.get_merged_info(), f)
 
         # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
         # post-processing driver (get_characteristics) so that the madevent
         # tool interface can run on this directory.
+        # NB: this must come *before* create_run_card: it is what fills in
+        # self.proc_characteristic, and the run_card defaults are derived from
+        # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
         self.create_proc_characteristics(matrix_elements)
 
-        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
-        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
-        # cluster/run-mode settings resolve from the central configuration.
-        try:
-            with open(pjoin(self.dir_path, 'Cards',
-                            'me5_configuration.txt'), 'w') as fsock:
-                fsock.write('# configuration for the mg7 post-processing tools\n'
-                            'mg5_path = %s\n' % MG5DIR)
-        except Exception as error:
-            logger.warning('could not write me5_configuration.txt: %s', error)
+        # Generate Cards/run_card.toml from the template, filling in
+        # process-dependent defaults (mirrors the LO run_card.dat logic).
+        self.create_run_card(matrix_elements, history)
+
+        self.write_me5_configuration()
 
         # MadAnalysis5 default analysis cards, tailored to this process. This
         # must run *before* history.write() below: writing the proc_card cleans
@@ -3836,20 +3957,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if processes:
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
-            # persist the model so the runtime can compute widths set to 'auto'
-            # in the param_card (and recompute them at each scan point). A hash
-            # of the model's python source is stored on the second line so the
-            # runtime can detect a model that changed since output.
+            # persist the model so the runtime can reload it: to compute the
+            # widths set to 'auto' in the param_card (and recompute them at
+            # each scan point) and to reset the parameters the model derives
+            # from the free ones (launch.MG7Cmd.get_model). A hash of the
+            # model's python source is stored on the second line so the runtime
+            # can detect a model that changed since output.
             try:
                 model = processes[0][0].get('model')
-                model_path = model.get('modelpath')
-                model_ref = model_path or model.get('name')
+                try:
+                    model_path = model.get('modelpath')
+                    model_hash = misc.hash_model_files(model_path)
+                except Exception:
+                    model_path, model_hash = None, None
+                # the restriction is part of the model the process was
+                # generated with ('sm-no_b_mass' is not 'sm'), so store the
+                # reference that reproduces it, not the bare UFO directory.
+                try:
+                    model_ref = model.get('modelpath+restriction')
+                except Exception:
+                    model_ref = model_path or model.get('name')
                 if model_ref:
-                    model_hash = misc.hash_model_files(model_path) if model_path else None
                     with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
                         f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception:
-                pass
+            except Exception as error:
+                logger.debug('could not record the model: %s', error)
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')
@@ -3927,17 +4059,14 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     opt['output_options'] = cmd_options
     # --use_crossing of the generate/add process command, and of the output
     # command for this output (both default on). Only the exporters that set
-    # supports_crossing (standalone_cpp, standalone_mg7/madmatrix) read this
+    # supports_crossing (the madmatrix standalone) read this
     # key; the others ignore it.
     opt['use_crossing'] = getattr(cmd, '_use_crossing', True) \
                           and getattr(cmd, '_output_use_crossing', True)
     cformat = cmd._export_format
 
-    # None of the C++ exporters below has a MadLoop backend, so a loop-induced
-    # process would reach them as a LoopHelasMatrixElement whose loop legs they
-    # cannot even index (the mg7 exporter builds its edge names from the
-    # external legs alone). Refuse it here instead. Plugins are left alone:
-    # they are free to implement their own loop support.
+    # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
+    # loop legs: it builds its edge names from the external legs alone).
     if cformat not in export_v4.LOOP_INDUCED_FORMATS and cmd._curr_amps and \
        isinstance(cmd._curr_amps[0], loop_diagram_generation.LoopAmplitude):
         raise InvalidCmd(export_v4.loop_induced_not_supported_msg(
@@ -3945,8 +4074,6 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
 
     if cformat == 'pythia8':
         return ProcessExporterPythia8(cmd._export_dir, opt)
-    elif cformat == 'standalone_cpp':
-        return  ProcessExporterCPP(cmd._export_dir, opt)
     elif cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
     elif cformat == 'mg7_v5':
@@ -3954,7 +4081,7 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     elif cformat == 'mg7':
         from madmatrix.output import ProcessExporterMadMatrix
         return ProcessExporterMadMatrix(cmd._export_dir, opt)
-    elif cformat == 'standalone_mg7':
+    elif cformat == 'standalone':
         from madmatrix.output import ProcessExporterMadMatrixStandalone
         return ProcessExporterMadMatrixStandalone(cmd._export_dir, opt)
     else:

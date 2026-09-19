@@ -1,13 +1,13 @@
 #! /usr/bin/env python3
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -70,10 +70,6 @@ if '__main__' == __name__:
     # Create a MERunner object for UFO-ALOHA-MG5
     my_mg5_ufo = me_comparator.MG5_UFO_Runner()
     my_mg5_ufo.setup(mg5_path, mg4_path)
-
-    # Create a MERunner object for C++
-    my_mg5_cpp = me_comparator.MG5_CPP_Runner()
-    my_mg5_cpp.setup(mg5_path, mg4_path)
 
     # Create and setup a comparator
     my_comp = me_comparator.MEComparator()

@@ -129,7 +129,10 @@ C LOCAL VARIABLES
 C
       INTEGER FLAVOR(NEXTERNAL)
       REAL*8 T(NSQAMPSO), BUFF
-      INTEGER IHEL,IDEN, I, J
+      INTEGER IHEL,IDEN, I, J, JJ
+C     beam polarisation, see the same block in matrix_standalone_v4.inc
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
       DATA (BEAMS_HELAVGFACTOR(I),I=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
@@ -270,8 +273,20 @@ C     For this reason, we simply remove the filterin when there is only three ex
       ENDIF
 C     C-parity de-duplication is only safe for the plain unpolarized helicity
 C     sum of the UNCROSSED process and only once its own scan has settled.
+C     ... and never with a polarised beam: a row and its C-parity flip carry
+C     OPPOSITE beam helicities, so after the beam weight they are not equal.
       DEDUP = %(so_csym_ntry)s(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
      &        .AND. USERHEL.EQ.-1 .AND. POLARIZATIONS(0,0).EQ.-1%(so_dedup_cross)s
+     &        .AND. ABS(BEAMPOL(1)).LE.1D0 .AND. ABS(BEAMPOL(2)).LE.1D0
+C     A crossed flavor evaluates the BASE helicity table, so NHEL(JJ,IHEL) is
+C     not the crossed beam's helicity: refused rather than guessed, as in
+C     matrix_standalone_v4.inc.
+      IF (FLAV_IDX.GT.NFLAV.AND.NINITIAL.EQ.2.AND.
+     &   (ABS(BEAMPOL(1)).GT.1D0.OR.ABS(BEAMPOL(2)).GT.1D0)) THEN
+        WRITE(*,*) 'ERROR: beam polarisation is not supported for a',
+     &    ' crossed flavor index (FLAV_IDX=',FLAV_IDX,')'
+        STOP 1
+      ENDIF
       DO IHEL=1,NCOMB
          IF (USERHEL.EQ.-1.OR.USERHEL.EQ.IHEL) THEN
 %(so_goodhel_gate)s
@@ -285,17 +300,37 @@ C             and counted twice -- skip the higher-index partner here.
 C             MATRIX / GET_AMP get already crossed arrays and the reduced
 C             flavor index: the crossing was applied once, above.
 %(so_matrix_call)s
-C             Scan phase: cache |M|^2 to test the C-parity partner below.
+C             Scan phase: cache |M|^2 to test the C-parity partner below --
+C             BEFORE the beam weight, which makes a row and its flip differ
+C             by design.
               IF (%(so_csym_ntry)s(FLAV_USE).LT.20%(so_dedup_cross)s) THEN
                 DO I=1,NSQAMPSO
                   TSTORE(I,IHEL)=T(I)
                 ENDDO
               ENDIF
 C             Fast phase: the representative carries its skipped partner's
-C             identical contribution, component by component.
+C             identical contribution, component by component. DEDUP is off
+C             whenever a beam is polarised (see its definition).
               IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) THEN
                 DO I=1,NSQAMPSO
                   T(I)=T(I)+T(I)
+                ENDDO
+              ENDIF
+C Support for polarised beam, see matrix_standalone_v4.inc. NHEL(JJ,IHEL)
+C is the beam's own helicity only for an uncrossed flavor; a crossed one is
+C refused before the helicity loop.
+              IF (NINITIAL.EQ.2) THEN
+                DO JJ=1,NINITIAL
+                  IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+                  IF (NHEL(JJ,IHEL).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+                    DO I=1,NSQAMPSO
+                      T(I)=T(I)*ABS(BEAMPOL(JJ))
+                    ENDDO
+                  ELSE
+                    DO I=1,NSQAMPSO
+                      T(I)=T(I)*(2D0-ABS(BEAMPOL(JJ)))
+                    ENDDO
+                  ENDIF
                 ENDDO
               ENDIF
               BUFF=0D0
@@ -737,15 +772,23 @@ C
       DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:,:)
       DOUBLE PRECISION ALPHAS, MU_R2
       DOUBLE COMPLEX INTER_SUM(*)
+      INTEGER    NINITIAL
+      PARAMETER (NINITIAL=%(nincoming)d)
 c LOCAL
-      INTEGER I,IHEL,IPART
+      INTEGER I,IHEL,IPART,JJ
       INTEGER J
       DOUBLE PRECISION PI
+      DOUBLE PRECISION POLFACT
 C
 C     GLOBAL
 C
       LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
       COMMON/%(proc_prefix)sCHOSEN_BORN_SQSO/CHOSEN_SO_CONFIGS
+C     beam polarisation, filled from python through PY_SET_BEAMPOL.
+C     Same common block and convention as the v1 MadSpin path
+C     (matrix_standalone_msP_v4.inc / msF).
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 
       INTEGER NHEL(NEXTERNAL,NB_NHEL),NTRY
 C     put in common block to expose this variable to python interface
@@ -780,10 +823,31 @@ C     SMATRIX evaluation would otherwise read a table of zeros.
         ENDDO
         TMP_INTER(:,:) = 0
         call  %(proc_prefix)sGET_ALL_INTER(P, THISNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+C       Support for polarised beam: reweight the initial-state helicity
+C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
+C       the process has two incoming legs -- the same shared library
+C       also holds the 1 -> N decay matrix elements, whose leg 1 is the
+C       decaying resonance and not a beam.
+        POLFACT = 1D0
+        IF (NINITIAL.EQ.2) THEN
+          DO JJ=1,NINITIAL
+C           |BEAMPOL| runs from 1 (unpolarised) to 2 (fully
+C           polarised), so anything at or below 1 means "no
+C           polarisation" -- including the zero-filled common
+C           block of an output whose link line does not pull
+C           in BLOCK DATA BEAMPOL_DEFAULT.
+            IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+            IF (THISNHEL(JJ).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+              POLFACT = POLFACT*ABS(BEAMPOL(JJ))
+            ELSE
+              POLFACT = POLFACT*(2D0-ABS(BEAMPOL(JJ)))
+            ENDIF
+          ENDDO
+        ENDIF
         do J =1, NSQAMPSO
           IF (CHOSEN_SO_CONFIGS(J)) THEN
             do I = 1, N_COMB*(N_COMB+1)/2
-              INTER_SUM(I) = INTER_SUM(I) + TMP_INTER(J,I)
+              INTER_SUM(I) = INTER_SUM(I) + POLFACT*TMP_INTER(J,I)
             enddo
           endif
         enddo

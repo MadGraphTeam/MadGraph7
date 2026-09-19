@@ -2,7 +2,7 @@ SUBROUTINE SMATRIX%(proc_id)s(P, IFLAV, RHEL, RCOL, channel, IVEC, ANS, IHEL, IC
 C 
 %(info_lines)s
 C 
-C MadGraph5_aMC@NLO for Madevent Version
+C MadGraph7 for Madevent Version
 C 
 C Returns amplitude squared -- no average over initial state/symmetry factor
 c and helicities
@@ -150,7 +150,7 @@ C  To be able to control when the matrix<i> subroutine can add entries to the gr
 C
 C  FUNCTION
 C
-   INTEGER BROKEN_SYM%(proc_id)s%(blas_smatrix_decl)s
+   INTEGER BROKEN_SYM%(proc_id)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -190,12 +190,12 @@ C     so the loop could not be halved uniformly: refuse the reuse outright.
 !   If the helicity grid status is 0, this means that it is not yet initialized.
 !   If HEL_PICKED==-1, this means that calls to other matrix<i> where in initialization mode as well for the helicity.
     IF ((ISHEL.EQ.0.and.ISUM_HEL.eq.0).or.(DS_get_dim_status('Helicity').eq.0).or.(HEL_PICKED.eq.-1)) THEN
-%(blas_branch)s      DO I=1,NCOMB
+      DO I=1,NCOMB
          IF (GOODHEL(%(me_goodhel_idx)s,%(me_flav_key)s,%(proc_id)s) .OR. NTRY(%(me_flav_key)s,%(proc_id)s).LE.MAXTRIES.or.(ISUM_HEL.NE.0)%(smatrix_me_goodhel_or)s) THEN
 C           Fast phase: skip the higher-index C-parity partner (computed once at
 C           the lower index, counted twice below).
             IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
-            T=%(blas_matrix_call)s
+            T=MATRIX%(proc_id)s(%(me_matrix_args)s)
             %(beam_polarization)s
 			IF (ISUM_HEL.NE.0.and.DS_get_dim_status('Helicity').eq.0.and.ALLOW_HELICITY_GRID_ENTRIES) then
 			  call DS_add_entry('Helicity',I,T)
@@ -292,7 +292,7 @@ C     in init_mode the full-sum branch runs every call, so the two coincide.
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(%(me_matrix_args)s%(blas_matrix_args)s)
+            T=MATRIX%(proc_id)s(%(me_matrix_args)s)
 
             %(beam_polarization)s
 c           Always one helicity at a time
@@ -371,7 +371,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,%(me_matrix_ic_param)sIFLAV, IHEL,AMP2, JAMP2, IVEC%(blas_arg)s)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,%(me_matrix_ic_param)sIFLAV, IHEL,AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -393,9 +393,8 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
+    INTEGER    NWAVEFUNCS,     NCOLOR
     PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
-    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
     INTEGER    NCOLOR_FLOW
     PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
@@ -425,11 +424,10 @@ C
     COMPLEX*16 ZTEMP
 %(jamp_tmp_decl)s
 %(jamp_decl)s
-    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1)/2)
+    INTEGER CF(NCOLOR*(NCOLOR+1)/2)
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_decl)s
-%(color_fold_decl)s
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -470,7 +468,6 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
-%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -502,19 +499,18 @@ JAMP(:,:) = (0d0,0d0)
       ENDDO
     endif	
 
-%(color_fold_gather)s%(blas_gather)s
     MATRIX%(proc_id)s = 0.D0 
-	DO M = 1, NAMPSO%(blas_gate)s
+	DO M = 1, NAMPSO
       CF_INDEX = 0
-      DO I = 1, NCOLORFOLD
+      DO I = 1, NCOLOR
         ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLORFOLD
+        DO J = I, NCOLOR
           CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
+          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
         ENDDO
 		DO N = 1, NAMPSO
 		  %(select_configs_if)s
-             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(%(color_fold_array)s(I,N))
+             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(JAMP(I,N))
 	      %(select_configs_endif)s
 		ENDDO
       ENDDO
@@ -575,6 +571,6 @@ JAMP(:,:) = (0d0,0d0)
     end
     
 
-%(color_init_routine)s%(blas_routine)s
+%(color_init_routine)s
 
     %(broken_sym_function)s

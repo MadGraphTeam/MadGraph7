@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -78,7 +78,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             reproduce the plain per-flavor matrix element);
           - fortran madevent, grouped, WITH crossing
             (ProcessExporterFortranMEGroup, which does support crossing);
-          - standalone_mg7 (the madmatrix / cudacpp CPU-SIMD backend).
+          - standalone (the madmatrix CPU-SIMD backend).
         """
         self.do('set automatic_html_opening False')
         self.do('set group_subprocesses False')
@@ -89,10 +89,11 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         # -- Reference: plain fortran standalone (crossing machinery off) -------
         self.do('generate %s --use_crossing=False' % process)
         generated_process = self.cmd._curr_amps[0].get('process')
+
         seeded_phase_space = self._get_seeded_phase_space(generated_process)
 
         ref_root = pjoin(self.tmpdir, 'standalone_plain')
-        self.do('output standalone %s -f' % ref_root)
+        self.do('output standalone_fortran %s -f' % ref_root)
         ref_sub = self._get_single_subprocess_dir(pjoin(ref_root, 'SubProcesses'))
         ref_rows, printed_phase_space = self._run_standalone(ref_sub)
         self._assert_phase_space_reasonable(
@@ -114,7 +115,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         # -- (2) fortran standalone WITH crossing -------------------------------
         self.do('generate %s --use_crossing=True' % process)
         sacross_root = pjoin(self.tmpdir, 'standalone_crossing')
-        self.do('output standalone %s -f' % sacross_root)
+        self.do('output standalone_fortran %s -f' % sacross_root)
         sacross_sub = self._get_single_subprocess_dir(
             pjoin(sacross_root, 'SubProcesses'))
         sacross_rows, _ = self._run_standalone(sacross_sub)
@@ -136,7 +137,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             process, 'madevent (grouped, crossing on)',
             ref_rows, meg_by_iflav, tolerance)
 
-        # -- (4) standalone_mg7 (madmatrix / cudacpp CPU-SIMD) ------------------
+        # -- (4) standalone (madmatrix CPU-SIMD) --------------------------------
         # Skipped (not failed) if no C++ compiler or the madmatrix build
         # toolchain is unavailable. Matched by flavor order like madevent: the
         # extended flavor id is cross*nflav+flav, so the base flavors are ids
@@ -144,7 +145,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         mg7_by_iflav = self._run_standalone_mg7(process, seeded_phase_space, ref_rows)
         if mg7_by_iflav is not None:
             self._compare_by_iflav(
-                process, 'standalone_mg7', ref_rows, mg7_by_iflav, tolerance)
+                process, 'standalone', ref_rows, mg7_by_iflav, tolerance)
 
     def _rows_by_pdg(self, rows, subproc_dir):
         """{PDG tuple -> matrix element} from _extract_standalone_flavors rows."""
@@ -281,7 +282,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         return self._extract_madevent_by_iflav(output, subproc_dir)
 
     def _run_standalone_mg7(self, process, phase_space, ref_rows):
-        """{IFLAV -> matrix element} for standalone_mg7 at the seeded momenta.
+        """{IFLAV -> matrix element} for standalone (madmatrix) at the seeded momenta.
 
         Returns None (skip) if there is no C++ compiler or the madmatrix build
         toolchain cannot build check_sa.exe. check_sa.exe reads the external
@@ -290,10 +291,10 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         """
         if not shutil.which(os.environ.get('CXX', 'g++')):
             return None
-        outdir = pjoin(self.tmpdir, 'standalone_mg7')
+        outdir = pjoin(self.tmpdir, 'standalone_madmatrix')
         self.do('generate %s --use_crossing=True' % process)
         try:
-            self.do('output standalone_mg7 %s -f' % outdir)
+            self.do('output standalone %s -f' % outdir)
         except Exception:
             return None
         pdir = self._get_single_subprocess_dir(pjoin(outdir, 'SubProcesses'))
@@ -317,7 +318,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                 cwd=pdir).communicate()[0].decode()
             values = re.findall(r'Matrix element =\s*([-\d.eE+]+)', output)
             self.assertTrue(values,
-                            'No matrix element from standalone_mg7 flavor id %s '
+                            'No matrix element from standalone (madmatrix) flavor id %s '
                             'for %s:\n%s' % (flavor_id, process, output))
             by_iflav[iflav] = float(values[0])
         return by_iflav

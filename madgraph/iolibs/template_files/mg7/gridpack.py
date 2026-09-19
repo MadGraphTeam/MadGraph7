@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
+import gzip
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +33,6 @@ import json
 import tomllib
 import argparse
 
-
 def resolve_verbosity(verbosity: str) -> str:
     """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
     whether stdout is attached to a terminal; other values pass through
@@ -39,6 +40,14 @@ def resolve_verbosity(verbosity: str) -> str:
     if verbosity == "auto":
         return "pretty" if sys.stdout.isatty() else "log"
     return verbosity
+
+
+def resolve_seed(seed: int) -> int:
+    """Resolve the run_card "seed": -1 draws a fresh 64-bit seed via
+    os.urandom, any other value is used as-is."""
+    if seed == -1:
+        return int.from_bytes(os.urandom(8), "big")
+    return seed
 
 
 def main() -> None:
@@ -69,6 +78,12 @@ def main() -> None:
     # parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_name", type=str, default=run_args["run_name"])
+    parser.add_argument(
+        "--seed", type=int, default=run_args.get("seed", -1),
+        help="every run is reproducible from its seed; -1 draws a fresh random "
+             "seed each run instead of fixing one here (still recorded in the "
+             "run's info.json)"
+    )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
         "--cpu_thread_pool_size", type=int, default=run_args["cpu_thread_pool_size"]
@@ -94,6 +109,7 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+    seed = resolve_seed(args.seed)
 
     # initialize event directory
     run_name = args.run_name
@@ -114,9 +130,10 @@ def main() -> None:
             run_index += 1
 
     # initialize context
-    device_names = args.device if args.device else run_args["devices"]
+    device_names = args.device if args.device else run_args["device"]
+    cpu_mode = run_args["cpu_mode"]
     contexts = []
-    device_types = []
+    backends = []
     for device_name in device_names:
         if ":" in device_name:
             device_type, device_index_str = device_name.split(":")
@@ -124,7 +141,9 @@ def main() -> None:
         else:
             device_type = device_name
             device_index = 0
-        device_types.append(device_type)
+        # cpu_mode names the SIMD width of the CPU code, so it applies to the
+        # 'cpu' devices only: cuda/hip build the backend named after the device.
+        backends.append(cpu_mode if device_type == "cpu" else device_type)
         if device_type == "cuda":
             device = ms.cuda_device(device_index)
             pool_size = args.gpu_thread_pool_size
@@ -150,11 +169,11 @@ def main() -> None:
 
     # set up contexts
     global_dir = os.path.join("data", "globals")
-    for context, device_type in zip(contexts, device_types):
+    for context, backend in zip(contexts, backends):
         context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=device_type), param_card_path
+                me_path.format(device=backend), param_card_path
             )
 
     # set up generators
@@ -171,29 +190,156 @@ def main() -> None:
     event_generator = ms.EventGenerator(
         contexts=contexts,
         channels=channel_generators,
-        status_file=os.path.join(run_path, "info.json"),
+        status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
+        seed=seed,
     )
+
+    # scale/PDF systematics (as configured when the gridpack was made)
+    systematics = load_systematics(run_card, backends, param_card_path)
 
     # run generation
     event_generator.generate()
     output_format = args.output_format
     if output_format == "compact_npy":
         event_generator.combine_to_compact_npy(
-            os.path.join(run_path, "events.npy")
+            os.path.join(run_path, "events.npy"), systematics
         )
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
-            os.path.join(run_path, "events.npy"), lhe_completer
+            os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
+        lhe_path = os.path.join(run_path, "events.lhe")
         event_generator.combine_to_lhe(
-            os.path.join(run_path, "events.lhe"), lhe_completer
+            lhe_path, lhe_completer, ms.LHEMeta(), systematics
         )
+        # Ship the LHE compressed, as the launcher that produced this gridpack
+        # does: the file is large and very compressible, and the consumers of
+        # an mg7 event file accept either form. The stdlib is used rather than
+        # madgraph.various.misc.gzip because a gridpack is meant to run without
+        # a madgraph installation, and copyfileobj streams the file instead of
+        # holding it in memory.
+        with open(lhe_path, "rb") as fin, \
+                gzip.open(lhe_path + ".gz", "wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        os.remove(lhe_path)
     else:
         raise ValueError("Unknown output format")
+    if systematics is not None:
+        data = json.loads(systematics.summary())
+        data["initrwgt"] = systematics.initrwgt()
+        data["columns"] = ["rwgt_%d" % i for i in systematics.weight_ids]
+        with open(os.path.join(run_path, "events.weights.json"), "w") as f:
+            json.dump(data, f, indent=1)
+
+
+def _pdf_search_paths(stored_path):
+    """Directories in which the LHAPDF grids may live: the LHAPDF_DATA_PATH
+    entries, the paths known to the lhapdf module, then the directory the
+    gridpack was created with."""
+    paths = []
+    env = os.environ.get("LHAPDF_DATA_PATH")
+    if env:
+        paths += env.split(os.pathsep)
+    try:
+        import lhapdf
+        paths += list(lhapdf.paths())
+    except Exception:
+        pass
+    if stored_path:
+        paths.append(stored_path)
+    return paths
+
+
+def _locate_pdf_file(stored_file):
+    """Find a PDF grid/info file: the stored absolute path, else the same
+    <set>/<file> relative to one of the PDF search paths."""
+    if os.path.exists(stored_file):
+        return stored_file
+    set_dir, name = os.path.split(stored_file)
+    set_root, set_name = os.path.split(set_dir)
+    for base in _pdf_search_paths(set_root):
+        candidate = os.path.join(base, set_name, name)
+        if os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(
+        "PDF file %s not found (set LHAPDF_DATA_PATH to the LHAPDF data directory)"
+        % stored_file)
+
+
+def load_systematics(run_card, backends=(), param_card_path=None):
+    """Rebuild the ms.SystematicsCalculator saved with the gridpack
+    (data/systematics.json) when [systematics] enable is set; None otherwise.
+    The matrix elements of the mixed-order subprocesses are reloaded into a CPU
+    context (when a CPU library is available) for the mu_R variations."""
+    path = os.path.join("data", "systematics.json")
+    try:
+        enabled = bool(run_card["systematics"]["enable"])
+    except Exception:
+        enabled = False
+    if not enabled or not os.path.exists(path):
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    config = ms.SystematicsConfig.from_json(json.dumps(data["config"]))
+    for spec in config.pdf_members:
+        spec.grid_file = _locate_pdf_file(spec.grid_file)
+        spec.info_file = _locate_pdf_file(spec.info_file)
+    subproc_args = [
+        ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
+    ]
+    nominal_pdf = None
+    if config.has_pdf:
+        nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+    # The mu_R variations always need an alpha_s grid, so a gridpack that does
+    # not name one cannot reweight anything -- drop the systematics rather than
+    # die here (gridpacks written before the launcher recorded the file for a
+    # run without parton luminosity).
+    if not data.get("nominal_info_file"):
+        print("WARNING systematics: the gridpack records no alpha_s .info file, "
+              "the scale/PDF weights are dropped")
+        return None
+    nominal_alpha_s = ms.AlphaSGrid(_locate_pdf_file(data["nominal_info_file"]))
+    # PDFs, alpha_s and matrix elements are evaluated on this CPU context
+    context = ms.Context(device=ms.cpu_device(), thread_count=1)
+    matrix_elements, flavor_remap = [], []
+    need = [i for i, a in enumerate(subproc_args) if a.qcd_power < 0]
+    # the CPU backend of this run (cpu_mode, resolved when the gridpack was
+    # saved), else the one the launcher used
+    backend = data.get("me_backend")
+    if need and data.get("me_paths"):
+        cpu = [b for b in backends if not str(b).startswith(("cuda", "hip")) and b != "auto"]
+        if cpu:
+            backend = cpu[0]
+    if need and backend and data.get("me_paths"):
+        flavor_remap = data.get("flavor_remap", [])
+        for i, me_path in enumerate(data["me_paths"]):
+            if i not in need:
+                matrix_elements.append(None)
+                continue
+            lib = me_path.format(device=backend)
+            if not os.path.exists(lib):
+                print("WARNING systematics: %s not found, mu_R variations of the "
+                      "mixed-order subprocesses are dropped" % lib)
+                matrix_elements, flavor_remap = [], []
+                break
+            api = context.load_matrix_element(lib, param_card_path)
+            matrix_elements.append(ms.MatrixElement(
+                api,
+                [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
+                 ms.MatrixElement.flavor_in],
+                [ms.MatrixElement.matrix_element_out],
+                False,
+            ))
+    systematics = ms.SystematicsCalculator(
+        config, subproc_args, nominal_pdf, nominal_alpha_s,
+        context, matrix_elements, flavor_remap)
+    for warning in systematics.warnings:
+        print("WARNING systematics: %s" % warning)
+    return systematics
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))

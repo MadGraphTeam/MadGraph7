@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -243,6 +243,7 @@ class DiagramTag(object):
             return base_objects.Leg({'number':link.links[0][1],
                                      'id':link.links[0][0][0],
                                      'state':(link.links[0][0][1] == 0),
+                                     'onium': {},
                                      'onshell':False})
 
         # This shouldn't happen
@@ -274,7 +275,7 @@ class DiagramTag(object):
 
     @staticmethod
     def link_from_leg(leg, model):
-        """Returns the default end link for a leg: ((id, state), number).
+        """Returns the default end link for a leg: ((id, state, onium), number).
         Note that the number is not taken into account if tag comparison,
         but is used only to extract leg permutations."""
         if leg.get('state'):
@@ -282,7 +283,7 @@ class DiagramTag(object):
             return [((leg.get('id'), 0), leg.get('number'))]
         else:
             # Distinguish identical initial state particles
-            return [((leg.get('id'), leg.get('number')), leg.get('number'))]
+            return [((leg.get('id'), leg.get('number'), leg.get('onium')), leg.get('number'))]
 
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -1124,10 +1125,13 @@ class Amplitude(base_objects.PhysicsObject):
         # share a line -- and the seed is what is left over.
         # Left off for a decay chain, whose identity vertex is kept rather
         # than glued in, and for loop amplitudes, whose diagram set is not the
-        # one the unrolling reasons about.
+        # one the unrolling reasons about. 'auto' also leaves it off below
+        # merge_quartic_min_legs, where it is measured to buy nothing.
         self.seed_forbidden_cubic_ids = frozenset()
         if madgraph.merge_quartic_vertices and not self.has_loop_process() \
-           and not process.get('is_decay_chain'):
+           and not process.get('is_decay_chain') \
+           and (madgraph.merge_quartic_vertices != 'auto' or
+                len(process.get('legs')) >= madgraph.merge_quartic_min_legs):
             self.seed_forbidden_cubic_ids = get_unrollable_cubic_ids(model)
 
 
@@ -2128,7 +2132,8 @@ class DecayChainAmplitude(Amplitude):
 
     @staticmethod
     def _decays_break_crossing(process_definition):
-        """True if any decay (recursively) pins a specific s-channel propagator.
+        """True if any decay (recursively) pins a specific s-channel propagator,
+        or carries a polarized leg or a bound state.
 
         Crossing acts at the production level and lets the force-onshell decays
         ride along, so a plain decay chain keeps crossing (see
@@ -2142,6 +2147,8 @@ class DecayChainAmplitude(Amplitude):
         for decay in process_definition.get('decay_chains'):
             if decay.get('required_s_channels') or \
                decay.get('forbidden_s_channels') or \
+               any(l.get('polarization') or l.get('onium')
+                   for l in decay.get('legs')) or \
                DecayChainAmplitude._decays_break_crossing(decay):
                 return True
         return False
@@ -2160,9 +2167,10 @@ class DecayChainAmplitude(Amplitude):
                 MultiProcessClass=MultiProcess
             # Record the production's crossings onto the base amplitude (so the
             # decay-chain matrix element inherits them and the crossed
-            # subprocesses are not generated separately), UNLESS a decay pins an
-            # s-channel -- then the crossing machinery is not emitted downstream
-            # and the crossed subprocesses must stay fully generated.
+            # subprocesses are not generated separately), UNLESS a decay breaks
+            # crossing (see _decays_break_crossing) -- then the crossing
+            # machinery is not emitted downstream and the crossed subprocesses
+            # must stay fully generated.
             prod_merge_crossing = merge_crossing
             if isinstance(argument, base_objects.ProcessDefinition) and \
                     self._decays_break_crossing(argument):
@@ -2556,6 +2564,7 @@ class MultiProcess(base_objects.PhysicsObject):
                 islegs = [\
                         fks_tag.TagLeg({'id':id, 'state': False, 
                                         'polarization': isleg['polarization'],
+                                        'onium': isleg['onium'],
                                         'offshell': isleg['offshell'], 
                                         'is_tagged': tag}) \
                         for id, isleg, tag in zip(prod, islegs_orig, istags)]
@@ -2573,6 +2582,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         base_objects.Leg({'id':id, 'state': False,
                                           'polarization': islegs_orig[i]['polarization'],
                                           'flavor': get_flavor(i,id),
+                                          'onium': islegs_orig[i]['onium'],
                                           'offshell': islegs_orig[i]['offshell']}) \
                     for i,id in enumerate(prod)]
 
@@ -2616,11 +2626,12 @@ class MultiProcess(base_objects.PhysicsObject):
                             base_objects.Leg({'id':id, 'state': True,
                                               'polarization': fsleg['polarization'],
                                               'flavor': get_flavor(id, fsleg),
+                                              'onium': fsleg['onium'],
                                               'offshell': fsleg['offshell']}) \
                             for id, fsleg in zip(prod, fslegs)])
                 else:
                     leg_list.extend([\
-                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'is_tagged': tag}) \
+                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'onium': fsleg['onium'], 'is_tagged': tag}) \
                             for id, fsleg, tag in zip(prod, fslegs, fstags)])
 
 
@@ -2707,6 +2718,17 @@ class MultiProcess(base_objects.PhysicsObject):
                    not process.get('forbidden_s_channels') and \
                    not process.get('is_decay_chain') and not diagram_filter and \
                    not process.get('perturbation_couplings'):
+                    # Recording a crossing hands the process to the crossing
+                    # machinery of its base, and the exporter does not write
+                    # that machinery for a polarized leg or a bound state (see
+                    # export_v4.breaks_crossing_symmetry): recorded there, the
+                    # crossed process would be lost. Reuse the diagrams instead
+                    # and keep it as a matrix element of its own.
+                    this_merge = merge_crossing
+                    if this_merge == 'record' and \
+                       any(l.get('polarization') or l.get('onium')
+                           for l in process.get('legs')):
+                        this_merge = False
                     try:
                         crossed_index = success_procs.index(sorted_legs)
                         # The relabeling of legs for loop amplitudes is cumbersome
@@ -2719,7 +2741,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
-                        if not merge_crossing:
+                        if not this_merge:
                             # Found crossing - reuse amplitude
                             amplitude = MultiProcess.cross_amplitude(\
                                 amplitudes[crossed_index],
@@ -2732,7 +2754,7 @@ class MultiProcess(base_objects.PhysicsObject):
                             non_permuted_procs.append(fast_proc)
                             logger.info("Crossed process found for %s, reuse diagrams." % \
                                         process.base_string())
-                        elif merge_crossing == 'record':
+                        elif this_merge == 'record':
                             # Found crossing - do NOT generate a separate
                             # amplitude, but record the crossed process on the
                             # base so the exporter can still reach it through the

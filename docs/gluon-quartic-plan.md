@@ -399,7 +399,7 @@ bottleneck. The madevent run is unchanged, same cross section and error.
 
 Everything below is `g g > N g` with the flag off against `speed`, on the
 same machine. Standalone Fortran is the shipped `check` driver looping
-`SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cppsse4`
+`SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cpu_128b`
 (the default mixed precision build rounds the two to the same value and would
 hide any difference). Two runs each, reproducible to about 0.1%.
 
@@ -488,6 +488,245 @@ from six gluons on.
 `|M|^2` is bit-identical at four and five gluons and agrees to 1e-14 at six
 and seven, in both backends. With the flag off, `matrix.f` and `CPPProcess.cc`
 are byte-identical to before any of this.
+
+## Full sweep -- speed, memory and generation time
+
+All three modes against the flag off, on the same machine, for both series.
+Timings are the minimum of five runs of the shipped `check` driver looping
+`SMATRIX` on a fixed phase space point; the minimum matters, because a single
+run carries about 3% of noise and most of the effects here are smaller than
+that. The floor of the method is 0.6%, measured on `g g > t t~`, where `off`
+and `speed` produce a byte-identical `matrix.f` and still time 4.000 against
+3.988 us. `|M|^2` agrees to 8.5e-15 or better on every row.
+
+*slots* is `NWAVEFUNCS`, the length of the wavefunction array, `TYPE(ALOHA)
+W(NWAVEFUNCS)` -- not the number of wavefunctions computed, since
+`reuse_outdated_wavefunctions` frees an entry as soon as its last reader has
+run (898 wavefunction calls live in 268 slots at seven gluons). One entry is
+104 bytes, measured with `storage_size`: four `complex*16`, `P(0:3)` and
+`flv_index`, padded. One amplitude is 16 bytes.
+
+**`g g > N g`**
+
+| process | mode | generate | matrix.f | matrix.o | W slots | W array | AMP entries | amps computed | AMP array | per call | speed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g g > 2g | off | 1.8 s | 27 kB | 16 kB | 5 | 0.5 kB | 6 | 6 | 0.1 kB | 5.48 us | - |
+|  | speed | 1.5 s | 27 kB | 17 kB | 5 | 0.5 kB | 4 | 6 | 0.1 kB | 5.52 us | -1% |
+|  | slots | 1.6 s | 27 kB | 17 kB | 5 | 0.5 kB | 4 | 6 | 0.1 kB | 5.55 us | -1% |
+| g g > 3g | off | 2.1 s | 40 kB | 28 kB | 12 | 1.2 kB | 45 | 45 | 0.7 kB | 87.50 us | - |
+|  | speed | 1.8 s | 39 kB | 29 kB | 19 | 1.9 kB | 24 | 38 | 0.4 kB | 90.25 us | -3% |
+|  | slots | 2.4 s | 40 kB | 29 kB | 12 | 1.2 kB | 16 | 45 | 0.2 kB | 93.00 us | -6% |
+| g g > 4g | off | 2.8 s | 181 kB | 141 kB | 51 | 5.2 kB | 510 | 510 | 8.0 kB | 2.37 ms | - |
+|  | speed | 2.4 s | 165 kB | 146 kB | 78 | 7.9 kB | 316 | 450 | 4.9 kB | 2.29 ms | +4% |
+|  | slots | 2.4 s | 168 kB | 152 kB | 54 | 5.5 kB | 106 | 510 | 1.7 kB | 2.41 ms | -2% |
+| g g > 5g | off | 35.2 s | 3.3 MB | 5.8 MB | 268 | 27.2 kB | 7245 | 7245 | 113.2 kB | 141.00 ms | - |
+|  | speed | 16.6 s | 2.5 MB | 3.4 MB | 259 | 26.3 kB | 5869 | 6813 | 91.7 kB | 132.75 ms | +6% |
+|  | slots | 18.4 s | 2.5 MB | 3.4 MB | 199 | 20.2 kB | 946 | 7245 | 14.8 kB | 134.25 ms | +5% |
+
+**`g g > t t~ N g`**
+
+| process | mode | generate | matrix.f | matrix.o | W slots | W array | AMP entries | amps computed | AMP array | per call | speed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| g g > t t~ | off | 1.5 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 4.00 us | - |
+|  | speed | 1.5 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 3.99 us | +0% |
+|  | slots | 2.0 s | 26 kB | 16 kB | 5 | 0.5 kB | 3 | 3 | 0.0 kB | 4.09 us | -2% |
+| g g > t t~ g | off | 1.8 s | 31 kB | 20 kB | 12 | 1.2 kB | 18 | 18 | 0.3 kB | 30.00 us | - |
+|  | speed | 1.6 s | 31 kB | 20 kB | 12 | 1.2 kB | 15 | 15 | 0.2 kB | 29.58 us | +1% |
+|  | slots | 1.7 s | 31 kB | 21 kB | 12 | 1.2 kB | 15 | 18 | 0.2 kB | 30.33 us | -1% |
+| g g > t t~ 2g | off | 2.6 s | 68 kB | 51 kB | 26 | 2.6 kB | 159 | 159 | 2.5 kB | 377.00 us | - |
+|  | speed | 2.4 s | 65 kB | 49 kB | 35 | 3.6 kB | 109 | 126 | 1.7 kB | 343.00 us | +9% |
+|  | slots | 2.4 s | 66 kB | 53 kB | 29 | 2.9 kB | 106 | 159 | 1.7 kB | 391.00 us | -4% |
+| g g > t t~ 3g | off | 6.2 s | 576 kB | 479 kB | 121 | 12.3 kB | 1890 | 1890 | 29.5 kB | 9.63 ms | - |
+|  | speed | 4.9 s | 463 kB | 408 kB | 213 | 21.6 kB | 1159 | 1551 | 18.1 kB | 8.97 ms | +7% |
+|  | slots | 5.0 s | 493 kB | 466 kB | 141 | 14.3 kB | 946 | 1890 | 14.8 kB | 9.93 ms | -3% |
+
+Two things worth reading off the amplitude columns.
+
+**The AMP array is recycled too, and it is where `slots` wins.** It used to be
+declared at the full diagram count in every mode -- 113 kB at seven gluons,
+with `speed` leaving 432 entries written by nobody -- which is what prompted
+"Recycling the AMP array" below. Now `slots` runs 7245 amplitude calls through
+946 entries at seven gluons, 14.8 kB rather than 113.2, while `speed` only
+reaches 5869 because of the order it emits them in.
+
+**`slots` mode computes every amplitude** -- `amps computed` equals `amps
+decl` on all eight of its rows. With no current sums nothing is skipped, so it
+does the same amplitude work as the baseline *plus* the folds, and buys only a
+shorter JAMP block and a shorter W array. That is why it is slower than off
+almost everywhere rather than a wash: strictly more arithmetic for less
+memory. `speed` is the opposite, skipping amplitudes outright (450 of 510,
+6813 of 7245, 1551 of 1890), which is where its 5-8% comes from, and paying in
+slots -- 121 to 213 at `g g > t t~ 3g`.
+
+**What it is actually good for.** Generation time and code size, more than
+speed. `g g > 5 g` generates in 16.6 s rather than 35.2 s, a 53% cut and
+reproducible: 385 seed diagrams unrolled is cheaper than 2485 generated. Its
+`matrix.o` goes 5.8 MB to 3.4 MB and its `matrix.f` 3.3 MB to 2.5 MB. Runtime
+is 4-9% above six particles and nothing at all below, and the `t t~` series
+gains more than the pure gluon one at equal particle count, +9% at
+`t t~ 2g` against +4% at `4g`. Peak RSS is flat except at seven gluons,
+because the wavefunction store is a stack frame and the code image dominates.
+
+**How far it generalises.** Both series above are gluon-rich, so a third
+process was measured as a check: `u u~ > z g g g g`, seven legs like
+`g g > t t~ 3g` but with a Z and a quark line, so most of its diagrams have no
+four gluon vertex at all. (`q` is not a defined multiparticle, hence `u u~`.)
+
+| process | mode | generate | matrix.f | matrix.o | W slots | AMP entries | amps computed | per call | speed | total/call |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `g g > t t~ 3g` | off | 6.2 s | 576 kB | 479 kB | 121 | 1890 | 1890 | 9.63 ms | - | 41.8 kB |
+| | speed | 4.9 s | 463 kB | 408 kB | 213 | 1159 | 1551 | 8.97 ms | +7% | 39.7 kB (-5%) |
+| | slots | 5.0 s | 493 kB | 466 kB | 141 | 946 | 1890 | 9.93 ms | -3% | **29.1 kB (-30%)** |
+| `u u~ > z 4g` | off | 2.9 s | 135 kB | 115 kB | 76 | 516 | 516 | 1.58 ms | - | 15.8 kB |
+| | speed | 2.3 s | 127 kB | 110 kB | 85 | 391 | 450 | 1.51 ms | +4% | 14.7 kB (-7%) |
+| | slots | 2.3 s | 132 kB | 117 kB | 84 | 384 | 516 | 1.65 ms | -5% | 14.5 kB (-8%) |
+
+**The payoff tracks the quartic fraction, exactly.** In `slots` mode the AMP
+entry count is `total amplitudes - merge sources`, to within one, on every
+process measured:
+
+| | amplitudes | merge sources | AMP in `slots` | saving |
+|---|---|---|---|---|
+| `g g > 5 g` | 7245 | 6300 (87%) | 946 | -87% |
+| `g g > g g g g` | 510 | 405 (79%) | 106 | -79% |
+| `g g > t t~ 3g` | 1890 | 945 (50%) | 946 | -50% |
+| `u u~ > z 4g` | 516 | 132 (**26%**) | 384 | -26% |
+
+So `u u~ > z 4g` is the weakest case measured, and predictably: there is
+simply little to merge. Runtime follows at +4% rather than +7 to +9%, and the
+working set at -8% rather than -30 or -75%.
+
+It is also the one process where **`slots` does not reduce the wavefunctions
+either** -- 84 against off's 76, worse -- which breaks the pattern from the
+gluon-rich processes, where reversing the order always recovered them. On this
+topology `slots` is the worst of the three: 5% slower than off and larger in
+W, for an AMP count it barely wins over `speed`, 384 against 391. `speed`
+still behaves, +4% with generation down 21% and a smaller source and object,
+which is also what the `auto` gate picks at seven legs.
+
+
+## The multiplicity gate
+
+The sweep says the full merging turns over at six external legs, and the same
+sweep says it costs slots below that. So `auto` gates on it:
+`Amplitude.generate_diagrams` only takes the seed rule when the process has
+`madgraph.merge_quartic_min_legs` legs or more, six by measurement. `speed`
+and `slots` asked for by name are unconditional -- that is how you get the
+merging on a small process anyway.
+
+What is left below the threshold is not nothing, and this was worth measuring
+rather than assuming. The *amplitude* merges do not need the seed rule: they
+are found from the colour algebra by `unroll_quartic_vertices`, so they still
+apply, and they shrink the JAMP block without touching the wavefunctions:
+
+| `g g > g g g` | slots | JAMP temporaries | per call |
+|---|---|---|---|
+| off | 12 | 72 | 87.75 us |
+| `auto` (merges only) | 12 | 42 | **84.25 us**, +4.0% |
+| `speed` (full) | 19 | 42 | 87.25 us, -1% |
+
+So below the threshold `auto` is *better* than both -- it keeps the JAMP fold,
+which is free, and drops the reordering, which is what costs the seven extra
+slots. At four and five legs elsewhere it is neutral rather than positive
+(`g g > g g` 5.47 -> 5.48 us, `g g > t t~ g` 30.33 -> 30.42 us, both inside
+the 0.6% floor) and never negative, at an unchanged slot count.
+
+Above the threshold nothing changes: `auto` at six legs generates a
+byte-identical `matrix.f` to `speed`.
+
+## Recycling the AMP array
+
+`reuse_outdated_wavefunctions` recycles the wavefunctions; the amplitudes were
+not recycled at all. `AMP` was declared `COMPLEX*16 AMP(NGRAPHS)` at the full
+diagram count in every mode, so seven gluons allocated 113 kB of it and
+`speed` left 432 entries written by nobody.
+
+`HelasMatrixElement.get_amplitude_slots` now does for AMP what
+`reuse_outdated_wavefunctions` does for W. The enabling change is *where the
+merges are written*: they used to be emitted in one block at the very end,
+which kept every source alive to the end, and each is now written as soon as
+both of its amplitudes exist. Once `AMP(t) = AMP(t) + AMP(s)` has run, `s` is
+free.
+
+| process | mode | AMP entries | AMP | W slots | W | total per call |
+|---|---|---|---|---|---|---|
+| `g g > g g g` | off | 45 | 0.7 kB | 12 | 1.2 kB | 1.9 kB |
+| | auto | 16 | 0.2 kB | 12 | 1.2 kB | 1.5 kB (-24%) |
+| | speed | 24 | 0.4 kB | 19 | 1.9 kB | 2.3 kB (+20%) |
+| | slots | 16 | 0.2 kB | 12 | 1.2 kB | 1.5 kB (-24%) |
+| `g g > g g g g` | off | 510 | 8.0 kB | 51 | 5.2 kB | 13.1 kB |
+| | speed | 316 | 4.9 kB | 78 | 7.9 kB | 12.9 kB (-2%) |
+| | slots | **106** | 1.7 kB | 54 | 5.5 kB | 7.1 kB (**-46%**) |
+| `g g > t t~ g g` | off | 159 | 2.5 kB | 26 | 2.6 kB | 5.1 kB |
+| | speed | 109 | 1.7 kB | 35 | 3.6 kB | 5.3 kB (+3%) |
+| | slots | 106 | 1.7 kB | 29 | 2.9 kB | 4.6 kB (-10%) |
+| `g g > 5 g` | off | 7245 | 113.2 kB | 268 | 27.2 kB | 140.4 kB |
+| | speed | 5869 | 91.7 kB | 259 | 26.3 kB | 118.0 kB (-16%) |
+| | slots | **946** | 14.8 kB | 199 | 20.2 kB | **35.0 kB (-75%)** |
+
+**`slots` reaches the floor and `speed` does not**, and the reason is the
+diagram order rather than anything about the allocator. Only (2n-5)!! of the
+amplitudes are read by the JAMPs -- 105 at six gluons, 945 at seven -- and
+everything else is a merge source which could in principle share a handful of
+entries. `speed` emits every seed before its unrollings, so a source is born
+early and its target arrives late and the entry cannot be reclaimed in
+between: 5869 rather than 945. Reversing that order puts each source next to
+its target, so `slots` lands on 946 and 106, one above the floor.
+
+That changes the `slots` case rather a lot **in fortran**: it used to buy 23%
+of the wavefunction store and cost 6% more arithmetic, and it now buys 75% of
+the whole per-call working set at seven gluons.
+
+**It does not carry over to the gpu backend, which is the one the argument was
+about.** madmatrix has no AMP array to recycle -- it keeps a single
+`cxtype_sv amp_sv[1]` and each amplitude goes straight into the JAMPs, so it
+was already at a floor of one entry, better than the 946 the fortran recycling
+reaches. Its per-thread cost is 112 bytes a wavefunction (`pvec_sv` 32,
+`w_sv` 64, `aloha_obj` 16) plus `jamp_sv[ncolor]`, and the wavefunctions are
+the only thing either mode moves:
+
+| | mode | nwf | madmatrix per thread | fortran per call |
+|---|---|---|---|---|
+| `g g > g g g g` | off | 51 | 7.5 kB | 13.1 kB |
+| | speed | 78 | 10.4 kB (+40%) | 12.9 kB (-2%) |
+| | slots | 54 | 7.8 kB (+4%) | 7.1 kB (-46%) |
+| `g g > 5 g` | off | 268 | 40.6 kB | 140.4 kB |
+| | speed | 259 | 39.6 kB (-2%) | 118.0 kB (-16%) |
+| | slots | 199 | 33.0 kB (**-19%**) | 35.0 kB (-75%) |
+| `g g > t t~ 3g` | off | 121 | 15.1 kB | 41.8 kB |
+| | speed | 213 | 25.2 kB (+67%) | 39.7 kB (-5%) |
+| | slots | 141 | 17.3 kB (+14%) | 29.1 kB (-30%) |
+| `u u~ > z 4g` | off | 76 | 8.7 kB | 15.8 kB |
+| | speed | 85 | 9.7 kB (+11%) | 14.7 kB (-7%) |
+| | slots | 84 | 9.6 kB (+10%) | 14.5 kB (-8%) |
+
+So on the gpu backend `slots` is -19% at seven gluons and *worse than off* at
+every smaller process measured, and `speed` is worse still, +40% and +67% on
+two of the four. `jamp_sv` is mode independent and not small either -- 11.2 kB
+at seven gluons, 28% of the total -- which dilutes it further. The only lever
+that exists there is the wavefunction count.
+
+The recycling is otherwise correctly supported in madmatrix: `nwf` matches the
+fortran slot count on all twelve generations, the current sums land inside it
+(`aloha_obj` indices 0..77 against `nwf` 78 at six gluons with 30 sums), and
+`|M|^2` is bit identical across the three modes.
+
+**It buys no time.** Measured at `g g > g g g g`, minimum of five: `speed`
+2247 -> 2260 us and `slots` 2347 -> 2373 us across the change, both inside the
+0.6% floor and if anything marginally the wrong way -- the arrays were already
+cache resident at this size, and the merges are now interleaved rather than
+batched. This is a memory optimisation, not a speed one.
+
+`NGRAPHS` only ever dimensioned `AMP` inside `matrix.f`, so it simply becomes
+the entry count; `ngraphs.inc` keeps the diagram count. Everything reading AMP
+afterwards goes through the same map: the JAMPs through
+`ProcessExporterFortran.map_color_amplitudes`, and AMP2 through
+`get_amplitude_slot_map`. AMP2 was the one to check, since multichannel reads
+individual amplitudes -- it reads only the merge *targets*, which are the
+entries that stay put, so it is unaffected. Verified on a madevent output at
+six gluons: 316 entries written, 316 read, none read that is never written.
+
+`|M|^2` is unchanged on every row.
 
 ## The diagram order — measured, and worth a lot
 
@@ -587,7 +826,7 @@ so `auto` defers the choice to `output`. It works only because the two modes
 differ in nothing but the diagram order, and `slots` is `speed` reversed --
 verified byte for byte: generating in the `speed` order and reversing at
 output time reproduces a native `slots` generation exactly, in both backends,
-and a session going standalone -> standalone_mg7 -> standalone reproduces its
+and a session going standalone_fortran -> standalone -> standalone_fortran reproduces its
 first output for the third.
 
 **The choice comes from the matrix element exporter, not the output format.**

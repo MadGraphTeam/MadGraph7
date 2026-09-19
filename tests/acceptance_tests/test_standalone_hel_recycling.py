@@ -1,19 +1,19 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
 """Consistency of the helicity-recycled standalone output
-(`output standalone --hel_recycling=True`) against the standard one.
+(`output standalone_fortran --hel_recycling=True`) against the standard one.
 
 With --hel_recycling the exporter writes matrix_orig.f (the plain per-helicity
 MATRIX), template_matrix.f (the SMATRIX/MATRIX driver) and hel_warmup.f (a
@@ -98,8 +98,8 @@ class StandaloneHelRecyclingConsistency(unittest.TestCase):
         self.do('set group_subprocesses False')
         self.do('import model %s' % model)
         self.do(('generate %s %s' % (process, options)).strip())
-        self.do('output standalone %s -f' % self.std_dir)
-        self.do('output standalone %s --hel_recycling=True -f' % self.hr_dir)
+        self.do('output standalone_fortran %s -f' % self.std_dir)
+        self.do('output standalone_fortran %s --hel_recycling=True -f' % self.hr_dir)
 
         std_subdirs = self._subprocess_dirs(self.std_dir)
         hr_subdirs = self._subprocess_dirs(self.hr_dir)

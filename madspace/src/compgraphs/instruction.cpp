@@ -485,6 +485,90 @@ TypeVec BatchSplitInstruction::signature(const ValueVec& args) const {
     return out_types;
 }
 
+TypeVec BatchSplitByIndexInstruction::signature(const ValueVec& args) const {
+    check_arg_count(args, 2);
+    auto& indices_type = args.at(0).type;
+    if (indices_type.dtype != DataType::dt_int || indices_type.shape.size() != 0) {
+        throw std::invalid_argument(
+            std::format("{}, argument 1: expected batch of integers", name())
+        );
+    }
+    if (indices_type.batch_size == BatchSize::one) {
+        throw std::invalid_argument(
+            std::format("{}, argument 1: must have batch dimension", name())
+        );
+    }
+    int size = int_literal_arg(args, 1);
+    TypeVec output_types;
+    auto last_batch_size = indices_type.batch_size;
+    for (int i = 0; i < size; ++i) {
+        auto batch_size = i == size - 1 ? last_batch_size : BatchSize();
+        output_types.push_back({DataType::dt_int, batch_size, {}});
+        last_batch_size = last_batch_size - batch_size;
+    }
+    return output_types;
+}
+
+TypeVec BatchMergeByIndexInstruction::signature(const ValueVec& args) const {
+    if (args.size() < 2 || args.size() % 2 != 0) {
+        throw std::invalid_argument(
+            std::format(
+                "{} has to be called with an even, positive number of arguments "
+                "(alternating values and indices)",
+                name()
+            )
+        );
+    }
+
+    auto& type = args.at(0).type;
+    auto batch_size = BatchSize::zero;
+    for (std::size_t i = 0; i < args.size(); i += 2) {
+        auto& values_type = args.at(i).type;
+        auto& indices_type = args.at(i + 1).type;
+        if (values_type.dtype == DataType::batch_sizes) {
+            throw std::invalid_argument(
+                std::format(
+                    "{}, argument {}: batch size list not accepted as argument",
+                    name(),
+                    i + 1
+                )
+            );
+        }
+        if (values_type.batch_size == BatchSize::one) {
+            throw std::invalid_argument(
+                std::format("{}, argument {}: must have batch dimension", name(), i + 1)
+            );
+        }
+        if (values_type.dtype != type.dtype || values_type.shape != type.shape) {
+            throw std::invalid_argument(
+                std::format(
+                    "{}: all values arguments must have the same shape and dtype",
+                    name()
+                )
+            );
+        }
+        if (indices_type.dtype != DataType::dt_int || indices_type.shape.size() != 0) {
+            throw std::invalid_argument(
+                std::format(
+                    "{}, argument {}: expected batch of integers", name(), i + 2
+                )
+            );
+        }
+        if (indices_type.batch_size != values_type.batch_size) {
+            throw std::invalid_argument(
+                std::format(
+                    "{}, argument {}: must have the same batch size as argument {}",
+                    name(),
+                    i + 2,
+                    i + 1
+                )
+            );
+        }
+        batch_size = batch_size + values_type.batch_size;
+    }
+    return {{type.dtype, batch_size, type.shape}};
+}
+
 TypeVec CatInstruction::signature(const ValueVec& args) const {
     if (args.size() == 0) {
         throw std::invalid_argument("cat has to be called with at least one argument");

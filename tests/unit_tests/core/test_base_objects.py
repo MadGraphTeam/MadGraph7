@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 import copy
+import itertools
 import os
 
 import madgraph
@@ -1208,6 +1209,7 @@ class LegTest(unittest.TestCase):
                       'loop_line':False,
                       'polarization':[],
                       'flavor':[],
+                      'onium': {},
                       'offshell':False}
 
         self.myleg = base_objects.Leg(self.mydict)
@@ -1291,7 +1293,8 @@ class LegTest(unittest.TestCase):
     'loop_line': False,
     'onshell': None,
     'polarization': [],
-    'flavor': []
+    'flavor': [],
+    'onium': {}
 }"""
         
         self.assertEqual(goal, str(self.myleg))
@@ -1359,6 +1362,7 @@ class MultiLegTest(unittest.TestCase):
                       'state':True,
                       'polarization':[],
                       'flavor':[],
+                      'onium': {},
                       'offshell':False}
 
         self.my_multi_leg = base_objects.MultiLeg(self.mydict)
@@ -1437,6 +1441,7 @@ class MultiLegTest(unittest.TestCase):
     'state': True,
     'polarization': [],
     'flavor': [],
+    'onium': {},
     'offshell': False
 }"""
         self.assertEqual(goal, str(self.my_multi_leg))
@@ -1860,7 +1865,71 @@ class ProcessTest(unittest.TestCase):
         goal_str = "2_cc_cxcc"
 
         self.assertEqual(goal_str, self.myprocess.shell_string())
-    
+
+    def test_shell_string_polarization_injective(self):
+        """The polarization part of a P<...> directory name must identify the
+        polarization *set*, not the order/duplicates the user typed.
+
+        A name moves iff the typed list differs from sorted(set(list)):
+        '{+-}'/'{-+}' and '{+}'/'{++}' are one restriction each, while
+        '{SS}' -> [9,9] and '{A}' -> [99] are two and used to share '99'.
+        """
+        shell_pol = base_objects.Process.shell_polarization
+
+        # unpolarized legs contribute nothing: names are unchanged
+        self.assertEqual('', shell_pol([]))
+
+        # the readable short-hands survive, whatever the spelling
+        self.assertEqual('T', shell_pol([1, -1]))
+        self.assertEqual('T', shell_pol([-1, 1]))
+        self.assertEqual('T', shell_pol([1, -1, 1]))
+        self.assertEqual('R', shell_pol([1]))
+        self.assertEqual('R', shell_pol([1, 1]))
+        self.assertEqual('L', shell_pol([-1]))
+        self.assertEqual('L', shell_pol([-1, -1]))
+
+        # the collision which used to be silent: {S,S} is the set {9},
+        # {A} is the set {99}; they must not share a directory name
+        self.assertEqual('9', shell_pol([9, 9]))
+        self.assertEqual('99', shell_pol([99]))
+        self.assertNotEqual(shell_pol([9, 9]), shell_pol([99]))
+
+        # ... and the same restriction always gives the same name
+        self.assertEqual(shell_pol([9, 99]), shell_pol([99, 9]))
+        self.assertEqual(shell_pol([0, -1, 1]), shell_pol([1, 0, -1]))
+
+        # exhaustive: every distinct set of allowed polarizations gets a
+        # distinct name
+        allowed = base_objects.Leg.list_of_allowed_polarizations
+        names = {}
+        for size in range(1, len(allowed) + 1):
+            for combi in itertools.combinations(sorted(allowed), size):
+                name = shell_pol(list(combi))
+                self.assertNotIn(name, names,
+                    "polarizations %s and %s both render as '%s'" % \
+                        (list(combi), names.get(name), name))
+                names[name] = list(combi)
+
+    def test_shell_string_polarization_in_dirname(self):
+        """The canonicalisation is actually applied by shell_string()."""
+
+        self.myprocess.set('id', 0)
+        legs = self.myprocess.get('legs')
+
+        legs[2].set('polarization', [1, -1])
+        first = self.myprocess.shell_string()
+        legs[2].set('polarization', [-1, 1])
+        self.assertEqual(first, self.myprocess.shell_string())
+        self.assertEqual('0_cc_cTcc', first)
+
+        legs[2].set('polarization', [9, 9])
+        ss = self.myprocess.shell_string()
+        legs[2].set('polarization', [99])
+        self.assertNotEqual(ss, self.myprocess.shell_string())
+        self.assertEqual('0_cc_c9cc', ss)
+        self.assertEqual('0_cc_c99cc', self.myprocess.shell_string())
+
+
     def test_long_shell_string(self):
         """Test Process nice_string representation"""
 
@@ -2166,6 +2235,29 @@ class ProcessDefinitionTest(unittest.TestCase):
             else:
                 self.assertEqual(myleglist, testproc[k])
 
+    def test_get_process_keeps_polarization(self):
+        """test that get_process carries the polarization of the multi-legs
+        over to the legs of the returned process."""
+
+        my_new_process_definition = copy.deepcopy(self.my_process_definition)
+        # one initial state and one final state leg are polarized
+        my_new_process_definition['legs'][1].set('polarization', [-1])
+        my_new_process_definition['legs'][3].set('polarization', [0])
+
+        testproc = my_new_process_definition.get_process([3, 3], [4, 5, 3])
+
+        self.assertEqual([l.get('id') for l in testproc.get('legs')],
+                         [3, 3, 4, 5, 3])
+        self.assertEqual([l.get('state') for l in testproc.get('legs')],
+                         [False, False, True, True, True])
+        self.assertEqual([l.get('polarization') for l in testproc.get('legs')],
+                         [[], [-1], [], [0], []])
+
+        # the process must not share the polarization list of the multi-leg
+        testproc.get('legs')[1].get('polarization').append(1)
+        self.assertEqual(my_new_process_definition['legs'][1].get('polarization'),
+                         [-1])
+
     def test_values_for_prop(self):
         """Test filters for process properties"""
 
@@ -2217,6 +2309,78 @@ class ProcessDefinitionTest(unittest.TestCase):
         temp_process['legs'] = set_legs([[1],[1,2],[23],[23],[34],[34]],
                                         [[1],[],[1],[-1],[1],[-1,1]])
         self.assertFalse(temp_process.check_polarization())
+
+    def _offshell_pol_legs(self, leg_class, id_key, combo, offshell_last=False):
+        """Build a 'c c~ > c c~' leg list where one final leg carries the
+        polarization/offshell combination given by 'combo'."""
+
+        pol, offshell = combo
+        specs = [(3, False, {}), (-3, False, {}),
+                 (3, True, {'polarization': pol, 'offshell': offshell}),
+                 (-3, True, {})]
+        if offshell_last:
+            specs[2], specs[3] = specs[3], specs[2]
+
+        legs = []
+        for pdg, state, extra in specs:
+            leg = leg_class()
+            leg.set('state', state)
+            leg.set(id_key, [pdg] if id_key == 'ids' else pdg)
+            for key, value in extra.items():
+                leg.set(key, value)
+            legs.append(leg)
+        return legs
+
+    def test_nice_string_offshell_and_polarization(self):
+        """Every combination of the '*' (offshell) and '{...}' (polarization)
+        leg decorations must render with the leg separated from the next one by
+        a space, and the four renderers must agree on the spelling.
+
+        Regression test: ProcessDefinition.nice_string() used to attach the
+        trailing space in the 'else' branch of the offshell test, so an offshell
+        leg was glued to its neighbour ('c*c~') and, when it was the last leg,
+        the final "remove last space" slice ate the '*' altogether."""
+
+        combos = [([], False), ([-1, 1], False), ([], True), ([-1, 1], True)]
+        goals = ['c c~ > c c~',
+                 'c c~ > c{T} c~',
+                 'c c~ > c* c~',
+                 'c c~ > c{T}* c~']
+
+        for combo, goal in zip(combos, goals):
+            procdef = base_objects.ProcessDefinition({
+                'legs': base_objects.MultiLegList(
+                    self._offshell_pol_legs(base_objects.MultiLeg, 'ids', combo)),
+                'model': self.mymodel})
+            self.assertEqual('Process: ' + goal, procdef.nice_string())
+
+            process = base_objects.Process({
+                'legs': base_objects.LegList(
+                    self._offshell_pol_legs(base_objects.Leg, 'id', combo)),
+                'model': self.mymodel})
+            self.assertEqual('Process: ' + goal, process.nice_string())
+            self.assertEqual(goal, process.input_string())
+            self.assertEqual(goal, process.base_string())
+
+    def test_nice_string_offshell_last_leg(self):
+        """An offshell last leg must keep its '*': the 'remove last space'
+        slice at the end of nice_string() must chop a space, not the marker."""
+
+        for combo, goal in zip([([], True), ([-1, 1], True)],
+                               ['c c~ > c~ c*', 'c c~ > c~ c{T}*']):
+            procdef = base_objects.ProcessDefinition({
+                'legs': base_objects.MultiLegList(
+                    self._offshell_pol_legs(base_objects.MultiLeg, 'ids',
+                                            combo, offshell_last=True)),
+                'model': self.mymodel})
+            self.assertEqual('Process: ' + goal, procdef.nice_string())
+
+            process = base_objects.Process({
+                'legs': base_objects.LegList(
+                    self._offshell_pol_legs(base_objects.Leg, 'id',
+                                            combo, offshell_last=True)),
+                'model': self.mymodel})
+            self.assertEqual('Process: ' + goal, process.nice_string())
 
     def test_representation(self):
         """Test process object string representation."""

@@ -46,8 +46,20 @@ shared:  $(LIBDIR)$(LIBRARY_SHARED)
 clean: 
 	$(RM) *.o $(LIBDIR)$(LIBRARY)
 
+# couplings*.f, printout.f and rw_para.f all 'use model_object', the module
+# defined by flavor_couplings.f. Order-only so that 'make -j' cannot compile a
+# consumer before the .mod exists, without making them depend on its content.
+$(filter-out flavor_couplings.o,$(MODEL)): | flavor_couplings.o
+
 couplings.o: ../maxparticles.inc ../run.inc ../vector.inc
 couplings2.o: ../vector.inc
+rw_onia.o: ldme.inc onia_read.inc
+
+ldme.inc:
+	touch ldme.inc
+
+onia_read.inc:
+	touch onia_read.inc
 
 # flavor_couplings.o provides the model_object F90 module (MODULE MODEL_OBJECT)
 # that every other object in $(MODEL) does "use model_object". Build it first so

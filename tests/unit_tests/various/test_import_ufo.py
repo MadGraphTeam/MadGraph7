@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -92,8 +92,11 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(new_lor.structure, 'Metric(1,2)')
 
         # here flip Scalar and Vector
+        # the exact index is not checked: the UFO module is global to the
+        # process, so an equivalent SSVV lorentz can already exist (and be
+        # returned) if another test did convert the sm model before this one
         new_lor = ufo2mg5_converter.get_symmetric_lorentz('VVSS1', {0: 3, 1:2,2: 1, 3:0}, change_number=True)
-        self.assertEqual(new_lor.name, 'SSVV2')
+        self.assertRegex(new_lor.name, r'^SSVV\d+$')
         self.assertEqual(new_lor.structure, 'Metric(4,3)')
 
     def test_get_symmetric_color(self):
@@ -1668,3 +1671,93 @@ class TestRestrictModel_Merged(unittest.TestCase):
                 found += 1
         self.assertEqual(found, 1)
 
+
+
+class TestLorentzStructureCanonicalisation(unittest.TestCase):
+    """Sorting the arguments of the symmetric lorentz structures.
+
+    Renumbering the indices of a vertex can reorder the arguments of a
+    symmetric function, so that the same object is written Metric(3,2) in one
+    definition and Metric(2,3) in another. import_ufo compares the two
+    structures when a lorentz name is defined twice and warns when they
+    disagree; without canonicalisation that warning fires on every such
+    renumbering and hides the real disagreements among the noise.
+    """
+
+    def test_symmetry_is_carried_by_the_structure(self):
+        """is_symmetric lives on the aloha object, and defaults to False."""
+        import aloha.aloha_object as aloha_object
+        import aloha.aloha_lib as aloha_lib
+        self.assertFalse(aloha_lib.FactoryLorentz.is_symmetric)
+        self.assertTrue(aloha_object.Metric.is_symmetric)
+        self.assertFalse(aloha_object.Gamma.is_symmetric)
+        self.assertTrue(import_ufo.is_symmetric_lorentz_structure('Metric'))
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('Gamma'))
+        # an unknown name must not be taken for a symmetric structure
+        self.assertFalse(import_ufo.is_symmetric_lorentz_structure('NotAThing'))
+
+    def test_argument_order_of_a_symmetric_function_is_ignored(self):
+        """The two spellings of one Metric compare equal."""
+        canon = import_ufo.canonicalize_lorentz_structure
+        # the two cases actually met when importing the sm model
+        self.assertEqual(canon('Metric(3,2)'), canon('Metric(2,3)'))
+        self.assertEqual(canon('Metric(4,2)'), canon('Metric(2,4)'))
+        # summed indices are negative, and must sort numerically (not as text)
+        self.assertEqual(canon('Metric(-1,2)'), canon('Metric(2,-1)'))
+        # and inside a larger expression
+        self.assertEqual(canon('Metric(1,2)*Gamma(3,4,5)'),
+                         canon('Metric(2,1)*Gamma(3,4,5)'))
+
+    def test_real_differences_are_still_reported(self):
+        """Canonicalisation must not silence a genuine redefinition."""
+        canon = import_ufo.canonicalize_lorentz_structure
+        # different indices, not a reordering
+        self.assertNotEqual(canon('Metric(1,2)'), canon('Metric(1,3)'))
+        # Gamma and ProjP are NOT symmetric: reordering them stays a difference
+        self.assertNotEqual(canon('Gamma(1,2,3)'), canon('Gamma(3,2,1)'))
+        self.assertNotEqual(canon('ProjP(1,2)'), canon('ProjP(2,1)'))
+        # a symmetric part that matches does not excuse an asymmetric part
+        self.assertNotEqual(canon('Metric(1,2)*ProjM(3,4)'),
+                            canon('Metric(2,1)*ProjM(4,3)'))
+
+
+class TestRestrictionDoesNotLeakIntoTheUFO(unittest.TestCase):
+    """A Lorentz structure the restriction merges must stay in that model.
+
+    A UFO Lorentz registers itself in its object_library's `all_lorentz`, a
+    module global that stays in sys.modules.  RestrictModel.add_lorentz left
+    the merged structure there, so every later import of the same model in the
+    process started with more structures (658, 661, 664 for SMEFTatNLO-NLO)
+    and named its own merged ones one number further on -- which made
+    customize_model's stability check refuse SMEFTatNLO-NLO outright.
+    """
+
+    def setUp(self):
+        import types
+
+        self.name = 'fake_ufo_object_library_for_restriction_test'
+        library = types.ModuleType(self.name)
+        exec('all_lorentz = []\n'
+             'class Lorentz(object):\n'
+             '    def __init__(self, name, spins, structure="external", **opt):\n'
+             '        self.name = name\n'
+             '        self.spins = spins\n'
+             '        self.structure = structure\n'
+             '        global all_lorentz\n'
+             '        all_lorentz.append(self)\n', library.__dict__)
+        sys.modules[self.name] = library
+        self.library = library
+
+    def tearDown(self):
+        sys.modules.pop(self.name, None)
+
+    def test_a_merged_structure_is_not_registered_in_the_ufo(self):
+        original = self.library.Lorentz('FFVV1', [2, 2, 3, 3], 'Gamma(3,2,1)')
+        model = import_ufo.RestrictModel()
+        model['lorentz'] = [original]
+
+        model.add_lorentz('FFVV99', [2, 2, 3, 3], 'Gamma(4,2,1)')
+
+        self.assertIn('FFVV99', [l.name for l in model['lorentz']])
+        self.assertEqual([l.name for l in self.library.all_lorentz],
+                         ['FFVV1'])

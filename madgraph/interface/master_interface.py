@@ -1,18 +1,18 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""A user friendly command line interface to access all MadGraph5_aMC@NLO features.
+"""A user friendly command line interface to access all MadGraph7 features.
    Uses the cmd package for command interpretation and tab completion.
 """
 
@@ -44,6 +44,7 @@ import madgraph.interface.extended_cmd as cmd
 import madgraph.interface.madgraph_interface as MGcmd
 import madgraph.interface.loop_interface as LoopCmd
 import madgraph.interface.amcatnlo_interface as amcatnloCmd
+import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.fks.fks_base as fks_base
 import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
@@ -62,9 +63,9 @@ class Switcher(object):
         self.change_principal_cmd(main)
         self.cmd.__init__(self, *args, **opt)       
 
-    interface_names= {'MadGraph':('MG5_aMC',MGcmd.MadGraphCmd),
-                      'MadLoop':('MG5_aMC',LoopCmd.LoopInterface),
-                      'aMC@NLO':('MG5_aMC',amcatnloCmd.aMCatNLOInterface)}
+    interface_names= {'MadGraph':(MGcmd.MG7_PROMPT,MGcmd.MadGraphCmd),
+                      'MadLoop':(MGcmd.MG7_PROMPT,LoopCmd.LoopInterface),
+                      'aMC@NLO':(MGcmd.MG7_PROMPT,amcatnloCmd.aMCatNLOInterface)}
 
     _switch_opts = list(interface_names.keys())
     current_interface = None
@@ -92,6 +93,9 @@ class Switcher(object):
         self.to_preserve = [key for key,method in Switcher.__dict__.items() if
                        hasattr(method, '__call__') ]
         self.to_preserve += ['do_shell', 'help_shell', 'complete_shell']
+        # commands the tutorial mixin splices onto the live instance while a
+        # tutorial runs: they are deliberately not routed through self.cmd
+        self.to_preserve += tutorial_mixin.mixin_command_names()
 
         ff = open(pjoin(os.getcwd(), 'additional_command'), 'w')
         
@@ -271,7 +275,7 @@ class Switcher(object):
                 elif nlo_mode in ['all', 'real', 'LOonly']:
                     self._fks_multi_proc = fks_base.FKSMultiProcess()
                     self.change_principal_cmd('aMC@NLO')
-                elif nlo_mode == 'virt' or nlo_mode == 'virtsqr':
+                elif nlo_mode == 'virt' or nlo_mode == 'sqrvirt':
                     self.change_principal_cmd('MadLoop')
             else:
                 self.change_principal_cmd('MadGraph')        
@@ -504,7 +508,8 @@ class Switcher(object):
         # if there is a path, find what output has been done
             if path:
                 type = self.cmd.find_output_type(self, path) 
-                if type in ['standalone', 'standalone_cpp', 'pythia8', 'madevent']:
+                if type in ['standalone_fortran', 'standalone_cpp_family',
+                            'pythia8', 'madevent']:
                     self.change_principal_cmd('MadGraph')
                 elif type == 'aMC@NLO':
                     self.change_principal_cmd('aMC@NLO')
@@ -661,13 +666,25 @@ class Switcher(object):
     def help_customize_model(self, *args, **opts):
         return self.cmd.help_customize_model(self, *args, **opts)
 
+    def check_explain_restriction(self, *args, **opts):
+        return self.cmd.check_explain_restriction(self, *args, **opts)
+
+    def complete_explain_restriction(self, *args, **opts):
+        return self.cmd.complete_explain_restriction(self, *args, **opts)
+
+    def do_explain_restriction(self, *args, **opts):
+        return self.cmd.do_explain_restriction(self, *args, **opts)
+
+    def help_explain_restriction(self, *args, **opts):
+        return self.cmd.help_explain_restriction(self, *args, **opts)
+
 class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, cmd.CmdShell):
 
     def __init__(self, main='MadGraph', *args, **opt):
             
         # define the interface
         if main in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[main][0]+'>'
+            self.prompt= self.interface_names[main][0]
             self.cmd= self.interface_names[main][1]
             self.current_interface=main
         else:
@@ -700,7 +717,7 @@ class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, 
             raise InvalidCmd("Command not compatible with previous command: Can not combine LO/NLO feature.")
             
         if name in list(self.interface_names.keys()):
-            self.prompt= self.interface_names[name][0]+'>'
+            self.prompt= self.interface_names[name][0]
             self.cmd= self.interface_names[name][1]
             self.current_interface=name
         else:
@@ -789,7 +806,11 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
     def set_configuration(self, config_path=None, final=False):
         
         """Force to use the web configuration file only"""
-        config_path = pjoin(os.environ['MADGRAPH_BASE'], 'mg5_configuration.txt')
+        config_path = misc.base_config_file()
+        if not config_path:
+            # on the web MADGRAPH_BASE is always set: never silently fall back
+            # to the local configuration files.
+            raise KeyError('MADGRAPH_BASE')
         return Switcher.set_configuration(self, config_path=config_path, final=final)
     
     def do_save(self, line, check=True, **opt):
@@ -806,7 +827,7 @@ class MasterCmdWeb(MGcmd.MadGraphCmdWeb, Switcher, LoopCmd.LoopInterfaceWeb):
             # put default options since 
             # in the web the local file is not used
             # in download the default file is more usefull
-            files.cp(pjoin(MG5DIR,'input','mg5_configuration.txt'), args[1])
+            files.cp(misc.install_config_file(MG5DIR), args[1])
             
     def do_install(self, line):
         """block all install"""

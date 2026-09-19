@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -286,7 +286,9 @@ class ColorBasis(dict):
     diagram, coeff the corresponding coefficient (a fraction), is_imaginary
     if this contribution is real or complex, and Nc_power the Nc power."""
 
-    # Dictionary to save simplifications already done in a canonical form
+    # Memo of simplified color structures, keyed on the canonical string alone:
+    # coeff is divided out on store and re-applied on a hit, loop_Nc_power is
+    # stamped per use, is_imaginary/Nc_power are fixed by the structure itself.
     _canonical_dict = {}
 
     # Dictionary store the raw colorize information
@@ -703,6 +705,8 @@ class ColorBasis(dict):
                 # Remove overall coefficient
                 for cs in canonical_col_fact:
                     cs.coeff = cs.coeff / col_str.coeff
+                    # not a property of the canonical structure
+                    cs.loop_Nc_power = 0
                 self._canonical_dict[canonical_rep] = canonical_col_fact
             else:
                 # If this representation has already been considered,
@@ -734,6 +738,10 @@ class ColorBasis(dict):
                 # in case we have K6 or K6bar Clebsch Gordan coefficients
                 for colstr in col_fact: colstr.order_summation()
 
+            # The memo does not carry loop_Nc_power; set it on both paths.
+            for cs in col_fact:
+                cs.loop_Nc_power = col_str.loop_Nc_power
+
             # loop over color strings in the resulting color factor
             for col_str in col_fact:
                 immutable_col_str = col_str.to_immutable()
@@ -750,6 +758,39 @@ class ColorBasis(dict):
                 except KeyError:
                     self[immutable_col_str] = [basis_entry]
 
+    def OniumColorString(self, pid_charges, pid_numbers, charge, offset=10000):
+        """Do the color projection for a given onium"""
+        if len(pid_numbers) != 2 or len(pid_charges) != 2:
+            raise ColorBasis.ColorBasisError("Only the projection of two particles is supported")
+        if pid_charges==(1,-1):
+            if charge != 1:
+                raise ColorBasis.ColorBasisError("Only color singlet is possible when charges=%d,%d"%pid_charges)
+            projector_str = color_algebra.ColorString([color_algebra.ColorOne()])
+        elif pid_charges==(3,-3) or pid_charges==(-3,3):
+            if pid_charges==(-3,3):
+                pidnums=(pid_numbers[1],pid_numbers[0])
+            else:
+                pidnums=(pid_numbers[0],pid_numbers[1])
+            if charge == 1:
+                # color singlet
+                projector_str = color_algebra.ColorString([color_algebra.T(pidnums[1], pidnums[0])])
+            elif charge == 8:
+                # color octet
+                projector_str = color_algebra.ColorString([color_algebra.T(pidnums[0],pidnums[1],pidnums[0])])
+            else:
+                raise ColorBasis.ColorBasisError("Only color singlet/octet is possible when charges=%d,%d"%pid_charges)
+        else:
+            raise ColorBasis.ColorBasisError("Unknown charges=%d,%d for color projection of onium"%pid_charges)
+
+        return projector_str
+
+    def OniaColorProjection(self, colorize_dict, pid_color_numbers):
+        """Color projection for onia"""
+        for (pid_charges,pid_numbers,charge) in pid_color_numbers:
+            OniumCS=self.OniumColorString(pid_charges, pid_numbers, charge)
+            for col_str in colorize_dict.values():
+                col_str.product(OniumCS)
+
     def create_color_dict_list(self, amplitude):
         """Returns a list of colorize dict for all diagrams in amplitude. Also
         update the _list_color_dict object accordingly """
@@ -759,6 +800,27 @@ class ColorBasis(dict):
         for diagram in amplitude.get('diagrams'):
             colorize_dict = self.colorize(diagram,
                                           amplitude.get('process').get('model'))
+
+            onium = False
+            pid_color_numbers = []
+            for l in amplitude.get('process').get('legs'):
+                if l.get('onium'):
+                    if not onium:
+                        onium = True
+                        for part in amplitude.get('process').get('model').get('particles'):
+                            if part.get('pdg_code') == l.get('id'): color = part.get('color')
+                            if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
+                        onium_color = color
+                        onium_number = l.get('number')
+                    else:
+                        onium = False
+                        for part in amplitude.get('process').get('model').get('particles'):
+                            if part.get('pdg_code') == l.get('id'): color = part.get('color')
+                            if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
+                        pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
+
+            if pid_color_numbers: self.OniaColorProjection(colorize_dict, pid_color_numbers)
+
             list_color_dict.append(colorize_dict)
 
         self._list_color_dict = list_color_dict
@@ -945,7 +1007,6 @@ class ColorBasis(dict):
             for (leg_num, leg_repr) in repr_dict.items():
                 # By default, assign a (0,0) color flow
                 res_dict[leg_num] = [0, 0]
-
                 # Raise an error if external legs contain non supported repr
                 if abs(leg_repr) not in [1, 3, 6, 8]:
                     raise ColorBasis.ColorBasisError("Particle ID=%i has an unsupported color representation" % leg_repr)
@@ -1026,25 +1087,6 @@ def permute_immutable(struct, perm):
             start = min(range(len(new_indices)), key=new_indices.__getitem__)
             new_indices = new_indices[start:] + new_indices[:start]
         res.append((name, new_indices))
-    res.sort()
-    return tuple(res)
-
-
-def reverse_immutable(struct):
-    """Reverse every color object of an immutable color basis key, bringing the
-    result back to the canonical form. A trace is cyclic, so it is rotated onto
-    its smallest index afterwards. Returns None for anything which is not built
-    of traces alone, which is where the reversal has a meaning of its own."""
-
-    res = []
-    for name, indices in struct:
-        if name != 'Tr':
-            return None
-        indices = tuple(reversed(indices))
-        if len(indices) > 1:
-            start = min(range(len(indices)), key=indices.__getitem__)
-            indices = indices[start:] + indices[:start]
-        res.append((name, indices))
     res.sort()
     return tuple(res)
 
@@ -1830,4 +1872,3 @@ class ColorMatrix(dict):
             return reduce(ColorMatrix.lcm, args)
         else:
             return 1
-

@@ -129,8 +129,7 @@ def sample_external_momenta(mapping, batch_size, seed):
 def build_event(momenta_row):
     event = ms.LHEEvent()
     event.particles = [
-        ms.LHEParticle(p_x=px, p_y=py, p_z=pz, energy=e)
-        for e, px, py, pz in momenta_row
+        ms.LHEParticle(px=px, py=py, pz=pz, energy=e) for e, px, py, pz in momenta_row
     ]
     return event
 
@@ -148,7 +147,7 @@ def external_particles(event):
 @pytest.fixture(scope="module")
 def events(lhe_completer, mapping):
     p_ext = sample_external_momenta(mapping, 300, seed=1234)
-    rand_gen = ms.RandGen(2024)
+    rand_gen = ms.MixMaxRandom(2024)
     result = []
     for row in p_ext:
         event = build_event(row)
@@ -159,6 +158,66 @@ def events(lhe_completer, mapping):
 
 def momentum(particle):
     return np.array([particle.energy, particle.px, particle.py, particle.pz])
+
+
+def test_event_attributes_are_bound_to_their_own_members():
+    """Every LHEEvent attribute must read back the value it was given.
+
+    Guards against copy-paste slips in the pybind11 binding block: a
+    def_readwrite pointing at the wrong struct member silently shadows another
+    field (alpha_qcd used to be bound to LHEEvent::process_id).
+    """
+    values = dict(
+        process_id=7,
+        weight=1.5,
+        scale=91.1876,
+        alpha_qed=0.0078125,
+        alpha_qcd=0.118,
+    )
+    event = ms.LHEEvent(**values)
+    for name, value in values.items():
+        assert getattr(event, name) == approx(value), name
+
+    # ... and each attribute must be independently writable, without any two of
+    # them aliasing the same member.
+    event = ms.LHEEvent()
+    for name, value in values.items():
+        setattr(event, name, value)
+    for name, value in values.items():
+        assert getattr(event, name) == approx(value), name
+
+
+def test_event_header_line_written_to_lhe():
+    """The event header line of the written LHE file carries the values set
+    from Python, in the order defined by arXiv:0109068 (NUP IDPRUP XWGTUP
+    SCALUP AQEDUP AQCDUP).
+
+    The attributes are set one by one rather than passed to the constructor, so
+    that this also covers the setter side of the def_readwrite bindings.
+    """
+    event = ms.LHEEvent()
+    event.process_id = 7
+    event.weight = 1.5
+    event.scale = 91.1876
+    event.alpha_qed = 0.0078125
+    event.alpha_qcd = 0.118
+    event.particles = [ms.LHEParticle(pdg_id=21), ms.LHEParticle(pdg_id=21)]
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = os.path.join(tmp_dir, "events.lhe")
+        writer = ms.LHEFileWriter(path, ms.LHEMeta())
+        writer.write(event)
+        del writer  # the destructor flushes and closes the file
+
+        with open(path) as in_file:
+            lines = in_file.read().split("\n")
+        header = lines[lines.index("<event>") + 1].split()
+
+    assert int(header[0]) == 2  # NUP
+    assert int(header[1]) == 7  # IDPRUP
+    assert float(header[2]) == approx(1.5)  # XWGTUP
+    assert float(header[3]) == approx(91.1876)  # SCALUP
+    assert float(header[4]) == approx(0.0078125)  # AQEDUP
+    assert float(header[5]) == approx(0.118)  # AQCDUP
 
 
 def test_particle_count_includes_all_resonances(events):
@@ -309,7 +368,7 @@ def test_external_color_flows_match_input_across_subprocesses(
     _, _, subproc_args = topology_and_args
     lhe_completer = ms.LHECompleter([subproc_args, subproc_args], bw_cutoff=BW_CUTOFF)
     p_ext = sample_external_momenta(mapping, 20, seed=99)
-    rand_gen = ms.RandGen(7)
+    rand_gen = ms.MixMaxRandom(7)
     color_flows = subproc_meta["color_flows"]
 
     for subprocess_index in (0, 1):
@@ -329,7 +388,7 @@ def test_external_color_flows_match_input_across_subprocesses(
 def test_external_spins_match_helicity_table(lhe_completer, mapping, subproc_meta):
     helicities = subproc_meta["helicities"]
     p_ext = sample_external_momenta(mapping, 5, seed=55)
-    rand_gen = ms.RandGen(3)
+    rand_gen = ms.MixMaxRandom(3)
     for helicity_index in [0, 3, 10]:
         for row in p_ext:
             event = build_event(row)
@@ -343,7 +402,7 @@ def test_external_spins_match_helicity_table(lhe_completer, mapping, subproc_met
 
 def test_external_flavors_are_valid_options(lhe_completer, mapping, subproc_meta):
     p_ext = sample_external_momenta(mapping, 30, seed=77)
-    rand_gen = ms.RandGen(9)
+    rand_gen = ms.MixMaxRandom(9)
     for flavor_index, flavor in enumerate(subproc_meta["flavors"]):
         options = [tuple(option) for option in flavor["options"]]
         for row in p_ext:
@@ -363,8 +422,10 @@ def test_save_load_roundtrip(lhe_completer, mapping):
         p_ext = sample_external_momenta(mapping, 20, seed=321)
         for row in p_ext:
             event_a, event_b = build_event(row), build_event(row)
-            lhe_completer.complete_event_data(event_a, 0, 0, 0, 0, 0, ms.RandGen(11))
-            loaded.complete_event_data(event_b, 0, 0, 0, 0, 0, ms.RandGen(11))
+            lhe_completer.complete_event_data(
+                event_a, 0, 0, 0, 0, 0, ms.MixMaxRandom(11)
+            )
+            loaded.complete_event_data(event_b, 0, 0, 0, 0, 0, ms.MixMaxRandom(11))
             assert len(event_a.particles) == len(event_b.particles)
             for pa, pb in zip(event_a.particles, event_b.particles):
                 assert pa.pdg_id == pb.pdg_id
@@ -379,11 +440,24 @@ def test_wrong_particle_count_raises(lhe_completer):
     event = ms.LHEEvent()
     event.particles = [ms.LHEParticle()] * 3
     with pytest.raises(RuntimeError):
-        lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.RandGen(1))
+        lhe_completer.complete_event_data(event, 0, 0, 0, 0, 0, ms.MixMaxRandom(1))
 
 
 def test_invalid_color_index_raises(lhe_completer, mapping):
     p_ext = sample_external_momenta(mapping, 1, seed=1)
     event = build_event(p_ext[0])
     with pytest.raises(RuntimeError):
-        lhe_completer.complete_event_data(event, 0, 0, 999, 0, 0, ms.RandGen(1))
+        lhe_completer.complete_event_data(event, 0, 0, 999, 0, 0, ms.MixMaxRandom(1))
+
+
+def test_particle_momentum_kwargs_match_attributes():
+    """The constructor kwargs for the momentum components are spelled like the
+    attributes they set: px/py/pz, matching LHEParticle's C++ members and the
+    rest of madspace. The old p_x/p_y/p_z spelling is gone."""
+    particle = ms.LHEParticle(px=1.5, py=-2.5, pz=3.5, energy=4.5)
+    assert (particle.px, particle.py, particle.pz) == (1.5, -2.5, 3.5)
+    assert particle.energy == 4.5
+
+    for name in ("p_x", "p_y", "p_z"):
+        with pytest.raises(TypeError):
+            ms.LHEParticle(**{name: 1.0})

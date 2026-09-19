@@ -10,7 +10,7 @@ in the following paths with respect to the root of the repository:
 - madgraph/iolibs/template_files/madmatrix
 
 Originally, this code was developed as the CUDACPP plugin to the
-MadGraph5_aMC@NLO project, at https://github.com/madgraph5/madgraph4gpu
+MadGraph7 project, at https://github.com/madgraph5/madgraph4gpu
 More details on the CUDACPP plugin copyright notice can be found in the
 "COPYRIGHT" file in the above repository. For the full list of authors and
 collaborators of this work, see the file "AUTHORS" in the same directory as this

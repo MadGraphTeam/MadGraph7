@@ -31,7 +31,8 @@ std::tuple<int, int> compute_decay_color(
     std::size_t color_slot,
     std::size_t colors_size,
     int color_type,
-    const std::vector<std::tuple<int, int>>& prop_colors
+    const std::vector<std::tuple<int, int>>& prop_colors,
+    int& sign_flip
 ) {
     std::vector<int> decay_colors, decay_anti_colors;
     for (std::size_t child_index : decay.child_indices) {
@@ -65,22 +66,35 @@ std::tuple<int, int> compute_decay_color(
         decay_anti_colors.end()
     );
 
+    // TODO: sign_flip is a workaround for the situation where madgraph gets the sign
+    // of the propagator wrong. In this case, the sign is inferred from the color flow
     if (color_type == 1) {
         if (decay_colors.size() > 0 || decay_anti_colors.size() > 0) {
             throw std::runtime_error("Incompatible with color singlet");
         }
         return {0, 0};
     } else if (color_type == 3) {
+        if (decay_colors.size() == 0 && decay_anti_colors.size() == 1) {
+            sign_flip = -1;
+            return {0, decay_anti_colors.at(0)};
+        }
         if (decay_colors.size() != 1 || decay_anti_colors.size() > 0) {
             throw std::runtime_error("Incompatible with color triplet");
         }
         return {decay_colors.at(0), 0};
     } else if (color_type == -3) {
+        if (decay_colors.size() == 1 && decay_anti_colors.size() == 0) {
+            sign_flip = -1;
+            return {decay_colors.at(0), 0};
+        }
         if (decay_colors.size() > 0 || decay_anti_colors.size() != 1) {
             throw std::runtime_error("Incompatible with anti-color triplet");
         }
         return {0, decay_anti_colors.at(0)};
     } else if (color_type == 8) {
+        if (decay_colors.size() == 0 && decay_anti_colors.size() == 0) {
+            return {0, 0};
+        }
         if (decay_colors.size() != 1 || decay_anti_colors.size() != 1) {
             throw std::runtime_error("Incompatible with color octet");
         }
@@ -123,6 +137,31 @@ void LHEEvent::format_to(std::string& buffer) const {
             particle.lifetime,
             particle.spin
         );
+    }
+    if (lo_info && lo_info->qcd_power >= 0 && lo_info->has_beam1 &&
+        lo_info->has_beam2) {
+        std::format_to(
+            insert_iter,
+            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt>0</asrwt>\n"
+            "<pdfrwt beam=\"1\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
+            "<pdfrwt beam=\"2\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
+            "<totfact> 1.0</totfact>\n</mgrwt>\n",
+            lo_info->qcd_power,
+            lo_info->ren_scale,
+            lo_info->pdg1,
+            lo_info->x1,
+            lo_info->fact_scale1,
+            lo_info->pdg2,
+            lo_info->x2,
+            lo_info->fact_scale2
+        );
+    }
+    if (!rwgt.empty()) {
+        buffer += "<rwgt>\n";
+        for (auto [id, value] : zip(rwgt_ids, rwgt)) {
+            std::format_to(insert_iter, "<wgt id='{}'> {:+13.7e} </wgt>\n", id, value);
+        }
+        buffer += "</rwgt>\n";
     }
     buffer += "</event>\n";
 }
@@ -200,10 +239,23 @@ void LHECompleter::init_propagator_data(
     resonant_prop_indices.clear();
     resonant_prop_indices.resize(decay_count, -1);
 
+    // permutation maps external leg -> topology slot; invert it here, since
+    // using it directly mismatches whenever it isn't self-inverse.
+    std::vector<std::size_t> inv_permutation(permutation.size());
+    for (std::size_t leg = 0; leg < permutation.size(); ++leg) {
+        inv_permutation.at(permutation.at(leg)) = leg;
+    }
+
+    // The permutation runs over all external legs, incoming first, so the
+    // outgoing ones start at the incoming count -- 2 for a collision, 1 for a
+    // decay. Getting this wrong silently reads another particle's color flow.
     for (auto [index, mass, perm_index] :
          zip(topo.outgoing_indices(),
              topo.outgoing_masses(),
-             std::span(permutation.begin() + 2, permutation.end()))) {
+             std::span(
+                 inv_permutation.begin() + topo.incoming_masses().size(),
+                 inv_permutation.end()
+             ))) {
         e_min.at(index) = mass;
         momentum_masks.at(index) = 1 << perm_index;
         for (std::size_t i = 0; std::size_t color_index : colors) {
@@ -218,12 +270,22 @@ void LHECompleter::find_resonant_propagators(
     const Topology& topo,
     const SubprocArgs& args,
     const std::vector<std::size_t>& colors,
+    const std::vector<int>& propagator_pdgs,
     std::size_t prop_offset,
     std::vector<double>& e_min,
     std::vector<int>& momentum_masks,
     std::vector<std::tuple<int, int>>& prop_colors,
     std::vector<int>& resonant_prop_indices
 ) {
+    // For each decay, the propagators hanging below it with no propagator in
+    // between. A decay that never becomes a propagator is not written to the
+    // LHE, so what sits under it belongs to the nearest ancestor that is: its
+    // mask passes straight through. Without this a resonance separated from
+    // its parent resonance by a plain internal line keeps mother (1,2) -- the
+    // W of a q q~ > Z > l l(-> l W) diagram, say.
+    std::vector<int> subtree_prop_masks(topo.decays().size(), 0);
+
+    // Pass 1: resonance status from mass/width alone, no color involved.
     for (auto& decay : std::views::reverse(topo.decays())) {
         if (decay.child_indices.size() == 0) {
             continue;
@@ -241,9 +303,12 @@ void LHECompleter::find_resonant_propagators(
             int child_prop_index = resonant_prop_indices.at(child_index);
             if (child_prop_index != -1) {
                 child_prop_mask |= 1 << child_prop_index;
+            } else {
+                child_prop_mask |= subtree_prop_masks.at(child_index);
             }
         }
         if (e_min_item >= decay.mass) {
+            subtree_prop_masks.at(decay.index) = child_prop_mask;
             continue;
         }
 
@@ -255,12 +320,58 @@ void LHECompleter::find_resonant_propagators(
             .mass = decay.mass,
             .width = decay.width,
         });
+    }
 
-        int color_type = pdg_color_type(decay.pdg_id, args.pdg_color_types);
+    if (_propagators.size() == prop_offset) {
+        // Nothing resonant: no color is needed, and skipping it sidesteps
+        // color flows that never get validated for non-resonant parts.
+        return;
+    }
+
+    // Pass 2: a decay needs its color computed only if it (or something
+    // further down its own decay chain) is resonant.
+    std::vector<bool> needed(topo.decays().size(), false);
+    for (auto& decay : topo.decays()) {
+        if (decay.child_indices.size() == 0) {
+            continue;
+        }
+        bool is_needed = resonant_prop_indices.at(decay.index) != -1;
+        if (!is_needed && decay.parent_index != decay.index) {
+            is_needed = needed.at(decay.parent_index);
+        }
+        needed.at(decay.index) = is_needed;
+    }
+
+    // Pass 3: compute colors, only for decays marked needed above.
+    for (auto& decay : std::views::reverse(topo.decays())) {
+        if (decay.child_indices.size() == 0 || !needed.at(decay.index)) {
+            continue;
+        }
+        if (decay.index == 0 && topo.t_integration_order().size() > 0) {
+            continue;
+        }
+
+        // Prefer this diagram's own pdg (merge_same_topologies can share a
+        // topology across diagrams with different particles per slot).
+        int propagator_pdg = decay.pdg_id;
+        if (decay.flat_propagator_index != Topology::no_propagator &&
+            decay.flat_propagator_index < propagator_pdgs.size()) {
+            propagator_pdg = propagator_pdgs.at(decay.flat_propagator_index);
+        }
+
+        int color_type = pdg_color_type(propagator_pdg, args.pdg_color_types);
+        int sign_flip = 1;
         for (std::size_t i = 0; std::size_t color_index : colors) {
-            prop_colors.at(colors.size() * decay.index + i) =
-                compute_decay_color(decay, i, colors.size(), color_type, prop_colors);
+            prop_colors.at(colors.size() * decay.index + i) = compute_decay_color(
+                decay, i, colors.size(), color_type, prop_colors, sign_flip
+            );
             ++i;
+        }
+
+        int prop_index = resonant_prop_indices.at(decay.index);
+        if (prop_index != -1) {
+            _propagators.at(prop_offset + prop_index).pdg_id =
+                sign_flip * propagator_pdg;
         }
     }
 }
@@ -300,15 +411,29 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
     std::vector<std::tuple<int, int>> prop_colors;
     std::vector<int> resonant_prop_indices;
 
+    static const nested_vector2<int> no_channel_propagator_pdgs;
+    static const std::vector<int> no_diagram_propagator_pdgs;
+
     std::size_t diagram_count = 0;
     std::size_t max_prop_count = 0;
-    for (auto [topo, permutations, diag_indices, diag_colors] :
+    for (std::size_t channel_index = 0;
+         auto [topo, permutations, diag_indices, diag_colors] :
          zip(args.topologies,
              args.permutations,
              args.diagram_indices,
              args.diagram_color_indices)) {
-        for (auto [permutation, diag_index, colors] :
+        // diagram_propagator_pdgs is optional; fall back to decay.pdg_id if absent.
+        const nested_vector2<int>& channel_propagator_pdgs =
+            channel_index < args.diagram_propagator_pdgs.size()
+            ? args.diagram_propagator_pdgs.at(channel_index)
+            : no_channel_propagator_pdgs;
+        for (std::size_t diag_in_channel = 0;
+             auto [permutation, diag_index, colors] :
              zip(permutations, diag_indices, diag_colors)) {
+            const std::vector<int>& propagator_pdgs =
+                diag_in_channel < channel_propagator_pdgs.size()
+                ? channel_propagator_pdgs.at(diag_in_channel)
+                : no_diagram_propagator_pdgs;
             if (diag_index >= diagram_count) {
                 diagram_count = diag_index + 1;
             }
@@ -327,6 +452,7 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
                 topo,
                 args,
                 colors,
+                propagator_pdgs,
                 prop_offset,
                 e_min,
                 momentum_masks,
@@ -345,7 +471,9 @@ LHECompleter::build_propagators(std::size_t subproc_index, const SubprocArgs& ar
             if (prop_count > max_prop_count) {
                 max_prop_count = prop_count;
             }
+            ++diag_in_channel;
         }
+        ++channel_index;
     }
     return {diagram_count, max_prop_count};
 }
@@ -377,6 +505,7 @@ LHECompleter::LHECompleter(
             .flavor_count = args.pdg_ids.size(),
             .diagram_count = diagram_count,
             .helicity_count = args.helicities.size(),
+            .incoming_count = args.topologies.at(0).incoming_masses().size(),
         });
 
         helicity_offset += particle_count * args.helicities.size();
@@ -394,7 +523,7 @@ void LHECompleter::complete_event_data(
     int color_index,
     int flavor_index,
     int helicity_index,
-    std::mt19937& rand_gen
+    MixMaxRandom& rand_gen
 ) {
     auto& subproc_data = _subproc_data.at(subprocess_index);
     if (event.particles.size() != subproc_data.particle_count) {
@@ -415,6 +544,13 @@ void LHECompleter::complete_event_data(
 
     event.process_id = subproc_data.process_id;
 
+    // Number of leading entries in the event record that are initial state:
+    // 2 for a collision, 1 for a decay. Everything that indexes past the
+    // initial state -- where resonances get inserted, what the outgoing
+    // particles' mothers are, how far the momentum masks are shifted -- is
+    // offset by this rather than by a hard-coded 2.
+    const std::size_t n_in = subproc_data.incoming_count;
+
     std::size_t color_offset =
         subproc_data.color_offset + subproc_data.particle_count * color_index;
     std::size_t helicity_offset =
@@ -423,22 +559,23 @@ void LHECompleter::complete_event_data(
 
     auto [pdg_index, pdg_count] =
         _pdg_id_and_count.at(subproc_data.pdg_id_offset + flavor_index);
-    std::uniform_int_distribution<std::size_t> dist(0, pdg_count - 1);
-    std::size_t pdg_random = dist(rand_gen);
+    std::size_t pdg_random = rand_gen.generate_int(pdg_count);
     std::size_t pdg_offset = pdg_index + subproc_data.particle_count * pdg_random;
 
     for (std::size_t particle_index = 0; auto& particle : event.particles) {
         std::tie(particle.color, particle.anti_color) =
             _colors.at(color_offset + particle_index);
         particle.pdg_id = _pdg_ids.at(pdg_offset + particle_index);
-        if (particle_index < 2) {
+        if (particle_index < n_in) {
             particle.status_code = -1;
             particle.mother1 = 0;
             particle.mother2 = 0;
         } else {
             particle.status_code = 1;
             particle.mother1 = 1;
-            particle.mother2 = 2;
+            // A decay has a single mother, which LHE spells as
+            // mother1 == mother2 rather than a (1, 2) range.
+            particle.mother2 = static_cast<int>(n_in);
         }
         particle.mass = _masses.at(mass_offset + particle_index);
         particle.lifetime = 0;
@@ -477,7 +614,13 @@ void LHECompleter::complete_event_data(
             momentum_mask >>= 1;
         }
         double m2 = e * e - px * px - py * py - pz * pz;
-        double m_min = propagator.mass - _bw_cutoff * propagator.width;
+        // Once bw_cutoff exceeds mass/width the window reaches below zero,
+        // where there is no invariant mass left to exclude. Squaring a
+        // negative m_min would instead turn it into a large positive floor and
+        // reject nearly everything, so a wider window would write *fewer*
+        // resonances than a narrow one.
+        double m_min =
+            std::max(0., propagator.mass - _bw_cutoff * propagator.width);
         double m_max = propagator.mass + _bw_cutoff * propagator.width;
         if (m2 > m_min * m_min && m2 < m_max * m_max) {
             auto [color, anti_color] = prop_color;
@@ -486,7 +629,7 @@ void LHECompleter::complete_event_data(
                 .pdg_id = propagator.pdg_id,
                 .status_code = 2,
                 .mother1 = 1,
-                .mother2 = 2,
+                .mother2 = static_cast<int>(n_in),
                 .color = color,
                 .anti_color = anti_color,
                 .px = px,
@@ -501,8 +644,21 @@ void LHECompleter::complete_event_data(
         ++prop_index;
     }
     event.particles.insert(
-        event.particles.begin() + 2, new_particles.rbegin(), new_particles.rend()
+        event.particles.begin() + n_in, new_particles.rbegin(), new_particles.rend()
     );
+    // Where each propagator ended up among the ones this event actually wrote,
+    // which is the order they were just inserted in: outermost first. Only the
+    // propagators inside resonant_prop_mask have a row, and child_prop_mask
+    // names them by prop_index, so the two orders have to be related
+    // explicitly -- counting set mask bits instead lands on the wrong row as
+    // soon as a propagator in between is resonant without being a child.
+    std::vector<int> res_index_of_prop(prop_count, -1);
+    for (std::size_t prop_index = prop_count, next_res_index = 0; prop_index-- > 0;) {
+        if (resonant_prop_mask & (1 << prop_index)) {
+            res_index_of_prop.at(prop_index) = static_cast<int>(next_res_index++);
+        }
+    }
+
     for (std::size_t prop_index = prop_count, res_index = 0;
          auto& propagator : std::views::reverse(
              std::span(
@@ -512,26 +668,34 @@ void LHECompleter::complete_event_data(
          )) {
         --prop_index;
         if (resonant_prop_mask & (1 << prop_index)) {
-            int child_prop_mask = propagator.child_prop_mask;
-            for (int child_prop_index = prop_index - 1, child_res_index = res_index + 1;
-                 child_prop_index >= 0;
-                 --child_prop_index) {
-                if (child_prop_mask & (1 << child_prop_index)) {
-                    auto& child_particle = event.particles.at(child_res_index + 2);
-                    child_particle.mother1 = res_index + 3;
-                    child_particle.mother2 = res_index + 3;
-                    ++child_res_index;
+            // Descend through the propagators this event left off shell: they
+            // have no row of their own, so their children attach here.
+            int pending_prop_mask = propagator.child_prop_mask;
+            while (pending_prop_mask != 0) {
+                int child_prop_index = 0;
+                while ((pending_prop_mask & (1 << child_prop_index)) == 0) {
+                    ++child_prop_index;
                 }
+                pending_prop_mask &= ~(1 << child_prop_index);
+                int child_res_index = res_index_of_prop.at(child_prop_index);
+                if (child_res_index == -1) {
+                    pending_prop_mask |=
+                        _propagators.at(prop_offset + child_prop_index).child_prop_mask;
+                    continue;
+                }
+                auto& child_particle = event.particles.at(child_res_index + n_in);
+                child_particle.mother1 = res_index + n_in + 1;
+                child_particle.mother2 = res_index + n_in + 1;
             }
 
-            int momentum_mask = propagator.momentum_mask >> 2;
+            int momentum_mask = propagator.momentum_mask >> n_in;
             for (auto& particle : std::span(
-                     event.particles.begin() + 2 + new_particles.size(),
+                     event.particles.begin() + n_in + new_particles.size(),
                      event.particles.end()
                  )) {
                 if (momentum_mask & 1) {
-                    particle.mother1 = res_index + 3;
-                    particle.mother2 = res_index + 3;
+                    particle.mother1 = res_index + n_in + 1;
+                    particle.mother2 = res_index + n_in + 1;
                 }
                 momentum_mask >>= 1;
             }
@@ -613,6 +777,7 @@ void madspace::to_json(
         subproc_data.flavor_count,
         subproc_data.diagram_count,
         subproc_data.helicity_count,
+        subproc_data.incoming_count,
     };
 }
 
@@ -630,6 +795,9 @@ void madspace::from_json(
         .flavor_count = j.at(7).get<std::size_t>(),
         .diagram_count = j.at(8).get<std::size_t>(),
         .helicity_count = j.at(9).get<std::size_t>(),
+        // Gridpacks written before decays were supported carry no entry here
+        // and are always collisions.
+        .incoming_count = j.size() > 10 ? j.at(10).get<std::size_t>() : 2,
     };
 }
 

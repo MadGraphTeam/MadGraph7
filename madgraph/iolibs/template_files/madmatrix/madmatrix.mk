@@ -1,6 +1,6 @@
 # Copyright (C) 2020-2026 CERN and UCLouvain.
 # Licensed under the GNU Lesser General Public License (version 3 or later).
-# Created originally by: S. Roiser (Feb 2020) for the MG5aMC CUDACPP plugin.
+# Created originally by: S. Roiser (Feb 2020) for the MadGraph7 CUDACPP plugin.
 # Further modified by: S. Hageboeck, D. Massaro, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
@@ -9,7 +9,7 @@
 
 # Set the default BACKEND (CUDA, HIP or C++/SIMD) choice
 ifeq ($(BACKEND),)
-  override BACKEND = cppauto
+  override BACKEND = auto
 endif
 
 # Set the default FPTYPE (floating point type) choice
@@ -33,12 +33,17 @@ endif
 
 # Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
 # (NB: use 'filter' and 'words' instead of 'findstring' because they properly handle whitespace-separated words)
-override SUPPORTED_BACKENDS = cuda hip cppnone cppsse4 cppavx2 cpp512y cpp512z cppauto
+# NB: the CPU backends are the values of the 'cpu_mode' run_card entry; 'auto' picks the
+# widest SIMD flavour supported by the host (see the resolution block further down).
+override SUPPORTED_CPU_BACKENDS = scalar simd_128 simd_256 avx512y simd_512
+override SUPPORTED_BACKENDS = cuda hip $(SUPPORTED_CPU_BACKENDS) auto
 ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_BACKENDS))),1)
   $(error Invalid backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
 endif
 
-override SUPPORTED_FPTYPES = d f m
+# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
+override SUPPORTED_FPTYPES = d f m e v
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
   $(error Invalid fptype FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -70,10 +75,11 @@ endif
 #=== Configure MADMATRIX_BUILDDIR
 
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
-override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+# NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
+override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
 # Build directory: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
-# NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after potential cppauto resolution
+# NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
 ifeq ($(USEBUILDDIR),1)
   override MADMATRIX_BUILDDIR = build.$(BACKEND)
 else
@@ -112,44 +118,47 @@ override SRC := ../../src
 # Can be overridden on the command line (e.g. make LIBDIR=/abs/path); defaults to ../../lib.
 # NB: LIBDIR is resolved to an absolute path so it can be passed unchanged to sub-makes via export.
 LIBDIR ?= ../../lib
+# Keep LIBDIR as given (usually relative to this P* directory): it is used below to
+# build loader-relative rpaths, which survive a move of the process directory.
+override LIBDIR_AS_GIVEN := $(LIBDIR)
 override LIBDIR := $(abspath $(LIBDIR))
 
 $(info Building objects in BUILDDIR=$(BUILDDIR), libraries in LIBDIR=$(LIBDIR))
 
 #-------------------------------------------------------------------------------
 
-#=== Redefine BACKEND if the current value is 'cppauto'
+#=== Redefine BACKEND if the current value is 'auto'
 
-# Set the default BACKEND choice corresponding to 'cppauto' (the 'best' C++ vectorization available)
+# Set the BACKEND choice corresponding to 'auto' (the 'best' C++ vectorization available)
 BACKEND_ORIG := $(BACKEND)
-ifeq ($(BACKEND),cppauto)
+ifeq ($(BACKEND),auto)
   ifeq ($(UNAME_P),ppc64le)
-    override BACKEND = cppsse4
+    override BACKEND = simd_128
   else ifneq (,$(filter $(UNAME_M),arm64 aarch64))
-    override BACKEND = cppsse4
+    override BACKEND = simd_128
   else ifeq ($(wildcard /proc/cpuinfo),)
-    override BACKEND = cppnone
+    override BACKEND = scalar
     ###$(warning Using BACKEND='$(BACKEND)' because host SIMD features cannot be read from /proc/cpuinfo)
   else ifeq ($(shell grep -m1 -c avx512vl /proc/cpuinfo)$(shell $(CXX) --version | grep ^clang),1)
-    override BACKEND = cpp512y
+    override BACKEND = avx512y
   else ifeq ($(shell grep -m1 -c avx2 /proc/cpuinfo),1)
-    override BACKEND = cppavx2
+    override BACKEND = simd_256
     ###ifneq ($(shell grep -m1 -c avx512vl /proc/cpuinfo),1)
     ###  $(warning Using BACKEND='$(BACKEND)' because host does not support avx512vl)
     ###else
     ###  $(warning Using BACKEND='$(BACKEND)' because this is faster than avx512vl for clang)
     ###endif
   else ifeq ($(shell grep -m1 -c sse4_2 /proc/cpuinfo),1)
-    override BACKEND = cppsse4
+    override BACKEND = simd_128
   else
-    override BACKEND = cppnone
+    override BACKEND = scalar
   endif
-  $(info BACKEND=$(BACKEND) (was cppauto))
+  $(info BACKEND=$(BACKEND) (was auto))
 else
   $(info BACKEND='$(BACKEND)')
 endif
 
-# Create file with the resolved backend in case user chooses 'cppauto'
+# Create file with the resolved backend in case user chooses 'auto'
 BACKEND_LOG ?= .resolved-backend
 ifneq ($(BACKEND_ORIG),$(BACKEND))
   $(file >$(BACKEND_LOG),$(BACKEND))
@@ -321,7 +330,13 @@ ifeq ($(BACKEND),cuda)
 else ifeq ($(BACKEND),hip)
 
   # example architecture values MI200:gfx90a, MI350X:gfx942
-  MADGRAPH_HIP_ARCHITECTURE ?= gfx942
+  # auto detect arch if not set; if fail gfx942 default
+  ifeq ($(origin MADGRAPH_HIP_ARCHITECTURE),undefined)
+    MADGRAPH_HIP_ARCHITECTURE := $(shell $(HIP_HOME)/bin/rocm_agent_enumerator 2>/dev/null | grep -v gfx000 | sort -u | head -1)
+  endif
+  ifeq ($(MADGRAPH_HIP_ARCHITECTURE),)
+    MADGRAPH_HIP_ARCHITECTURE := gfx942
+  endif
   # Set GPUCC as $(HIP_HOME)/bin/hipcc (it was already checked above that this exists)
   GPUCC = $(HIP_HOME)/bin/hipcc
   XCOMPILERFLAG =
@@ -361,9 +376,10 @@ else
   override GPUFLAGS=
 
   # Sanity check, this should never happen: if GPUCC is empty, then this is a C++ build, i.e. BACKEND is neither cuda nor hip.
-  # In practice, in the following, "ifeq ($(GPUCC),)" is equivalent to "ifneq ($(findstring cpp,$(BACKEND)),)".
+  # In practice, in the following, "ifeq ($(GPUCC),)" is equivalent to "BACKEND is one of SUPPORTED_CPU_BACKENDS"
+  # (NB: do NOT test the backend name for a 'cpu' substring: none of the CPU backend names contains one).
   # Conversely, note that GPUFLAGS is non-empty also for C++ builds, but it is never used in that case.
-  ifeq ($(findstring cpp,$(BACKEND)),)
+  ifneq ($(words $(filter $(BACKEND), $(SUPPORTED_CPU_BACKENDS))),1)
     $(error INTERNAL ERROR! Unknown backend BACKEND='$(BACKEND)': supported backends are $(foreach backend,$(SUPPORTED_BACKENDS),'$(backend)'))
   endif
 
@@ -375,7 +391,7 @@ export GPUFLAGS
 export GPULANGUAGE
 export GPUSUFFIX
 
-# Export BACKEND (resolved from cppauto above if needed; used e.g. to name the common library)
+# Export BACKEND (resolved from auto above if needed; used e.g. to name the common library)
 export BACKEND
 
 #-------------------------------------------------------------------------------
@@ -429,13 +445,13 @@ INCFLAGS += -I$(SRC)
 
 # PowerPC-specific CXX compiler flags (being reviewed)
 ifeq ($(UNAME_P),ppc64le)
-  CXXFLAGS+= -mcpu=power9 -mtune=power9 # gains ~2-3%% both for cppnone and cppsse4
-  # Throughput references without the extra flags below: cppnone=1.41-1.42E6, cppsse4=2.15-2.19E6
+  CXXFLAGS+= -mcpu=power9 -mtune=power9 # gains ~2-3%% both for scalar and simd_128
+  # Throughput references without the extra flags below: scalar=1.41-1.42E6, simd_128=2.15-2.19E6
   ###CXXFLAGS+= -DNO_WARN_X86_INTRINSICS # no change
   ###CXXFLAGS+= -fpeel-loops # no change
-  ###CXXFLAGS+= -funroll-loops # gains ~1%% for cppnone, loses ~1%% for cppsse4
+  ###CXXFLAGS+= -funroll-loops # gains ~1%% for scalar, loses ~1%% for simd_128
   ###CXXFLAGS+= -ftree-vectorize # no change
-  ###CXXFLAGS+= -flto # would increase to cppnone=4.08-4.12E6, cppsse4=4.99-5.03E6!
+  ###CXXFLAGS+= -flto # would increase to scalar=4.08-4.12E6, simd_128=4.99-5.03E6!
 else
   ###CXXFLAGS+= -flto # also on Intel this would increase throughputs by a factor 2 to 4...
   ######CXXFLAGS+= -fno-semantic-interposition # no benefit (neither alone, nor combined with -flto)
@@ -516,66 +532,66 @@ endif
 $(info OMPFLAGS=$(OMPFLAGS))
 CXXFLAGS += $(OMPFLAGS)
 
-# Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=cppnone")
+# Set the build flags appropriate to each BACKEND choice (example: "make BACKEND=scalar")
 # [NB MGONGPU_PVW512 is needed because "-mprefer-vector-width=256" is not exposed in a macro]
 # [See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96476]
 # [Use 'g++ <buildflags> -E -dM - < /dev/null' to check which #define's are enabled]
 ifeq ($(UNAME_P),ppc64le)
-  ifeq ($(BACKEND),cppsse4)
+  ifeq ($(BACKEND),simd_128)
     override AVXFLAGS = -D__SSE4_2__ # Power9 VSX with 128 width (VSR registers)
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),simd_256)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),avx512y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on PowerPC for the moment)
+  else ifeq ($(BACKEND),simd_512)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on PowerPC for the moment)
   endif
 else ifeq ($(UNAME_M),arm64) # ARM on Apple silicon
-  ifeq ($(BACKEND),cppnone) # this internally undefines __ARM_NEON
+  ifeq ($(BACKEND),scalar) # this internally undefines __ARM_NEON
     override AVXFLAGS = -DMGONGPU_NOARMNEON
-  else ifeq ($(BACKEND),cppsse4) # __ARM_NEON is always defined on Apple silicon
+  else ifeq ($(BACKEND),simd_128) # __ARM_NEON is always defined on Apple silicon
     override AVXFLAGS =
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),simd_256)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),avx512y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on ARM for the moment)
+  else ifeq ($(BACKEND),simd_512)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on ARM for the moment)
   endif
 else ifeq ($(UNAME_M),aarch64) # ARM on Linux
-  ifeq ($(BACKEND),cppnone) # +nosimd ensures __ARM_NEON is absent
+  ifeq ($(BACKEND),scalar) # +nosimd ensures __ARM_NEON is absent
     override AVXFLAGS = -march=armv8-a+nosimd
-  else ifeq ($(BACKEND),cppsse4) # +simd ensures __ARM_NEON is present (128 width Q/quadword registers)
+  else ifeq ($(BACKEND),simd_128) # +simd ensures __ARM_NEON is present (128 width Q/quadword registers)
     override AVXFLAGS = -march=armv8-a+simd
-  else ifeq ($(BACKEND),cppavx2)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
-  else ifeq ($(BACKEND),cpp512y)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
-  else ifeq ($(BACKEND),cpp512z)
-    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'cppnone' and 'cppsse4' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),simd_256)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),avx512y)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on aarch64 for the moment)
+  else ifeq ($(BACKEND),simd_512)
+    $(error Invalid SIMD BACKEND='$(BACKEND)': only 'scalar' and 'simd_128' are supported on aarch64 for the moment)
   endif
 else ifneq ($(shell $(CXX) --version | grep ^nvc++),) # support nvc++ #531
-  ifeq ($(BACKEND),cppnone)
+  ifeq ($(BACKEND),scalar)
     override AVXFLAGS = -mno-sse3 # no SIMD
-  else ifeq ($(BACKEND),cppsse4)
+  else ifeq ($(BACKEND),simd_128)
     override AVXFLAGS = -mno-avx # SSE4.2 with 128 width (xmm registers)
-  else ifeq ($(BACKEND),cppavx2)
+  else ifeq ($(BACKEND),simd_256)
     override AVXFLAGS = -march=haswell # AVX2 with 256 width (ymm registers) [DEFAULT for clang]
-  else ifeq ($(BACKEND),cpp512y)
+  else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
-  else ifeq ($(BACKEND),cpp512z)
+  else ifeq ($(BACKEND),simd_512)
     override AVXFLAGS = -march=skylake -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 else
-  ifeq ($(BACKEND),cppnone)
+  ifeq ($(BACKEND),scalar)
     override AVXFLAGS = -march=x86-64 # no SIMD (see #588)
-  else ifeq ($(BACKEND),cppsse4)
+  else ifeq ($(BACKEND),simd_128)
     override AVXFLAGS = -march=nehalem # SSE4.2 with 128 width (xmm registers)
-  else ifeq ($(BACKEND),cppavx2)
+  else ifeq ($(BACKEND),simd_256)
     override AVXFLAGS = -march=haswell # AVX2 with 256 width (ymm registers) [DEFAULT for clang]
-  else ifeq ($(BACKEND),cpp512y)
+  else ifeq ($(BACKEND),avx512y)
     override AVXFLAGS = -march=skylake-avx512 -mprefer-vector-width=256 # AVX512 with 256 width (ymm registers) [DEFAULT for gcc]
-  else ifeq ($(BACKEND),cpp512z)
+  else ifeq ($(BACKEND),simd_512)
     override AVXFLAGS = -march=skylake-avx512 -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 endif
@@ -585,18 +601,27 @@ ifeq ($(GPUCC),)
 endif
 
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
+# 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
+# 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
 $(info FPTYPE='$(FPTYPE)')
-ifeq ($(FPTYPE),d)
+ifeq ($(FPTYPE),d) # all64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE
-else ifeq ($(FPTYPE),f)
+else ifeq ($(FPTYPE),f) # all32
   CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT
-else ifeq ($(FPTYPE),m)
+else ifeq ($(FPTYPE),m) # color32: colour FP32, momenta+amp FP64
   CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+else ifeq ($(FPTYPE),v) # denom64: momenta/denom FP64, colour+amp FP32
+  # cppnone/cuda/hip trivial, SIMD denom ex. twice, rest narrowed 
+  GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+  CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+else ifeq ($(FPTYPE),e)
+  CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
+  GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
 else
-  $(error Unknown FPTYPE='$(FPTYPE)': only 'd', 'f' and 'm' are supported)
+  $(error Unknown FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
 
 # Set the build flags appropriate to each HELINL choice (example: "make HELINL=1")
@@ -699,7 +724,8 @@ endif
 #=== Configure build directories and build lockfiles ===
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
-override TAG = $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+# NB: the backend name is used as-is, so it matches DIRTAG above (there is no common prefix to strip)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -709,22 +735,36 @@ override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
 ###override INCDIR = ../../include
 
-# On Linux, embed the absolute LIBDIR as rpath so LD_LIBRARY_PATH is not needed.
-# Since LIBDIR is absolute, the same rpath works regardless of where the executable lives.
-# On Darwin, libraries use absolute install_name so rpath is not needed.
+# Embed rpaths so that LD_LIBRARY_PATH/DYLD_LIBRARY_PATH is not needed. They are
+# expressed relative to the loading binary ($ORIGIN on Linux, @loader_path on
+# Darwin) so that the whole process directory can be moved after the build.
 ifeq ($(UNAME_S),Darwin)
-  override CXXLIBFLAGSRPATH =
-  override GPULIBFLAGSRPATH =
-  override CXXLIBFLAGSRPATH2 =
-  override GPULIBFLAGSRPATH2 =
+  override RPATHORIGIN := @loader_path
 else
-  # RPATH for executables: find the process lib (and its common-lib dependency) in LIBDIR
-  override CXXLIBFLAGSRPATH = -Wl,-rpath=$(LIBDIR)
-  override GPULIBFLAGSRPATH = -Xlinker -rpath=$(LIBDIR)
-  # RPATH for the process shared lib itself: find the common lib in the same LIBDIR
-  override CXXLIBFLAGSRPATH2 = -Wl,-rpath=$(LIBDIR)
-  override GPULIBFLAGSRPATH2 = -Xlinker -rpath=$(LIBDIR)
+  override RPATHORIGIN := $$ORIGIN
 endif
+
+# RPATH for executables (built in this P* directory): find the process lib and its
+# common-lib dependency in LIBDIR. Only an absolute LIBDIR forces an absolute rpath.
+ifeq ($(filter /%%,$(LIBDIR_AS_GIVEN)),)
+  override RPATHLIBDIR := '$(RPATHORIGIN)/$(LIBDIR_AS_GIVEN)'
+else
+  override RPATHLIBDIR := $(LIBDIR)
+endif
+override CXXLIBFLAGSRPATH = -Wl,-rpath,$(RPATHLIBDIR)
+override GPULIBFLAGSRPATH = -Xlinker -rpath -Xlinker $(RPATHLIBDIR)
+# RPATH for the process shared lib itself: the common lib sits next to it in LIBDIR
+override CXXLIBFLAGSRPATH2 = -Wl,-rpath,'$(RPATHORIGIN)'
+override GPULIBFLAGSRPATH2 = -Xlinker -rpath -Xlinker '$(RPATHORIGIN)'
+
+# Name recorded in the process lib itself, and hence in whatever links against it.
+# Without it the linker bakes in the absolute build path of the library.
+ifeq ($(UNAME_S),Darwin)
+  override CXXLIBFLAGSNAME = -Wl,-install_name,@rpath/lib$(MADMATRIX_LIB).so
+else
+  override CXXLIBFLAGSNAME = -Wl,-soname,lib$(MADMATRIX_LIB).so
+endif
+override GPULIBFLAGSNAME = -Xlinker -soname -Xlinker lib$(MADMATRIX_LIB).so
 
 # Setting LD_LIBRARY_PATH or DYLD_LIBRARY_PATH in the RUNTIME is no longer necessary (neither on Linux nor on Mac)
 override RUNTIME =
@@ -798,18 +838,27 @@ endif
 # Target (and build rules): common (src) library
 commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
 
+# The common library is shared by every P* directory. When several of them are
+# built concurrently (SubProcesses/makefile fanning out under 'make -j N'), they
+# must not all recurse into src/ and race on the same objects: the dispatcher
+# builds the common library once, up front, and sets MADMATRIX_COMMONLIB_EXTERNAL=1
+# to say so. Building a P* directory on its own (the default) is unaffected.
+ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: ;
+else
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
 	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+endif
 
 #-------------------------------------------------------------------------------
 
 # Target (and build rules): process shared library (C++ or CUDA/HIP, selected by GPUCC)
 ifeq ($(GPUCC),)
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(CPPBLASLIBFLAGS)
+	$(CXX) -shared -o $@ $(objects_lib) $(CXXLIBFLAGSNAME) $(CXXLIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(CPPBLASLIBFLAGS)
 else
 $(LIBDIR)/lib$(MADMATRIX_LIB).so: $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(objects_lib)
-	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
+	$(GPUCC) --shared -o $@ $(objects_lib) $(GPULIBFLAGSNAME) $(GPULIBFLAGSRPATH2) -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB) $(BLASLIBFLAGS)
 endif
 
 #-------------------------------------------------------------------------------
@@ -818,7 +867,9 @@ endif
 # Split the bldall target into separate targets to allow parallel 'make -j bldall' builds.
 # Pass LIBDIR explicitly so 'make bldall LIBDIR=/path' works end-to-end.
 # (GNU make auto-forwards command-line vars via MAKEFLAGS, but being explicit is safer and self-documenting.)
-_BLDFLAGS = USEBUILDDIR=1 LIBDIR=$(LIBDIR)
+# (LIBDIR is forwarded as given, not resolved, to keep the rpaths loader-relative:
+# the sub-make runs in this same directory, so the relative form still resolves.)
+_BLDFLAGS = USEBUILDDIR=1 LIBDIR=$(LIBDIR_AS_GIVEN)
 
 bldcuda:
 	@echo
@@ -830,50 +881,70 @@ bldhip:
 
 bldnone:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppnone
+	$(MAKE) $(_BLDFLAGS) BACKEND=scalar
 
 bldsse4:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppsse4
+	$(MAKE) $(_BLDFLAGS) BACKEND=simd_128
 
 bldavx2:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cppavx2
+	$(MAKE) $(_BLDFLAGS) BACKEND=simd_256
 
 bld512y:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cpp512y
+	$(MAKE) $(_BLDFLAGS) BACKEND=avx512y
 
 bld512z:
 	@echo
-	$(MAKE) $(_BLDFLAGS) BACKEND=cpp512z
+	$(MAKE) $(_BLDFLAGS) BACKEND=simd_512
 
+# The C++/SIMD backends that are worth building on this machine...
 ifeq ($(UNAME_P),ppc64le)
-bldavxs: bldnone bldsse4
+  BLDAVXS = scalar simd_128
 else ifneq (,$(filter $(UNAME_M),arm64 aarch64))
-bldavxs: bldnone bldsse4
+  BLDAVXS = scalar simd_128
 else
-bldavxs: bldnone bldsse4 bldavx2 bld512y bld512z
+  BLDAVXS = scalar simd_128 simd_256 avx512y simd_512
 endif
 
+# ...plus the GPU backends whose compiler was found. This is the single place
+# where the list of 'bldall' backends is defined: SubProcesses/makefile drives
+# multi-backend builds through the bldall/bldcommonlib targets below.
+BLDBACKENDS = $(BLDAVXS)
+ifneq ($(CUDA_HOME),)
+  BLDBACKENDS := cuda $(BLDBACKENDS)
+endif
 ifneq ($(HIP_HOME),)
-ifneq ($(CUDA_HOME),)
-bldall: bldhip bldcuda bldavxs
-else
-bldall: bldhip bldavxs
+  BLDBACKENDS := hip $(BLDBACKENDS)
 endif
-else
-ifneq ($(CUDA_HOME),)
-bldall: bldcuda bldavxs
-else
-bldall: bldavxs
-endif
-endif
+
+# The bld* targets keep their historical short names, which do not follow the
+# backend names, so map them explicitly rather than editing the backend string.
+BLDTARGET_scalar   = bldnone
+BLDTARGET_simd_128 = bldsse4
+BLDTARGET_simd_256 = bldavx2
+BLDTARGET_avx512y  = bld512y
+BLDTARGET_simd_512 = bld512z
+BLDTARGET_cuda     = bldcuda
+BLDTARGET_hip      = bldhip
+
+bldavxs: $(foreach backend,$(BLDAVXS),$(BLDTARGET_$(backend)))
+bldall: $(foreach backend,$(BLDBACKENDS),$(BLDTARGET_$(backend)))
+
+# Target: the common (src) library in all BACKEND modes. Used by the
+# SubProcesses dispatcher, which owns the common library during a 'bldall'
+# (see MADMATRIX_COMMONLIB_EXTERNAL above).
+.PHONY: bldcommonlib $(addprefix commonlib.,$(BLDBACKENDS))
+bldcommonlib: $(addprefix commonlib.,$(BLDBACKENDS))
+
+$(addprefix commonlib.,$(BLDBACKENDS)): commonlib.%%:
+	+$(MAKE) $(_BLDFLAGS) BACKEND=$* commonlib
 
 #-------------------------------------------------------------------------------
 
 # Target: clean the builds
-.PHONY: clean cleanall
+.PHONY: clean cleanall cleancommon cleanallcommon
 
 # clean: remove objects and libraries for the selected BACKEND only.
 clean:
@@ -883,19 +954,32 @@ else
 	rm -f $(BUILDDIR)/.build.* $(BUILDDIR)/*.o
 	rm -f $(LIBDIR)/lib$(MADMATRIX_LIB).so
 	rm -f $(BACKEND_LOG)
+ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
 endif
- 
+endif
+
 # cleanall: remove objects and libraries for ALL backends.
 cleanall:
 	rm -rf build.*
 	rm -f ./.build.* ./*.o
 	rm -f $(LIBDIR)/libmadmatrix_$(processid_short)_*.so
+ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)
+endif
+
+# Clean only the common (src) part. These are the counterparts of 'commonlib'
+# for the SubProcesses dispatcher, which owns the common library while the P*
+# directories are cleaned in parallel with MADMATRIX_COMMONLIB_EXTERNAL=1.
+cleancommon:
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+
+cleanallcommon:
 	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)
 
 #-------------------------------------------------------------------------------
 
-# Detect backend (to be used in case of 'cppauto' to give info to the user)
+# Detect backend (to be used in case of 'auto' to give info to the user)
 .PHONY: detect-backend
 detect-backend:
 	@echo "Resolved backend has already been written to $(BACKEND_LOG) at parse time."

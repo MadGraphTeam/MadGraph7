@@ -1,9 +1,9 @@
-// Copyright (C) 2010 The MadGraph5_aMC@NLO development team and contributors.
-// Created by: J. Alwall (Oct 2010) for the MG5aMC CPP backend.
+// Copyright (C) 2010 The MadGraph7 development team and contributors.
+// Created by: J. Alwall (Oct 2010) for the MadGraph7 CPP backend.
 //==========================================================================
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Modified originally by: O. Mattelaer (Nov 2020) for the MG5aMC CUDACPP plugin.
+// Modified originally by: O. Mattelaer (Nov 2020) for the MadGraph7 CUDACPP plugin.
 // Further modified by: S. Hageboeck, D. Massaro, O. Mattelaer, S. Roiser, J. Teig, A. Thete, A. Valassi (2020-2026).
 // Integrated with the MadGraph7 project in Feb 2026.
 //==========================================================================
@@ -152,13 +152,37 @@ namespace
     return true;
   }
 
+  // Raw binary momenta, as written by --dump-momenta: double precision, (E, px, py, pz)
+  // for each leg of each event, with no header. Used by 'check precision' to feed the
+  // very same phase-space points to builds of different floating point precision.
+  bool read_binary_momenta( const std::string& path, std::vector<LheEvent>& events )
+  {
+    static_assert( sizeof( LheEvent ) == 4 * CPPProcess::npar * sizeof( double ), "LheEvent must be contiguous doubles" );
+    std::ifstream in( path, std::ios::binary );
+    if( !in )
+    {
+      std::cerr << "ERROR! cannot open momenta file '" << path << "'" << std::endl;
+      return false;
+    }
+    LheEvent ev;
+    while( in.read( reinterpret_cast<char*>( ev.data() ), sizeof( LheEvent ) ) )
+      events.push_back( ev );
+    if( events.empty() )
+    {
+      std::cerr << "ERROR! no events found in '" << path << "'" << std::endl;
+      return false;
+    }
+    return true;
+  }
+
   int usage( const char* argv0, int ret = 1 )
   {
     std::cout
       << "Usage:\n"
       << "  " << argv0 << " [matrix] [-v|--verbose] [<energy>]\n"
       << "  " << argv0 << " perf [-v|--verbose] [-f|--flavor <int>] [--rambo-massless]"
-      << " [-e|--events <file.lhe>] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
+      << " [-e|--events <file.lhe>] [--momenta <file>] [--dump-momenta <file>] [--dump-me <file>]"
+      << " [--energy <GeV>] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
       << "  " << argv0 << " -p [opts]   (legacy alias for `perf`)\n"
       << "\n"
       << "Subcommands:\n"
@@ -177,6 +201,11 @@ namespace
       << "                    file instead of generating them with RAMBO. The events are\n"
       << "                    processed in batches of #blocks*#threads; #iterations is\n"
       << "                    ignored (derived from the number of events in the file).\n"
+      << "  --momenta <file>  (perf only) Same, from a raw binary file of doubles\n"
+      << "                    (E,px,py,pz per leg per event) as written by --dump-momenta.\n"
+      << "  --dump-momenta <file>  (perf only) Write the momenta of every event, raw doubles.\n"
+      << "  --dump-me <file>  (perf only) Write the matrix element of every event, raw doubles.\n"
+      << "  --energy <GeV>    (perf only) Ecms for RAMBO (default 1500 GeV).\n"
       << "\n"
       << "perf-mode defaults if positional args are omitted:\n"
       << "  #blocksPerGrid = 64, #threadsPerBlock = 256, #iterations = 1.\n";
@@ -187,7 +216,7 @@ namespace
   //   AOSOA: aosoa[i_page * npar*4*neppM + ipar*4*neppM + ip4*neppM + i_vector]
   //   UMAMI: soa[ip4 * npar*nevt + ipar*nevt + ievt]
   __host__ __device__ inline void
-  aosoa_to_umami_one( const fptype* aosoa,
+  aosoa_to_umami_one( const fptype_momenta* aosoa,
                       double* soa,
                       std::size_t ievt,
                       std::size_t nevt )
@@ -205,7 +234,7 @@ namespace
 
 #ifdef MGONGPUCPP_GPUIMPL
   __global__ void
-  aosoa_to_umami_kernel( const fptype* aosoa,
+  aosoa_to_umami_kernel( const fptype_momenta* aosoa,
                          double* soa,
                          std::size_t nevt )
   {
@@ -251,9 +280,9 @@ namespace
        << "Random number generation    = COMMON RANDOM HOST" << std::endl;
   }
 
-  void print_momenta_table( std::ostream& os, const fptype* aosoa, unsigned int ievt )
+  void print_momenta_table( std::ostream& os, const fptype_momenta* aosoa, unsigned int ievt )
   {
-    auto constexpr prec = std::numeric_limits<fptype>::digits10;	  
+    auto constexpr prec = std::numeric_limits<fptype_momenta>::digits10;
     constexpr int npar = CPPProcess::npar;
     os << std::string( SEP79, '-' ) << std::endl
        << "   n    E           	 	 px             	  py              	   pz" << std::endl;
@@ -539,7 +568,7 @@ namespace
       return p;
     }
 
-    // Auxiliary function changing convention between MadGraph5_aMC@NLO and
+    // Auxiliary function changing convention between MadGraph7 and
     // RAMBO four-momenta (same as get_momenta in the standalone_cpp driver).
     inline std::vector<std::vector<double>>
     get_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
@@ -656,7 +685,7 @@ namespace
       umami_free( umami_handle );
       return 2;
     }
-    const std::vector<fptype> masses( massesD.begin(), massesD.end() );
+    const std::vector<fptype> masses( massesD.begin(), massesD.end() ); // RamboSamplingKernelHost takes vector<fptype>
 
     // NB: feed the double-precision masses to the classic RAMBO, which works in
     // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
@@ -854,12 +883,15 @@ namespace
                      unsigned int niter,
                      unsigned int flavorID,
                      RamboType ramboType,
-                     const std::string& lheFile = "" )
+                     const std::string& lheFile = "",
+                     const std::string& momentaFile = "",
+                     const std::string& dumpMomentaFile = "",
+                     const std::string& dumpMEFile = "" )
   {
     const unsigned int nevt = gpublocks * gputhreads;
 
-    // LHE instead of generating. Processed in batches of nevt and
-    // niter is derived from the number of events read.
+    // LHE (or raw binary momenta) instead of generating. Processed in batches of
+    // nevt and niter is derived from the number of events read.
     std::vector<LheEvent> lheEvents;
     if( !lheFile.empty() )
     {
@@ -868,6 +900,35 @@ namespace
       std::cout << "Reading events from LHE file = " << lheFile
                 << " (" << lheEvents.size() << " events, " << niter
                 << " batches of " << nevt << ")" << std::endl;
+    }
+    else if( !momentaFile.empty() )
+    {
+      if( !read_binary_momenta( momentaFile, lheEvents ) ) return 2;
+      niter = (unsigned int)( ( lheEvents.size() + nevt - 1 ) / nevt );
+      std::cout << "Reading events from momenta file = " << momentaFile
+                << " (" << lheEvents.size() << " events, " << niter
+                << " batches of " << nevt << ")" << std::endl;
+    }
+    const bool eventsFromFile = !lheEvents.empty();
+
+    std::ofstream dumpMomenta, dumpMEs;
+    if( !dumpMomentaFile.empty() )
+    {
+      dumpMomenta.open( dumpMomentaFile, std::ios::binary );
+      if( !dumpMomenta )
+      {
+        std::cerr << "ERROR! cannot write momenta file '" << dumpMomentaFile << "'" << std::endl;
+        return 2;
+      }
+    }
+    if( !dumpMEFile.empty() )
+    {
+      dumpMEs.open( dumpMEFile, std::ios::binary );
+      if( !dumpMEs )
+      {
+        std::cerr << "ERROR! cannot write matrix element file '" << dumpMEFile << "'" << std::endl;
+        return 2;
+      }
     }
 
     mgOnGpu::TimerMap timermap;
@@ -961,7 +1022,7 @@ namespace
       double genrtime = 0;
       double rambtime = 0;
       unsigned int nreal = nevt; // number of real (non-padding) events in this batch
-      if( lheFile.empty() )
+      if( !eventsFromFile )
       {
         timermap.start( "1a GenSeed " );
         prnk->seedGenerator( kSeed + iiter );
@@ -1008,7 +1069,7 @@ namespace
           const LheEvent& ev = lheEvents[src];
           for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
             for( int ip4 = 0; ip4 < 4; ++ip4 )
-              MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype)ev[ipar][ip4];
+              MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype_momenta)ev[ipar][ip4];
         }
         rambtime += timermap.stop();
 #ifdef MGONGPUCPP_GPUIMPL
@@ -1042,7 +1103,7 @@ namespace
       }
 
 #ifdef MGONGPUCPP_GPUIMPL
-      if( verbose )
+      if( verbose || dumpMomenta.is_open() )
       {
         timermap.start( "3c CpDTHmom" );
         copyHostFromDevice( hstMomenta, devMomenta );
@@ -1052,6 +1113,19 @@ namespace
 #else
       const double* mes = umamiMEs.data();
 #endif
+
+      if( dumpMomenta.is_open() )
+      {
+        for( unsigned int ievt = 0; ievt < nreal; ++ievt )
+          for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+            for( int ip4 = 0; ip4 < 4; ++ip4 )
+            {
+              const double p = (double)MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, ipar );
+              dumpMomenta.write( reinterpret_cast<const char*>( &p ), sizeof( double ) );
+            }
+      }
+      if( dumpMEs.is_open() )
+        dumpMEs.write( reinterpret_cast<const char*>( mes ), (std::streamsize)nreal * sizeof( double ) );
 
       timermap.start( "4@ UpdtStat" );
       for( unsigned int ievt = 0; ievt < nreal; ++ievt )
@@ -1139,6 +1213,11 @@ namespace
     std::cout << std::string( SEP79, '*' ) << std::endl;
 
     umami_free( umami_handle );
+    if( ( dumpMomenta.is_open() && !dumpMomenta.flush() ) || ( dumpMEs.is_open() && !dumpMEs.flush() ) )
+    {
+      std::cerr << "ERROR! failed to write the dump files" << std::endl;
+      return 2;
+    }
     return 0;
   }
 }
@@ -1157,6 +1236,10 @@ int main( int argc, char** argv )
   unsigned int numvec[3] = { 0, 0, 0 };
   int nnum = 0;
   std::string lheFile; // -e/--events: read momenta from this LHE file (perf mode only)
+  std::string momentaFile;     // --momenta: read momenta from this raw binary file (perf mode only)
+  std::string dumpMomentaFile; // --dump-momenta: write the momenta of every event (perf mode only)
+  std::string dumpMEFile;      // --dump-me: write the matrix element of every event (perf mode only)
+  double perfEnergy = -1.;     // --energy: Ecms for the perf-mode RAMBO
 
   // Optional leading subcommand (no leading dash).
   int firstArg = 1;
@@ -1189,6 +1272,23 @@ int main( int argc, char** argv )
       lheFile = argv[++argn];
       mode = MODE_PERF; // reading events from file only makes sense in perf mode
     }
+    else if( arg == "--momenta" && argn + 1 < argc )
+    {
+      momentaFile = argv[++argn];
+      mode = MODE_PERF;
+    }
+    else if( arg == "--dump-momenta" && argn + 1 < argc )
+    {
+      dumpMomentaFile = argv[++argn];
+      mode = MODE_PERF;
+    }
+    else if( arg == "--dump-me" && argn + 1 < argc )
+    {
+      dumpMEFile = argv[++argn];
+      mode = MODE_PERF;
+    }
+    else if( arg == "--energy" && argn + 1 < argc && is_float( argv[argn + 1] ) )
+      perfEnergy = atof( argv[++argn] );
     else if( is_number( argv[argn] ) && nnum < 3 )
     {
       numvec[nnum++] = strtoul( argv[argn], nullptr, 0 );
@@ -1238,7 +1338,13 @@ int main( int argc, char** argv )
   {
     return usage( argv[0] );
   }
-  if( niter == 0 && lheFile.empty() ) return usage( argv[0] ); // niter is derived from the file in LHE mode
+  if( niter == 0 && lheFile.empty() && momentaFile.empty() ) return usage( argv[0] ); // niter is derived from the file in LHE mode
+  if( !lheFile.empty() && !momentaFile.empty() )
+  {
+    std::cerr << "ERROR: --events and --momenta are mutually exclusive." << std::endl;
+    return usage( argv[0] );
+  }
+  if( perfEnergy > 0 ) kEnergy = perfEnergy;
 
   if( flavorID >= CPPProcess::nmaxflavor )
   {
@@ -1247,5 +1353,6 @@ int main( int argc, char** argv )
     return 1;
   }
 
-  return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile );
+  return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile,
+                        momentaFile, dumpMomentaFile, dumpMEFile );
 }

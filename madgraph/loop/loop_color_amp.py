@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -42,8 +42,11 @@ class LoopColorBasis(color_amp.ColorBasis):
         """ Defines the instance attribute compute_loop_nc.
         The compute_loop_nc sets wheter independent tracking of Nc power coming
         from the color loop trace is necessary or not (it is time consuming)."""
-        
+
         self.compute_loop_nc = compute_loop_nc
+        self._list_color_dict = []
+        # ColorBasis.__init__ is deliberately not called: _canonical_dict must
+        # stay the class-level memo, shared across matrix elements.
 
     def closeColorLoop(self, colorize_dict, lcut_charge, lcut_numbers):
         """ Add a color delta in the right representation (depending on the 

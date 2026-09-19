@@ -305,6 +305,34 @@ void Context::load_globals(const std::string& dir) {
     }
 }
 
+Tensor Context::cached_tensor(std::size_t size) {
+    auto& tensors = _tensor_cache.get();
+    int largest_unused = -1, size_pos = 0;
+    for (int i = 0; auto& tensor : tensors) {
+        std::size_t byte_size = tensor.byte_size();
+        if (size >= byte_size) {
+            size_pos = i;
+        }
+        if (tensor.is_only_reference()) {
+            if (byte_size >= size) {
+                return tensor;
+            }
+            largest_unused = i;
+        }
+        ++i;
+    }
+    if (largest_unused != -1) {
+        tensors.erase(tensors.begin() + largest_unused);
+        if (size_pos > largest_unused) {
+            --size_pos;
+        }
+    }
+    std::size_t word_count = (size + 7) / 8;
+    Tensor new_tensor(DataType::dt_float, {word_count}, device());
+    tensors.insert(tensors.begin() + size_pos, new_tensor);
+    return new_tensor;
+}
+
 ContextPtr madspace::default_context() {
     static ContextPtr context = default_device_context(cpu_device());
     return context;

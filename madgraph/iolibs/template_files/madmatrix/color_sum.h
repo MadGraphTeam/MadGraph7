@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Sep 2025) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Sep 2025) for the MadGraph7 CUDACPP plugin.
 // Further modified by: A. Valassi (2025).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -29,32 +29,19 @@ namespace mg5amcCpu
 
 #ifdef MGONGPUCPP_GPUIMPL
 #ifndef MGONGPU_HAS_NO_BLAS
-  // The BLAS color sum multiplies the jamps gathered onto the ncolorfold color flows the sum
-  // runs over (see color_sum_blas): does that gather need a buffer of its own? Not when it is
-  // the identity because the color basis does not fold, and there is no fptype2 conversion to
-  // do either - there the jamps are read where compute_jamps already wrote them, exactly as
-  // the color sum did before it was folded.
-  constexpr bool
-  blasColorSumNeedsJampBuffer()
-  {
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    return true; // mixed precision mode: the jamps must be converted from double to float
-#else
-    return CPPProcess::ncolorfold < CPPProcess::ncolor;
-#endif
-  }
-
   // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
-  // one fptype2[ncolorfold*nx2*nhel*nevt] buffer for the BLAS intermediate results, one more
-  // for the gathered jamps if they need one, and in mixed precision mode one fptype2[nhel*nevt]
-  // buffer for the MEs, which are fptype elsewhere. This is the one place the size is defined:
-  // both the allocation (MatrixElementKernels.cc) and the reset (color_sum_gpu) come here.
+  // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
+  // precision mode only, one more for the jamps converted from double to float plus one
+  // fptype2[nhel*nevt] buffer for the MEs, which are fptype elsewhere. This is the one place
+  // the size is defined: both the allocation (MatrixElementKernels.cc) and the reset
+  // (color_sum_gpu) come here.
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
-    std::size_t nfptype2PerEvent = ( blasColorSumNeedsJampBuffer() ? 2 : 1 ) * CPPProcess::ncolorfold * mgOnGpu::nx2;
+    std::size_t nfptype2PerEvent = CPPProcess::ncolor * mgOnGpu::nx2;
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    nfptype2PerEvent += 1; // the fptype2 matrix elements
+    nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
+    nfptype2PerEvent += 1;  // the fptype2 matrix elements
 #endif
     return nfptype2PerEvent * (std::size_t)nhel * (std::size_t)nevt;
   }
@@ -67,8 +54,8 @@ namespace mg5amcCpu
   class DeviceAccessJamp
   {
   public:
-    static __device__ inline cxtype_ref
-    kernelAccessIcolIhelNhel( fptype* buffer, const int icol, const int ihel, const int nhel )
+    static __device__ inline cxtype_amp_ref
+    kernelAccessIcolIhelNhel( fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
       const int ncolor = CPPProcess::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
@@ -79,11 +66,11 @@ namespace mg5amcCpu
       // The "new1" striding was used for both HASBLAS=hasBlas and hasNoBlas builds and for both CUDA kernels and cuBLAS
       //return cxtype_ref( buffer[0 * ncolor * nevt + icol * nevt + ievt], buffer[1 * ncolor * nevt + icol * nevt + ievt] ); // "new1"
       // (ALL HELICITIES) New striding for cuBLAS: two separate ncolor*nhel*nevt matrices for each of real and imag (ievt last)
-      return cxtype_ref( buffer[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt],
+      return cxtype_amp_ref( buffer[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt],
                          buffer[1 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] );
     }
     static __device__ inline const cxtype
-    kernelAccessIcolIhelNhelConst( const fptype* buffer, const int icol, const int ihel, const int nhel )
+    kernelAccessIcolIhelNhelConst( const fptype_amp* buffer, const int icol, const int ihel, const int nhel )
     {
       const int ncolor = CPPProcess::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
@@ -94,7 +81,7 @@ namespace mg5amcCpu
       // The "new1" striding was used for both HASBLAS=hasBlas and hasNoBlas builds and for both CUDA kernels and cuBLAS
       //return cxtype_ref( buffer[0 * ncolor * nevt + icol * nevt + ievt], buffer[1 * ncolor * nevt + icol * nevt + ievt] ); // "new1"
       // (ALL HELICITIES) New striding for cuBLAS: two separate ncolor*nhel*nevt matrices for each of real and imag (ievt last)
-      return cxtype( buffer[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt],
+      return cxtype_amp( buffer[0 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt],
                      buffer[1 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] );
     }
   };
@@ -111,7 +98,7 @@ namespace mg5amcCpu
 #ifndef MGONGPUCPP_GPUIMPL
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
-                 const cxtype_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
+                 const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
                  const int ievt0 );           // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
 #endif
 
@@ -137,8 +124,8 @@ namespace mg5amcCpu
 #ifdef MGONGPUCPP_GPUIMPL
   void
   color_sum_gpu( fptype* ghelAllMEs,               // output: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
-                 const fptype* ghelAllJamps,       // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
-                 fptype2* ghelAllBlasTmp,          // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
+                 const fptype_amp* ghelAllJamps,   // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
+                 fptype_colour* ghelAllBlasTmp,    // tmp: allBlasTmp super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
                  gpuBlasHandle_t* pBlasHandle,     // input: cuBLAS/hipBLAS handle
                  gpuStream_t* ghelStreams,         // input: cuda streams (index is ighel: only the first nGoodHel <= ncomb are non-null)
                  const int nGoodHel,               // input: number of good helicities
@@ -152,7 +139,7 @@ namespace mg5amcCpu
 #ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   color_sum_kernel( fptype* allMEs,                 // output: allMEs[nevt], add |M|^2 for one specific helicity
-                    const fptype* allJamps,         // input: jamp[ncolor*2*nevt] for one specific helicity
+                    const fptype_amp* allJamps,     // input: jamp[ncolor*2*nevt] for one specific helicity
                     const int nGoodHel,             // input: number of good helicities
                     const int nevtIfAllHelicities); // input: zero in single-helicity mode, number of events in multi-helicity mode
 #endif

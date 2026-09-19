@@ -19,15 +19,34 @@ enum Opcode {
 };
 } // namespace opcodes
 
+/**
+ * Base class for a compute-graph operation.
+ *
+ * Each instruction has a name, an integer opcode and a differentiable flag, and
+ * derives its output types from its input types through `signature`. The
+ * concrete subclasses are an internal implementation detail. User code adds
+ * instructions through the generated @ref FunctionBuilder methods.
+ */
 class Instruction {
 public:
+    /// @param name instruction name, matching `instruction_set.yaml`
+    /// @param opcode integer opcode used by the runtime dispatch
+    /// @param differentiable whether the runtime can backpropagate through it
     Instruction(const std::string& name, int opcode, bool differentiable) :
         _name(name), _opcode(opcode), _differentiable(differentiable) {}
     virtual ~Instruction() = default;
+    /// Output types produced for the given argument values.
     virtual TypeVec signature(const ValueVec& args) const = 0;
+    /// Instruction name, matching `instruction_set.yaml`.
     const std::string& name() const { return _name; }
+    /// Integer opcode used by the runtime dispatch.
     int opcode() const { return _opcode; }
+    /// Whether the runtime can backpropagate through this instruction.
     bool differentiable() const { return _differentiable; }
+    /// Whether the instruction draws from a shared RNG stream. Such an
+    /// instruction is never deduplicated and is always scheduled on the main
+    /// GPU stream; see @ref FunctionBuilder::instruction.
+    virtual bool is_random() const { return false; }
 
 protected:
     void check_arg_count(const ValueVec& args, std::size_t count) const;
@@ -115,6 +134,20 @@ public:
     TypeVec signature(const ValueVec& args) const override;
 };
 
+class BatchSplitByIndexInstruction : public Instruction {
+public:
+    BatchSplitByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_split_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
+class BatchMergeByIndexInstruction : public Instruction {
+public:
+    BatchMergeByIndexInstruction(int opcode, bool differentiable) :
+        Instruction("batch_merge_by_index", opcode, differentiable) {}
+    TypeVec signature(const ValueVec& args) const override;
+};
+
 class CatInstruction : public Instruction {
 public:
     CatInstruction(int opcode, bool differentiable) :
@@ -197,6 +230,7 @@ public:
     RandomInstruction(int opcode, bool differentiable) :
         Instruction("random", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class RandomIntInstruction : public Instruction {
@@ -204,6 +238,7 @@ public:
     RandomIntInstruction(int opcode, bool differentiable) :
         Instruction("random_int", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class UnweightInstruction : public Instruction {
@@ -211,6 +246,7 @@ public:
     UnweightInstruction(int opcode, bool differentiable) :
         Instruction("unweight", opcode, differentiable) {}
     TypeVec signature(const ValueVec& args) const override;
+    bool is_random() const override { return true; }
 };
 
 class MatrixElementInstruction : public Instruction {

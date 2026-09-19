@@ -83,6 +83,12 @@ C
       common/to_heavyion_mass/mass_ion
 
 C
+C     block for onia reshuffling
+C
+      integer mom_resh_type
+      common/to_mom_resh_type/mom_resh_type
+
+C
 C Controls what are the PDGs included in the CKKWl merging procedure, i.e. what
 C are the PDGs subject to the ktdurham cut
 C
@@ -113,8 +119,3 @@ c                          2 means approximation by the denominator of the propa
 c
        double precision limhel
        common/to_limhel/limhel
-c
-c      whether the color sum may go through the batched BLAS-3 call, where
-c      the matrix element was generated with one
-       logical blas_color_sum
-       common/to_blas_color_sum/blas_color_sum

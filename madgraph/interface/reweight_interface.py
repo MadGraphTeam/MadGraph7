@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -40,7 +40,6 @@ import madgraph.iolibs.files as files
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner
 import madgraph.various.lhe_parser as lhe_parser
-import madgraph.various.combine_plots as combine_plots
 import madgraph.various.cluster as cluster
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.diagram_generation as diagram_generation
@@ -1722,6 +1721,20 @@ class ReweightInterface(extended_cmd.Cmd):
             nhel = -1
         pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
+        # aMC@NLO writes its LHE with the partons on the Monte-Carlo mass shell
+        # (add_write_info.f, put_on_MC_mshell_in / put_on_MC_mshell_Hevout)
+        # while these matrix elements are massless ones. Undo that on both
+        # sides before the momenta are handed over -- and before any boost,
+        # which is what turns the O(m^2/shat) mismatch into an O(1) one. See
+        # lhe_parser.project_massless_partons.  The projection is for the
+        # matrix-element call only: it works on the copy get_momenta handed
+        # back, so the event that is rewritten to the LHE keeps its own
+        # (massive) momenta and only the weights move.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
+
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
         
@@ -2114,7 +2127,7 @@ class ReweightInterface(extended_cmd.Cmd):
         # deactivate golem since it creates troubles
         old_options = dict(mgcmd.options)
         if mgcmd.options['golem']:
-            logger.info(" When doing NLO reweighting, MG5aMC cannot use the loop reduction algorithms Golem")
+            logger.info(" When doing NLO reweighting, MadGraph7 cannot use the loop reduction algorithms Golem")
         mgcmd.options['golem'] = None            
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
@@ -2252,7 +2265,16 @@ class ReweightInterface(extended_cmd.Cmd):
         has_ew = re.compile(r'''set\s+EWscheme\s*(\w*)''')
         for line in self.banner.proc_card:
             if line.startswith('set'):
-                mgcmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    mgcmd.exec_cmd(line, printcmd=False, precmd=False,
+                                   postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
                 if has_ew.search(line, re.I):
@@ -3166,7 +3188,16 @@ class DensityInterface(ReweightInterface):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
             if line.startswith('set'):
-                mgcmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    mgcmd.exec_cmd(line, printcmd=False, precmd=False,
+                                   postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
         data = {}
@@ -3646,6 +3677,14 @@ class DensityInterface(ReweightInterface):
             nhel = -1
 
         pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
+
+        # same Monte-Carlo-mass projection as in ReweightInterface, and for the
+        # same reason: this path boosts and rotates the momenta before the
+        # matrix element sees them.  Again on the copy only.
+        n_ini = len(orig_order[0])
+        all_p = [lhe_parser.project_massless_partons(
+                     p, pdg, relevant_model or self.model, n_initial=n_ini)
+                 for p in all_p]
 
         #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
         list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]

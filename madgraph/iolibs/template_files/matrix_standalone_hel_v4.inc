@@ -69,7 +69,7 @@ C ----------
 C
 %(process_lines)s
 C
-C MadGraph5_aMC@NLO StandAlone Version - HELICITY RECYCLING
+C MadGraph7 StandAlone Version - HELICITY RECYCLING
 C
 C Returns amplitude squared summed/avg over colors and helicities
 c for the point in phase space P(0:3,NEXTERNAL).

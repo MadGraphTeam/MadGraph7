@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2010 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2010 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -346,7 +346,7 @@ class TestModelCreation(unit_tests.TestCase, CheckFileCreate):
         #    model = save_load_object.load_from_file(picklefile)
             
         misc.sprint(self.output_path, os.path.exists(self.output_path))
-        export_v4.UFO_model_to_mg4(model, self.output_path,opt = {'export_format': 'standalone', 'mp':False}).build()
+        export_v4.UFO_model_to_mg4(model, self.output_path,opt = {'export_format': 'standalone_fortran', 'mp':False}).build()
         
 #    tearDown = CheckFileCreate.clean_files
 

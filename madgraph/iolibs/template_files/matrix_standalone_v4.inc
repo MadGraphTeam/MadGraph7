@@ -36,7 +36,7 @@ C ----------
 C
 %(info_lines)s
 C
-C MadGraph5_aMC@NLO StandAlone Version
+C MadGraph7 StandAlone Version
 C
 C Returns amplitude squared summed/avg over colors
 c and helicities
@@ -73,7 +73,15 @@ C  put in common block to expose this variable to python interface
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
       REAL*8 T
       REAL*8 %(proc_prefix)sMATRIX
-      INTEGER IHEL,IDEN, I, J
+      INTEGER IHEL,IDEN, I, J, JJ
+C     beam polarisation. Unpolarised unless something fills
+C     /to_beampol/: PY_SET_BEAMPOL for the MadSpin density
+C     modes, the driver's stdin for the v1 path. Convention as
+C     in madevent's /to_polarization/: 1 is unpolarised,
+C     |BEAMPOL| grows to 2 for a fully polarised beam and its
+C     sign gives the favoured helicity.
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
       DATA (BEAMS_HELAVGFACTOR(I),I=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
@@ -142,7 +150,6 @@ C     FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_BORN_HEL_SELECTED
       INTEGER %(proc_prefix)sBROKEN_SYM
-%(blas_decl)s
 c----------
 c   Check if helreset mode is on
 c---------
@@ -202,13 +209,28 @@ C     For this reason, we simply remove the filterin when there is only three ex
 C     C-parity de-duplication is only safe for the plain unpolarized helicity
 C     sum of the uncrossed process (FLAV_IDX in [1,NFLAV]) and only once its own
 C     scan has settled (NTRY_CSYM>=20).
+C     ... and never with a polarised beam: a row and its C-parity flip carry
+C     OPPOSITE beam helicities, so once the beam weight below is applied they
+C     no longer have equal |M|^2 and doubling the representative is wrong.
       DEDUP = NTRY_CSYM(FLAV_USE).GE.20 .AND. CSYM(FLAV_USE)
      &        .AND. USERHEL.EQ.-1
      &        .AND. POLARIZATIONS(0,0).EQ.-1 .AND. FLAV_IDX.LE.NFLAV
+     &        .AND. ABS(BEAMPOL(1)).LE.1D0 .AND. ABS(BEAMPOL(2)).LE.1D0
+C     A polarised beam is only defined against the beam's own leg, and a
+C     crossed flavor evaluates the BASE helicity table (tau: the slots are not
+C     permuted, the sign rides on IC), so NHEL(JJ,IHEL) below is not the crossed
+C     beam's helicity. Refused rather than guessed -- the same decision as for
+C     a polarised leg (breaks_crossing_symmetry) and for beam polarisation in
+C     the run card (common_run_interface).
+      IF (FLAV_IDX.GT.NFLAV.AND.NINITIAL.EQ.2.AND.
+     &   (ABS(BEAMPOL(1)).GT.1D0.OR.ABS(BEAMPOL(2)).GT.1D0)) THEN
+        WRITE(*,*) 'ERROR: beam polarisation is not supported for a',
+     &    ' crossed flavor index (FLAV_IDX=',FLAV_IDX,')'
+        STOP 1
+      ENDIF
       ANS = 0D0
-%(blas_branch)s
           DO IHEL=1,NCOMB
-             IF (%(blas_guard_open)sUSERHEL.EQ.-1.OR.USERHEL.EQ.HELCODE(IHEL)%(blas_guard)s) THEN
+             IF (USERHEL.EQ.-1.OR.USERHEL.EQ.HELCODE(IHEL)) THEN
 %(smatrix_goodhel_gate)s
                     IF(NTRY(FLAV_USE).GE.2.AND.POLARIZATIONS(0,0).ne.-1.and.(.not.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL))) THEN
                         CYCLE
@@ -221,12 +243,35 @@ C                   MATRIX/GET_AMP get already crossed arrays and the reduced
 C                   flavor index: the crossing was applied once, above.
 %(smatrix_matrix_call)s
 C                   Scan phase (uncrossed only): cache |M|^2 to test the
-C                   C-parity partner below.
+C                   C-parity partner below. Cached BEFORE the beam-polarisation
+C                   weight: the scan compares the bare |M|^2 of a row and its
+C                   flip, which beam polarisation would make differ by design.
                     IF (FLAV_IDX.LE.NFLAV.AND.NTRY_CSYM(FLAV_USE).LT.20)
      &                  TSTORE(IHEL)=T
 C                   Fast phase: the representative carries its skipped partner's
-C                   identical contribution.
+C                   identical contribution. DEDUP is off whenever a beam is
+C                   polarised (see its definition), so this never doubles a row
+C                   whose flip carries the opposite beam helicity.
                     IF (DEDUP.AND.IHEL.LT.FLIP(IHEL)) T=T+T
+C Support for polarised beam. Same reweighting of the initial-state
+C helicity sum as madevent's matrix.f and as the v1 MadSpin msP/msF
+C templates. Inert (and skipped) unless /to_beampol/ has been filled:
+C |BEAMPOL| runs from 1 (unpolarised) to 2 (fully polarised), so
+C anything at or below 1 -- including a zero-filled common block --
+C means "no polarisation". 1 -> N matrix elements are left alone: their
+C leg 1 is a decaying resonance, not a beam. NHEL(JJ,IHEL) is the beam's
+C own helicity only for an uncrossed flavor; a crossed one is refused
+C before the helicity loop.
+      IF (NINITIAL.EQ.2) THEN
+        DO JJ=1,NINITIAL
+          IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+          IF (NHEL(JJ,IHEL).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+            T=T*ABS(BEAMPOL(JJ))
+          ELSE
+            T=T*(2D0-ABS(BEAMPOL(JJ)))
+          ENDIF
+        ENDDO
+      ENDIF
                     IF(POLARIZATIONS(0,0).eq.-1.or.%(proc_prefix)sIS_BORN_HEL_SELECTED(IHEL)) THEN
                         ANS=ANS+T
                     ENDIF
@@ -552,9 +597,8 @@ CF2PY INTENT(OUT) :: MATRIX
 CF2PY INTENT(IN) :: JAMP
 
 
-      INTEGER    NCOLOR, NCOLORFOLD
+      INTEGER    NCOLOR
       PARAMETER (NCOLOR=%(ncolor)d)
-      PARAMETER (NCOLORFOLD=%(ncolorfold)d)
       REAL*8     ZERO,MATRIX
       PARAMETER (ZERO=0D0)
 C
@@ -565,13 +609,10 @@ C
       COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
-      INTEGER %(proc_prefix)sCF(NCOLORFOLD*(NCOLORFOLD+1)/2)
+      INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
       COMPLEX*16 JAMP(NCOLOR)
-      COMPLEX*16 JFOLD(NCOLORFOLD)
-%(color_fold_decl)s
-%(color_fold_index)s
 %(jamp_tmp_decl)s
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -581,10 +622,6 @@ C COLOR DATA
 C
       CALL %(proc_prefix)sINIT_CF()
 
-C     Reversing a color flow gives the same one back up to an overall
-C     sign, so only one of each pair carries anything: the sum below runs
-C     over those, against a color matrix folded onto them.
-%(color_fold_gather)s
       MATRIX = 0.D0
       CF_INDEX = 0
 C     Four accumulators, not one: with a single one every
@@ -592,25 +629,25 @@ C     term waits for the one before it to come out of the
 C     adder, and that latency is what the loop spends its
 C     time on. No compiler does this by itself, since it
 C     changes the order the terms are summed in.
-      DO I = 1, NCOLORFOLD
+      DO I = 1, NCOLOR
         Z1 = (0.D0,0.D0)
         Z2 = (0.D0,0.D0)
         Z3 = (0.D0,0.D0)
         Z4 = (0.D0,0.D0)
-        NJ = NCOLORFOLD - I + 1
+        NJ = NCOLOR - I + 1
         NB = (NJ/4)*4
         DO J = 0, NB-4, 4
-          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
-          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JFOLD(I+J+1)
-          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JFOLD(I+J+2)
-          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JFOLD(I+J+3)
+          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
+          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JAMP(I+J+1)
+          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JAMP(I+J+2)
+          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JAMP(I+J+3)
         ENDDO
         ZTEMP = (Z1+Z2)+(Z3+Z4)
         DO J = NB, NJ-1
-          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JFOLD(I+J)
+          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
         ENDDO
         CF_INDEX = CF_INDEX + NJ
-        MATRIX = MATRIX+ZTEMP*DCONJG(JFOLD(I))/%(proc_prefix)sDENOM
+        MATRIX = MATRIX+ZTEMP*DCONJG(JAMP(I))/%(proc_prefix)sDENOM
       ENDDO
       END
 
@@ -620,7 +657,6 @@ C     changes the order the terms are summed in.
 
 
 
-%(blas_routine)s
       SUBROUTINE %(proc_prefix)sGET_INTER(JAMP_1,JAMP_2, INTER)
 
 CF2PY INTENT(OUT) :: INTER
@@ -734,8 +770,10 @@ C
       INTEGER NB_NHEL
       DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:)
       PARAMETER (NB_NHEL=%(ncomb)d)
+      INTEGER    NINITIAL
+      PARAMETER (NINITIAL=%(nincoming)d)
 c LOCAL
-      INTEGER I,IHEL,IPART
+      INTEGER I,IHEL,IPART,JJ
       DOUBLE PRECISION PI
 C     Crossed copies, built once (see the crossing block below).
       REAL*8 PUSE(0:3,NEXTERNAL)
@@ -744,10 +782,18 @@ C     Crossed copies, built once (see the crossing block below).
       INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL), CPOS(NEXTERNAL)
       INTEGER FLAV_USE, DUMFLAV
       DOUBLE PRECISION RESCALE
+      DOUBLE PRECISION POLFACT
 C
       INTEGER NHEL(NEXTERNAL,NB_NHEL)
 C     put in common block to expose this variable to python interface
       COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+C     beam polarisation, filled from python through PY_SET_BEAMPOL.
+C     Same common block and same convention as the v1 MadSpin path
+C     (matrix_standalone_msP_v4.inc / msF): BEAMPOL = 1 is unpolarised
+C     and |BEAMPOL| runs up to 2 for a fully polarised beam, its sign
+C     giving the favoured helicity.
+      DOUBLE PRECISION BEAMPOL(2)
+      COMMON/TO_BEAMPOL/BEAMPOL
 C
 C     include coupling definition to update the value of alphas
 C
@@ -781,6 +827,15 @@ C     part of the normalisation (RESCALE=0 = impossible crossing).
       IF (RESCALE.EQ.0D0) THEN
         return
       ENDIF
+C     Crossed flavor (FLAV_USE differs from FLAV_IDX) with a polarised beam:
+C     THISNHEL below is the base helicity table, not the crossed beam's, so the
+C     beam weight would be read off the wrong leg. Refused, as in SMATRIX.
+      IF (FLAV_IDX.NE.FLAV_USE.AND.NINITIAL.EQ.2.AND.
+     &   (ABS(BEAMPOL(1)).GT.1D0.OR.ABS(BEAMPOL(2)).GT.1D0)) THEN
+        WRITE(*,*) 'ERROR: beam polarisation is not supported for a',
+     &    ' crossed flavor index (FLAV_IDX=',FLAV_IDX,')'
+        STOP 1
+      ENDIF
       CALL %(proc_prefix)sFILL_NHEL()
 %(density_cross_apply)s
       DO IHEL =1, NB_NHEL
@@ -790,11 +845,34 @@ C     part of the normalisation (RESCALE=0 = impossible crossing).
         ENDDO
         TMP_INTER(:) = 0
         call  %(proc_prefix)sGET_ALL_INTER_CROSSED(PUSE, THISNHEL, ICUSE, CPOS, N_CHANGING, ALLOW_HEL, N_COMB, FLAV_USE, RESCALE, TMP_INTER)
+C       Support for polarised beam: reweight the initial-state helicity
+C       sum exactly as SMATRIX_PROD does in the v1 path. Skipped unless
+C       the process has two incoming legs -- the same shared library
+C       also holds the 1 -> N decay matrix elements, whose leg 1 is the
+C       decaying resonance and not a beam. THISNHEL(JJ) is the beam's own
+C       helicity only for an uncrossed flavor; a crossed one is refused
+C       before this loop (see the beam-polarisation guard above).
+        POLFACT = 1D0
+        IF (NINITIAL.EQ.2) THEN
+          DO JJ=1,NINITIAL
+C           |BEAMPOL| runs from 1 (unpolarised) to 2 (fully
+C           polarised), so anything at or below 1 means "no
+C           polarisation" -- including the zero-filled common
+C           block of an output whose link line does not pull
+C           in BLOCK DATA BEAMPOL_DEFAULT.
+            IF (ABS(BEAMPOL(JJ)).LE.1D0) CYCLE
+            IF (THISNHEL(JJ).EQ.INT(SIGN(1D0,BEAMPOL(JJ)))) THEN
+              POLFACT = POLFACT*ABS(BEAMPOL(JJ))
+            ELSE
+              POLFACT = POLFACT*(2D0-ABS(BEAMPOL(JJ)))
+            ENDIF
+          ENDDO
+        ENDIF
         do I = 1, N_COMB*(N_COMB+1)/2
-           INTER(I) = INTER(I) + TMP_INTER(I)
+           INTER(I) = INTER(I) + POLFACT*TMP_INTER(I)
         enddo
  10   enddo
-      return
+      return 
       deallocate(TMP_INTER)
       end
 

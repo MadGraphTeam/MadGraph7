@@ -213,7 +213,7 @@ C     4-Vector Dot product
 
 
       SUBROUTINE GET_MOMENTA(ENERGY,PMASS,P)
-C---- auxiliary function to change convention between MadGraph5_aMC@NLO and rambo
+C---- auxiliary function to change convention between MadGraph7 and rambo
 C---- four momenta.
       IMPLICIT NONE
       INCLUDE "nexternal.inc"

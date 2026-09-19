@@ -2,7 +2,7 @@ SUBROUTINE SMATRIX%(proc_id)s(P, iflav, RHEL, RCOL, DUM, IVEC, ANS, SELECTED_HEL
 C  
 %(info_lines)s
 C 
-C MadGraph5_aMC@NLO for Madevent Version
+C MadGraph7 for Madevent Version
 C 
 C Returns amplitude squared summed/avg over colors
 c and helicities
@@ -46,9 +46,9 @@ C   GOODHEL/NTRY carry an extra MAXFLAVPERPROC (IFLAV) dimension.
     LOGICAL GOODHEL(NCOMB, MAXFLAVPERPROC)
     INTEGER NTRY(MAXFLAVPERPROC)
     common/BLOCK_GOODHEL/NTRY,GOODHEL
-    integer nb_spin_state(2)
-    data  nb_spin_state /%(nb_spin_state1)i,%(nb_spin_state2)i/
-    common /nb_hel_state/ nb_spin_state
+    integer nb_spin_state_in(2)
+    data  nb_spin_state_in /%(nb_spin_state1)i,%(nb_spin_state2)i/
+    common /nb_hel_state/ nb_spin_state_in
 C  
 C LOCAL VARIABLES 
 C  
@@ -94,7 +94,7 @@ C   row-level information to apply the identical-particle correction.
     %(get_flavor_row_matrix)s
     INTEGER IPSEL
     COMMON /SUBPROC/ IPSEL
-    INTEGER BROKEN_SYM%(proc_id)s%(blas_smatrix_decl)s
+    INTEGER BROKEN_SYM%(proc_id)s
 
 C
 C GLOBAL VARIABLES
@@ -123,11 +123,8 @@ C BEGIN CODE
 C ----------
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
     NTRY(IFLAV)=NTRY(IFLAV)+1
-C   C-parity partner of each helicity row (all helicities negated): an
-C   involution, self-paired when every helicity is 0. Fixed per process, so
-C   built once (FLIP starts at 0).
-      ENDDO
-    ENDIF
+C   FLIP(I) -- the C-parity partner of each helicity row, every helicity
+C   negated -- is generated DATA (see _helstate_data); nothing to build.
     DO I=1,NEXTERNAL
        JC(I) = +1
     ENDDO
@@ -137,7 +134,7 @@ C   built once (FLIP starts at 0).
             AMP2(I)=0D0
         ENDDO
     ENDIF
-        JAMP2(0)=%(ncolor)d
+        JAMP2(0)=%(ncolor_flow)d
         DO I=1,INT(JAMP2(0))
             JAMP2(I)=0D0
         ENDDO
@@ -157,12 +154,12 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
 !   partner's |M|^2 differ, so the scan latches CSYMBAD.
     DEDUP = NCSCAN(IFLAV).GE.20 .AND. CSYMBAD(IFLAV).EQ.0
     IF (ISUM_HEL.EQ.0.or.(DS_get_dim_status('Helicity').eq.0)) THEN
-%(blas_branch)s        DO I=1,NCOMB
+        DO I=1,NCOMB
            IF (GOODHEL(I,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
 C            Fast phase: every row is in a matched pair (all-or-nothing), so the
 C            higher-index partner is skipped and the lower index counted twice.
              IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
-               T=%(blas_matrix_call)s
+               T=MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)
             %(beam_polarization)s
              IF (ISUM_HEL.NE.0) then
                call DS_add_entry('Helicity',I,T)
@@ -239,7 +236,7 @@ C       violation still shows up at the relative level.
 C           The helicity configuration was chosen already by genps and put in a common block defined in genps.inc.
             I = HEL_PICKED
 
-            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC%(blas_matrix_args)s)
+            T=MATRIX%(proc_id)s(P ,NHEL(1,I),IFLAV, IVEC)
             %(beam_polarization)s
 c           Always one helicity at a time
             ANS = T
@@ -299,7 +296,7 @@ C     Returns the flavor array for a given flavor index IFLAV
       END
 
 
-REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC%(blas_arg)s)
+REAL*8 FUNCTION MATRIX%(proc_id)s(P,NHEL,IFLAV, IVEC)
 use model_object
 use aloha_object
 C  
@@ -320,9 +317,8 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
+    INTEGER    NWAVEFUNCS,     NCOLOR
     PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
-    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -349,11 +345,10 @@ C
     COMPLEX*16 ZTEMP
 %(jamp_tmp_decl)s
 %(jamp_decl)s
-    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
+    INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER CF_INDEX,DENOM
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
-    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(blas_decl)s
-%(color_fold_decl)s
+    COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)%(jampflow_decl_tail)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -381,7 +376,6 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
-%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -396,21 +390,20 @@ C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
 %(flavor_mask_setup)s
 AMP(:) = (0d0,0d0)
 %(helas_calls)s
-%(jamp_lines)s
+%(jamp_lines)s%(jampflow_lines_tail)s
 
-%(color_fold_gather)s%(blas_gather)s
     MATRIX%(proc_id)s = 0.D0 
-    DO M = 1, NAMPSO%(blas_gate)s
+    DO M = 1, NAMPSO
       CF_INDEX = 0
-      DO I = 1, NCOLORFOLD
+      DO I = 1, NCOLOR
         ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLORFOLD
+        DO J = I, NCOLOR
           CF_INDEX = CF_INDEX +1
-          ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
+          ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
         ENDDO
         DO N = 1, NAMPSO
           IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN
-             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(%(color_fold_array)s(I,N))
+             MATRIX%(proc_id)s = MATRIX%(proc_id)s + ZTEMP*DCONJG(JAMP(I,N))
           ENDIF
         ENDDO
       ENDDO
@@ -418,11 +411,11 @@ AMP(:) = (0d0,0d0)
      MATRIX%(proc_id)s = MATRIX%(proc_id)s / DENOM
 
 %(amp2_lines)s
-    Do I = 1, NCOLOR
-      DO M = 1, NAMPSO  
+    Do I = 1, %(ncolor_flow_name)s
+      DO M = 1, NAMPSO
         DO N = 1, NAMPSO
-          IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN        
-            Jamp2(i)=Jamp2(i)+DABS(DBLE(Jamp(i,m)*dconjg(Jamp(i,n))))
+          IF (CHOSEN_SO_CONFIGS(SQSOINDEX%(proc_id)s(M,N))) THEN
+            Jamp2(i)=Jamp2(i)+DABS(DBLE(%(jamp_flow)s(i,m)*dconjg(%(jamp_flow)s(i,n))))
           ENDIF
         enddo
       enddo
@@ -431,6 +424,6 @@ AMP(:) = (0d0,0d0)
     END
 
 
-%(color_init_routine)s%(blas_routine)s
+%(color_init_routine)s
 
     %(broken_sym_function)s

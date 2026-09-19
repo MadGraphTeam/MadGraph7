@@ -2,7 +2,7 @@
 C
 %(info_lines)s
 C
-C MadGraph5_aMC@NLO for Madevent Version
+C MadGraph7 for Madevent Version
 C
 C Crossing-symmetry router: this subprocess shares its matrix element with a
 C base subprocess of the same group. Each of its flavors is a crossing of a

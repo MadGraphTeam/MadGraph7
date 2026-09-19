@@ -1,6 +1,6 @@
 // Copyright (C) 2020-2026 CERN and UCLouvain.
 // Licensed under the GNU Lesser General Public License (version 3 or later).
-// Created originally by: A. Valassi (Jan 2022) for the MG5aMC CUDACPP plugin.
+// Created originally by: A. Valassi (Jan 2022) for the MadGraph7 CUDACPP plugin.
 // Further modified by: D. Massaro, J. Teig, A. Thete, A. Valassi, Z. Wettersten (2022-2025).
 // Integrated with the MadGraph7 project in Feb 2026.
 
@@ -346,7 +346,7 @@ namespace mg5amcGpu
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferSimple( CPPProcess::ncolor * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( CPPProcess::ncolor * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
     m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * CPPProcess::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
@@ -437,7 +437,7 @@ namespace mg5amcGpu
     // ... 0d1. Compute good helicity mask (a host variable) on the device
     gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
     const int nevt = m_gpublocks * m_gputhreads;
-    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelJamps->data(), m_pHelNumerators->data(), m_pHelDenominators->data(), hstIsGoodHel.data(), nevt );
+    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), m_pHelJamps->data(), hstIsGoodHel.data(), nevt );
     // ... 0d3. Set good helicity list in host static memory
     int nGoodHel = sigmaKin_setGoodHel( hstIsGoodHel.data() );
     assert( nGoodHel > 0 ); // SANITY CHECK: there should be at least one good helicity
@@ -459,15 +459,16 @@ namespace mg5amcGpu
     m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
-    // ... Create the "many-helicity" super-buffers of nGoodHel numerator and denominator buffers (dynamically allocated)
-    // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ndiagrams * nevt ) );
-    m_pHelDenominators.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
+    // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
+    // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
+    // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
+    m_pHelNumerators.reset( new DeviceBufferSimple( CPPProcess::ndiagrams * nevt ) );
+    m_pHelDenominators.reset( new DeviceBufferSimple( nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
-    // results in color_sum_blas, and for the jamps gathered onto the ncolorfold color flows the color
-    // sum is folded onto (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
+    // results in color_sum_blas, and in mixed precision mode for the converted jamps too
+    // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
     if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( blasColorSumTmpSize( nGoodHel, nevt ) ) );
 #endif
     // Return the number of good helicities

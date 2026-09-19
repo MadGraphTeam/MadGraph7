@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -2030,11 +2030,8 @@ def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                      multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
-            process = multiprocess.get_process_with_legs(base_objects.LegList(\
-                            [base_objects.Leg({'id': id, 'state':False}) for \
-                             id in is_prod] + \
-                            [base_objects.Leg({'id': id, 'state':True}) for \
-                             id in fs_prod]))
+            # (get_process carries over the polarization of the multi-legs)
+            process = multiprocess.get_process(is_prod, fs_prod)
 
             if opt is not None:
                 if isinstance(opt, dict):
@@ -2636,7 +2633,7 @@ def output_profile(myprocdef, stability, timing, output_path, reusing=False):
 def output_stability(stability, output_path, reusing=False):
     """Present the result of a stability check in a nice format.
     The full info is printed out in 'Stability_result_<proc_shell_string>.dat'
-    under the MadGraph5_aMC@NLO root folder (output_path)"""
+    under the MadGraph7 root folder (output_path)"""
     
     def accuracy(eval_list):
         """ Compute the accuracy from different evaluations."""
@@ -4051,20 +4048,21 @@ def _crossing_run_driver(pdir, request, env):
 
 
 # The three standalone backends that decode an extended (crossing-carrying)
-# flavor index. 'standalone' is the fortran default (f2py); the other two are
+# flavor index. 'standalone_fortran' is the fortran default (f2py); 'standalone' is the madmatrix one (names as of PR #64; 'standalone_cpp' is gone) --
 # the C++ / cudacpp-CPU-SIMD standalones.
-CROSSING_EXPORTERS = ('standalone', 'standalone_cpp', 'standalone_mg7')
+CROSSING_EXPORTERS = ('standalone_fortran', 'standalone')
 
-# Vectorisation (SIMD) choices for the standalone_mg7 (cudacpp) backend; each
-# maps to the madmatrix.mk 'BACKEND=cpp<name>' build variant. 'auto' lets
+# Vectorisation (SIMD) choices for the standalone (madmatrix) backend; each
+# is a madmatrix.mk BACKEND token (SUPPORTED_CPU_BACKENDS, plus 'auto'); the
+# makefile rejects anything else, the pre-PR #64 cpp<name> spellings included. 'auto' lets
 # madmatrix pick the widest instruction set the host CPU supports. Only used by
-# the standalone_mg7 crossing backend; ignored by the others.
-MG7_SIMD_CHOICES = ('auto', 'none', 'sse4', 'avx2', '512y', '512z')
+# the standalone crossing backend; ignored by the others.
+MG7_SIMD_CHOICES = ('auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512')
 
-# Floating-point precision choices for the standalone_mg7 (cudacpp) backend, each
+# Floating-point precision choices for the standalone (madmatrix) backend, each
 # mapping to the madmatrix.mk 'FPTYPE=<x>' build variant: 'd' double, 'f' float,
 # 'm' mixed (double elsewhere, float in the colour algebra -- the madmatrix
-# default). Only used by the standalone_mg7 crossing backend.
+# default). Only used by the standalone crossing backend.
 MG7_PRECISION_CHOICES = ('f', 'm', 'd')
 
 
@@ -4088,44 +4086,6 @@ def _crossing_pdg_entries(matrix_element, identity_only=False):
     return entries
 
 
-# ── C++ standalone (standalone_cpp) ─────────────────────────────────────────
-# A tiny driver that evaluates sigmaKin at the requested flavor_id and momenta.
-# Each item gets a FRESH CPPProcess so the good-helicity cache (indexed by the
-# reduced flavor) cannot carry a warmed-up crossing's helicity pattern into a
-# different crossing of the same flavor -- exactly the recipe the acceptance
-# test TestStandaloneCppCrossSymmetry uses. The request file holds, on the first
-# line the number of items, then per item a flavor_id followed by 4*nexternal
-# momentum components (E, px, py, pz per leg, in the leg order the crossed index
-# expects them).
-_CROSSING_CPP_DRIVER = r'''
-#include <iostream>
-#include <iomanip>
-#include <fstream>
-#include <vector>
-#include "CPPProcess.h"
-int main(int argc, char** argv){
-  std::ifstream in(argv[1]);
-  int nitems; in >> nitems;
-  std::cout << std::setprecision(17);
-  for(int it = 0; it < nitems; it++){
-    int fid; in >> fid;
-    CPPProcess process("../../Cards/param_card.dat");
-    int npar = process.nexternal;
-    std::vector<double*> p;
-    for(int i = 0; i < npar; i++){
-      double* m = new double[4];
-      for(int j = 0; j < 4; j++) in >> m[j];
-      p.push_back(m);
-    }
-    process.setMomenta(p);
-    double me = process.sigmaKin(fid);
-    std::cout << "ITEM " << it << " " << me << std::endl;
-    for(int i = 0; i < npar; i++) delete[] p[i];
-  }
-  return 0;
-}
-'''
-
 
 class _FortranCrossingBackend(object):
     """The fortran standalone (f2py) crossing backend -- the historical path.
@@ -4135,12 +4095,12 @@ class _FortranCrossingBackend(object):
     is not needed because GET_PDG_FOR_FLAVOR resolves the crossed PDG at
     runtime.
     """
-    output_format = 'standalone'
+    output_format = 'standalone_fortran'
     needs_matrix_element = False
 
     def __init__(self, options=None):
         # options accepted for a uniform backend signature; --simd only applies
-        # to standalone_mg7.
+        # to the madmatrix backend ('standalone').
         pass
 
     def build(self, pdir, env):
@@ -4164,71 +4124,7 @@ class _FortranCrossingBackend(object):
         return answer['values'] if answer else [None] * len(items)
 
 
-class _CppCrossingBackend(object):
-    """The C++ standalone (standalone_cpp) crossing backend.
-
-    (`options` is accepted for a uniform backend constructor signature; the
-    SIMD/vectorisation choice only applies to standalone_mg7.)
-
-    The crossed PDG of an extended flavor_id is computed in python (there is no
-    runtime accessor); evaluation compiles a small driver that news a fresh
-    CPPProcess per item and calls sigmaKin(flavor_id).
-    """
-    output_format = 'standalone_cpp'
-    needs_matrix_element = True
-
-    def __init__(self, options=None):
-        self.compiler = os.environ.get('CXX', 'g++')
-
-    def build(self, pdir, env):
-        if not shutil.which(self.compiler):
-            return False
-        with open(os.devnull, 'w') as devnull:
-            rc = subprocess.call(['make'], cwd=pdir, stdout=devnull,
-                                 stderr=subprocess.STDOUT, env=env)
-        return rc == 0 and os.path.isfile(pjoin(pdir, 'CPPProcess.o'))
-
-    def enumerate(self, pdir, matrix_element, card, env, identity_only):
-        return _crossing_pdg_entries(matrix_element, identity_only=identity_only)
-
-    def evaluate(self, pdir, items, card, env):
-        with open(pjoin(pdir, 'driver_cross.cpp'), 'w') as fsock:
-            fsock.write(_CROSSING_CPP_DRIVER)
-        cxxflags = ['-O3', '-ffast-math', '-I../../src', '-I.', '-fPIC']
-        libflags = ['-L../../lib', '-lmodel_sm']
-        with open(os.devnull, 'w') as devnull:
-            rc = subprocess.call(
-                [self.compiler] + cxxflags + ['-c', '-o', 'driver_cross.o',
-                                              'driver_cross.cpp'],
-                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT, env=env)
-            if rc != 0:
-                return [None] * len(items)
-            rc = subprocess.call(
-                [self.compiler, '-o', 'driver_cross', 'CPPProcess.o',
-                 'driver_cross.o'] + libflags,
-                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT, env=env)
-            if rc != 0:
-                return [None] * len(items)
-        req = pjoin(pdir, 'driver_cross.in')
-        with open(req, 'w') as fsock:
-            fsock.write('%d\n' % len(items))
-            for item in items:
-                comps = ['%d' % int(item['index'])]
-                for leg in item['momenta']:
-                    comps.extend('%.17e' % float(c) for c in leg)
-                fsock.write(' '.join(comps) + '\n')
-        try:
-            out = subprocess.check_output(['./driver_cross', 'driver_cross.in'],
-                                          cwd=pdir, env=env).decode()
-        except subprocess.CalledProcessError:
-            return [None] * len(items)
-        values = [None] * len(items)
-        for match in re.finditer(r'ITEM\s+(\d+)\s+([-\d.eE+]+)', out):
-            values[int(match.group(1))] = float(match.group(2))
-        return values
-
-
-# ── cudacpp CPU-SIMD standalone (standalone_mg7) ─────────────────────────────
+# ── cudacpp CPU-SIMD standalone (madmatrix) ─────────────────────────────
 # check_sa.exe generates its own RAMBO momenta, so to evaluate at a prescribed
 # phase-space point the shipped check_sa.cc is patched (as the acceptance test
 # TestStandaloneMg7CrossSymmetry does): its flavorID cap is lifted so the
@@ -4253,16 +4149,16 @@ _MG7_MOM_TO = (
 
 
 class _Mg7CrossingBackend(object):
-    """The cudacpp CPU-SIMD standalone (standalone_mg7) crossing backend.
+    """The cudacpp CPU-SIMD standalone (madmatrix) crossing backend.
 
     The vectorisation width is selectable via options['simd'] (see
     MG7_SIMD_CHOICES): it is passed to the madmatrix build as
-    'BACKEND=cpp<simd>', so the same crossing self-check can run on scalar
+    'BACKEND=<simd>', so the same crossing self-check can run on scalar
     (none), SSE4, AVX2 or AVX-512 code, or let madmatrix auto-detect ('auto').
     The floating-point precision is selectable via options['precision'] (see
     MG7_PRECISION_CHOICES): it is passed as 'FPTYPE=<x>' (f/m/d).
     """
-    output_format = 'standalone_mg7'
+    output_format = 'standalone'
     needs_matrix_element = True
 
     def __init__(self, options=None):
@@ -4270,13 +4166,13 @@ class _Mg7CrossingBackend(object):
         simd = (options or {}).get('simd', 'auto')
         if simd not in MG7_SIMD_CHOICES:
             raise InvalidCmd(
-                "Unknown --simd '%s' for standalone_mg7; choose one of %s."
+                "Unknown --simd '%s' for standalone; choose one of %s."
                 % (simd, ', '.join(MG7_SIMD_CHOICES)))
         self.simd = simd
         precision = (options or {}).get('precision', 'm')
         if precision not in MG7_PRECISION_CHOICES:
             raise InvalidCmd(
-                "Unknown --precision '%s' for standalone_mg7; choose one of %s."
+                "Unknown --precision '%s' for standalone; choose one of %s."
                 % (precision, ', '.join(MG7_PRECISION_CHOICES)))
         self.precision = precision
 
@@ -4293,7 +4189,7 @@ class _Mg7CrossingBackend(object):
         src = src.replace(_MG7_MOM_FROM, _MG7_MOM_TO, 1)
         with open(check, 'w') as fsock:
             fsock.write(src)
-        make_cmd = ['make', '-j2', 'BACKEND=cpp%s' % self.simd,
+        make_cmd = ['make', '-j2', 'BACKEND=%s' % self.simd,
                     'FPTYPE=%s' % self.precision, 'check_sa.exe']
         with open(os.devnull, 'w') as devnull:
             rc = subprocess.call(make_cmd, cwd=pdir,
@@ -4327,9 +4223,8 @@ class _Mg7CrossingBackend(object):
 
 
 _CROSSING_BACKENDS = {
-    'standalone': _FortranCrossingBackend,
-    'standalone_cpp': _CppCrossingBackend,
-    'standalone_mg7': _Mg7CrossingBackend,
+    'standalone_fortran': _FortranCrossingBackend,
+    'standalone': _Mg7CrossingBackend,
 }
 
 
@@ -4371,7 +4266,7 @@ def check_crossing(process_definition, param_card=None, options=None,
     steps that differ per exporter -- the ``output`` format, the build, and how
     an extended index is evaluated -- while the generate/match/momenta logic is
     shared. ``'standalone'`` enumerates the crossed PDG at runtime via f2py
-    (GET_PDG_FOR_FLAVOR); ``'standalone_cpp'`` / ``'standalone_mg7'`` have no
+    (GET_PDG_FOR_FLAVOR); ``'standalone'`` (madmatrix) has no
     runtime accessor and compute it in python from the same crossing tables
     (:func:`_crossing_pdg_entries`), then evaluate through a compiled driver.
 
@@ -4389,7 +4284,7 @@ def check_crossing(process_definition, param_card=None, options=None,
         options = {}
     energy = float(options.get('energy', 1000.0))
 
-    exporter = options.get('exporter', 'standalone')
+    exporter = options.get('exporter', 'standalone_fortran')
     if exporter not in _CROSSING_BACKENDS:
         raise InvalidCmd(
             "Unknown crossing exporter '%s'; choose one of %s."
@@ -4922,7 +4817,7 @@ def check_language(process_definition, param_card=None, options=None,
     cpp_compiler     = (hasattr(cmd, 'options') and
                         cmd.options.get('cpp_compiler'))     or 'g++'
 
-    # MG7 (standalone_mg7 / madmatrix) availability: needs the madmatrix
+    # MG7 (standalone / madmatrix) availability: needs the madmatrix
     # package, a C++ compiler and make.  Its check_sa.exe "matrix" mode
     # evaluates the same phase-space point as the Fortran/C++ drivers and
     # prints the per-flavor PDG / matrix-element lines in the same format.
@@ -5115,7 +5010,7 @@ def check_language(process_definition, param_card=None, options=None,
     # tuple.  All individual-flavor procs share the same matrix element code.
     sa_f_output_cache   = {}
     sa_cpp_output_cache = {}
-    # Cache of MG7 (standalone_mg7) check_sa.exe matrix-mode output text.
+    # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
     sa_mg7_output_cache = {}
 
     energy_str = str(energy)
@@ -5152,7 +5047,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_f  = tempfile.mkdtemp(prefix='mg5_langcheck_f_')
                 sa_dir_f  = pjoin(parent_f, 'sa_f')
                 try:
-                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone',
+                    opt_f = {'sa_symmetry': False, 'export_format': 'standalone_fortran',
                              'mp': False, 'v5_model': True,
                              'output_options': {'noeps': 'True'}}
                     exporter_f = export_v4.ProcessExporterFortranSA(sa_dir_f, opt_f)
@@ -5240,7 +5135,7 @@ def check_language(process_definition, param_card=None, options=None,
 
             out_cpp_text = sa_cpp_output_cache.get(sa_key)
 
-        # ── MG7 SA (standalone_mg7 / madmatrix) ──────────────────────────────
+        # ── MG7 SA (standalone / madmatrix) ─────────────────────────────────
         out_mg7_text = None
         if has_mg7:
             if sa_key not in sa_mg7_output_cache:
@@ -5248,7 +5143,7 @@ def check_language(process_definition, param_card=None, options=None,
                 parent_mg7 = tempfile.mkdtemp(prefix='mg5_langcheck_mg7_')
                 sa_dir_mg7 = pjoin(parent_mg7, 'sa_mg7')
                 try:
-                    opt_mg7 = {'export_format': 'standalone_mg7',
+                    opt_mg7 = {'export_format': 'standalone',
                                'mp': False, 'v5_model': True,
                                'cpp_compiler': cpp_compiler,
                                'output_options': {}}
@@ -5270,7 +5165,7 @@ def check_language(process_definition, param_card=None, options=None,
                     if p_dirs_mg7:
                         check_dir_mg7 = pjoin(sa_dir_mg7, 'SubProcesses',
                                               p_dirs_mg7[0])
-                        backends = ["cppnone", "cppsse4", "cppavx2", "cpp512z", "cuda", "hip"]
+                        backends = ["scalar", "simd_128", "simd_256", "simd_512", "cuda", "hip"]
                         for backend in backends:
                             with open(os.devnull, 'w') as devnull:
                                 ret = subprocess.call(f'make clean && make BACKEND={backend} USEBUILDDIR=1', shell=True, cwd=check_dir_mg7,
@@ -5419,6 +5314,437 @@ def check_language(process_definition, param_card=None, options=None,
 
     clean_added_globals(ADDED_GLOBAL)
     return results
+
+
+#===============================================================================
+# check_precision
+#===============================================================================
+# The floating point modes of the madmatrix build (madmatrix.mk FPTYPE letters)
+# that 'check precision' compares against FPTYPE=d.
+PRECISION_MODES = {
+    'm': 'color32: double precision amplitudes, single precision colour algebra',
+    'f': 'all32: single precision everywhere',
+    'v': 'denom64: single precision amplitudes, double precision momenta and denominators',
+}
+
+# An event whose relative error exceeds this counts in the reported rate.
+PRECISION_THRESHOLD = 0.01
+
+# Events per check_sa.exe perf batch (a power of two, so any SIMD width fits).
+PRECISION_BATCH = 1024
+
+
+class PrecisionProgress(object):
+    """Progress bar over the steps of check_precision (builds and runs), drawn
+    with tqdm when it is installed and silently absent otherwise."""
+
+    def __init__(self, total, desc='check precision', stream=None):
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            self.bar = None
+        else:
+            # stream None is tqdm's default (stderr)
+            self.bar = tqdm(total=total, desc=desc, unit='step', leave=True,
+                            dynamic_ncols=True, file=stream)
+
+    def add(self, nb_step):
+        """More steps than first announced (only known once the flavours are)."""
+        if self.bar is not None and nb_step:
+            self.bar.total += nb_step
+            self.bar.refresh()
+
+    @contextlib.contextmanager
+    def step(self, description):
+        """Show *description* while the step runs, count it once it is done."""
+        if self.bar is not None:
+            self.bar.set_postfix_str(description)
+        yield
+        if self.bar is not None:
+            self.bar.update(1)
+
+    def close(self):
+        if self.bar is not None:
+            self.bar.close()
+
+
+def precision_statistics(me_double, me_mode, threshold=PRECISION_THRESHOLD):
+    """Relative error of the matrix elements of a reduced precision build with
+    respect to the double precision ones, event by event.
+
+    The relative error is |me_mode - me_double| / |me_double|. An event with a
+    zero double precision matrix element has no relative error: it is 0 when
+    the other build also gives exactly zero and infinite otherwise, as is a
+    non-finite value from either build. Infinite errors enter the rate above
+    threshold and the maximum, but not the mean (which they would otherwise
+    make meaningless); their number is reported on its own.
+
+    Returns a dict with the keys 'nb_event', 'errors' (list of floats),
+    'mean', 'max', 'nb_above', 'rate' and 'nb_invalid'.
+    """
+    if len(me_double) != len(me_mode):
+        raise MadGraph5Error('The two builds returned %d and %d matrix elements'
+                             % (len(me_double), len(me_mode)))
+    errors = []
+    total = 0.
+    nb_finite = 0
+    nb_above = 0
+    nb_invalid = 0
+    for ref, val in zip(me_double, me_mode):
+        if not (math.isfinite(ref) and math.isfinite(val)):
+            err = float('inf')
+        elif ref == 0.:
+            err = 0. if val == 0. else float('inf')
+        else:
+            err = abs(val - ref) / abs(ref)
+        errors.append(err)
+        if math.isinf(err):
+            nb_invalid += 1
+        else:
+            total += err
+            nb_finite += 1
+        if err > threshold:
+            nb_above += 1
+    nb_event = len(errors)
+    return {'nb_event': nb_event,
+            'errors': errors,
+            'mean': total / nb_finite if nb_finite else float('nan'),
+            'max': max(errors) if errors else float('nan'),
+            'nb_above': nb_above,
+            'rate': nb_above / nb_event if nb_event else float('nan'),
+            'nb_invalid': nb_invalid}
+
+
+def check_precision(process_definition, modes, param_card=None, options=None,
+                    cmd=FakeInterface(), output_path=None):
+    """Compare the matrix elements of the madmatrix standalone output built in
+    each of the floating point *modes* ('m', 'f' and/or 'v', a single letter or
+    a list of them) with the ones of its double precision build (FPTYPE=d), on
+    the same RAMBO phase-space points.
+
+    The points are generated once, in double precision, by the FPTYPE=d build
+    and written to disk, then read back by every build: the comparison sees the
+    precision of the matrix element alone, not the one of the momenta, and
+    each build narrows the points exactly as it would when called from an
+    integrator. The double precision reference is computed only once, however
+    many modes are compared to it.
+
+    Recognised *options*: 'nb_event' (default 10^6) and 'energy' (GeV, default
+    1000). The difference plot, one per subprocess with every mode on it, is
+    written in *output_path* (default: the current directory).
+
+    Returns a list with one dict per subprocess, mode and flavour combination,
+    with the keys 'process_label', 'subprocess', 'flavor', 'mode', the ones of
+    :func:`precision_statistics`, 'time_double', 'time_mode' and 'plot'.
+    """
+    import tempfile
+    import multiprocessing
+    from madmatrix import output as madmatrix_output
+    from madmatrix import model_handling as madmatrix_model_handling
+
+    if isinstance(modes, str):
+        modes = [modes]
+    modes = misc.make_unique(list(modes))
+    if not modes:
+        raise InvalidCmd('check precision needs at least one precision mode (%s)'
+                         % '|'.join(PRECISION_MODES))
+    for mode in modes:
+        if mode not in PRECISION_MODES:
+            raise InvalidCmd('Precision mode must be one of %s, not %s'
+                             % ('|'.join(PRECISION_MODES), mode))
+    if options is None:
+        options = {}
+    nb_event = int(options.get('nb_event', 1000000))
+    if nb_event < 1:
+        raise InvalidCmd('--nb_event must be a positive number of events')
+    energy = float(options.get('energy', 1000.0))
+    if output_path is None:
+        output_path = os.getcwd()
+    if process_definition.get('perturbation_couplings'):
+        raise InvalidCmd('check precision is only available for tree-level processes')
+    for tool in ('make',):
+        if not misc.which(tool):
+            raise InvalidCmd('check precision needs %s' % tool)
+
+    model = process_definition.get('model')
+    nb_core = (cmd.options.get('nb_core') if hasattr(cmd, 'options') else None) \
+              or multiprocessing.cpu_count()
+
+    work_dir = tempfile.mkdtemp(prefix='mg5_precisioncheck_')
+    sa_dir = pjoin(work_dir, 'standalone')
+    logger.info('check precision: writing the standalone output in %s' % sa_dir)
+
+    # Same helas objects as 'generate' + 'output standalone' (not grouped)
+    opt = {'export_format': 'standalone', 'mp': False, 'v5_model': True,
+           'cpp_compiler': cmd.options.get('cpp_compiler') if hasattr(cmd, 'options') else None,
+           'output_options': {}}
+    exporter = madmatrix_output.ProcessExporterMadMatrixStandalone(sa_dir, opt)
+    old_enumerate = helas_objects.HelasMatrixElement.enumerate_all_flavors
+    helas_objects.HelasMatrixElement.enumerate_all_flavors = \
+        not getattr(exporter, 'use_flavor_mask', True)
+    try:
+        ignore_six_quark = cmd.options.get('ignore_six_quark_processes', []) \
+                           if hasattr(cmd, 'options') else []
+        amplitudes = diagram_generation.MultiProcess(process_definition,
+                        ignore_six_quark_processes=ignore_six_quark or []).get('amplitudes')
+        if not amplitudes:
+            raise InvalidCmd('No amplitude generated for %s'
+                             % process_definition.nice_string())
+        multi_me = helas_objects.HelasMultiProcess(amplitudes)
+        matrix_elements = multi_me.get_matrix_elements()
+        for uid, me in enumerate(matrix_elements):
+            me.get('processes')[0].set('uid', uid + 1)
+        writer = madmatrix_model_handling.MadMatrixUFOHelasCallWriter(model)
+        exporter.copy_template(model)
+        for me_number, me in enumerate(matrix_elements):
+            exporter.generate_subprocess_directory(me, writer, me_number)
+        exporter.convert_model(model, multi_me.get_used_lorentz(),
+                               multi_me.get_used_couplings())
+        exporter.finalize({'matrix_elements': matrix_elements}, '', {}, ['nojpeg'])
+    finally:
+        helas_objects.HelasMatrixElement.enumerate_all_flavors = old_enumerate
+    if param_card:
+        cp(param_card, pjoin(sa_dir, 'Cards', 'param_card.dat'))
+
+    proc_root = pjoin(sa_dir, 'SubProcesses')
+    p_dirs = sorted(d for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d)))
+    if not p_dirs:
+        raise MadGraph5Error('check precision: no subprocess directory in %s' % proc_root)
+
+    def build(p_dir, fptype):
+        log = pjoin(work_dir, 'build_%s_%s.log' % (os.path.basename(p_dir), fptype))
+        with open(log, 'w') as out:
+            subprocess.call(['make', 'cleanall'], cwd=p_dir, stdout=out,
+                            stderr=subprocess.STDOUT)
+            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype],
+                                     cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
+        if status:
+            raise MadGraph5Error('check precision: FPTYPE=%s build failed, see %s'
+                                 % (fptype, log))
+
+    def run(p_dir, args, tag):
+        log = pjoin(work_dir, 'run_%s_%s.log' % (os.path.basename(p_dir), tag))
+        with open(log, 'w') as out:
+            status = subprocess.call(['./check_sa.exe'] + [str(a) for a in args],
+                                     cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
+        if status:
+            raise MadGraph5Error('check precision: check_sa.exe failed, see %s' % log)
+        return log
+
+    def read_doubles(path):
+        values = array.array('d')
+        with open(path, 'rb') as stream:
+            values.frombytes(stream.read())
+        return values
+
+    def flavor_labels(log):
+        labels = []
+        for line in open(log):
+            if line.strip().startswith('PDG'):
+                pdgs = [int(x) for x in line.split()[1:]]
+                ninitial = process_definition.get_ninitial()
+                names = [model.get_particle(p).get_name() if model.get_particle(p)
+                         else str(p) for p in pdgs]
+                labels.append(' '.join(names[:ninitial]) + ' > ' +
+                              ' '.join(names[ninitial:]))
+        return labels
+
+    niter = (nb_event + PRECISION_BATCH - 1) // PRECISION_BATCH
+    batch = ['1', PRECISION_BATCH]
+    results = []
+    # Steps per subprocess: build d, flavour list, RAMBO, one run per flavour in
+    # d, a build and one run per flavour for each mode, and the analysis. The
+    # number of flavours is only known after the flavour list: count one until then.
+    steps_per_flavor = 1 + len(modes)
+    progress = PrecisionProgress(len(p_dirs) * (4 + len(modes) + steps_per_flavor))
+    try:
+        for p_name in p_dirs:
+            p_dir = pjoin(proc_root, p_name)
+            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s'
+                        % (p_name, nb_event, ','.join(modes)))
+            # Double precision: the points, the flavours and the reference values
+            with progress.step('%s: build FPTYPE=d' % p_name):
+                build(p_dir, 'd')
+            with progress.step('%s: flavours' % p_name):
+                labels = flavor_labels(run(p_dir, ['matrix', energy], 'matrix'))
+            if not labels:
+                raise MadGraph5Error('check precision: no flavour found for %s' % p_name)
+            progress.add((len(labels) - 1) * steps_per_flavor)
+            momenta = pjoin(work_dir, '%s_momenta.bin' % p_name)
+            with progress.step('%s: RAMBO %d events' % (p_name, nb_event)):
+                run(p_dir, ['perf', '--energy', energy, '--dump-momenta', momenta]
+                           + batch + [niter], 'rambo')
+            size = os.path.getsize(momenta)
+            event_size = size // (niter * PRECISION_BATCH)
+            with open(momenta, 'r+b') as stream:
+                stream.truncate(event_size * nb_event)
+
+            def evaluate(fptype):
+                values = []
+                times = []
+                for iflav in range(len(labels)):
+                    dump = pjoin(work_dir, '%s_me_%s_%d.bin' % (p_name, fptype, iflav))
+                    with progress.step('%s: FPTYPE=%s, flavour %d/%d'
+                                       % (p_name, fptype, iflav + 1, len(labels))):
+                        log = run(p_dir, ['perf', '-f', iflav, '--momenta', momenta,
+                                          '--dump-me', dump] + batch + [1],
+                                  '%s_%d' % (fptype, iflav))
+                    values.append(read_doubles(dump))
+                    times.append(matrix_element_time(open(log).read()))
+                return values, times
+
+            me_double, time_double = evaluate('d')
+
+            entries = []
+            for mode in modes:
+                with progress.step('%s: build FPTYPE=%s' % (p_name, mode)):
+                    build(p_dir, mode)
+                me_mode, time_mode = evaluate(mode)
+                for iflav, label in enumerate(labels):
+                    entry = precision_statistics(me_double[iflav], me_mode[iflav])
+                    entry.update({'process_label': label, 'subprocess': p_name,
+                                  'flavor': iflav, 'mode': mode,
+                                  'time_double': time_double[iflav],
+                                  'time_mode': time_mode[iflav]})
+                    entries.append(entry)
+            with progress.step('%s: plot' % p_name):
+                plot = plot_precision(entries, pjoin(output_path,
+                                      'check_precision_%s_%s' % ('_'.join(modes), p_name)))
+            for entry in entries:
+                entry['plot'] = plot
+            results.extend(entries)
+    finally:
+        progress.close()
+
+    shutil.rmtree(work_dir, ignore_errors=True)
+    return results
+
+
+def matrix_element_time(perf_output):
+    """Time spent in the matrix element evaluation, in seconds, as printed by
+    `check_sa.exe perf` (TotalTime[MatrixElems]): the momenta reading and the
+    RAMBO generation are not included. None if the line is missing."""
+    match = re.search(r'TotalTime\[MatrixElems\]\s*\(3\)\s*=\s*\(\s*([-+0-9.eE]+)\s*\)',
+                      perf_output)
+    return float(match.group(1)) if match else None
+
+
+def plot_precision(entries, basename):
+    """Histogram of log10 of the relative error of every event, one curve per
+    precision mode and flavour, written to basename.pdf. Without matplotlib the
+    relative errors are written to basename.dat instead. Returns the path
+    written."""
+    modes = misc.make_unique([entry['mode'] for entry in entries])
+    nb_flavor = len(set(entry['flavor'] for entry in entries))
+    floor = 1e-18
+    # MG5 runs with DEBUG logging, which matplotlib would otherwise flood with
+    # one line per font it considers
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+    except ImportError:
+        path = basename + '.dat'
+        logger.warning('matplotlib is not available: no plot, the relative '
+                       'errors are written to %s instead' % path)
+        with open(path, 'w') as out:
+            out.write('# mode  flavor  relative_error  (FPTYPE=%s vs FPTYPE=d)\n'
+                      % ','.join(modes))
+            for entry in entries:
+                if entry['mode'] == modes[0]:
+                    out.write('# flavor %d: %s\n' % (entry['flavor'], entry['process_label']))
+            for entry in entries:
+                for err in entry['errors']:
+                    out.write('%s %d %.6e\n' % (entry['mode'], entry['flavor'], err))
+        return path
+
+    from matplotlib.lines import Line2D
+    path = basename + '.pdf'
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    # The line style tells the precision mode, the colour the process (flavour)
+    mode_style = dict(zip(modes, ['-', '--', ':', '-.']))
+    flavor_color = {}
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    all_logs = [[math.log10(max(e, floor)) if math.isfinite(e) else 1.
+                 for e in entry['errors']] for entry in entries]
+    # common bins, so that the curves can be compared bin by bin
+    low = min(min(logs) for logs in all_logs if logs)
+    high = max(max(logs) for logs in all_logs if logs)
+    if high <= low:
+        high = low + 1.
+    bins = [low + (high - low) * i / 100. for i in range(101)]
+    for entry, logs in zip(entries, all_logs):
+        color = flavor_color.setdefault(entry['flavor'],
+                                        colors[len(flavor_color) % len(colors)])
+        ax.hist(logs, bins=bins, histtype='step', log=True, color=color,
+                linestyle=mode_style[entry['mode']])
+    threshold = math.log10(PRECISION_THRESHOLD)
+    ax.axvline(threshold, color='red', linestyle='-.', linewidth=1)
+    handles = [Line2D([], [], color='black', linestyle=mode_style[mode],
+                      label='FPTYPE=%s' % mode) for mode in modes]
+    handles.append(Line2D([], [], color='red', linestyle='-.', linewidth=1,
+                          label='1% relative error'))
+    ax.set_xlabel(r'$\log_{10}\,|M^2_{\mathrm{mode}} - M^2_{d}|\,/\,|M^2_{d}|$')
+    ax.set_ylabel('events')
+    title = '%s: FPTYPE=%s vs FPTYPE=d (%d events)' % (
+        entries[0]['process_label'] if nb_flavor == 1 else entries[0]['subprocess'],
+        ','.join(modes), entries[0]['nb_event'])
+    ax.set_title(title, fontsize='medium')
+    ax.legend(handles=handles, fontsize='small')
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    return path
+
+
+def output_precision(results, output='text'):
+    """Present the results of :func:`check_precision`."""
+    if not results:
+        return 'No result'
+    modes = misc.make_unique([r['mode'] for r in results])
+    proc_col = max([len('Process')] + [len(r['process_label']) for r in results]) + 2
+    col = 16
+    text = 'FPTYPE=%s vs FPTYPE=d, %d events per flavour\n' % (
+        ','.join(modes), results[0]['nb_event'])
+    for mode in modes:
+        text += '  %s = %s\n' % (mode, PRECISION_MODES.get(mode, 'unknown mode'))
+
+    def _time(value):
+        return '%.3e' % value if value is not None else 'N/A'
+
+    def _speedup(r):
+        if not r.get('time_double') or not r.get('time_mode'):
+            return 'N/A'
+        return '%.2f' % (r['time_double'] / r['time_mode'])
+
+    text += (fixed_string_length('Process', proc_col) +
+             fixed_string_length('mode', 6) +
+             fixed_string_length('mean error', col) +
+             fixed_string_length('max error', col) +
+             fixed_string_length('rate > 1%', col) +
+             fixed_string_length('non-finite', 12) +
+             fixed_string_length('time d [s]', col) +
+             fixed_string_length('time mode [s]', col) + 'speed-up')
+    for r in results:
+        text += ('\n' + fixed_string_length(r['process_label'], proc_col) +
+                 fixed_string_length(r['mode'], 6) +
+                 fixed_string_length('%.3e' % r['mean'], col) +
+                 fixed_string_length('%.3e' % r['max'], col) +
+                 fixed_string_length('%.3e' % r['rate'], col) +
+                 fixed_string_length('%d' % r['nb_invalid'], 12) +
+                 fixed_string_length(_time(r.get('time_double')), col) +
+                 fixed_string_length(_time(r.get('time_mode')), col) +
+                 _speedup(r))
+    text += ('\n(time: matrix element evaluation only, for the %d events)'
+             % results[0]['nb_event'])
+    for plot in misc.make_unique([r['plot'] for r in results]):
+        if plot.endswith('.dat'):
+            text += '\nRelative errors (no matplotlib, no plot): %s' % plot
+        else:
+            text += '\nPlot of the difference: %s' % plot
+    return text
 
 
 def output_language(comparison_results, output='text'):
@@ -7479,7 +7805,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
             save_path = CMS_save_path('pkl', result, model, options, 
                                                         output_path=output_path)
             buff = "\nThe results of this check have been stored on disk and its "+\
-              "analysis can be rerun at anytime with the MG5aMC command:\n   "+\
+              "analysis can be rerun at anytime with the MadGraph7 command:\n   "+\
             "      check cms --analyze=%s\n"%save_path
             res_str += buff
             concise_str += buff
@@ -7654,7 +7980,7 @@ def output_complex_mass_scheme(result,output_path, options, model, output='text'
                 logger.warning('The median scanning failed during the CMS check '+
                   'for process %s'%proc_title+\
                   'This is means that the difference plot has not stable'+\
-                  'intermediate region and MG5_aMC will arbitrarily consider the'+\
+                  'intermediate region and MadGraph7 will arbitrarily consider the'+\
                                                      'left half of the values.')
                 scan_index = -1
                 break;
@@ -7764,7 +8090,7 @@ minimum value of lambda to be considered in the CMS check."""\
 
     if output=='concise_text':
         res_str += '\nMore detailed information on this check available with the command:\n'
-        res_str += '  MG5_aMC>display checks\n'
+        res_str += '  MadGraph7>display checks\n'
 
     ############################
     # Now we turn to the plots #

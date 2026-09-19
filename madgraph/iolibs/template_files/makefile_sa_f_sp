@@ -11,11 +11,7 @@ PROG   = check
 # Keep this distinct from PDIR (basename) which is used for dylib naming below.
 PDIR_FULL:=$(shell dirname $(realpath --no-symlinks $(firstword matrix.f)))
 PROG_SPLITORDERS = check_sa_born_splitOrders
-BLASLIBS =
-# The plain -L/-l part, without $(BLASLIBS). f2py needs it separately: see the
-# matrix$(MENUM)py.so rule below.
-LINKLIBS_NOBLAS =  -L$(LIBDIR) -ldhelas -lmodel
-LINKLIBS =  $(LINKLIBS_NOBLAS) $(BLASLIBS)
+LINKLIBS =  -L$(LIBDIR) -ldhelas -lmodel
 LIBS = $(LIBDIR)/libdhelas.$(libext) $(LIBDIR)/libmodel.$(libext)
 LIBS_SHARED = $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext)
 # matrix_getamp<k>.f only exists with --hel_recycling, and only when the
@@ -56,7 +52,7 @@ driver.f: nexternal.inc pmass.inc ngraphs.inc coupl.inc
 $(LIBDIR)/libdhelas.$(libext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS"
 $(LIBDIR)/libmodel.$(libext):
-	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS"
+	$(MAKE) -C "$(LIBDIR)/../Source/MODEL"
 $(LIBDIR)/libdhelas.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
 $(LIBDIR)/libmodel.$(dylibext):
@@ -72,13 +68,7 @@ libme$(PDIR).$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(d
 
 matrix$(MENUM)py.so: f2py_matrix_wrapper.f libme$(PDIR).$(dylibext)  makefile 
 	touch __init__.py
-# $(BLASLIBS) goes through LDFLAGS, NOT through the f2py argument list. On
-# python>=3.12 f2py must use the meson backend, which does not understand
-# '-framework Accelerate': it prints "Unknown option '-framework'", builds no
-# module at all, and STILL EXITS 0 -- so the touch below would leave an empty
-# matrix$(MENUM)py.so behind and the import would fail with a bare dlopen
-# error. meson honours LDFLAGS, so the flag reaches the linker from there.
-	LDFLAGS="-Wl,-rpath,$(HERE) $(BLASLIBS)" $(F2PY)  -c f2py_matrix_wrapper.f -L$(HERE) -lme$(PDIR) $(LINKLIBS_NOBLAS) -m matrix$(MENUM)py
+	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY)  -c f2py_matrix_wrapper.f -L$(HERE) -lme$(PDIR) $(LINKLIBS) -m matrix$(MENUM)py 
 # f2py names the module matrix$(MENUM)py.cpython-<ver>-<plat>.so, which import
 # picks up ahead of the bare .so; this only gives make its timestamp.
 	touch matrix$(MENUM)py.so

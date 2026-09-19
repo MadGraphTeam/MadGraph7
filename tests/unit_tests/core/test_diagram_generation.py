@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -4329,11 +4329,16 @@ class TestSeedRule(unittest.TestCase):
                     for diagram in amplitude.get('diagrams')]
 
         speed, slots, auto = tags('speed'), tags('slots'), tags('auto')
-        self.assertEqual(auto, speed)
         self.assertEqual(slots, speed[::-1])
         # and it is a reordering, nothing gained or lost
         self.assertEqual(sorted(slots), sorted(speed))
         self.assertEqual(len(set(speed)), len(speed))
+        # 'auto' only takes that order once the process is big enough to pay
+        # for it, and otherwise leaves the generation order alone
+        if len(initial) + len(final) >= madgraph.merge_quartic_min_legs:
+            self.assertEqual(auto, speed)
+        else:
+            self.assertEqual(auto, tags(False))
 
     def test_auto_order_gg_ggg(self):
         self.check_auto_order([21, 21], [21, 21, 21])
@@ -4347,7 +4352,9 @@ class TestSeedRule(unittest.TestCase):
 
         import madgraph.core.helas_objects as helas_objects
 
-        for mode, wanted in (('auto', 7), ('speed', 7), ('slots', 0)):
+        # five legs, so below merge_quartic_min_legs: 'auto' does not seed and
+        # so has no sums, while asking for 'speed' by name still does
+        for mode, wanted in (('auto', 0), ('speed', 7), ('slots', 0)):
             madgraph.merge_quartic_vertices = mode
             amplitude = diagram_generation.Amplitude(base_objects.Process(
                 {'legs':base_objects.LegList(
@@ -4356,6 +4363,64 @@ class TestSeedRule(unittest.TestCase):
                  'model':self.base_model}))
             element = helas_objects.HelasMatrixElement(amplitude)
             self.assertEqual(len(element.get_quartic_current_sums()[0]), wanted)
+
+    def test_auto_multiplicity_gate(self):
+        """'auto' leaves the seed rule off below merge_quartic_min_legs, where
+        it is measured not to pay for itself, and takes it above"""
+
+        def seeded(nfinal, mode):
+            madgraph.merge_quartic_vertices = mode
+            amplitude = diagram_generation.Amplitude(base_objects.Process(
+                {'legs':base_objects.LegList(
+                    [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                    [base_objects.Leg({'id':21, 'state':True})] * nfinal),
+                 'model':self.base_model}))
+            return bool(amplitude.seed_forbidden_cubic_ids)
+
+        threshold = madgraph.merge_quartic_min_legs
+        for nfinal in (2, 3, 4):
+            wanted = (2 + nfinal) >= threshold
+            self.assertEqual(seeded(nfinal, 'auto'), wanted)
+            # asking for it by name is unconditional, that being the way to
+            # get the merging on a small process
+            self.assertTrue(seeded(nfinal, 'speed'))
+            self.assertTrue(seeded(nfinal, 'slots'))
+            self.assertFalse(seeded(nfinal, False))
+
+    def test_amplitude_slots(self):
+        """The AMP array is recycled: an amplitude summed into another frees
+        its entry, and the entries have to be reusable without two live
+        amplitudes ever sharing one"""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        madgraph.merge_quartic_vertices = 'speed'
+        amplitude = diagram_generation.Amplitude(base_objects.Process(
+            {'legs':base_objects.LegList(
+                [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                [base_objects.Leg({'id':21, 'state':True})] * 4),
+             'model':self.base_model}))
+        element = helas_objects.HelasMatrixElement(amplitude)
+        slots, nslots, folds_at = element.get_amplitude_slots()
+
+        self.assertEqual(element.get_number_of_amplitudes(), 510)
+        self.assertTrue(nslots < 510)
+        self.assertEqual(max(slots.values()), nslots)
+        self.assertEqual(min(slots.values()), 1)
+
+        # replay the emission and check no entry is written while it still
+        # holds something with a reader to come
+        folded = set(element.get_quartic_current_sums()[2])
+        order = [a.get('number') for d in element.get('diagrams')
+                 for a in d.get('amplitudes') if a.get('number') not in folded]
+        self.assertEqual(len(order), len(slots))
+        live = {}
+        for i, number in enumerate(order):
+            self.assertNotIn(slots[number], live)
+            live[slots[number]] = number
+            for target, source, coeff in folds_at.get(i, []):
+                self.assertIn(slots[source], live)
+                del live[slots[source]]
 
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""

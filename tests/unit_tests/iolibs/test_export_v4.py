@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -21,7 +21,10 @@ import copy
 import fractions
 import os
 import random
+import re
+import shutil
 import sys
+import tempfile
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
 
@@ -230,10 +233,9 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     def test_matrix_template_provides_reports_the_missing_entry_points(self):
         """The blocks check_sa.f writes -- the density driver, the crossing
-        demonstration -- call routines that only the default template has, and
-        the color sum it links against only reads a folded color matrix in that
-        same template. Each is emitted behind this predicate, so pin what it
-        answers for the two templates that differ.
+        demonstration -- call routines that only the default template has.
+        Each is emitted behind this predicate, so pin what it answers for the
+        two templates that differ.
         """
         sa = export_v4.ProcessExporterFortranSA()
         matchbox = export_v4.ProcessExporterFortranMatchBox()
@@ -243,17 +245,13 @@ class IOExportV4IOTest(IOTests.IOTestManager,
         self.assertEqual('matrix_standalone_matchbox.inc',
                          matchbox.get_matrix_template(self.mymatrixelement))
 
-        for marker in ('GET_DENSITY', '%(flavor_pdg_function)s',
-                       '%(color_fold_gather)s'):
+        for marker in ('GET_DENSITY', '%(flavor_pdg_function)s'):
             self.assertTrue(
                 sa.matrix_template_provides(self.mymatrixelement, marker),
                 '%s missing from the default standalone template' % marker)
             self.assertFalse(
                 matchbox.matrix_template_provides(self.mymatrixelement, marker),
                 '%s unexpectedly in the matchbox template' % marker)
-
-        # ... and the color sum is folded only where it can be read back
-        self.assertIsNone(matchbox.get_jamp_folding(self.mymatrixelement))
 
     def test_splitorders_template_carries_the_standalone_api(self):
         """Which parts of matrix_standalone_v4.inc the split-orders template
@@ -300,14 +298,10 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             for marker in ('ENCODE_HEL', 'HELCODE', 'GET_DENSITY_IDX',
                            'GET_ALL_INTER_IDX', 'GET_ALL_INTER_CROSSED',
                            'GET_INTER_RESCALE', '%(flavor_pdg_function)s',
-                           '%(crossing_routines)s', '%(color_fold_gather)s'):
+                           '%(crossing_routines)s'):
                 self.assertFalse(
                     sa.matrix_template_provides(self.mymatrixelement, marker),
                     '%s unexpectedly in the split-orders template' % marker)
-
-            # ... and the color sum still must not be folded: the gather that
-            # reads a folded matrix back is only in the default template.
-            self.assertIsNone(sa.get_jamp_folding(self.mymatrixelement))
         finally:
             process.set('split_orders', saved)
 
@@ -3951,10 +3945,6 @@ CALL VVVXXX(W(2),W(3),W(5),GG,AMP(6))""")
         denom = 6
 
         i = 0
-        # the numbers above are the color matrix over every color flow; the
-        # folded form sums each reversal pair into one line and is checked
-        # against |M|^2 itself elsewhere
-        exporter.jamp_fold = False
         for data in exporter.get_color_data_lines(\
                          matrix_element):
 
@@ -7795,6 +7785,9 @@ CALL IOSXXX(W(7),W(2),W(3),MGVX350,AMP(2))""".split('\n'))
 
         me = matrix_elements[0]
 
+        (nexternal, ninitial) = me.get_nexternal_ninitial()
+        nonia = me.get_nonia()
+
         #print me.get_base_amplitude().nice_string()
 
         # This has been checked against v4
@@ -8049,7 +8042,7 @@ C     used fake id
 
         # Test decayBW file
         exporter.write_decayBW_file(writer,
-                                     s_and_t_channels)
+                                     s_and_t_channels,nexternal,nonia)
 
         writer.close()
         #print open(self.give_pos('test')).read()
@@ -10903,3 +10896,79 @@ class OptimiseJampTest(unittest.TestCase):
                     image_of[(current - 1) * nb_perm + place] = \
                         where if sign > 0 else -where
         return list(zip(left_of, right_of, ratio_of))
+
+
+class F2PYSplitterFlavorOrderTest(unittest.TestCase):
+    """all_matrix.f has to repair a leg ordering FLAV_TABLE does not tabulate.
+
+    The generated flavor table keeps one column per *class* of leg orderings:
+    orderings that differ only by permuting legs inside the initial or inside
+    the final state are deduplicated, so for `q q' > z q q'` the column
+    (1,2,1,1,2) is there and (2,1,1,2,1) is not, and GET_FLAVOR_INDEX answers
+    the 0 sentinel for the second one (-> |M|^2 = 0, -> a zero density).  That
+    is the matrix element behaving as designed; absorbing the ordering is the
+    wrapper's job, and all_matrix.f is where every python caller -- MadSpin's
+    density, reweighting's smatrixhel -- goes through.
+    """
+
+    class FakeModel(dict):
+        """The handful of model reads write_f2py_splitter does."""
+
+        def get(self, key, default=None):
+            return dict.get(self, key, default)
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        os.mkdir(os.path.join(self.tmpdir, 'SubProcesses'))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def write(self, merged_particles):
+        """Run write_f2py_splitter for a single `q q > z q q` matrix element
+        (5 legs, 2 incoming, 12 tabulated flavors) and return all_matrix.f with
+        the fortran continuations folded back into single lines."""
+        exporter = export_v4.ProcessExporterFortranSA(self.tmpdir)
+        exporter.model = self.FakeModel({'merged_particles': merged_particles,
+                                         'parameters': {('external',): []},
+                                         'running_elements': []})
+        # [prefix, tag, ncomb, iden, ninitial, nflav]
+        exporter.prefix_info = {((81, 81, 23, 81, 81), 1):
+                                ['M0_', 'tag0', 32, 36, 2, 12]}
+        exporter.write_f2py_splitter()
+        text = open(os.path.join(self.tmpdir, 'SubProcesses',
+                                 'all_matrix.f')).read()
+        text = re.sub(r'\n {5}[$&]', ' ', text)
+        return re.sub(r'[ \t]+', ' ', text)
+
+    def test_repair_is_wired_into_every_entry_point(self):
+        text = self.write({81: [1, 2, 3, 4]})
+        # the shared routine is emitted once ...
+        self.assertEqual(text.count('SUBROUTINE FLAVOR_ORDER_REPAIR('), 1)
+        # ... and called from all three wrappers, with this ME's table shape
+        # (5 external legs, 2 of them incoming, 12 flavor columns).
+        calls = [re.sub(r' *, *', ',', c) for c in
+                 re.findall(r'CALL FLAVOR_ORDER_REPAIR\([^)]*\)', text)]
+        self.assertEqual(len(calls), 3)
+        for call in calls:
+            self.assertIn('M0_GET_FLAVOR_INDEX,M0_GET_FLAVOR,5,2,12', call)
+        # the density and interference wrappers freeze the legs whose helicity
+        # is an open index of rho (POS); smatrixhel has no such leg.
+        self.assertEqual(len([c for c in calls
+                              if 'N_CHANGING,POS,.TRUE.' in c]), 2)
+        # smatrixhel also disarms the repair when a single helicity row was
+        # asked for: that row names the legs by position.
+        self.assertEqual(len([c for c in calls
+                              if '0,MS_NOFROZEN,NHEL.LT.1' in c]), 1)
+        # and every matrix element is handed the repaired momenta, not P
+        for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
+            self.assertIn('CALL %sPFIX' % callee, text)
+
+    def test_nothing_changes_without_merged_particles(self):
+        """No merged particle means one all-ones flavor per ME and no ordering
+        to repair: the wrapper must stay exactly what it was."""
+        text = self.write({})
+        self.assertNotIn('FLAVOR_ORDER_REPAIR', text)
+        self.assertNotIn('PFIX', text)
+        for callee in ('M0_SMATRIXHEL(', 'M0_GET_DENSITY(', 'M0_GET_ALL_INTER('):
+            self.assertIn('CALL %sP' % callee, text)

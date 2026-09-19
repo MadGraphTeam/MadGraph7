@@ -36,12 +36,12 @@
     constexpr SymmetricNormalizedColorMatrix()
       : value()
     {
-      for( int ifold = 0; ifold < ncolorfold; ifold++ )
-        for( int jfold = 0; jfold < ncolorfold; jfold++ )
-          value[ifold * ncolorfold + jfold] =
-            ( colorMatrix[ifold][jfold] / colorDenom[ifold] + colorMatrix[jfold][ifold] / colorDenom[jfold] ) / 2;
+      for( int icol = 0; icol < ncolor; icol++ )
+        for( int jcol = 0; jcol < ncolor; jcol++ )
+          value[icol * ncolor + jcol] =
+            ( colorMatrix[icol][jcol] / colorDenom[icol] + colorMatrix[jcol][icol] / colorDenom[jcol] ) / 2;
     }
-    fptype2 value[ncolorfold * ncolorfold];
+    fptype2 value[ncolor * ncolor];
   };
 
   // The Fortran BLAS interface, which every implementation exports (the
@@ -86,17 +86,17 @@
     static constexpr auto cfsym = SymmetricNormalizedColorMatrix();
     constexpr int nevtB = nParityCS * neppV; // events covered by one call
     const int ncol = nGoodHel * nevtB;       // number of BLAS right hand side columns
-    // Column major scratch: JR/JI hold the ncolorfold x ncol jamps, ZR/ZI take
+    // Column major scratch: JR/JI hold the ncolor x ncol jamps, ZR/ZI take
     // the SYMM results and MEcol one |M|^2 per column. Kept on the heap and grown
-    // once per thread: for ncolorfold=60 and ncomb=128 this is a few hundred kB.
+    // once per thread: for ncolor=60 and ncomb=128 this is a few hundred kB.
     static thread_local std::vector<fptype2> scratch;
-    const size_t need = 4 * (size_t)ncolorfold * ncol + ncol;
+    const size_t need = 4 * (size_t)ncolor * ncol + ncol;
     if( scratch.size() < need ) scratch.resize( need );
     fptype2* JR = scratch.data();
-    fptype2* JI = JR + (size_t)ncolorfold * ncol;
-    fptype2* ZR = JI + (size_t)ncolorfold * ncol;
-    fptype2* ZI = ZR + (size_t)ncolorfold * ncol;
-    fptype2* MEcol = ZI + (size_t)ncolorfold * ncol;
+    fptype2* JI = JR + (size_t)ncolor * ncol;
+    fptype2* ZR = JI + (size_t)ncolor * ncol;
+    fptype2* ZI = ZR + (size_t)ncolor * ncol;
+    fptype2* MEcol = ZI + (size_t)ncolor * ncol;
     // Transpose the jamps into the column major right hand side: colour is the
     // fast index, (helicity, event) the slow one.
     for( int ighel = 0; ighel < nGoodHel; ighel++ )
@@ -105,33 +105,29 @@
       for( int ip = 0; ip < nParityCS; ip++ )
         for( int ieppV = 0; ieppV < neppV; ieppV++ )
         {
-          const size_t off = (size_t)( ighel * nevtB + ip * neppV + ieppV ) * ncolorfold;
-          // Gather the color flows the sum runs over: one per reversal pair when
-          // the basis folds, every flow otherwise (identity map). The folded
-          // matrix already carries what the dropped partner contributes.
-          for( int ifold = 0; ifold < ncolorfold; ifold++ )
+          const size_t off = (size_t)( ighel * nevtB + ip * neppV + ieppV ) * ncolor;
+          for( int icol = 0; icol < ncolor; icol++ )
           {
-            const int icol = colorFoldRep[ifold];
 #ifdef MGONGPU_CPPSIMD
-            JR[off + ifold] = cxreal( jamp_sv[ip * ncolor + icol] )[ieppV];
-            JI[off + ifold] = cximag( jamp_sv[ip * ncolor + icol] )[ieppV];
+            JR[off + icol] = cxreal( jamp_sv[ip * ncolor + icol] )[ieppV];
+            JI[off + icol] = cximag( jamp_sv[ip * ncolor + icol] )[ieppV];
 #else
-            JR[off + ifold] = cxreal( jamp_sv[ip * ncolor + icol] );
-            JI[off + ifold] = cximag( jamp_sv[ip * ncolor + icol] );
+            JR[off + icol] = cxreal( jamp_sv[ip * ncolor + icol] );
+            JI[off + icol] = cximag( jamp_sv[ip * ncolor + icol] );
 #endif
           }
         }
     }
-    // Ztemp[ncolorfold][ncol] = ColorMatrix[ncolorfold][ncolorfold] * Jamps[ncolorfold][ncol], real and imaginary parts apart
-    blas_symm( ncolorfold, ncol, cfsym.value, JR, ZR );
-    blas_symm( ncolorfold, ncol, cfsym.value, JI, ZI );
+    // Ztemp[ncolor][ncol] = ColorMatrix[ncolor][ncolor] * Jamps[ncolor][ncol], real and imaginary parts apart
+    blas_symm( ncolor, ncol, cfsym.value, JR, ZR );
+    blas_symm( ncolor, ncol, cfsym.value, JI, ZI );
     // |M|^2 for one (helicity, event) is the dot product of one column of Jamps with one column of Ztemp
     for( int j = 0; j < ncol; j++ )
     {
-      const size_t off = (size_t)j * ncolorfold;
+      const size_t off = (size_t)j * ncolor;
       fptype2 me = 0;
-      for( int ifold = 0; ifold < ncolorfold; ifold++ )
-        me += JR[off + ifold] * ZR[off + ifold] + JI[off + ifold] * ZI[off + ifold];
+      for( int icol = 0; icol < ncolor; icol++ )
+        me += JR[off + icol] * ZR[off + icol] + JI[off + icol] * ZI[off + icol];
       MEcol[j] = me; // may underflow #831
     }
     // *** STORE THE RESULTS ***

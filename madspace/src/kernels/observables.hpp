@@ -122,5 +122,11 @@ KERNELSPEC void kernel_obs_delta_r(FIn<T, 1> p1, FIn<T, 1> p2, FOut<T, 0> obs) {
     obs = sqrt(deta * deta + dphi * dphi);
 }
 
+template <typename T>
+KERNELSPEC void kernel_obs_pair_mass(FIn<T, 1> p1, FIn<T, 1> p2, FOut<T, 0> obs) {
+    FourMom<T> sum{p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
+    obs = sqrt(max(lsquare<T>(sum), 0.));
+}
+
 } // namespace kernels
 } // namespace madspace

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which
+# This file is a part of the MadGraph7 project, an application which
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this
+# It is subject to the MadGraph7 license which should accompany this
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -395,7 +395,7 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd(
             ('generate %s %s' % (process, _pin_crossing(options))).strip())
-        self.cmd.exec_cmd('output standalone %s -f' % outdir)
+        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, name) for name in sorted(os.listdir(subproc_root))
@@ -1617,7 +1617,7 @@ class TestGoodHelCParityDedup(unittest.TestCase):
         self.cmd.exec_cmd('set apply_flavor_grouping True')
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd('generate %s --use_crossing=True' % process)
-        self.cmd.exec_cmd('output standalone %s -f' % outdir)
+        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, entry)
@@ -1846,11 +1846,11 @@ class TestCheckCrossingCommand(unittest.TestCase):
         self.cmd.exec_cmd('import model sm', printcmd=False)
         self.cmd.exec_cmd('define xq = u u~', printcmd=False)
 
-    def _run_check(self, proc_line, exporter='standalone'):
+    def _run_check(self, proc_line, exporter='standalone_fortran'):
         import madgraph.various.process_checks as process_checks
         # The C++/mg7 backends need a working C++ compiler + build toolchain;
         # the fortran one needs f2py. Skip (do not fail) when unavailable.
-        if exporter != 'standalone':
+        if exporter != 'standalone_fortran':
             compiler = os.environ.get('CXX', 'g++')
             if not shutil.which(compiler):
                 raise unittest.SkipTest('no C++ compiler (%s) available for '
@@ -1916,19 +1916,12 @@ class TestCheckCrossingCommand(unittest.TestCase):
         results, process_checks = self._run_check('xq xq > xq xq')
         self._assert_all_pass_with_crossing(results, process_checks)
 
-    def test_check_crossing_command_cpp(self):
-        """standalone_cpp backend: u u > u u reached through a genuine crossing
-        of a different subprocess must agree with its independent value."""
-        results, process_checks = self._run_check(
-            'xq xq > xq xq', exporter='standalone_cpp')
-        self._assert_all_pass_with_crossing(results, process_checks)
-
     def test_check_crossing_command_mg7(self):
-        """standalone_mg7 (cudacpp CPU-SIMD) backend: same genuine-crossing
+        """standalone (madmatrix) backend: same genuine-crossing
         agreement, evaluated at a prescribed phase-space point injected into the
         SIMD momenta buffer."""
         results, process_checks = self._run_check(
-            'xq xq > xq xq', exporter='standalone_mg7')
+            'xq xq > xq xq', exporter='standalone')
         self._assert_all_pass_with_crossing(results, process_checks)
 
     def test_check_crossing_invalid_exporter(self):
@@ -1945,7 +1938,7 @@ class TestCheckCrossingCommand(unittest.TestCase):
         self.assertIn('not_a_backend', str(ctx.exception))
 
     def test_check_crossing_invalid_simd(self):
-        """An unknown standalone_mg7 --simd must raise a clear InvalidCmd.
+        """An unknown madmatrix --simd must raise a clear InvalidCmd.
 
         No build: constructing the mg7 backend validates the choice up front.
         """
@@ -1956,7 +1949,7 @@ class TestCheckCrossingCommand(unittest.TestCase):
             process_checks.check_crossing(
                 procdef, param_card=None,
                 options={'energy': 1000.0, 'proc_line': 'g u > g u',
-                         'exporter': 'standalone_mg7', 'simd': 'not_a_simd'},
+                         'exporter': 'standalone', 'simd': 'not_a_simd'},
                 cmd=self.cmd)
         self.assertIn('not_a_simd', str(ctx.exception))
 
@@ -2093,7 +2086,7 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
         """
         setup = ('define q = u d u~ d~',)
         proc = 'q q > q q'
-        for fmt in ('standalone', 'standalone_mg7'):
+        for fmt in ('standalone_fortran', 'standalone'):
             with self.subTest(format=fmt):
                 on = self._output(fmt, 'fold_on_%s' % fmt, process=proc,
                                   setup=setup)
@@ -2113,6 +2106,33 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
                                 '%s: expected %s to fold crossings with the '
                                 'crossing on' % (fmt, proc))
 
+    def test_crossing_breaking_process_keeps_every_subprocess(self):
+        """A process the exporter will not cross must not be folded either.
+
+        A polarized leg breaks crossing symmetry (export_v4
+        .breaks_crossing_symmetry), so the fortran standalone writes no
+        crossing machinery for it. Its crossings used to be recorded at
+        generation all the same: p p > z{0} j came out as the single g q
+        directory, the q q~ and g q~ subprocesses reachable from nowhere. The
+        same holds for a polarized leg inside a decay chain. Both must now come
+        out exactly as an uncrossed generation does.
+        """
+        for proc in ('p p > z{0} j', 'p p > z j, z > e+{L} e-'):
+            with self.subTest(process=proc):
+                tag = 'pol_dc' if ',' in proc else 'pol'
+                on = self._output('standalone_fortran', '%s_on' % tag,
+                                  process=proc)
+                off = self._output('standalone_fortran', '%s_off' % tag,
+                                   process=proc,
+                                   options='--use_crossing=False')
+                subs_on = self._subprocesses(on)
+                self.assertEqual(subs_on, self._subprocesses(off))
+                # Guard the guard: both sides would agree if both had lost
+                # the crossed subprocesses.
+                self.assertGreater(len(subs_on), 1,
+                                   'expected several subprocesses, got %s'
+                                   % subs_on)
+
     def test_supported_outputs_accept_crossing(self):
         """Outputs that DO implement crossing must not be caught.
 
@@ -2121,7 +2141,7 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
         extended FLAV_IDX directly; the grouped madevent output reaches the
         crossed subprocesses through the crossing router.
         """
-        for fmt in ('standalone', 'madevent'):
+        for fmt in ('standalone_fortran', 'madevent'):
             with self.subTest(format=fmt):
                 self._output(fmt, 'ok_%s' % fmt)
 
@@ -2163,181 +2183,10 @@ int main(int argc, char** argv){
 """
 
 
-class TestStandaloneCppCrossSymmetry(unittest.TestCase):
-    """standalone_cpp must reproduce the crossing the fortran standalone does.
-
-    Mirror of TestStandaloneCrossSymmetry for the C++ backend: u u~ > g g and
-    u g > u g are each other's crossing under (I=0, J=3). In the 0-based C++
-    flavor_id encoding cross = flavor_id / nflav and flav = flavor_id % nflav,
-    so with NFLAV=1 the crossing (I=0, J=3) -> cross = 0*(NEXTERNAL+1)+3 = 3 is
-    reached by flavor_id = 3. sigmaKin already divides by the crossed
-    denominator, so a crossed call returns the properly averaged matrix element
-    of the process it crosses into and can be compared directly.
-
-    Skipped when no C++ compiler is available (the whole check needs to build
-    and run real C++).
-    """
-
-    energy = 1000.0
-    tolerance = 1e-9
-    # cross = I*(NEXTERNAL+1)+J = 0*5+3 = 3, flavor_id = cross*NFLAV+flav (NFLAV=1)
-    CROSS_2_3 = 3
-    IDENTITY = 0
-
-    debugging = getattr(unittest, 'debug', False)
-
-    def setUp(self):
-        self.compiler = os.environ.get('CXX', 'g++')
-        if not shutil.which(self.compiler):
-            self.skipTest('no C++ compiler (%s) available' % self.compiler)
-        self.tmpdir = tempfile.mkdtemp(prefix='cross_cpp_')
-
-    def tearDown(self):
-        if not self.debugging and os.path.isdir(self.tmpdir):
-            shutil.rmtree(self.tmpdir)
-
-    # ------------------------------------------------------------------
-    def _output_standalone_cpp(self, process, name, options=''):
-        """Write the standalone_cpp output for `process`, return its P* dir."""
-        outdir = pjoin(self.tmpdir, name)
-        cmd = cmd_interface.MasterCmd()
-        cmd.no_notification()
-        cmd.exec_cmd('set automatic_html_opening False')
-        cmd.exec_cmd('set group_subprocesses False')
-        cmd.exec_cmd('set apply_flavor_grouping True')
-        cmd.exec_cmd('import model sm')
-        cmd.exec_cmd(
-            ('generate %s %s' % (process, _pin_crossing(options))).strip())
-        cmd.exec_cmd('output standalone_cpp %s -f' % outdir)
-
-        subproc_root = pjoin(outdir, 'SubProcesses')
-        pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
-                 if d.startswith('P') and os.path.isdir(pjoin(subproc_root, d))]
-        self.assertEqual(len(pdirs), 1,
-                         'Expected a single subprocess directory for %s, got %s'
-                         % (process, pdirs))
-        return pdirs[0]
-
-    def _cpp_source(self, pdir):
-        with open(pjoin(pdir, 'CPPProcess.cc')) as fsock:
-            return fsock.read()
-
-    def _build_and_run(self, pdir, flavor_ids):
-        """Build the driver in `pdir` and return {flavor_id: sigmaKin}."""
-        # 'make' compiles CPPProcess.o and links the shipped check; it also
-        # proves the generated code compiles.
-        with open(os.devnull, 'w') as devnull:
-            rc = subprocess.call(['make'], cwd=pdir, stdout=devnull,
-                                  stderr=subprocess.STDOUT)
-        self.assertEqual(rc, 0, 'make failed in %s' % pdir)
-
-        with open(pjoin(pdir, 'driver_cross.cpp'), 'w') as fsock:
-            fsock.write(_CPP_DRIVER)
-        cxxflags = ['-O3', '-ffast-math', '-I../../src', '-I.', '-fPIC']
-        libflags = ['-L../../lib', '-lmodel_sm']
-        with open(os.devnull, 'w') as devnull:
-            rc = subprocess.call(
-                [self.compiler] + cxxflags + ['-c', '-o', 'driver_cross.o',
-                                              'driver_cross.cpp'],
-                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT)
-            self.assertEqual(rc, 0, 'driver compile failed in %s' % pdir)
-            rc = subprocess.call(
-                [self.compiler, '-o', 'driver_cross', 'CPPProcess.o',
-                 'driver_cross.o'] + libflags,
-                cwd=pdir, stdout=devnull, stderr=subprocess.STDOUT)
-            self.assertEqual(rc, 0, 'driver link failed in %s' % pdir)
-
-        out = subprocess.check_output(
-            ['./driver_cross'] + [str(f) for f in flavor_ids],
-            cwd=pdir).decode()
-        values = {}
-        for match in re.finditer(r'sigmaKin\((\d+)\)\s*=\s*([-\d.eE+]+)', out):
-            values[int(match.group(1))] = float(match.group(2))
-        self.assertEqual(set(values), set(flavor_ids),
-                         'driver output did not cover every flavor_id: %s' % out)
-        return values
-
-    # ------------------------------------------------------------------
-    def test_qq_gg_crossed_gives_qg_qg(self):
-        """u u~ > g g crossed by (I=0,J=3) must equal u g > u g at the same
-        momenta, and the crossed value must differ from the identity one so the
-        check is non-vacuous."""
-        crossed_dir = self._output_standalone_cpp(PROC_QQ_GG, 'qqgg')
-        reference_dir = self._output_standalone_cpp(PROC_QG_QG, 'qgqg')
-
-        crossed = self._build_and_run(crossed_dir,
-                                      [self.IDENTITY, self.CROSS_2_3])
-        reference = self._build_and_run(reference_dir, [self.IDENTITY])
-
-        self.assertAlmostEqual(
-            crossed[self.CROSS_2_3], reference[self.IDENTITY],
-            delta=self.tolerance * abs(reference[self.IDENTITY]),
-            msg='u u~ > g g crossed (%r) != u g > u g identity (%r)'
-            % (crossed[self.CROSS_2_3], reference[self.IDENTITY]))
-        # Non-vacuous: the crossing must move the answer, not return the
-        # identity value.
-        self.assertNotAlmostEqual(
-            crossed[self.CROSS_2_3], crossed[self.IDENTITY], places=6,
-            msg='crossed value equals the identity value; crossing had no '
-                'effect, so the test would pass trivially')
-
-    def test_qg_qg_crossed_gives_qq_gg(self):
-        """The reverse: u g > u g crossed by (I=0,J=3) must equal u u~ > g g."""
-        crossed_dir = self._output_standalone_cpp(PROC_QG_QG, 'qgqg_rev')
-        reference_dir = self._output_standalone_cpp(PROC_QQ_GG, 'qqgg_rev')
-
-        crossed = self._build_and_run(crossed_dir,
-                                      [self.IDENTITY, self.CROSS_2_3])
-        reference = self._build_and_run(reference_dir, [self.IDENTITY])
-
-        self.assertAlmostEqual(
-            crossed[self.CROSS_2_3], reference[self.IDENTITY],
-            delta=self.tolerance * abs(reference[self.IDENTITY]),
-            msg='u g > u g crossed (%r) != u u~ > g g identity (%r)'
-            % (crossed[self.CROSS_2_3], reference[self.IDENTITY]))
-
-    def test_invalid_overlapping_swap_returns_zero(self):
-        """An overlapping-swap crossing code (I=2, J=1 here) is marked invalid;
-        sigmaKin must short-circuit to 0 for it."""
-        pdir = self._output_standalone_cpp(PROC_QQ_GG, 'qqgg_inv')
-        # cross = I*(NEXTERNAL+1)+J = 2*5+1 = 11, flavor_id = 11 (NFLAV=1).
-        overlapping = 2 * (NEXTERNAL + 1) + 1
-        values = self._build_and_run(pdir, [overlapping])
-        self.assertEqual(values[overlapping], 0.0,
-                         'an overlapping-swap code must give a zero matrix '
-                         'element, got %r' % values[overlapping])
-
-    def test_use_crossing_false_drops_the_machinery(self):
-        """--use_crossing=False must compile and emit no crossing machinery,
-        while still giving the same uncrossed matrix element."""
-        with_dir = self._output_standalone_cpp(PROC_QQ_GG, 'qqgg_on')
-        without_dir = self._output_standalone_cpp(PROC_QQ_GG, 'qqgg_off',
-                                                  options='--use_crossing=False')
-
-        on_src = self._cpp_source(with_dir)
-        off_src = self._cpp_source(without_dir)
-        for token in ('spincol_cross', 'cross_perm_ic', 'spincol_part',
-                      'ident_cross', 'flav_use', 'const int ic[]'):
-            self.assertIn(token, on_src,
-                          '%s should be emitted with crossing on' % token)
-            self.assertNotIn(token, off_src,
-                             '%s must NOT be emitted with --use_crossing=False'
-                             % token)
-
-        on = self._build_and_run(with_dir, [self.IDENTITY])
-        off = self._build_and_run(without_dir, [self.IDENTITY])
-        self.assertAlmostEqual(
-            on[self.IDENTITY], off[self.IDENTITY],
-            delta=self.tolerance * abs(on[self.IDENTITY]),
-            msg='the uncrossed matrix element changed when the crossing '
-                'machinery was emitted: %r vs %r'
-            % (on[self.IDENTITY], off[self.IDENTITY]))
-
-
 class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
-    """standalone_mg7 (madmatrix / cudacpp CPU-SIMD) must reproduce the crossing.
+    """standalone (madmatrix) must reproduce the crossing.
 
-    Mirror of TestStandaloneCppCrossSymmetry for the data-parallel madmatrix
+    The crossing reproduction test for the data-parallel madmatrix
     backend. The extended flavor id encodes cross = id / nflav and flav = id %
     nflav (0-based, NFLAV=1 here), so (I=0, J=3) -> cross = 3 -> id = 3. The key
     extra check versus the scalar C++ backend is that DIFFERENT events in the
@@ -2367,9 +2216,9 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             shutil.rmtree(self.tmpdir)
 
     # ------------------------------------------------------------------
-    def _output_standalone_mg7(self, process, name, options='',
+    def _output_madmatrix(self, process, name, options='',
                                out_options='', color_basis=None):
-        """Write the standalone_mg7 output for `process`, return its P* dir.
+        """Write the standalone (madmatrix) output for `process`, return its P* dir.
 
         `options` goes on the generate line, `out_options` on the output line.
 
@@ -2387,7 +2236,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             cmd.exec_cmd('set color_basis %s' % color_basis)
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd(('generate %s %s' % (process, _pin_crossing(options))).strip())
-        cmd.exec_cmd(('output standalone_mg7 %s -f %s'
+        cmd.exec_cmd(('output standalone %s -f %s'
                       % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
@@ -2487,7 +2336,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd('define pq = g u u~')
         cmd.exec_cmd('generate pq pq > pq pq --use_crossing=True')
-        cmd.exec_cmd('output standalone_mg7 %s -f' % outdir)
+        cmd.exec_cmd('output standalone %s -f' % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
@@ -2518,7 +2367,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         records none) can no longer be driven with an arbitrary crossing code.
         See _output_folded_gg_qqx."""
         crossed = self._output_folded_gg_qqx('ggqqx')
-        reference = self._output_standalone_mg7(PROC_GQX_GQX, 'gqxgqx',
+        reference = self._output_madmatrix(PROC_GQX_GQX, 'gqxgqx',
                                                 color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
@@ -2540,7 +2389,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     def test_gg_qqx_crossed_gives_qq_gg(self):
         """The other recorded direction: g g > q q~ crossed to u u~ > g g."""
         crossed = self._output_folded_gg_qqx('ggqqx_rev')
-        reference = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_rev',
+        reference = self._output_madmatrix(PROC_QQ_GG, 'qqgg_rev',
                                                 color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
@@ -2581,7 +2430,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     def test_invalid_overlapping_swap_returns_zero(self):
         """An overlapping-swap crossing code (I=2, J=1 -> cross 11) is invalid;
         the per-event denominator must short-circuit its matrix element to 0."""
-        pdir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_inv')
+        pdir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_inv')
         self._patch_and_build(pdir)
         self.assertEqual(self._me(pdir, self.OVERLAP), 0.0,
                          'an overlapping-swap code must give a zero ME')
@@ -2592,8 +2441,8 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         uncrossed matrix element as the crossing-on build. (A full byte-identical
         `diff -r` against the pre-feature output was checked by hand; here we
         assert the token absence and the numerical invariance.)"""
-        on_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_on')
-        off_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_off',
+        on_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_on')
+        off_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_off',
                                               options='--use_crossing=False')
         on_src = self._cpp_source(on_dir)
         off_src = self._cpp_source(off_dir)
@@ -2621,9 +2470,9 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         as the generate-time flag is the sharpest statement of the fix, since
         that build is the one covered by the tests above.
         """
-        gen_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_genoff',
+        gen_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_genoff',
                                               options='--use_crossing=False')
-        out_dir = self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_outoff',
+        out_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_outoff',
                                               out_options='--use_crossing=False')
         out_src = self._cpp_source(out_dir)
         self.assertEqual(self._cpp_source(gen_dir), out_src,
@@ -2632,7 +2481,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         # Guard the guard: an exporter that never emits the machinery would
         # satisfy the equality above with both sides broken.
         on_src = self._cpp_source(
-            self._output_standalone_mg7(PROC_QQ_GG, 'qqgg_defaulton'))
+            self._output_madmatrix(PROC_QQ_GG, 'qqgg_defaulton'))
         for token in ('spincol_cross', 'cross_perm_ic', 'ident_cross',
                       'cNGoodMaxCross'):
             self.assertIn(token, on_src,
@@ -3229,7 +3078,7 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
                     'launch\n'
                     'set nevents 1000\n'
                     'set iseed 777\n' % outdir)
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
 
         lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
         self.assertTrue(os.path.isfile(lhe),
@@ -3302,7 +3151,7 @@ class TestMadeventDecayChainCrossing(unittest.TestCase):
                         'launch\n'
                         'set nevents 1000\n'
                         'set iseed 424242\n' % (_pin_crossing(options), outdir))
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         results = pjoin(outdir, 'SubProcesses', 'results.dat')
         self.assertTrue(os.path.isfile(results),
                         'madevent produced no results (%s)' % results)
@@ -3375,7 +3224,7 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
                         'set iseed %d\n'
                         % (self.PROCESS, _pin_crossing(options), outdir,
                            self.NEVENTS, self.SEED))
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         results = pjoin(outdir, 'SubProcesses', 'results.dat')
         self.assertTrue(
             os.path.isfile(results),
@@ -3583,7 +3432,7 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
                     'launch\n'
                     'set nevents 2000\n'
                     'set iseed 909\n' % outdir)
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
 
         lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
         self.assertTrue(os.path.isfile(lhe),
@@ -3743,7 +3592,7 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
                       'set lpp2 -1\n']
         with open(card, 'w') as fsock:
             fsock.writelines(lines)
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         self.assertTrue(os.path.isdir(pjoin(outdir, 'SubProcesses')),
                         'madevent produced no output for %r' % (options or
                                                                 'the default'))
@@ -4165,7 +4014,7 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
                               'output %s %s -f -nojpeg\n' % (fmt, outdir)])
         env = dict(os.environ)
         env['MG_SPLIT_CROSSING'] = 'on' if split else ''
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card],
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card],
                         env=env)
         return outdir
 
@@ -4357,7 +4206,7 @@ class TestMadeventCrossingBaseColorFlow(unittest.TestCase):
                  # a broken local lhapdf kills the systematics step
                  'set use_syst False\n',
                  'set lpp2 -1\n'])
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         self.assertTrue(os.path.isdir(pjoin(outdir, 'SubProcesses')),
                         'madevent produced no output for %r' % (options or
                                                                 'the default'))

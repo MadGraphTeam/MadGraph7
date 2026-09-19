@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -174,7 +174,7 @@ class IdentifyMETag(diagram_generation.DiagramTag):
     def link_from_leg(leg, model):
         """Returns the end link for a leg needed to identify matrix
         elements: ((leg numer, state, spin, self_antipart, mass,
-        width, color, decay and is_part), number)."""
+        width, color, polarization, decay and is_part), number)."""
 
         part = model.get_particle(leg.get('id'))
 
@@ -184,11 +184,26 @@ class IdentifyMETag(diagram_generation.DiagramTag):
         # For FS legs, don't care about number (but do for IS legs)
         if leg.get('state'): number = 0
         else: number = leg.get('number')
+        # A polarization restriction selects which helicities of this leg are
+        # summed over, so two legs which restrict it differently do NOT share
+        # a matrix element ('p p > t t~{+}' and 'p p > t t~{-}' must stay
+        # apart; without this they get the same tag and only the first one is
+        # ever written out).
+        # The stored list is the typed order but means the *set* of allowed
+        # helicities, so canonicalise it: this MUST agree with the
+        # canonicalisation Process.shell_polarization uses to build the P
+        # directory name, or two legs could be told apart here yet render to
+        # one and the same directory.
+        # An unpolarized leg gives (), so every tag of an unpolarized process
+        # is structurally what it was before.
+        polarization = base_objects.canonical_polarization(
+            leg.get('polarization'))
         # Include also onshell, since this specifies forbidden s-channel
         return [((number, id, part.get('spin'), leg.get('onshell'),
                   part.get('is_part'), part.get('self_antipart'),
-                  part.get('mass'), part.get('width'), part.get('color')),
-                 leg.get('number'))]
+                  part.get('mass'), part.get('width'), part.get('color'),
+                  polarization),
+                 leg.get('number'),leg.get('onium'))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -456,7 +471,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
         
         return [((leg.get('number'), part.get('spin'), part.get('color'), charge,
                   part.get('mass'), part.get('width')),
-                 (leg.get('number'),leg.get('id'),leg.get('state')))]
+                 (leg.get('number'),leg.get('id'),leg.get('state'),leg.get('onium')))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -519,6 +534,7 @@ class CanonicalConfigTag(diagram_generation.DiagramTag):
             leg = base_objects.Leg({'number':link.links[0][1][0],
                                      'id':link.links[0][1][1],
                                      'state':link.links[0][1][2],
+                                     'onium':link.links[0][1][3],
                                      'onshell':None})
             return leg
         # This shouldn't happen
@@ -666,6 +682,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
         # diagram flavor store (see HelasMatrixElement.compute_flavor_masks);
         # read through has_flavor(). Not part of get_sorted_keys (runtime cache).
         self.valid_flavors = set()
+        self['onium'] = {}
 
     # Customized constructor
     def __init__(self, *arguments):
@@ -704,6 +721,24 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 if self['state'] == 'final' and self.get('pdg_code') in decay_ids:
                     self.set('decay', True)
                 else:
+                    # Braces that name a piece of the propagator numerator of a
+                    # massive vector have no external wavefunction: the integer
+                    # would end up in the NHEL table and VXXXXX would silently
+                    # return a meaningless vector. The command interface
+                    # already refuses them (validate_propagator_polarization);
+                    # this catches the direct-API path as well.
+                    propagator_only = \
+                        base_objects.Leg.propagator_only_polarizations
+                    for value in leg.get('polarization'):
+                        # 99 ('{A}') keeps its own, pre-existing message below
+                        if value == 99 or value not in propagator_only:
+                            continue
+                        raise InvalidCmd(
+                            "The polarization {%s} is a piece of a massive "
+                            "vector propagator, not a polarization vector: "
+                            "it is only valid on a particle that is decayed "
+                            "further (an internal line), not on an external "
+                            "leg of the process." % propagator_only[value])
                     if 99 in leg.get('polarization'):
                         raise Exception("polarization A only valid for propagator.")
                     
@@ -728,6 +763,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 else:
                     self.set('polarization', leg.get('polarization'))
                 self.set('interaction_id', interaction_id, model)
+                self.set('onium', leg.get('onium'))
         elif arguments:
             super(HelasWavefunction, self).__init__(arguments[0])
         else:
@@ -865,6 +901,24 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 if i not in base_objects.Leg.list_of_allowed_polarizations:
                     raise self.PhysicsObjectError( \
                       "%s is not a valid polarization" % str(value))
+
+        elif name == 'onium':
+            if value:
+                if not value['N'] > 0:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid principal quantum number" % str(value['N']))
+                if value['S'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid spin type" % str(2*value['S']+1))
+                if value['L'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid orbital angular momentum" % str(value['L']))
+                if value['J'] not in range(abs(value['L']-value['S']),value['L']+value['S']+1):
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid total angular momentum" % str(value['J']))
+                if value['C'] not in [1, 8]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid color configuartion" % str(value['C']))
 
         return True
 
@@ -1396,7 +1450,28 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 # Use the copy in wavefunctions instead.
                 # Remove this copy from diagram_wavefunctions
                 new_wf_number = new_wf.get('number')
-                new_wf = wavefunctions[wavefunctions.index(new_wf)]
+                # HelasWavefunction.__eq__ ignores the pdg code, so for a loop
+                # wavefunction whose particle and antiparticle differ in nothing
+                # else -- a colour singlet, i.e. a lepton -- index() can return
+                # the wrong sign. Match the pdg code explicitly for every loop
+                # wavefunction. See appendix A of arXiv:2108.11404, which
+                # reported this for leptoquark pair production at NLO; the
+                # workaround given there guards only pdg < 0, but nothing makes
+                # the other sign safe, so the check is applied symmetrically.
+                if not new_wf.get('is_loop'):
+                    index_wf = wavefunctions.index(new_wf)
+                else:
+                    for i_wf, wf in enumerate(wavefunctions):
+                        if new_wf == wf and \
+                           wf.get('pdg_code') == new_wf.get('pdg_code'):
+                            index_wf = i_wf
+                            break
+                    else:
+                        # No pdg-matching candidate: same outcome as index()
+                        # finding nothing, i.e. keep the local copy. Caught by
+                        # the 'except ValueError' closing this try block.
+                        raise ValueError
+                new_wf = wavefunctions[index_wf]
                 diagram_wf_numbers = [w.get('number') for w in \
                                                           diagram_wavefunctions]
                 index = diagram_wf_numbers.index(new_wf_number)
@@ -1424,9 +1499,14 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     # have this replaced wavefunction in their mothers. This
                     # plays the role of the 'number_to_wavefunction' dictionary
                     # used for tree level.
+                    # Match on object identity rather than on the 'number'
+                    # attribute: numbers are reshuffled by the insertions above
+                    # (and by the renumbering just performed), so an unrelated
+                    # wavefunction can transiently carry new_wf_number and get
+                    # its mother silently overwritten.
                     for wf in diagram_wavefunctions:
                         for i,mother_wf in enumerate(wf.get('mothers')):
-                            if mother_wf.get('number')==new_wf_number:
+                            if mother_wf is self:
                                 wf.get('mothers')[i]=new_wf
 
             except ValueError:
@@ -1696,7 +1776,6 @@ class HelasWavefunction(base_objects.PhysicsObject):
             return None
         
         pdg_out = self.get('pdg_code')
-        misc.sprint(pdg_out, self[tag_name], [p.get_pdg_code() for p in vertex.get('particles')])
         if abs(pdg_out) in model.get('merged_particles'):
             pdg_vertex = [p.get_pdg_code() for  p in vertex.get('particles')]             
             index_merge, merge_pdg = [(i,pdg) for i, pdg in enumerate(pdg_vertex) if abs(pdg) in model.get('merged_particles')][0]
@@ -1882,13 +1961,19 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 output['propa'] = 'P1S'
 
             elif self.get('polarization') == [1]:
-                if self.get('spin') != 2:
+                if self.get('spin') == 2:
+                    output['propa'] = 'P1P'
+                elif self.get('spin') == 3:
+                    output['propa'] = 'P1TR'
+                else:
                     raise InvalidCmd( 'polarization not supported for decay particle')
-                output['propa'] = 'P1P'
             elif self.get('polarization') == [-1]:
-                if self.get('spin') != 2:
-                    raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % self.get('spin')) 
-                output['propa'] = 'P1M'
+                if self.get('spin') == 2:
+                    output['propa'] = 'P1M'
+                elif self.get('spin') == 3:
+                    output['propa'] = 'P1TL'
+                else:
+                    raise InvalidCmd( 'Left polarization not supported for decay particle for spin (2s+1=%s) particles' % self.get('spin'))
             else:            
                 raise InvalidCmd( 'polarization not supported for decay particle')
             
@@ -2041,7 +2126,17 @@ class HelasWavefunction(base_objects.PhysicsObject):
                 'number': self.get('number_external'),
                 'state': self.get('leg_state'),
                 'onshell': self.get('onshell'),
-                'loop_line':self.get('is_loop')
+                'loop_line':self.get('is_loop'),
+                # the wavefunction kept the polarization restriction of the
+                # leg it was built from: put it back, or the amplitude
+                # rebuilt by get_base_amplitude would identify (through
+                # IdentifyMETag) a polarized process with an unpolarized one.
+                # dict.get and not self.get, here and in the two sibling
+                # get_base_vertex: a wavefunction unpickled from a file
+                # written before 'polarization' existed has no such key at
+                # all, and PhysicsObject.get raises on a missing one
+                # (tests/input_files/test_8fs.pkl is one such file)
+                'polarization': dict.get(self, 'polarization', [])
                 })
 
             if optimization != 0 and not self.get('is_loop'):
@@ -2060,7 +2155,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
                     'state': mother.get('leg_state'),
                     'onshell': None,
                     'loop_line':mother.get('is_loop'),
-                    'onshell': None
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg
@@ -2119,9 +2214,11 @@ class HelasWavefunction(base_objects.PhysicsObject):
             elif self.get('polarization') == [99]:
                 tags.append('P1A')
             elif self.get('polarization') == [1]:
-                tags.append('P1P')
+                # helicity +1: transverse projector for a vector, u-spinor for a fermion
+                tags.append('P1TR' if self.get('spin') == 3 else 'P1P')
             elif self.get('polarization') == [-1]:
-                tags.append('P1M')
+                # helicity -1: transverse projector for a vector, v-spinor for a fermion
+                tags.append('P1TL' if self.get('spin') == 3 else 'P1M')
             elif sorted(self.get('polarization')) == [0,9]: # = 0+9
                 tags.append('P1LS')
             elif self.get('polarization') == [4]: # = T-5
@@ -2451,6 +2548,15 @@ class HelasWavefunction(base_objects.PhysicsObject):
         checking for identical processes. Note that the number for
         this wavefunction, the pdg code, and the interaction id are
         irrelevant, while the numbers for the mothers are important.
+
+        'polarization' is relevant: get_call_key() includes it, so it is
+        what picks the HELAS call for this wavefunction. Two wavefunctions
+        that differ only there must not be merged -- the survivor would be
+        written out with the other one's polarization, silently and without
+        failing anything. Today nothing puts two differently polarized
+        wavefunctions in the same matrix element (they are separated further
+        up, into distinct subprocesses), so this check never fires; it is
+        here so that it keeps not firing.
         """
 
         if not isinstance(other, HelasWavefunction):
@@ -2469,6 +2575,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
            self.get('mass') != other.get('mass') or \
            self.get('width') != other.get('width') or \
            self.get('color') != other.get('color') or \
+           self.get('polarization') != other.get('polarization') or \
            self['decay'] != other['decay'] or \
            self['decay'] and self['particle'] != other['particle']:
             return False
@@ -3418,7 +3525,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
                     'number': mother.get('number_external'),
                     'state': mother.get('leg_state'),
                     'onshell': None,
-                    'loop_line':mother.get('is_loop')
+                    'loop_line':mother.get('is_loop'),
+                    'polarization': dict.get(mother, 'polarization', [])
                     })
                 if optimization != 0 and not mother.get('is_loop'):
                     wf_dict[(mother.get('number'),False)] = leg
@@ -4031,6 +4139,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self.quartic_sum_me_ids = None
         self._flavor_epoch = 0
         self._flavor_mask_cache = None
+        # Cache for get_amplitude_slots(), the recycled AMP array
+        self.amplitude_slots = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -5530,14 +5640,83 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return sum([ len(d.get('amplitudes')) for d in \
                        self.get('diagrams')])
 
+    def get_nonia(self):
+        """Gives the total number of external onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        nonia = 0
+        for wf in external_wfs:
+            if wf.get('onium'):
+                nonia +=1
+
+        if nonia%2:
+            raise MadGraph5Error("Odd number of quarkonia constituents detected.")
+        else:
+            nonia /= 2
+
+        return int(nonia)
+    
+    def get_npwave(self):
+        """Gives the total number of external p-wave onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        npwave = 0
+        for wf in external_wfs:
+             try:
+                if wf.get('onium').get('L') == 1:
+                  npwave +=1
+             except: 
+                pass
+        if npwave%2:
+            raise MadGraph5Error("Odd number of quarkonia constituents detected.")
+        else:
+            npwave /= 2
+
+        return int(npwave)
+    
+    def get_highest_derivate_order(self):
+        """Gives the highest derivative order used"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+        nder = 0
+        for wf in external_wfs:
+             try:
+                if wf.get('onium').get('L') > nder:
+                  nder = wf.get('onium').get('L')
+             except: 
+                pass
+
+        return int(nder)
+
+    def get_onia_pairs(self):
+        """Gives the total number of external onia states"""
+
+        external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
+
+        pairs = []
+        onia = [-1,-1]
+        for wf in external_wfs:
+            if wf.get('onium'):
+                if onia[0] < 0:
+                    onia = [wf.get('onium').get('index'),wf.get('number')]
+                elif onia[0] == wf.get('onium').get('index'):
+                    pairs.append((onia[1],wf.get('number')))
+                    onia[0] = -1
+                else:
+                    raise MadGraph5Error("Quarkonia constituents cannot be matched.")
+
+        return pairs
+
     def get_nexternal_ninitial(self):
         """Gives (number or external particles, number of
         incoming particles)"""
 
         external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers')]
 
+        nonia = self.get_nonia()
+        
         return (len(set([wf.get('number_external') for wf in \
-                         external_wfs])),
+                         external_wfs]))-nonia,
                 len(set([wf.get('number_external') for wf in \
                          [wf for wf in external_wfs if wf.get('leg_state') == False]])))
 
@@ -5585,8 +5764,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """
         pdgs = []
         pdg_signs = []
+        # L-cut wavefunctions of a loop ME are also motherless, but they are not
+        # external legs of the process (same filter as get_nexternal_ninitial).
         external_wfs = sorted([wf for wf in self.get_all_wavefunctions()
-                               if len(wf.get('mothers')) == 0],
+                               if len(wf.get('mothers')) == 0
+                               and not wf.get('is_loop')],
                               key=lambda w: w['number_external'])
         external_number = 1
         id_to_wf = collections.defaultdict(list)
@@ -6288,6 +6470,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                   wf.get('pdg_code')].get_helicity_states())
             for wf in self.get_external_wavefunctions()]
 
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            external_wavefunctions = self.get_external_wavefunctions()
+            for pair in onia_pairs:
+                hel_per_part[pair[0]-1] = int(2*external_wavefunctions[pair[0]-1].get('onium').get('J')+1)
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
+
         return reduce(lambda x, y: x * y,
                       hel_per_part)
 
@@ -6303,6 +6495,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                         else model.get('particle_dict')[\
                                   wf.get('pdg_code')].get_helicity_states(allow_reverse)
             for wf in self.get_external_wavefunctions()]
+
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            external_wavefunctions = self.get_external_wavefunctions()
+            for pair in onia_pairs:
+                j = external_wavefunctions[pair[0]-1].get('onium').get('J')
+                hel = [i for i in range(-j,j+1,1)]
+                hel_per_part[pair[0]-1] = hel
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
+
         return itertools.product(*hel_per_part)
     
     def get_helicity_per_particle(self):
@@ -6362,6 +6567,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         
         if len(hel_per_part) == 1:
             hel_per_part.append(0)
+
+        if self.get_nonia()>0:
+            onia_pairs = self.get_onia_pairs()
+            constituent = []
+            legs = [leg for leg in self.get('processes')[0].get('legs')]
+            for pair in onia_pairs:
+                hel_per_part[pair[0]-1] = int(2*legs[pair[0]-1].get('onium').get('S')+1)
+                constituent.append(pair[1])
+            for i in sorted(constituent, reverse=True):
+                del hel_per_part[i-1]
             
         return hel_per_part
 
@@ -6580,6 +6795,62 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 for wf in diagram.get('wavefunctions')]
         base = max(used or [0])
         return [base + 1 + isum for isum in range(len(sums))]
+
+    def get_amplitude_slots(self):
+        """Recycle the AMP array the way reuse_outdated_wavefunctions recycles
+        the wavefunctions.
+
+        Returns (slots, nslots, folds_at) where slots maps an amplitude number
+        onto its entry in AMP, nslots is how many entries that needs, and
+        folds_at maps a position in the emission order onto the merges to
+        write out just after it.
+
+        An amplitude read by the JAMPs -- or by AMP2, which reads the same
+        ones, being the targets -- has to stay put until the end. A merge
+        source does not: once `AMP(t) = AMP(t) + AMP(s)` has run, its entry is
+        free. Writing each merge as soon as both of its amplitudes exist,
+        rather than all of them at the end, is what makes those entries worth
+        reclaiming. It only reclaims the gap between the two, so this is far
+        from the (2n-5)!! floor -- closing that would want the amplitudes
+        emitted in a different order, which is the wavefunction slot trade one
+        level down.
+        """
+
+        if self.amplitude_slots is not None:
+            return self.amplitude_slots
+
+        folded = set(self.get_quartic_current_sums()[2])
+        order = [amplitude.get('number')
+                 for diagram in self.get('diagrams')
+                 for amplitude in diagram.get('amplitudes')
+                 if amplitude.get('number') not in folded]
+        position = dict((number, i) for i, number in enumerate(order))
+
+        # each merge is written as soon as both of its amplitudes are there
+        folds_at = {}
+        dies_at = {}
+        for source, (target, coeff) in \
+                sorted(self.get_quartic_amplitude_merges().items()):
+            if source in folded or source not in position \
+               or target not in position:
+                continue
+            at = max(position[source], position[target])
+            folds_at.setdefault(at, []).append((target, source, coeff))
+            dies_at.setdefault(at, []).append(source)
+
+        slots, free, nslots = {}, [], 0
+        for i, number in enumerate(order):
+            if free:
+                slots[number] = free.pop()
+            else:
+                nslots += 1
+                slots[number] = nslots
+            # whatever this position's merges consume is free again after them
+            for source in dies_at.get(i, []):
+                free.append(slots[source])
+
+        self.amplitude_slots = (slots, nslots, folds_at)
+        return self.amplitude_slots
 
     def compute_quartic_current_sums(self):
         """Work out the current sums, see get_quartic_current_sums."""
@@ -7573,7 +7844,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
         col_basis = color_amp.ColorBasis()
         new_amp = matrix_element.get_base_amplitude()
         matrix_element.set('base_amplitude', new_amp)
-        
         colorize_obj = col_basis.create_color_dict_list(\
                          matrix_element.get('base_amplitude'))
 
@@ -7605,7 +7875,6 @@ class HelasMultiProcess(base_objects.PhysicsObject):
                                list_color_basis[col_index])
         matrix_element.set('color_matrix',
                                list_color_matrices[col_index])
-
 
     # Below is the type of HelasMatrixElement which should be created by this
     # HelasMultiProcess class
