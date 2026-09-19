@@ -37,7 +37,8 @@ import madgraph.interface.tutorial_text_nlo as legacy_nlo
 import madgraph.interface.tutorial_text_madloop as legacy_madloop
 
 from madgraph.interface.tutorials._port import retarget
-from madgraph.interface.tutorials.session import Step, Tutorial, TutorialSession
+from madgraph.interface.tutorials.session import (Exercise, Step, Tutorial,
+                                                  TutorialSession)
 
 
 class _Capture(logging.Handler):
@@ -336,11 +337,53 @@ class TestOrdering(_TutorialTestCase):
         session.advance(1)
         self.assertEqual(session.step_for('generate p p > z')[1].text, 'THIRD')
 
-    def test_sequence_does_not_go_backwards(self):
+    def test_sequence_does_not_jump_past_a_lesson(self):
+        """A command a later step is keyed on does not fire it from here.
+
+        It used to: 'generate' at step one fired step three, skipping the
+        `output` lesson between -- the way `display modellist`, mentioned in
+        passing by the bsm intro, fired the next `display` step two lessons on.
+        Only what the current step waits for moves the tutorial.
+        """
+
         session = TutorialSession(self._tutorial('sequence'))
         session.advance(0)
-        # 'generate' matches step 0 and step 2; already past 0, so it is step 2
-        self.assertEqual(session.step_for('generate p p > z')[1].text, 'THIRD')
+        self.assertIsNone(session.step_for('generate p p > z'))
+
+    def test_only_the_command_asked_for_moves_it(self):
+        """Close enough is the command and its sub-command; the rest is the
+        reader's to choose."""
+
+        def at(name, index, line):
+            session = TutorialSession(tutorials.get(name))
+            session.index = index
+            found = session.step_for(line)
+            return found[0] if found else None
+
+        self.assertIsNone(at('bsm', 0, 'display modellist'))
+        self.assertEqual(at('bsm', 0, 'import model SMEFTatNLO-NLO'), 1)
+        self.assertIsNone(at('checks', 2, 'check lorentz p p > e+ e-'))
+        self.assertEqual(at('checks', 2, 'check gauge p p > mu+ mu-'), 3)
+        # another directory is fine, another output format is not
+        self.assertEqual(at('decays', 1, 'output MY_DIR'), 2)
+        self.assertIsNone(at('decays', 1, 'output madevent MY_DIR'))
+        # another process is fine too
+        self.assertEqual(at('syntax', 0, 'generate p p > w+ w- QED<=4'), 1)
+
+    def test_the_signature_of_a_command(self):
+        from madgraph.interface.tutorials.session import command_signature
+
+        self.assertEqual(command_signature('output TT'), ('output', 'mg7'))
+        self.assertEqual(command_signature('output madevent TT'),
+                         ('output', 'madevent'))
+        self.assertEqual(command_signature('check p p > e+ e-'),
+                         ('check', 'full'))
+        self.assertEqual(command_signature('display modellist'),
+                         ('display', 'modellist'))
+        self.assertEqual(command_signature('generate p p > t t~'),
+                         ('generate',))
+        self.assertEqual(command_signature('add process p p > z'),
+                         ('add', 'process'))
 
     def test_sequence_does_not_refire_the_current_step(self):
         session = TutorialSession(self._tutorial('sequence'))
@@ -423,15 +466,37 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
     step that command triggers is the next one.  So walking a sequenced
     tutorial by typing its own solutions must visit every step in order.  If a
     lesson ever asks for a command that does not lead anywhere, this fails.
+
+    Two kinds of step sit off the main line and are stepped over.  A *side
+    quest* is an optional detour offered by a step, whose own steps are titled
+    'side quest: ...'; it still has to lead back.  A *sticky* step answers a
+    command the lesson invited without consuming it, so it is never reached by
+    walking solutions at all.
     """
+
+    SIDE_QUEST = 'side quest'
+
+    @classmethod
+    def off_main_line(cls, step):
+        return step.sticky or step.title.startswith(cls.SIDE_QUEST)
+
+    @classmethod
+    def main_line_after(cls, steps, index):
+        """The step the main line reaches from `index`, skipping the detours."""
+
+        following = index + 1
+        while following < len(steps) and cls.off_main_line(steps[following]):
+            following += 1
+        return following
 
     def test_syntax_solutions_lead_to_the_next_step(self):
         tutorial = tutorials.get('syntax')
         self.assertIsNotNone(tutorial, 'the syntax tutorial is not registered')
         self.assertEqual(tutorial.order, 'sequence')
 
+        steps = tutorial.steps
         session = TutorialSession(tutorial)
-        for index, step in enumerate(tutorial.steps[:-1]):
+        for index, step in enumerate(steps[:-1]):
             solution = step.get_solution()
             self.assertTrue(solution,
                             'step %d (%s) asks for no command' % (index, step.title))
@@ -440,10 +505,198 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
             self.assertIsNotNone(
                 found, 'step %d (%s) asks for %r, which triggers nothing'
                 % (index, step.title, solution))
+            # inside the detour the rule is the plain one; on the main line the
+            # detour is stepped over
+            expected = (index + 1 if step.title.startswith(self.SIDE_QUEST)
+                        else self.main_line_after(steps, index))
+            if step.sticky:
+                # a sticky step does not consume its lesson: it points back at
+                # the command that does, which is the one it sits in front of
+                expected = self.main_line_after(steps, index)
             self.assertEqual(
-                found[0], index + 1,
+                found[0], expected,
                 'step %d (%s) asks for %r, which jumps to step %d rather than %d'
-                % (index, step.title, solution, found[0], index + 1))
+                % (index, step.title, solution, found[0], expected))
+
+    # `lo` puts the command mid-lesson in three of its steps and `exercises`
+    # opens on a question rather than on a command; every other sequenced
+    # tutorial follows the two rules below.
+    OLDER_LAYOUT = ('lo', 'exercises')
+
+    @classmethod
+    def sequenced(cls):
+        return [t for t in tutorials.all_tutorials(include_hidden=True)
+                if t.order == 'sequence' and t.name not in cls.OLDER_LAYOUT]
+
+    def test_every_step_ends_on_the_command_it_waits_for(self):
+        """A lesson that ends on prose leaves the reader with nothing to type.
+
+        Several of these steps run to thirty lines, and the command used to sit
+        somewhere in the middle of them, under the caveats -- by the end of the
+        lesson there was no telling what would make the next one appear.  Every
+        step but the closing one ends on the command it is waiting for.
+        """
+
+        for tutorial in self.sequenced():
+            for step in tutorial.steps[:-1]:
+                if isinstance(step, Exercise):
+                    continue        # an exercise ends on its question
+                solution = step.get_solution()
+                self.assertTrue(
+                    solution, '%s step %r waits for nothing'
+                    % (tutorial.name, step.title))
+                lines = [line for line in step.render(None).splitlines()
+                         if line.strip()]
+                self.assertEqual(
+                    lines[-1].strip(), 'MG7> %s' % solution,
+                    '%s step %r ends on %r rather than on the command it '
+                    'waits for'
+                    % (tutorial.name, step.title, lines[-1].strip()))
+
+    def test_a_lesson_after_a_process_opens_on_its_diagram_count(self):
+        """And the step a command leads to has to say what the command did.
+
+        The reader has just watched MG5 print a process and diagram count; the
+        lesson that follows opens on those numbers -- read back from the
+        session by counts_line(), never written into the text -- so it starts
+        from what they did rather than from a standing start.
+        """
+
+        from madgraph.interface.tutorials.session import counts
+
+        class _Amplitude(object):
+            @staticmethod
+            def get_number_of_diagrams():
+                return 9
+
+        class _Generated(object):
+            _curr_amps = [_Amplitude(), _Amplitude()]
+            options = {}
+            _curr_model = None
+            _comparisons = None
+            _done_export = None
+
+        interface = _Generated()
+        expected = counts(interface)
+        self.assertTrue(expected, 'the stub interface counts nothing')
+
+        for tutorial in self.sequenced():
+            session = TutorialSession(tutorial)
+            for index, step in enumerate(tutorial.steps[:-1]):
+                solution = step.get_solution() or ''
+                if not (solution.startswith('generate')
+                        or solution.startswith('add process')):
+                    continue
+                session.index = index
+                found = session.step_for(solution)
+                if found is None:
+                    continue
+                target = found[1]
+                if target.sticky or isinstance(target, Exercise):
+                    # a sticky step answers in its own words, and an exercise
+                    # marks an answer rather than reporting a count
+                    continue
+                self.assertIn(
+                    expected, target.render(interface),
+                    '%s: %r leaves %r, which does not say what it produced'
+                    % (tutorial.name, solution, target.title))
+
+    def test_no_syntax_command_is_asked_for_twice_running(self):
+        """Leaving a lesson on the command the next one teaches asks the reader
+        for the same line twice -- once to get there, once to get out."""
+
+        tutorial = tutorials.get('syntax')
+        steps = tutorial.steps
+        solutions = [step.get_solution() for step in steps[:-1]]
+        for index, solution in enumerate(solutions[1:], start=1):
+            if steps[index].sticky or steps[index - 1].sticky:
+                # a sticky step does not consume the lesson: pointing back at
+                # the same command is exactly its job
+                continue
+            self.assertNotEqual(
+                solution, solutions[index - 1],
+                'syntax steps %r and %r both wait for %r'
+                % (steps[index - 1].title, steps[index].title, solution))
+
+    def test_the_exclusion_extras_do_not_jump_a_lesson(self):
+        """`generate ... $ a` and `... $$ a` are the comparison the exclusion
+        lesson invites; `generate ... / a` is the way on.  All three are
+        `generate` commands over the same particles, so only the line tells
+        them apart -- before the sticky step they all counted as the way on,
+        and trying the comparison skipped the reader a lesson."""
+
+        tutorial = tutorials.get('syntax')
+        titles = [step.title for step in tutorial.steps]
+        lesson = titles.index('excluding particles and s-channels')
+
+        for extra in ('generate p p > e+ e- $ a', 'generate p p > e+ e- $$ a'):
+            session = TutorialSession(tutorial)
+            session.index = lesson
+            found = session.step_for(extra)
+            self.assertIsNotNone(found, '%r is answered by nothing' % extra)
+            self.assertTrue(found[1].sticky,
+                            '%r reaches %r, which would end the lesson'
+                            % (extra, found[1].title))
+            # and it answers again, as many times as it is tried
+            self.assertEqual(session.index, lesson)
+            self.assertIsNotNone(session.step_for(extra))
+
+        session = TutorialSession(tutorial)
+        session.index = lesson
+        found = session.step_for('generate p p > e+ e- / a')
+        self.assertIsNotNone(found)
+        self.assertFalse(found[1].sticky,
+                         'the exclusion lesson no longer has a way on')
+        self.assertEqual(found[0], self.main_line_after(tutorial.steps, lesson))
+
+    def test_the_sticky_answer_says_which_operator_was_tried(self):
+        """The two are answered differently or the step is not worth having:
+        `$` keeps the diagram count, `$$` does not."""
+
+        step = [s for s in tutorials.get('syntax').steps
+                if s.title == 'what $ and $$ did'][0]
+
+        class _Interface(object):
+            _curr_amps = []
+            options = {}
+
+        single = step.render(_Interface(), 'generate p p > e+ e- $ a')
+        double = step.render(_Interface(), 'generate p p > e+ e- $$ a')
+        self.assertNotEqual(single, double)
+        self.assertIn('on-shell', single)
+        self.assertIn('dropped', double)
+
+    def test_the_syntax_side_quest_is_reachable_and_comes_back(self):
+        """A detour nothing can reach is dead text; one that does not come back
+        strands the reader.  The offer is the `output standalone` the step
+        before it names."""
+
+        tutorial = tutorials.get('syntax')
+        steps = tutorial.steps
+        detour = [i for i, step in enumerate(steps)
+                  if step.title.startswith(self.SIDE_QUEST)]
+        self.assertTrue(detour, 'the syntax side quest has gone')
+        self.assertEqual(detour, list(range(detour[0], detour[-1] + 1)),
+                         'the side quest steps are not contiguous')
+
+        offered_at = detour[0] - 1
+        session = TutorialSession(tutorial)
+
+        # the offer is taken
+        session.index = offered_at
+        found = session.step_for('output standalone')
+        self.assertIsNotNone(found, 'the side quest cannot be reached')
+        self.assertEqual(found[0], detour[0],
+                         'the side quest offer lands on the wrong step')
+        self.assertIn('output standalone', steps[offered_at].render(None),
+                      'the step before the side quest does not name its command')
+
+        # ... and it leads back to where skipping it would have gone
+        session.index = detour[-1]
+        found = session.step_for(steps[detour[-1]].get_solution())
+        self.assertIsNotNone(found, 'the side quest does not lead back')
+        self.assertEqual(found[0], self.main_line_after(steps, offered_at),
+                         'the side quest comes back to the wrong step')
 
     def test_every_sequenced_step_makes_progress(self):
         """Weaker rule, applied to every sequenced tutorial: doing what a step
@@ -1180,8 +1433,13 @@ class TestLaunchQuestion(unittest.TestCase):
 
         step = self.step('produce the output')
         self.assertTrue(step.question_hint)
+        hint = step.question_hint
+        if callable(hint):
+            # it names the editor a card will open in, so it is worked out
+            # when the question is asked
+            hint = hint(None)
         for detail in ('param_card.dat', 'run_card.toml'):
-            self.assertIn(detail, step.question_hint)
+            self.assertIn(detail, hint)
         self.assertNotIn('question you just answered', self.after())
 
     def test_it_does_not_reprint_the_question(self):
@@ -1497,7 +1755,7 @@ class TestMenuSections(unittest.TestCase):
         is not basic' -- which is what it used to collect by default."""
 
         self.assertEqual(sorted(self.named('advanced')[0]),
-                         ['madloop', 'model'])
+                         ['decays', 'madloop', 'model', 'syntax'])
 
     def test_exercises_is_its_own_section(self):
         self.assertIn('exercises', self.named('exercises')[0])
@@ -1950,3 +2208,326 @@ class StickyStepTest(unittest.TestCase):
                         sticky.render(None, 'display interactions'))
         plain = [s for s in steps if s.title == 'customise, merge, save'][0]
         self.assertTrue(plain.render(None, 'display multiparticles'))
+
+
+#===============================================================================
+# the prompt, `tutorial index` and `tutorial skip N`
+#===============================================================================
+
+class _Recording(object):
+    """The interface side the mixin needs, with commands recorded, not run."""
+
+    prompt = 'MG7> '
+
+    def __init__(self):
+        self.ran = []
+        self.exec_cmd_depth = 0
+        self._curr_amps = []
+        self.options = {}
+
+    def postcmd(self, stop, line):
+        return stop
+
+    def notify_failed_command(self, line):
+        pass
+
+    def exec_cmd(self, line, printcmd=True, precmd=False, postcmd=True):
+        self.ran.append(line)
+
+
+class TutorialPromptTest(_TutorialTestCase):
+
+    def interface(self, name='syntax'):
+        interface = _Recording()
+        tutorial_mixin.attach(interface, tutorials.start(name))
+        return interface
+
+    def test_the_prompt_says_where_the_reader_is(self):
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        total = len(tutorials.get('syntax').steps)
+        self.assertIn('TUTO [syntax] 1/%d>' % total, interface.prompt)
+        interface.postcmd(None, 'generate p p > t t~ QED<=2')
+        self.assertIn('TUTO [syntax] 2/%d>' % total, interface.prompt)
+
+    def test_it_follows_a_move_that_fires_no_step(self):
+        """`skip` and `back` move the session without a step firing; the
+        prompt is refreshed after every command, not only the ones that
+        advance."""
+
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        interface.do_skip('')
+        interface.postcmd(None, 'skip')
+        self.assertIn('/%d>' % len(tutorials.get('syntax').steps),
+                      interface.prompt)
+        self.assertIn('2/', interface.prompt)
+
+    def test_stopping_gives_the_prompt_back(self):
+        interface = self.interface()
+        interface.postcmd(None, 'tutorial syntax')
+        tutorial_mixin.detach(interface)
+        self.assertEqual(interface.prompt, 'MG7> ')
+
+
+class TutorialPathTest(unittest.TestCase):
+    """What `tutorial skip N` replays is the reader's own route to step N."""
+
+    def path(self, name, number):
+        tutorial = tutorials.get(name)
+        return TutorialSession(tutorial).path_to(number - 1)
+
+    def test_a_main_line_step(self):
+        self.assertEqual(self.path('syntax', 3),
+                         ['generate p p > t t~ QED<=2',
+                          'generate p p > j j QCD^2==2 QED^2==2'])
+
+    def test_a_side_quest_is_entered_by_its_entry(self):
+        """The main line jumps over a side quest; its entry is the way in."""
+
+        path = self.path('syntax', 4)
+        self.assertEqual(path[-1], 'output standalone')
+        self.assertEqual(len(path), 3)
+
+    def test_a_sticky_step_is_nowhere_to_go(self):
+        titles = [s.title for s in tutorials.get('syntax').steps]
+        sticky = titles.index('what $ and $$ did') + 1
+        self.assertIsNone(self.path('syntax', sticky))
+
+    def test_a_free_order_tutorial_has_no_route(self):
+        self.assertIsNone(self.path('nlo', 3))
+
+    def test_every_step_is_reachable(self):
+        """Apart from a sticky step, and the sign-off an exercise tutorial
+        prints when its last answer passes, every step of every sequenced
+        tutorial has a route -- a detour included, through its entry."""
+
+        for tutorial in tutorials.all_tutorials(include_hidden=True):
+            if tutorial.order != 'sequence':
+                continue
+            session = TutorialSession(tutorial)
+            steps = tutorial.steps
+            for index, step in enumerate(steps):
+                if index == 0 or step.sticky:
+                    continue
+                if isinstance(steps[index - 1], Exercise):
+                    continue        # the sign-off after the last exercise
+                reach = index - 1 if isinstance(step, Exercise) else index
+                if reach == 0:
+                    continue
+                self.assertIsNotNone(
+                    session.path_to(reach),
+                    '%s step %d (%s) cannot be reached by `tutorial skip`'
+                    % (tutorial.name, index + 1, step.title))
+
+    def test_what_is_replayed_and_what_is_skipped(self):
+        from madgraph.interface.tutorials.session import replay_line
+
+        self.assertEqual(replay_line('output madevent POL_ZZ'),
+                         'output madevent POL_ZZ -f')
+        self.assertEqual(replay_line('generate p p > t t~'),
+                         'generate p p > t t~')
+        for skipped in ('launch', 'display diagrams', 'history f.dat',
+                        'check gauge p p > e+ e-', 'install madspace',
+                        'compute_widths t'):
+            self.assertIsNone(replay_line(skipped), skipped)
+
+
+class TutorialSkipToStepTest(_TutorialTestCase):
+
+    def interface(self, name='syntax'):
+        interface = _Recording()
+        tutorial_mixin.attach(interface, tutorials.start(name))
+        interface._tutorial_session.advance(0)
+        return interface
+
+    def test_it_runs_the_route_and_lands_on_the_step(self):
+        interface = self.interface()
+        interface.do_skip('6')
+        session = interface._tutorial_session
+        self.assertEqual(session.index, 5)
+        self.assertEqual(interface.ran,
+                         ['generate p p > t t~ QED<=2',
+                          'generate p p > j j QCD^2==2 QED^2==2',
+                          'generate p p > j j QCD^2==4 QED^2==0'])
+        self.assertIn('Step 6 of', self.capture.messages[0])
+        self.assertIn('A comma opens a decay chain', self.capture.messages[1])
+
+    def test_an_output_is_forced_and_a_launch_skipped(self):
+        interface = self.interface('decays')
+        interface.do_skip('5')          # after the decay-chain run
+        self.assertIn('output TT_DECAY -f', interface.ran)
+        self.assertNotIn('launch', interface.ran)
+        self.assertIn('launch', self.capture.messages[0])   # said so
+
+    def test_going_back_replays_from_the_start(self):
+        interface = self.interface()
+        interface.do_skip('6')
+        interface.ran[:] = []
+        interface.do_skip('3')
+        self.assertEqual(interface._tutorial_session.index, 2)
+        self.assertEqual(len(interface.ran), 2)
+
+    def test_what_it_refuses(self):
+        interface = self.interface()
+        titles = [s.title for s in tutorials.get('syntax').steps]
+        for bad in ('0', '99', 'three', str(titles.index('what $ and $$ did') + 1)):
+            self.capture.messages = []
+            interface.do_skip(bad)
+            self.assertEqual(interface._tutorial_session.index, 0, bad)
+            self.assertEqual(interface.ran, [], bad)
+            self.assertTrue(self.capture.messages, bad)
+
+    def test_the_command_accepts_a_step_number(self):
+        interface = _BareMadGraphCmd()
+        interface.check_tutorial(['skip', '3'])
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_tutorial, ['skip', 'three'])
+        self.assertIn('index', interface._tutorial_opts)
+
+
+#===============================================================================
+# the text editor a card opens in
+#===============================================================================
+
+class TutorialEditorTest(unittest.TestCase):
+    """`lo` says which editor a card will open in before the reader opens one,
+    offers `help vi` when it is vi, and says how to change it afterwards."""
+
+    def setUp(self):
+        import os
+        import madgraph.various.misc as misc
+
+        self.misc = misc
+        self._which = misc.which
+        self._editor = os.environ.get('EDITOR')
+        self.installed = set()
+        misc.which = lambda program: program in self.installed
+
+    def tearDown(self):
+        import os
+
+        self.misc.which = self._which
+        if self._editor is None:
+            os.environ.pop('EDITOR', None)
+        else:
+            os.environ['EDITOR'] = self._editor
+
+    def resolve(self, configured=None):
+        return self.misc.open_file.resolve_text_editor(configured, quiet=True)
+
+    def test_the_order_mg7_resolves_it_in(self):
+        import os
+
+        os.environ.pop('EDITOR', None)
+        self.installed = {'emacs', 'nano'}
+        self.assertEqual(self.resolve(), 'emacs')          # first default found
+        os.environ['EDITOR'] = 'nano'
+        self.assertEqual(self.resolve(), 'nano')           # $EDITOR wins
+        self.installed.add('code')
+        self.assertEqual(self.resolve('code -w'), 'code -w')   # the option wins
+        self.assertEqual(self.resolve('missing'), 'nano')  # unless not installed
+
+    def test_the_question_names_the_editor_and_offers_help_vi(self):
+        import os
+        import madgraph.interface.tutorials.lo as lo
+
+        class _Interface(object):
+            options = {}
+
+        self.installed = {'vi'}
+        os.environ['EDITOR'] = 'vi'
+        hint = lo._launch_question_hint(_Interface())
+        self.assertIn('**vi**', hint)
+        self.assertIn('`help vi`', hint)
+
+        self.installed = {'nano'}
+        os.environ['EDITOR'] = 'nano'
+        hint = lo._launch_question_hint(_Interface())
+        self.assertIn('**nano**', hint)
+        self.assertNotIn('help vi', hint)
+
+    def test_back_at_the_prompt_it_says_how_to_change_it(self):
+        import madgraph.interface.tutorials.lo as lo
+
+        class _Interface(object):
+            options = {'text_editor': 'emacs'}
+
+        self.installed = {'emacs'}
+        text = lo._editor_back_at_the_prompt(_Interface())
+        self.assertIn('**emacs**', text)
+        self.assertIn('`text_editor` option', text)
+        self.assertIn('set text_editor', text)
+        self.assertIn('save options text_editor', text)
+
+    def test_help_vi_answers(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        handler = _Handler()
+        logger = logging.getLogger('cmdprint')
+        logger.addHandler(handler)
+        level = logger.level
+        logger.setLevel(logging.INFO)
+        try:
+            extended_cmd.BasicCmd.help_vi(None)
+            # the launch switch question calls help_X with an argument
+            # (print_help_for_switch); without *args that crashed the launch
+            extended_cmd.BasicCmd.help_vi(None, '')
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(level)
+        self.assertEqual(len(captured), 2)
+        for key in (':wq', ':q!', 'Esc'):
+            self.assertIn(key, captured[0])
+
+
+class TutorialWaitingForTest(unittest.TestCase):
+    """What a failed command is told the tutorial is still waiting for."""
+
+    def test_it_is_the_current_steps_command(self):
+        """It used to quote the solution of the step *after* the current one:
+        at the bsm intro, a failed command was told the tutorial waited for
+        the step after's command rather than `import model`."""
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            interface = _Recording()
+            tutorial_mixin.attach(interface, tutorials.start('bsm'))
+            interface._tutorial_session.advance(0)
+            interface.notify_failed_command('display modellist')
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+            tutorial_mixin.detach(interface)
+        steps = tutorials.get('bsm').steps
+        self.assertTrue(captured)
+        self.assertIn(steps[0].get_solution(), captured[-1])
+        self.assertNotIn(steps[1].get_solution(), captured[-1])
+
+
+class DisplayModellistTest(unittest.TestCase):
+
+    def test_the_model_list_needs_no_model(self):
+        """It lists model directories and the online database: the banner
+        suggests it at startup, before any model is loaded."""
+
+        interface = _BareMadGraphCmd()
+        interface._curr_model = None
+        interface.check_display(['modellist'])      # does not raise
+        self.assertRaises(madgraph.InvalidCmd,
+                          interface.check_display, ['particles'])

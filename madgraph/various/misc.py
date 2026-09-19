@@ -1599,6 +1599,34 @@ class open_file(object):
                                     ['firefox', 'chrome', 'safari','opera'], 
                                     'web browser')
 
+    # tried in this order when neither the text_editor option nor $EDITOR
+    # names one
+    DEFAULT_TEXT_EDITORS = ['vi', 'emacs', 'vim', 'gedit', 'nano']
+
+    @classmethod
+    def resolve_text_editor(cls, configured=None, quiet=False):
+        """The text editor a card will open in.
+
+        The `text_editor` option if that program exists, else $EDITOR, else the
+        first of DEFAULT_TEXT_EDITORS found on the machine.  With `quiet`, it
+        says nothing and sets nothing -- for telling someone in advance which
+        editor they are about to get.
+        """
+
+        if configured:
+            if which(configured.split()[0]):
+                return configured
+            if not quiet:
+                logger.warning('Specified text editor %s not valid.' % configured)
+        if 'EDITOR' in os.environ:
+            return os.environ['EDITOR']
+        if quiet:
+            for candidate in cls.DEFAULT_TEXT_EDITORS:
+                if which(candidate):
+                    return candidate
+            return None
+        return cls.find_valid(cls.DEFAULT_TEXT_EDITORS, 'text editor')
+
     @classmethod
     def configure_mac(cls, configuration=None):
         """ configure the way to open a file for mac """
@@ -1611,22 +1639,7 @@ class open_file(object):
         for key in configuration:
             if key == 'text_editor':
                 # Treat text editor ONLY text base editor !!
-                if configuration[key]:
-                    program = configuration[key].split()[0]                    
-                    if not which(program):
-                        logger.warning('Specified text editor %s not valid.' % \
-                                                             configuration[key])
-                    else:
-                        # All is good
-                        cls.text_editor = configuration[key]
-                        continue
-                #Need to find a valid default
-                if 'EDITOR' in os.environ:
-                    cls.text_editor = os.environ['EDITOR']
-                else:
-                    cls.text_editor = cls.find_valid(
-                                        ['vi', 'emacs', 'vim', 'gedit', 'nano'],
-                                         'text editor')
+                cls.text_editor = cls.resolve_text_editor(configuration[key])
               
             elif key == 'eps_viewer':
                 if configuration[key]:
@@ -2317,8 +2330,15 @@ class EasterEgg(object):
             return ""
         from madgraph import MG5DIR
         import madgraph.interface.madgraph_interface as madgraph_interface
+        # written by bin/create_release.py, so a git checkout has none.  That is
+        # normal, not a failure: without it there is simply no contributor to
+        # celebrate, and reporting it printed a DEBUG line under every error
+        # message the user got (EasterEgg('error') comes through here).
+        authors = pjoin(MG5DIR, 'input', 'authors.md')
+        if not os.path.exists(authors):
+            return ""
         to_add = []
-        ff = open(pjoin(MG5DIR,'input','authors.md'), 'r')
+        ff = open(authors, 'r')
         for line in ff:
             author, fdate = line.split()
             year, month, day = [int(i) for i in fdate.split('-')]

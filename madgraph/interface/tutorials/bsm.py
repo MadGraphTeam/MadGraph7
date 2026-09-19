@@ -12,24 +12,107 @@
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""The `bsm` tutorial -- generating and validating physics beyond the SM.
+"""The `bsm` tutorial -- physics beyond the SM, through an effective theory.
 
-Uses MSSM_SLHA2, which ships with MG7, so the tutorial works without a network
-connection.
+Uses SMEFTatNLO, the dimension-six Standard Model EFT at NLO in QCD.  It is in
+the MG5 model database, so the first `import model` downloads it.  It teaches
+the parts of BSM work that are not the SM's: a dedicated coupling order, an
+order hierarchy under which the default search keeps the wrong diagrams, a
+convention for that order which changes the process line, and the linear and
+quadratic pieces of an EFT cross section.
 """
 
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  applied_orders, counts_line,
+                                                  model_line)
 
 P = 'MG7>'
+MODEL = 'SMEFTatNLO-NLO'
+DEFAULT = 'generate p p > t t~'
+ONE_INSERTION = 'generate p p > t t~ NP<=2'
+LINEAR = 'generate p p > t t~ NP^2==2'
+RESTRICTION = 'top'
+CUSTOMIZE = 'customize_model --save=%s' % RESTRICTION
+RELOAD = 'import model SMEFTatNLO-%s' % RESTRICTION
+
+# shown at the customize_model question, where the reader types it
+CUSTOMIZE_AT_QUESTION = """
+Switch off what a top pair never sees -- the operators with leptons in them,
+two whole blocks of the param card:
+
+  set DIM64F2L all 0         two quarks, two leptons
+  set DIM64F4L all 0         four leptons
+
+then `done`. `set NAME 0` does it for one coefficient, and `set NAME = OTHER`
+ties two together. Leave `DIM6` alone as a block: it also holds `Lambda`, and
+a zero scale is a division by zero.
+
+The question starts from `-NLO`: the operators it switches off are already
+listed at 0, and `set NAME free` switches one of them back on.
+"""
+
+
+def _orders(interface=None):
+    """The coupling orders the loaded model declares, and their hierarchy.
+
+    Read back rather than asserted: which orders a model defines, and what
+    each weighs, is the whole subject of the step.
+    """
+
+    model = getattr(interface, '_curr_model', None)
+    try:
+        orders = sorted(model.get('coupling_orders'))
+        hierarchy = model.get('order_hierarchy') or {}
+    except Exception:
+        return ''
+    if not orders:
+        return 'This model declares no coupling order at all.\n'
+    names = ['**%s**' % order for order in orders]
+    listed = (', '.join(names[:-1]) + ' and ' + names[-1]
+              if len(names) > 1 else names[0])
+    text = 'This model declares %s' % listed
+    if all(order in hierarchy for order in orders):
+        text += (',\nweighed %s in its hierarchy'
+                 % ', '.join('%s %s' % (order, hierarchy[order])
+                             for order in sorted(orders,
+                                                 key=lambda o: hierarchy[o])))
+    return text + '.\n'
+
+
+def _saved_restriction(interface=None):
+    """Where customize_model wrote the restriction card, if it did."""
+
+    import os
+
+    try:
+        path = os.path.join(interface._curr_model.get('modelpath'),
+                            'restrict_%s.dat' % RESTRICTION)
+    except Exception:
+        return ''
+    if not os.path.isfile(path):
+        return ''
+    return 'The restriction is saved as\n`%s`.\n' % path
+
+
+def _search_result(interface=None):
+    """The orders MG5 put on a process given none, as it printed them."""
+
+    found = [orders for orders in applied_orders(interface) if orders]
+    if not found:
+        return 'no coupling-order constraint at all'
+    return ' and '.join(
+        '**%s**' % ' '.join('%s<=%s' % (name, value)
+                            for name, value in sorted(orders.items()))
+        for orders in found[:2])
 
 
 tutorial = Tutorial(
     name='bsm',
     title='beyond the Standard Model',
-    description='new models, new states, their widths, and validating them',
+    description='an EFT model: its coupling order, conventions, and checks',
     order='sequence',
     see_also=('model', 'syntax', 'decays', 'checks'),
     steps=[
@@ -37,9 +120,8 @@ tutorial = Tutorial(
 Step('tutorial', """
 Nothing in MG7 knows about the Standard Model specifically. Hand it a different
 model and everything -- diagram generation, matrix elements, events -- works
-the same way. This tutorial is about the parts that are *not* the same: finding
-your way around an unfamiliar model, getting the widths of new states right,
-and convincing yourself the model is sound before you trust a number.
+the same way. This tutorial is about the parts that are *not* the same, on the
+most common kind of BSM model today: an effective field theory.
 
 Where BSM models come from:
   * **FeynRules** turns a Lagrangian into a UFO model. If your model does not
@@ -48,155 +130,138 @@ Where BSM models come from:
     and `import model NAME` fetches it.
   * **A colleague**, as a UFO directory you point `import model` at.
 
-We will use one that ships with MG7:
-%(p)s import model MSSM_SLHA2
-""" % {'p': P},
+We will use SMEFTatNLO, the dimension-six Standard Model EFT at NLO in QCD,
+from the database -- the first import downloads it. `-NLO` is the restriction
+the model provides for NLO QCD work:
+%(p)s import model %(model)s
+""" % {'p': P, 'model': MODEL},
      title='welcome',
-     solution='import model MSSM_SLHA2'),
+     hint="`import model NAME` also downloads a model from the database.",
+     solution='import model %s' % MODEL),
 
-Step('import_model', """
-That is the MSSM. `display particles` now lists the superpartners alongside the
-SM content -- `go` (gluino), `ul`/`ur`/`t1`/`t2` and friends (squarks),
-`n1`..`n4` (neutralinos), `x1+`/`x2+` (charginos), and an extended Higgs sector
-`h01`, `h2`, `h3`, `h+`.
+Step('import_model', lambda interface: """
+%(model)sNot one new particle: that is the Standard Model and its ghosts. The
+new physics is in the interactions -- dimension-six operators, each entering
+through a Wilson coefficient over Lambda^2. The coefficients are parameters of
+the model, in the param card's `DIM6`, `DIM62F` and `DIM64F` blocks, and the
+new vertices are what they multiply.
 
-Before generating anything, it is worth asking how this model labels its BSM
-content:
-
+Before generating anything, see how the model labels that new physics:
 %(p)s display coupling_order
-""" % {'p': P},
-     title='load a BSM model',
-     hint="`import model NAME` -- MSSM_SLHA2 ships with MG7.",
+""" % {'p': P, 'model': model_line(interface)},
+     title='load an EFT model',
      solution='display coupling_order'),
 
-Step('display', """
-Only `QCD` and `QED`. That is the first thing to check in any new model,
-because it tells you how to ask for the physics you want, and models split into
-two camps:
+Step('display', lambda interface: """
+%(orders)sThis is the camp of models with a dedicated order: `NP` marks the new
+physics, so you ask for it in the process line rather than by naming new
+particles. Two things about it are this model's own, and both matter:
 
-  * **No dedicated order**, like this one. New physics is identified by the
-    *particles* -- you get BSM by putting `go` or `n1` in the process, and the
-    coupling orders behave exactly as in the SM.
-  * **A dedicated order**, like `NP` in most EFT and simplified models. There
-    the new physics is a coupling, present in the same final states as the SM,
-    and you select it with orders:
+  * **NP counts powers of 1/Lambda.** Every operator comes with 1/Lambda^2, so
+    one operator insertion is `NP=2`, not 1 -- and `NP<=1` quietly removes
+    every EFT vertex. Other models count an insertion as `NP=1`; a model's
+    documentation says which.
+  * **NP is the cheapest order.** When you give no orders, MG5 keeps the
+    cheapest diagrams it can find, weighing each order by that hierarchy.
 
-      generate p p > e+ e- NP==0            SM only
-      generate p p > e+ e- NP==1            BSM amplitude only
-      generate p p > e+ e- NP^2==1          the SM-BSM INTERFERENCE
-      generate p p > e+ e- NP^2==2          the pure BSM squared term
-
-    For a dimension-six operator the interference term is the one that scales
-    as 1/Lambda^2, so it is usually the one you want -- and it is the one
-    people forget to ask for. `tutorial syntax` covers the `^2` syntax.
-
-With this model the BSM is in the particles, so:
-%(p)s generate p p > go go
-""" % {'p': P},
+See what that does to the simplest process there is:
+%(p)s %(default)s
+""" % {'p': P, 'default': DEFAULT, 'orders': _orders(interface)},
      title='how the model labels new physics',
-     hint="`display coupling_order` lists the orders a model defines.",
-     solution='generate p p > go go'),
+     hint="`generate p p > t t~`, with no orders on purpose.",
+     solution=DEFAULT),
 
-Step('generate', """
-Gluino pair production, from the model's own vertices -- you did not have to
-tell MG7 anything about SUSY.
+Step('generate', lambda interface: """
+%(counts)sMG5 settled on %(search)s -- and not one of those diagrams is the
+Standard Model. A top pair from QCD weighs 4, two QCD vertices at 2 each; one
+operator insertion weighs 2. The search took the lowest weight that produces
+anything, which is the EFT on its own: a pure 1/Lambda^4 piece with nothing to
+interfere with, and a prediction of nothing.
 
-New states usually decay, and there are two ways to handle that:
-  * a **decay chain** in the process line,
-    `generate p p > go go, go > g n1` -- exact spin correlations, but the
-    number of diagrams multiplies with each cascade step;
-  * **MadSpin** at run time, which keeps spin correlations without touching
-    the production diagrams. For long cascades this is the practical choice.
+That is the trap `tutorial syntax` warns about, and in a model like this one it
+is the default. Say the orders yourself -- the Standard Model plus at most one
+operator insertion:
+%(p)s %(one)s
+""" % {'p': P, 'one': ONE_INSERTION, 'counts': counts_line(interface),
+       'search': _search_result(interface)},
+     title='the default search, in an EFT',
+     hint="One operator insertion is `NP=2` in this model.",
+     solution=ONE_INSERTION),
 
-Neither forces the new state on shell -- both keep it on its Breit-Wigner --
-but both keep only the diagrams that go through it, and both are only as good
-as the widths in the card. Which is the thing that goes wrong most often in
-BSM studies, so:
+Step('generate', lambda interface: """
+%(counts)sThe Standard Model diagrams, and every single-insertion one beside
+them. Squared, that amplitude has three pieces:
 
-%(p)s compute_widths go --body_decay=2 --output=./mssm_widths.dat
-""" % {'p': P},
-     title='generate a BSM signal',
-     hint="Just name the new particles; the model supplies the vertices.",
-     solution='compute_widths go --body_decay=2 --output=./mssm_widths.dat'),
+  SM x SM      the Standard Model                     NP^2==0
+  SM x EFT     linear in the coefficients, 1/Lambda^2   NP^2==2
+  EFT x EFT    quadratic, 1/Lambda^4                  NP^2==4
 
-Step('compute_widths', """
-That computed the gluino width from the model and wrote a param card with it.
+The linear term is the one a dimension-six analysis is built on. The quadratic
+one is formally of the same order as the dimension-eight operators you did not
+include, so whether to keep it is a choice to make and to state. Ask for the
+linear term on its own:
+%(p)s %(linear)s
+""" % {'p': P, 'linear': LINEAR, 'counts': counts_line(interface)},
+     title='linear and quadratic',
+     hint="`^2` constrains the squared matrix element: `NP^2==2` is the "
+          "interference.",
+     solution=LINEAR),
 
-Three things about widths in BSM models:
+Step('generate', lambda interface: """
+%(counts)sThe same diagrams as a moment ago: as in `tutorial syntax`, a `^2`
+constraint picks which products survive the squaring, not which diagrams
+exist. It is also where the model's convention bites a second time. In a
+model counting an insertion as `NP=1`, this same term is `NP^2==1` -- which
+here asks for a term that does not exist, and generates nothing.
 
-  * **The card's widths are not automatically right.** A UFO model ships with
-    some benchmark point. Change a mass -- which is the whole point of a scan
-    -- and every width that mass feeds is now wrong. The symptom is a decayed
-    cross section larger than the undecayed one -- nothing forms a branching
-    ratio, so nothing caps the effective fraction at 1. The fix is
-    `DECAY <pdg> Auto` in the param card, which the scan machinery recomputes
-    at every point.
-  * **`compute_widths` is tree-level and narrow-width.** Honest for a narrow
-    state, not for a wide one, and it says so when you run it. For a resonance
-    with a width comparable to its mass, a hand-set width and a hard look at
-    the propagator treatment beat an automatic number.
-  * **`--output=` is not optional in practice.** Without it the result
-    overwrites the param card inside the model directory, silently changing
-    every later run that uses that model.
+A model this size carries far more than any one study needs: most of those
+operators never touch a top pair. `customize_model` builds a restriction of
+your own -- coefficients fixed to zero, to one, or tied together -- and
+`--save` keeps it, so it loads like the ones the model ships:
+%(p)s %(customize)s
+""" % {'p': P, 'customize': CUSTOMIZE, 'counts': counts_line(interface)},
+     title='the interference on its own',
+     # current while customize_model asks its question
+     question_hint=CUSTOMIZE_AT_QUESTION,
+     hint="`customize_model --save=NAME` opens a question; `done` closes it.",
+     solution=CUSTOMIZE),
 
-Now the step people skip. You have a model you did not write, and you are about
-to trust it. Test it:
+Step('customize_model', lambda interface: """
+%(model)s%(saved)sThat is now the model loaded here, and it started from where
+you were: the operators `-NLO` switches off were already in the question at 0,
+and your two blocks went on top. The lepton operators are gone, and so are
+the vertices they multiplied: a smaller model is a faster generation, and a
+shorter list of coefficients to keep track of.
 
-%(p)s check permutation p p > go go
-""" % {'p': P},
-     title='widths for new states',
-     hint="`compute_widths PARTICLE --body_decay=2 --output=FILE`",
-     solution='check permutation p p > go go'),
+In a later session, it loads by its name:
+%(p)s %(reload)s
+""" % {'p': P, 'reload': RELOAD, 'model': model_line(interface),
+       'saved': _saved_restriction(interface)},
+     title='a restriction of your own',
+     hint="`import model MODEL-NAME` loads restrict_NAME.dat.",
+     solution=RELOAD),
 
-Step('check', """
-That regenerated the process with the external legs permuted and checked the
-matrix element came out the same. It is a real test of the model and the
-machinery, and it costs a couple of seconds.
+Step('import_model', lambda interface: """
+%(model)sThe same restriction, loaded by name -- the way you will use it from
+now on. `tutorial checks` is the one to take before you trust a model you did
+not write.
 
-The family:
-  check permutation   relabelling the legs must not change |M|^2
-  check gauge         unitary and Feynman gauges must agree -- the sharpest
-                      test that a model's couplings are consistent
-  check lorentz       the amplitude must be frame independent
-  check brs           Ward identities, for processes with a massless gauge
-                      boson leg
-  check cms           complex-mass-scheme consistency near a resonance
-  check full          permutation, brs, gauge and lorentz together
-
-A new UFO model that fails `check gauge` has a bug in its Lagrangian or its
-conversion, and no amount of careful running will fix the answer.
-
-%(p)s history my_bsm_session.dat
-""" % {'p': P},
-     title='validate the model',
-     hint="`check permutation PROCESS`",
-     solution='history my_bsm_session.dat'),
-
-Step('history', lambda interface: """
-Two last things that bite in BSM work.
-
-**Big models are slow.** A full BSM model can have hundreds of particles, and
-generating with all of them is painful. `customize_model` opens the switches
-the model exposes -- zero masses, diagonal mixing, dropped sectors -- and
-`customize_model --save=NAME` keeps the result, and you reload it later with
-`import model MODEL-NAME`. Restricting to the sector you actually study is
-normal practice, not a shortcut.
-
-**EFTs need care that models do not.**
-  * Order counting is the physics. A dimension-six analysis usually wants the
-    interference term, `NP^2==1`, not the squared one -- mixing them up changes
-    the answer by more than any systematic.
-  * EFT amplitudes grow with energy by construction. A cross section dominated
-    by events above your cutoff is telling you the expansion has broken down,
+Three things that bite in EFT work:
+  * **The convention is the physics.** Which `NP` value is one insertion, and
+    so which squared order is the linear term, is the model's choice. Read its
+    documentation before you write a process line.
+  * **EFT amplitudes grow with energy**, by construction. A cross section
+    dominated by events above your cutoff says the expansion has broken down,
     not that you found something.
-  * `set complex_mass_scheme True` matters as soon as a wide resonance is
-    involved.
+  * **Widths move with the coefficients.** `ctW` changes t > W b, so the top
+    width depends on it. With `DECAY 6 Auto` in the param card it is computed
+    for the coefficients you set; with a number, it is not.
 
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'see_also': tutorials.where_next()},
-     title='big models and EFT pitfalls'),
+""" % {'model': model_line(interface), 'see_also': tutorials.where_next()},
+     title='your restriction, and EFT pitfalls'),
 
     ],
 )
