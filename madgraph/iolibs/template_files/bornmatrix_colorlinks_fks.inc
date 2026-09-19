@@ -1,26 +1,26 @@
       SUBROUTINE SBORN(P,ANS_SUMMED)
-C  
+C
 %(info_lines)s
 C
 C
 C     Return the sum of the split orders which are required in orders.inc (BORN_ORDERS)
 C     Also the values needed for the counterterms are stored in the C_BORN_CNT common block
-C  
-C  
+C
+C
 %(process_lines)s
 C
-C  
+C
 C CONSTANTS
-C 
+C
       implicit none
       include 'nexternal.inc'
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   %(ngraphs)d)
-C  
-C ARGUMENTS 
-C 
+C
+C ARGUMENTS
+C
       REAL*8 P(0:3,NEXTERNAL-1)
       double precision ans_summed
 C
@@ -35,7 +35,7 @@ C
       data keep_order / NSQAMPSO * .TRUE. /
       logical keep_order_born(NSQAMPSO)
       common /c_keep_order_B/ keep_order_born
-      common /c_keep_order_cnt/ keep_order_cnt 
+      common /c_keep_order_cnt/ keep_order_cnt
       common /c_born_cnt/ ans_cnt
       integer ord_subtract
       data firsttime / .TRUE. /
@@ -62,7 +62,7 @@ C
 C
 C BEGIN CODE
 C
-C look for orders which match the born order constraint 
+C look for orders which match the born order constraint
 
 force_ijglu_zero = .false.
 
@@ -72,7 +72,7 @@ C this is for the orders of the born to integrate
   do j = 1, nsplitorders
    if(GETORDPOWFROMINDEX_B(j, i) .gt. born_orders(j)) then
     keep_order(i) = .false.
-    EXIT 
+    EXIT
    endif
   enddo
   keep_order_born = keep_order
@@ -88,7 +88,7 @@ C this is for the orders of the counterterms
     endif
     if(GETORDPOWFROMINDEX_B(k, i) .gt. nlo_orders(k)-ord_subtract) then
      keep_order_cnt(j,i) = .false.
-     EXIT 
+     EXIT
     endif
    enddo
   enddo
@@ -144,7 +144,7 @@ C   keep track of the separate pieces correspoinding to different coupling combi
     if(abs(ans(1,i)).gt.max_val*tiny) amp_split(orders_to_amp_split_pos(amp_orders)) = ans(1,i)
  endif
 enddo
-C this is to avoid fake non-zero contributions 
+C this is to avoid fake non-zero contributions
 if (abs(ans_summed).lt.max_val*tiny) ans_summed=0d0
 
 wgt_me_born=ans_summed
@@ -166,7 +166,7 @@ do j = 1, nsplitorders
  ans_cnt(1:2,j) = (0d0, 0d0)
  if (.not.split_type_used(j)) cycle
  do i = 1, nsqampso
-  if (keep_order_cnt(j,i)) then 
+  if (keep_order_cnt(j,i)) then
    ANS_CNT(1,j) = ANS_CNT(1,J) + ANS(1,I)
    ANS_CNT(2,j) = ANS_CNT(2,J) + ANS(2,I)
 C   keep track of the separate pieces also for counterterms
@@ -176,12 +176,12 @@ C take into account the fact that the counterterm for a given split order
 C will be multiplied by the corresponding squared coupling
       if (k.eq.j) amp_orders(k) = amp_orders(k) + 2
    enddo
-C this is to avoid fake non-zero contributions 
+C this is to avoid fake non-zero contributions
    if (abs(ans(1,I)).gt.max_val*tiny) amp_split_cnt(orders_to_amp_split_pos(amp_orders),1,j) = ans(1,I)
    if (abs(ans(2,I)).gt.max_val*tiny) amp_split_cnt(orders_to_amp_split_pos(amp_orders),2,j) = ans(2,I)
   endif
  enddo
-C this is to avoid fake non-zero contributions 
+C this is to avoid fake non-zero contributions
  if (abs(ans_cnt(1,j)).lt.max_val*tiny) ans_cnt(1,j)=(0d0,0d0)
  if (abs(ans_cnt(2,j)).lt.max_val*tiny) ans_cnt(2,j)=(0d0,0d0)
 enddo
@@ -195,29 +195,29 @@ END
 
 
       SUBROUTINE SBORN_ONEHEL(P,NHEL,HELL,ANS_SUMMED)
-C  
+C
 %(info_lines)s
 C
 C
 C     Return the sum of the split orders which are required in orders.inc (BORN_ORDERS)
 C     It works for a single set of helicities, passed by NHEL
 C     Also the values needed for the counterterms are stored in the C_BORN_CNT common block
-C  
-C  
+C
+C
 %(process_lines)s
 C
-C  
+C
 C CONSTANTS
-C 
+C
       implicit none
       include 'nexternal.inc'
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   %(ngraphs)d)
-C  
-C ARGUMENTS 
-C 
+C
+C ARGUMENTS
+C
       REAL*8 P(0:3,NEXTERNAL-1)
       INTEGER NHEL(NEXTERNAL-1)
       integer HELL
@@ -233,7 +233,7 @@ C
       common /c_keep_order_B/ keep_order
 
       LOGICAL KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO)
-      common /c_keep_order_cnt/ keep_order_cnt 
+      common /c_keep_order_cnt/ keep_order_cnt
 
       integer amp_orders(nsplitorders)
       double precision tiny
@@ -263,7 +263,7 @@ C     stuff for the LO2
 C
 C BEGIN CODE
 C
-C look for orders which match the born order constraint 
+C look for orders which match the born order constraint
 
       iden=iden_values(nfksprocess)
 force_ijglu_zero = .true.
@@ -303,7 +303,7 @@ C the following is for the LO2
     endif
 enddo
 
-C this is to avoid fake non-zero contributions 
+C this is to avoid fake non-zero contributions
 if (abs(ans_summed).lt.max_val*tiny) ans_summed=0d0
 
   return
@@ -313,19 +313,19 @@ END
 
 
 SUBROUTINE SBORN_SPLITORDERS(P1,ANS)
-C  
+C
 %(info_lines)s
 C
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C AND HELICITIES
 C FOR THE POINT IN PHASE SPACE P1(0:3,NEXTERNAL-1)
-C  
+C
 %(process_lines)s
 C
       IMPLICIT NONE
-C  
+C
 C CONSTANTS
-C  
+C
       include "nexternal.inc"
       include "born_nhel.inc"
       INTEGER     NCOMB
@@ -336,14 +336,14 @@ C
       PARAMETER (THEL=NCOMB*%(nconfs)d)
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   %(ngraphs)d)
-C  
-C ARGUMENTS 
-C  
+C
+C ARGUMENTS
+C
       REAL*8 P1(0:3,NEXTERNAL-1)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
-C  
-C LOCAL VARIABLES 
-C  
+C
+C LOCAL VARIABLES
+C
       INTEGER IHEL,IDEN,i,j,jj,glu_ij
       REAL*8 borns(2,0:NSQAMPSO)
       COMPLEX*16 BORNTILDE
@@ -354,12 +354,12 @@ C
 %(helicity_lines)s
 %(den_factor_lines)s
 %(ij_lines)s
-C  
+C
 C GLOBAL VARIABLES
-C  
+C
       Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
       common/to_amps_born/  amp2,       jamp2
-      DATA jamp2(0,0) /   %(ncolor)d/          
+      DATA jamp2(0,0) /   %(ncolor)d/
       LOGICAL GOODHEL(NCOMB,%(nconfs)d)
       common /c_goodhel/goodhel
       double complex saveamp(ngraphs,max_bhel)
@@ -384,7 +384,7 @@ C ----------
        if (glu_ij.eq.0) then
          skip(nfksprocess)=0
        else
-         skip(nFKSprocess)=1			 
+         skip(nFKSprocess)=1
          do while(nhel(glu_ij ,skip(nFKSprocess)).ne.-NHEL(GLU_IJ ,1))
             skip(nFKSprocess)=skip(nFKSprocess)+1
          enddo
@@ -431,7 +431,7 @@ C ----------
         !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(nfksprocess).eq.0) then
         if (cond_ij) then
           IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LT. 2) ) THEN
-            
+
             CALL BORN(P1,NHEL(1,IHEL),IHEL,T,borns)
             DO I=1,NSQAMPSO
                 ANS(1,I)=ANS(1,I)+T(1,I)
@@ -454,8 +454,8 @@ C ----------
       ENDDO
       calculatedBorn=.true.
       END
-       
-       
+
+
       SUBROUTINE BORN(P,NHEL,HELL,ANS,borns)
 C
 %(info_lines)s
@@ -463,7 +463,7 @@ C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
 C
 C The amplitudes are computed by GET_AMP_BORN, the Born JAMPs by
-C GET_JAMP_BORN and all colour sums by BORN_COLOR_CONTRACT (colour
+C GET_JAMP_BORN and all colour sums by BORN_COLOR_SQUARE (colour
 C matrix 0 = the Born one). The JAMPs of every helicity are saved in
 C /TO_SAVEJAMP/ so that the colour-linked Borns (SB_SF_LINK) are just
 C a contraction of the same JAMPs with another colour matrix.
@@ -565,7 +565,7 @@ C       passed in, hell+skip for the flipped one of the FKS gluon
         CALL GET_JAMP_BORN(AMP,JAMP)
         savejamp(:,:,ihsave)=jamp(:,:)
 C       the Born: contraction with the Born colour matrix
-        CALL BORN_COLOR_CONTRACT(0,JAMP,JAMP,RES)
+        CALL BORN_COLOR_SQUARE(0,JAMP,RES)
         iflip=2-(1+back_hel*ihel)/2
         DO I = 1, NSQAMPSO
           BORNS(iflip,I)=BORNS(iflip,I)+DBLE(RES(I))
@@ -684,10 +684,11 @@ C                    (the same numbering as sborn_sf and born_links.dat)
 C For each squared split order it returns
 C   RES = sum_ij S_ij (JAMPA(j,M) conj(JAMPB(i,N))
 C                      + JAMPA(i,M) conj(JAMPB(j,N)))/2
-C i.e. conj(JAMP).S.JAMP (real) when JAMPA = JAMPB, and the symmetrised
-C interference needed for the spin-correlated Born otherwise.
-C The matrices are symmetric: only the upper triangle is stored, with the
-C off-diagonal entries doubled, as integers over DENOM(ILINK).
+C i.e. the symmetrised interference needed for the spin-correlated Born.
+C For JAMPA = JAMPB (the Born and the colour-linked Borns) use the cheaper
+C BORN_COLOR_SQUARE. The matrices are symmetric: only the upper triangle
+C is stored, with the off-diagonal entries doubled, as integers over
+C DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
 %(process_lines)s
 C
       IMPLICIT NONE
@@ -711,14 +712,11 @@ C
       INTEGER I,J,M,N,CF_INDEX
       COMPLEX*16 ZTEMP
       INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
 C
 C FUNCTION
 C
       INTEGER SQSOINDEXB
-C
-C COLOR DATA
-C
-%(color_link_data_lines)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -737,6 +735,94 @@ C ----------
         ENDDO
       ENDDO
       RES(:) = RES(:)/(2d0*DENOM(ILINK))
+      END
+
+
+      SUBROUTINE BORN_COLOR_SQUARE(ILINK,JAMP,RES)
+C
+%(info_lines)s
+C conj(JAMP).S.JAMP for each squared split order, S being the Born colour
+C matrix (ILINK = 0) or the one of the ILINK-th colour link, all in the
+C Born colour basis. Only the real part of RES is meaningful.
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=%(nlinks)d)
+C
+C ARGUMENTS
+C
+      INTEGER ILINK
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO), RES(NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,M,N,CF_INDEX
+      COMPLEX*16 ZTEMP, ZSUM, ZT(NCOLOR)
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C
+C FUNCTION
+C
+      INTEGER SQSOINDEXB
+C ----------
+C BEGIN CODE
+C ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      RES(:) = (0d0,0d0)
+      DO M = 1, NAMPSO
+C       ZT = S.JAMP(:,M), using the packed upper triangle
+        CF_INDEX = 0
+        DO I = 1, NCOLOR
+          ZTEMP = (0d0,0d0)
+          DO J = I, NCOLOR
+            CF_INDEX = CF_INDEX + 1
+            ZTEMP = ZTEMP + CF(CF_INDEX,ILINK)*JAMP(J,M)
+          ENDDO
+          ZT(I) = ZTEMP
+        ENDDO
+        DO N = 1, NAMPSO
+          ZSUM = (0d0,0d0)
+          DO I = 1, NCOLOR
+            ZSUM = ZSUM + ZT(I)*DCONJG(JAMP(I,N))
+          ENDDO
+          RES(SQSO(M,N)) = RES(SQSO(M,N)) + ZSUM
+        ENDDO
+      ENDDO
+      RES(:) = RES(:)/DENOM(ILINK)
+      END
+
+
+      BLOCK DATA BORN_COLOR_DATA
+C The colour matrices in the Born colour basis: index 0 is the Born one,
+C 1..NLINKS the colour links (upper triangle, off-diagonal entries doubled,
+C integers over DENOM)
+      IMPLICIT NONE
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=%(nlinks)d)
+      INTEGER I
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+%(color_link_data_lines)s
       END
 
 
@@ -820,7 +906,7 @@ C ----------
       ANS(:) = 0D0
       DO IHEL=1,NCOMB
          IF (GOODHEL(IHEL,nFKSprocess)) THEN
-           CALL BORN_COLOR_CONTRACT(ILINK,SAVEJAMP(:,:,IHEL),SAVEJAMP(:,:,IHEL),RES)
+           CALL BORN_COLOR_SQUARE(ILINK,SAVEJAMP(:,:,IHEL),RES)
            DO I=1,NSQAMPSO
              ANS(I)=ANS(I)+DBLE(RES(I))
            ENDDO
@@ -879,13 +965,13 @@ C
 
       INTEGER FUNCTION SQSOINDEXB(AMPORDERA,AMPORDERB)
 C
-C This functions plays the role of the interference matrix. It can be hardcoded or 
+C This functions plays the role of the interference matrix. It can be hardcoded or
 C made more elegant using hashtables if its execution speed ever becomes a relevant
 C factor. From two split order indices of the jamps, it return the corresponding
 C index in the squared order canonical ordering.
 C
 C CONSTANTS
-C      
+C
       implicit none
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
