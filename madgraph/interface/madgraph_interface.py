@@ -1826,6 +1826,8 @@ This will take effect only in a NEW terminal
             return 'pythia8'
         elif not os.path.isdir(os.path.join(path, 'SubProcesses')):
             raise self.InvalidCmd('%s : Not a valid directory' % path)
+        if os.path.isfile(pjoin(subproc_path, 'check_sa_fks_mode')):
+            return 'amcatnlo_fks_sa'
         if os.path.isfile(pjoin(bin_path,'madevent')):
             return 'madevent'
         elif os.path.isfile(pjoin(subproc_path, 'madmatrix_standalone.mk')):
@@ -8983,6 +8985,38 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if lhapdf.config:
             os.environ['MADGRAPH_LHAPDF_CONFIG'] = lhapdf.config
 
+    def launch_fks_standalone(self, me_dir):
+        """Build and run the lightweight Born 'check_fks' executable produced
+        by 'output standalone_fortran --fks'. Compiles the Source libraries,
+        then for
+        each born subprocess directory builds 'check_fks' and runs it, echoing
+        the Born / spin-correlated Born / linked-Born values for one
+        phase-space point."""
+        me_dir = os.path.abspath(me_dir)
+        sourcedir = pjoin(me_dir, 'Source')
+        subprocdir = pjoin(me_dir, 'SubProcesses')
+
+        logger.info('Compiling Source libraries for the FKS standalone check...')
+        misc.compile(cwd=sourcedir)
+
+        born_dirs = sorted(os.path.dirname(f) for f in
+                           glob.glob(pjoin(subprocdir, 'P*', 'check_sa_fks.f')))
+        if not born_dirs:
+            raise self.InvalidCmd(
+                'No FKS standalone born directory found in %s' % subprocdir)
+
+        for born_path in born_dirs:
+            pdir = os.path.basename(born_path)
+            logger.info('Building check_fks in %s ...' % pdir)
+            misc.compile(['check_fks'], cwd=born_path)
+            logger.info('==== %s ====' % pdir)
+            output = misc.Popen(['./check_fks'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, cwd=born_path
+                                ).communicate()[0]
+            if isinstance(output, bytes):
+                output = output.decode(errors='replace')
+            logger.info(output)
+
     def do_launch(self, line):
         """Main commands: Ask for editing the parameter and then
         Execute the code (madevent/standalone/...)
@@ -8999,6 +9033,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         options = options.__dict__
         # args is now MODE PATH
 
+        if args[0] == 'amcatnlo_fks_sa':
+            self.launch_fks_standalone(args[1])
+            return
+
         if args[0] == 'standalone':
             class ext_program:
                 @staticmethod
@@ -9008,7 +9046,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         subprocess.run(os.path.join("bin", "generate_events"))
                     except KeyboardInterrupt:
                         pass
-
         elif args[0].startswith('standalone'):
             if os.path.isfile(os.path.join(os.getcwd(),args[1],'Cards',\
               'MadLoopParams.dat')) and not os.path.isfile(os.path.join(\
@@ -12474,8 +12511,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
             
 
-        if self._export_format in ['NLO', 'ewsudsa']:
-            ## write fj_lhapdf_opts file            
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
+            ## write fj_lhapdf_opts file
             # Create configuration file [path to executable] for amcatnlo
             filename = os.path.join(self._export_dir, 'Cards', 'amcatnlo_configuration.txt')
             opts_to_keep = ['lhapdf', 'fastjet', 'pythia8_path', 'hwpp_path', 'thepeg_path', 
