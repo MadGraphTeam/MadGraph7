@@ -1506,12 +1506,12 @@ class ConfigFile(dict):
                                 v *=  float(split[2*i+2])
                             else:
                                 v /=  float(split[2*i+2])
-                    except:
-                        v=0
-                    finally:
-                        value = int(v)
-                        if value != v:
-                            raise InvalidCmd( "%s can not be mapped to an integer" % v)
+                    except (ValueError, ZeroDivisionError, IndexError):
+                        # was silently 0: "ht/4" became dynamical_scale_choice 0
+                        raise InvalidCmd("%s can not be mapped to an integer" % value)
+                    value = int(v)
+                    if value != v:
+                        raise InvalidCmd( "%s can not be mapped to an integer" % v)
                 else:
                     try:
                         value = float(value.replace('d','e'))
@@ -6711,6 +6711,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)
+        self.add_toml_param('beam', 'scale_factor', 1.0)
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
                      'half_transverse_mass', 'partonic_energy'])
@@ -6956,7 +6957,12 @@ class RunCardMG7(RunCard):
             return True
         if key == 'store_rwgt_info':
             return True
-        if key in ('scalefact', 'mur_over_ref', 'muf_over_ref'):
+        if key == 'scalefact':
+            # applies to the dynamical scale only
+            if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
+                return 1.0
+            return float(beam['scale_factor'])
+        if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
         if key in ('ickkw', 'ievo_eva', 'evaorder'):
             return 0
@@ -7261,6 +7267,15 @@ class RunCardMG7(RunCard):
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
 
+        beam = self['beam']
+        if float(beam['scale_factor']) <= 0.:
+            raise InvalidRunCard("scale_factor must be strictly positive")
+        if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
+                and beam['fixed_fact_scale']):
+            logger.warning(
+                "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
+                beam['scale_factor'])
+
         # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
         # generic 'allowed' machinery cannot check it on its own.
         devices = self['run']['device']
@@ -7444,6 +7459,7 @@ class RunCardMG7(RunCard):
         'nevents': 'generation.events',
         'gridpack': 'gridpack.save_gridpack',
         'fixed_ren_scale': 'beam.fixed_ren_scale',
+        'scalefact': 'beam.scale_factor',
         'scale': 'beam.ren_scale',
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',

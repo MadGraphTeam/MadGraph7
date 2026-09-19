@@ -1854,6 +1854,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1862,6 +1863,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
+            py::arg("scale_factor") = 1.,
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
@@ -3090,6 +3092,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "dyn_scales",
             &SystematicsConfig::dyn_scales,
             pydoc::doc("SystematicsConfig::dyn_scales")
+        )
+        .def_readwrite(
+            "scale_factor",
+            &SystematicsConfig::scale_factor,
+            pydoc::doc("SystematicsConfig::scale_factor")
         )
         .def_readwrite(
             "pdf_members",
