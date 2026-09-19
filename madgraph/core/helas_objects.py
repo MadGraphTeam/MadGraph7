@@ -5751,6 +5751,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if model is None:
             model = self.get('processes')[0].get('model')
 
+        # Any previously built exact-lookup tables belong to the old validity
+        # pass.  They are reconstructed lazily by get_external_flavor_index().
+        self._external_flavor_index_maps = {}
+
         # reset the per-diagram store (this is the authoritative source)
         for diag in self.get('diagrams'):
             diag.valid_flavors = set()
@@ -5888,6 +5892,46 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             return self['allowed_flavors'], self['allowed_flavors_pdgs']
         else:
             return self['allowed_flavors']
+
+    def get_external_flavor_index(self, flavor, from_pdgs=False):
+        """Return the one-based local row for an exact external assignment.
+
+        ``flavor`` is a per-leg group-position vector by default.  With
+        ``from_pdgs=True`` it is the signed physical-PDG vector in generated
+        external-leg order.  Zero is the same invalid/unresolved sentinel used
+        by generated ``GET_FLAVOR_INDEX`` routines.
+
+        The index is local to this matrix element.  In particular, callers
+        must resolve Born and real assignments independently rather than pass a
+        row number from one matrix element to another.
+        """
+        flavors, pdgs = self.get_external_flavors(return_pdgs=True)
+        source = pdgs if from_pdgs else flavors
+        cache_name = 'pdgs' if from_pdgs else 'flavors'
+        cache = getattr(self, '_external_flavor_index_maps', None)
+        if cache is None:
+            cache = {}
+            self._external_flavor_index_maps = cache
+        if cache_name not in cache:
+            cache[cache_name] = dict(
+                (tuple(row), index)
+                for index, row in enumerate(source, start=1))
+        try:
+            return cache[cache_name].get(tuple(flavor), 0)
+        except TypeError:
+            return 0
+
+    def get_external_flavor(self, index, return_pdgs=False):
+        """Return one local flavor row, or ``None`` for an invalid index.
+
+        The public Python API deliberately does not map an invalid index to row
+        one: doing so would silently evaluate the wrong physical NLO channel.
+        """
+        flavors, pdgs = self.get_external_flavors(return_pdgs=True)
+        source = pdgs if return_pdgs else flavors
+        if not isinstance(index, int) or index < 1 or index > len(source):
+            return None
+        return source[index - 1]
 
     def get_external_flavors_with_iden(self, return_pdgs=False):
         if self['allowed_flavors_with_iden']:

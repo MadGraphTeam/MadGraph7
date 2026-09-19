@@ -2387,6 +2387,55 @@ class TestFKSCommon(unittest.TestCase):
         for leg, res in zip(leg_list, res_list):
             self.assertEqual(fks_common.to_fks_leg(leg, self.model), res)                                                                                            
 
+    def test_merged_fks_leg_keeps_and_resolves_physical_charge(self):
+        """A merged FKS leg must not silently replace its charge tuple with
+        zero or with one representative member's charge.
+
+        Structural FKS generation can carry the tuple, while every numerical
+        QED use must name the physical PDG whose scalar charge is required.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+        q = model.get_particle(81)
+        self.assertIsNotNone(q)
+
+        leg = fks_common.to_fks_leg(
+            MG.Leg({'id': 81, 'number': 1, 'state': False}), model)
+        self.assertIsInstance(leg.get('charge'), tuple)
+        self.assertEqual(set(round(charge * 3)
+                             for charge in leg.get('charge')), {-1, 2})
+        self.assertAlmostEqual(leg.get_charge_for_pdg(1, model), -1. / 3.)
+        self.assertAlmostEqual(leg.get_charge_for_pdg(2, model), 2. / 3.)
+
+        antileg = fks_common.to_fks_leg(
+            MG.Leg({'id': -81, 'number': 2, 'state': False}), model)
+        self.assertEqual(set(round(charge * 3)
+                             for charge in antileg.get('charge')), {1, -2})
+        self.assertAlmostEqual(
+            antileg.get_charge_for_pdg(-1, model), 1. / 3.)
+        self.assertAlmostEqual(
+            antileg.get_charge_for_pdg(-2, model), -2. / 3.)
+
+        born_legs = fks_common.to_fks_legs(MG.LegList([
+            MG.Leg({'id': 81, 'number': 1, 'state': False}),
+            MG.Leg({'id': -81, 'number': 2, 'state': False}),
+            MG.Leg({'id': 24, 'number': 3, 'state': True}),
+            MG.Leg({'id': -24, 'number': 4, 'state': True}),
+        ]), model)
+        for born_leg in born_legs[:2]:
+            qed_splittings = fks_common.find_splittings(
+                born_leg, model, {}, pert='QED')
+            self.assertTrue(qed_splittings)
+            for splitting in qed_splittings:
+                real_legs = fks_common.insert_legs(
+                    born_legs, born_leg, splitting, pert='QED')
+                self.assertEqual(len(real_legs), len(born_legs) + 1)
+
+        self.assertRaises(fks_common.FKSProcessError,
+                          leg.get_charge_for_pdg, 5, model)
+        self.assertRaises(fks_common.FKSProcessError,
+                          antileg.get_charge_for_pdg, 2, model)
+
     def test_find_color_links(self): 
         """tests if all the correct color links are found for a given born process"""
         # QCD splitting
@@ -3618,6 +3667,3 @@ class TestFKSDiagramTag(unittest.TestCase):
 
         self.assertEqual(fks_common.FKSDiagramTag.reorder_permutation(\
             perm1, perm2), goal)
-
-
-

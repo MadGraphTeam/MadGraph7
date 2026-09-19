@@ -501,7 +501,12 @@ def insert_legs(leglist_orig, leg, split,pert='QCD'):
     # merge of the EW branch in aMC@NLO trunk.
     #if split[1][color] > 0:
         try:
-            del col_maxindex[-split[1][color]]
+            opposite_color = split[1][color]
+            if isinstance(opposite_color, tuple):
+                opposite_color = tuple(-value for value in opposite_color)
+            else:
+                opposite_color = -opposite_color
+            del col_maxindex[opposite_color]
         except KeyError:
             pass
     #so now the maximum of the max_col entries should be the position to insert leg i
@@ -957,6 +962,42 @@ class FKSLeg(MG.Leg):
         keys += ['fks', 'color','charge', 'massless', 'spin','is_tagged','is_part','self_antipart',]
         return keys
 
+    def get_charge_for_pdg(self, physical_pdg, model):
+        """Return the scalar charge for one physical member of this FKS leg.
+
+        Merged particles can carry several charges.  Their tuple is structural
+        metadata only and must never be flattened to a representative value for
+        a QED kernel or charge-linked Born.  Numerical users name the signed
+        physical PDG explicitly; this method validates that it belongs to the
+        merged leg and then delegates charge conjugation to the physical model
+        particle.
+        """
+        leg_pdg = self.get('id')
+        merged = model.get('merged_particles')
+        members = merged.get(abs(leg_pdg))
+        if members:
+            same_orientation = ((leg_pdg > 0 and physical_pdg > 0) or
+                                (leg_pdg < 0 and physical_pdg < 0))
+            if abs(physical_pdg) not in members or not same_orientation:
+                raise FKSProcessError(
+                    'Physical PDG %s is not a member of merged FKS leg %s'
+                    % (physical_pdg, leg_pdg))
+        elif physical_pdg != leg_pdg:
+            raise FKSProcessError(
+                'Physical PDG %s does not match FKS leg %s'
+                % (physical_pdg, leg_pdg))
+
+        particle = model.get_particle(physical_pdg)
+        if particle is None:
+            raise FKSProcessError(
+                'Physical PDG %s is not present in the model' % physical_pdg)
+        charge = particle.get_charge()
+        if isinstance(charge, tuple):
+            raise FKSProcessError(
+                'Physical PDG %s still resolves to a merged charge %s'
+                % (physical_pdg, charge))
+        return charge
+
     
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -975,7 +1016,10 @@ class FKSLeg(MG.Leg):
                 raise self.PhysicsObjectError("%s is not a valid boolean for leg flag %s" % \
                                                                     (str(value), name))
         if name == 'charge':
-            if not isinstance(value, float):
-                raise self.PhysicsObjectError("%s is not a valid float for leg flag charge" \
-                    % str(value))                                                           
+            if not isinstance(value, (float, tuple)) or \
+                    isinstance(value, tuple) and \
+                    not all(isinstance(charge, float) for charge in value):
+                raise self.PhysicsObjectError(
+                    "%s is not a valid float or tuple of floats for leg flag charge"
+                    % str(value))
         return super(FKSLeg,self).filter(name, value)

@@ -340,7 +340,12 @@ class LoopDiagram(base_objects.Diagram):
             inter = model.get_interaction(tag_elem[2])
             coup_keys = sorted(inter.get('couplings').keys())
             interactions_tagging[i]=(
-                tuple((key, inter.get('couplings')[key]) for key in coup_keys),
+                tuple((key,
+                       inter.get('couplings')[key].get_canonical_key()
+                       if isinstance(inter.get('couplings')[key],
+                                     base_objects.FLV_Coupling)
+                       else inter.get('couplings')[key])
+                      for key in coup_keys),
                 tuple(str(c) for c in inter.get('color')),
                 tuple(inter.get('lorentz')))
 
@@ -1801,4 +1806,3 @@ class FDStructureList(base_objects.PhysicsObjectList):
         for struct in self:
             mystr = mystr + "  " + struct.nice_string() + '\n'
         return mystr[:-1]
-

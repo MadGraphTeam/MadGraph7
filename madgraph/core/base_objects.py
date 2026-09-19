@@ -2649,6 +2649,20 @@ class FLV_Coupling(PhysicsObject):
         """return all couplings"""
         return misc.make_unique(list(self['flavors'].values()))
 
+    def get_canonical_key(self):
+        """Return immutable physical content suitable for identity tags.
+
+        ``FLV_Coupling`` inherits from ``dict`` and is intentionally mutable
+        while merged interactions are assembled, so the object itself cannot
+        be hashed.  Loop-diagram identification nevertheless needs coupling
+        information in a dictionary key.  The generated ``name`` is not part
+        of the physics and can depend on construction order; the complete,
+        sorted flavor-to-coupling table is the canonical identity.
+        """
+        return ('FLV_Coupling', tuple(sorted(
+            (tuple(flavor), coupling)
+            for flavor, coupling in self['flavors'].items())))
+
     @staticmethod
     def get_partner_indices(key):
         """Return the (k1, k2) partner flavor indices for one flavor key.
@@ -3520,6 +3534,29 @@ class Diagram(PhysicsObject):
             return 1
         else:
             return 2**num_props
+
+    @staticmethod
+    def get_charge_flow_difference(final_charge, initial_charge):
+        """Return the charge-flow identity used by FKS matrix-element tags.
+
+        The historical scalar case remains the numerical difference.  A merged
+        charge is a set of possible physical values, so subtracting tuples is
+        undefined and flattening either endpoint would merge physically
+        different channels.  Keep both immutable endpoints instead.  This is
+        deliberately conservative: it may identify fewer matrix elements, but
+        cannot equate two different merged charge flows.
+        """
+        if not isinstance(final_charge, tuple) and \
+                not isinstance(initial_charge, tuple):
+            return final_charge - initial_charge
+
+        def canonical(charge):
+            if isinstance(charge, tuple):
+                return ('merged', tuple(charge))
+            return ('scalar', charge)
+
+        return ('merged_charge_flow',
+                canonical(initial_charge), canonical(final_charge))
         
     def get_flow_charge_diff(self, model):
         """return the difference of total diff of charge occuring on the 
@@ -3557,7 +3594,8 @@ class Diagram(PhysicsObject):
             if vcurrent in drawdiag.initial_vertex:
                 return [None, None]
             
-            out.append(model.get_particle(l_last.id).get('charge') - init_charge)    
+            out.append(self.get_charge_flow_difference(
+                model.get_particle(l_last.id).get('charge'), init_charge))
         return out
                 
 

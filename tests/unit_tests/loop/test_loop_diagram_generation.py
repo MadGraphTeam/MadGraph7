@@ -1468,6 +1468,38 @@ class LoopDiagramFDStructTest(unittest.TestCase):
         self.mymodel.set('interactions', self.myinterlist)
         self.myproc.set('model',self.mymodel)
 
+    def test_loop_identification_tag_supports_flavor_couplings(self):
+        """Loop-identification tags must contain immutable coupling data.
+
+        A FLV_Coupling is a mutable PhysicsObject and therefore cannot itself
+        be a dictionary key.  Its canonical key must also distinguish two
+        physically different flavor tables even if their generated names are
+        the same.
+        """
+        first = base_objects.FLV_Coupling(
+            'FLV_TEST', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        second = base_objects.FLV_Coupling(
+            'FLV_TEST', {(1, 1): 'GC_1', (2, 2): 'GC_3'})
+
+        interaction = self.mymodel.get_interaction(3)
+        original = interaction.get('couplings')[(0, 0)]
+        interaction.get('couplings')[(0, 0)] = first
+        try:
+            diagram = loop_base_objects.LoopDiagram()
+            diagram.set('canonical_tag', [[1, [], 3]])
+            tag_first = diagram.build_loop_tag_for_diagram_identification(
+                self.mymodel, loop_base_objects.FDStructureList())
+            hash(tag_first)
+
+            interaction.get('couplings')[(0, 0)] = second
+            tag_second = diagram.build_loop_tag_for_diagram_identification(
+                self.mymodel, loop_base_objects.FDStructureList())
+            hash(tag_second)
+        finally:
+            interaction.get('couplings')[(0, 0)] = original
+
+        self.assertNotEqual(tag_first, tag_second)
+
     def test_gg_5gglgl_bubble_tag(self):
         """ Test the gg>ggggg g*g* tagging of a bubble"""
 

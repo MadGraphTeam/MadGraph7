@@ -1688,6 +1688,21 @@ class DiagramTest(unittest.TestCase):
                            mydiagramlist.nice_string)
         return
 
+    def test_charge_flow_difference_with_merged_charges(self):
+        """FKS matrix-element tags retain scalar historical differences and
+        use an immutable, conservative endpoint descriptor for merged charges.
+        """
+        self.assertEqual(
+            base_objects.Diagram.get_charge_flow_difference(2. / 3., -1. / 3.),
+            1.)
+        merged = base_objects.Diagram.get_charge_flow_difference(
+            (-1. / 3., 2. / 3.), (-1. / 3., 2. / 3.))
+        hash(merged)
+        self.assertNotEqual(
+            merged,
+            base_objects.Diagram.get_charge_flow_difference(
+                (-1. / 3., 2. / 3.), (1. / 3., -2. / 3.)))
+
 #===============================================================================
 # ProcessTest
 #===============================================================================
