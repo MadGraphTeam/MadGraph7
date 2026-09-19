@@ -584,6 +584,87 @@ def combine_ij( i, j, model, dict, pert='QCD'): #test written
     return to_fks_legs(ij, model)       
 
 
+def map_real_to_born_pdgs(real_pdgs, fks_info, model,
+                          underlying_index=0):
+    """Map one physical real-emission PDG row to its underlying Born row.
+
+    ``fks_info`` stores topology-level (and possibly merged) PDGs.  At runtime
+    the real matrix element instead selects one concrete physical row.  Remove
+    the FKS daughters ``i`` and ``j``, reconstruct their mother at position
+    ``ij``, and validate the result against the requested topology-level
+    ``underlying_born`` entry.
+
+    The mother of a merged quark is resolved from whichever daughter belongs to
+    that merged group; only its flavor is inherited, while the sign comes from
+    ``ij_id``.  An unmerged mother (for example a gluon from q q~) is already
+    fully specified by ``ij_id``.
+    """
+    real_pdgs = list(real_pdgs)
+    try:
+        i_fks = fks_info['i']
+        j_fks = fks_info['j']
+        ij_fks = fks_info['ij']
+        mother_id = fks_info['ij_id']
+        underlying = list(
+            fks_info['underlying_born'][underlying_index])
+    except (KeyError, IndexError, TypeError):
+        raise FKSProcessError('Incomplete FKS information for physical flavor mapping')
+
+    if not all(isinstance(index, int)
+               for index in (i_fks, j_fks, ij_fks)) or \
+            i_fks == j_fks or \
+            min(i_fks, j_fks) < 1 or \
+            max(i_fks, j_fks) > len(real_pdgs) or \
+            ij_fks < 1 or ij_fks > len(real_pdgs) - 1:
+        raise FKSProcessError(
+            'Invalid FKS leg positions i=%s, j=%s, ij=%s for %d real legs'
+            % (i_fks, j_fks, ij_fks, len(real_pdgs)))
+
+    merged = model.get('merged_particles')
+    members = merged.get(abs(mother_id))
+    if members:
+        abs_members = set(abs(member) for member in members)
+        daughter_flavors = set(
+            abs(real_pdgs[position - 1])
+            for position in (i_fks, j_fks)
+            if abs(real_pdgs[position - 1]) in abs_members)
+        if len(daughter_flavors) != 1:
+            raise FKSProcessError(
+                'Cannot resolve merged mother %s from physical daughters %s and %s'
+                % (mother_id, real_pdgs[i_fks - 1], real_pdgs[j_fks - 1]))
+        physical_member = daughter_flavors.pop()
+        mother_pdg = physical_member if mother_id > 0 else -physical_member
+    else:
+        mother_pdg = mother_id
+
+    born_pdgs = [pdg for position, pdg in enumerate(real_pdgs, start=1)
+                 if position not in (i_fks, j_fks)]
+    born_pdgs.insert(ij_fks - 1, mother_pdg)
+
+    if len(born_pdgs) != len(underlying):
+        raise FKSProcessError(
+            'Physical underlying Born has %d legs, expected %d'
+            % (len(born_pdgs), len(underlying)))
+
+    for physical_pdg, topology_pdg in zip(born_pdgs, underlying):
+        topology_members = merged.get(abs(topology_pdg))
+        if topology_members:
+            valid_member = abs(physical_pdg) in set(
+                abs(member) for member in topology_members)
+            same_orientation = ((topology_pdg > 0 and physical_pdg > 0) or
+                                (topology_pdg < 0 and physical_pdg < 0))
+            if not valid_member or not same_orientation:
+                raise FKSProcessError(
+                    'Physical underlying Born row %s does not match topology %s'
+                    % (born_pdgs, underlying))
+        elif physical_pdg != topology_pdg:
+            raise FKSProcessError(
+                'Physical underlying Born row %s does not match topology %s'
+                % (born_pdgs, underlying))
+
+    return born_pdgs
+
+
 def find_pert_particles_interactions(model, pert_order = 'QCD'): #test written
     """given a model and pert_order, returns a dictionary with as entries:
     --interactions : the interactions of order pert_order

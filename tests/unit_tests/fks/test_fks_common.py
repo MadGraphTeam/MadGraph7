@@ -2436,6 +2436,49 @@ class TestFKSCommon(unittest.TestCase):
         self.assertRaises(fks_common.FKSProcessError,
                           antileg.get_charge_for_pdg, 2, model)
 
+    def test_map_physical_real_to_underlying_born_pdgs(self):
+        """Initial- and final-state FKS mappings are reconstructed from
+        physical real rows without leaking merged pseudo-PDGs.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+
+        initial_info = {
+            'i': 5, 'j': 1, 'ij': 1, 'ij_id': 81,
+            'underlying_born': [[81, -81, 24, -24]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [21, -2, 24, -24, -2], initial_info, model),
+            [2, -2, 24, -24])
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, -24, 21], initial_info, model),
+            [2, -2, 24, -24])
+
+        final_info = {
+            'i': 5, 'j': 3, 'ij': 3, 'ij_id': 81,
+            'underlying_born': [[2, -2, 81, -24]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 4, -24, 21], final_info, model),
+            [2, -2, 4, -24])
+
+        gluon_mother_info = {
+            'i': 5, 'j': 4, 'ij': 4, 'ij_id': 21,
+            'underlying_born': [[2, -2, 24, 21]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, 3, -3], gluon_mother_info, model),
+            [2, -2, 24, 21])
+
+        self.assertRaises(
+            fks_common.FKSProcessError,
+            fks_common.map_real_to_born_pdgs,
+            [21, -5, 24, -24, -5], initial_info, model)
+
     def test_find_color_links(self): 
         """tests if all the correct color links are found for a given born process"""
         # QCD splitting

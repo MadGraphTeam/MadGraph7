@@ -790,6 +790,114 @@ class FKSHelasProcess(object):
             for info in real.fks_infos:
                 info_list.append({'n_me' : n + 1,'pdgs' : pdgs, 'fks_info' : info})
         return info_list
+
+    def get_fks_flavor_map(self):
+        """Return physical flavor classes for every FKS configuration.
+
+        Each entry translates one signed physical real-emission PDG row to the
+        independently resolved local rows of its real and underlying-Born
+        matrix elements.  The FKS configuration index follows
+        :meth:`get_fks_info_list` order and is one-based, as are all local
+        Fortran flavor indices.
+
+        A topology-level merged process can cover real rows that do not belong
+        to every one of its FKS configurations.  Such rows are omitted when
+        they cannot map to a valid underlying Born row.  A configuration with
+        no physical rows is an error.
+        """
+        flavor_map = []
+        config_index = 0
+        merged = self.born_me.get('processes')[0].get('model').get(
+            'merged_particles')
+
+        def physical_properties(pdgs, model):
+            charges = []
+            colors = []
+            for pdg in pdgs:
+                if abs(pdg) in merged:
+                    raise fks_common.FKSProcessError(
+                        'Merged pseudo-PDG %s leaked into a physical FKS row'
+                        % pdg)
+                particle = model.get_particle(pdg)
+                if particle is None:
+                    raise fks_common.FKSProcessError(
+                        'Physical PDG %s is not present in the model' % pdg)
+                charge = particle.get_charge()
+                if isinstance(charge, tuple):
+                    raise fks_common.FKSProcessError(
+                        'Physical PDG %s has unresolved merged charge %s'
+                        % (pdg, charge))
+                charges.append(charge)
+                colors.append(particle.get_color())
+            return charges, colors
+
+        for n_me, real in enumerate(self.real_processes, start=1):
+            real_me = real.matrix_element
+            model = real_me.get('processes')[0].get('model')
+            real_flavors, real_pdg_rows = \
+                real_me.get_external_flavors(return_pdgs=True)
+            for info in real.fks_infos:
+                config_index += 1
+                config_entries = []
+                for real_flavor, real_pdgs in zip(real_flavors,
+                                                  real_pdg_rows):
+                    try:
+                        born_pdgs = fks_common.map_real_to_born_pdgs(
+                            real_pdgs, info, model)
+                    except fks_common.FKSProcessError:
+                        # This physical real row is outside the union member
+                        # represented by this grouped FKS topology.
+                        continue
+
+                    real_index = real_me.get_external_flavor_index(
+                        real_pdgs, from_pdgs=True)
+                    born_index = self.born_me.get_external_flavor_index(
+                        born_pdgs, from_pdgs=True)
+                    if real_index == 0 or born_index == 0:
+                        continue
+
+                    real_charges, real_colors = physical_properties(
+                        real_pdgs, model)
+                    born_charges, born_colors = physical_properties(
+                        born_pdgs, model)
+
+                    virtual_index = 0
+                    if self.virt_matrix_element is not None:
+                        virtual_index = self.virt_matrix_element.\
+                            get_external_flavor_index(
+                                born_pdgs, from_pdgs=True)
+                        if virtual_index == 0:
+                            raise fks_common.FKSProcessError(
+                                'No virtual flavor row for physical Born %s'
+                                % born_pdgs)
+
+                    entry = {
+                        'fks_config_index': config_index,
+                        'n_me': n_me,
+                        'fks_info': info,
+                        'real_pdgs': list(real_pdgs),
+                        'born_pdgs': born_pdgs,
+                        'real_flavor': real_flavor,
+                        'born_flavor': self.born_me.get_external_flavor(
+                            born_index),
+                        'real_flavor_index': real_index,
+                        'born_flavor_index': born_index,
+                        'extra_cnt_flavor_index': 0,
+                        'virtual_flavor_index': virtual_index,
+                        'real_charges': real_charges,
+                        'born_charges': born_charges,
+                        'real_colors': real_colors,
+                        'born_colors': born_colors,
+                    }
+                    config_entries.append(entry)
+
+                if not config_entries:
+                    raise fks_common.FKSProcessError(
+                        'FKS configuration %d has no valid physical flavor rows'
+                        % config_index)
+                flavor_map.extend(config_entries)
+
+        return flavor_map
         
 
     def get_lh_pdg_string(self):
@@ -1036,5 +1144,4 @@ class FKSHelasRealProcess(object): #test written
         """Inequality operator:
         compare two FKSHelasRealProcesses by comparing their dictionaries"""
         return not self.__eq__(other)
-
 

@@ -799,4 +799,65 @@ class testFKSHelasObjects(unittest.TestCase):
 
         self.assertEqual(goal, helas_born_proc.get_fks_info_list())
 
+    def test_grouped_fks_physical_flavor_map(self):
+        """Each physical real row resolves its own local real and underlying
+        Born indices; topology-level merged charges never enter the map.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+        legs = MG.LegList([
+            MG.Leg({'id': 81, 'number': 1, 'state': False}),
+            MG.Leg({'id': -81, 'number': 2, 'state': False}),
+            MG.Leg({'id': 24, 'number': 3, 'state': True}),
+            MG.Leg({'id': -24, 'number': 4, 'state': True}),
+        ])
+        process = MG.Process({
+            'legs': legs,
+            'model': model,
+            'squared_orders': {'QCD': 2, 'QED': 4},
+            'sqorders_types': {'QCD': '=', 'QED': '='},
+            'born_sq_orders': {'QCD': 0, 'QED': 4},
+            'perturbation_couplings': ['QCD'],
+            'NLO_mode': 'real',
+            'split_orders': ['QCD', 'QED'],
+        })
+        fks_process = fks_base.FKSProcess(process)
+        fks_process.generate_reals([], diagram_generation.AmplitudeList())
+        helas_process = fks_helas.FKSHelasProcess(fks_process, [], [])
+
+        flavor_map = helas_process.get_fks_flavor_map()
+        self.assertEqual(len(flavor_map), 16)
+        self.assertEqual(
+            set(entry['fks_config_index'] for entry in flavor_map),
+            {1, 2, 3, 4})
+
+        for entry in flavor_map:
+            real = helas_process.real_processes[entry['n_me'] - 1]
+            self.assertEqual(
+                real.matrix_element.get_external_flavor_index(
+                    entry['real_pdgs'], from_pdgs=True),
+                entry['real_flavor_index'])
+            self.assertEqual(
+                helas_process.born_me.get_external_flavor_index(
+                    entry['born_pdgs'], from_pdgs=True),
+                entry['born_flavor_index'])
+            self.assertGreater(entry['real_flavor_index'], 0)
+            self.assertGreater(entry['born_flavor_index'], 0)
+            self.assertTrue(all(isinstance(charge, float)
+                                for charge in entry['real_charges']))
+            self.assertTrue(all(abs(pdg) not in model['merged_particles']
+                                for pdg in entry['real_pdgs']))
+            self.assertTrue(all(abs(pdg) not in model['merged_particles']
+                                for pdg in entry['born_pdgs']))
+
+        # Check one crossed g q~ real row explicitly: the real and Born indices
+        # are looked up in separate local tables even when their numeric values
+        # happen to coincide for this process.
+        crossed = [entry for entry in flavor_map
+                   if entry['real_pdgs'] == [21, -2, 24, -24, -2]]
+        self.assertEqual(len(crossed), 1)
+        self.assertEqual(crossed[0]['born_pdgs'], [2, -2, 24, -24])
+        self.assertEqual(crossed[0]['real_flavor_index'], 2)
+        self.assertEqual(crossed[0]['born_flavor_index'], 2)
+
         
