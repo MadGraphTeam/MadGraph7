@@ -68,3 +68,38 @@ def test_round_trip_with_cuts():
     assert np.mean(rt > 1e-2) < 1e-4
     assert np.quantile(rt, 0.999) < 1e-6
     assert np.mean(np.max(np.abs(r_inv - r), axis=1)[ok] > 1e-6) < 1e-4
+
+
+@pytest.mark.parametrize(
+    "masses",
+    [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 173.0, 173.0, 0.0, 0.0]],
+    ids=["massless", "t tbar g g"],
+)
+def test_lab_frame_on_shell(masses):
+    """The boost to the hadronic frame keeps every momentum on its mass shell
+    and momentum conserved: written as E cosh y + p_z sinh y, a particle moving
+    against the boost lost a factor e^{2|y|} of relative precision, up to
+    ~3e-5 in sqrt|p^2 - m^2| / E."""
+    cm_energy = 13000.0
+    mapping = ms.PhaseSpaceMapping(
+        masses,
+        cm_energy,
+        mode=ms.PhaseSpaceMapping.color_ordered,
+        color_order=[0, 2, 3, 4, 5, 1],
+    )
+    rng = np.random.default_rng(3)
+    inputs = [rng.random((N, mapping.random_dim()))]
+    if mapping.discrete_dim():
+        inputs.append(
+            rng.integers(0, 2, size=(N, mapping.discrete_dim())).astype(np.int32)
+        )
+    p, x1, x2, det = mapping.map_forward(inputs)
+    # zero-weight points at x1 or x2 ~ 1e-13 have no meaningful momenta
+    p = p[det > 1e-20]
+    m2 = p[..., 0] ** 2 - np.sum(p[..., 1:] ** 2, axis=-1)
+    # |p^2 - m^2| / E^2: a few 1e-15 for massless momenta, ~1e-12 for the top
+    # that absorbs the rounding of the others; it reached ~1e-9 before
+    off_shell = np.abs(m2 - np.square(masses)) / p[..., 0] ** 2
+    assert np.max(off_shell) < 1e-11
+    violation = np.abs(np.sum(p[:, 2:], axis=1) - np.sum(p[:, :2], axis=1))
+    assert np.max(violation) < 1e-14 * cm_energy

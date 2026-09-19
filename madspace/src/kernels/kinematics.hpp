@@ -418,18 +418,104 @@ KERNELSPEC Pair<FourMom<T>, FourMom<T>> boost_two_body(
 
 template <typename T>
 KERNELSPEC void
-boost_beam(FIn<T, 2> q, FVal<T> x1, FVal<T> x2, FVal<T> sign, FOut<T, 2> p_out) {
+boost_beam(
+    FIn<T, 2> q,
+    FIn<T, 1> masses,
+    FVal<T> x1,
+    FVal<T> x2,
+    FVal<T> sign,
+    FOut<T, 2> p_out
+) {
+    // Boost along z with rapidity y = log(x1 / x2) / 2. The first two momenta
+    // are the incoming ones.
+    //
+    // Written as E cosh y + p_z sinh y, a momentum moving against the boost
+    // comes out of the cancellation of terms of order e^{|y|} E and loses a
+    // factor e^{2|y|} of relative precision; light-like momenta ended up off
+    // shell by up to a few 1e-5 of their energy in the lab frame. For those
+    // momenta (lab energy below the partonic one) the boost is done in
+    // light-cone components, q_+ = E + p_z -> e^{+y} q_+,
+    // q_- = E - p_z -> e^{-y} q_-, with the smaller of q_+, q_- taken from the
+    // mass shell, q_+ q_- = m^2 + p_T^2, and the known mass of the particle (a
+    // negative entry means unknown, and the mass is read off the momentum).
+    // All other momenta keep the linear boost, which is accurate for them.
     auto exp_rap = sqrt(x1 / x2);
-    auto exp_rap_inv = 1. / exp_rap;
-    auto cosh_rap = 0.5 * (exp_rap + exp_rap_inv);
-    auto sinh_rap = 0.5 * (exp_rap - exp_rap_inv);
+    auto exp_rap_inv = sqrt(x2 / x1);
+    auto e_plus = where(sign > 0., exp_rap, exp_rap_inv);
+    auto e_minus = where(sign > 0., exp_rap_inv, exp_rap);
+    auto cosh_rap = 0.5 * (e_plus + e_minus);
+    auto sinh_rap = 0.5 * (e_plus - e_minus);
     for (std::size_t i = 0; i < q.size(); ++i) {
         auto q_i = q[i];
         auto p_out_i = p_out[i];
-        p_out_i[0] = q_i[0] * cosh_rap + sign * q_i[3] * sinh_rap;
-        p_out_i[1] = q_i[1];
-        p_out_i[2] = q_i[2];
-        p_out_i[3] = q_i[3] * cosh_rap + sign * q_i[0] * sinh_rap;
+        FVal<T> mass(masses[i]);
+        FVal<T> q0(q_i[0]), q1(q_i[1]), q2(q_i[2]), q3(q_i[3]);
+        auto lin_0 = q0 * cosh_rap + q3 * sinh_rap;
+        auto lin_3 = q3 * cosh_rap + q0 * sinh_rap;
+
+        auto pt2 = q1 * q1 + q2 * q2;
+        auto m2 = where(mass >= 0., mass * mass, max(q0 * q0 - q3 * q3 - pt2, 0.));
+        auto trans2 = m2 + pt2;
+        auto q_plus_direct = q0 + q3;
+        auto q_minus_direct = q0 - q3;
+        auto q_plus = where(
+            q3 >= 0., q_plus_direct, trans2 / max(q_minus_direct, FVal<T>(EPS2))
+        );
+        auto q_minus = where(
+            q3 < 0., q_minus_direct, trans2 / max(q_plus_direct, FVal<T>(EPS2))
+        );
+        auto p_plus = e_plus * q_plus;
+        auto p_minus = e_minus * q_minus;
+        // Only for a momentum that is on its mass shell to rounding. The
+        // projection moves it by its mass-shell error times e^{|y|}; for one
+        // that is not (a degenerate point, or partonic momenta that carry
+        // larger errors from elsewhere) that would be more than the precision
+        // gained, and it keeps the linear boost.
+        auto on_shell =
+            fabs(q_plus_direct * q_minus_direct - trans2) <= 1e-13 * q0 * q0;
+        auto light_cone = (q_plus_direct >= 0.) & (q_minus_direct >= 0.) & on_shell &
+            (lin_0 < q0);
+        p_out_i[0] = where(light_cone, 0.5 * (p_plus + p_minus), lin_0);
+        p_out_i[1] = q1;
+        p_out_i[2] = q2;
+        p_out_i[3] = where(light_cone, 0.5 * (p_plus - p_minus), lin_3);
+    }
+
+    // The light-cone boost also moves a momentum onto its mass shell, by its
+    // (tiny) partonic mass-shell error amplified by e^{|y|}. So that momentum
+    // stays conserved exactly as with the linear boost, these shifts are handed
+    // to the outgoing momentum with the largest energy: it is set to its linear
+    // boost minus the shifts of all others. It carries at least 1/n of the
+    // energy, so this costs it no relative precision.
+    if (q.size() > 3) {
+        auto best_e = FVal<T>(p_out[2][0]);
+        auto best_i = IVal<T>(2);
+        for (std::size_t i = 3; i < q.size(); ++i) {
+            FVal<T> e_i(p_out[i][0]);
+            auto larger = e_i > best_e;
+            best_i = where(larger, IVal<T>(static_cast<int>(i)), best_i);
+            best_e = where(larger, e_i, best_e);
+        }
+        FVal<T> shift_0(0.), shift_3(0.);
+        FVal<T> best_lin_0(0.), best_lin_3(0.);
+        for (std::size_t i = 2; i < q.size(); ++i) {
+            auto q_i = q[i];
+            FVal<T> q0(q_i[0]), q3(q_i[3]);
+            auto lin_0 = q0 * cosh_rap + q3 * sinh_rap;
+            auto lin_3 = q3 * cosh_rap + q0 * sinh_rap;
+            auto is_best = best_i == IVal<T>(static_cast<int>(i));
+            shift_0 = shift_0 +
+                where(is_best, FVal<T>(0.), FVal<T>(p_out[i][0]) - lin_0);
+            shift_3 = shift_3 +
+                where(is_best, FVal<T>(0.), FVal<T>(p_out[i][3]) - lin_3);
+            best_lin_0 = where(is_best, lin_0, best_lin_0);
+            best_lin_3 = where(is_best, lin_3, best_lin_3);
+        }
+        for (std::size_t i = 2; i < q.size(); ++i) {
+            auto is_best = best_i == IVal<T>(static_cast<int>(i));
+            p_out[i][0] = where(is_best, best_lin_0 - shift_0, FVal<T>(p_out[i][0]));
+            p_out[i][3] = where(is_best, best_lin_3 - shift_3, FVal<T>(p_out[i][3]));
+        }
     }
 }
 
@@ -500,14 +586,18 @@ KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> phi_m1_m2_from_p1com(
 
 template <typename T>
 KERNELSPEC void
-kernel_boost_beam(FIn<T, 2> p1, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out) {
-    boost_beam<T>(p1, x1, x2, 1.0, p_out);
+kernel_boost_beam(
+    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+) {
+    boost_beam<T>(p1, masses, x1, x2, 1.0, p_out);
 }
 
 template <typename T>
 KERNELSPEC void
-kernel_boost_beam_inverse(FIn<T, 2> p1, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out) {
-    boost_beam<T>(p1, x1, x2, -1.0, p_out);
+kernel_boost_beam_inverse(
+    FIn<T, 2> p1, FIn<T, 1> masses, FIn<T, 0> x1, FIn<T, 0> x2, FOut<T, 2> p_out
+) {
+    boost_beam<T>(p1, masses, x1, x2, -1.0, p_out);
 }
 
 template <typename T>

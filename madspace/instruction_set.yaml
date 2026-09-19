@@ -643,6 +643,9 @@ boost_beam:
     - name: p1
       type: [float, n, 4]
       desc: "momenta in the partonic center-of-mass frame"
+    - name: masses
+      type: [float, n]
+      desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
       desc: "momentum fraction of beam 1"
@@ -660,6 +663,9 @@ boost_beam_inverse:
     - name: p1
       type: [float, n, 4]
       desc: "momenta in the lab frame"
+    - name: masses
+      type: [float, n]
+      desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
       desc: "momentum fraction of beam 1"
