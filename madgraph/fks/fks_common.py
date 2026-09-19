@@ -685,6 +685,68 @@ def insert_color_links(col_basis, col_obj, links): #test written
 
 
 
+def born_basis_link_matrices(col_basis, links, Nc=3):
+    """Colour-link matrices expressed in the Born colour basis itself.
+
+    For each link (as returned by find_color_links) return the square matrix
+        S_ij = sum_k M_ik L_kj
+    such that the colour-linked Born is  sum_ij conj(JAMP_i) S_ij JAMP_j,
+    with the very same JAMPs as the Born. M is the rectangular matrix between
+    the Born basis and the link basis (insert_color_links' link_matrix) and L
+    expresses each link-basis element in terms of the Born basis elements:
+    inserting the link into the Born basis elements (used as "diagrams" with
+    unit coefficient) gives JAMP_link_k = sum_j L_kj JAMP_j by linearity,
+    which is exactly what the diagram-based link basis computes.
+
+    Rows/columns follow sorted(col_basis), the ordering of the Born JAMPs and
+    colour matrix. Entries are exact complex rationals, returned as
+    (real, imag) pairs of Fractions in a dict {(i, j): (re, im)}."""
+
+    born_keys = sorted(col_basis.keys())
+    # the Born basis elements, each one a "diagram" with coefficient 1
+    col_obj = []
+    for key in born_keys:
+        string = color_algebra.ColorString()
+        string.from_immutable(key)
+        col_obj.append({(0,): string})
+
+    def cmul(a, b):
+        return (a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0])
+
+    result = []
+    for link in insert_color_links(col_basis, col_obj, links):
+        link_keys = sorted(link['link_basis'].keys())
+        # L[k][j]: coefficient of Born element j in link-basis element k
+        L = []
+        for key in link_keys:
+            row = {}
+            for entry in link['link_basis'][key]:
+                j, coeff, is_imag, nc_power = entry[0], entry[2], entry[3], \
+                                              entry[4]
+                val = fractions.Fraction(coeff) * \
+                      fractions.Fraction(Nc) ** nc_power
+                val = (fractions.Fraction(0), val) if is_imag else \
+                      (val, fractions.Fraction(0))
+                old = row.get(j, (0, 0))
+                row[j] = (old[0] + val[0], old[1] + val[1])
+            L.append(row)
+        S = {}
+        for i in range(len(born_keys)):
+            for k in range(len(link_keys)):
+                m_val, m_imag = link['link_matrix'].col_matrix_fixed_Nc[(i, k)]
+                m = (fractions.Fraction(0), m_val) if m_imag else \
+                    (fractions.Fraction(m_val), fractions.Fraction(0))
+                if m == (0, 0):
+                    continue
+                for j, l in L[k].items():
+                    prod = cmul(m, l)
+                    old = S.get((i, j), (0, 0))
+                    S[(i, j)] = (old[0] + prod[0], old[1] + prod[1])
+        result.append({'link': link['link'], 'matrix': S,
+                       'ncolor': len(born_keys)})
+    return result
+
+
 def find_color_links(leglist, symm = False,pert = 'QCD'): #test written
     """Finds all the possible color(charge) links between any 
     two legs of the born.

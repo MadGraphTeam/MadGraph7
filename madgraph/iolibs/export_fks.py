@@ -35,6 +35,8 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import fractions
+import math
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.files as files
@@ -92,6 +94,12 @@ def make_jpeg_async(args):
 class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
+
+    # When True, born.f carries the colour-linked Borns itself: the Born
+    # JAMPs are contracted with one colour matrix per link, all expressed in
+    # the Born colour basis (see fks_common.born_basis_link_matrices),
+    # instead of writing one b_sf_NNN.f per link with its own colour basis.
+    born_color_links_in_born = False
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -2165,6 +2173,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         if proc_type=='born':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
+        elif proc_type=='born_links':
+            file = open(pjoin(_file_path, \
+            'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
         elif proc_type=='bhel':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/born_hel_splitorders_fks.inc')).read()
@@ -2252,9 +2263,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         else:
             born_dict['skip_amp_cnt'] = ''
 
+        if self.born_color_links_in_born:
+            born_dict.update(self.get_born_color_link_dict(matrix_element))
+            born_type = 'born_links'
+        else:
+            born_type = 'born'
+
         calls_born, ncolor_born, norders, nsqorders = \
             self.write_split_me_fks(writers.FortranWriter(filename),
-                                    born_me, fortran_model, 'born', '',
+                                    born_me, fortran_model, born_type, '',
                                     start_dict = born_dict)
 
         filename = 'born_maxamps.inc'
@@ -2279,6 +2296,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     
         self.color_link_files = [] 
         for j in range(len(matrix_element.color_links)):
+            if self.born_color_links_in_born:
+                # the colour-linked Borns live in born.f (SB_SF_LINK)
+                break
             filename = 'b_sf_%3.3d.f' % (j + 1)
             self.color_link_files.append(filename)
             self.write_b_sf_fks(writers.FortranWriter(filename),
@@ -2899,6 +2919,10 @@ Parameters              %(params)s\n\
 
         replace_dict['nsqorders'] = nsqorders
         replace_dict['iflines_col'] = ''
+        if self.born_color_links_in_born:
+            call = 'call sb_sf_link(p_born,%(ilink)d,wgt_col)'
+        else:
+            call = 'call sb_sf_%(ilink)3.3d(p_born,wgt_col)'
          
         for i, c_link in enumerate(color_links):
             ilink = i+1
@@ -2908,14 +2932,14 @@ Parameters              %(params)s\n\
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
-                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                    " % {'m':m, 'n': n, 'iff': iff} + \
+                    call % {'ilink': ilink} + "\n"
             else:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
-                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                    " % {'m':m, 'n': n, 'iff': iff} + \
+                    call % {'ilink': ilink} + "\n"
 
         
         if replace_dict['iflines_col']:
@@ -2930,6 +2954,84 @@ Parameters              %(params)s\n\
         writer.writelines(file)
 
     
+    def get_born_color_link_dict(self, matrix_element):
+        """The replace_dict entries of the born.f template carrying the
+        colour-linked Borns (born_color_links_in_born): the number of links
+        and the DATA lines of all the colour matrices, the Born one (index 0)
+        and one per colour link (index 1..nlinks, the order of
+        matrix_element.color_links, i.e. of sborn_sf and born_links.dat),
+        all in the Born colour basis."""
+        born_me = matrix_element.born_me
+        col_basis = born_me.get('color_basis')
+        ncolor = max(1, len(col_basis))
+
+        # the Born colour matrix
+        if born_me.get('color_matrix'):
+            cm = born_me.get('color_matrix').col_matrix_fixed_Nc
+            born = {}
+            for i in range(ncolor):
+                for j in range(ncolor):
+                    val, imag = cm[(i, j)]
+                    born[(i, j)] = (fractions.Fraction(0), fractions.Fraction(val)) \
+                                   if imag else (fractions.Fraction(val), fractions.Fraction(0))
+        else:
+            born = {(0, 0): (fractions.Fraction(1), fractions.Fraction(0))}
+        matrices = [born]
+
+        # the colour links, found exactly as FKSHelasProcess.set_color_links
+        if len(col_basis):
+            legs = born_me.get('base_amplitude').get('process').get('legs')
+            model = born_me.get('base_amplitude').get('process').get('model')
+            links_info = fks_common.find_color_links(
+                fks_common.to_fks_legs(legs, model), symm=True,
+                pert=matrix_element.perturbation)
+            link_mats = fks_common.born_basis_link_matrices(col_basis,
+                                                            links_info)
+            if [l['link'] for l in link_mats] != \
+               [l['link'] for l in matrix_element.color_links]:
+                raise MadGraph5Error('colour links in the Born basis do not '
+                                     'match the ones of the matrix element')
+            matrices += [l['matrix'] for l in link_mats]
+        else:
+            # colourless Born: only charge links, which sborn_sf builds from
+            # the charges and the Born, never from a colour matrix
+            matrices += [{} for l in matrix_element.color_links]
+
+        lines = self.get_color_link_data_lines(matrices, ncolor)
+        return {'nlinks': len(matrices) - 1,
+                'color_link_data_lines': '\n'.join(lines)}
+
+    @staticmethod
+    def get_color_link_data_lines(matrices, ncolor, n=64):
+        """DATA lines for CF(NCOLOR*(NCOLOR+1)/2, 0:NLINKS) and
+        DENOM(0:NLINKS): for each (real, symmetric) matrix the upper
+        triangle, row by row, off-diagonal entries doubled, as integers over
+        the common denominator of the matrix."""
+        lines = []
+        for ilink, mat in enumerate(matrices):
+            den = 1
+            for (i, j), (re, im) in mat.items():
+                if im != 0:
+                    raise MadGraph5Error('complex colour matrix %d' % ilink)
+                if mat.get((j, i), (0, 0)) != (re, im):
+                    raise MadGraph5Error('non-symmetric colour matrix %d'
+                                         % ilink)
+                den = den * fractions.Fraction(re).denominator // \
+                      math.gcd(den, fractions.Fraction(re).denominator)
+            vals = []
+            for i in range(ncolor):
+                for j in range(i, ncolor):
+                    num = fractions.Fraction(mat.get((i, j), (0, 0))[0]) * den
+                    assert num.denominator == 1
+                    vals.append(int(num) * (1 if i == j else 2))
+            lines.append('DATA DENOM(%d)/%d/' % (ilink, den))
+            for start in range(0, len(vals), n):
+                chunk = vals[start:start + n]
+                lines.append('DATA (CF(I,%d),I=%d,%d) /%s/' % (
+                    ilink, start + 1, start + len(chunk),
+                    ','.join('%d' % v for v in chunk)))
+        return lines
+
     def get_sudakov_imag_power(self, base_me, sudakov_me):
         """return the exponent of I to account for the Z -> Chi replacement.
         Since the result is base * conj(sudakov), the exponent is the difference
@@ -5325,6 +5427,10 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     Born-only 'check_fks' executable printing, for one phase-space point,
     the Born B, the spin-correlated Born BORNTILDE and the linked Borns B_ij.
     """
+
+    # born.f carries the Born and all its colour-linked versions, contracting
+    # the same Born JAMPs with one colour matrix per link (no b_sf_NNN.f)
+    born_color_links_in_born = True
 
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                  me_ntot, path=os.getcwd(), OLP='MadLoop'):
