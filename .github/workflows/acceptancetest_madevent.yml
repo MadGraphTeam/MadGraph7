@@ -574,12 +574,16 @@ jobs:
     # Crossing symmetry end to end in madevent, plus the density reweighting
     # that splits over cores. Run one after the other; each keeps its own step,
     # run even when an earlier one failed.
+    #
+    # restore_heptools: the default LO PDF is an LHAPDF set (NNPDF4.0), so
+    # every madevent launch needs lhapdf-config.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
 
       # ---- crossed event labels ----
       # The W+ helicity of p p > w+ j (a crossed massive vector) and the colour
