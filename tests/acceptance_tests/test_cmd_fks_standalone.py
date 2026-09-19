@@ -15,12 +15,10 @@
 """Acceptance tests for the FKS Born building-block standalone output
 ('output standalone_fortran --fks').
 
-Both tests compile and run Fortran (the lightweight 'check_fks' driver), so
+These tests compile and run Fortran (the lightweight 'check_fks' driver), so
 they live in the acceptance tier rather than unit_tests (whose 1s budget would
-silently skip them). The first is a focused regression on the hardcoded Born
-building-block values at the driver's fixed RAMBO seed; the second checks that
-those values agree with the ones obtained from a plain aMC@NLO output of the
-same process.
+silently skip them). They cover hardcoded Born values, production equivalence,
+multi-point determinism, output shape, invalid controls and FKS limits.
 """
 from __future__ import division
 from __future__ import absolute_import
@@ -32,7 +30,9 @@ import subprocess
 import tempfile
 import unittest
 
+from madgraph import MG5DIR, MadGraph5Error
 import madgraph.interface.master_interface as MGCmd
+import madgraph.interface.launch_ext_program as launch_ext
 import madgraph.various.misc as misc
 
 pjoin = os.path.join
@@ -187,38 +187,76 @@ class TestFKSStandalone(unittest.TestCase):
         self.assertTrue(found, 'no FKS standalone born dir in %s' % path)
         return os.path.dirname(found[0])
 
-    def _run_check_fks(self, born_dir):
+    def _run_check_fks(self, born_dir, points=None, seed=(1802, 9373),
+                       energy=0, calls=1):
         """run an already-built check_fks and return its stdout."""
         exe = pjoin(born_dir, 'check_fks')
         self.assertTrue(os.path.isfile(exe),
                         'check_fks not built in %s' % born_dir)
-        out = subprocess.check_output([exe], cwd=born_dir,
+        command = [exe]
+        if points is not None:
+            command.extend([str(energy), str(calls), str(points),
+                            str(seed[0]), str(seed[1])])
+        out = subprocess.check_output(command, cwd=born_dir,
                                       stderr=subprocess.STDOUT)
         return out.decode(errors='replace')
 
     @staticmethod
-    def parse_check_fks(output):
-        """extract (born, borntilde, {(m,n): b_ij}) from check_fks stdout."""
-        born = borntilde = None
-        bij = {}
-        # 'BORN  =  ...' but NOT the 'BORN: keeping split order' debug lines
-        m = re.search(r'BORN\s*=\s*([-+\d.EeDd]+)', output)
-        if m:
-            born = float(m.group(1).replace('D', 'E').replace('d', 'e'))
-        m = re.search(r'BORNTILDE\s*=\s*([-+\d.EeDd]+)', output)
-        if m:
-            borntilde = float(m.group(1).replace('D', 'E').replace('d', 'e'))
+    def _fortran_float(value):
+        return float(value.replace('D', 'E').replace('d', 'e'))
+
+    @classmethod
+    def parse_check_fks_points(cls, output):
+        """Parse the stable POINT/P/value records emitted by check_fks."""
+        points = []
+        point = None
         for line in output.splitlines():
             toks = line.split()
-            if len(toks) == 4 and toks[0] == 'B_ij':
+            if len(toks) == 2 and toks[0] == 'POINT':
+                point = {'index': int(toks[1]), 'momenta': {},
+                         'born': None, 'borntilde': None, 'bij': {}}
+                points.append(point)
+            elif point is not None and len(toks) == 6 and toks[0] == 'P':
+                point['momenta'][int(toks[1])] = tuple(
+                    cls._fortran_float(v) for v in toks[2:])
+            elif point is not None and len(toks) == 3 and \
+                    toks[0] == 'BORN' and toks[1] == '=':
+                point['born'] = cls._fortran_float(toks[2])
+            elif point is not None and len(toks) == 3 and \
+                    toks[0] == 'BORNTILDE' and toks[1] == '=':
+                point['borntilde'] = cls._fortran_float(toks[2])
+            elif point is not None and len(toks) == 4 and toks[0] == 'B_ij':
                 key = (int(toks[1]), int(toks[2]))
-                bij[key] = float(toks[3].replace('D', 'E').replace('d', 'e'))
-        return born, borntilde, bij
+                point['bij'][key] = cls._fortran_float(toks[3])
+        return points
+
+    @classmethod
+    def parse_check_fks(cls, output):
+        """Return the historical tuple interface for the first point."""
+        points = cls.parse_check_fks_points(output)
+        if not points:
+            return None, None, {}
+        point = points[0]
+        return point['born'], point['borntilde'], point['bij']
 
     def assertClose(self, value, ref, rel=1e-6, msg=''):
         self.assertIsNotNone(value, 'missing value (%s)' % msg)
         self.assertAlmostEqual(value, ref, delta=abs(ref) * rel + 1e-9,
                                msg='%s: %r vs %r' % (msg, value, ref))
+
+    def assertPointsClose(self, actual, expected, rel=1e-9):
+        self.assertEqual(len(actual), len(expected))
+        for left, right in zip(actual, expected):
+            self.assertEqual(left['index'], right['index'])
+            self.assertEqual(left['momenta'], right['momenta'])
+            self.assertClose(left['born'], right['born'], rel=rel,
+                             msg='point %d BORN' % left['index'])
+            self.assertClose(left['borntilde'], right['borntilde'], rel=rel,
+                             msg='point %d BORNTILDE' % left['index'])
+            self.assertEqual(set(left['bij']), set(right['bij']))
+            for key in left['bij']:
+                self.assertClose(left['bij'][key], right['bij'][key], rel=rel,
+                    msg='point %d B_ij%s' % (left['index'], key))
 
     # ------------------------------------------------------------------ #
     # tests
@@ -235,8 +273,19 @@ class TestFKSStandalone(unittest.TestCase):
         process at the driver's fixed RAMBO seed."""
         path = pjoin(self._workdir(spec), 'fks_sa')
         self._output_fks_sa(spec['process'], spec['model'], path)
+        born_dir = self._born_dir(path)
+        points = self.parse_check_fks_points(self._run_check_fks(born_dir))
+        self.assertEqual([p['index'] for p in points], [1])
+        self.assertEqual(sorted(points[0]['momenta']),
+                         list(range(1, len(points[0]['momenta']) + 1)))
         born, borntilde, bij = self.parse_check_fks(
-            self._run_check_fks(self._born_dir(path)))
+            self._run_check_fks(born_dir))
+
+        # Normal mode retains only the Born-oracle closure.
+        self.assertFalse(glob.glob(pjoin(born_dir, 'matrix_*.f')))
+        self.assertFalse(glob.glob(pjoin(born_dir, 'V[0-9]*')))
+        self.assertFalse(os.path.lexists(pjoin(born_dir,
+                                               'MadLoop5_resources')))
 
         self.assertClose(born, spec['born'], msg='BORN')
         self.assertClose(borntilde, spec['borntilde'], msg='BORNTILDE')
@@ -256,11 +305,10 @@ class TestFKSStandalone(unittest.TestCase):
         """the standalone Born building blocks match the ones computed by the
         code of a plain aMC@NLO output of the same process.
 
-        The '--fks' output is a full FKS directory (full-gen), so born.f /
-        sborn_sf.f / b_sf_*.f are byte-for-byte the production ones. We bring
-        the standalone driver into the plain aMC@NLO directory (whose P-dir
-        makefile already carries the 'check_fks' target), build and run it
-        there, and require identical values."""
+        The '--fks' exporter first generates a full FKS directory and then
+        trims it, so retained born.f / sborn_sf.f / b_sf_*.f must remain
+        byte-for-byte production files. We bring the standalone driver into a
+        plain aMC@NLO directory, build it there, and require identical values."""
         workdir = self._workdir(spec)
         # 1) standalone_fortran --fks (driver already built by launch)
         path_sa = pjoin(workdir, 'fks_sa')
@@ -275,6 +323,13 @@ class TestFKSStandalone(unittest.TestCase):
         # 3) drop the standalone driver + data into the full dir and build it
         pname = os.path.basename(born_dir_sa)
         born_dir_nlo = pjoin(path_nlo, 'SubProcesses', pname)
+        production_sources = ['born.f', 'sborn_sf.f'] + [
+            os.path.basename(f) for f in glob.glob(
+                pjoin(born_dir_sa, 'b_sf_*.f'))]
+        for filename in production_sources:
+            with open(pjoin(born_dir_sa, filename), 'rb') as sa_file, \
+                    open(pjoin(born_dir_nlo, filename), 'rb') as nlo_file:
+                self.assertEqual(sa_file.read(), nlo_file.read(), filename)
         for f in ('check_sa_fks.f', 'born_pmass.inc', 'born_links.dat',
                   'born_charges.inc'):
             shutil.copy(pjoin(born_dir_sa, f), pjoin(born_dir_nlo, f))
@@ -283,7 +338,8 @@ class TestFKSStandalone(unittest.TestCase):
         for stub in ('analyse_opts', 'pythia8_opts'):
             sp = pjoin(path_nlo, 'SubProcesses', stub)
             if not os.path.isfile(sp):
-                open(sp, 'w').write('')
+                with open(sp, 'w') as fsock:
+                    fsock.write('')
         misc.compile(cwd=pjoin(path_nlo, 'Source'))
         misc.compile(['check_fks'], cwd=born_dir_nlo)
         val_nlo = self.parse_check_fks(self._run_check_fks(born_dir_nlo))
@@ -297,12 +353,165 @@ class TestFKSStandalone(unittest.TestCase):
             self.assertClose(val_sa[2][key], val_nlo[2][key], rel=1e-9,
                              msg='B_ij%s' % (key,))
 
+    def _build_production_oracle(self, spec, born_dir_sa, path_nlo):
+        """Generate plain aMC@NLO and install the standalone driver/data."""
+        self._output_amcatnlo(spec['process'], spec['model'], path_nlo)
+        born_dir_nlo = pjoin(path_nlo, 'SubProcesses',
+                             os.path.basename(born_dir_sa))
+        for filename in ('check_sa_fks.f', 'born_pmass.inc', 'born_links.dat',
+                         'born_charges.inc'):
+            shutil.copy(pjoin(born_dir_sa, filename),
+                        pjoin(born_dir_nlo, filename))
+        for stub in ('analyse_opts', 'pythia8_opts'):
+            path = pjoin(path_nlo, 'SubProcesses', stub)
+            if not os.path.isfile(path):
+                with open(path, 'w') as fsock:
+                    fsock.write('')
+        misc.compile(cwd=pjoin(path_nlo, 'Source'))
+        misc.compile(['check_fks'], cwd=born_dir_nlo)
+        return born_dir_nlo
+
     def test_fks_standalone_vs_amcatnlo(self):
         """the standalone Born building blocks match a plain aMC@NLO output of
         the same process, for every process in PROCESSES."""
         for spec in PROCESSES:
             with self.subTest(process=spec['process']):
                 self._check_vs_amcatnlo(spec)
+
+    def test_fks_standalone_multi_point(self):
+        """Sixteen deterministic points match production for representative
+        QCD, QED and decay/mixed-order processes."""
+        by_id = dict((spec['id'], spec) for spec in PROCESSES)
+        for process_id in ('gg_ttx', 'uux_wpwm', 'z_jj'):
+            spec = by_id[process_id]
+            with self.subTest(process=spec['process']):
+                workdir = self._workdir(spec)
+                path_sa = pjoin(workdir, 'fks_sa_multi')
+                self._output_fks_sa(spec['process'], spec['model'], path_sa)
+                born_dir_sa = self._born_dir(path_sa)
+                born_dir_nlo = self._build_production_oracle(
+                    spec, born_dir_sa, pjoin(workdir, 'nlo_multi'))
+
+                output_a = self._run_check_fks(
+                    born_dir_sa, points=16, seed=(1802, 9373))
+                output_b = self._run_check_fks(
+                    born_dir_sa, points=16, seed=(1802, 9373))
+                output_other = self._run_check_fks(
+                    born_dir_sa, points=16, seed=(1234, 5678))
+                output_nlo = self._run_check_fks(
+                    born_dir_nlo, points=16, seed=(1802, 9373))
+                output_repeated = self._run_check_fks(
+                    born_dir_sa, points=16, seed=(1802, 9373), calls=3)
+
+                points_a = self.parse_check_fks_points(output_a)
+                self.assertEqual(output_a, output_b)
+                self.assertEqual(len(points_a), 16)
+                self.assertNotEqual(
+                    [p['momenta'] for p in points_a],
+                    [p['momenta'] for p in
+                     self.parse_check_fks_points(output_other)])
+                self.assertPointsClose(
+                    points_a, self.parse_check_fks_points(output_nlo))
+                self.assertPointsClose(
+                    points_a, self.parse_check_fks_points(output_repeated))
+
+                if process_id == 'gg_ttx':
+                    # Exercise the public named controls as well as the direct
+                    # driver comparison above. The launcher itself verifies
+                    # that every requested POINT record was produced.
+                    cmd = self._new_cmd()
+                    self._run(cmd, 'launch %s --points=3 --seed=1234,5678 '
+                                   '--timings=2 --nb_run=1 -f' % path_sa)
+
+    def test_fks_standalone_invalid_options(self):
+        """Invalid command combinations and sampling controls fail early."""
+        cmd = self._new_cmd()
+        self._run(cmd, 'import model loop_sm')
+        self._run(cmd, 'generate g g > t t~ [QCD]')
+        with self.assertRaisesRegex(MadGraph5Error,
+                                    '--limits.*only available'):
+            self._run(cmd, 'output --limits %s' %
+                      pjoin(self.tmpdir, 'bad_limits'))
+        with self.assertRaisesRegex(MadGraph5Error, 'Fortran output'):
+            self._run(cmd, 'output standalone --fks %s' %
+                      pjoin(self.tmpdir, 'bad_standalone'))
+
+        for options, message in [
+                ({'points': 0}, '--points'),
+                ({'seed': 'broken'}, '--seed'),
+                ({'seed': '31329,0'}, '--seed'),
+                ({'timings': -1}, '--timings'),
+                ({'timings': 1, 'nb_run': 0}, '--nb_run')]:
+            with self.subTest(options=options):
+                with self.assertRaisesRegex(MadGraph5Error, message):
+                    launch_ext.FKSSALauncher(cmd, self.tmpdir, **options)
+
+    def test_nonconverging_limit_sequence_fails_safely(self):
+        """checkres/checkres2 stop at their bounds and report failure when
+        no point in a 15-element sequence ever approaches the limit."""
+        source_path = pjoin(
+            MG5DIR, 'Template', 'NLO', 'SubProcesses', 'fks_singular.f')
+        with open(source_path) as fsock:
+            source = fsock.read()
+        first = source.index('      subroutine checkres(')
+        second = source.index('      subroutine checkres2(', first)
+        end_match = re.search(r'^      end\s*$', source[second:], re.MULTILINE)
+        self.assertIsNotNone(end_match)
+        routines = source[first:second] + source[
+            second:second + end_match.end()] + '\n'
+
+        driver = """      PROGRAM CHECK_NONCONVERGENCE
+      IMPLICIT NONE
+      INTEGER I,IRET1,IRET2
+      REAL*8 XSEC(15),XLIM,WGT(15),WGTL
+      REAL*8 XP(15,0:3,21),LXP(0:3,21)
+      REAL*8 XLIM2(15),WGTL2(15)
+      REAL*8 XP2(15,0:3,5),LXP2(0:3,5)
+      DO I=1,15
+        XSEC(I)=2D0
+        WGT(I)=1D0
+        XLIM2(I)=1D0
+        WGTL2(I)=1D0
+      ENDDO
+      XLIM=1D0
+      WGTL=1D0
+      XP=0D0
+      LXP=0D0
+      XP2=0D0
+      LXP2=0D0
+      OPEN(UNIT=77,FILE='fort.77',STATUS='UNKNOWN')
+      OPEN(UNIT=78,FILE='fort.78',STATUS='UNKNOWN')
+      CALL CHECKRES(XSEC,XLIM,WGT,WGTL,XP,LXP,
+     &  0,15,1,4,1,2,IRET1)
+      CALL CHECKRES2(XSEC,XLIM2,WGT,WGTL2,XP2,LXP2,
+     &  0,15,1,1,2,IRET2)
+      IF (IRET1.NE.1 .OR. IRET2.NE.1) STOP 2
+      WRITE(*,*) 'NONCONVERGENCE SAFELY FAILED'
+      END
+
+      SUBROUTINE XPRINTOUT(IUNIT,XV,XLIM)
+      IMPLICIT NONE
+      INTEGER IUNIT
+      REAL*8 XV,XLIM
+      WRITE(IUNIT,*) XV,XLIM
+      END
+"""
+        test_dir = pjoin(self.tmpdir, 'checkres_bounds')
+        os.makedirs(test_dir)
+        with open(pjoin(test_dir, 'nexternal.inc'), 'w') as fsock:
+            fsock.write('      INTEGER NEXTERNAL\n'
+                        '      PARAMETER (NEXTERNAL=4)\n')
+        test_source = pjoin(test_dir, 'check_nonconvergence.f')
+        with open(test_source, 'w') as fsock:
+            fsock.write(driver + routines)
+        subprocess.check_call(
+            ['gfortran', '-O0', '-fcheck=bounds',
+             '-ffixed-line-length-none', '-o',
+             'check_nonconvergence', 'check_nonconvergence.f'], cwd=test_dir)
+        output = subprocess.check_output(
+            ['./check_nonconvergence'], cwd=test_dir,
+            stderr=subprocess.STDOUT).decode(errors='replace')
+        self.assertIn('NONCONVERGENCE SAFELY FAILED', output)
 
     def _check_limits(self, spec):
         """'--limits' leaves the Born building blocks unchanged, and the
@@ -329,11 +538,19 @@ class TestFKSStandalone(unittest.TestCase):
             log = pjoin(born_dir, 'test_ME.log')
             self.assertTrue(os.path.isfile(log),
                             'limit test not run in %s' % born_dir)
-            content = open(log, errors='replace').read()
+            with open(log, errors='replace') as fsock:
+                content = fsock.read()
             self.assertNotIn('FAILED', content, 'limit test failed: %s' % log)
             self.assertNotIn('fixed shat', content,
                              'limit test not run in %s' % born_dir)
             self.assertIn('PASSED', content, 'no limit check in %s' % log)
+            self.assertTrue(glob.glob(pjoin(born_dir, 'matrix_*.f')),
+                            'real matrix elements missing in %s' % born_dir)
+            self.assertFalse(glob.glob(pjoin(born_dir, 'V[0-9]*')),
+                             'virtual directory retained in %s' % born_dir)
+            self.assertFalse(os.path.lexists(
+                pjoin(born_dir, 'MadLoop5_resources')),
+                'MadLoop resources retained in %s' % born_dir)
         return born_dirs
 
     def test_fks_standalone_limits(self):

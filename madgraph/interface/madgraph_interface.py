@@ -543,10 +543,12 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("Launch on FKS Born building-block standalone output (output standalone_fortran --fks):",'$MG:BOLD')
         logger.info(" o Example: launch PROC_FKS_sm_0 --energy=500",'$MG:color:GREEN')
         logger.info(" > Builds and runs 'check_fks', printing the Born, spin-correlated Born")
-        logger.info("   and color/charge-linked Borns for one phase-space point.")
+        logger.info("   and color/charge-linked Borns with each point's momenta.")
         logger.info(" > You will be asked whether you want to edit the param_card, unless")
         logger.info("   the -f option is specified.")
         logger.info(" > --energy=E   sqrt(s) of the phase-space point (default: built-in)")
+        logger.info(" > --points=N   number of successive deterministic points (default: 1)")
+        logger.info(" > --seed=IJ,KL RANMAR seed pair (default: 1802,9373)")
         logger.info(" > --timings=N --nb_run=Y   time N Born re-evaluations over Y runs")
         logger.info(" > If the output was made with --limits, also builds and runs the")
         logger.info("   soft/collinear limit test (test_soft_col_limits) and reports whether")
@@ -9024,8 +9026,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if args[0] == 'amcatnlo_fks_sa':
             # the FKS Born building-block check: ExtLauncher.run() first offers
             # to edit the param_card (skipped under -f), then launch_program()
-            # builds and runs the lightweight check_fks (honouring --energy /
-            # --timings / --nb_run).
+            # builds and runs the lightweight check_fks (honouring --energy,
+            # --points, --seed, --timings and --nb_run).
             ext_program = launch_ext.FKSSALauncher(self, args[1],
                                             options=self.options, **options)
             ext_program.run()
@@ -13180,6 +13182,10 @@ _launch_parser.add_option("", "--nb_run", default=1, type='int',
                             help="[standalone_fortran] Number of timing repetitions for statistics (used with --timings); 0 = good-helicity check (print matrix-element values instead of a timing table)")
 _launch_parser.add_option("", "--energy", default=0, type='float',
                             help="[FKS standalone] sqrt(s) of the phase-space point (0=built-in default)")
+_launch_parser.add_option("", "--points", default=1, type='int',
+                            help="[FKS standalone] Number of deterministic phase-space points")
+_launch_parser.add_option("", "--seed", default='1802,9373', type='str',
+                            help="[FKS standalone] RANMAR seed pair IJ,KL")
 
 #===============================================================================
 # Interface for customize question.

@@ -1,7 +1,7 @@
       PROGRAM CHECK_SA_FKS
 C     ******************************************************************
 C     Standalone driver for the FKS Born building blocks.
-C     For a single phase-space point it prints, per flavour
+C     For one or more deterministic phase-space points it prints, per flavour
 C     configuration:
 C       - the Born                       B
 C       - the spin-correlated Born       BORNTILDE
@@ -17,12 +17,15 @@ C     ******************************************************************
       REAL*8 ZERO
       PARAMETER (ZERO=0D0)
       INCLUDE 'coupl.inc'
-      INTEGER I,J,ILINK,NLINKS,M,N,ICALL
+      INTEGER I,J,ILINK,NLINKS,M,N,ICALL,IPOINT,NPOINTS
+      INTEGER SEED_IJ,SEED_KL
       INTEGER PDG_M,PDG_N,COL_M,COL_N,ITYPE
       REAL*8 BORN, WGT, SQRTS, BORNTILDE, TOTMASS
 C     optional run-time controls read from the command line:
 C       arg1 = sqrt(s) of the phase-space point (<=0 -> built-in default)
 C       arg2 = number of Born re-evaluations (for the launch --timings mode)
+C       arg3 = number of successive phase-space points
+C       arg4,arg5 = RANMAR IJ,KL seed pair
       INTEGER NARGS, NCALLS, IARGC
       REAL*8 USER_ENERGY
       CHARACTER*100 ARG
@@ -30,8 +33,9 @@ C     the link topology is read once into these arrays, so the timing loop
 C     re-evaluates the Born building blocks without re-reading the file.
       INTEGER MAXLINK
       PARAMETER (MAXLINK=1000)
+      INTEGER MBASE(MAXLINK), NBASE(MAXLINK)
       INTEGER MLIST(MAXLINK), NLIST(MAXLINK)
-      REAL*8 WGTLIST(MAXLINK)
+      REAL*8 WGTBASE(MAXLINK), WGTLIST(MAXLINK)
 C     COLOFLEG(i) is the soft-correlation quantum number of Born leg i, taken
 C     from born_links.dat (colour rep for [QCD], colour singlet=1 for the
 C     charged-but-colourless legs of a [QED] run); it stays 0 iff the leg
@@ -45,6 +49,8 @@ C     the missing massless diagonals below.
       COMMON /C_BORN_CNT/ ANS_CNT
       LOGICAL NEED_COLOR_LINKS, NEED_CHARGE_LINKS
       COMMON /C_NEED_LINKS/ NEED_COLOR_LINKS, NEED_CHARGE_LINKS
+      LOGICAL CALCULATEDBORN
+      COMMON/CCALCULATEDBORN/CALCULATEDBORN
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       LOGICAL SPLIT_TYPE_USED(NSPLITORDERS)
@@ -72,9 +78,13 @@ C     This mirrors the production fill_needed_splittings().
         ENDDO
       ENDDO
 
-C     parse the optional command-line arguments (energy, #re-evaluations)
+C     Parse the optional command-line arguments. The defaults preserve the
+C     historical first point exactly.
       USER_ENERGY=0D0
       NCALLS=1
+      NPOINTS=1
+      SEED_IJ=1802
+      SEED_KL=9373
       NARGS=IARGC()
       IF (NARGS.GE.1) THEN
         CALL GETARG(1,ARG)
@@ -84,7 +94,20 @@ C     parse the optional command-line arguments (energy, #re-evaluations)
         CALL GETARG(2,ARG)
         READ(ARG,*) NCALLS
       ENDIF
+      IF (NARGS.GE.3) THEN
+        CALL GETARG(3,ARG)
+        READ(ARG,*) NPOINTS
+      ENDIF
+      IF (NARGS.GE.4) THEN
+        CALL GETARG(4,ARG)
+        READ(ARG,*) SEED_IJ
+      ENDIF
+      IF (NARGS.GE.5) THEN
+        CALL GETARG(5,ARG)
+        READ(ARG,*) SEED_KL
+      ENDIF
       IF (NCALLS.LT.1) NCALLS=1
+      IF (NPOINTS.LT.1) NPOINTS=1
 
       CALL SETPARA('param_card.dat')
       CALL PRINTOUT()
@@ -106,7 +129,6 @@ C     pick a center-of-mass energy comfortably above threshold
 C     keep the point above threshold so RAMBO never fails, even if the user
 C     asks for an energy below the sum of the final-state masses
       IF (4D0*TOTMASS.GT.SQRTS) SQRTS=4D0*TOTMASS
-      CALL GET_MOMENTA(SQRTS,PMASS,P)
 
 C     whether the soft links of this configuration are colour links (a
 C     gluon goes soft, [QCD]) or charge links (a photon goes soft, [QED])
@@ -115,11 +137,6 @@ C     for each, so getting this from need_*_links_d (rather than forcing
 C     colour) is what makes the [QED] building blocks come out right.
       NEED_COLOR_LINKS=NEED_COLOR_LINKS_D(NFKSPROCESS)
       NEED_CHARGE_LINKS=NEED_CHARGE_LINKS_D(NFKSPROCESS)
-
-C     ---- one flavour configuration is available today; the loop is
-C     ---- kept explicit so the flavour-merging extension only has to
-C     ---- grow the upper bound and reset the relevant common blocks.
-      WRITE(*,*) '==== FLAVOUR CONFIGURATION', 1, '===='
 
 C     read the link topology once into MLIST/NLIST so the (optional) timing
 C     loop below does not pay the file I/O on every re-evaluation
@@ -131,8 +148,8 @@ C     loop below does not pay the file I/O on every re-evaluation
       READ(78,*) NLINKS
       DO ILINK=1,NLINKS
         READ(78,*) M,N,PDG_M,PDG_N,COL_M,COL_N,ITYPE
-        MLIST(ILINK)=M
-        NLIST(ILINK)=N
+        MBASE(ILINK)=M
+        NBASE(ILINK)=N
 C       remember the colour rep of each leg (recoverable from any link it
 C       appears in) and whether its diagonal self-link is already present
         COLOFLEG(M)=COL_M
@@ -141,76 +158,89 @@ C       appears in) and whether its diagonal self-link is already present
       ENDDO
       CLOSE(78)
 
-C     evaluate the Born building blocks NCALLS times (NCALLS>1 only for the
-C     launch --timings mode); the values are identical, so we keep the last
-C     ones and print them once below.
-      DO ICALL=1,NCALLS
-        CALL SBORN(P,BORN)
-        BORNTILDE=0D0
-        DO J=1,NSPLITORDERS
-          BORNTILDE=BORNTILDE+DBLE(ANS_CNT(2,J))
-        ENDDO
-        DO ILINK=1,NLINKS
-          CALL SBORN_SF(P,MLIST(ILINK),NLIST(ILINK),WGT)
-          WGTLIST(ILINK)=WGT
-        ENDDO
-      ENDDO
+C     Initialise RANMAR once. Successive GET_MOMENTA calls then consume one
+C     deterministic sequence; a rerun with the same seed reproduces it.
+      CALL RMARIN(SEED_IJ,SEED_KL)
 
-C     Rebuild the diagonal soft self-links B_ii that the link generator skips
-C     for massless legs: find_color_links drops the leg1==leg2 pair when the
-C     leg is massless (only massive emitters keep an explicit diagonal link),
-C     so e.g. g g > t t~ has B_ij 3 3 / 4 4 for the tops but no 1 1 / 2 2 for
-C     the gluons, and u u~ > w+ w- has the W charge diagonals but not the u
-C     ones. They are recovered from the conservation Ward identity, which for
-C     colour is sum_j T_i.T_j = 0 and for charge is sum_j Q_j = 0; both give
-C     the diagonal as minus half the sum of the off-diagonal links touching
-C     leg i:  B_ii = -1/2 * sum_{j/=i} B_ij.  This is convention independent
-C     and reproduces the explicit massive diagonals (the MadFKS 1/2 and the
-C     colour-basis / charge normalisation included) to machine precision in
-C     both the [QCD] and [QED] cases, so HASDIAG skips the legs that already
-C     carry an explicit diagonal to avoid double counting.
-      NTOT=NLINKS
-      DO I=1,NEXTERNAL-1
-        IF (COLOFLEG(I).NE.0 .AND. .NOT.HASDIAG(I)) THEN
-          LINKSUM=0D0
-          DO ILINK=1,NLINKS
-            IF (MLIST(ILINK).NE.NLIST(ILINK) .AND.
-     &          (MLIST(ILINK).EQ.I .OR. NLIST(ILINK).EQ.I)) THEN
-              LINKSUM=LINKSUM+WGTLIST(ILINK)
-            ENDIF
+      DO IPOINT=1,NPOINTS
+        CALL GET_MOMENTA(SQRTS,PMASS,P)
+        CALCULATEDBORN=.FALSE.
+        WRITE(*,'(A,1X,I0)') 'POINT',IPOINT
+        DO I=1,NEXTERNAL-1
+          WRITE(*,'(A,1X,I0,4(1X,ES24.16E3))')
+     &      'P',I,(P(J,I),J=0,3)
+        ENDDO
+
+C       One flavour configuration is available today. Keep the label explicit
+C       so Macrotask 2 can extend the interface without changing point records.
+        WRITE(*,*) '==== FLAVOUR CONFIGURATION', 1, '===='
+
+C       Evaluate the same point NCALLS times only for timing. Scientific
+C       sampling uses NPOINTS and never advances inside this loop.
+        DO ICALL=1,NCALLS
+          CALL SBORN(P,BORN)
+          BORNTILDE=0D0
+          DO J=1,NSPLITORDERS
+            BORNTILDE=BORNTILDE+DBLE(ANS_CNT(2,J))
           ENDDO
-          NTOT=NTOT+1
-          MLIST(NTOT)=I
-          NLIST(NTOT)=I
-          WGTLIST(NTOT)=-0.5D0*LINKSUM
-        ENDIF
-      ENDDO
+          DO ILINK=1,NLINKS
+            CALL SBORN_SF(P,MBASE(ILINK),NBASE(ILINK),WGT)
+            WGTBASE(ILINK)=WGT
+          ENDDO
+        ENDDO
 
-C     order the links by (m,n) so the reconstructed diagonals sit next to the
-C     leg's other links instead of being tacked on at the end: B_ij 1 1 then
-C     1 2 ... rather than the off-diagonals first and the diagonals last. The
-C     key m*NEXTERNAL+n is injective since leg numbers run 1..NEXTERNAL-1.
-      DO I=1,NTOT-1
-        DO J=I+1,NTOT
-          IF (MLIST(J)*NEXTERNAL+NLIST(J) .LT.
-     &        MLIST(I)*NEXTERNAL+NLIST(I)) THEN
-            ITMP=MLIST(I)
-            MLIST(I)=MLIST(J)
-            MLIST(J)=ITMP
-            ITMP=NLIST(I)
-            NLIST(I)=NLIST(J)
-            NLIST(J)=ITMP
-            RTMP=WGTLIST(I)
-            WGTLIST(I)=WGTLIST(J)
-            WGTLIST(J)=RTMP
+C       Copy the immutable generated topology before adding and sorting the
+C       reconstructed diagonal links for this point.
+        DO ILINK=1,NLINKS
+          MLIST(ILINK)=MBASE(ILINK)
+          NLIST(ILINK)=NBASE(ILINK)
+          WGTLIST(ILINK)=WGTBASE(ILINK)
+        ENDDO
+
+C       Rebuild the diagonal soft self-links B_ii that the link generator
+C       skips for massless legs. Conservation gives
+C       B_ii = -1/2 * sum_{j/=i} B_ij. Explicit massive diagonals are kept.
+        NTOT=NLINKS
+        DO I=1,NEXTERNAL-1
+          IF (COLOFLEG(I).NE.0 .AND. .NOT.HASDIAG(I)) THEN
+            LINKSUM=0D0
+            DO ILINK=1,NLINKS
+              IF (MLIST(ILINK).NE.NLIST(ILINK) .AND.
+     &            (MLIST(ILINK).EQ.I .OR. NLIST(ILINK).EQ.I)) THEN
+                LINKSUM=LINKSUM+WGTLIST(ILINK)
+              ENDIF
+            ENDDO
+            NTOT=NTOT+1
+            MLIST(NTOT)=I
+            NLIST(NTOT)=I
+            WGTLIST(NTOT)=-0.5D0*LINKSUM
           ENDIF
         ENDDO
-      ENDDO
 
-      WRITE(*,*) 'BORN       =', BORN
-      WRITE(*,*) 'BORNTILDE  =', BORNTILDE
-      DO ILINK=1,NTOT
-        WRITE(*,*) 'B_ij ', MLIST(ILINK), NLIST(ILINK), WGTLIST(ILINK)
+C       Order links by (m,n), including reconstructed diagonals.
+        DO I=1,NTOT-1
+          DO J=I+1,NTOT
+            IF (MLIST(J)*NEXTERNAL+NLIST(J) .LT.
+     &          MLIST(I)*NEXTERNAL+NLIST(I)) THEN
+              ITMP=MLIST(I)
+              MLIST(I)=MLIST(J)
+              MLIST(J)=ITMP
+              ITMP=NLIST(I)
+              NLIST(I)=NLIST(J)
+              NLIST(J)=ITMP
+              RTMP=WGTLIST(I)
+              WGTLIST(I)=WGTLIST(J)
+              WGTLIST(J)=RTMP
+            ENDIF
+          ENDDO
+        ENDDO
+
+        WRITE(*,*) 'BORN       =', BORN
+        WRITE(*,*) 'BORNTILDE  =', BORNTILDE
+        DO ILINK=1,NTOT
+          WRITE(*,*) 'B_ij ',MLIST(ILINK),NLIST(ILINK),
+     &      WGTLIST(ILINK)
+        ENDDO
       ENDDO
 
       END
@@ -384,12 +414,6 @@ C       2 -> n: back-to-back massless initial states along z
 
       FUNCTION RN(IDUMMY)
       REAL*8 RN,RAN
-      SAVE INIT
-      DATA INIT /1/
-      IF (INIT.EQ.1) THEN
-        INIT=0
-        CALL RMARIN(1802,9373)
-      END IF
   10  CALL RANMAR(RAN)
       IF (RAN.LT.1D-16) GOTO 10
       RN=RAN
