@@ -540,7 +540,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > --nb_run=0  Masking check: skip the timing table and instead")
         logger.info("                print the matrix-element value per flavor after N SMATRIX calls.")
         logger.info("")
-        logger.info("Launch on FKS Born building-block standalone output (output standalone --fks):",'$MG:BOLD')
+        logger.info("Launch on FKS Born building-block standalone output (output standalone_fortran --fks):",'$MG:BOLD')
         logger.info(" o Example: launch PROC_FKS_sm_0 --energy=500",'$MG:color:GREEN')
         logger.info(" > Builds and runs 'check_fks', printing the Born, spin-correlated Born")
         logger.info("   and color/charge-linked Borns for one phase-space point.")
