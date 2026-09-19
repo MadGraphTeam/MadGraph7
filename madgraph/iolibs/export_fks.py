@@ -95,11 +95,12 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
-    # When True, born.f carries the colour-linked Borns itself: the Born
-    # JAMPs are contracted with one colour matrix per link, all expressed in
-    # the Born colour basis (see fks_common.born_basis_link_matrices),
-    # instead of writing one b_sf_NNN.f per link with its own colour basis.
-    born_color_links_in_born = False
+    # When True (default), born.f carries the colour-linked Borns itself:
+    # the Born JAMPs are contracted with one colour matrix per link, all
+    # expressed in the Born colour basis (see
+    # fks_common.born_basis_link_matrices). False restores the former layout:
+    # one b_sf_NNN.f per link, each with its own colour basis.
+    born_color_links_in_born = True
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -5427,10 +5428,6 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     Born-only 'check_fks' executable printing, for one phase-space point,
     the Born B, the spin-correlated Born BORNTILDE and the linked Borns B_ij.
     """
-
-    # born.f carries the Born and all its colour-linked versions, contracting
-    # the same Born JAMPs with one colour matrix per link (no b_sf_NNN.f)
-    born_color_links_in_born = True
 
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
                                  me_ntot, path=os.getcwd(), OLP='MadLoop'):
