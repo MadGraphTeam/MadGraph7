@@ -24,7 +24,7 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   1)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1)
       DOUBLE PRECISION ANS_SUMMED
@@ -68,7 +68,7 @@ C
 C     
 C     BEGIN CODE
 C     
-C     look for orders which match the born order constraint 
+C     look for orders which match the born order constraint
 
       FORCE_IJGLU_ZERO = .FALSE.
 
@@ -158,7 +158,7 @@ C          different coupling combinations
      $      AMP_SPLIT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS)) = ANS(1,I)
         ENDIF
       ENDDO
-C     this is to avoid fake non-zero contributions 
+C     this is to avoid fake non-zero contributions
       IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
 
       WGT_ME_BORN=ANS_SUMMED
@@ -191,7 +191,7 @@ C              given split order
 C             will be multiplied by the corresponding squared coupling
               IF (K.EQ.J) AMP_ORDERS(K) = AMP_ORDERS(K) + 2
             ENDDO
-C           this is to avoid fake non-zero contributions 
+C           this is to avoid fake non-zero contributions
             IF (ABS(ANS(1,I)).GT.MAX_VAL*TINY)
      $        AMP_SPLIT_CNT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS),1,J) =
      $        ANS(1,I)
@@ -200,7 +200,7 @@ C           this is to avoid fake non-zero contributions
      $        ANS(2,I)
           ENDIF
         ENDDO
-C       this is to avoid fake non-zero contributions 
+C       this is to avoid fake non-zero contributions
         IF (ABS(ANS_CNT(1,J)).LT.MAX_VAL*TINY) ANS_CNT(1,J)=(0D0,0D0)
         IF (ABS(ANS_CNT(2,J)).LT.MAX_VAL*TINY) ANS_CNT(2,J)=(0D0,0D0)
       ENDDO
@@ -240,7 +240,7 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   1)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1)
       INTEGER NHEL(NEXTERNAL-1)
@@ -288,7 +288,7 @@ C     stuff for the LO2
 C     
 C     BEGIN CODE
 C     
-C     look for orders which match the born order constraint 
+C     look for orders which match the born order constraint
 
       IDEN=IDEN_VALUES(NFKSPROCESS)
       FORCE_IJGLU_ZERO = .TRUE.
@@ -333,7 +333,7 @@ C       the following is for the LO2
         ENDIF
       ENDDO
 
-C     this is to avoid fake non-zero contributions 
+C     this is to avoid fake non-zero contributions
       IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
 
       RETURN
@@ -370,12 +370,12 @@ C
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   1)
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P1(0:3,NEXTERNAL-1)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
 C     
-C     LOCAL VARIABLES 
+C     LOCAL VARIABLES
 C     
       INTEGER IHEL,IDEN,I,J,JJ,GLU_IJ
       REAL*8 BORNS(2,0:NSQAMPSO)
@@ -520,49 +520,43 @@ C     By the MadGraph7 Development Team
 C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
 C     RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
 C     FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
+C     
+C     The amplitudes are computed by GET_AMP_BORN, the Born JAMPs by
+C     GET_JAMP_BORN and all colour sums by BORN_COLOR_SQUARE (colour
+C     matrix 0 = the Born one). The JAMPs of every helicity are saved
+C      in
+C     /TO_SAVEJAMP/ so that the colour-linked Borns (SB_SF_LINK) are
+C      just
+C     a contraction of the same JAMPs with another colour matrix.
 
 C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
 C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
 C     
-      USE ALOHA_OBJECT
       IMPLICIT NONE
 C     
 C     CONSTANTS
 C     
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=1, NSQAMPSO=1)
-      INTEGER    NGRAPHS,    NEIGEN
-      PARAMETER (NGRAPHS=   1,NEIGEN=  1)
-      INTEGER    NWAVEFUNCS, NCOLOR
-      PARAMETER (NWAVEFUNCS=5, NCOLOR=1)
-      REAL*8     ZERO
-      PARAMETER (ZERO=0D0)
-      COMPLEX*16 IMAG1
-      PARAMETER (IMAG1 = (0D0,1D0))
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   1)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=1)
       INCLUDE 'nexternal.inc'
       INCLUDE 'born_nhel.inc'
-      INCLUDE 'coupl.inc'
 C     
-C     ARGUMENTS 
+C     ARGUMENTS
 C     
       REAL*8 P(0:3,NEXTERNAL-1),BORNS(2,0:NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1), HELL
       COMPLEX*16 ANS(2,NSQAMPSO)
 C     
-C     LOCAL VARIABLES 
+C     LOCAL VARIABLES
 C     
-      INTEGER I,J,M,N,IHEL,BACK_HEL,GLU_IJ
-      INTEGER IC(NEXTERNAL-1),NMO
-      PARAMETER (NMO=NEXTERNAL-1)
-      DATA IC /NMO*1/
-      INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
-      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
-      INTEGER CF_INDEX, DENOM
-      COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), JAMPH(2,
-     $  NCOLOR,NAMPSO)
-      TYPE(ALOHA) W(NWAVEFUNCS)
-      COMPLEX*16 TMP_JAMP(0)
+      INTEGER I,J,IHEL,BACK_HEL,GLU_IJ,IHSAVE,IFLIP
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), JAMPH(2, NCOLOR
+     $ ,NAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
 C     
 C     GLOBAL VARIABLES
 C     
@@ -570,6 +564,8 @@ C
       COMMON/TO_AMPS_BORN/  AMP2,       JAMP2
       DOUBLE COMPLEX SAVEAMP(NGRAPHS,MAX_BHEL)
       COMMON/TO_SAVEAMP/SAVEAMP
+      DOUBLE COMPLEX SAVEJAMP(NCOLOR,NAMPSO,MAX_BHEL)
+      COMMON/TO_SAVEJAMP/SAVEJAMP
       DOUBLE PRECISION HEL_FAC
       INTEGER GET_HEL,SKIP(3)
       COMMON/CBORN/HEL_FAC,GET_HEL,SKIP
@@ -582,25 +578,14 @@ C
       LOGICAL FORCE_IJGLU_ZERO
       COMMON /TO_FORCE_IJGLU/ FORCE_IJGLU_ZERO
 
-C     
-C     FUNCTION
-C     
-      INTEGER SQSOINDEXB
-
       INTEGER IJ_VALUES(3)
       DATA IJ_VALUES /0, 3, 4/
-C     
-C     COLOR DATA
-C     
-      DATA DENOM/1/
-      DATA (CF(I),I=  1,  1) /9/
-C     1 T(2,1) T(3,4)
 C     ----------
 C     BEGIN CODE
 C     ----------
-      JAMP(:,:) = (0D0,0D0)
       BORNS(:,:) =0D0
       ANS(:,:) = (0D0, 0D0)
+      JAMPH(:,:,:) = (0D0, 0D0)
 
       GLU_IJ = IJ_VALUES(NFKSPROCESS)
       IF (FORCE_IJGLU_ZERO) GLU_IJ = 0
@@ -625,52 +610,29 @@ C     ----------
           IF (GLU_IJ.NE.0) THEN
             IF (NHEL(GLU_IJ).NE.0) NHEL(GLU_IJ) = IHEL
           ENDIF
-          IF (.NOT. CALCULATEDBORN) THEN
-            CALL IXXXXX(P(0,1),MDL_MT,NHEL(1),+1, FLAVOR(1),W(1))
-            CALL OXXXXX(P(0,2),MDL_MB,NHEL(2),+1, FLAVOR(2),W(2))
-            CALL OXXXXX(P(0,3),ZERO,NHEL(3),+1, FLAVOR(3),W(3))
-            CALL IXXXXX(P(0,4),ZERO,NHEL(4),-1, FLAVOR(4),W(4))
-            CALL FFV2_3(W(4),W(3),GC_100,MDL_MW,MDL_WW,W(5))
-C           Amplitude(s) for diagram number 1
-            CALL FFV2_0(W(1),W(2),W(5),GC_100,AMP(1))
-            DO I=1,NGRAPHS
-              IF(IHEL.EQ.BACK_HEL)THEN
-                SAVEAMP(I,HELL)=AMP(I)
-              ELSEIF(IHEL.EQ.-BACK_HEL)THEN
-                SAVEAMP(I,HELL+SKIP(NFKSPROCESS))=AMP(I)
-              ELSE
-                WRITE(*,*) 'ERROR #1 in born.f'
-                STOP
-              ENDIF
-            ENDDO
-          ELSEIF (CALCULATEDBORN) THEN
-            DO I=1,NGRAPHS
-              IF(IHEL.EQ.BACK_HEL)THEN
-                AMP(I)=SAVEAMP(I,HELL)
-              ELSEIF(IHEL.EQ.-BACK_HEL)THEN
-                AMP(I)=SAVEAMP(I,HELL+SKIP(NFKSPROCESS))
-              ELSE
-                WRITE(*,*) 'ERROR #1 in born.f'
-                STOP
-              ENDIF
-            ENDDO
+C         helicity slot of the saved amplitudes: hell for the helicity
+C         passed in, hell+skip for the flipped one of the FKS gluon
+          IF(IHEL.EQ.BACK_HEL)THEN
+            IHSAVE=HELL
+          ELSEIF(IHEL.EQ.-BACK_HEL)THEN
+            IHSAVE=HELL+SKIP(NFKSPROCESS)
+          ELSE
+            WRITE(*,*) 'ERROR #1 in born.f'
+            STOP
           ENDIF
-C         JAMPs contributing to orders QCD=0 QED=2
-          JAMP(1,1) = (-1.000000000000000D+00)*AMP(1)
-          DO M = 1, NAMPSO
-            CF_INDEX = 0
-            DO I = 1, NCOLOR
-              ZTEMP = (0.D0,0.D0)
-              DO J = I, NCOLOR
-                CF_INDEX = CF_INDEX + 1
-                ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
-              ENDDO
-              DO N = 1, NAMPSO
-                BORNS(2-(1+BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))=BORNS(2
-     $           -(1+BACK_HEL*IHEL)/2,SQSOINDEXB(M,N))+ZTEMP
-     $           *DCONJG(JAMP(I,N))
-              ENDDO
-            ENDDO
+          IF (.NOT. CALCULATEDBORN) THEN
+            CALL GET_AMP_BORN(P,NHEL,AMP)
+            SAVEAMP(1:NGRAPHS,IHSAVE)=AMP(1:NGRAPHS)
+          ELSE
+            AMP(1:NGRAPHS)=SAVEAMP(1:NGRAPHS,IHSAVE)
+          ENDIF
+          CALL GET_JAMP_BORN(AMP,JAMP)
+          SAVEJAMP(:,:,IHSAVE)=JAMP(:,:)
+C         the Born: contraction with the Born colour matrix
+          CALL BORN_COLOR_SQUARE(0,JAMP,RES)
+          IFLIP=2-(1+BACK_HEL*IHEL)/2
+          DO I = 1, NSQAMPSO
+            BORNS(IFLIP,I)=BORNS(IFLIP,I)+DBLE(RES(I))
           ENDDO
           DO I = 1, NGRAPHS
             AMP2(I)=AMP2(I)+AMP(I)*DCONJG(AMP(I))
@@ -678,34 +640,433 @@ C         JAMPs contributing to orders QCD=0 QED=2
           DO J = 1,NAMPSO
             DO I = 1, NCOLOR
               JAMP2(I,J)=JAMP2(I,J)+JAMP(I,J)*DCONJG(JAMP(I,J))
-              JAMPH(2-(1+BACK_HEL*IHEL)/2,I,J)=JAMP(I,J)
+              JAMPH(IFLIP,I,J)=JAMP(I,J)
             ENDDO
           ENDDO
         ENDIF
       ENDDO
-      BORNS(:,:) = BORNS(:,:)/DENOM
       DO I = 1, NSQAMPSO
         BORNS(1,0)=BORNS(1,0)+BORNS(1,I)
         BORNS(2,0)=BORNS(2,0)+BORNS(2,I)
         ANS(1,I) = BORNS(1,I) + BORNS(2,I)
       ENDDO
+C     the spin-correlated Born: the Born colour matrix between the
+C      JAMPs
+C     of the two helicities of the FKS gluon
+      CALL BORN_COLOR_CONTRACT(0,JAMPH(2,:,:),JAMPH(1,:,:),RES)
+      ANS(2,:) = RES(:)
+      IF (GLU_IJ.NE.0) NHEL(GLU_IJ) = BACK_HEL
+      END
+
+
+      SUBROUTINE GET_AMP_BORN(P,NHEL,AMP)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Returns the Born amplitudes AMP(NGRAPHS) for the helicity
+C     configuration NHEL (the HELAS calls)
+C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER    NGRAPHS,    NEIGEN
+      PARAMETER (NGRAPHS=   1,NEIGEN=  1)
+      INTEGER    NWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=5)
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1 = (0D0,1D0))
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+C     
+C     ARGUMENTS
+C     
+      REAL*8 P(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1)
+      COMPLEX*16 AMP(NGRAPHS)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER IC(NEXTERNAL-1),NMO
+      PARAMETER (NMO=NEXTERNAL-1)
+      DATA IC /NMO*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /NMO*1/
+      TYPE(ALOHA) W(NWAVEFUNCS)
+C     ----------
+C     BEGIN CODE
+C     ----------
+      CALL IXXXXX(P(0,1),MDL_MT,NHEL(1),+1, FLAVOR(1),W(1))
+      CALL OXXXXX(P(0,2),MDL_MB,NHEL(2),+1, FLAVOR(2),W(2))
+      CALL OXXXXX(P(0,3),ZERO,NHEL(3),+1, FLAVOR(3),W(3))
+      CALL IXXXXX(P(0,4),ZERO,NHEL(4),-1, FLAVOR(4),W(4))
+      CALL FFV2_3(W(4),W(3),GC_100,MDL_MW,MDL_WW,W(5))
+C     Amplitude(s) for diagram number 1
+      CALL FFV2_0(W(1),W(2),W(5),GC_100,AMP(1))
+      END
+
+
+      SUBROUTINE GET_JAMP_BORN(AMP,JAMP)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Returns the Born JAMPs (colour-ordered amplitudes, in the Born
+C      colour
+C     basis) for each amplitude split order
+C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO
+      PARAMETER (NAMPSO=1)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   1)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=1)
+      COMPLEX*16 IMAG1
+      PARAMETER (IMAG1 = (0D0,1D0))
+C     
+C     ARGUMENTS
+C     
+      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      COMPLEX*16 TMP_JAMP(0)
+C     ----------
+C     BEGIN CODE
+C     ----------
+      JAMP(:,:) = (0D0,0D0)
+C     JAMPs contributing to orders QCD=0 QED=2
+      JAMP(1,1) = (-1.000000000000000D+00)*AMP(1)
+      END
+
+
+      SUBROUTINE BORN_COLOR_CONTRACT(ILINK,JAMPA,JAMPB,RES)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     Contracts two sets of Born JAMPs with one of the colour
+C      matrices, all
+C     expressed in the Born colour basis:
+C     ILINK = 0      : the Born colour matrix
+C     ILINK = 1..NLINKS : the colour-linked Born for the ILINK-th link
+C     (the same numbering as sborn_sf and born_links.dat)
+C     For each squared split order it returns
+C     RES = sum_ij S_ij (JAMPA(j,M) conj(JAMPB(i,N))
+C     + JAMPA(i,M) conj(JAMPB(j,N)))/2
+C     i.e. the symmetrised interference needed for the spin-correlated
+C      Born.
+C     For JAMPA = JAMPB (the Born and the colour-linked Borns) use the
+C      cheaper
+C     BORN_COLOR_SQUARE. The matrices are symmetric: only the upper
+C      triangle
+C     is stored, with the off-diagonal entries doubled, as integers
+C      over
+C     DENOM(ILINK) (BLOCK DATA BORN_COLOR_DATA).
+C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=8)
+C     
+C     ARGUMENTS
+C     
+      INTEGER ILINK
+      COMPLEX*16 JAMPA(NCOLOR,NAMPSO), JAMPB(NCOLOR,NAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,M,N,CF_INDEX
+      COMPLEX*16 ZTEMP
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+C     
+C     FUNCTION
+C     
+      INTEGER SQSOINDEXB
+C     ----------
+C     BEGIN CODE
+C     ----------
+      RES(:) = (0D0,0D0)
       DO M = 1, NAMPSO
-        CF_INDEX = 0
-        DO I = 1, NCOLOR
-          ZTEMP = (0.D0,0.D0)
-          DO J = I, NCOLOR
-            CF_INDEX = CF_INDEX +1
-            DO  N = 1, NAMPSO
-              ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N)) +
-     $          CF(CF_INDEX)*(JAMPH(2,J,M)*DCONJG(JAMPH(1,I,N))
-     $         +JAMPH(2,I,M)*DCONJG(JAMPH(1,J,N)))
+        DO N = 1, NAMPSO
+          ZTEMP = (0D0,0D0)
+          CF_INDEX = 0
+          DO I = 1, NCOLOR
+            DO J = I, NCOLOR
+              CF_INDEX = CF_INDEX + 1
+              IF (CF(CF_INDEX,ILINK).NE.0) ZTEMP = ZTEMP + CF(CF_INDEX
+     $         ,ILINK)*(JAMPA(J,M)*DCONJG(JAMPB(I,N))+JAMPA(I,M)
+     $         *DCONJG(JAMPB(J,N)))
             ENDDO
           ENDDO
+          RES(SQSOINDEXB(M,N)) = RES(SQSOINDEXB(M,N)) + ZTEMP
         ENDDO
-
       ENDDO
-      ANS(2,:) = ANS(2,:)/(2D0*DENOM)
-      IF (GLU_IJ.NE.0) NHEL(GLU_IJ) = BACK_HEL
+      RES(:) = RES(:)/(2D0*DENOM(ILINK))
+      END
+
+
+      SUBROUTINE BORN_COLOR_SQUARE(ILINK,JAMP,RES)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     conj(JAMP).S.JAMP for each squared split order, S being the Born
+C      colour
+C     matrix (ILINK = 0) or the one of the ILINK-th colour link, all
+C      in the
+C     Born colour basis. Only the real part of RES is meaningful.
+C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=8)
+C     
+C     ARGUMENTS
+C     
+      INTEGER ILINK
+      COMPLEX*16 JAMP(NCOLOR,NAMPSO), RES(NSQAMPSO)
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,M,N,CF_INDEX
+      COMPLEX*16 ZTEMP, ZSUM, ZT(NCOLOR)
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      INTEGER SQSO(NAMPSO,NAMPSO)
+      LOGICAL FIRSTTIME
+      DATA FIRSTTIME /.TRUE./
+      SAVE SQSO, FIRSTTIME
+C     
+C     FUNCTION
+C     
+      INTEGER SQSOINDEXB
+C     ----------
+C     BEGIN CODE
+C     ----------
+C     the squared split-order index of each (M,N) pair, looked up once
+      IF (FIRSTTIME) THEN
+        DO M = 1, NAMPSO
+          DO N = 1, NAMPSO
+            SQSO(M,N) = SQSOINDEXB(M,N)
+          ENDDO
+        ENDDO
+        FIRSTTIME = .FALSE.
+      ENDIF
+      RES(:) = (0D0,0D0)
+      DO M = 1, NAMPSO
+C       ZT = S.JAMP(:,M), using the packed upper triangle
+        CF_INDEX = 0
+        DO I = 1, NCOLOR
+          ZTEMP = (0D0,0D0)
+          DO J = I, NCOLOR
+            CF_INDEX = CF_INDEX + 1
+            ZTEMP = ZTEMP + CF(CF_INDEX,ILINK)*JAMP(J,M)
+          ENDDO
+          ZT(I) = ZTEMP
+        ENDDO
+        DO N = 1, NAMPSO
+          ZSUM = (0D0,0D0)
+          DO I = 1, NCOLOR
+            ZSUM = ZSUM + ZT(I)*DCONJG(JAMP(I,N))
+          ENDDO
+          RES(SQSO(M,N)) = RES(SQSO(M,N)) + ZSUM
+        ENDDO
+      ENDDO
+      RES(:) = RES(:)/DENOM(ILINK)
+      END
+
+
+      BLOCK DATA BORN_COLOR_DATA
+C     The colour matrices in the Born colour basis: index 0 is the
+C      Born one,
+C     1..NLINKS the colour links (upper triangle, off-diagonal entries
+C      doubled,
+C     integers over DENOM)
+      IMPLICIT NONE
+      INTEGER    NCOLOR, NCF, NLINKS
+      PARAMETER (NCOLOR=1, NCF=NCOLOR*(NCOLOR+1)/2)
+      PARAMETER (NLINKS=8)
+      INTEGER I
+      INTEGER CF(NCF,0:NLINKS), DENOM(0:NLINKS)
+      COMMON /C_BORN_COLOR_MATRICES/ CF, DENOM
+      DATA DENOM(0)/1/
+      DATA (CF(I,0),I=1,1) /9/
+      DATA DENOM(1)/1/
+      DATA (CF(I,1),I=1,1) /6/
+      DATA DENOM(2)/1/
+      DATA (CF(I,2),I=1,1) /-12/
+      DATA DENOM(3)/1/
+      DATA (CF(I,3),I=1,1) /0/
+      DATA DENOM(4)/1/
+      DATA (CF(I,4),I=1,1) /0/
+      DATA DENOM(5)/1/
+      DATA (CF(I,5),I=1,1) /6/
+      DATA DENOM(6)/1/
+      DATA (CF(I,6),I=1,1) /0/
+      DATA DENOM(7)/1/
+      DATA (CF(I,7),I=1,1) /0/
+      DATA DENOM(8)/1/
+      DATA (CF(I,8),I=1,1) /-12/
+      END
+
+
+      SUBROUTINE SB_SF_LINK(P,ILINK,ANS_SUMMED)
+C     
+C     Generated by MadGraph7 v. %(version)s, %(date)s
+C     By the MadGraph7 Development Team
+C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
+C     
+C     The ILINK-th colour-linked Born, summed over the split orders
+C     required for the counterterms (the values per split order are
+C     stored in AMP_SPLIT_CNT). It contracts the Born JAMPs saved by
+C      the
+C     last Born call with the colour matrix of the link, so SBORN must
+C     have been called before at the same momenta.
+C     
+C     Process: t > b u d~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     Process: t > b c s~ [ real = QCD QED ] QCD^2<=2 QED^2<=4
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'born_nhel.inc'
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  16 )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=1, NSQAMPSO=1)
+      INTEGER    NCOLOR
+      PARAMETER (NCOLOR=1)
+C     
+C     ARGUMENTS
+C     
+      REAL*8 P(0:3,NEXTERNAL-1), ANS_SUMMED
+      INTEGER ILINK
+C     
+C     VARIABLES
+C     
+      INTEGER I,J,IHEL,IDEN
+      INCLUDE 'orders.inc'
+      REAL*8 ANS(0:NSQAMPSO)
+      COMPLEX*16 RES(NSQAMPSO)
+      LOGICAL KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO)
+      COMMON /C_KEEP_ORDER_CNT/ KEEP_ORDER_CNT
+      INTEGER AMP_ORDERS(NSPLITORDERS)
+      DOUBLE PRECISION TINY
+      PARAMETER (TINY = 1D-12)
+      DOUBLE PRECISION MAX_VAL
+      INTEGER IDEN_VALUES(3)
+      DATA IDEN_VALUES /6, 6, 6/
+C     
+C     GLOBAL VARIABLES
+C     
+      LOGICAL GOODHEL(NCOMB,3)
+      COMMON /C_GOODHEL/ GOODHEL
+      DOUBLE COMPLEX SAVEJAMP(NCOLOR,NAMPSO,MAX_BHEL)
+      COMMON/TO_SAVEJAMP/SAVEJAMP
+      DOUBLE PRECISION SAVEMOM(NEXTERNAL-1,2)
+      COMMON/TO_SAVEMOM/SAVEMOM
+      LOGICAL CALCULATEDBORN
+      COMMON/CCALCULATEDBORN/CALCULATEDBORN
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+C     
+C     FUNCTIONS
+C     
+      INTEGER GETORDPOWFROMINDEX_B
+      INTEGER ORDERS_TO_AMP_SPLIT_POS
+C     ----------
+C     BEGIN CODE
+C     ----------
+      IDEN=IDEN_VALUES(NFKSPROCESS)
+      IF (CALCULATEDBORN) THEN
+        DO J=1,NEXTERNAL-1
+          IF (SAVEMOM(J,1).NE.P(0,J) .OR. SAVEMOM(J,2).NE.P(3,J)) THEN
+            CALCULATEDBORN=.FALSE.
+            WRITE(*,*) 'Error in sb_sf: momenta not the same in the'
+     $       //' born'
+            STOP
+          ENDIF
+        ENDDO
+      ELSE
+        WRITE(*,*) 'Error in sb_sf: color_linked borns should be'
+     $   //' called only with calculatedborn = true'
+        STOP
+      ENDIF
+      ANS(:) = 0D0
+      DO IHEL=1,NCOMB
+        IF (GOODHEL(IHEL,NFKSPROCESS)) THEN
+          CALL BORN_COLOR_SQUARE(ILINK,SAVEJAMP(:,:,IHEL),RES)
+          DO I=1,NSQAMPSO
+            ANS(I)=ANS(I)+DBLE(RES(I))
+          ENDDO
+        ENDIF
+      ENDDO
+      DO I=1,NSQAMPSO
+        ANS(I)=ANS(I)/DBLE(IDEN)
+        ANS(0)=ANS(0)+ANS(I)
+      ENDDO
+
+C     color-linked borns are called for QCD-type emissions
+      ANS_SUMMED = 0D0
+      MAX_VAL = 0D0
+
+C     reset the amp_split_cnt array
+      AMP_SPLIT_CNT(1:AMP_SPLIT_SIZE,1:2,1:NSPLITORDERS) = DCMPLX(0D0
+     $ ,0D0)
+
+      DO I = 1, NSQAMPSO
+        MAX_VAL = MAX(MAX_VAL, ABS(ANS(I)))
+      ENDDO
+
+      DO I = 1, NSQAMPSO
+        IF (KEEP_ORDER_CNT(QCD_POS, I)) THEN
+          ANS_SUMMED = ANS_SUMMED + ANS(I)
+          DO J = 1, NSPLITORDERS
+            AMP_ORDERS(J) = GETORDPOWFROMINDEX_B(J, I)
+C           take into account the fact that this is for QCD
+            IF (J.EQ.QCD_POS) AMP_ORDERS(J) = AMP_ORDERS(J) + 2
+          ENDDO
+          IF(ABS(ANS(I)).GT.MAX_VAL*TINY)
+     $      AMP_SPLIT_CNT(ORDERS_TO_AMP_SPLIT_POS(AMP_ORDERS),1
+     $     ,QCD_POS) = ANS(I)
+        ENDIF
+      ENDDO
+
+C     this is to avoid fake non-zero contributions
+      IF (ABS(ANS_SUMMED).LT.MAX_VAL*TINY) ANS_SUMMED=0D0
+
+      RETURN
       END
 
 
@@ -728,7 +1089,7 @@ C
       INTEGER FUNCTION SQSOINDEXB(AMPORDERA,AMPORDERB)
 C     
 C     This functions plays the role of the interference matrix. It can
-C      be hardcoded or 
+C      be hardcoded or
 C     made more elegant using hashtables if its execution speed ever
 C      becomes a relevant
 C     factor. From two split order indices of the jamps, it return the

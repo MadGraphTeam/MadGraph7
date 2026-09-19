@@ -2616,7 +2616,84 @@ class TestFKSCommon(unittest.TestCase):
         self.assertEqual(len(dicts_qed), 12)
         self.assertEqual(link_basis_qed, dicts_qed[1]['link_basis'])
         self.assertEqual(matrix_qed, dicts_qed[1]['link_matrix'])
-        
+
+
+    def test_born_basis_link_matrices(self):
+        """the colour-link matrices expressed in the Born basis give, with
+        the Born JAMPs only, the same colour-linked Born as the diagram-based
+        link basis (JAMP2) of insert_color_links; they are real and
+        symmetric, and the colour-conservation identity holds:
+        sum_{n != m} B_mn = -C_m B for every coloured massless leg m."""
+        import random
+        # u u~ > d d~
+        leglist = MG.LegList([
+                    MG.Leg({'id':2, 'state':False, 'number':1}),
+                    MG.Leg({'id':-2, 'state':False, 'number':2}),
+                    MG.Leg({'id':1, 'state':True, 'number':3}),
+                    MG.Leg({'id':-1, 'state':True, 'number':4}),
+                    ])
+        myproc = MG.Process({'legs' : leglist,
+                       'orders':{'QCD':10, 'QED':0},
+                       'model': self.model,
+                       'id': 1,
+                       'required_s_channels':[],
+                       'forbidden_s_channels':[],
+                       'forbidden_particles':[],
+                       'is_decay_chain': False,
+                       'decay_chains': MG.ProcessList(),
+                       'overall_orders': {}})
+        helas = helas_objects.HelasMatrixElement(
+                        diagram_generation.Amplitude(myproc))
+        basis = helas['color_basis']
+        links = fks_common.find_color_links(
+                    fks_common.to_fks_legs(leglist, self.model), symm=True,
+                    pert='QCD')
+        old = fks_common.insert_color_links(basis,
+                    basis.create_color_dict_list(helas['base_amplitude']),
+                    links)
+        new = fks_common.born_basis_link_matrices(basis, links)
+        self.assertEqual([n['link'] for n in new], [o['link'] for o in old])
+
+        def jamps(col_basis, amps):
+            out = []
+            for key in sorted(col_basis.keys()):
+                val = 0j
+                for entry in col_basis[key]:
+                    val += float(entry[2]) * 3 ** entry[4] * \
+                           (1j if entry[3] else 1) * amps[(entry[0], entry[1])]
+                out.append(val)
+            return out
+
+        random.seed(3)
+        amps = {}
+        for entries in basis.values():
+            for entry in entries:
+                amps[(entry[0], entry[1])] = complex(random.gauss(0, 1),
+                                                     random.gauss(0, 1))
+        jamp = jamps(basis, amps)
+        born_cf = helas['color_matrix'].col_matrix_fixed_Nc
+        born = sum(jamp[i].conjugate() * float(born_cf[(i, j)][0]) * jamp[j]
+                   for i in range(len(jamp)) for j in range(len(jamp))).real
+        values = {}
+        for o, n in zip(old, new):
+            jamp2 = jamps(o['link_basis'], amps)
+            ref = sum(jamp[i].conjugate() *
+                      float(o['link_matrix'].col_matrix_fixed_Nc[(i, k)][0]) *
+                      jamp2[k] for i in range(len(jamp))
+                      for k in range(len(jamp2)))
+            val = 0j
+            for (i, j), (re, im) in n['matrix'].items():
+                self.assertEqual(im, 0)
+                self.assertEqual(n['matrix'].get((j, i)), (re, im))
+                val += jamp[i].conjugate() * float(re) * jamp[j]
+            self.assertAlmostEqual(val.real, ref.real, delta=1e-12 * abs(born))
+            values[tuple(n['link'])] = val.real
+        # colour conservation for the massless quarks: sum_{n!=m} B_mn = -C_F B
+        for m in range(1, 5):
+            tot = sum(v for (a, b), v in values.items()
+                      if a != b and m in (a, b))
+            self.assertAlmostEqual(tot, -4. / 3. * born, delta=1e-12 * born)
+
 
     def test_legs_to_color_link_string(self):
         """tests if, given two fks legs, the color link between them is correctly 
