@@ -871,6 +871,28 @@ class FKSHelasProcess(object):
                                 'No virtual flavor row for physical Born %s'
                                 % born_pdgs)
 
+                    extra_cnt_index = 0
+                    extra_cnt_pdgs = None
+                    if info['extra_cnt_index'] != -1:
+                        try:
+                            extra_cnt_pdgs = \
+                                fks_common.map_real_to_born_pdgs(
+                                    real_pdgs, info, model,
+                                    underlying_index=1)
+                        except fks_common.FKSProcessError as error:
+                            raise fks_common.FKSProcessError(
+                                'Cannot map extra counterterm for physical '
+                                'real row %s: %s' % (real_pdgs, error))
+                        extra_me = self.extra_cnt_me_list[
+                            info['extra_cnt_index']]
+                        extra_cnt_index = \
+                            extra_me.get_external_flavor_index(
+                                extra_cnt_pdgs, from_pdgs=True)
+                        if extra_cnt_index == 0:
+                            raise fks_common.FKSProcessError(
+                                'No extra-counterterm flavor row for physical '
+                                'PDGs %s' % extra_cnt_pdgs)
+
                     entry = {
                         'fks_config_index': config_index,
                         'n_me': n_me,
@@ -882,7 +904,8 @@ class FKSHelasProcess(object):
                             born_index),
                         'real_flavor_index': real_index,
                         'born_flavor_index': born_index,
-                        'extra_cnt_flavor_index': 0,
+                        'extra_cnt_pdgs': extra_cnt_pdgs,
+                        'extra_cnt_flavor_index': extra_cnt_index,
                         'virtual_flavor_index': virtual_index,
                         'real_charges': real_charges,
                         'born_charges': born_charges,
@@ -898,6 +921,33 @@ class FKSHelasProcess(object):
                 flavor_map.extend(config_entries)
 
         return flavor_map
+
+    def get_fks_flavor_signature(self):
+        """Return an immutable identity for grouped physical FKS mappings.
+
+        Local row numbers are included deliberately: two objects cannot share
+        generated wrappers when the same physical channel selects different
+        local Born, real, counterterm, or virtual rows.
+        """
+        signature = []
+        for entry in self.get_fks_flavor_map():
+            info = entry['fks_info']
+            signature.append((
+                tuple(entry['real_pdgs']),
+                tuple(entry['born_pdgs']),
+                tuple(entry['extra_cnt_pdgs'] or ()),
+                entry['real_flavor_index'],
+                entry['born_flavor_index'],
+                entry['extra_cnt_flavor_index'],
+                entry['virtual_flavor_index'],
+                info['i'], info['j'], info['ij'], info['ij_id'],
+                tuple(info['splitting_type']),
+                info['need_color_links'], info['need_charge_links'],
+                tuple(entry['real_charges']),
+                tuple(entry['born_charges']),
+                tuple(entry['real_colors']),
+                tuple(entry['born_colors'])))
+        return tuple(sorted(signature))
         
 
     def get_lh_pdg_string(self):
@@ -994,6 +1044,16 @@ class FKSHelasProcess(object):
                 reals2.remove(real)
             except ValueError:
                 return False  
+
+        self_grouped = bool(self.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        other_grouped = bool(other.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        if self_grouped != other_grouped:
+            return False
+        if self_grouped and self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            return False
                 
         if not reals2:
             return True
@@ -1012,6 +1072,13 @@ class FKSHelasProcess(object):
         corresponding real processes may not be in the same order. This is 
         taken care of by constructing the list of self_reals.
         """
+        grouped = bool(self.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        if grouped and self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            raise fks_common.FKSProcessError(
+                'add_process: incompatible physical FKS flavor mappings')
+
         # first add the born process
         #need to store pdg lists rather than processes in order to keep mirror processes different
         this_pdgs = [[leg['id'] for leg in proc['legs']] \
@@ -1116,6 +1183,44 @@ class FKSHelasRealProcess(object): #test written
     def get_nexternal_ninitial(self):
         """Refers to the matrix_element function"""
         return self.matrix_element.get_nexternal_ninitial()
+
+    def get_fks_flavor_signature(self):
+        """Return grouped real-to-underlying-Born validity metadata.
+
+        Ungrouped equality intentionally keeps its historical behavior so that
+        ordinary subprocesses with equivalent matrix elements can still be
+        combined.  A merged matrix element must additionally agree on every
+        physical real row represented by each FKS configuration.
+        """
+        model = self.matrix_element.get('processes')[0].get('model')
+        if not model.get('merged_particles'):
+            return None
+
+        signature = []
+        _, real_pdg_rows = self.matrix_element.get_external_flavors(
+            return_pdgs=True)
+        for info in self.fks_infos:
+            config_entries = []
+            for real_pdgs in real_pdg_rows:
+                try:
+                    born_pdgs = fks_common.map_real_to_born_pdgs(
+                        real_pdgs, info, model)
+                except fks_common.FKSProcessError:
+                    continue
+                extra_pdgs = ()
+                if info['extra_cnt_index'] != -1:
+                    extra_pdgs = tuple(fks_common.map_real_to_born_pdgs(
+                        real_pdgs, info, model, underlying_index=1))
+                config_entries.append((
+                    tuple(real_pdgs), tuple(born_pdgs), extra_pdgs,
+                    self.matrix_element.get_external_flavor_index(
+                        real_pdgs, from_pdgs=True)))
+            signature.append((
+                info['i'], info['j'], info['ij'], info['ij_id'],
+                tuple(info['splitting_type']),
+                info['need_color_links'], info['need_charge_links'],
+                tuple(sorted(config_entries))))
+        return tuple(sorted(signature))
     
     def __eq__(self, other):
         """Equality operator:
@@ -1137,6 +1242,10 @@ class FKSHelasRealProcess(object): #test written
                 if selfinfo[key] != otherinfo [key]:
                     return False
 
+        if self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            return False
+
         return True
     
 
@@ -1144,4 +1253,3 @@ class FKSHelasRealProcess(object): #test written
         """Inequality operator:
         compare two FKSHelasRealProcesses by comparing their dictionaries"""
         return not self.__eq__(other)
-

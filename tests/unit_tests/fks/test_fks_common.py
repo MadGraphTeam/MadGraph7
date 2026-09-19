@@ -2474,6 +2474,17 @@ class TestFKSCommon(unittest.TestCase):
                 [2, -2, 24, 3, -3], gluon_mother_info, model),
             [2, -2, 24, 21])
 
+        # Extra counterterms can replace the primary mother by another one
+        # while retaining the same real daughters (e.g. g/a -> q q~).
+        alternate_mother_info = copy.deepcopy(gluon_mother_info)
+        alternate_mother_info['underlying_born'].append(
+            [2, -2, 24, 22])
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, 3, -3], alternate_mother_info, model,
+                underlying_index=1),
+            [2, -2, 24, 22])
+
         self.assertRaises(
             fks_common.FKSProcessError,
             fks_common.map_real_to_born_pdgs,

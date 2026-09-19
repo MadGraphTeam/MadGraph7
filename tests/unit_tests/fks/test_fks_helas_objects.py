@@ -35,6 +35,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import copy
 import array
+import pickle
 import models.import_ufo as import_ufo
 from madgraph import MG5DIR
 
@@ -859,5 +860,57 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual(crossed[0]['born_pdgs'], [2, -2, 24, -24])
         self.assertEqual(crossed[0]['real_flavor_index'], 2)
         self.assertEqual(crossed[0]['born_flavor_index'], 2)
+
+        # Low-memory generation serializes intermediate FKS objects.  The
+        # physical mapping and its equality identity must survive that boundary.
+        restored = pickle.loads(pickle.dumps(helas_process))
+        self.assertEqual(restored.get_fks_flavor_signature(),
+                         helas_process.get_fks_flavor_signature())
+        self.assertEqual(restored, helas_process)
+
+        incompatible = copy.deepcopy(helas_process)
+        incompatible.real_processes[0].fks_infos[0][
+            'underlying_born'][0][0] = 82
+        self.assertNotEqual(incompatible, helas_process)
+        self.assertRaises(fks_common.FKSProcessError,
+                          helas_process.add_process, incompatible)
+
+        # Virtual rows are another local table.  Reverse a copy deliberately so
+        # that the same physical Born row has a different integer index and
+        # prove get_fks_flavor_map resolves it rather than reusing born_index.
+        virtual = copy.deepcopy(helas_process.born_me)
+        virtual['allowed_flavors'] = list(
+            reversed(virtual['allowed_flavors']))
+        virtual['allowed_flavors_pdgs'] = list(
+            reversed(virtual['allowed_flavors_pdgs']))
+        virtual._external_flavor_index_maps = {}
+        helas_process.virt_matrix_element = virtual
+        virtual_map = helas_process.get_fks_flavor_map()
+        first_physical = [entry for entry in virtual_map
+                          if entry['fks_config_index'] == 1 and
+                          entry['born_pdgs'] == [1, -1, 24, -24]][0]
+        self.assertEqual(first_physical['born_flavor_index'], 1)
+        self.assertEqual(first_physical['virtual_flavor_index'], 4)
+
+        # Extra counterterms own a third independent local table.  Reuse the
+        # same physical underlying Born in this focused table-order test; the
+        # alternate-mother reconstruction itself is covered in fks_common.
+        extra_cnt = copy.deepcopy(helas_process.born_me)
+        extra_cnt['allowed_flavors'] = list(
+            reversed(extra_cnt['allowed_flavors']))
+        extra_cnt['allowed_flavors_pdgs'] = list(
+            reversed(extra_cnt['allowed_flavors_pdgs']))
+        extra_cnt._external_flavor_index_maps = {}
+        helas_process.extra_cnt_me_list = [extra_cnt]
+        first_info = helas_process.real_processes[0].fks_infos[0]
+        first_info['underlying_born'].append(
+            list(first_info['underlying_born'][0]))
+        first_info['extra_cnt_index'] = 0
+        extra_map = helas_process.get_fks_flavor_map()
+        first_physical = [entry for entry in extra_map
+                          if entry['fks_config_index'] == 1 and
+                          entry['born_pdgs'] == [1, -1, 24, -24]][0]
+        self.assertEqual(first_physical['born_flavor_index'], 1)
+        self.assertEqual(first_physical['extra_cnt_flavor_index'], 4)
 
         

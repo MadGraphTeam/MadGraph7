@@ -604,7 +604,7 @@ def map_real_to_born_pdgs(real_pdgs, fks_info, model,
         i_fks = fks_info['i']
         j_fks = fks_info['j']
         ij_fks = fks_info['ij']
-        mother_id = fks_info['ij_id']
+        primary_mother_id = fks_info['ij_id']
         underlying = list(
             fks_info['underlying_born'][underlying_index])
     except (KeyError, IndexError, TypeError):
@@ -619,6 +619,16 @@ def map_real_to_born_pdgs(real_pdgs, fks_info, model,
         raise FKSProcessError(
             'Invalid FKS leg positions i=%s, j=%s, ij=%s for %d real legs'
             % (i_fks, j_fks, ij_fks, len(real_pdgs)))
+
+    # The primary underlying Born has the original ij_id.  An extra
+    # counterterm can use a different mother (for example photon instead of
+    # gluon), recorded in its own underlying_born row at the same ij position.
+    mother_id = (primary_mother_id if underlying_index == 0
+                 else underlying[ij_fks - 1])
+    if underlying_index == 0 and underlying[ij_fks - 1] != mother_id:
+        raise FKSProcessError(
+            'Primary FKS mother %s does not match underlying Born topology %s'
+            % (mother_id, underlying))
 
     merged = model.get('merged_particles')
     members = merged.get(abs(mother_id))
