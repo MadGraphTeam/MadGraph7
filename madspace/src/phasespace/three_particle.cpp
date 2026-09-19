@@ -96,7 +96,8 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     double s_invariant_power,
     double s_mass,
     double s_width,
-    bool has_cut
+    bool has_cut,
+    bool arcsine_s23
 ) :
     Mapping(
         "TwoToThreeParticleScattering",
@@ -123,7 +124,8 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     ),
     _t_invariant(t_invariant_power, t_mass, t_width),
     _s_invariant(s_invariant_power, s_mass, s_width),
-    _has_cut(has_cut) {}
+    _has_cut(has_cut),
+    _arcsine_s23(arcsine_s23) {}
 
 Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
     FunctionBuilder& fb,
@@ -153,8 +155,23 @@ Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
               conditions.at(6)
           )
         : fb.s23_min_max(p_a, p_b, p_3, t_inv_result["invariant"], m1, m2);
-    auto s23_inv_result = _s_invariant.build_forward(fb, {r_s23}, {s23_min, s23_max});
+    // The arcsine map in phi needs where the sampled range sits inside the
+    // kinematic one. Without cuts the two coincide.
+    Value x_s23 = r_s23, det_arcsine;
+    if (_arcsine_s23) {
+        auto [s23_phys_min, s23_phys_max] = _has_cut
+            ? fb.s23_min_max(p_a, p_b, p_3, t_inv_result["invariant"], m1, m2)
+            : std::array<Value, 2>{s23_min, s23_max};
+        auto [x, det_x] =
+            fb.s23_arcsine(r_s23, s23_min, s23_max, s23_phys_min, s23_phys_max);
+        x_s23 = x;
+        det_arcsine = det_x;
+    }
+    auto s23_inv_result = _s_invariant.build_forward(fb, {x_s23}, {s23_min, s23_max});
     auto det_inv = fb.mul(t_inv_result["det"], s23_inv_result["det"]);
+    if (_arcsine_s23) {
+        det_inv = fb.mul(det_inv, det_arcsine);
+    }
     auto [p1, p2, det_scatter] = fb.two_to_three_particle_scattering(
         index_choice,
         p_a,
@@ -197,11 +214,26 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
         : fb.s23_value_and_min_max(p_a, p_b, p_3, t1_abs, p1, p2);
     auto s23_inv_result = _s_invariant.build_inverse(fb, {s23}, {s23_min, s23_max});
     auto det_inv = fb.mul(t_inv_result["det"], s23_inv_result["det"]);
+    Value r_s23 = s23_inv_result["random"];
+    if (_arcsine_s23) {
+        Value s23_phys_min = s23_min, s23_phys_max = s23_max;
+        if (_has_cut) {
+            auto [s23_phys, phys_min, phys_max] =
+                fb.s23_value_and_min_max(p_a, p_b, p_3, t1_abs, p1, p2);
+            s23_phys_min = phys_min;
+            s23_phys_max = phys_max;
+        }
+        auto [r, det_r] = fb.s23_arcsine_inverse(
+            r_s23, s23_min, s23_max, s23_phys_min, s23_phys_max
+        );
+        r_s23 = r;
+        det_inv = fb.mul(det_inv, det_r);
+    }
     auto [m1, m2, index_choice, det_scatter] =
         fb.two_to_three_particle_scattering_inverse(p1, p2, p_3, p_a, p_b, t1_abs, s23);
     return {
         {{"discrete_choice", index_choice},
-         {"random_s23", s23_inv_result["random"]},
+         {"random_s23", r_s23},
          {"random_t1", t_inv_result["random"]},
          {"mass1", m1},
          {"mass2", m2}},

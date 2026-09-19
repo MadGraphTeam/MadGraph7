@@ -155,7 +155,8 @@ ColorOrderedMapping::ColorOrderedMapping(
     double s_invariant_power,
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
-    const std::vector<std::vector<double>>& dr_min
+    const std::vector<std::vector<double>>& dr_min,
+    bool arcsine_s23
 ) :
     Mapping(
         "ColorOrderedMapping",
@@ -226,7 +227,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         s_invariant_power,
         0.,
         0.,
-        has_any_cut(pt_min, m_inv_min, dr_min)
+        has_any_cut(pt_min, m_inv_min, dr_min),
+        arcsine_s23
     ),
     _double_t(
         t_invariant_power,

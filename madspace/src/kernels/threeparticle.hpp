@@ -582,6 +582,106 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
     s_23 = lsquare<T>(p_23);
 }
 
+// Arcsine map of the s23 sampling variable.
+//
+// At fixed s12, t1 and t2 the invariant s23 is linear in cos(phi) on its
+// physical range [s_phys_min, s_phys_max], and the 2->3 measure is flat in phi:
+//   ds23 / (8 sqrt(-G4)) = dphi / (2 sqrt(lambda)).
+// Sampling s23 (or any smooth function of it) with a density that stays finite
+// at the edges of the physical range therefore leaves an integrable
+// 1/|sin(phi)| in the weight, with a log-divergent variance. With
+//   u = (s23 - s_phys_min) / (s_phys_max - s_phys_min) = sin^2(phi / 2),
+// the map below is flat in theta = phi / 2 on the part [theta_a, theta_b] of
+// [0, pi/2] that the sampling range [s_min, s_max] covers, and returns the
+// position x in [0, 1] of the point in that range:
+//   x = (sin^2 theta - sin^2 theta_a) / (sin^2 theta_b - sin^2 theta_a),
+//   theta = theta_a + (theta_b - theta_a) r.
+// x is then handed to the s23 importance sampling in place of r. Its Jacobian
+// dx/dr vanishes like |sin(phi)| at a physical edge, so the product with the
+// 2->3 Jacobian stays bounded; at an edge set by a cut instead (theta_a > 0 or
+// theta_b < pi/2) it stays finite and nothing is cancelled. Differences of
+// sin^2 are written as sin(B - A) sin(B + A), so that x keeps its relative
+// precision where it is small, also when the sampled range is a narrow part of
+// the kinematic one.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> s23_arcsine_angles(
+    FVal<T> s_min, FVal<T> s_max, FVal<T> s_phys_min, FVal<T> s_phys_max
+) {
+    auto width = s_phys_max - s_phys_min;
+    auto width_safe = where(width > 0., width, FVal<T>(1.));
+    // u and 1 - u of both ends, each from its own difference
+    auto ua = min(max((s_min - s_phys_min) / width_safe, 0.), 1.);
+    auto ua_c = min(max((s_phys_max - s_min) / width_safe, 0.), 1.);
+    auto ub = min(max((s_max - s_phys_min) / width_safe, 0.), 1.);
+    auto ub_c = min(max((s_phys_max - s_max) / width_safe, 0.), 1.);
+    auto theta_a = atan2(sqrt(ua), sqrt(ua_c));
+    auto theta_b = atan2(sqrt(ub), sqrt(ub_c));
+    // an empty physical range leaves nothing to map: theta_b = theta_a
+    return {theta_a, where(width > 0., theta_b, theta_a)};
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_arcsine(
+    FIn<T, 0> r,
+    FIn<T, 0> s_min,
+    FIn<T, 0> s_max,
+    FIn<T, 0> s_phys_min,
+    FIn<T, 0> s_phys_max,
+    FOut<T, 0> x,
+    FOut<T, 0> det
+) {
+    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
+    auto theta_a = angles.first;
+    auto dtheta = angles.second - angles.first;
+    // sin^2 theta_b - sin^2 theta_a
+    auto den = sin(dtheta) * sin(angles.first + angles.second);
+    auto ok = (dtheta > 0.) & (den > 0.);
+    auto den_safe = where(ok, den, FVal<T>(1.));
+
+    FVal<T> r_val(r);
+    auto dtheta_r = dtheta * r_val;
+    // x = (sin^2 theta - sin^2 theta_a) / den, dx/dr = dtheta sin(2 theta) / den
+    auto x_val = sin(dtheta_r) * sin(2. * theta_a + dtheta_r) / den_safe;
+    auto det_val = dtheta * sin(2. * (theta_a + dtheta_r)) / den_safe;
+    x = where(ok, min(max(x_val, 0.), 1.), r_val);
+    det = where(ok, det_val, FVal<T>(1.));
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_arcsine_inverse(
+    FIn<T, 0> x,
+    FIn<T, 0> s_min,
+    FIn<T, 0> s_max,
+    FIn<T, 0> s_phys_min,
+    FIn<T, 0> s_phys_max,
+    FOut<T, 0> r,
+    FOut<T, 0> det
+) {
+    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
+    auto theta_a = angles.first;
+    auto theta_b = angles.second;
+    auto dtheta = theta_b - theta_a;
+    auto den = sin(dtheta) * sin(theta_a + theta_b);
+    auto ok = (dtheta > 0.) & (den > 0.);
+    auto den_safe = where(ok, den, FVal<T>(1.));
+    auto dtheta_safe = where(ok, dtheta, FVal<T>(1.));
+
+    FVal<T> x_val(x);
+    // sin^2 theta = sin^2 theta_a + x den, cos^2 theta = cos^2 theta_b + (1 - x) den
+    auto sin_a = sin(theta_a);
+    auto cos_b = cos(theta_b);
+    auto sin2 = sin_a * sin_a + x_val * den_safe;
+    auto cos2 = cos_b * cos_b + (1. - x_val) * den_safe;
+    auto theta = atan2(sqrt(max(sin2, 0.)), sqrt(max(cos2, 0.)));
+    auto r_val = (theta - theta_a) / dtheta_safe;
+    // dr/dx; zero at the edges of the physical range, where dx/dr vanishes
+    auto sin_2theta = sin(2. * theta);
+    auto det_val =
+        where(sin_2theta > 0., den_safe / (dtheta_safe * sin_2theta), FVal<T>(0.));
+    r = where(ok, min(max(r_val, 0.), 1.), x_val);
+    det = where(ok, det_val, FVal<T>(1.));
+}
+
 template <typename T>
 KERNELSPEC void kernel_two_to_three_particle_scattering(
     IIn<T, 0> phi_index,
