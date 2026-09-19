@@ -192,84 +192,52 @@ KERNELSPEC FVal<T> esquare(FourMom<T> p) {
     return p[1] * p[1] + p[2] * p[2] + p[3] * p[3];
 }
 
+// Rotation R(q) that takes the z axis onto the direction of q, used to set up
+// the scattering frame around an incoming momentum. For q in the upper
+// hemisphere it is the minimal rotation about z x q,
+//
+//         [ 1 - a^2 h   -a b h     a ]
+//   R_+ = [ -a b h     1 - b^2 h   b ],   (a, b, c) = q / |q|,  h = 1 / (1 + c),
+//         [ -a         -b          c ]
+//
+// and in the lower one F R_+(F q) with F = diag(-1, 1, -1), the rotation by pi
+// about y. Both are smooth across q parallel to the z axis, where they reduce
+// to the identity and to F. The frame therefore moves only at rounding level
+// when q does, so forward and inverse agree on the azimuth even when they
+// build q from differently rounded momenta. (The previous construction switched
+// between an azimuth set by atan2(q_y, q_x) and a fixed one on the exact test
+// q_t == 0, and turned the azimuth by an arbitrary angle, often pi/2, whenever
+// the two sides rounded q_t differently.)
 template <typename T>
 KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
-    auto qt2 = q[1] * q[1] + q[2] * q[2];
-    auto qq2 = qt2 + q[3] * q[3];
-    auto qt = sqrt(max(qt2, EPS2));
-    auto qq = sqrt(max(qq2, EPS2));
-
-    // General rotation (valid when qt2 > 0; numerically safe because qt,qq>=eps)
-    FourMom<T> r_gen = {
-        p[0],
-        q[1] * q[3] / (qq * qt) * p[1] - q[2] / qt * p[2] + q[1] / qq * p[3],
-        q[2] * q[3] / (qq * qt) * p[1] + q[1] / qt * p[2] + q[2] / qq * p[3],
-        -qt / qq * p[1] + q[3] / qq * p[3]
-    };
-
-    // Degenerate case qt2 == 0: choose identity for qz>=0 else
-    // (px,,py,pz)->(-px,-py,-pz)
-    FourMom<T> r_deg_pos = p;
-    FourMom<T> r_deg_neg = {p[0], -p[1], p[2], -p[3]};
-
-    auto mask_deg = (qt2 == 0.);
-    auto mask_neg = (q[3] < 0.);
-
-    // pick degenerate result depending on sign(qz)
-    FourMom<T> r_deg = {
-        where(mask_neg, r_deg_neg[0], r_deg_pos[0]),
-        where(mask_neg, r_deg_neg[1], r_deg_pos[1]),
-        where(mask_neg, r_deg_neg[2], r_deg_pos[2]),
-        where(mask_neg, r_deg_neg[3], r_deg_pos[3]),
-    };
-
-    // final: if degenerate use r_deg else r_gen
-    return {
-        where(mask_deg, r_deg[0], r_gen[0]),
-        where(mask_deg, r_deg[1], r_gen[1]),
-        where(mask_deg, r_deg[2], r_gen[2]),
-        where(mask_deg, r_deg[3], r_gen[3]),
-    };
+    auto qq = sqrt(max(esquare<T>(q), EPS2));
+    auto neg = q[3] < 0.;
+    auto a = where(neg, -q[1], q[1]) / qq;
+    auto b = q[2] / qq;
+    auto c = where(neg, -q[3], q[3]) / qq;
+    auto h = 1. / (1. + c);
+    auto x = (1. - a * a * h) * p[1] - a * b * h * p[2] + a * p[3];
+    auto y = -a * b * h * p[1] + (1. - b * b * h) * p[2] + b * p[3];
+    auto z = -a * p[1] - b * p[2] + c * p[3];
+    return {p[0], where(neg, -x, x), y, where(neg, -z, z)};
 }
 
+// Inverse of `rotate`: R(q)^T.
 template <typename T>
 KERNELSPEC FourMom<T> rotate_inverse(FourMom<T> p, FourMom<T> q) {
-    auto qt2 = q[1] * q[1] + q[2] * q[2];
-    auto qq2 = qt2 + q[3] * q[3];
-    auto qt = sqrt(max(qt2, EPS2));
-    auto qq = sqrt(max(qq2, EPS2));
-
-    // General rotation (valid when qt2 > 0; numerically safe because qt,qq>=eps)
-    FourMom<T> r_gen = {
-        p[0],
-        q[1] * q[3] / (qq * qt) * p[1] + q[2] * q[3] / (qq * qt) * p[2] -
-            p[3] * qt / qq,
-        -q[2] / qt * p[1] + q[1] / qt * p[2],
-        q[1] / qq * p[1] + q[2] / qq * p[2] + q[3] / qq * p[3]
-    };
-
-    // Degenerate case qt2 == 0: choose identity for qz>=0 else
-    // (px,,py,pz)->(-px,-py,-pz)
-    FourMom<T> r_deg_pos = p;
-    FourMom<T> r_deg_neg = {p[0], -p[1], p[2], -p[3]};
-
-    auto mask_deg = (qt2 == 0.);
-    auto mask_neg = (q[3] < 0.);
-
-    // pick degenerate result depending on sign(qz)
-    FourMom<T> r_deg = {
-        where(mask_neg, r_deg_neg[0], r_deg_pos[0]),
-        where(mask_neg, r_deg_neg[1], r_deg_pos[1]),
-        where(mask_neg, r_deg_neg[2], r_deg_pos[2]),
-        where(mask_neg, r_deg_neg[3], r_deg_pos[3]),
-    };
-
-    // final: if degenerate use r_deg else r_gen
+    auto qq = sqrt(max(esquare<T>(q), EPS2));
+    auto neg = q[3] < 0.;
+    auto a = where(neg, -q[1], q[1]) / qq;
+    auto b = q[2] / qq;
+    auto c = where(neg, -q[3], q[3]) / qq;
+    auto h = 1. / (1. + c);
+    auto px = where(neg, -p[1], p[1]);
+    auto pz = where(neg, -p[3], p[3]);
     return {
-        where(mask_deg, r_deg[0], r_gen[0]),
-        where(mask_deg, r_deg[1], r_gen[1]),
-        where(mask_deg, r_deg[2], r_gen[2]),
-        where(mask_deg, r_deg[3], r_gen[3]),
+        p[0],
+        (1. - a * a * h) * px - a * b * h * p[2] - a * pz,
+        -a * b * h * px + (1. - b * b * h) * p[2] - b * pz,
+        a * px + b * p[2] + c * pz
     };
 }
 

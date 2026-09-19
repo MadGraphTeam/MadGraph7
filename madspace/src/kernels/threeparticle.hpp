@@ -456,8 +456,13 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
     auto smax_ok = active & (e_eff > 0.) & (disc > 0.) & (smax_b > smn);
     auto smx_new = where(smax_ok, min(smx, smax_b), smx);
     // smin: a massless peeled particle needs ET -> minimum s-channel mass.
+    // Massless is judged relative to the energy scale: the inverse reads m2_2
+    // off momenta, where a massless particle comes out at +-1e-16 E^2 or so,
+    // and an absolute test (m2_2 < EPS) turned this bound off there and
+    // changed the sampled range between forward and inverse.
     auto smin_b = 2. * etmin_2 * (pim1_0 - pim1_1 * cos(drcut));
-    auto smin_ok = active & (m2_2 < EPS) & (smin_b > smn) & (smin_b < smx_new);
+    auto massless_2 = m2_2 < 1e-10 * piir_0 * piir_0;
+    auto smin_ok = active & massless_2 & (smin_b > smn) & (smin_b < smx_new);
     auto smn_new = where(smin_ok, max(smn, smin_b), smn);
     smx_new = where(smx_new > smn_new, smx_new, smn_new + EPS);
     return {smn_new, smx_new};
