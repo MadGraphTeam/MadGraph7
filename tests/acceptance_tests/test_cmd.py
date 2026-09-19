@@ -1639,8 +1639,10 @@ class TestCmdShell2(unittest.TestCase,
         me_groups = me_re.search(log_output)
 
         self.assertTrue(me_groups)
-        # g g > go go: shifted at the 5th digit by the NHEL helicity-summation
-        # reorder (MG7 --crossing branch); same value as the mssm short-xsec ref.
+        # g g > go go: the gluino exchanged in the t/u channels carries no
+        # width -- it is an external field (zerowidth_external) and its momentum
+        # is spacelike (zerowidth_tchannel), either rule alone drops it. With
+        # both set to False this reads 6.4739191, the value that keeps it.
         self.assertAlmostEqual(float(me_groups.group('value')), 6.4739329,5)
 
         # Cross-check standalone (madmatrix) against standalone_fortran for
@@ -1671,7 +1673,8 @@ class TestCmdShell2(unittest.TestCase,
         f_default = me_re.search(open(f_log).read())
         self.assertTrue(f_default,
                         'standalone_fortran produced no matrix element')
-        self.assertAlmostEqual(float(f_default.group('value')), 6.4739191, 5)
+        # same value as the C++ one above, gluino propagator width dropped
+        self.assertAlmostEqual(float(f_default.group('value')), 6.4739329, 5)
         # Reference value at the explicit above-threshold energy.
         f_e_log = os.path.join(f_dir, 'check_e.log')
         subprocess.call('./check %s' % energy,
@@ -3327,6 +3330,17 @@ set boost_choice [6, -6]
                 self.assertAlmostEqual(rho_avg[i][j].real, rho_avg_ref[i][j].real, places=3, msg=msg) #we ask 3 digits because we only use 50k events
                 self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3, msg=msg)
 
+
+    @staticmethod
+    def read_average_density_matrix(path):
+        """read a Average_density_matrix_*.txt file and return the square matrix"""
+
+        rho_avg = []
+        with open(path, 'r') as f:
+            for line in f.readlines()[1:]: #the first line is a title
+                aux = line.strip("\t\n[]").split(",")
+                rho_avg.append([complex(elem.strip(" ()")) for elem in aux])
+        return rho_avg
 
     def test_density_mode_multicore(self):
         ############################################################################
