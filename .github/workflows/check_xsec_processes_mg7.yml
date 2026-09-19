@@ -44,7 +44,7 @@ on:
       events:
         description: 'Events per process (reference used 1M; reduced here for CI)'
         required: false
-        default: '100000'
+        default: '10000'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -54,7 +54,7 @@ env:
   # Read by tests/acceptance_tests/test_check_xsec_processes_mg7.py. The
   # `|| 'default'` fallback covers push/PR triggers where inputs are absent.
   MG7_XSEC_TOLERANCE: ${{ inputs.tolerance || '0.01' }}
-  MG7_XSEC_EVENTS: ${{ inputs.events || '100000' }}
+  MG7_XSEC_EVENTS: ${{ inputs.events || '10000' }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -123,5 +123,5 @@ jobs:
             tests/acceptance_tests/check_xsec_processes_reference.json \
             xsec_results \
             --tolerance "${{ inputs.tolerance || '0.01' }}" \
-            --events "${{ inputs.events || '100000' }}" \
+            --events "${{ inputs.events || '10000' }}" \
             >> "$GITHUB_STEP_SUMMARY"

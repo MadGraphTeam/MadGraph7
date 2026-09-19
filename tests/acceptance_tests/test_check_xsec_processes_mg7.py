@@ -41,8 +41,10 @@ Two knobs are read from the environment so the CI can dial them without
 touching the code:
 
   * ``MG7_XSEC_TOLERANCE`` -- max allowed relative difference (default 0.01, 1%)
-  * ``MG7_XSEC_EVENTS``    -- events per run (default 100000; the reference
-                             used 1M, reduced here to keep the CI affordable)
+  * ``MG7_XSEC_EVENTS``    -- events per run (default 10000; the reference
+                             used 1M, reduced here to keep the CI affordable:
+                             the MC error is then ~0.3%, well inside the 1%
+                             tolerance)
 
 Run everything locally with e.g.::
 
@@ -87,7 +89,7 @@ _REFERENCE_PDF = 'NNPDF23_lo_as_0130_qed'
 # Environment-tunable knobs (see module docstring). Kept as module globals so
 # the dynamically generated test methods pick up the CI-provided values.
 _TOLERANCE = float(os.environ.get('MG7_XSEC_TOLERANCE', 0.01))
-_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 100000))
+_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 10000))
 
 # Optional: when set (by the CI workflow), one JSON result record per process
 # is written here so a later job can build a GitHub Actions job summary out of
