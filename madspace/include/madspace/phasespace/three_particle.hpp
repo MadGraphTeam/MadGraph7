@@ -199,11 +199,14 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
-    Invariant _t_invariant;
-    Invariant _s_invariant;
     std::array<Value, 3>
     split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // arcsine map and s23 sampling in one kernel (not for Breit-Wigner)
+    bool fused_s23() const { return _arcsine_s23 && _s_width == 0.; }
 
+    Invariant _t_invariant;
+    Invariant _s_invariant;
+    double _s_power, _s_mass, _s_width;
     bool _has_cut;
     bool _arcsine_s23;
     bool _p12_condition;

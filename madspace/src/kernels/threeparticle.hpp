@@ -678,13 +678,196 @@ KERNELSPEC void kernel_s23_arcsine_inverse(
     det = where(ok, det_val, FVal<T>(1.));
 }
 
+// Position of s23 in its kinematic range, u = (s23 - s_phys_min) / width and
+// 1 - u = (s_phys_max - s23) / width, each from its own difference. Used when
+// s23 itself is sampled; the arcsine sampling below gives u and 1 - u
+// directly and keeps their relative precision at the edges of the range.
+template <typename T>
+KERNELSPEC void kernel_s23_position(
+    FIn<T, 0> s23,
+    FIn<T, 0> s_phys_min,
+    FIn<T, 0> s_phys_max,
+    FOut<T, 0> u,
+    FOut<T, 0> u_c
+) {
+    FVal<T> s23_val(s23), lo(s_phys_min), hi(s_phys_max);
+    auto width = hi - lo;
+    auto width_safe = where(width > 0., width, FVal<T>(1.));
+    u = min(max((s23_val - lo) / width_safe, 0.), 1.);
+    u_c = min(max((hi - s23_val) / width_safe, 0.), 1.);
+}
+
+// Arcsine map in phi composed with the s23 importance sampling of @ref
+// Invariant (flat for power 0, logarithmic for power 1, 1/(s - m^2)^power
+// otherwise, with the same regularisation m^2 -> m^2 - 1e-2), in one step:
+// r -> theta -> x, 1 - x -> s23 - s_min, s_max - s23 -> u, 1 - u. Every
+// quantity is carried as a pair of distances to both ends of its range, with
+// the power maps written through expm1 and log1p, so that u and 1 - u keep
+// their relative precision down to the edges of the kinematic range. Going
+// through s23 itself, as `s23_arcsine` + @ref Invariant + `s23_position` do,
+// loses that: s23 - s_min is only known to ~1e-16 s. The forward/inverse round
+// trip then only recovers r_s23 to ~1e-8 near the edges, which is where the
+// arcsine map puts its points.
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>> s23_power_offsets(
+    FVal<T> x,
+    FVal<T> x_c,
+    FVal<T> s_min,
+    FVal<T> s_max,
+    FVal<T> power,
+    FVal<T> mass
+) {
+    // returns s23 - s_min, s_max - s23 and d s23 / d x
+    auto m2 = mass * mass - 1e-2;
+    auto qa = max(s_min - m2, EPS2);
+    auto qb = max(s_max - m2, EPS2);
+    auto log_ratio = log(qb / qa);
+    // flat
+    auto width = s_max - s_min;
+    auto flat_lo = width * x;
+    auto flat_hi = width * x_c;
+    // logarithmic: q = qa exp(x L) = qb exp(-x_c L)
+    auto log_lo = qa * expm1(x * log_ratio);
+    auto log_hi = -qb * expm1(-x_c * log_ratio);
+    auto log_det = (qa + log_lo) * log_ratio;
+    // power law: q^p = qa^p (1 + x R) = qb^p (1 - x_c R / (1 + R)), p = 1 - power
+    auto p = 1. - power;
+    auto p_safe = where(fabs(p) > 0., p, FVal<T>(1.));
+    auto big_r = expm1(p_safe * log_ratio);
+    auto pow_lo = qa * expm1(log1p(x * big_r) / p_safe);
+    auto pow_hi = -qb * expm1(log1p(-x_c * big_r / (1. + big_r)) / p_safe);
+    auto q = qa + pow_lo;
+    auto pow_det = pow(qa, p_safe) * big_r * pow(q, power) / p_safe;
+
+    auto is_flat = power == 0.;
+    auto is_log = power == 1.;
+    auto lo = where(is_flat, flat_lo, where(is_log, log_lo, pow_lo));
+    auto hi = where(is_flat, flat_hi, where(is_log, log_hi, pow_hi));
+    auto det = where(is_flat, width, where(is_log, log_det, pow_det));
+    return {max(lo, 0.), max(hi, 0.), det};
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_arcsine_sample(
+    FIn<T, 0> r,
+    FIn<T, 0> s_min,
+    FIn<T, 0> s_max,
+    FIn<T, 0> s_phys_min,
+    FIn<T, 0> s_phys_max,
+    FIn<T, 0> power,
+    FIn<T, 0> mass,
+    FOut<T, 0> u,
+    FOut<T, 0> u_c,
+    FOut<T, 0> det
+) {
+    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
+    auto theta_a = angles.first;
+    auto theta_b = angles.second;
+    auto dtheta = theta_b - theta_a;
+    auto den = sin(dtheta) * sin(theta_a + theta_b);
+    auto ok = (dtheta > 0.) & (den > 0.);
+    auto den_safe = where(ok, den, FVal<T>(1.));
+
+    // x = (sin^2 theta - sin^2 theta_a) / den, 1 - x from the other end
+    FVal<T> r_val(r);
+    auto x_arc = sin(dtheta * r_val) * sin(2. * theta_a + dtheta * r_val) / den_safe;
+    auto x_c_arc = sin(dtheta * (1. - r_val)) *
+        sin(2. * theta_b - dtheta * (1. - r_val)) / den_safe;
+    // dx/dr = dtheta sin(2 theta) / den, sin(2 theta) = 2 sqrt(v (1 - v))
+    auto sin_a = sin(theta_a);
+    auto cos_b = cos(theta_b);
+    auto v = max(sin_a * sin_a + x_arc * den_safe, 0.);
+    auto v_c = max(cos_b * cos_b + x_c_arc * den_safe, 0.);
+    auto dx_dr = dtheta * 2. * sqrt(v * v_c) / den_safe;
+    auto x = where(ok, min(max(x_arc, 0.), 1.), r_val);
+    auto x_c = where(ok, min(max(x_c_arc, 0.), 1.), 1. - r_val);
+    dx_dr = where(ok, dx_dr, FVal<T>(1.));
+
+    auto offsets = s23_power_offsets<T>(x, x_c, s_min, s_max, power, mass);
+    FVal<T> lo(s_phys_min), hi(s_phys_max), a(s_min), b(s_max);
+    auto width = hi - lo;
+    auto width_safe = where(width > 0., width, FVal<T>(1.));
+    u = min(max(((a - lo) + offsets.first) / width_safe, 0.), 1.);
+    u_c = min(max(((hi - b) + offsets.second) / width_safe, 0.), 1.);
+    det = dx_dr * offsets.third;
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_arcsine_sample_inverse(
+    FIn<T, 0> u,
+    FIn<T, 0> u_c,
+    FIn<T, 0> s_min,
+    FIn<T, 0> s_max,
+    FIn<T, 0> s_phys_min,
+    FIn<T, 0> s_phys_max,
+    FIn<T, 0> power,
+    FIn<T, 0> mass,
+    FOut<T, 0> r,
+    FOut<T, 0> det
+) {
+    FVal<T> lo(s_phys_min), hi(s_phys_max), a(s_min), b(s_max), pw(power);
+    auto width = hi - lo;
+    // distances of s23 to both ends of the sampled range
+    auto d_lo = max(width * u - (a - lo), 0.);
+    auto d_hi = max(width * u_c - (hi - b), 0.);
+
+    // invert the power map from both ends
+    auto m2 = FVal<T>(mass) * FVal<T>(mass) - 1e-2;
+    auto qa = max(a - m2, EPS2);
+    auto qb = max(b - m2, EPS2);
+    auto log_ratio = log(qb / qa);
+    auto range = b - a;
+    auto range_safe = where(range > 0., range, FVal<T>(1.));
+    auto flat_x = d_lo / range_safe;
+    auto flat_x_c = d_hi / range_safe;
+    auto log_safe = where(fabs(log_ratio) > 0., log_ratio, FVal<T>(1.));
+    auto log_x = log1p(d_lo / qa) / log_safe;
+    auto log_x_c = -log1p(-d_hi / qb) / log_safe;
+    auto p = 1. - pw;
+    auto p_safe = where(fabs(p) > 0., p, FVal<T>(1.));
+    auto big_r = expm1(p_safe * log_ratio);
+    auto big_r_safe = where(fabs(big_r) > 0., big_r, FVal<T>(1.));
+    auto pow_x = expm1(p_safe * log1p(d_lo / qa)) / big_r_safe;
+    auto pow_x_c =
+        -expm1(p_safe * log1p(-d_hi / qb)) * (1. + big_r) / big_r_safe;
+    auto is_flat = pw == 0.;
+    auto is_log = pw == 1.;
+    auto x = min(max(where(is_flat, flat_x, where(is_log, log_x, pow_x)), 0.), 1.);
+    auto x_c =
+        min(max(where(is_flat, flat_x_c, where(is_log, log_x_c, pow_x_c)), 0.), 1.);
+    auto offsets = s23_power_offsets<T>(x, x_c, a, b, pw, FVal<T>(mass));
+
+    // invert the arcsine map from (x, 1 - x)
+    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
+    auto theta_a = angles.first;
+    auto theta_b = angles.second;
+    auto dtheta = theta_b - theta_a;
+    auto den = sin(dtheta) * sin(theta_a + theta_b);
+    auto ok = (dtheta > 0.) & (den > 0.);
+    auto den_safe = where(ok, den, FVal<T>(1.));
+    auto dtheta_safe = where(ok, dtheta, FVal<T>(1.));
+    auto sin_a = sin(theta_a);
+    auto cos_b = cos(theta_b);
+    auto v = max(sin_a * sin_a + x * den_safe, 0.);
+    auto v_c = max(cos_b * cos_b + x_c * den_safe, 0.);
+    auto theta = atan2(sqrt(v), sqrt(v_c));
+    auto r_arc = (theta - theta_a) / dtheta_safe;
+    auto dr_dx = where(
+        v * v_c > 0., den_safe / (dtheta_safe * 2. * sqrt(v * v_c)), FVal<T>(0.)
+    );
+    r = where(ok, min(max(r_arc, 0.), 1.), x);
+    dr_dx = where(ok, dr_dx, FVal<T>(1.));
+    det = where(offsets.third > 0., dr_dx / offsets.third, FVal<T>(0.));
+}
+
 template <typename T>
 KERNELSPEC void kernel_two_to_three_particle_scattering(
     IIn<T, 0> phi_index,
     FIn<T, 1> pa,
     FIn<T, 1> p12,
     FIn<T, 1> p3,
-    FIn<T, 0> s23,
+    FIn<T, 0> u,
+    FIn<T, 0> u_c,
     FIn<T, 0> t1_abs,
     FIn<T, 0> m1,
     FIn<T, 0> m2,
@@ -709,7 +892,8 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     // determinant of Byckling-Kajantie factorises on that range:
     //   cos(phi) = 2 u - 1,  u = (s23 - s23_min) / (s23_max - s23_min),
     //   -G4 = lambda(s12, ma^2, t2) / 16 * (s23 - s23_min) * (s23_max - s23).
-    // Both are evaluated through u here. Forming G4 (or the equivalent cos(phi)
+    // Both are evaluated through u and 1 - u, which come in as inputs (see
+    // kernel_s23_position and kernel_s23_arcsine_sample). Forming G4 (or the equivalent cos(phi)
     // expression) from the invariants instead cancels terms of order s^4 down
     // to a result that can be many orders of magnitude smaller whenever the
     // s23 range is narrow (a soft particle), and returned Jacobians of up to
@@ -719,17 +903,25 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
         load_mom<T>(pa), load_mom<T>(p3), p_12, s12, t1_abs, m1, m2
     );
     auto s23_width = s23_range.second - s23_range.first;
-    auto u = min(max((s23 - s23_range.first) / s23_width, 0.), 1.);
-    auto cos_phi = 2. * u - 1.;
-    auto phi = where(phi_index == 1, -acos(cos_phi), acos(cos_phi));
+    FVal<T> u_val(u), u_c_val(u_c);
+    // cos(phi) = u - (1 - u), |sin(phi)| = 2 sqrt(u (1 - u)), both at full
+    // relative precision near phi = 0, pi. u and 1 - u come from separate
+    // differences; dividing by their sum keeps cos^2 + sin^2 = 1 to rounding,
+    // so that the rotation does not change |p1|.
+    auto u_sum = u_val + u_c_val;
+    auto u_sum_safe = where(u_sum > 0., u_sum, FVal<T>(1.));
+    auto cos_phi = (u_val - u_c_val) / u_sum_safe;
+    auto sin_phi_abs = 2. * sqrt(max(u_val * u_c_val, 0.)) / u_sum_safe;
+    auto sin_phi = where(phi_index == 1, -sin_phi_abs, sin_phi_abs);
     // 8 sqrt(-G4) = sqrt(lambda) * (s23_max - s23_min) * |sin(phi)|
     auto sqrt_neg_gram4_x8 =
-        sqrt(max(kaellen<T>(s12, ma_2, t2), 0.)) * s23_width * 2. * sqrt(u * (1. - u));
+        sqrt(max(kaellen<T>(s12, ma_2, t2), 0.)) * s23_width * sin_phi_abs;
     // The edges of the range (sin(phi) = 0) are a set of measure zero.
     auto det_2to3 = where(sqrt_neg_gram4_x8 > 0., 1. / sqrt_neg_gram4_x8, FVal<T>(0.));
 
-    auto scatter_out =
-        p1com_from_tabs_phi<T>(pa_com, s12, phi, t1_abs, m1, m2, ma_2, t2);
+    auto scatter_out = p1com_from_tabs_cs<T>(
+        pa_com, s12, cos_phi, sin_phi, t1_abs, m1, m2, ma_2, t2
+    );
     auto p1_com = scatter_out.first;
     auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
     auto p1_rot = rotate_two_ref<T>(p1_com, pa_com, p3_p12);
@@ -754,10 +946,11 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     FIn<T, 1> pa,
     FIn<T, 1> p12,
     FIn<T, 0> t1_abs,
-    FIn<T, 0> s23,
     FOut<T, 0> m1,
     FOut<T, 0> m2,
     IOut<T, 0> phi_index,
+    FOut<T, 0> u,
+    FOut<T, 0> u_c,
     FOut<T, 0> det
 ) {
     // p_12 = p1 + p2 comes in directly rather than as pa + pb - p3: in a long
@@ -798,6 +991,17 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     auto pt2_rot = p1_rot[1] * p1_rot[1] + p1_rot[2] * p1_rot[2];
     auto sin_phi_abs =
         where(pt2_rot > 0., fabs(p1_rot[2]) / sqrt(pt2_rot), FVal<T>(0.));
+    // u = (1 + cos phi) / 2 and 1 - u read off the momentum, the one close to
+    // zero as p_y^2 / (2 p_t (p_t -+ p_x)) rather than as a difference
+    auto pt_rot = sqrt(pt2_rot);
+    auto px = p1_rot[1], py2 = p1_rot[2] * p1_rot[2];
+    auto pt_safe = where(pt2_rot > 0., pt_rot, FVal<T>(1.));
+    auto sum_pos = pt_safe + fabs(px);
+    auto big = sum_pos / (2. * pt_safe);
+    auto small = py2 / (2. * pt_safe * sum_pos);
+    auto forward = px >= 0.;
+    u = where(pt2_rot > 0., where(forward, big, small), FVal<T>(0.5));
+    u_c = where(pt2_rot > 0., where(forward, small, big), FVal<T>(0.5));
     auto det_2to3 = sqrt(max(kaellen<T>(s12, ma_2, t2), 0.)) *
         (s23_range.second - s23_range.first) * sin_phi_abs;
     m1 = sqrt(max(EPS2, m1_2));

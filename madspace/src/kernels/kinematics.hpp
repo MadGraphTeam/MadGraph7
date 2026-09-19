@@ -434,10 +434,11 @@ boost_beam(FIn<T, 2> q, FVal<T> x1, FVal<T> x2, FVal<T> sign, FOut<T, 2> p_out) 
 }
 
 template <typename T>
-KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_phi(
+KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_cs(
     FourMom<T> pa_com,
     FVal<T> s_tot,
-    FVal<T> phi,
+    FVal<T> cos_phi,
+    FVal<T> sin_phi,
     FVal<T> t_abs,
     FVal<T> m1,
     FVal<T> m2,
@@ -461,11 +462,27 @@ KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_phi(
         -(m1 * m1 + ma_2 + t_abs - 2. * p1_com[0] * pa_com[0]) / (2.0 * pa_com_mag);
     auto pt2 = pp * pp - p1_com[3] * p1_com[3];
     auto pt = sqrt(max(pt2, 0.));
-    p1_com[1] = pt * cos(phi);
-    p1_com[2] = pt * sin(phi);
+    p1_com[1] = pt * cos_phi;
+    p1_com[2] = pt * sin_phi;
 
     auto det = PI / (2. * sqrt(kaellen<T>(s_tot, ma_2, mb_2)));
     return {p1_com, det};
+}
+
+template <typename T>
+KERNELSPEC Pair<FourMom<T>, FVal<T>> p1com_from_tabs_phi(
+    FourMom<T> pa_com,
+    FVal<T> s_tot,
+    FVal<T> phi,
+    FVal<T> t_abs,
+    FVal<T> m1,
+    FVal<T> m2,
+    FVal<T> ma_2,
+    FVal<T> mb_2
+) {
+    return p1com_from_tabs_cs<T>(
+        pa_com, s_tot, cos(phi), sin(phi), t_abs, m1, m2, ma_2, mb_2
+    );
 }
 
 template <typename T>

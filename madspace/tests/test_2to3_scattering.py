@@ -201,15 +201,7 @@ def test_inverse(input_points, arcsine):
     p1, p2, det = mapping.map_forward(inputs, conditions)
     *inv_inputs, inv_det = mapping.map_inverse([p1, p2], conditions)
 
-    if arcsine:
-        # The arcsine map puts more points close to the edges of the s23
-        # range, where the inverse has to resolve s23 - s23_min (or s23_max -
-        # s23) from s23 itself; there r_s23, and with it the weight, is only
-        # recovered to ~1e-8 and ~1e-5.
-        rt = np.abs(np.asarray(inv_det) * np.asarray(det) - 1.0)
-        assert np.quantile(rt, 0.999) < 1e-6 and np.max(rt) < 1e-3
-    else:
-        assert inv_det == approx(1 / det, rel=1e-5)
+    assert inv_det == approx(1 / det, rel=1e-5)
 
     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
         if i == 0:
@@ -218,11 +210,7 @@ def test_inverse(input_points, arcsine):
                 np.asarray(inv_inp).astype(np.int64) == np.asarray(inp).astype(np.int64)
             ).all()
             continue
-        # r_s23 near the edges, see above: an absolute error of up to ~1e-8
-        abs_tol = 1e-7 if (arcsine and i == 1) else 1e-12
-        assert inp == approx(inv_inp, rel=1e-6, abs=abs_tol), (
-            f"mismatch in input index {i}"
-        )
+        assert inp == approx(inv_inp), f"mismatch in input index {i}"
 
 
 def test_on_shell_masses(input_points):

@@ -23,9 +23,7 @@ import madspace as ms
 E_BEAM = 500.0
 PA = np.array([E_BEAM, 0.0, 0.0, E_BEAM])
 PB = np.array([E_BEAM, 0.0, 0.0, -E_BEAM])
-# r_s23 from the middle out to the edges; below ~1e-5 the point sits within
-# double precision of the edge of the s23 range and u = (s23 - s23_min) /
-# (s23_max - s23_min) can no longer be resolved from s23.
+# r_s23 from the middle out to the edges
 EDGE = 10.0 ** -np.arange(1, 6)
 R_S23 = np.concatenate([EDGE, [0.5], 1.0 - EDGE])
 
@@ -102,12 +100,27 @@ def test_round_trip(arcsine, s_power):
     )
     p1, p2, _ = mapping.map_forward(inputs, conditions)
     *inv_inputs, det_inv = mapping.map_inverse([p1, p2], conditions)
-    # the random number of s23 is conditioned like s23 itself: an absolute
-    # error of 1e-16 s / (s23_max - s23_min) in u
-    assert np.asarray(inv_inputs[1]) == pytest.approx(r_s23, abs=1e-8)
+    assert np.asarray(inv_inputs[1]) == pytest.approx(r_s23, abs=1e-12)
     assert np.asarray(inv_inputs[2]) == pytest.approx(inputs[2], abs=1e-8)
     rt = np.abs(det * np.asarray(det_inv) - 1.0)
-    assert np.quantile(rt, 0.999) < 1e-6
+    assert np.max(rt) < 1e-8
+
+
+@pytest.mark.parametrize("s_power", [0.0, 0.8, 1.0])
+def test_round_trip_at_the_edges(s_power):
+    """With the arcsine map the position in the s23 range is carried as u and
+    1 - u in both directions, never through s23 itself, so r_s23 is recovered
+    to the precision of the momenta also within 1e-12 of the edges, where
+    going through s23 left an absolute error of ~1e-8."""
+    edge = 10.0 ** -np.arange(6, 13)
+    r_s23 = np.concatenate([edge, 1.0 - edge])
+    mapping, inputs, conditions, det = block_weights(
+        r_s23, arcsine=True, s_power=s_power
+    )
+    p1, p2, _ = mapping.map_forward(inputs, conditions)
+    *inv_inputs, det_inv = mapping.map_inverse([p1, p2], conditions)
+    assert np.asarray(inv_inputs[1]) == pytest.approx(r_s23, rel=1e-6, abs=1e-15)
+    assert np.max(np.abs(det * np.asarray(det_inv) - 1.0)) < 1e-9
 
 
 CUTS = dict(
