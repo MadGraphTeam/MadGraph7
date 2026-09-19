@@ -2030,6 +2030,23 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
 
     #===========================================================================
+    # get_fks_color_data_lines
+    #===========================================================================
+    def get_fks_color_data_lines(self, matrix_element):
+        """The color matrix written out in full, for the templates this
+        exporter fills itself.
+
+        born_fks.inc, born_fks_hel.inc, the four split-orders templates (born,
+        bhel, real, cnt) and the sudakov goldstone one all declare
+        CF(NCOLOR*(NCOLOR+1)/2) and sum it straight, and none of them carries
+        an INIT_CF call. The compressed form get_color_data_lines otherwise
+        picks for a large color basis -- the entries rebuilt at run time --
+        cannot be read back from them, so every entry of the upper triangle is
+        written."""
+
+        return self.get_color_data_lines(matrix_element, plain=True)
+
+    #===========================================================================
     # write_split_me_fks
     #===========================================================================
     def write_split_me_fks(self, writer, matrix_element, fortran_model,
@@ -2127,7 +2144,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         replace_dict['hel_avg_factor'] = matrix_element.get_hel_avg_factor()
 
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
 
         if self.opt['export_format']=='standalone_msP':
@@ -2753,7 +2770,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
     
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
     
         # Extract helas calls
@@ -2854,7 +2871,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
     
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
    
         # Extract amp2 lines
@@ -3289,7 +3306,7 @@ Parameters              %(params)s\n\
         replace_dict['ncolor'] = ncolor
 
         # Extract color data lines
-        color_data_lines = self.get_color_data_lines(matrix_element)
+        color_data_lines = self.get_fks_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines)
 
         # Extract helas calls of the base  matrix element

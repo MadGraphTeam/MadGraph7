@@ -75,6 +75,29 @@ import madgraph.various.misc as misc
 MAX_COMPAT_FLAVS = 500
 
 
+_USE_CROSSING_FLAG = re.compile(r'\s--use_crossing(=\S*)?(?=\s|$)')
+
+def without_crossing(commandline):
+    """Pin --use_crossing=False on every generate / add process of
+    `commandline` (';'-separated commands, as MadSpin hands them to exec_cmd).
+
+    MadSpin reaches each matrix element per event flavor, through the entry
+    points taking a FLAVOR array (GET_DENSITY, SMATRIX), and finds it by the
+    processes the matrix element lists: neither can see a crossing folded onto
+    a base. Its production lines are copied from the banner's proc card, so a
+    --use_crossing=True there came back here and folded those subprocesses
+    away. Any flag already on the line is dropped first; [...] (perturbative)
+    lines are left alone, crossing is never applied to them.
+    """
+    out = []
+    for cmd in commandline.split(';'):
+        head = cmd.strip()
+        if head.startswith(('generate', 'add process')) and '[' not in head:
+            cmd = _USE_CROSSING_FLAG.sub('', cmd).rstrip() + \
+                ' --use_crossing=False'
+        out.append(cmd)
+    return ';'.join(out)
+
 class MadSpinError(MadGraph5Error):
     pass
 
@@ -3292,7 +3315,7 @@ class decay_all_events(object):
             else:
                 commandline += 'add process %s; ' % proc
                                
-        commandline = commandline.replace('add process', 'generate',1)
+        commandline = without_crossing(commandline.replace('add process', 'generate',1))
         logger.info(commandline)
         
         mgcmd.exec_cmd(commandline, precmd=True)
@@ -3365,7 +3388,7 @@ class decay_all_events(object):
                     if not proc.strip().startswith(('add','generate')):
                         proc = 'add process %s' % proc
                     commandline += self.get_proc_with_decay(proc, decay_text, mgcmd._curr_model, self.options)
-                commandline = commandline.replace('add process', 'generate',1)
+                commandline = without_crossing(commandline.replace('add process', 'generate',1))
             else:
                 for key in decay_text_correlated:
                     for proc in processes:
@@ -3376,7 +3399,7 @@ class decay_all_events(object):
                         else:
                             one_decay = ', '.join(decay_text_correlated[key])
                         commandline += self.get_proc_with_decay(proc, one_decay, mgcmd._curr_model, self.options)
-                commandline = commandline.replace('add process', 'generate',1)
+                commandline = without_crossing(commandline.replace('add process', 'generate',1))
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             # remove decay with 0 branching ratio.
@@ -3443,7 +3466,7 @@ class decay_all_events(object):
                     proc = proc.split("@",1)[0]
                 commandline+="add process %s @%i --no_warning=duplicate;" % (proc,i)
                 i+=1        
-        commandline = commandline.replace('add process', 'generate',1)
+        commandline = without_crossing(commandline.replace('add process', 'generate',1))
         mgcmd.exec_cmd(commandline, precmd=True)
         # remove decay with 0 branching ratio.
         mgcmd.remove_pointless_decay(self.banner.param_card)
@@ -5415,7 +5438,7 @@ class decay_all_events_onshell(decay_all_events):
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
             commandline += self.get_decay_command()
-            commandline = commandline.replace('add process', 'generate',1)
+            commandline = without_crossing(commandline.replace('add process', 'generate',1))
             mgcmd.exec_cmd(commandline, precmd=True)
 
             commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
@@ -5423,7 +5446,7 @@ class decay_all_events_onshell(decay_all_events):
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
         else:
-            commandline_production = commandline.replace('add process', 'generate',1)
+            commandline_production = without_crossing(commandline.replace('add process', 'generate',1))
             commandline_production += 'output standalone_fortran %s --prefix=int --density=1' % pjoin(path_me, ms_me_subdir)
 
             logger.info(commandline_production)
@@ -5434,7 +5457,7 @@ class decay_all_events_onshell(decay_all_events):
 
             commandline_decay = self.get_decay_command()
             commandline_decay += 'output standalone_fortran %s --prefix=int --density=1 -f' % pjoin(path_me, ms_me_decay_subdir) #we add -f, else it would ask us if we want to clean the folder madspin_decay and madspin_me
-            commandline_decay = commandline_decay.replace('add process', 'generate',1)
+            commandline_decay = without_crossing(commandline_decay.replace('add process', 'generate',1))
 
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)

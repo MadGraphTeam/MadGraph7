@@ -37,6 +37,7 @@
 #include <array>
 #include <cfenv>  // for feenableexcept, fegetexcept and FE_XXX
 #include <cfloat> // for FLT_MIN
+#include <cstdlib> // for std::abort
 #include <cstring>
 #include <iomanip>
 #include <iostream>
