@@ -18,12 +18,46 @@ C###############################################################################
                  double precision :: P(0:3)
                  integer :: flv_index
               END TYPE ALOHA
-              TYPE ALOHA2D
-                 SEQUENCE
-                 double complex::W(16)
-                 double precision :: P(0:3)
-                 integer :: flv_index
-              END TYPE ALOHA2D
+               TYPE ALOHA2D
+                  SEQUENCE
+                  double complex::W(16)
+                  double precision :: P(0:3)
+                  integer :: flv_index
+               END TYPE ALOHA2D
+           CONTAINS
+              INTEGER FUNCTION GET_FLV_PARTNER(MCOUP,FLV_INDEX,REVERSE)
+              TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+              INTEGER, INTENT(IN) :: FLV_INDEX
+              LOGICAL, INTENT(IN) :: REVERSE
+              GET_FLV_PARTNER=0
+              IF (FLV_INDEX.LT.1.OR.
+     $            FLV_INDEX.GT.SIZE(MCOUP%PARTNER)) RETURN
+              IF (REVERSE) THEN
+                 GET_FLV_PARTNER=MCOUP%PARTNER2(FLV_INDEX)
+              ELSE
+                 GET_FLV_PARTNER=MCOUP%PARTNER(FLV_INDEX)
+              ENDIF
+              END FUNCTION GET_FLV_PARTNER
+
+              DOUBLE COMPLEX FUNCTION GET_FLV_COUPLING_VALUE(MCOUP,K1,K2)
+              TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+              INTEGER, INTENT(IN) :: K1,K2
+              GET_FLV_COUPLING_VALUE=(0D0,0D0)
+              IF (K1.LT.1.OR.K1.GT.SIZE(MCOUP%PARTNER)) RETURN
+              IF (K2.LT.1.OR.MCOUP%PARTNER(K1).NE.K2) RETURN
+              IF (.NOT.ASSOCIATED(MCOUP%VAL(K1)%P)) RETURN
+              GET_FLV_COUPLING_VALUE=MCOUP%VAL(K1)%P
+              END FUNCTION GET_FLV_COUPLING_VALUE
+
+              COMPLEX*32 FUNCTION MP_GET_FLV_COUPLING_VALUE(MCOUP,K1,K2)
+              TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+              INTEGER, INTENT(IN) :: K1,K2
+              MP_GET_FLV_COUPLING_VALUE=(0.0E0_16,0.0E0_16)
+              IF (K1.LT.1.OR.K1.GT.SIZE(MCOUP%PARTNER)) RETURN
+              IF (K2.LT.1.OR.MCOUP%PARTNER(K1).NE.K2) RETURN
+              IF (.NOT.ASSOCIATED(MCOUP%VAL(K1)%P)) RETURN
+              MP_GET_FLV_COUPLING_VALUE=CMPLX(MCOUP%VAL(K1)%P,KIND=16)
+              END FUNCTION MP_GET_FLV_COUPLING_VALUE
        end module ALOHA_OBJECT
 
       subroutine ixxxxx(p, fmass, nhel, nsf ,flav,fi)

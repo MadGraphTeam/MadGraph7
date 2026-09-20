@@ -5,6 +5,8 @@
       INTEGER BORN_FLAVOR_INDEX_D(%(nconfs)d)
       INTEGER EXTRA_CNT_FLAVOR_INDEX_D(%(nconfs)d)
       INTEGER VIRTUAL_FLAVOR_INDEX_D(%(nconfs)d)
+      INTEGER MAX_VIRTUAL_FLAVOR_INDEX
+      PARAMETER (MAX_VIRTUAL_FLAVOR_INDEX=%(max_virtual_flavor_index)d)
       LOGICAL HAS_PHYSICAL_FKS_CLASSES
       PARAMETER (HAS_PHYSICAL_FKS_CLASSES=%(has_physical_fks_classes)s)
       INTEGER FKS_FLAVOR_CLASS_D(%(nconfs)d)

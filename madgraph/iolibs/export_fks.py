@@ -93,6 +93,11 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    # Default MadLoop output normally exposes only its process-wide sum in
+    # slot zero.  The FKS BinothLHA ABI iterates positive split-order slots, so
+    # this exporter asks the shared loop writer for one explicit summed slot.
+    default_loop_fks_abi = True
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -3812,10 +3817,14 @@ Parameters              %(params)s\n\
                 '%d' % info.get('flavor_class', {}).get(
                     'extra_cnt_flavor_index', 0)
                 for info in fks_info_list)
-            replace_dict['virtual_flavor_index_values'] = ', '.join(
-                '%d' % info.get('flavor_class', {}).get(
+            virtual_flavor_indices = [
+                info.get('flavor_class', {}).get(
                     'virtual_flavor_index', 0)
-                for info in fks_info_list)
+                for info in fks_info_list]
+            replace_dict['virtual_flavor_index_values'] = ', '.join(
+                '%d' % index for index in virtual_flavor_indices)
+            replace_dict['max_virtual_flavor_index'] = max(
+                [1] + virtual_flavor_indices)
             has_physical_fks_classes = all(
                 info.get('flavor_class') for info in fks_info_list)
             replace_dict['has_physical_fks_classes'] = (
@@ -4002,6 +4011,7 @@ Parameters              %(params)s\n\
             replace_dict['born_flavor_index_values'] = '1'
             replace_dict['extra_cnt_flavor_index_values'] = '0'
             replace_dict['virtual_flavor_index_values'] = '0'
+            replace_dict['max_virtual_flavor_index'] = 1
             replace_dict['has_physical_fks_classes'] = '.false.'
             replace_dict['fks_flavor_class_values'] = '0'
             replace_dict['fks_topology_values'] = '1'

@@ -3,6 +3,20 @@ C   Main subroutine
 C --=========================================--
 
 	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL)
+      %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P_USER,1,ANS)
+      END
+
+	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX_FLAVOR(P_USER,FLAV_IDX,ANS)
 C  
 %(info_lines)s
 C
@@ -77,6 +91,8 @@ C
 	  PARAMETER (NCOLORROWS=NLOOPAMPS)
 	  INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NVIRTUAL_FLAVORS
+      PARAMETER (NVIRTUAL_FLAVORS=%(nvirtual_flavors)d)
       INTEGER NINITIAL
       PARAMETER (NINITIAL=%(nincoming)d)
       INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
@@ -131,6 +147,7 @@ c
 c It is however somehow academical. This is why ANS_DIMENSION is not just NSQSO but rather MAX(NSQSO,NSQSO_BORN)
 C
 	  %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      INTEGER FLAV_IDX
 C  
 C LOCAL VARIABLES 
 C  
@@ -181,6 +198,10 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 	  INTEGER NATTEMPTS
 	  DATA NATTEMPTS/0/
 	  DATA IC/NEXTERNAL*1/
+	  INTEGER FLAVOR(NEXTERNAL),BORN_FLAV_IDX
+	  INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+	  COMMON/%(proc_prefix)sACTIVE_VIRTUAL_FLAVOR/FLAVOR
+%(virtual_flavor_mask_decl)s
 	  %(real_dp_format)s HELSAVED(3,NCOMB)
 	  INTEGER ITEMP
 	  LOGICAL LTEMP
@@ -469,6 +490,13 @@ C ----------
 C BEGIN CODE
 C ----------
 
+IF (FLAV_IDX.LT.1.OR.FLAV_IDX.GT.NVIRTUAL_FLAVORS) THEN
+  ANS=0.0d0
+  RETURN
+ENDIF
+CALL %(proc_prefix)sGET_VIRTUAL_FLAVOR(FLAV_IDX,FLAVOR)
+%(virtual_flavor_mask_setup)s
+
 C     If KEEP_OFFSHELL_MASS is .true., then its mass is computed as m**2 = p**2
 C     If KEEP_OFFSHELL_MASS is .false., then its mass is taken from pmass.inc
 %(keep_offshell_mass)s
@@ -480,6 +508,13 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  IF (NVIRTUAL_FLAVORS.GT.1) THEN
+C   A single MadLoop filter file cannot represent several physical flavours.
+C   Keep every loop/helicity active for grouped virtual matrix elements.
+    UseLoopFilter=.FALSE.
+    HelicityFilterLevel=0
+    DoubleCheckHelicityFilter=.FALSE.
+  ENDIF
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
   ENDIF
@@ -727,7 +762,13 @@ C the split_order summed value I=0 is used in ML5 code.
 DO I=0,NSQSO_BORN
   BORNBUFF(I)=0.0d0
 ENDDO
-CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
+BORN_FLAV_IDX=%(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+IF (BORN_FLAV_IDX.EQ.0) THEN
+  WRITE(*,*) 'MadLoop: no Born row for virtual flavor',FLAV_IDX
+  STOP 1
+ENDIF
+CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,BORN_FLAV_IDX,
+     $ BORNBUFF(0))
 DO I=0,NSQSO_BORN
   ANS(0,I)=BORNBUFF(I)
 ENDDO
@@ -1043,6 +1084,21 @@ C  Handle the possible requirement of specific polarizations
   ELSE
     HEL_MULT=1
   ENDIF
+
+## if(not LoopInduced) {
+C Calls skipped by the virtual-flavour masks must leave no amplitude from
+C the preceding helicity behind.
+  DO I=1,NBORNAMPS
+    AMP(I)=(0.0d0,0.0d0)
+  ENDDO
+## }
+## if(not AmplitudeReduction) {
+  DO K=1,3
+    DO I=1,NCTAMPS
+      AMPL(K,I)=(0.0d0,0.0d0)
+    ENDDO
+  ENDDO
+## }
  
 ## if(AmplitudeReduction){
   CTCALL_REQ_SO_DONE=.FALSE.
@@ -2824,7 +2880,41 @@ C ----------
       CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
 	  END
 
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      INTEGER HEL,FLAV_IDX,USERHEL
+      COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
+      USERHEL=HEL
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
+      END
+
       SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+	  IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL),ANS(0:3,0:ANS_DIMENSION)
+      %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
+      INTEGER HEL,RET_CODE
+      CALL %(proc_prefix)sSLOOPMATRIXHEL_THRES_FLAVOR(P,HEL,1,ANS,
+     $ PREC_ASKED,PREC_FOUND,RET_CODE)
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_THRES_FLAVOR(P,HEL,
+     $ FLAV_IDX,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
 	  IMPLICIT NONE
 C  
 C CONSTANTS
@@ -2841,7 +2931,7 @@ C
       INTEGER ANS_DIMENSION
       PARAMETER(ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
       %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
-	  INTEGER HEL, RET_CODE
+	  INTEGER HEL,FLAV_IDX,RET_CODE
 	  %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
 C
 C LOCAL VARIABLES
@@ -2865,10 +2955,10 @@ C BEGIN CODE
 C ----------
       USER_STAB_PREC = PREC_ASKED
 
-      CALL %(proc_prefix)sSLOOPMATRIXHEL(P,HEL,ANS)
+      CALL %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
 	  IF(ALWAYS_TEST_STABILITY.AND.(H.eq.1.OR.ACCURACY(0).lt.0.0d0)) THEN
 	    BYPASS_CHECK = .TRUE.
-        CALL %(proc_prefix)sSLOOPMATRIXHEL(P,HEL,ANS) 
+        CALL %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
 	    BYPASS_CHECK = .FALSE.
 C       Make sure we correctly return an initialization-type T code
 		IF (T.eq.2) T=4
@@ -2886,6 +2976,23 @@ C Reset it to default value not to affect next runs
 	  END
 
       SUBROUTINE %(proc_prefix)sSLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+	  IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL),ANS(0:3,0:ANS_DIMENSION)
+      %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
+      INTEGER RET_CODE
+      CALL %(proc_prefix)sSLOOPMATRIX_THRES_FLAVOR(P,1,ANS,PREC_ASKED,
+     $ PREC_FOUND,RET_CODE)
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_THRES_FLAVOR(P,FLAV_IDX,
+     $ ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
 C
 C     Inputs are:
 C     P(0:3, Nexternal)  double  :: Kinematic configuration (E,px,py,pz)
@@ -2956,7 +3063,7 @@ C
       PARAMETER(ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
       %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
 	  %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
-	  INTEGER RET_CODE	  
+	  INTEGER FLAV_IDX,RET_CODE
 C
 C LOCAL VARIABLES
 C
@@ -2978,10 +3085,10 @@ C ----------
 C BEGIN CODE
 C ----------
       USER_STAB_PREC = PREC_ASKED
-      CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
 	  IF(ALWAYS_TEST_STABILITY.AND.(H.eq.1.OR.ACCURACY(0).lt.0.0d0)) THEN
 	    BYPASS_CHECK = .TRUE.	  
-        CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
+        CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
 		BYPASS_CHECK = .FALSE.
 C     Make sure we correctly return an initialization-type T code
 		IF (T.eq.2) T=4
@@ -3005,3 +3112,5 @@ c arrays
 ## }
         CONTINUE
 	  END
+
+%(virtual_flavor_array_function)s

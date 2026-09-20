@@ -341,6 +341,21 @@ C  Handle the possible requirement of specific polarizations
     HEL_MULT=1
   ENDIF
 
+## if(not LoopInduced) {
+  DO I=1,NBORNAMPS
+    AMP(I)=(ZERO,ZERO)
+    DP_AMP(I)=(0.0d0,0.0d0)
+  ENDDO
+## }
+## if(not AmplitudeReduction) {
+  DO K=1,3
+    DO I=1,NCTAMPS
+      AMPL(K,I)=(ZERO,ZERO)
+      DP_AMPL(K,I)=(0.0d0,0.0d0)
+    ENDDO
+  ENDDO
+## }
+
 ## if(AmplitudeReduction){
   CTCALL_REQ_SO_DONE=.FALSE.
 

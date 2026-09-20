@@ -20,6 +20,7 @@ C
       include 'genps.inc'
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
       double precision p_born(0:3,nexternal-1),p_born_first(0:3,nexternal-1)
       common/pborn/p_born
@@ -35,6 +36,7 @@ C
       parameter (fksprefact=.true.)
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
+      integer virtual_flavor
       double precision fkssymmetryfactor,fkssymmetryfactorBorn,
      &     fkssymmetryfactorDeg,symfactvirt
       integer ngluons,nquarks(-6:6),nphotons
@@ -642,9 +644,14 @@ c----------
           amp_split_born(:) = amp_split(:)
           call sudakov_wrapper(p_born)
           call binothlha_frame(p_born, born, virt_wgt)
+          if (HAS_PHYSICAL_FKS_CLASSES) then
+             virtual_flavor=VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+          else
+             virtual_flavor=1
+          endif
           USERHEL=-1
-          call SLOOPMATRIX_THRES(p_born,virthel,1d-3,PREC_FOUND
-     $ ,RET_CODE)
+          call SLOOPMATRIX_THRES_FLAVOR(p_born,virtual_flavor,virthel,
+     $         1d-3,PREC_FOUND,RET_CODE)
           
           do iamp= 1, amp_split_size_born
              iampvirt(iamp)=0
@@ -751,8 +758,8 @@ c----------
 
                if(deepdebug) then
                  if (born_from_sborn_onehel(iamp).eq.0d0) cycle
-                 call SLOOPMATRIXHEL_THRES(p_born,chosen_hel,virthel,1d-3,PREC_FOUND
-     $ ,RET_CODE)
+                 call SLOOPMATRIXHEL_THRES_FLAVOR(p_born,chosen_hel,
+     $                virtual_flavor,virthel,1d-3,PREC_FOUND,RET_CODE)
 
                  call sudakov_wrapper(p_born)
 
@@ -977,8 +984,8 @@ ccc             111    ---> all non_diagonal
      .            dble(AMP_SPLIT_BORN_ONEHEL(iamp))
 
 
-                 call SLOOPMATRIXHEL_THRES(p_born,chosen_hel,virthel,1d-3,PREC_FOUND
-     $ ,RET_CODE)
+                 call SLOOPMATRIXHEL_THRES_FLAVOR(p_born,chosen_hel,
+     $                virtual_flavor,virthel,1d-3,PREC_FOUND,RET_CODE)
 
 
                  born_leadhel(iamp)=born_leadhel(iamp)+AMP_SPLIT_BORN_ONEHEL(iamp)
@@ -1332,4 +1339,3 @@ c     Just a wrapper to ran2
       rand = ran2()
       return 
       end
-

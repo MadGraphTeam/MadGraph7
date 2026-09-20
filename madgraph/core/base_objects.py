@@ -1009,6 +1009,14 @@ class Interaction(PhysicsObject):
         the particles with the ids given in ids_to_merge. 
         Coupling will be passed to FLV_coupling """
 
+        # MadLoop associates R2/UVmass vertices with loop diagrams through
+        # ``loop_particles``.  Once physical particles are replaced by a
+        # merged particle, this key must describe the same merged loop content
+        # as the diagram canonical tag.  In particular, two distinct physical
+        # flavours can collapse to one merged PDG and must then occur only once
+        # (the matching code compares sets of particles).
+        self.merge_loop_particles(ids_to_merge, merged)
+
         particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids_to_merge]
         
         if ids_to_merge[0] != -ids_to_merge[1]: 
@@ -1053,6 +1061,19 @@ class Interaction(PhysicsObject):
                or with FLV_Coupling (if the other flavor has already been merged) 
                like for lepton-neutrino W interaction 
         """
+
+        # Keep the counterterm loop-content metadata in the same merged-PDG
+        # space as this interaction.  Flavor partners normally collapse to the
+        # same entry; retain a union for the general case.
+        if ('loop_particles' in other_flavor and
+                other_flavor.get('loop_particles')):
+            other_loop_particles = self.merged_loop_particles(
+                other_flavor.get('loop_particles'), ids, new_part)
+            current = self.get('loop_particles') or []
+            for loop_content in other_loop_particles:
+                if loop_content not in current:
+                    current.append(loop_content)
+            self.set('loop_particles', current)
 
         self_couplings = self.get('couplings')
         other_couplings = other_flavor.get('couplings')
@@ -1142,6 +1163,31 @@ class Interaction(PhysicsObject):
             raise self.PhysicsObjectError(
                 'Cannot merge interaction with mixed plain and flavor '
                 'couplings: %s' % other_couplings)
+
+    @staticmethod
+    def merged_loop_particles(loop_particles, ids, new_part):
+        """Return MadLoop loop-particle keys in merged-PDG space."""
+
+        merged_pdg = abs(new_part.get('pdg_code'))
+        ids = set(abs(pdg) for pdg in ids)
+        output = []
+        for loop_content in loop_particles:
+            transformed = []
+            for pdg in loop_content:
+                pdg = merged_pdg if abs(pdg) in ids else pdg
+                if pdg not in transformed:
+                    transformed.append(pdg)
+            transformed.sort()
+            if transformed not in output:
+                output.append(transformed)
+        return output
+
+    def merge_loop_particles(self, ids, new_part):
+        """Update this loop interaction after a physical-flavour merge."""
+
+        if 'loop_particles' in self and self.get('loop_particles'):
+            self.set('loop_particles', self.merged_loop_particles(
+                self.get('loop_particles'), ids, new_part))
 
     def check_flavor(self, map_flavor, model):
         """map is "original_pdg (so the merged one) -> flavor index (1 if particle is not merged)

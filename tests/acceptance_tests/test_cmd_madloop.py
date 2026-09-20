@@ -15,6 +15,8 @@
 from __future__ import division
 from __future__ import absolute_import
 import glob
+import math
+import shlex
 import subprocess
 import unittest
 import os
@@ -85,6 +87,184 @@ class TestCmdLoop(unittest.TestCase):
             for p in process:
                 self.interface.onecmd('add process %s' % p)
         self.interface.onecmd('output /tmp/MGPROCESS -f')      
+
+    @staticmethod
+    def _run_checked(command, cwd, env=None):
+        """Run an acceptance-test build step and retain useful diagnostics."""
+
+        result = subprocess.run(command, cwd=cwd, env=env,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        if result.returncode:
+            raise AssertionError(
+                'Command failed in %s: %s\n%s' %
+                (cwd, ' '.join(command), result.stdout))
+        return result.stdout
+
+    def _evaluate_grouped_virtual_row(self, virtual_dir, row, ps_input,
+                                      env):
+        """Compile check_sa for one explicit generated virtual-flavour row."""
+
+        with open(pjoin(virtual_dir, 'check_sa.f')) as stream:
+            check_source = stream.read()
+        check_source = check_source.replace(
+            'PARAMETER (READPS = .FALSE.)',
+            'PARAMETER (READPS = .TRUE.)')
+        check_source = check_source.replace(
+            'PARAMETER (NPSPOINTS = 4)',
+            'PARAMETER (NPSPOINTS = 1)')
+        old_call = ('CALL SLOOPMATRIX_THRES(P,MATELEM,-1.0D0,'
+                    'PREC_FOUND,RETURNCODE)')
+        new_call = ('CALL SLOOPMATRIX_THRES_FLAVOR(P,%d,MATELEM,-1.0D0,'
+                    'PREC_FOUND,RETURNCODE)' % row)
+        self.assertEqual(check_source.count(old_call), 1)
+        check_source = check_source.replace(old_call, new_call)
+        driver = pjoin(virtual_dir, 'check_grouped_flavor.f')
+        with open(driver, 'w') as stream:
+            stream.write(check_source)
+        with open(pjoin(virtual_dir, 'PS.input'), 'w') as stream:
+            stream.write(ps_input)
+
+        with open(pjoin(virtual_dir, 'makefile')) as stream:
+            makefile = stream.read()
+        link_match = re.search(r'^LINKLIBS\s*=\s*(.*)$', makefile, re.M)
+        self.assertIsNotNone(link_match)
+        link_flags = link_match.group(1).replace(
+            '$(LIBDIR)', '../../../lib/')
+        command = [
+            'gfortran', '-O', '-ffixed-line-length-132', '-fno-automatic',
+            '-I../../../lib', '-o', 'check_grouped_flavor',
+            'check_grouped_flavor.f', '../libMadLoop.a'
+        ] + shlex.split(link_flags) + ['-lgeneric', '-lstdc++']
+        self._run_checked(command, virtual_dir, env)
+        output = self._run_checked(['./check_grouped_flavor'], virtual_dir,
+                                   env)
+
+        values = {}
+        for key in ('born', 'finite', '1eps', '2eps'):
+            match = re.search(
+                r'Matrix element %s\s*=\s*([+\-0-9.Ee]+)' % key,
+                output)
+            self.assertIsNotNone(match, '%s missing from:\n%s' %
+                                 (key, output))
+            values[key] = float(match.group(1))
+        return values
+
+    def test_grouped_nlo_virtual_values_all_physical_rows(self):
+        """Grouped virtual rows reproduce fixed d/u/s/c Born channels.
+
+        This is the Phase-02.05 numerical oracle.  It exercises both beam
+        orientations and both MadLoop exporters at one fixed physical point,
+        checking the Born interference, finite term and both poles.  The
+        references were produced by separate ungrouped d/u/s/c outputs.
+        """
+
+        scratch_root = '/scratch' if os.path.isdir('/scratch') else None
+        work = tempfile.mkdtemp(prefix='mg7_grouped_virtual_',
+                                dir=scratch_root)
+        hep_tools = pjoin(MG5DIR, 'HEPTools')
+        env = os.environ.copy()
+        env['LD_LIBRARY_PATH'] = ':'.join([
+            pjoin(hep_tools, 'ninja', 'lib'),
+            pjoin(hep_tools, 'collier'),
+            env.get('LD_LIBRARY_PATH', '')])
+
+        mw = 80.419
+        energy, px, py = 500.0, 300.0, 100.0
+        pz = math.sqrt(energy**2 - mw**2 - px**2 - py**2)
+        ps_input = '\n'.join([
+            '%.17e 0 0 %.17e' % (energy, energy),
+            '%.17e 0 0 %.17e' % (energy, -energy),
+            '%.17e %.17e %.17e %.17e' % (energy, px, py, pz),
+            '%.17e %.17e %.17e %.17e' %
+            (energy, -px, -py, -pz)]) + '\n'
+
+        references = {
+            'q_qbar': {
+                'down': {'born': 2.0363673365466498e-3,
+                         'finite': 1.2168963400867409e-4,
+                         '1eps': -1.5297423026975471e-4,
+                         '2eps': -1.0198282017981687e-4},
+                'up': {'born': 9.5527946025762367e-2,
+                       'finite': 4.4751560754114914e-3,
+                       '1eps': -7.1761675612869707e-3,
+                       '2eps': -4.7841117075246532e-3}},
+            'qbar_q': {
+                'down': {'born': 9.5272593957172705e-2,
+                         'finite': 4.4830996327674417e-3,
+                         '1eps': -7.1569852228869253e-3,
+                         '2eps': -4.7713234819246114e-3},
+                'up': {'born': 2.2668575128819246e-3,
+                       'finite': 1.3698331110629505e-4,
+                       '1eps': -1.7028891519146937e-4,
+                       '2eps': -1.1352594346101632e-4}}}
+        rows = ((1, 'down'), (6, 'up'), (11, 'down'), (16, 'up'))
+
+        try:
+            for optimized in (True, False):
+                output = pjoin(work, 'optimized' if optimized else 'default')
+                command_file = pjoin(
+                    work, 'generate_%s.cmd' %
+                    ('optimized' if optimized else 'default'))
+                with open(command_file, 'w') as stream:
+                    stream.write('\n'.join([
+                        'set automatic_html_opening False --no_save',
+                        'set apply_flavor_grouping True --no_save',
+                        'set loop_optimized_output %s --no_save' % optimized,
+                        'import model loop_sm',
+                        'generate p p > w+ w- [QCD]',
+                        'output %s -f' % output,
+                        'quit', '']))
+                self._run_checked(
+                    [pjoin(MG5DIR, 'bin', 'madgraph'), command_file],
+                    MG5DIR, env)
+
+                self._run_checked(['make'], pjoin(output, 'Source'), env)
+                virtual_dirs = glob.glob(pjoin(
+                    output, 'SubProcesses', 'P*', 'V*'))
+                self.assertEqual(len(virtual_dirs), 2)
+                for virtual_dir in virtual_dirs:
+                    self._run_checked(['make'], virtual_dir, env)
+                    p_name = os.path.basename(os.path.dirname(virtual_dir))
+                    orientation = ('qbar_q' if 'QxQ' in p_name else
+                                   'q_qbar')
+
+                    with open(pjoin(virtual_dir, 'loop_matrix.f')) as stream:
+                        loop_matrix = stream.read()
+                    self.assertIn('PARAMETER (NVIRTUAL_FLAVORS=16)',
+                                  loop_matrix)
+                    self.assertIn('SLOOPMATRIX_THRES_FLAVOR', loop_matrix)
+                    self.assertIn('NCTAMPS=8', loop_matrix)
+                    if not optimized:
+                        with open(pjoin(virtual_dir, 'loop_num.f')) as stream:
+                            loop_num = stream.read()
+                        self.assertRegex(loop_num,
+                                         r'CALL (MP_)?FFV2(?:_3_5)?LM_')
+                        with open(pjoin(output, 'Source', 'DHELAS',
+                                        'FFV2LM_1.f')) as stream:
+                            loop_routine = stream.read().upper()
+                        self.assertIn(
+                            'SUBROUTINE FFV2LM_1(F2, V3, COUP,',
+                            loop_routine)
+                        self.assertNotIn('TYPE(FLV_COUPLING) MCOUP',
+                                         loop_routine)
+
+                    for row, family in rows:
+                        actual = self._evaluate_grouped_virtual_row(
+                            virtual_dir, row, ps_input, env)
+                        expected = references[orientation][family]
+                        for key in expected:
+                            tolerance = (5e-9 * max(abs(actual[key]),
+                                                    abs(expected[key])) +
+                                         5e-13)
+                            self.assertLessEqual(
+                                abs(actual[key] - expected[key]), tolerance,
+                                '%s %s row %d %s: %.16e != %.16e' %
+                                ('optimized' if optimized else 'default',
+                                 orientation, row, key, actual[key],
+                                 expected[key]))
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
     
     def do(self, line):
         """ exec a line in the interface """        
@@ -1494,7 +1674,3 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         interface.onecmd('output standalone_fortran %s -f' %
                                     str(pjoin(self.IOpath,'gghLI_IOTest')))
         
-
-
-
-

@@ -999,6 +999,21 @@ class ModelTest2(unittest.TestCase):
                 found += 1
         self.assertEqual(found, 2)
 
+    def test_merge_flavor_translates_loop_particles(self):
+        """R2/UV loop-content keys follow particles into merged-PDG space."""
+
+        interaction = base_objects.Interaction({
+            'loop_particles': [[1, 21], [2, 21], [4, 2], [5]]})
+        merged = base_objects.Particle({'pdg_code': 81})
+
+        interaction.merge_loop_particles([1, 2, 3, 4], merged)
+
+        # The d/u keys become one merged key, repeated particles inside a key
+        # collapse as required by MadLoop's set comparison, and unrelated loop
+        # content remains untouched.
+        self.assertEqual(interaction.get('loop_particles'),
+                         [[21, 81], [81], [5]])
+
     def test_merge_flavor(self):
         """Check that merging particles is working"""
         

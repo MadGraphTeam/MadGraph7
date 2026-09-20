@@ -917,6 +917,36 @@ class UFOHELASCallWriterTest(unittest.TestCase):
                 {'number': 9, 'flavor_mask': 3, 'guard_amp_number': 130}, 'wf'),
             'IF (IAND(CURRENT_AMP_MASK(3), ISHFT(1_8, 1)) .NE. 0) ')
 
+    def test_UFO_fortran_direct_flavor_mask_uses_row_bits(self):
+        """Loop guards test virtual-row bits without amplitude-number maps."""
+
+        fortran_model = helas_call_writers.FortranUFOHelasCallWriter(
+            self.mybasemodel)
+        fortran_model.use_flavor_mask = True
+        fortran_model.use_direct_flavor_mask = True
+        fortran_model.me_n_flavors = 70
+        mask = ((1 << 0) | (1 << 63) | (1 << 64) | (1 << 69))
+
+        self.assertEqual(
+            fortran_model._flavor_mask_prefix(
+                {'number': 5, 'flavor_mask': mask}, 'amp'),
+            'IF ((ACTIVE_VIRTUAL_FLAVOR_INDEX.GE.1.AND.'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX.LE.64.AND.'
+            'BTEST(-9223372036854775807_8,'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX-1)).OR.'
+            '(ACTIVE_VIRTUAL_FLAVOR_INDEX.GE.65.AND.'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX.LE.70.AND.BTEST(33_8,'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX-65))) ')
+
+        fortran_model.me_n_flavors = 64
+        self.assertEqual(
+            fortran_model._flavor_mask_prefix(
+                {'number': 5, 'flavor_mask': 1 << 63}, 'amp'),
+            'IF ((ACTIVE_VIRTUAL_FLAVOR_INDEX.GE.1.AND.'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX.LE.64.AND.'
+            'BTEST((-9223372036854775807_8-1_8),'
+            'ACTIVE_VIRTUAL_FLAVOR_INDEX-1))) ')
+
     def test_UFO_cpp_flavor_mask_prefix_uses_index_bits(self):
         """C++ flavor-mask guard should check wf/amp index bits."""
 

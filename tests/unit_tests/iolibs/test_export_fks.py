@@ -124,6 +124,24 @@ class TestBornDirCollision(unittest.TestCase):
 class TestGroupedFKSMetadata(unittest.TestCase):
     """Physical FKS classes exported through configuration-indexed tables."""
 
+    def test_sudakov_virtual_calls_use_fks_flavor(self):
+        """Sudakov diagnostics must not fall back to virtual row one."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        for filename in ('check_sudakov.f', 'check_sudakov_angle2.f'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = stream.read().upper()
+            self.assertIn("INCLUDE 'FKS_INFO.INC'", content)
+            self.assertIn(
+                'VIRTUAL_FLAVOR=VIRTUAL_FLAVOR_INDEX_D(NFKSPROCESS)',
+                content)
+            self.assertNotRegex(content,
+                                r'CALL\s+SLOOPMATRIX(?:HEL)?_THRES\(')
+            self.assertIn('CALL SLOOPMATRIX_THRES_FLAVOR(', content)
+            self.assertIn('CALL SLOOPMATRIXHEL_THRES_FLAVOR(', content)
+
     def test_physical_denominator_factors(self):
         """Merged rows retain their own final-state symmetry factors."""
 
@@ -177,7 +195,8 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             exporter.write_fks_info_file(
                 writer, matrix_element, None)
             writer.close()
-            content = open(path).read()
+            with open(path) as stream:
+                content = stream.read()
         finally:
             if os.path.exists(path):
                 os.remove(path)
@@ -185,6 +204,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn('INTEGER REAL_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER VIRTUAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('PARAMETER (MAX_VIRTUAL_FLAVOR_INDEX=16)', content)
         self.assertIn('PARAMETER (HAS_PHYSICAL_FKS_CLASSES=.TRUE.)',
                       content)
         compact_content = ' '.join(content.lower().replace('$', '').split())

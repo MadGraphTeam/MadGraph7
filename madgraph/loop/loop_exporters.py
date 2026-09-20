@@ -210,6 +210,28 @@ class LoopExporterFortran(object):
         
         return self.aloha_model
 
+    def write_global_specs(self, matrix_element_list, output_path=None):
+        """Write loop dimensions shared by optimized and default output."""
+
+        if isinstance(matrix_element_list, (group_subprocs.SubProcessGroupList,
+                                            loop_helas_objects.LoopHelasProcess)):
+            matrix_element_list = matrix_element_list.get_matrix_elements()
+        me_list = matrix_element_list if isinstance(matrix_element_list, list) \
+            else [matrix_element_list]
+        out_path = output_path or pjoin(
+            self.dir_path, 'SubProcesses', 'global_specs.inc')
+        with open(out_path, 'w') as stream:
+            stream.write(
+"""      integer MAXNEXTERNAL
+      parameter(MAXNEXTERNAL=%d)
+      integer OVERALLMAXRANK
+      parameter(OVERALLMAXRANK=%d)
+      integer NPROCS
+      parameter(NPROCS=%d)""" % (
+              max(me.get_nexternal_ninitial()[0] for me in me_list),
+              max(me.get_max_loop_rank() for me in me_list),
+              len(me_list)))
+
     #===========================================================================
     # write the multiple-precision header files
     #===========================================================================
@@ -598,6 +620,9 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         
         for i, helas_call in enumerate(helas_calls_list):
             new_helas_call=MP.sub(replaceWith,helas_call)
+            new_helas_call = new_helas_call.replace(
+                'GET_FLV_COUPLING_VALUE(',
+                'MP_GET_FLV_COUPLING_VALUE(')
             helas_calls_list[i]=DCMPLX.sub(r"CMPLX(\g<toSub>,KIND=16)",\
                                                                  new_helas_call)
 
@@ -1592,6 +1617,74 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         writers.FortranWriter.downcase = False
 
         replace_dict = copy.copy(matrix_element.rep_dict)
+        self.set_virtual_flavor_replace_dict_entries(
+            replace_dict, matrix_element)
+
+        fks_default_abi = getattr(self, 'default_loop_fks_abi', False)
+        replace_dict['default_split_order_copy'] = ''
+        replace_dict['default_split_order_abi'] = ''
+        if fks_default_abi:
+            # Default MadLoop cannot separate distinct squared split orders.
+            # FKS can therefore use this path only when its virtual has one
+            # contribution, which is then exported explicitly in slot one.
+            squared_orders, unused_amp_orders = \
+                matrix_element.get_split_orders_mapping()
+            squared_order_contribs = [entry[0] for entry in squared_orders]
+            if len(squared_order_contribs) != 1:
+                raise MadGraph5Error(
+                    'Non-optimized FKS loop output requires exactly one '
+                    'squared split-order contribution; found %d' %
+                    len(squared_order_contribs))
+            split_orders = matrix_element.get(
+                'processes')[0].get('split_orders')
+            order_lines = '\n'.join(self.get_split_orders_lines(
+                squared_order_contribs, 'SQPLITORDERS'))
+            replace_dict['default_split_order_copy'] = """
+ANSRETURNED(0,1)=ANS(0)
+ANSRETURNED(1,1)=ANS(1)
+ANSRETURNED(2,1)=ANS(2)
+ANSRETURNED(3,1)=ANS(3)
+ACCURACY(1)=ACCURACY(0)"""
+            replace_dict['default_split_order_abi'] = """
+      INTEGER FUNCTION %(prefix)sGETORDPOWFROMINDEX_ML5(IORDER,
+     $ INDX)
+C
+C Return the order power associated with the single summed split-order
+C contribution exported by default MadLoop output for FKS.
+C %(split_orders)s
+C
+      INTEGER NSO,NSQSO
+      PARAMETER (NSO=%(nso)d,NSQSO=1)
+      INTEGER IORDER,INDX
+      INTEGER SQPLITORDERS(NSQSO,NSO)
+%(order_lines)s
+
+      IF (IORDER.LT.1.OR.IORDER.GT.NSO) THEN
+        WRITE(*,*) 'INVALID IORDER ML5',IORDER
+        STOP
+      ENDIF
+      IF (INDX.NE.1) THEN
+        WRITE(*,*) 'INVALID INDX ML5',INDX
+        STOP
+      ENDIF
+      %(prefix)sGETORDPOWFROMINDEX_ML5=SQPLITORDERS(INDX,IORDER)
+      END
+
+      SUBROUTINE %(prefix)sCOLLIER_COMPUTE_UV_POLES(ONOFF)
+C Default output uses CutTools; retain the optimized-output FKS ABI.
+      LOGICAL ONOFF
+      RETURN
+      END
+
+      SUBROUTINE %(prefix)sCOLLIER_COMPUTE_IR_POLES(ONOFF)
+C Default output uses CutTools; retain the optimized-output FKS ABI.
+      LOGICAL ONOFF
+      RETURN
+      END
+""" % {'prefix': replace_dict['proc_prefix'],
+       'split_orders': str(split_orders),
+       'nso': len(split_orders),
+       'order_lines': order_lines}
         
         # Extract overall denominator
         # Averaging initial state color, spin, and identical FS particles
@@ -1647,11 +1740,16 @@ C                ENDIF
         else:
             replace_dict['compute_born']=\
 """C Compute the born, for a specific helicity if asked so.
-call %(proc_prefix)ssmatrixhel(P_USER,USERHEL,FLAVOR,ANS(0))
+BORN_FLAV_IDX=%(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+if (BORN_FLAV_IDX.eq.0) then
+  write(*,*) 'MadLoop: no Born row for virtual flavor',FLAV_IDX
+  stop 1
+endif
+call %(proc_prefix)ssmatrixhel(P_USER,USERHEL,BORN_FLAV_IDX,ANS(0))
 """%matrix_element.rep_dict
             replace_dict['set_reference']=\
 """C We chose to use the born evaluation for the reference
-call %(proc_prefix)ssmatrix(p,FLAVOR,ref)"""%matrix_element.rep_dict
+call %(proc_prefix)ssmatrix(p,BORN_FLAV_IDX,ref)"""%matrix_element.rep_dict
             replace_dict['loop_induced_helas_calls'] = ""
             replace_dict['loop_induced_finalize'] = ""
             replace_dict['loop_induced_setup'] = ""
@@ -1661,12 +1759,12 @@ call %(proc_prefix)ssmatrix(p,FLAVOR,ref)"""%matrix_element.rep_dict
                    'ANS(K)=ANS(K)+2.0d0*DBLE(CFTOT*AMPL(K,I)*DCONJG(AMP(J,H)))',
                                                                        'ENDDO'])
 
-        # Write a dummy nsquaredSO.inc which is used in the default
-        # loop_matrix.f code (even though it does not support split orders evals)
-        # just to comply with the syntax expected from the external code using MadLoop.
+        # Ordinary default MadLoop output retains its historical slot-zero
+        # ABI.  Non-optimized FKS output additionally exposes that sum in slot
+        # one because BinothLHA iterates positive split-order slots.
         writers.FortranWriter('nsquaredSO.inc').writelines(
 """INTEGER NSQUAREDSO
-PARAMETER (NSQUAREDSO=0)""")
+PARAMETER (NSQUAREDSO=%d)""" % (1 if fks_default_abi else 0))
 
         # Actualize results from the loops computed. Only necessary for
         # processes with a born.
@@ -1713,6 +1811,8 @@ C               ENDIF""")%replace_dict
         HelConfigWriter.close()
         
         # Extract helas calls
+        self.set_virtual_flavor_writer_state(
+            fortran_model, replace_dict, matrix_element)
         loop_amp_helas_calls = fortran_model.get_loop_amp_helas_calls(\
                                                                  matrix_element)
         # The proc_prefix must be replaced
@@ -1744,6 +1844,7 @@ C               ENDIF""")%replace_dict
         else:
             replace_dict['born_ct_helas_calls']='\n'.join(born_ct_helas_calls)
             replace_dict[toBeRepaced]='\n'.join(loop_amp_helas_calls)
+        self.reset_virtual_flavor_writer_state(fortran_model)
 
         #In loop-induced, particles are put onshell to get a better precision on PS points. If we want to study processes with external off-shell particles we need
         #it to consider the offshell mass m^2 = p^2 to the on-shell mass.
@@ -1768,6 +1869,109 @@ C               ENDIF""")%replace_dict
         else:
             # Return it to be written along with the others
             return n_loop_calls, file
+
+    def set_virtual_flavor_replace_dict_entries(self, replace_dict,
+                                                 matrix_element):
+        """Populate the loop-template entries for local virtual flavours.
+
+        A virtual matrix element owns its own flavour table.  In particular,
+        its row number need not match the local Born row used for the
+        interference.  The generated loop entry point therefore rebuilds the
+        external ``FLAVOR`` vector from the virtual row; the Born row is then
+        resolved independently by the Born matrix's ``GET_FLAVOR_INDEX``.
+        """
+
+        # The loop colour basis is already built when this routine runs.
+        # Calling _build_flav_table_flat here would call
+        # compute_flavor_masks(), whose lazy restricted-flavour trimming can
+        # rebuild that basis and invalidate MadLoop's amplitude numbering.
+        # NLO loop construction has already populated allowed_flavors, so read
+        # that authoritative local table without mutating the matrix element.
+        if not matrix_element._flavor_is_populated():
+            matrix_element.populate_flavor_validity()
+        allowed_flavors = list(matrix_element.get('allowed_flavors') or [])
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+        if allowed_flavors:
+            model = matrix_element.get('processes')[0].get('model')
+            pdg_to_group_pos, max_group_size = \
+                self._build_flavor_group_lookup(model)
+            flav_table_flat = [
+                self._map_flavor_to_group_pos(
+                    flavor, pdg_to_group_pos, max_group_size)
+                for row in allowed_flavors for flavor in row]
+            n_flavors = len(allowed_flavors)
+        else:
+            n_flavors = 1
+            flav_table_flat = [1] * nexternal
+        replace_dict['nvirtual_flavors'] = n_flavors
+        replace_dict['virtual_flavor_array_function'] = \
+            self._make_flavor_array_fortran_function(
+                replace_dict['proc_prefix'] + 'GET_VIRTUAL_FLAVOR',
+                n_flavors, flav_table_flat,
+                nexternal_decl=nexternal)
+
+        # Build call masks without triggering the late diagram-trimming pass:
+        # MadLoop has already fixed its color/amplitude numbering at this
+        # point.  Loop, counterterm and Born amplitude number spaces overlap,
+        # so loop guards test each object's flavour bitmask directly instead
+        # of using the number-indexed CURRENT_{WF,AMP}_MASK tree-ME tables.
+        allow_trimming = getattr(matrix_element, '_flavor_allow_trimming',
+                                 False)
+        matrix_element._flavor_allow_trimming = False
+        try:
+            masked_flavors = matrix_element.compute_flavor_masks()
+            non_trivial = (len(masked_flavors) > 0 and
+                           not matrix_element.flavor_mask_is_trivial())
+        finally:
+            matrix_element._flavor_allow_trimming = allow_trimming
+
+        n_mask = len(masked_flavors) if non_trivial else 0
+        active_mask = (1 << n_mask) - 1 if n_mask else 0
+        replace_dict['_virtual_n_mask'] = n_mask
+        replace_dict['_virtual_active_mask'] = active_mask
+        if n_mask:
+            mask_common = '\n'.join([
+                '      INTEGER ACTIVE_VIRTUAL_FLAVOR_INDEX',
+                '      COMMON/%sVIRTUAL_FLAVOR_MASK/' %
+                    replace_dict['proc_prefix'],
+                '     $ ACTIVE_VIRTUAL_FLAVOR_INDEX'])
+            mask_decl = mask_common
+            mask_setup = ('      ACTIVE_VIRTUAL_FLAVOR_INDEX=FLAV_IDX')
+        else:
+            mask_decl = ''
+            mask_setup = ''
+            mask_common = ''
+        replace_dict['virtual_flavor_mask_decl'] = mask_decl
+        replace_dict['virtual_flavor_mask_setup'] = mask_setup
+        replace_dict['virtual_flavor_mask_common'] = mask_common
+
+    @staticmethod
+    def set_virtual_flavor_writer_state(fortran_model, replace_dict,
+                                        matrix_element=None):
+        """Enable loop HELAS call guards for the current virtual ME."""
+
+        n_mask = replace_dict.get('_virtual_n_mask', 0)
+        if n_mask and matrix_element is not None:
+            allow_trimming = getattr(matrix_element,
+                                     '_flavor_allow_trimming', False)
+            matrix_element._flavor_allow_trimming = False
+            try:
+                matrix_element.compute_flavor_masks()
+            finally:
+                matrix_element._flavor_allow_trimming = allow_trimming
+        fortran_model.use_flavor_mask = n_mask > 0
+        fortran_model.me_n_flavors = n_mask
+        fortran_model.me_active_flavor_mask = replace_dict.get(
+            '_virtual_active_mask')
+        fortran_model.use_direct_flavor_mask = n_mask > 0
+        fortran_model.direct_flavor_index = 'ACTIVE_VIRTUAL_FLAVOR_INDEX'
+
+    @staticmethod
+    def reset_virtual_flavor_writer_state(fortran_model):
+        fortran_model.use_flavor_mask = False
+        fortran_model.me_n_flavors = 0
+        fortran_model.me_active_flavor_mask = None
+        fortran_model.use_direct_flavor_mask = False
                   
     def write_bornmatrix(self, writer, matrix_element, fortran_model):
         """Create the born_matrix.f file for the born process as for a standard
@@ -1815,6 +2019,8 @@ C               ENDIF""")%replace_dict
             return 0
         
         replace_dict = copy.copy(matrix_element.rep_dict)
+        self.set_virtual_flavor_replace_dict_entries(
+            replace_dict, matrix_element)
 
         # For the wavefunction copy, check what suffix is needed for the W array
         if matrix_element.get('processes')[0].get('has_born'):
@@ -1823,8 +2029,11 @@ C               ENDIF""")%replace_dict
             replace_dict['h_w_suffix']=''            
 
         # Extract helas calls
+        self.set_virtual_flavor_writer_state(
+            fortran_model, replace_dict, matrix_element)
         born_amps_and_wfs_calls , uvct_amp_calls = \
           fortran_model.get_born_ct_helas_calls(matrix_element, include_CT=True)
+        self.reset_virtual_flavor_writer_state(fortran_model)
         # In the default output, these two kind of contributions do not need to
         # be differentiated
         born_amps_and_wfs_calls = born_amps_and_wfs_calls + uvct_amp_calls
@@ -2589,7 +2798,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         
         writers.FortranWriter.downcase = False
 
-        replace_dict = copy.copy(matrix_element.rep_dict)                 
+        replace_dict = copy.copy(matrix_element.rep_dict)
+        self.set_virtual_flavor_replace_dict_entries(
+            replace_dict, matrix_element)
 
         if self.opt['vector_size']:
             replace_dict['include_vector'] = "include '../../Source/vector.inc'"
@@ -2599,7 +2810,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         # Extract helas calls
         squared_orders = matrix_element.get_squared_order_contribs()
         split_orders = matrix_element.get('processes')[0].get('split_orders')
-        
+
+        self.set_virtual_flavor_writer_state(
+            fortran_model, replace_dict, matrix_element)
         born_ct_helas_calls , uvct_helas_calls = \
                            fortran_model.get_born_ct_helas_calls(matrix_element,
                        squared_orders=squared_orders, split_orders=split_orders)
@@ -2613,6 +2826,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                                            in coef_construction]
         self.turn_to_mp_calls(coef_construction)
         self.turn_to_mp_calls(coef_merging)        
+        self.reset_virtual_flavor_writer_state(fortran_model)
                                          
         file = open(os.path.join(self.template_dir,\
                                            'mp_compute_loop_coefs.inc')).read()
@@ -2791,36 +3005,6 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 
         writer.writelines(file,context=self.get_context(matrix_element))
     
-    def write_global_specs(self, matrix_element_list, output_path=None):
-        """ From the list of matrix element, or the single matrix element, derive
-        the global quantities to write in global_coef_specs.inc"""
-        
-        if isinstance(matrix_element_list, (group_subprocs.SubProcessGroupList,
-                                            loop_helas_objects.LoopHelasProcess)):
-            matrix_element_list = matrix_element_list.get_matrix_elements()
-        
-        if isinstance(matrix_element_list, list):
-            me_list = matrix_element_list
-        else:
-            me_list = [matrix_element_list]    
-
-        if output_path is None:
-            out_path = pjoin(self.dir_path,'SubProcesses','global_specs.inc')
-        else:
-            out_path = output_path
-
-        open(out_path,'w').write(
-"""      integer MAXNEXTERNAL
-      parameter(MAXNEXTERNAL=%d)
-      integer OVERALLMAXRANK
-      parameter(OVERALLMAXRANK=%d)
-      integer NPROCS
-      parameter(NPROCS=%d)"""%(
-         max(me.get_nexternal_ninitial()[0] for me in me_list),
-         max(me.get_max_loop_rank() for me in me_list),
-         len(me_list)))    
-
-    
     def fix_coef_specs(self, overall_max_lwf_spin, overall_max_loop_vert_rank):
         """ If processes with different maximum loop wavefunction size or
         different maximum loop vertex rank have to be output together, then
@@ -2991,6 +3175,8 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         files.cp('nsquaredSO.inc', '..')
         
         replace_dict = copy.copy(matrix_element.rep_dict)
+        self.set_virtual_flavor_replace_dict_entries(
+            replace_dict, matrix_element)
         # Build the general array mapping the split orders indices to their
         # definition
         replace_dict['ampsplitorders'] = '\n'.join(self.get_split_orders_lines(\
@@ -3082,6 +3268,8 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
             HelConfigWriter.close()
         
         # Extract helas calls
+        self.set_virtual_flavor_writer_state(
+            fortran_model, replace_dict, matrix_element)
         born_ct_helas_calls, uvct_helas_calls = \
                            fortran_model.get_born_ct_helas_calls(matrix_element,
                         squared_orders=squared_orders,split_orders=split_orders)
@@ -3096,6 +3284,7 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         coef_construction = [c % matrix_element.rep_dict for c 
                                                            in coef_construction]
         loop_CT_calls = [lc % matrix_element.rep_dict for lc in loop_CT_calls]
+        self.reset_virtual_flavor_writer_state(fortran_model)
         
         file = open(os.path.join(self.template_dir,\
                                            'loop_matrix_standalone.inc')).read()
