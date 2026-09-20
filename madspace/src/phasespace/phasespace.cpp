@@ -374,7 +374,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 if (it != out_idx.end()) {
                     child_to_out.at(a) = std::distance(out_idx.begin(), it);
                 }
-                ++a;
             }
             auto m_inv_full = _cuts.m_inv_min();
             auto dr_full = _cuts.dr_min();
