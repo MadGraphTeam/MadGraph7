@@ -17,7 +17,16 @@ matplotlib is imported lazily and only here: a run without it still writes
 every number to info.json, it just draws nothing.
 """
 
+import logging
 import os
+
+# matplotlib narrates every font it embeds in a PDF at DEBUG level
+# ("Embedding font FontPath(...)", "Writing TrueType font"), which is a dozen
+# lines per plot on the run's stdout as soon as anything -- MG5's debug mode,
+# a user's logging.basicConfig -- lets DEBUG records through the root logger.
+# None of it is ever what an MG7 run wants to read, so those loggers are
+# pinned once, when matplotlib is first imported.
+QUIET_LOGGERS = ('matplotlib', 'PIL')
 
 # how much of the y range has to be covered before the axis goes logarithmic:
 # a pt spectrum falls over orders of magnitude and is unreadable linear, while
@@ -30,6 +39,14 @@ class BackendMissing(Exception):
 
 
 def _pyplot():
+    # before the import: matplotlib narrates its own start-up (data path,
+    # CONFIGDIR, the backend it picked) while it is being imported, so a
+    # logger silenced afterwards is silenced four lines too late. A Logger
+    # exists independently of the module it belongs to.
+    for name in QUIET_LOGGERS:
+        quiet = logging.getLogger(name)
+        if quiet.level < logging.WARNING:
+            quiet.setLevel(logging.WARNING)
     try:
         import matplotlib
     except ImportError as error:

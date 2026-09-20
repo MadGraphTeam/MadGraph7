@@ -20,11 +20,15 @@ exactly the situation a run has to survive without failing.
 """
 
 from __future__ import absolute_import
+import logging
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
+from madgraph import MG5DIR
 from madgraph.iolibs.template_files.mg7 import plots
 
 
@@ -136,6 +140,40 @@ class TestPlotRendering(unittest.TestCase):
         del histogram['scale_envelope']
         del histogram['pdf_uncertainty']
         self.assertEqual(plots.render([histogram], out), ['sqrt_s.pdf'])
+
+    @unittest.skipUnless(plots.available(), 'matplotlib is not installed')
+    def test_matplotlib_does_not_narrate_the_drawing(self):
+        """matplotlib logs every font it embeds at DEBUG level: a dozen lines
+        per plot on the run's stdout as soon as anything lets DEBUG through.
+
+        Run in a subprocess, because the point is what a fresh interpreter
+        with DEBUG logging prints -- the loggers of this one have been pinned
+        by the tests above already.
+        """
+        script = (
+            'import json, logging, os, shutil, sys\n'
+            'logging.basicConfig(level=logging.DEBUG)\n'
+            'sys.path.insert(0, %r)\n' % MG5DIR +
+            'from madgraph.iolibs.template_files.mg7 import plots\n'
+            'out = %r\n' % os.path.join(self.path, 'sub') +
+            'plots.render([%r], out)\n' % make_histogram()
+        )
+        result = subprocess.run([sys.executable, '-c', script],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('matplotlib', result.stdout + result.stderr)
+
+    @unittest.skipUnless(plots.available(), 'matplotlib is not installed')
+    def test_an_explicit_level_is_left_alone(self):
+        """someone who silenced it harder keeps their setting"""
+        quiet = logging.getLogger('matplotlib')
+        saved = quiet.level
+        quiet.setLevel(logging.CRITICAL)
+        try:
+            plots._pyplot()
+            self.assertEqual(quiet.level, logging.CRITICAL)
+        finally:
+            quiet.setLevel(saved)
 
     def test_missing_backend_is_reported(self):
         """a run without matplotlib must be told, not crash"""
