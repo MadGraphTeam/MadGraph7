@@ -154,6 +154,10 @@ public:
      * @param me_flavor_remap  `me_flavor_remap[subprocess][flavor_index]` is
      *                         the flavor passed to that subprocess's matrix
      *                         element.
+     * @param nominal_pdf2     PDF of the second beam when its set differs from
+     *                         @p nominal_pdf (which is then the first beam's).
+     *                         PDF member variations are then dropped with a
+     *                         warning; the scale variations use both sets.
      */
     SystematicsCalculator(
         const SystematicsConfig& config,
@@ -162,7 +166,8 @@ public:
         const std::optional<AlphaSGrid>& nominal_alpha_s,
         ContextPtr context = nullptr,
         const std::vector<std::optional<MatrixElement>>& matrix_elements = {},
-        const nested_vector2<me_int_t>& me_flavor_remap = {}
+        const nested_vector2<me_int_t>& me_flavor_remap = {},
+        const std::optional<PdfGrid>& nominal_pdf2 = std::nullopt
     );
 
     /// The configuration passed to the constructor.
@@ -257,6 +262,7 @@ private:
     ContextPtr _context;
     std::string _prefix;
     std::optional<PdfEvaluator> _nominal_pdf;  // has_pdf only
+    std::optional<PdfEvaluator> _nominal_pdf2; // second beam, if its set differs
     std::vector<PdfEvaluator> _member_pdfs;    // one per member
     std::vector<RuntimePtr> _alpha_s_runtimes; // index 0: nominal set
     std::vector<std::optional<MatrixElementData>> _matrix_elements;

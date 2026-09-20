@@ -291,9 +291,12 @@ def load_systematics(run_card, backends=(), param_card_path=None):
     subproc_args = [
         ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
     ]
-    nominal_pdf = None
+    nominal_pdf = nominal_pdf2 = None
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+        # the second beam's set, recorded only when it differs from the first
+        if data.get("nominal_grid_file2"):
+            nominal_pdf2 = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file2"]))
     # The mu_R variations always need an alpha_s grid, so a gridpack that does
     # not name one cannot reweight anything -- drop the systematics rather than
     # die here (gridpacks written before the launcher recorded the file for a
@@ -336,7 +339,7 @@ def load_systematics(run_card, backends=(), param_card_path=None):
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
-        context, matrix_elements, flavor_remap)
+        context, matrix_elements, flavor_remap, nominal_pdf2=nominal_pdf2)
     for warning in systematics.warnings:
         print("WARNING systematics: %s" % warning)
     return systematics

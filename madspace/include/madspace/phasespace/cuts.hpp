@@ -5,6 +5,7 @@
 #include "madspace/phasespace/observable.hpp"
 
 #include <functional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -60,6 +61,14 @@ public:
     /// Build a pass-through mask with no cuts.
     /// @param particle_count  Number of external particles.
     Cuts(std::size_t particle_count);
+    /// Names of the configured cuts that are not invariant under the
+    /// initial-state mirror (py, pz -> -py, -pz); empty if every cut is.
+    /// Mirroring an accepted event after the cuts only reproduces the mirrored
+    /// half of the initial state if the cuts cannot tell the two orientations
+    /// apart, since the event that gets written is the mirrored one.
+    std::vector<std::string> non_mirror_invariant_cuts() const;
+    /// Whether every configured cut is invariant under the initial-state mirror.
+    bool mirror_invariant() const { return non_mirror_invariant_cuts().empty(); }
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).

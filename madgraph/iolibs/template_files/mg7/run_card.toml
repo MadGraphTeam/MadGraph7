@@ -34,9 +34,16 @@ include_madspace = %(gridpack.include_madspace)s
 include_madspace_source = %(gridpack.include_madspace_source)s
 
 [beam]
-e_cm = %(beam.e_cm)s
+# energy of each beam in GeV, beam 1 moving along +z. The events are written in
+# this (lab) frame and the eta cuts apply in it; the collision energy is
+# 2 sqrt(ebeam1 ebeam2). "set e_cm X" sets both beams to X/2.
+ebeam1 = %(beam.ebeam1)s
+ebeam2 = %(beam.ebeam2)s
 leptonic = %(beam.leptonic)s
-pdf = %(beam.pdf)s
+# LHAPDF set of each beam. "set beam.pdf X" sets both. PDF member variations
+# in [systematics] need the same set on both beams.
+pdf1 = %(beam.pdf1)s
+pdf2 = %(beam.pdf2)s
 fixed_ren_scale = %(beam.fixed_ren_scale)s
 fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s

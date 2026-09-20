@@ -6586,7 +6586,7 @@ class RunCardMG7(RunCard):
                     'gev': 1.0, 'tev': 1e3, 'pev': 1e6}
     # typed parameters carrying an energy dimension (stored in GeV); a value
     # like "13 TeV" is converted to 13000.0 when assigned to one of these.
-    energy_params = ('beam.e_cm', 'beam.ren_scale',
+    energy_params = ('beam.ebeam1', 'beam.ebeam2', 'beam.e_cm', 'beam.ren_scale',
                      'beam.fact_scale1', 'beam.fact_scale2')
     # name -> pdg for masses that can be referenced in expressions (e.g. a scale
     # set to "mz/2"); resolved against the param_card by get_mass_shortcuts.
@@ -6691,7 +6691,11 @@ class RunCardMG7(RunCard):
         self.add_toml_param('gridpack', 'include_madspace_source', False)
 
         # ----------------------------- [beam] -------------------------
-        self.add_toml_param('beam', 'e_cm', 13000.0)
+        # One energy per beam, beam 1 along +z. The events are written in this
+        # lab frame; beam.e_cm = 2 sqrt(ebeam1 ebeam2) is derived from them
+        # (and setting it sets both beams, see set()).
+        self.add_toml_param('beam', 'ebeam1', 6500.0)
+        self.add_toml_param('beam', 'ebeam2', 6500.0)
         self.add_toml_param('beam', 'leptonic', False)
         # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118 -- the same set
         # the legacy LO run_card now defaults to (lhaid 331900). It carries a
@@ -6701,7 +6705,9 @@ class RunCardMG7(RunCard):
         # NNPDF4.0 has no 4-flavour LO counterpart, so unlike the NLO card there
         # is no scheme-dependent choice here: this set is used whatever the
         # b-quark treatment.
-        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180")
+        # one set per beam; beam.pdf reads/sets both at once
+        self.add_toml_param('beam', 'pdf1', "NNPDF40_lo_as_01180")
+        self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180")
         # Default to the dynamical scale set by dynamical_scale_choice below
         # (half_transverse_mass, i.e. HT/2) rather than to the fixed ren_scale
         # / fact_scale values. Those fixed values are kept as the fallback used
@@ -6882,7 +6888,22 @@ class RunCardMG7(RunCard):
                 return TOMLSectionView(self, lname)
             if lname in self.legacy_compat_keys:
                 return self._legacy_compat(lname)
+            if lname in self.derived_beam_keys:
+                return self._derived_beam_value(lname)
         return super(RunCardMG7, self).__getitem__(name)
+
+    # [beam] quantities kept readable (and settable, see set()) although the
+    # card stores them per beam
+    derived_beam_keys = ('beam.e_cm', 'beam.pdf')
+
+    def _derived_beam_value(self, lname):
+        if lname == 'beam.e_cm':
+            return 2. * (float(self['beam.ebeam1']) * float(self['beam.ebeam2'])) ** 0.5
+        pdf1, pdf2 = self['beam.pdf1'], self['beam.pdf2']
+        if pdf1 != pdf2:
+            raise KeyError("beam.pdf is ambiguous: the beams use different PDF "
+                           "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
+        return pdf1
 
     get = __getitem__
 
@@ -6939,7 +6960,6 @@ class RunCardMG7(RunCard):
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
-        half_e = float(beam['e_cm']) / 2.
         if key == 'nevents':
             return self['generation']['events']
         if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
@@ -6948,7 +6968,7 @@ class RunCardMG7(RunCard):
         if key in ('lpp1', 'lpp2'):
             return 0 if leptonic else 1
         if key in ('ebeam1', 'ebeam2'):
-            return half_e
+            return float(beam[key])
         if key in ('nb_proton1', 'nb_proton2'):
             return 0 if leptonic else 1
         if key in ('nb_neutron1', 'nb_neutron2'):
@@ -6993,11 +7013,11 @@ class RunCardMG7(RunCard):
             return -2            # -2: reuse iseed for the python RNG
         raise KeyError(key)
 
-    def get_lhapdf_id(self):
-        """Central LHAPDF id of the beam PDF set, read from the set's .info
-        (SetIndex) so it does not depend on lhapdf being able to resolve the
-        set by name; falls back to lhapdf.getPDFSet, then 0."""
-        name = self['beam']['pdf']
+    def get_lhapdf_id(self, beam=1):
+        """Central LHAPDF id of the PDF set of `beam` (1 or 2), read from the
+        set's .info (SetIndex) so it does not depend on lhapdf being able to
+        resolve the set by name; falls back to lhapdf.getPDFSet, then 0."""
+        name = self['beam']['pdf%d' % beam]
         if not name:
             return 0
         search = []
@@ -7066,7 +7086,10 @@ class RunCardMG7(RunCard):
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
-                    if internal in self:
+                    if internal in self.derived_beam_keys:
+                        # a card written before the per-beam energies/PDFs
+                        self.set(internal, value, user=True)
+                    elif internal in self:
                         self.set(internal, value, user=True)
                     else:
                         if unknown_warning:
@@ -7108,6 +7131,27 @@ class RunCardMG7(RunCard):
         across all sections."""
         if isinstance(name, str):
             lname = name.lower()
+            if lname == 'e_cm':
+                lname = name = 'beam.e_cm'
+            if lname == 'pdf':
+                logger.warning("Ambiguous key 'pdf' — use beam.pdf (both beams), "
+                               "beam.pdf1, beam.pdf2 or systematics.pdf")
+                return
+            if lname == 'beam.e_cm':
+                value = self.parse_energy(value)
+                if isinstance(value, str):
+                    if value.strip().lower().startswith('scan'):
+                        raise InvalidRunCard(
+                            "e_cm cannot be scanned: scan beam.ebeam1 and "
+                            "beam.ebeam2 together instead (scan1:[...] on both)")
+                    value = self.format_variable(value, float, name='e_cm')
+                for key in ('beam.ebeam1', 'beam.ebeam2'):
+                    super(RunCardMG7, self).set(key, float(value) / 2., *args, **opts)
+                return
+            if lname == 'beam.pdf':
+                for key in ('beam.pdf1', 'beam.pdf2'):
+                    super(RunCardMG7, self).set(key, value, *args, **opts)
+                return
             if '.' not in lname:
                 matches = ['%s.%s' % (sec, lname)
                            for sec, keys in self.toml_sections.items()
@@ -7240,7 +7284,7 @@ class RunCardMG7(RunCard):
             val = self.format_variable(val, float, name=name)
         if not had_unit and name in ('lhc', 'lcc'):
             val = val * 1000.0  # unit-less hadron collider energy is in TeV
-        self.set('beam.e_cm', float(val), user=True)
+        self.set('beam.e_cm', float(val), user=True)  # both beams at val/2
         self.set('beam.leptonic', name in ('lep', 'ilc'), user=True)
         return float(val)
 
@@ -7266,6 +7310,10 @@ class RunCardMG7(RunCard):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
+        for beam in (1, 2):
+            energy = self['beam']['ebeam%d' % beam]
+            if isinstance(energy, (int, float)) and energy <= 0:
+                raise InvalidRunCard("beam.ebeam%d must be positive (got %s)" % (beam, energy))
 
         beam = self['beam']
         if float(beam['scale_factor']) <= 0.:
@@ -7425,7 +7473,8 @@ class RunCardMG7(RunCard):
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy, no hadronic cuts
             self['beam']['leptonic'] = True
-            self['beam']['e_cm'] = 1000.0
+            self['beam']['ebeam1'] = 500.0
+            self['beam']['ebeam2'] = 500.0
             self['beam']['fixed_fact_scale'] = True
             self.remove_jet_cuts()
         elif beam_id and not (beam_id & hadronic):
@@ -7459,6 +7508,8 @@ class RunCardMG7(RunCard):
         'nevents': 'generation.events',
         'gridpack': 'gridpack.save_gridpack',
         'fixed_ren_scale': 'beam.fixed_ren_scale',
+        'ebeam1': 'beam.ebeam1',
+        'ebeam2': 'beam.ebeam2',
         'scalefact': 'beam.scale_factor',
         'scale': 'beam.ren_scale',
         'dsqrt_q2fact1': 'beam.fact_scale1',
@@ -7586,7 +7637,6 @@ class RunCardMG7(RunCard):
                 mg7.set(mg7key, lo[loname])
 
         # --- beams ---
-        mg7.set('beam.e_cm', float(lo['ebeam1']) + float(lo['ebeam2']))
         lpps = [lo['lpp1'], lo['lpp2']]
         is_lep = lambda l: isinstance(l, int) and abs(l) in (3, 4)
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
@@ -7598,7 +7648,7 @@ class RunCardMG7(RunCard):
             elif isinstance(lpp, int) and lpp < 0:
                 dropped.append('lpp%d=%s (antiparticle beam: mg7 keeps the particle PDF)' % (i, lpp))
             elif lpp == 0:
-                dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf)' % i)
+                dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf1/beam.pdf2)' % i)
 
         # --- scales ---
         if 'fixed_fac_scale' in lo:
