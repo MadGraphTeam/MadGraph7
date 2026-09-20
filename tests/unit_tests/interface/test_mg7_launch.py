@@ -537,6 +537,54 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(self.output_format({'madspin': 'ON'},
                                             initial='lhe_npy'), 'lhe')
 
+    # -- the MADatLO.HwU switch ---------------------------------------------
+    class FakeHistograms:
+        """Stands in for the madspace EventHistograms of a finished run."""
+
+        JSON = ('[{"name": "jet-pt", "min": 0.0, "max": 100.0, '
+                '"bin_count": 2, "bin_values": [0.0, 1.0, 2.0, 0.0], '
+                '"bin_errors": [0.0, 0.1, 0.2, 0.0], "weights": []}]')
+
+        def to_json(self, systematics=None):
+            return self.JSON
+
+    def hwu_writer(self, write_hwu):
+        """A MadgraphProcess reduced to what write_hwu() looks at."""
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['write_hwu'] = write_hwu
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def hwu_path(self):
+        return os.path.join(self.me_dir, self.launch.MadgraphProcess.hwu_file_name)
+
+    def test_hwu_is_off_by_default(self):
+        """the same numbers are in info.json: the second file is opt-in"""
+        self.assertIs(self.launch.MadgraphProcess.__new__(
+            self.launch.MadgraphProcess).__class__, self.launch.MadgraphProcess)
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['write_hwu'], False)
+        process = self.hwu_writer(False)
+        process.write_hwu(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    def test_hwu_is_written_when_asked(self):
+        process = self.hwu_writer(True)
+        process.write_hwu(self.FakeHistograms())
+        with open(self.hwu_path()) as stream:
+            text = stream.read()
+        self.assertIn('<histogram> 2 "jet-pt', text)
+        self.assertTrue(text.startswith('##& xmin & xmax'))
+
+    def test_no_histograms_no_file(self):
+        """nothing to write when [histograms] is empty, switch or no switch"""
+        process = self.hwu_writer(True)
+        process.write_hwu(None)
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
     # -- "set histograms ..." in the launch question ------------------------
     def histogram_selector(self, card_text=None):
         """An MG7Selector reduced to what do_set needs, on this output's card."""

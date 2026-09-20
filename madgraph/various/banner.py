@@ -6687,6 +6687,12 @@ class RunCardMG7(RunCard):
             comment="compact_npy/lhe_npy also write header.lhe next to events.npy, "
                     "with the run/param card, beam and cross-section info that the "
                     ".npy file itself does not carry")
+        self.add_toml_param('run', 'write_hwu', False,
+            comment="also write the [histograms] distributions as MADatLO.HwU "
+                    "next to the events, in the format aMC@NLO writes as "
+                    "MADatNLO.HwU (madgraph/various/histograms.py plots and "
+                    "compares those). The same numbers are in info.json either "
+                    "way.")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)

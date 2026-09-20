@@ -1799,6 +1799,17 @@ class TestRunCardMG7Histograms(unittest.TestCase):
         self.assertEqual(pairs, ['t_1-t_2-pair_mass', 't_1-h-pair_mass',
                                  't_2-h-pair_mass'])
 
+    def test_hwu_output_is_off_by_default(self):
+        """the HwU file is a second copy of what info.json already has"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertIs(rc['run']['write_hwu'], False)
+        out = io.StringIO()
+        rc['run']['write_hwu'] = True
+        rc.write(out)
+        self.assertIn('write_hwu = true', out.getvalue())
+        self.assertIs(bannermod.RunCardMG7(out.getvalue())['run']['write_hwu'],
+                      True)
+
     def test_weight_distribution(self):
         """'weight' is the reserved key for the event weight itself
 

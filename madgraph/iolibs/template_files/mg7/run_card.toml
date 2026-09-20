@@ -24,6 +24,11 @@ cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
+# write the [histograms] distributions as MADatLO.HwU next to the events, in
+# the format aMC@NLO writes as MADatNLO.HwU, so that an LO run can be overlaid
+# on an NLO one with madgraph/various/histograms.py. The same numbers (bands
+# included) are in Events/<run>/info.json either way.
+write_hwu = %(run.write_hwu)s
 verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
 

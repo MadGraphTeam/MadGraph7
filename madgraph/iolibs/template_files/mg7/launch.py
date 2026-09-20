@@ -1495,8 +1495,10 @@ class MadgraphProcess:
         format (MADatLO.HwU), the one an aMC@NLO run writes as MADatNLO.HwU
         and madgraph/various/histograms.py reads: an mg7 distribution can then
         be overlaid on an NLO one without converting anything in between. The
-        numbers are the ones info.json carries, bands included."""
-        if histograms is None:
+        numbers are the ones info.json carries, bands included, so this is off
+        by default -- it is a second copy in another format, for the runs that
+        are going to be plotted."""
+        if histograms is None or not self.run_card["run"]["write_hwu"]:
             return
         try:
             data = json.loads(histograms.to_json(self.systematics))
