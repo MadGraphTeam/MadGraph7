@@ -1,4 +1,5 @@
 import argparse
+import gc
 import os
 import sys
 import time
@@ -2836,7 +2837,7 @@ class MG7Cmd(Cmd):
             if not opts['force']:
                 switch = ask_edit_cards(mother=self)
             switch = self._apply_laststep(switch, opts)
-            force_lhe_output_if_needed(switch)
+            check_lhe_output_required(switch)
             _raise_open_file_limit()
             run_generation(switch)
         finally:
@@ -3614,6 +3615,18 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             pass
 
 
+def _release_channel_generators(process) -> None:
+    """Drop the per-channel event/weight generators so their intermediate
+    .npy files are deleted right away. madspace only frees them when the
+    owning Python objects are collected, and process.event_generator /
+    process.phasespaces sit in a reference cycle that plain refcounting
+    never breaks -- only an explicit gc.collect() does, promptly, instead of
+    leaving it to whenever the cyclic GC next runs on its own."""
+    process.event_generator = None
+    process.phasespaces = None
+    gc.collect()
+
+
 def run_single(switch=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result)."""
     compute_auto_widths()
@@ -3686,6 +3699,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
                                      param_card_path=card_path)
             else:
                 iterator.store_entry(name, process.get_result())
+            _release_channel_generators(process)
         os.makedirs("Events", exist_ok=True)
         summary = os.path.join("Events", "scan_%s.txt" % run_name)
         iterator.write_summary(summary)
@@ -3710,26 +3724,29 @@ def run_generation(switch=None) -> None:
     elif param_iter:
         run_scan(param_iter, param_card_path, switch)
     else:
-        run_single(switch)
+        _release_channel_generators(run_single(switch))
 
 
-def force_lhe_output_if_needed(switch) -> None:
+def check_lhe_output_required(switch) -> None:
     """Any post-processing tool (shower/detector/madspin/reweight/analysis)
-    operates on an LHE file, so make sure the events are written in that format
-    when one of them is enabled."""
+    operates on an LHE file, so raise rather than silently override an
+    output_format the user deliberately set to something else (compact_npy/
+    lhe_npy are incompatible with those tools)."""
     if not switch:
         return
-    if not any(switch.get(k, "OFF") not in ("OFF", "Not Avail.")
-               for k in ("shower", "detector", "madspin", "reweight", "analysis")):
+    active = [k for k in ("shower", "detector", "madspin", "reweight", "analysis")
+              if switch.get(k, "OFF") not in ("OFF", "Not Avail.")]
+    if not active:
         return
     from madgraph.various.banner import RunCardMG7
     path = os.path.join("Cards", "run_card.toml")
     run_card = RunCardMG7(path, consistency=False)
     if run_card["run"]["output_format"] != "lhe":
-        run_card["run"]["output_format"] = "lhe"
-        run_card.write(path)
-        logging.getLogger("madevent").info(
-            "output_format set to 'lhe' (required by the selected post-processing).")
+        raise RuntimeError(
+            "output_format = '%s' is incompatible with the selected "
+            "post-processing (%s), which requires an LHE event file. "
+            "Either set output_format = 'lhe' or turn those tools off."
+            % (run_card["run"]["output_format"], ", ".join(active)))
 
 
 def _raise_open_file_limit() -> None:
