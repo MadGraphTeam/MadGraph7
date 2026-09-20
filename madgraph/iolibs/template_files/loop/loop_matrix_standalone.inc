@@ -670,6 +670,7 @@ DO K=1, 3
     AMPL(K,I)=(0.0d0,0.0d0)
   ENDDO
 ENDDO
+%(clear_dp_born_amps)s
 
 LSCALE=DSQRT(ABS((P(0,1)+P(0,2))**2-(P(1,1)+P(1,2))**2-(P(2,1)+P(2,2))**2-(P(3,1)+P(3,2))**2))
 

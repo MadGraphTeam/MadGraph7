@@ -213,6 +213,26 @@ class TestFKSStandalone(unittest.TestCase):
         return out.decode(errors='replace')
 
     @staticmethod
+    def _canonicalize_flv_identifiers(source):
+        """Normalize process-global generated flavour-helper identifiers.
+
+        ALOHA allocates the numeric suffix in ``FLV_<number>`` from a
+        process-global counter.  Two independently generated outputs can
+        therefore contain identical source modulo those suffixes.  Preserve
+        the identity and reuse pattern of every helper while comparing the
+        production sources, rather than collapsing all helpers to one token.
+        """
+        identifiers = {}
+
+        def replace(match):
+            identifier = match.group(0)
+            if identifier not in identifiers:
+                identifiers[identifier] = len(identifiers) + 1
+            return b'FLV_CANONICAL_%d' % identifiers[identifier]
+
+        return re.sub(br'\bFLV_[0-9]+\b', replace, source)
+
+    @staticmethod
     def _fortran_float(value):
         return float(value.replace('D', 'E').replace('d', 'e'))
 
@@ -630,7 +650,12 @@ class TestFKSStandalone(unittest.TestCase):
         for filename in production_sources:
             with open(pjoin(born_dir_sa, filename), 'rb') as sa_file, \
                     open(pjoin(born_dir_nlo, filename), 'rb') as nlo_file:
-                self.assertEqual(sa_file.read(), nlo_file.read(), filename)
+                standalone_source = self._canonicalize_flv_identifiers(
+                    sa_file.read())
+                production_source = self._canonicalize_flv_identifiers(
+                    nlo_file.read())
+                self.assertEqual(standalone_source, production_source,
+                                 filename)
         for f in ('check_sa_fks.f', 'born_pmass.inc', 'born_links.dat',
                   'born_charges.inc'):
             shutil.copy(pjoin(born_dir_sa, f), pjoin(born_dir_nlo, f))

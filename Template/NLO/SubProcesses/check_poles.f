@@ -20,6 +20,7 @@ C
       include 'genps.inc'
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
       double precision p_born(0:3,nexternal-1)
       common/pborn/p_born
@@ -157,7 +158,18 @@ c initialization
       CALL COLLIER_COMPUTE_UV_POLES(.TRUE.)
       CALL COLLIER_COMPUTE_IR_POLES(.TRUE.)
 
-200   continue
+ 200   continue
+          if (HAS_PHYSICAL_FKS_CLASSES) then
+             nFKSprocess=BORN_FKS_CONFIG_D(
+     $          mod(npointsChecked,NBORN_FLAVOR_CONFIGS)+1)
+             call fks_inc_chooser()
+             call leshouche_inc_chooser()
+             call setfksfactor(.false.)
+             write(*,*) 'POLE FLAVOR CLASS',
+     $          BORN_FKS_MAP_D(nFKSprocess),
+     $          BORN_FLAVOR_INDEX_D(nFKSprocess),
+     $          VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+          endif
           finite=0d0
           single=0d0
           double=0d0
@@ -473,4 +485,3 @@ c     Just a wrapper to ran2
       rand = ran2()
       return 
       end
-

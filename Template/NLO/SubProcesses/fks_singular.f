@@ -7707,6 +7707,7 @@ c      include "fks.inc"
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include "nFKSconfigs.inc"
+      include 'fks_info.inc'
       INTEGER nFKSprocess, nFKSprocess_save, nFKSprocess_col, nFKSprocess_chg
       COMMON/c_nFKSprocess/nFKSprocess
       logical need_color_links_used, need_charge_links_used
@@ -7723,6 +7724,9 @@ c      include "fks.inc"
 C check if any real emission need cahrge/color links
       nFKSprocess_save = nFKSprocess
       do nFKSprocess = 1, FKS_configs
+        if (HAS_PHYSICAL_FKS_CLASSES.and.
+     $      BORN_FLAVOR_INDEX_D(nFKSprocess).ne.
+     $      BORN_FLAVOR_INDEX_D(nFKSprocess_save)) cycle
         call fks_inc_chooser()
         need_color_links_used = need_color_links_used .or. need_color_links
         need_charge_links_used = need_charge_links_used .or. need_charge_links

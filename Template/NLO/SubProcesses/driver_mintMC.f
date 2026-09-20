@@ -569,7 +569,7 @@ c These should be ignored (but kept for 'historical reasons')
          write (*,*) 'Sum over helicities in the virtuals'/
      $        /' for decay process'
          mc_hel=0
-      elseif (i.eq.0) then
+      elseif (i.eq.0.or.MAX_VIRTUAL_FLAVOR_INDEX.gt.1) then
          mc_hel=0
          write (*,*) 'Explicitly summing over helicities'/
      $        /' for the virtuals'

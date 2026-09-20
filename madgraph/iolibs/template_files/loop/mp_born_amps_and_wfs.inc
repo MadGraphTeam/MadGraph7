@@ -103,6 +103,7 @@ C Handle the possible requirement of specific polarizations
   IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
     CYCLE
   ENDIF
+  %(clear_mp_born_amps)s
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
   ENDDO

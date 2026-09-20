@@ -142,6 +142,46 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             self.assertIn('CALL SLOOPMATRIX_THRES_FLAVOR(', content)
             self.assertIn('CALL SLOOPMATRIXHEL_THRES_FLAVOR(', content)
 
+    def test_grouped_virtual_disables_shared_helicity_sampling(self):
+        """Grouped virtual rows cannot consume one shared HelFilter.dat."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        for filename in ('driver_mintFO.f', 'driver_mintMC.f'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = ' '.join(stream.read().upper().split())
+            self.assertIn(
+                'I.EQ.0.OR.MAX_VIRTUAL_FLAVOR_INDEX.GT.1', content)
+
+        with open(os.path.join(template_dir, 'BinothLHA.f')) as stream:
+            content = ' '.join(stream.read().upper().split())
+        self.assertIn(
+            'IF (MAX_VIRTUAL_FLAVOR_INDEX.GT.1) MC_HEL=0', content)
+
+    def test_grouped_poles_use_physical_born_classes(self):
+        """Pole checks select links and virtuals from each physical class."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        with open(os.path.join(template_dir, 'fks_singular.f')) as stream:
+            content = ' '.join(stream.read().upper().replace('$', '').split())
+        getpoles = content.split('SUBROUTINE GETPOLES', 1)[1].split(
+            'SUBROUTINE SETFKSFACTOR', 1)[0]
+        self.assertIn("INCLUDE 'FKS_INFO.INC'", getpoles)
+        self.assertIn(
+            'BORN_FLAVOR_INDEX_D(NFKSPROCESS).NE. '
+            'BORN_FLAVOR_INDEX_D(NFKSPROCESS_SAVE)', getpoles)
+
+        with open(os.path.join(template_dir, 'check_poles.f')) as stream:
+            content = ' '.join(stream.read().upper().replace('$', '').split())
+        self.assertIn("INCLUDE 'FKS_INFO.INC'", content)
+        self.assertIn(
+            'NFKSPROCESS=BORN_FKS_CONFIG_D( '
+            'MOD(NPOINTSCHECKED,NBORN_FLAVOR_CONFIGS)+1)', content)
+        self.assertIn('VIRTUAL_FLAVOR_INDEX_D(NFKSPROCESS)', content)
+
     def test_physical_denominator_factors(self):
         """Merged rows retain their own final-state symmetry factors."""
 

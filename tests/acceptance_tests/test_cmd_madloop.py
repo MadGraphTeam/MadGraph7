@@ -101,9 +101,9 @@ class TestCmdLoop(unittest.TestCase):
                 (cwd, ' '.join(command), result.stdout))
         return result.stdout
 
-    def _evaluate_grouped_virtual_row(self, virtual_dir, row, ps_input,
-                                      env):
-        """Compile check_sa for one explicit generated virtual-flavour row."""
+    def _evaluate_grouped_virtual_rows(self, virtual_dir, rows, ps_input,
+                                       env):
+        """Evaluate explicit virtual rows sequentially in one executable."""
 
         with open(pjoin(virtual_dir, 'check_sa.f')) as stream:
             check_source = stream.read()
@@ -115,8 +115,14 @@ class TestCmdLoop(unittest.TestCase):
             'PARAMETER (NPSPOINTS = 1)')
         old_call = ('CALL SLOOPMATRIX_THRES(P,MATELEM,-1.0D0,'
                     'PREC_FOUND,RETURNCODE)')
-        new_call = ('CALL SLOOPMATRIX_THRES_FLAVOR(P,%d,MATELEM,-1.0D0,'
-                    'PREC_FOUND,RETURNCODE)' % row)
+        calls = []
+        for row in rows:
+            calls.extend([
+                ('CALL SLOOPMATRIX_THRES_FLAVOR(P,%d,MATELEM,-1.0D0,'
+                 'PREC_FOUND,RETURNCODE)' % row),
+                ("WRITE (*,*) 'GROUPED FLAVOR VALUES',%d,MATELEM(0,0),"
+                 'MATELEM(1,0),MATELEM(2,0),MATELEM(3,0)' % row)])
+        new_call = '\n        '.join(calls)
         self.assertEqual(check_source.count(old_call), 1)
         check_source = check_source.replace(old_call, new_call)
         driver = pjoin(virtual_dir, 'check_grouped_flavor.f')
@@ -140,14 +146,17 @@ class TestCmdLoop(unittest.TestCase):
         output = self._run_checked(['./check_grouped_flavor'], virtual_dir,
                                    env)
 
-        values = {}
-        for key in ('born', 'finite', '1eps', '2eps'):
-            match = re.search(
-                r'Matrix element %s\s*=\s*([+\-0-9.Ee]+)' % key,
-                output)
-            self.assertIsNotNone(match, '%s missing from:\n%s' %
-                                 (key, output))
-            values[key] = float(match.group(1))
+        values = []
+        pattern = re.compile(
+            r'GROUPED FLAVOR VALUES\s+(\d+)\s+'
+            r'([+\-0-9.DEde]+)\s+([+\-0-9.DEde]+)\s+'
+            r'([+\-0-9.DEde]+)\s+([+\-0-9.DEde]+)')
+        for match in pattern.finditer(output):
+            values.append((int(match.group(1)), dict(zip(
+                ('born', 'finite', '1eps', '2eps'),
+                (float(value.replace('D', 'E').replace('d', 'e'))
+                 for value in match.groups()[1:])))))
+        self.assertEqual([row for row, unused in values], list(rows), output)
         return values
 
     def test_grouped_nlo_virtual_values_all_physical_rows(self):
@@ -199,6 +208,8 @@ class TestCmdLoop(unittest.TestCase):
                        '1eps': -1.7028891519146937e-4,
                        '2eps': -1.1352594346101632e-4}}}
         rows = ((1, 'down'), (6, 'up'), (11, 'down'), (16, 'up'))
+        row_families = dict(rows)
+        row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)
 
         try:
             for optimized in (True, False):
@@ -249,9 +260,10 @@ class TestCmdLoop(unittest.TestCase):
                         self.assertNotIn('TYPE(FLV_COUPLING) MCOUP',
                                          loop_routine)
 
-                    for row, family in rows:
-                        actual = self._evaluate_grouped_virtual_row(
-                            virtual_dir, row, ps_input, env)
+                    actual_rows = self._evaluate_grouped_virtual_rows(
+                        virtual_dir, row_sequence, ps_input, env)
+                    for row, actual in actual_rows:
+                        family = row_families[row]
                         expected = references[orientation][family]
                         for key in expected:
                             tolerance = (5e-9 * max(abs(actual[key]),
