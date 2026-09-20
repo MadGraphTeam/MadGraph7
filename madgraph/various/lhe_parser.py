@@ -3952,62 +3952,34 @@ class Event(list):
         
     
     def get_helicity(self, get_order=None, allow_reversed=True, merged_map=None):
-        """return a list with the helicities in the order asked for"""
+        """return a list with the helicities in the order asked for
+
+        The helicity at slot i has to belong to the particle whose momentum
+        get_momenta puts at slot i -- the reweighting looks the pair up
+        together -- so both go through the same get_mapping. This used to be a
+        separate copy of that walk, and the copies drifted: its charge-reversed
+        retry dropped merged_map, so an event needing both could not be
+        mapped at all. Crossing stays off, as it always was here: a crossed
+        leg's helicity would need its sign flipped as well, and nothing asks
+        for that.
+        """
 
         if get_order is None:
             init = [part.pid for part in self if part.status == -1]
             final = [part.pid for part in self if part.status == 1]
             get_order = [init, final]
 
-        if not merged_map:
-            map = lambda x: x
-        else:
-            def map(x):
-                try:
-                    return merged_map[x]
-                except:
-                    try:
-                        return - merged_map[-x]
-                    except:
-                        return x
-
-        #avoid to modify the input
-        order = [list(get_order[0]), list(get_order[1])] 
-        out = [9] *(len(order[0])+len(order[1]))
-        for i, part in enumerate(self):
-            if part.status == 1: #final
-                try:
-                    ind = order[1].index(map(part.pid))
-                except ValueError as error:
-                    if not allow_reversed:
-                        raise error
-                    else:
-                        order = [[-i for i in get_order[0]],[-i for i in get_order[1]]]
-                        try:
-                            return self.get_helicity(order, False)
-                        except ValueError:
-                            raise error     
-                position = len(order[0]) + ind
-                order[1][ind] = 0   
-            elif part.status == -1:
-                try:
-                    ind = order[0].index(map(part.pid))
-                except ValueError as error:
-                    if not allow_reversed:
-                        raise error
-                    else:
-                        order = [[-i for i in get_order[0]],[-i for i in get_order[1]]]
-                        try:
-                            return self.get_helicity(order, False)
-                        except ValueError:
-                            raise error
-                 
-                position =  ind
-                order[0][ind] = 0
-            else: #intermediate
+        event_pos2order, _ = self.get_mapping(get_order, allow_reversed,
+                                              allow_crossing=False,
+                                              merged_map=merged_map)
+        out = [9] * (len(get_order[0]) + len(get_order[1]))
+        curr_pos = -1
+        for part in self:
+            if abs(part.status) != 1: #intermediate
                 continue
-            out[position] = int(part.helicity)
-        return out  
+            curr_pos += 1
+            out[event_pos2order[curr_pos]] = int(part.helicity)
+        return out
 
     
     def check_color_structure(self):
@@ -4380,11 +4352,24 @@ class Event(list):
 
         nbin = len(get_order[0])
         data = {} # dict will be {pdg: {(m1,m2): [position1, position2]}} position are position in p
-        final = list(get_order[1])
-        for i, part in enumerate(self):
-            pdg = map_pdg(part.pid)
-            if part.status != 1:
+        # Each particle's slot in p is the one get_momenta just put it in, so
+        # take it from the very mapping get_momenta used. Re-deriving it here
+        # with final.index(pdg), as this did, only agreed with get_momenta while
+        # no charge-reversed or crossed order was involved; with one it could
+        # not find the pdg at all.
+        event_pos2order, _ = self.get_mapping(get_order, allow_reversed,
+                                              merged_map=merged_map)
+        curr_pos = -1
+        for part in self:
+            if abs(part.status) != 1:
                 continue
+            curr_pos += 1
+            position = event_pos2order[curr_pos]
+            # only final-state slots are permuted; that includes nothing that
+            # was crossed into the initial state
+            if part.status != 1 or position < nbin:
+                continue
+            pdg = map_pdg(part.pid)
             try:
                 m1 = part.mother1.event_id
             except AttributeError:
@@ -4394,14 +4379,7 @@ class Event(list):
             except AttributeError:
                 m2 = 0
             M = (m1,m2)
-            if pdg in data:
-                max_prev = max(k+1  for N in data[pdg] for k in data[pdg][N] ) - nbin
-                if M in data[pdg]:
-                    data[pdg][M].append(nbin+final.index(pdg,max_prev))
-                else:
-                    data[pdg][M] = [nbin+final.index(pdg, max_prev)]
-            else:
-                data[pdg] = {M:[nbin+final.index(pdg)]}
+            data.setdefault(pdg, {}).setdefault(M, []).append(position)
 
         # for unnittest 
         if debug_output == 1:

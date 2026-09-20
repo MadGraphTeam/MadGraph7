@@ -6,13 +6,23 @@ description: >
   NOT build. The build_madspace job must run first (use `needs: build_madspace`)
   so the cache is populated.
 
+inputs:
+  enable_docs:
+    description: >
+      Must match the enable_docs input the build_madspace job used, so the
+      cache key restored here is the one that job actually populated.
+    required: false
+    default: 'false'
+
 runs:
   using: composite
   steps:
     # Must match the key computed by the build_madspace job exactly, otherwise
     # the restore misses and the step fails.
     - name: madspace cache key
-      run: echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+      run: |
+        echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}" >> $GITHUB_ENV
       shell: bash
 
     # madspace/install is the local prefix the mg7 runtime expects (see
@@ -24,7 +34,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: madspace/install
-        key: madspace-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
+        key: madspace${{ env.MS_VARIANT }}-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
         fail-on-cache-miss: true
 
     # Expose it on PYTHONPATH so the test harness' own `import madspace`

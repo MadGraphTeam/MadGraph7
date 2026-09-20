@@ -340,18 +340,9 @@ class TestMECmdShell(unittest.TestCase):
             stdout=devnull
             stderr=devnull
 
-        #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
-        #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','madgraph')],
-        #                     stdin=subprocess.PIPE,
-        #                     stdout=stdout,stderr=stderr)
-        #    out = p.communicate('install MadAnalysis4'.encode())
-        #misc.compile(cwd=pjoin(MG5DIR,'MadAnalysis'))
-
         #if not misc.which('root'):
         #    raise Exception('root is require for this test')
         #interface.exec_cmd('set pythia-pgs_path %s --no_save' % pjoin(MG5DIR, 'pythia-pgs'))
-        interface.exec_cmd('set madanalysis_path %s --no_save' % pjoin(MG5DIR, 'MadAnalysis'))
         interface.onecmd('output madevent %s -f' % self.run_dir)            
         
         if os.path.exists(pjoin(interface.options['syscalc_path'],'sys_calc')):
@@ -638,8 +629,6 @@ class TestMECmdShell(unittest.TestCase):
                     '%s/Cards/run_card.dat' % self.run_dir)
         shutil.copy('%s/Cards/pythia_card_default.dat' % self.run_dir,
                     '%s/Cards/pythia_card.dat' % self.run_dir)
-        shutil.copy('%s/Cards/plot_card_default.dat' % self.run_dir,
-                    '%s/Cards/plot_card.dat' % self.run_dir)        
         try:
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_parton_card.dat'))
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_hadron_card.dat'))
@@ -647,10 +636,6 @@ class TestMECmdShell(unittest.TestCase):
             pass
         self.do('generate_events -f')     
 
-
-        f1 = self.check_matched_plot(tag='fermi')         
-        start = time.time()
-        
         #modify the run_card
         run_card = self.cmd_line.run_card
         run_card['nevents'] = 44
@@ -661,7 +646,6 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(cmd, os.getcwd())        
         self.do('generate_events -f')
         self.assertEqual(int(self.cmd_line.run_card['nevents']), 44)
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Cards', 'plot_card.dat')))
         self.do('pythia run_01 -f')
         self.do('quit')
         
@@ -670,11 +654,6 @@ class TestMECmdShell(unittest.TestCase):
         self.check_parton_output(syst=False)
         self.check_parton_output('run_02', target_event=44, syst=False)
         self.check_pythia_output(syst=False)        
-        f2 = self.check_matched_plot(mintime=start, tag='tag_1')        
-        
-        self.assertNotEqual(f1.split('\n'), f2.split('\n'))
-        
-        
         self.assertEqual(cmd, os.getcwd())
 
         
@@ -2773,17 +2752,6 @@ C
 #            # check that the html has the information
 #            self.assertTrue('rwt' in data[0].pythia)
 
-    def check_matched_plot(self, run_name='run_01', mintime=None, tag='fermi'):
-        """ """
-        path = '%(path)s/HTML/%(run)s/plots_pythia_%(tag)s/DJR1.ps' % \
-                                {'path':self.run_dir,'run': run_name, 'tag': tag}
-
-        self.assertTrue(os.path.exists(path))
-        
-        if mintime:
-            self.assertGreater(os.path.getctime(path), mintime)
-        
-        return open(path).read()
 #===============================================================================
 # TestCmd
 #===============================================================================

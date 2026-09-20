@@ -6,13 +6,27 @@ description: >
   restore the result with the install_madspace action (they must `needs:` the
   job that runs this action). Assumes the repository is already checked out.
 
+inputs:
+  enable_docs:
+    description: >
+      Build with ENABLE_DOCS=ON: pybind11 docstrings extracted from the Doxygen
+      comments plus .pyi stubs. doxygen must already be on PATH -- CMake runs
+      generate_docstrings.py --require-doxygen, which hard-fails without it.
+      Folded into the cache key so a docs build can never be satisfied by (nor
+      poison) a normal, docstring-less one. Empty suffix when false, so every
+      existing cache entry keeps its exact key.
+    required: false
+    default: 'false'
+
 runs:
   using: composite
   steps:
     # Cache key must match the one used by the install_madspace action exactly,
     # otherwise the later restore misses.
     - name: madspace cache key
-      run: echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+      run: |
+        echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}" >> $GITHUB_ENV
       shell: bash
 
     # Cache the installed madspace/install prefix directly (not just a wheel), so
@@ -24,7 +38,15 @@ runs:
       uses: actions/cache@v5
       with:
         path: madspace/install
-        key: madspace-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
+        key: madspace${{ env.MS_VARIANT }}-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
+
+    # generate_docstrings.py --require-doxygen (invoked by CMake when
+    # ENABLE_DOCS=ON) hard-fails if doxygen isn't on PATH -- check early with a
+    # clear message instead of a buried cmake error.
+    - name: Assert doxygen is on PATH
+      if: inputs.enable_docs == 'true' && steps.cache-madspace.outputs.cache-hit != 'true'
+      run: doxygen --version
+      shell: bash
 
     # Built from the in-tree source (scikit-build-core / cmake). Upgrade pip +
     # packaging first: the runner ships an ancient pip whose build isolation does
@@ -46,5 +68,6 @@ runs:
         python3 -m pip install --upgrade pip packaging
         python3 -m pip install ./madspace \
           -Ccmake.define.ENABLE_OPENBLAS=ON \
+          ${{ inputs.enable_docs == 'true' && '-Ccmake.define.ENABLE_DOCS=ON' || '' }} \
           --target="$GITHUB_WORKSPACE/madspace/install"
       shell: bash

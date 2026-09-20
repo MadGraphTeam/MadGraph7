@@ -320,6 +320,23 @@ def split_order_tables(matrix_element):
                                for o, v in zip(split_orders, sqso))
                       for sqso in squared_orders]}
 
+# The templates the compressed color matrix may be written for: those that
+# declare CF in the common block INIT_CF fills, call INIT_CF before the color
+# sum, and carry a %(color_init_routine)s slot for it. Every other template
+# leaves CF as a plain array whose only filling is the DATA statements of
+# get_color_data_lines, so dropping those in favour of the compressed form
+# would leave the color matrix at zero and the matrix element with it.
+COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
+    'matrix_standalone_v4.inc',
+    'matrix_standalone_v4_onia.inc',
+    'matrix_standalone_v4_onia_pwave.inc',
+    'matrix_madevent_v4.inc',
+    'matrix_madevent_group_v4.inc',
+    'matrix_madevent_group_v4_hel.inc',
+    'matrix_madevent_group_v4_onia.inc',
+    'matrix_madevent_group_v4_onia_pwave.inc',
+))
+
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
@@ -917,14 +934,6 @@ C
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template/Common'), 
                                self.dir_path)
-            # copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards',card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to copy " + card + ".dat to default")
         elif os.getcwd() == os.path.realpath(self.dir_path):
             logger.info('working in local directory: %s' % \
                                                 os.path.realpath(self.dir_path))
@@ -941,14 +950,6 @@ C
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template/Common'), 
                                self.dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to copy " + card + ".dat to default")            
         elif not os.path.isfile(pjoin(self.dir_path, 'TemplateVersion.txt')):
             assert self.mgme_dir, \
                       "No valid MG_ME path given for MG4 run directory creation."
@@ -1735,11 +1736,11 @@ C
         path = pjoin(_file_path,'iolibs','template_files','madevent_makefile_source')
         set_of_lib = ' '.join(self.get_source_libraries_list()+['$(LIBRARIES)'])
         if self.opt['model'] == 'mssm' or self.opt['model'].startswith('mssm-'):
-            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL; make
+            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
 MODEL/MG5_param.dat: ../Cards/param_card.dat\n\t../bin/madevent treatcards param
 param_card.inc: MODEL/MG5_param.dat\n\t../bin/madevent treatcards param\n'''
         else:
-            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL; make    
+            model_line='''$(LIBDIR)libmodel.$(libext): MODEL param_card.inc vector.inc\n\tcd MODEL && make
 param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         
         dual_libs = ''
@@ -2607,6 +2608,36 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    def color_matrix_encoding_allowed(self, matrix_element):
+        """Whether the compressed color matrix may be used here: only the
+        templates which rebuild CF at run time, the same check as
+        jamp_orbit_allowed makes for the definitions. Anywhere else the DATA
+        statements are the only thing filling CF, and dropping them would
+        leave the color matrix -- and the matrix element -- at zero."""
+
+        if isinstance(self, ProcessExporterFortranME):
+            if matrix_element.get_nonia() > 0:
+                template = self.matrix_file.replace('.inc',
+                                '_onia_pwave.inc' if matrix_element.get_npwave()
+                                else '_onia.inc')
+            else:
+                template = self.matrix_file
+            return template in COLOR_MATRIX_ENCODING_TEMPLATES
+
+        # matchbox and the loop/FKS exporters derive from the standalone one
+        # but write their own templates
+        if type(self) is not ProcessExporterFortranSA:
+            return False
+        if self.matrix_template not in COLOR_MATRIX_ENCODING_TEMPLATES:
+            return False
+        if self.opt.get('export_format') in ('standalone_msP',
+                                             'standalone_msF', 'matchbox',
+                                             'madloop_matchbox'):
+            return False
+        # split orders select matrix_standalone_splitOrders_v4.inc; the onium
+        # templates are reached from matrix_standalone_v4.inc and do rebuild CF
+        return not matrix_element.get('processes')[0].get('split_orders')
+
     def get_color_matrix_encoding(self, matrix_element):
         """Describe the color matrix by one line per orbit of the index
         permutations leaving the color basis invariant, plus the permutations
@@ -2616,6 +2647,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         permuted, so this replaces the N*(N+1)/2 entries by (nrep+ngen+3)*N
         numbers. That is only a gain once the basis is large enough, and None
         is returned otherwise so that the entries are written out as before."""
+
+        if not self.color_matrix_encoding_allowed(matrix_element):
+            return None
 
         color_matrix = matrix_element.get('color_matrix')
         if not color_matrix:

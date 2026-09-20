@@ -75,8 +75,8 @@ class TestMadEventCmd(unittest.TestCase):
 
         card_dir= pjoin(root_path,'..','Template/Common', 'Cards')
 
-        # PLOT_CARD
-        self.assertEqual(detect(pjoin(card_dir, 'plot_card.dat')),
+        # PLOT_CARD (MadAnalysis4 is gone, but old banners still carry the card)
+        self.assertEqual(detect(pjoin(root_path, 'input_files', 'plot_card.dat')),
                          'plot_card.dat')
 
         # Delphes

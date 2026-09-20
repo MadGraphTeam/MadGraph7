@@ -88,6 +88,11 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.cmd = mgcmd.MasterCmd()
         self.cmd.use_rawinput = False
+        # MasterCmd reads the checkout's input/mg7_configuration.txt, and
+        # crash_on_error decides whether an error inside the run stops MG5:
+        # pin the shipped default so a developer's own setting cannot change
+        # what these tests see. The tests that need it set it themselves.
+        self.cmd.options['crash_on_error'] = False
 
         # MG5's error handling writes a 'debug' file into the working
         # directory; keep that (and anything else a test provokes) inside the
@@ -211,14 +216,9 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.assertEqual(child.commands, [])
 
     # -- interrupts ---------------------------------------------------------
-    def test_keyboard_interrupt_reaches_the_error_handling(self):
-        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
-
-        Going through the child's run_cmd means it now reaches the standard
-        cmd error handling: stop_on_keyboard_stop runs and the interrupt then
-        stops MG5, like every other interface, rather than being dropped so the
-        rest of the script runs on as if nothing happened.
-        """
+    def interrupted_launch(self):
+        """Stub a child whose run is interrupted by Ctrl-C; return the list
+        that records its stop_on_keyboard_stop calls."""
         stopped = []
 
         def MG7Cmd(me_dir='.', options=None):
@@ -230,6 +230,29 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.stub.MG7Cmd = MG7Cmd
         self.cmd.inputfile = iter([])
+        return stopped
+
+    def test_keyboard_interrupt_reaches_the_error_handling(self):
+        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
+
+        Going through the child's run_cmd means it now reaches the standard
+        cmd error handling, exactly as a madevent run does: the child's
+        stop_on_keyboard_stop runs (that is where a run cleans up its jobs)
+        and the child is still closed. With the default crash_on_error the
+        interrupt stops the run, not MG5 -- the same as for madevent.
+        """
+        stopped = self.interrupted_launch()
+        self.cmd.do_launch(self.me_dir)
+        self.assertEqual(stopped, [True])
+        self.assertEqual(self.built[-1].commands, ['', 'quit'])
+
+    @unittest.skipUnless(__debug__, 'error_handling only consults '
+                         'crash_on_error for Ctrl-C in debug mode')
+    def test_keyboard_interrupt_with_crash_on_error_stops_mg5(self):
+        """With crash_on_error = True the interrupt ends MG5, after the run
+        has had its stop_on_keyboard_stop."""
+        self.cmd.options['crash_on_error'] = True
+        stopped = self.interrupted_launch()
         self.assertRaises(SystemExit, self.cmd.do_launch, self.me_dir)
         self.assertEqual(stopped, [True])
 

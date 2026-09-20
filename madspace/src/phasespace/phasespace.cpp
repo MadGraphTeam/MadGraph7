@@ -68,6 +68,30 @@ void update_mass_min_max(
         current_decay->mass ? current_decay->mass : current_decay->max_mass;
 }
 
+// Masses of the external momenta in the order they are handed to boost_beam,
+// i.e. after the channel permutation. A position whose mass differs between
+// permutations gets -1, and boost_beam reads that mass off the momentum.
+std::vector<double> lab_masses(
+    const Topology& topology, const nested_vector2<me_int_t>& permutations
+) {
+    std::vector<double> masses = topology.incoming_masses();
+    const auto& out = topology.outgoing_masses();
+    masses.insert(masses.end(), out.begin(), out.end());
+    if (permutations.empty()) {
+        return masses;
+    }
+    std::vector<double> result(masses.size());
+    for (std::size_t i = 0; i < masses.size(); ++i) {
+        result.at(i) = masses.at(permutations.at(0).at(i));
+        for (const auto& perm : permutations) {
+            if (masses.at(perm.at(i)) != result.at(i)) {
+                result.at(i) = -1.;
+            }
+        }
+    }
+    return result;
+}
+
 nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) {
     nested_vector2<me_int_t> perms_out(perms_in.size());
     for (auto [perm_in, perm_out] : zip(perms_in, perms_out)) {
@@ -374,7 +398,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 if (it != out_idx.end()) {
                     child_to_out.at(a) = std::distance(out_idx.begin(), it);
                 }
-                ++a;
             }
             auto m_inv_full = _cuts.m_inv_min();
             auto dr_full = _cuts.dr_min();
@@ -648,7 +671,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     }
 
     // boost into correct frame and apply cuts
-    auto p_ext_lab = _map_luminosity ? fb.boost_beam(p_ext_stack, x1, x2) : p_ext_stack;
+    auto p_ext_lab = _map_luminosity
+        ? fb.boost_beam(p_ext_stack, Value(lab_masses(_topology, _permutations)), x1, x2)
+        : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
     return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
@@ -661,7 +686,10 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
 ) const {
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     Value p_ext_stack =
-        _map_luminosity ? fb.boost_beam_inverse(p_ext_lab, x1, x2) : p_ext_lab;
+        _map_luminosity ? fb.boost_beam_inverse(
+                              p_ext_lab, Value(lab_masses(_topology, _permutations)), x1, x2
+                          )
+                        : p_ext_lab;
 
     // permute momenta if permutations are given
     if (_permutations.size() > 1) {

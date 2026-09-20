@@ -56,6 +56,62 @@ question_hint = None
 suppress_timeout = False
 
 
+# Options MG7 used to have and does not support any more. Setting one must not
+# be an error: old command files, old process directories and old configuration
+# files still carry them, and a crash there is far worse than a dead setting.
+# The value is dropped instead -- silently when it would only have switched the
+# option off, with a warning otherwise, so a user who really was relying on it
+# hears about it once.
+removed_options = {
+    'madanalysis_path': 'MadAnalysis4 support has been removed, use MadAnalysis5',
+    'td_path': 'topdrawer was only used by MadAnalysis4, which has been removed',
+}
+
+
+def is_removed_option(name):
+    """True if `name` is an option that is not supported any more."""
+
+    return name in removed_options
+
+
+def warn_removed_option(name, value=None):
+    """Tell the user that a retired option is being ignored.
+
+    A value that would only have disabled the option (None/False/empty) says
+    nothing new -- the option is gone, so it is already off -- and stays quiet.
+    """
+
+    if not is_removed_option(name):
+        return
+    if str(value).strip().lower() in ('none', 'false', ''):
+        return
+    logger.warning("'%s' is not supported any more (%s). Ignoring it.",
+                   name, removed_options[name])
+
+
+class QuestionAnswer(str):
+    """A line of history that answered a question instead of being a command.
+
+    It is kept -- `history` has to replay the answers, or the file it writes
+    reruns a launch with the defaults -- but it is not a command of the prompt
+    whose history holds it.  `set width 6 auto` typed at the launch card
+    question is a card edit; replayed as an MG5 command it is an error.  So
+    everything that turns a history into commands for something else skips
+    these: the proc card an `output` writes (MadSpin and the reweighting replay
+    its `set` lines), and the `set` lines a launch copies into the run it
+    starts.  Test with is_question_answer(), which needs no import of this
+    module.
+    """
+
+    is_answer = True
+
+
+def is_question_answer(line):
+    """True for a history line recorded by record_answer_in_history()."""
+
+    return bool(getattr(line, 'is_answer', False))
+
+
 def record_answer_in_history(interface, answer):
     """Append an answer to the history of `interface` and everything above it.
 
@@ -69,6 +125,7 @@ def record_answer_in_history(interface, answer):
     answer = str(answer).strip() if answer is not None else ''
     if not answer:
         return
+    answer = QuestionAnswer(answer)
     seen = set()
     while interface is not None and id(interface) not in seen:
         seen.add(id(interface))
