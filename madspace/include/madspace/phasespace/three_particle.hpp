@@ -104,7 +104,8 @@ private:
  * logarithmically. With @p arcsine_s23 (the default) the random number of
  * @f$\tilde s_i@f$ is first mapped by an arcsine map that is flat in
  * @f$\phi/2@f$ between the limits of the sampled range, and only then handed
- * to the @ref Invariant. The weight stays bounded at the kinematic limits, and
+ * to the power-law sampling of @ref Invariant (a Breit-Wigner is not
+ * supported there). The weight stays bounded at the kinematic limits, and
  * the importance sampling of @f$\tilde s_i@f$ is kept.
  *
  * `batch` is the leading batch dimension.
@@ -164,7 +165,9 @@ public:
      *                          @f$\tilde s@f$ with the arcsine map in
      *                          @f$\phi@f$ before the invariant sampling, which
      *                          removes the @f$1/|\sin\phi|@f$ edge peak of the
-     *                          weight.
+     *                          weight. Power-law sampling only: requires
+     *                          @p s_width = 0 (no resonance is expected in
+     *                          this block).
      * @param p12_condition     If true, the second condition is the outgoing
      *                          system `momentum12` = p1 + p2 itself instead
      *                          of the second incoming momentum. A caller that
@@ -201,12 +204,9 @@ private:
 
     std::array<Value, 3>
     split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
-    // arcsine map and s23 sampling in one kernel (not for Breit-Wigner)
-    bool fused_s23() const { return _arcsine_s23 && _s_width == 0.; }
-
     Invariant _t_invariant;
     Invariant _s_invariant;
-    double _s_power, _s_mass, _s_width;
+    double _s_power, _s_mass;
     bool _has_cut;
     bool _arcsine_s23;
     bool _p12_condition;

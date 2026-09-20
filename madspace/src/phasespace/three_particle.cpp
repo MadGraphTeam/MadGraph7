@@ -1,5 +1,7 @@
 #include "madspace/phasespace/three_particle.hpp"
 
+#include <stdexcept>
+
 using namespace madspace;
 
 ThreeBodyDecay::ThreeBodyDecay(bool com) :
@@ -127,10 +129,18 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     _s_invariant(s_invariant_power, s_mass, s_width),
     _s_power(s_invariant_power),
     _s_mass(s_mass),
-    _s_width(s_width),
     _has_cut(has_cut),
     _arcsine_s23(arcsine_s23),
-    _p12_condition(p12_condition) {}
+    _p12_condition(p12_condition) {
+    // The block peels a particle off a t-channel chain, where no s-channel
+    // resonance is expected; the arcsine sampling covers power laws only.
+    if (arcsine_s23 && s_width != 0.) {
+        throw std::invalid_argument(
+            "TwoToThreeParticleScattering: arcsine_s23 does not support a "
+            "Breit-Wigner s23 sampling (s_width != 0)"
+        );
+    }
+}
 
 std::array<Value, 3> TwoToThreeParticleScattering::split_conditions(
     FunctionBuilder& fb, const NamedVector<Value>& conditions
@@ -181,7 +191,7 @@ Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
         ? fb.s23_min_max(p_a, p_12, p_3, t_inv_result["invariant"], m1, m2)
         : std::array<Value, 2>{s23_min, s23_max};
     Value u, u_c, det_s23;
-    if (fused_s23()) {
+    if (_arcsine_s23) {
         // arcsine map and importance sampling in one step, carrying u and
         // 1 - u at full relative precision up to the edges
         auto [u_out, u_c_out, det_out] = fb.s23_arcsine_sample(
@@ -197,18 +207,9 @@ Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
         u_c = u_c_out;
         det_s23 = det_out;
     } else {
-        Value x_s23 = r_s23;
-        Value det_x;
-        if (_arcsine_s23) {
-            auto [x, det_arcsine] =
-                fb.s23_arcsine(r_s23, s23_min, s23_max, s23_phys_min, s23_phys_max);
-            x_s23 = x;
-            det_x = det_arcsine;
-        }
         auto s23_inv_result =
-            _s_invariant.build_forward(fb, {x_s23}, {s23_min, s23_max});
-        det_s23 = _arcsine_s23 ? fb.mul(s23_inv_result["det"], det_x)
-                               : s23_inv_result["det"];
+            _s_invariant.build_forward(fb, {r_s23}, {s23_min, s23_max});
+        det_s23 = s23_inv_result["det"];
         auto [u_out, u_c_out] =
             fb.s23_position(s23_inv_result["invariant"], s23_phys_min, s23_phys_max);
         u = u_out;
@@ -266,7 +267,7 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
         s23_phys_max = phys_max;
     }
     Value r_s23, det_s23;
-    if (fused_s23()) {
+    if (_arcsine_s23) {
         // u and 1 - u read off the azimuth, at full relative precision
         auto [r, det_r] = fb.s23_arcsine_sample_inverse(
             u,
@@ -285,13 +286,6 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
             _s_invariant.build_inverse(fb, {s23}, {s23_min, s23_max});
         r_s23 = s23_inv_result["random"];
         det_s23 = s23_inv_result["det"];
-        if (_arcsine_s23) {
-            auto [r, det_r] = fb.s23_arcsine_inverse(
-                r_s23, s23_min, s23_max, s23_phys_min, s23_phys_max
-            );
-            r_s23 = r;
-            det_s23 = fb.mul(det_s23, det_r);
-        }
     }
     auto det_inv = fb.mul(t_inv_result["det"], det_s23);
     return {

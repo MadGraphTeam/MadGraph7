@@ -1708,58 +1708,6 @@ s23_value_and_min_max_cut:
       desc: "upper limit of the 2-3 invariant mass squared"
   desc: "The 2-3 invariant mass squared and its cut-restricted limits. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
 
-s23_arcsine:
-  inputs:
-    - name: r
-      type: [float]
-      desc: "random number in [0, 1]"
-    - name: s_min
-      type: [float]
-      desc: "lower limit of the sampled 2-3 invariant mass squared"
-    - name: s_max
-      type: [float]
-      desc: "upper limit of the sampled 2-3 invariant mass squared"
-    - name: s_phys_min
-      type: [float]
-      desc: "lower kinematic limit of the 2-3 invariant mass squared"
-    - name: s_phys_max
-      type: [float]
-      desc: "upper kinematic limit of the 2-3 invariant mass squared"
-  outputs:
-    - name: x
-      type: [float]
-      desc: "remapped random number in [0, 1], passed on to the invariant sampling"
-    - name: det
-      type: [float]
-      desc: "Jacobian dx/dr"
-  desc: "Arcsine map, flat in the azimuth, of the random number of the 2-3 invariant; removes the integrable 1/sin(phi) of the 2-3 Jacobian. Building block of @ref TwoToThreeParticleScattering."
-
-s23_arcsine_inverse:
-  inputs:
-    - name: x
-      type: [float]
-      desc: "remapped random number in [0, 1]"
-    - name: s_min
-      type: [float]
-      desc: "lower limit of the sampled 2-3 invariant mass squared"
-    - name: s_max
-      type: [float]
-      desc: "upper limit of the sampled 2-3 invariant mass squared"
-    - name: s_phys_min
-      type: [float]
-      desc: "lower kinematic limit of the 2-3 invariant mass squared"
-    - name: s_phys_max
-      type: [float]
-      desc: "upper kinematic limit of the 2-3 invariant mass squared"
-  outputs:
-    - name: r
-      type: [float]
-      desc: "random number in [0, 1]"
-    - name: det
-      type: [float]
-      desc: "Jacobian dr/dx"
-  desc: "Inverse of `s23_arcsine`. Building block of @ref TwoToThreeParticleScattering."
-
 s23_position:
   inputs:
     - name: s23

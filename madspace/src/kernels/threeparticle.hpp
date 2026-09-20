@@ -171,6 +171,14 @@ three_body_decay_inverse(FourMom<T> p1, FourMom<T> p2, FourMom<T> p3) {
     return {r_e1, r_e2, r_phi, r_cos_theta, r_beta, m0, m1, m2, m3, 1. / det};
 }
 
+// Width given to an empty s23 range, relative to s23: an absolute EPS is below
+// one ulp for s23 > ~1e4 and left max == min, and a few ulps still make the
+// differences of powers in the 1/s^nu sampling vanish.
+template <typename T>
+KERNELSPEC FVal<T> s23_min_width(FVal<T> s) {
+    return max(FVal<T>(EPS), 1e-10 * fabs(s));
+}
+
 template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> s23_min_max(
     FourMom<T> pa,
@@ -221,6 +229,17 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_min_max(
         2. * ((sqrt(max(s12, 0.)) + p3_com[0]) * p1_com[0] - p3_z * p1_com[3]);
     auto half_width = 2. * p3_x * p1_com[1];
     return {center - half_width, center + half_width};
+}
+
+// The range as handed to the s23 sampling. It is empty when p1 or p3 is along
+// pa (t1 at an end of its range, or a collinear or vanishing p3): the azimuth
+// is then undefined and the weight zero. A small width there keeps the
+// sampling and its inverse finite; the Jacobian of the scattering kernel keeps
+// using the true width and stays zero.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> s23_sampling_range(Pair<FVal<T>, FVal<T>> range) {
+    auto lo = range.first, hi = range.second;
+    return {lo, where(hi - lo > s23_min_width<T>(lo), hi, lo + s23_min_width<T>(lo))};
 }
 
 // Kernels
@@ -373,9 +392,9 @@ KERNELSPEC void kernel_s23_min_max(
     // this function is based on the sminmax subroutine from Rikkert
     // expects t1_abs (positive t invariant) as input
     auto p_12 = load_mom<T>(p12);
-    auto s23_out = s23_min_max<T>(
+    auto s23_out = s23_sampling_range<T>(s23_min_max<T>(
         load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
-    );
+    ));
     s23_min = s23_out.first;
     s23_max = s23_out.second;
 }
@@ -401,9 +420,9 @@ KERNELSPEC void kernel_s23_value_and_min_max(
     auto m1 = sqrt(max(lsquare<T>(load_mom<T>(p1)), 0.));
     auto m2 = sqrt(max(lsquare<T>(load_mom<T>(p2)), 0.));
 
-    auto s23_out = s23_min_max<T>(
+    auto s23_out = s23_sampling_range<T>(s23_min_max<T>(
         load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
-    );
+    ));
     s23_min = s23_out.first;
     s23_max = s23_out.second;
     s_23 = lsquare<T>(p_23);
@@ -459,7 +478,7 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
     auto massless_2 = m2_2 < 1e-10 * piir_0 * piir_0;
     auto smin_ok = active & massless_2 & (smin_b > smn) & (smin_b < smx_new);
     auto smn_new = where(smin_ok, max(smn, smin_b), smn);
-    smx_new = where(smx_new > smn_new, smx_new, smn_new + EPS);
+    smx_new = where(smx_new > smn_new, smx_new, smn_new + s23_min_width<T>(smn_new));
     return {smn_new, smx_new};
 }
 
@@ -486,15 +505,15 @@ KERNELSPEC void kernel_s23_min_max_cut(
     auto m1_2 = m1 * m1;
     auto m2_2 = m2 * m2;
 
-    auto s23_out = s23_min_max<T>(
+    auto s23_out = s23_sampling_range<T>(s23_min_max<T>(
         load_mom<T>(pa), load_mom<T>(p3), p_12, lsquare<T>(p_12), t1_abs, m1, m2
-    );
+    ));
     auto smn = s23_out.first;
     auto smx = s23_out.second;
 
     FVal<T> smin_cut(s23_min_cut);
     smn = where(smin_cut > 0., max(smn, smin_cut), smn);
-    smx = where(smx > smn, smx, smn + EPS);
+    smx = where(smx > smn, smx, smn + s23_min_width<T>(smn));
 
     // Block-B ETmin refinement: piir = p_12 (recoil system), pim1 = p3, pib = pa.
     auto sb = s23_etmin_clamp<T>(
@@ -540,7 +559,7 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
     auto m1_2 = lsquare<T>(load_mom<T>(p1));
     auto m2_2 = lsquare<T>(load_mom<T>(p2));
 
-    auto s23_out = s23_min_max<T>(
+    auto s23_out = s23_sampling_range<T>(s23_min_max<T>(
         load_mom<T>(pa),
         load_mom<T>(p3),
         p_12,
@@ -548,13 +567,13 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
         t1_abs,
         sqrt(max(m1_2, 0.)),
         sqrt(max(m2_2, 0.))
-    );
+    ));
     auto smn = s23_out.first;
     auto smx = s23_out.second;
 
     FVal<T> smin_cut(s23_min_cut);
     smn = where(smin_cut > 0., max(smn, smin_cut), smn);
-    smx = where(smx > smn, smx, smn + EPS);
+    smx = where(smx > smn, smx, smn + s23_min_width<T>(smn));
 
     // Block-B ETmin refinement (must mirror the forward kernel exactly so the
     // sampled s23 range is identical and the round-trip stays invertible).
@@ -592,7 +611,8 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
 // position x in [0, 1] of the point in that range:
 //   x = (sin^2 theta - sin^2 theta_a) / (sin^2 theta_b - sin^2 theta_a),
 //   theta = theta_a + (theta_b - theta_a) r.
-// x is then handed to the s23 importance sampling in place of r. Its Jacobian
+// x is then handed to the s23 importance sampling in place of r (see
+// kernel_s23_arcsine_sample, which does both in one step). Its Jacobian
 // dx/dr vanishes like |sin(phi)| at a physical edge, so the product with the
 // 2->3 Jacobian stays bounded; at an edge set by a cut instead (theta_a > 0 or
 // theta_b < pi/2) it stays finite and nothing is cancelled. Differences of
@@ -614,68 +634,6 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_arcsine_angles(
     auto theta_b = atan2(sqrt(ub), sqrt(ub_c));
     // an empty physical range leaves nothing to map: theta_b = theta_a
     return {theta_a, where(width > 0., theta_b, theta_a)};
-}
-
-template <typename T>
-KERNELSPEC void kernel_s23_arcsine(
-    FIn<T, 0> r,
-    FIn<T, 0> s_min,
-    FIn<T, 0> s_max,
-    FIn<T, 0> s_phys_min,
-    FIn<T, 0> s_phys_max,
-    FOut<T, 0> x,
-    FOut<T, 0> det
-) {
-    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
-    auto theta_a = angles.first;
-    auto dtheta = angles.second - angles.first;
-    // sin^2 theta_b - sin^2 theta_a
-    auto den = sin(dtheta) * sin(angles.first + angles.second);
-    auto ok = (dtheta > 0.) & (den > 0.);
-    auto den_safe = where(ok, den, FVal<T>(1.));
-
-    FVal<T> r_val(r);
-    auto dtheta_r = dtheta * r_val;
-    // x = (sin^2 theta - sin^2 theta_a) / den, dx/dr = dtheta sin(2 theta) / den
-    auto x_val = sin(dtheta_r) * sin(2. * theta_a + dtheta_r) / den_safe;
-    auto det_val = dtheta * sin(2. * (theta_a + dtheta_r)) / den_safe;
-    x = where(ok, min(max(x_val, 0.), 1.), r_val);
-    det = where(ok, det_val, FVal<T>(1.));
-}
-
-template <typename T>
-KERNELSPEC void kernel_s23_arcsine_inverse(
-    FIn<T, 0> x,
-    FIn<T, 0> s_min,
-    FIn<T, 0> s_max,
-    FIn<T, 0> s_phys_min,
-    FIn<T, 0> s_phys_max,
-    FOut<T, 0> r,
-    FOut<T, 0> det
-) {
-    auto angles = s23_arcsine_angles<T>(s_min, s_max, s_phys_min, s_phys_max);
-    auto theta_a = angles.first;
-    auto theta_b = angles.second;
-    auto dtheta = theta_b - theta_a;
-    auto den = sin(dtheta) * sin(theta_a + theta_b);
-    auto ok = (dtheta > 0.) & (den > 0.);
-    auto den_safe = where(ok, den, FVal<T>(1.));
-    auto dtheta_safe = where(ok, dtheta, FVal<T>(1.));
-
-    FVal<T> x_val(x);
-    // sin^2 theta = sin^2 theta_a + x den, cos^2 theta = cos^2 theta_b + (1 - x) den
-    auto sin_a = sin(theta_a);
-    auto cos_b = cos(theta_b);
-    auto sin2 = sin_a * sin_a + x_val * den_safe;
-    auto cos2 = cos_b * cos_b + (1. - x_val) * den_safe;
-    auto theta = atan2(sqrt(max(sin2, 0.)), sqrt(max(cos2, 0.)));
-    auto r_val = (theta - theta_a) / dtheta_safe;
-    // dr/dx; zero at the edges of the physical range, where dx/dr vanishes
-    auto sin_2theta = sin(2. * theta);
-    auto det_val =
-        where(sin_2theta > 0., den_safe / (dtheta_safe * sin_2theta), FVal<T>(0.));
-    r = where(ok, min(max(r_val, 0.), 1.), x_val);
-    det = where(ok, det_val, FVal<T>(1.));
 }
 
 // Position of s23 in its kinematic range, u = (s23 - s_phys_min) / width and
@@ -704,10 +662,9 @@ KERNELSPEC void kernel_s23_position(
 // quantity is carried as a pair of distances to both ends of its range, with
 // the power maps written through expm1 and log1p, so that u and 1 - u keep
 // their relative precision down to the edges of the kinematic range. Going
-// through s23 itself, as `s23_arcsine` + @ref Invariant + `s23_position` do,
-// loses that: s23 - s_min is only known to ~1e-16 s. The forward/inverse round
-// trip then only recovers r_s23 to ~1e-8 near the edges, which is where the
-// arcsine map puts its points.
+// through s23 itself loses that: s23 - s_min is only known to ~1e-16 s. The
+// forward/inverse round trip then only recovers r_s23 to ~1e-8 near the
+// edges, which is where the arcsine map puts its points.
 template <typename T>
 KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>> s23_power_offsets(
     FVal<T> x,

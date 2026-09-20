@@ -125,3 +125,72 @@ def test_color_ordered_massless_volume(color_order):
     # range, so the error estimate itself is noisy; a fixed tolerance well
     # above the spread (about 1%) is the robust check.
     assert np.mean(means) / volume == pytest.approx(1.0, abs=0.05)
+
+
+def extreme_points():
+    """Soft and collinear limits down to 1e-16, at the corners of the random
+    numbers: a soft peeled particle, a soft or vanishing p3, p3 along or
+    against pa, a vanishing m1, and s12 -> 0."""
+    deltas = [1e-8, 1e-12, 1e-15, 1e-16]
+    corners = [0.0, 1e-16, 1e-8, 0.37, 1.0 - 1e-8, 1.0]
+    points = []
+    for delta in deltas:
+        configs = [
+            (massless(350.0, 0.7, 0.3), lambda s: math.sqrt(s) * (1.0 - delta)),
+            (massless(350.0 * delta, 0.7, 0.3), lambda s: 0.4 * math.sqrt(s)),
+            (massless(350.0, delta, 0.3), lambda s: 0.4 * math.sqrt(s)),
+            (massless(350.0, math.pi - delta, 0.3), lambda s: 0.4 * math.sqrt(s)),
+            (massless(350.0, 0.7, 0.3), lambda s: delta * math.sqrt(s)),
+            (massless(500.0 * (1.0 - delta), 0.7, 0.3), lambda s: 0.0),
+        ]
+        for p3, m1 in configs:
+            for r_s23 in corners:
+                for r_t1 in corners:
+                    for index in (0, 1):
+                        points.append((p3, m1(lsquare(PA + PB - p3)), r_s23, r_t1, index))
+    return points
+
+
+@pytest.mark.parametrize("arcsine", [True, False], ids=["arcsine", "flat"])
+@pytest.mark.parametrize("s_power", [0.0, 0.8])
+def test_finite_at_extreme_points(arcsine, s_power):
+    """Forward and inverse stay finite in all these limits. Where p1 or p3 is
+    along pa the azimuth is undefined and the weight is zero; there the s23
+    range has zero width, and the inverse used to divide 0 / 0. A p3 below
+    ~1e-12 GeV (or a p_12 that close to rest) also hit absolute floors in the
+    normalisation of the frame and the boost axis and came out far off shell."""
+    points = extreme_points()
+    n = len(points)
+    mapping = ms.TwoToThreeParticleScattering(
+        0.8, 0.0, 0.0, s_power, 0.0, 0.0, arcsine_s23=arcsine
+    )
+    inputs = [
+        np.array([pt[4] for pt in points], dtype=np.int32),
+        np.array([pt[2] for pt in points]),
+        np.array([pt[3] for pt in points]),
+        np.array([pt[1] for pt in points]),
+        np.zeros(n),
+    ]
+    conditions = [np.tile(PA, (n, 1)), np.tile(PB, (n, 1)), np.stack([pt[0] for pt in points])]
+    p1, p2, det = mapping.map_forward(inputs, conditions)
+    p1, p2, det = np.asarray(p1), np.asarray(p2), np.asarray(det)
+    assert np.all(np.isfinite(p1)) and np.all(np.isfinite(p2))
+    assert np.all(np.isfinite(det)) and np.all(det >= 0)
+    # On shell where the weight is not zero: the soft-p3 points used to be off
+    # by ~1e4 GeV^2, |p^2 - m^2| / E^2 ~ 1e-2. What is left comes from s12 -> 0,
+    # a pair collinear to ~1e-6 whose mass pa + pb - p3 fixes only to ~1e-4,
+    # and stays below ~1e-9. (At zero weight the pair mass can be below
+    # sqrt(eps) of its energy, which momenta cannot carry at all.)
+    live = det > 0
+    m1 = inputs[3][live]
+    off1 = np.abs(lsquare(p1[live]) - m1**2) / p1[live, 0] ** 2
+    off2 = np.abs(lsquare(p2[live])) / p2[live, 0] ** 2
+    assert np.max(off1) < 1e-8 and np.max(off2) < 1e-8
+    for out in mapping.map_inverse([p1, p2], conditions):
+        assert np.all(np.isfinite(np.asarray(out)))
+
+
+def test_arcsine_rejects_breit_wigner():
+    with pytest.raises(ValueError):
+        ms.TwoToThreeParticleScattering(0.8, 0.0, 0.0, 0.8, 80.0, 2.0)
+    ms.TwoToThreeParticleScattering(0.8, 0.0, 0.0, 0.8, 80.0, 2.0, arcsine_s23=False)

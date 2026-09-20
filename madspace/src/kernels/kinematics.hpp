@@ -102,7 +102,11 @@ t_inv_min_max(FVal<T> s, FVal<T> ma_2, FVal<T> mb_2, FVal<T> m1_2, FVal<T> m2_2)
     auto t_min_tmp = -max(y2, y1);
     auto t_max_tmp = -min(y1, y2);
     auto t_min = max(t_min_tmp, 0.);
-    auto t_max = where(t_max_tmp > t_min, t_max_tmp, t_min + EPS);
+    // an empty range gets a width of a few ulps rather than an absolute EPS,
+    // which is below one ulp of t for |t| > ~1e4 and left max == min
+    auto t_max = where(
+        t_max_tmp > t_min, t_max_tmp, t_min + max(FVal<T>(EPS), 1e-14 * fabs(t_min))
+    );
     return {t_min, t_max};
 }
 
@@ -210,7 +214,7 @@ KERNELSPEC FVal<T> esquare(FourMom<T> p) {
 // the two sides rounded q_t differently.)
 template <typename T>
 KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
-    auto qq = sqrt(max(esquare<T>(q), EPS2));
+    auto qq = sqrt(max(esquare<T>(q), FVal<T>(1e-300)));
     auto neg = q[3] < 0.;
     auto a = where(neg, -q[1], q[1]) / qq;
     auto b = q[2] / qq;
@@ -225,7 +229,7 @@ KERNELSPEC FourMom<T> rotate(FourMom<T> p, FourMom<T> q) {
 // Inverse of `rotate`: R(q)^T.
 template <typename T>
 KERNELSPEC FourMom<T> rotate_inverse(FourMom<T> p, FourMom<T> q) {
-    auto qq = sqrt(max(esquare<T>(q), EPS2));
+    auto qq = sqrt(max(esquare<T>(q), FVal<T>(1e-300)));
     auto neg = q[3] < 0.;
     auto a = where(neg, -q[1], q[1]) / qq;
     auto b = q[2] / qq;
@@ -241,50 +245,82 @@ KERNELSPEC FourMom<T> rotate_inverse(FourMom<T> p, FourMom<T> q) {
     };
 }
 
+// Orthonormal frame (x_hat, y_hat, z_hat), spatial components 1..3, with z_hat
+// along q_z and x_hat along the part of q_x perpendicular to it. Shared by
+// rotate_two_ref and its inverse so that both build the identical frame.
+//
+// Both directions are normalised by their own length first, so the frame
+// does not depend on the scale of q_x: a soft q_x (a soft recoil momentum in
+// the 2->3 block) used to hit an absolute floor on |q_x perp| that left x_hat
+// shorter than 1, the rotation shrank p, and the daughters came out far off
+// shell. The perpendicular part gets a second Gram-Schmidt pass: when q_x is
+// close to z_hat the first one leaves a component along z_hat of relative
+// size eps / sin(angle), the frame is not orthonormal, and the rotation
+// changes |p|. When q_x has no usable perpendicular part (parallel to q_z to
+// ~1e-14, or zero) the azimuth is undefined, and a fixed axis perpendicular
+// to z_hat is taken instead.
 template <typename T>
-KERNELSPEC FourMom<T> rotate_two_ref(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
-    // Forward rotation: take p from a canonical frame
-    //   (e_z along q_z, e_x in the plane spanned by q_z and q_x with positive
-    //    component along q_x's perpendicular part)
-    // into the lab frame. Energy unchanged.
-    //
-    // Used by kernel_two_to_three_particle_scattering: q_z = pa_com,
-    // q_x = p3 boosted into the p_12 rest frame. Picks a unique azimuth
-    // so that the (q_z, q_x) plane is the phi=0 half-plane.
-
-    // z_hat = q_z / |q_z|
-    auto qz_n2 = q_z[1] * q_z[1] + q_z[2] * q_z[2] + q_z[3] * q_z[3];
-    auto qz_n = sqrt(max(qz_n2, EPS2));
+KERNELSPEC Triplet<FourMom<T>, FourMom<T>, FourMom<T>>
+two_ref_frame(FourMom<T> q_z, FourMom<T> q_x) {
+    auto qz_n = sqrt(max(esquare<T>(q_z), FVal<T>(1e-300)));
     auto zx = q_z[1] / qz_n, zy = q_z[2] / qz_n, zz = q_z[3] / qz_n;
 
-    // x_hat = (q_x perp to z_hat) / |...|
-    auto qx_dot_z = q_x[1] * zx + q_x[2] * zy + q_x[3] * zz;
-    auto rx0 = q_x[1] - qx_dot_z * zx;
-    auto ry0 = q_x[2] - qx_dot_z * zy;
-    auto rz0 = q_x[3] - qx_dot_z * zz;
-    // Second Gram-Schmidt pass. When q_x is close to z_hat the first one leaves
-    // a component along z_hat of relative size eps |q_x| / |q_x perp|; the
-    // frame is then not orthonormal, the rotation changes |p|, and the two
-    // back-to-back daughters of the 2->3 block come out off shell.
+    auto qx_n = sqrt(max(esquare<T>(q_x), FVal<T>(1e-300)));
+    auto ux = q_x[1] / qx_n, uy = q_x[2] / qx_n, uz = q_x[3] / qx_n;
+    auto u_dot_z = ux * zx + uy * zy + uz * zz;
+    auto rx0 = ux - u_dot_z * zx;
+    auto ry0 = uy - u_dot_z * zy;
+    auto rz0 = uz - u_dot_z * zz;
     auto r_dot_z = rx0 * zx + ry0 * zy + rz0 * zz;
     auto rx = rx0 - r_dot_z * zx;
     auto ry = ry0 - r_dot_z * zy;
     auto rz = rz0 - r_dot_z * zz;
     auto rn2 = rx * rx + ry * ry + rz * rz;
-    auto rn = sqrt(max(rn2, EPS2));
+
+    // fallback: the world x (or y, if z_hat is close to x) axis, made
+    // perpendicular to z_hat
+    auto use_y = fabs(zx) > 0.9;
+    auto ex = where(use_y, FVal<T>(0.), FVal<T>(1.));
+    auto ey = where(use_y, FVal<T>(1.), FVal<T>(0.));
+    auto e_dot_z = ex * zx + ey * zy;
+    auto fx = ex - e_dot_z * zx;
+    auto fy = ey - e_dot_z * zy;
+    auto fz = -e_dot_z * zz;
+    auto degenerate = rn2 < 1e-28;
+    rx = where(degenerate, fx, rx);
+    ry = where(degenerate, fy, ry);
+    rz = where(degenerate, fz, rz);
+    auto rn = sqrt(max(rx * rx + ry * ry + rz * rz, FVal<T>(1e-300)));
     auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
 
     // y_hat = z_hat x x_hat
     auto yx = zy * xz - zz * xy;
     auto yy = zz * xx - zx * xz;
     auto yz = zx * xy - zy * xx;
+    return {
+        FourMom<T>{FVal<T>(0.), xx, xy, xz},
+        FourMom<T>{FVal<T>(0.), yx, yy, yz},
+        FourMom<T>{FVal<T>(0.), zx, zy, zz}
+    };
+}
 
+template <typename T>
+KERNELSPEC FourMom<T> rotate_two_ref(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
+    // Forward rotation: take p from the canonical frame (e_z along q_z, e_x
+    // along the part of q_x perpendicular to it, see two_ref_frame) into the
+    // lab frame. Energy unchanged.
+    //
+    // Used by kernel_two_to_three_particle_scattering: q_z = pa_com,
+    // q_x = p3 boosted into the p_12 rest frame. Picks a unique azimuth
+    // so that the (q_z, q_x) plane is the phi=0 half-plane.
+    auto frame = two_ref_frame<T>(q_z, q_x);
+    auto x = frame.first, y = frame.second, z = frame.third;
     // world spatial = p[1]*x_hat + p[2]*y_hat + p[3]*z_hat
     return FourMom<T>{
         p[0],
-        p[1] * xx + p[2] * yx + p[3] * zx,
-        p[1] * xy + p[2] * yy + p[3] * zy,
-        p[1] * xz + p[2] * yz + p[3] * zz,
+        p[1] * x[1] + p[2] * y[1] + p[3] * z[1],
+        p[1] * x[2] + p[2] * y[2] + p[3] * z[2],
+        p[1] * x[3] + p[2] * y[3] + p[3] * z[3],
     };
 }
 
@@ -293,34 +329,14 @@ KERNELSPEC FourMom<T>
 rotate_two_ref_inverse(FourMom<T> p, FourMom<T> q_z, FourMom<T> q_x) {
     // Inverse of rotate_two_ref: take a vector p from the lab frame into the
     // canonical frame defined by (q_z, q_x). Energy unchanged.
-
-    auto qz_n2 = q_z[1] * q_z[1] + q_z[2] * q_z[2] + q_z[3] * q_z[3];
-    auto qz_n = sqrt(max(qz_n2, EPS2));
-    auto zx = q_z[1] / qz_n, zy = q_z[2] / qz_n, zz = q_z[3] / qz_n;
-
-    auto qx_dot_z = q_x[1] * zx + q_x[2] * zy + q_x[3] * zz;
-    auto rx0 = q_x[1] - qx_dot_z * zx;
-    auto ry0 = q_x[2] - qx_dot_z * zy;
-    auto rz0 = q_x[3] - qx_dot_z * zz;
-    // second Gram-Schmidt pass, see rotate_two_ref
-    auto r_dot_z = rx0 * zx + ry0 * zy + rz0 * zz;
-    auto rx = rx0 - r_dot_z * zx;
-    auto ry = ry0 - r_dot_z * zy;
-    auto rz = rz0 - r_dot_z * zz;
-    auto rn2 = rx * rx + ry * ry + rz * rz;
-    auto rn = sqrt(max(rn2, EPS2));
-    auto xx = rx / rn, xy = ry / rn, xz = rz / rn;
-
-    auto yx = zy * xz - zz * xy;
-    auto yy = zz * xx - zx * xz;
-    auto yz = zx * xy - zy * xx;
-
+    auto frame = two_ref_frame<T>(q_z, q_x);
+    auto x = frame.first, y = frame.second, z = frame.third;
     // canonical components = world spatial . (x_hat, y_hat, z_hat)
     return FourMom<T>{
         p[0],
-        p[1] * xx + p[2] * xy + p[3] * xz,
-        p[1] * yx + p[2] * yy + p[3] * yz,
-        p[1] * zx + p[2] * zy + p[3] * zz,
+        p[1] * x[1] + p[2] * x[2] + p[3] * x[3],
+        p[1] * y[1] + p[2] * y[2] + p[3] * y[3],
+        p[1] * z[1] + p[2] * z[2] + p[3] * z[3],
     };
 }
 
@@ -357,7 +373,9 @@ boost_light_cone(
     // including its mass. p_mass2 is the mass^2 of p_boost, as the caller has
     // already computed it, so that the boost is the one of the rest frame the
     // caller built k in.
-    auto p_mag = sqrt(max(esquare<T>(p_boost), EPS2));
+    // |p| only sets the direction n; an absolute floor here (EPS2) left n
+    // shorter than 1 for a system almost at rest, |p| < 1e-12
+    auto p_mag = sqrt(max(esquare<T>(p_boost), FVal<T>(1e-300)));
     auto m_p = sqrt(max(p_mass2, EPS2));
     auto e_plus = (p_boost[0] + p_mag) / m_p;
     auto e_minus = m_p / (p_boost[0] + p_mag);
