@@ -14,6 +14,23 @@ ANNOUNCEMENT:
        far out of bounds. The padding events are now copies of the first event.
        CUDA has the same code; it did not crash there only because the fresh
        memory happened to hold harmless values.
+   OM: BUG FIX (mg7): the initial-state mirror paired each event with a matrix
+       element evaluated on the momenta *before* the mirror was applied. madspace
+       covers the beam-swapped copy of an asymmetric initial state by rotating
+       the event by pi about x (py, pz -> -py, -pz), but only the written event
+       was rotated; the weight kept the momenta as generated. The two agree only
+       because |M|^2 is invariant under that rotation -- which a polarised matrix
+       element is not once it is evaluated in a frame that holds the polarised
+       particle at rest, because HELAS then quantises the spin along the frame z
+       axis, the mirror flips it, and the + and - states swap. p p > z{+} j and
+       p p > z{-} j evaluated in the Z rest frame came out 4485 +- 39 pb against
+       6060 +- 54 pb, 23 sigma apart, where the symmetry of a pp collider
+       requires them to be equal; they now agree within 1 sigma. The sum over the
+       three polarisations was already right, which is why no unpolarised result
+       is affected (checked: p p > z j unchanged at 12420 +- 69 pb). The matrix
+       element is now evaluated on the momenta the event is written with, which
+       is both what madevent does and what the systematics reweighting here
+       already assumed, since it reads them back out of the event buffer.
    OM: 'customize_model' now works for every UFO model: generic options (flavour
        scheme, massive leptons, diagonal CKM), commands to fix a parameter or a whole
        block ('set decay all 0'), to change a formula, to choose the values written in
