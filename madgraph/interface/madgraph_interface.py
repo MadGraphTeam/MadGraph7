@@ -198,6 +198,22 @@ def fit_banner_width(text, width=None):
         out.append(line[:start+1] + fill*left + inside + fill*right + line[end:])
     return '\n'.join(out)
 
+# Human readable name of the internal polarization codes, used when refusing a
+# polarization restriction that names the same state twice.
+_POLARIZATION_STATE_NAMES = {0: '0 (longitudinal)',
+                             1: '+1 (right)',
+                             -1: '-1 (left)',
+                             4: '4 (metric, "G")',
+                             5: '5 (Theta, "H")',
+                             6: '6 (longitudinal - Theta, "Q")',
+                             7: '7 (Ward-protected, "W")',
+                             9: '9 (scalar, "S")',
+                             99: '99 (auxiliary, "A")'}
+
+def polarization_state_name(value):
+    """Name one internal polarization code the way a user typed/reads it."""
+    return _POLARIZATION_STATE_NAMES.get(value, '%+d' % value)
+
 #===============================================================================
 # CmdExtended
 #===============================================================================
@@ -907,10 +923,56 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > Example: generate t{L} > w+{T} b{R}, w+ > ta+ vt",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{T} z{A}, z > e+ e-",'$MG:color:GREEN')
         logger.info(" > Example: generate p p > z{0} z{T}, z > e+ e-, z > mu+ mu-",'$MG:color:GREEN')
+        logger.info(" > '{X}' is a *set* of helicities, so each helicity may be named at most once.")
+        logger.info("   '{++}' is refused, and so is '{+T}' -- 'T' already covers +1 and -1.")
         logger.info(" > '{G}','{H}','{Q}','{W}','{S}' select a piece of the *propagator* of a massive vector")
         logger.info("   and are only valid on a particle that is decayed further (an internal line).")
-        logger.info(" > Users need to set 'group_subprocesses False', 'nhel=1' (run_card), and 'me_frame' (run_card)")
+        logger.info(" > At LO, users need to set 'group_subprocesses False' and 'me_frame' (run_card).")
+        logger.info("   'nhel=1' is only a variance choice, not a requirement: it selects Monte-Carlo")
+        logger.info("   over helicities, which is an unbiased estimator of the same cross-section.")
         logger.info(" > For the proces 'p p > w+ z j j, w+ > l+ vl, z > l+ l-', the WZ rest frame is given by me_frame = [3,4,5,6]")
+        logger.info("Polarization at NLO:",'$MG:BOLD')
+        logger.info(" > A polarized massive particle needs a frame, so it is allowed for the NLO modes")
+        logger.info("   that have one:")
+        logger.info("     - [QCD], [real=QCD] and [LOonly=QCD] take 'me_frame' from the run_card.")
+        logger.info("       QCD is the only perturbation order supported here so far: the boost")
+        logger.info("       machinery is order-agnostic, but nothing in the QED sector has been")
+        logger.info("       validated, so [QED] and mixed orders are still refused.")
+        logger.info("     - [virt=QCD] and standalone MadLoop take the frame from the momenta the")
+        logger.info("       caller supplies, so any perturbation order is allowed.")
+        logger.info("   A polarized massless particle needs no frame and was always allowed.")
+        logger.info(" > Colour, in [QCD]/[real=QCD]/[LOonly=QCD] only: a polarized coloured")
+        logger.info("   particle must be in the FINAL state and must be massive.")
+        logger.info("     - final state, massive: allowed. p p > t{+} t~{-} [QCD] -- the closure")
+        logger.info("       and the FKS soft limit off the polarized top were measured.")
+        logger.info("     - final state, massless: untested and refused, so a polarized gluon or")
+        logger.info("       massless quark, and 'p'/'j', which contain one. Note this depends on")
+        logger.info("       the model: b is massive in a 4-flavour scheme and massless in a")
+        logger.info("       5-flavour one. The check reads the symbolic mass at generation time,")
+        logger.info("       so setting a mass to zero in the param card afterwards is NOT")
+        logger.info("       re-checked.")
+        logger.info("     - INITIAL state: refused whatever the mass, so b{+} b~ > h [QCD] and")
+        logger.info("       t{+} t~ > z [QCD] are both rejected. The initial-state splitting runs")
+        logger.info("       backwards, g -> q(-> Born) q~, so the polarized parton is an internal")
+        logger.info("       line of the real emission and no external leg can carry the")
+        logger.info("       projection. A 1 -> N decay is exempt: its initial leg is never split,")
+        logger.info("       so t{+} > w+ b [QCD] and h > b{+} b~ [QCD] are fine.")
+        logger.info(" > Caveat, coloured polarized particle + single-leg 'me_frame': what was")
+        logger.info("   measured is a two-leg frame, me_frame = [3,4]. A frame made of ONE leg")
+        logger.info("   puts that leg exactly at rest, which is where HELAS picks the spin")
+        logger.info("   quantisation axis by convention rather than from the momentum. That")
+        logger.info("   combination is accepted but untested; prefer a frame of two or more legs.")
+        logger.info(" > Example: generate p p > z{0} z{0} j [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Example: generate p p > t{+} t~{-} [QCD]  with me_frame = [3,4]",'$MG:color:GREEN')
+        logger.info(" > Both fixed-order (calculate_xsect) and NLO+PS event generation")
+        logger.info("   (generate_events, i.e. MC@NLO matching) are supported: the MC")
+        logger.info("   counterterms and the weights written to the LHE use the same frame as")
+        logger.info("   the cross-section. The shower itself knows nothing about the frame, so")
+        logger.info("   the polarised sample is defined by the hard process, as at LO.")
+        logger.info(" > Define the frame from final-state particles only. A frame built from the")
+        logger.info("   initial state is not infrared safe at NLO -- the real emission and the reduced")
+        logger.info("   Born carry different momentum fractions even in the collinear limit -- and is")
+        logger.info("   refused. me_frame = [1,2] names the partonic c.m. and is simply skipped.")
         logger.info(" > For further details, see appendices of [arXiv:1912.01725] and [arXiv:2512.10015],")
         logger.info("   and for possibilities with loop-induced processes, see [2401.17365].")
     
@@ -1390,48 +1452,117 @@ class CheckValidForCmd(cmd.CheckCmd):
                 raise self.InvalidCmd('Polarization restriction can not be used in forbidding particles')
             
         if '[' in process and '{' in process:
-            valid = False
-            if 'noborn' in process or 'sqrvirt' in process:
-                valid = True
+            # Which NLO mode was asked for, taken from inside the brackets so
+            # that a stray 'real' elsewhere in the process cannot match.
+            bracket = process.split('[')[1].split(']')[0]
+            if '=' in bracket:
+                nlo_mode, pert_orders = bracket.split('=', 1)
+                nlo_mode = nlo_mode.strip().lower()
             else:
-                raise self.InvalidCmd('Polarization restriction can not be used for NLO processes')
+                # no keyword, e.g. '[QCD]': the parser calls that mode 'all'
+                nlo_mode, pert_orders = 'all', bracket
 
-            # below are the check when [QCD] will be valid for computation            
-            order = process.split('[')[1].split(']')[0]
-            if '=' in order:
-                order = order.split('=')[1]
-#            if order.strip().lower() != 'qcd':
-#                raise self.InvalidCmd('Polarization restriction can not be used for generic NLO computations')
+            # A polarised massive particle needs a frame to be defined in,
+            # but the three NLO regimes get there in completely different ways
+            # and so need different checks -- not one shared flag.
+            #
+            # 1. 'virt' outputs standalone MadLoop. The user supplies the
+            #    phase-space point themselves and so chooses the frame. There
+            #    is no run_card, no me_frame and nothing for the code to get
+            #    wrong, whatever the perturbation orders.
+            standalone_olp = nlo_mode == 'virt'
 
+            # 2. Loop-induced. There is no Born to subtract against and no
+            #    counterterm that has to be evaluated in the same frame as
+            #    anything else: 'noborn' is exported through the LO madevent
+            #    template and boosted by the very same
+            #    Template/LO/SubProcesses/genps.f boost_to_frame as a tree
+            #    process, and 'sqrvirt' squares one amplitude standalone. So
+            #    nothing here is an NLO-specific hazard, and no NLO-specific
+            #    restriction applies -- massive or not, whatever the orders.
+            #    Verified at runtime on g g > z{0} z{0} [noborn=QCD]: see
+            #    docs/nlo_polarisation_boost_plan.md, M6.
+            loop_induced = nlo_mode in ('noborn', 'sqrvirt')
 
-            def check(p):
-                # Polarisation restriction can now be used for color charged
-                # particles, so there is no longer a color check here. The mass
-                # restriction is independent of the color one and must stay
-                # outside it -- keeping it in an "elif" would have silently
-                # exempted massive color-charged particles.
-                if p.get('mass') != 'ZERO':
-                    raise self.InvalidCmd('Polarization restriction can not be used for massive particles')
- 
+            # 3. The subtracted modes. Here the frame comes from me_frame in
+            #    the run_card and every piece has to be boosted into it by
+            #    hand: the Born (M1), the real emission and the full set of FKS
+            #    counterterms (M2), the virtual through binothlha_frame (M3),
+            #    and the MC counterterms' azimuth for NLO+PS (M5). That
+            #    threading is what can be got wrong, so this is the only
+            #    regime worth restricting, and the restriction is exactly the
+            #    reach of the boost: validated for QCD, since the QED
+            #    counterterms go through the same wrappers but nothing in the
+            #    QED sector has been validated.
+            subtracted_boost_ok = (nlo_mode in ('loonly', 'real', 'all')
+                                   and pert_orders.strip().lower() == 'qcd')
 
+            if not (standalone_olp or loop_induced or subtracted_boost_ok):
+                raise self.InvalidCmd('Polarization restriction can not be '
+                                      'used for NLO processes')
 
-            for p in particles_parts[0].split()+ particles_parts[-1].split():
-                if '{' in p:
-                    part = p.split('{')[0]
-                else:
-                    continue
-                if self._curr_model:
-                    p = self._curr_model.get_particle(part)
-                    if not p:
-                        if part in self._multiparticles:
-                            for part2 in self._multiparticles[part]:
-                                p = self._curr_model.get_particle(part2)
-                                check(p)
+            # Colour, in the subtracted regime only: a coloured polarised
+            # particle is an FKS emitter. Two rules, two messages.
+            # (a) INITIAL state coloured: refused whatever the mass -- the
+            #     splitting reads backwards, so the polarised parton is an
+            #     internal line of the real. A 1 -> N decay is exempt, its
+            #     initial leg being a spectator find_reals never splits.
+            # (b) FINAL state coloured: refused if MASSLESS (untested, and no
+            #     daughter carries the mother's identity); massive is measured.
+            # Evidence and caveats: docs/nlo_polarisation_massive_colour.md.
+            if subtracted_boost_ok:
+                # A 1 -> N decay: the single particle before the '>' is the
+                # decaying one, never an FKS initial-state splitter.
+                is_decay = len(particles_parts[0].split()) == 1
+
+                def check(p, initial):
+                    # get_particle returns None for a name the model does not
+                    # know; leave the real diagnostic to the process parser
+                    if p is None:
+                        return
+                    if p.get('color') == 1:
+                        return
+                    if initial and not is_decay:
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'color charged particles (%s) in the INITIAL '
+                            'state of a subtracted NLO computation, whatever '
+                            'their mass: the initial-state splitting makes '
+                            'the polarized particle an internal line of the '
+                            'real emission, so no external leg can carry the '
+                            'polarization. Only final-state coloured '
+                            'particles may be polarized.' % p.get('name'))
+                    if p.get('mass').lower() == 'zero':
+                        raise self.InvalidCmd(
+                            'Polarization restriction can not be used for '
+                            'massless color charged particles (%s) in a '
+                            'subtracted NLO computation. Only massive '
+                            'coloured particles may be polarized here.'
+                            % p.get('name'))
+
+                def walk(particles, initial):
+                    # no model loaded -> nothing to look a colour up in, so
+                    # the whole check is skipped rather than passing per token
+                    if not self._curr_model:
+                        return
+                    for p in particles.split():
+                        if '{' not in p:
+                            continue
+                        part = p.split('{')[0]
+                        particle = self._curr_model.get_particle(part)
+                        if particle:
+                            check(particle, initial)
+                        elif part.lower() in self._multiparticles:
+                            # do_define lowercases the label it stores
+                            for part2 in self._multiparticles[part.lower()]:
+                                check(self._curr_model.get_particle(part2),
+                                      initial)
                         else:
-                            p = self._curr_model.get_particle(part.lower())
-                            check(p)
-                    else:
-                        check(p)
+                            check(self._curr_model.get_particle(part.lower()),
+                                  initial)
+
+                walk(particles_parts[0], True)
+                walk(particles_parts[-1], False)
 
 
     def check_tutorial(self, args):
@@ -1567,9 +1698,8 @@ class CheckValidForCmd(cmd.CheckCmd):
             args = args[:1]
 
         if args[0] not in self._install_opts + hidden_prog + self._advanced_install_opts: 
-            if not args[0].startswith('td'):
-                self.help_install()
-                raise self.InvalidCmd('Not recognize program %s ' % args[0])
+            self.help_install()
+            raise self.InvalidCmd('Not recognize program %s ' % args[0])
 
         if args[0] in ["ExRootAnalysis", "Delphes", "Delphes2"]:
             if not misc.which('root'):
@@ -1850,6 +1980,10 @@ This will take effect only in a NEW terminal
                 logger.info('Pass parameter %s to it\'s default value: %s' %
                                                              (args[0], default))
             args[1] = str(default)
+
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
 
         if args[0] not in self._set_options:
             if not args[0] in self.options and not args[0] in self.options:
@@ -3370,7 +3504,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                    'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
                    'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
-    _install_opts = ['Delphes', 'MadAnalysis4', 'ExRootAnalysis',
+    _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'MadSTR', 'RunningCoupling', 'madspace']
     
@@ -3421,13 +3555,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'hwpp_path': './herwigPP',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
-                       'madanalysis_path': './MadAnalysis',
                        'madanalysis5_path':'./HEPTools/madanalysis5/madanalysis5',
                        'pythia-pgs_path':'./pythia-pgs',
                        'rivet_path' : './HEPTools/rivet',
                        'yoda_path' : './HEPTools/yoda',
                        'contur_path' : './HEPTools/contur',
-                       'td_path':'./td',
                        'delphes_path':'./Delphes',
                        'exrootanalysis_path':'./ExRootAnalysis',
                        'syscalc_path': './SysCalc',
@@ -6099,10 +6231,20 @@ This implies that with decay chains:
                 if rest:
                     raise self.InvalidCmd('A space is required after the "}" symbol to separate particles')
                 ignore  =False
+                # A polarization restriction is a *set* of helicities, so the
+                # same state must not be named twice -- neither literally
+                # ("{++}") nor through a multi-valued label ("{+T}").  Keeping
+                # a duplicate would silently double-count: get_helicity_matrix
+                # runs itertools.product over this raw list while
+                # get_denominator_factor ignores the repetition.  Remember
+                # which label introduced each state so the refusal can name
+                # both spellings.
+                pol_origin = {}
                 for i,p in enumerate(pol):
                     if ignore or p==',':
                         ignore= False
                         continue
+                    pol_nb_before = len(polarization)
                     if p.upper() in ['T']:
                         if spin == 3:
                             polarization += [1,-1]
@@ -6179,7 +6321,33 @@ This implies that with decay chains:
                         polarization.append(p)
                     else:
                         raise self.InvalidCmd('Invalid Polarization')
-                    
+
+                    # 'p' may have been overwritten above, so read the label
+                    # back from the string; 'ignore' tells whether this label
+                    # consumed a second character (the "+2"/"-3" spellings).
+                    # The names below are prefixed: 'state' and 'flavor' are
+                    # live variables of the enclosing leg loop.
+                    pol_label = pol[i:i+2] if ignore else pol[i]
+                    pol_new = polarization[pol_nb_before:]
+                    for pol_state in pol_new:
+                        if pol_state in pol_origin:
+                            raise self.InvalidCmd(
+                              'Invalid polarization "{%(pol)s}": helicity '
+                              '%(dup)s is selected more than once. "%(new)s" '
+                              'selects %(newvals)s, but "%(old)s" already '
+                              'selected %(dup)s. Each helicity may be named at '
+                              'most once inside "{}" (e.g. "{T}" on its own '
+                              'already selects both transverse helicities); '
+                              'drop the redundant label.'
+                              % {'pol': pol,
+                                 'dup': polarization_state_name(pol_state),
+                                 'new': pol_label,
+                                 'old': pol_origin[pol_state],
+                                 'newvals': ' and '.join(
+                                    polarization_state_name(v)
+                                    for v in pol_new)})
+                        pol_origin[pol_state] = pol_label
+
 
             duplicate =1
             if part_name[0].isdigit() and len(part_name) > 1 and not part_name[1].isdigit(): 
@@ -7754,7 +7922,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                           'mg5amc_py8_interface':['arXiv:1410.3012','arXiv:XXXX.YYYYY'],
                           'ninja':['arXiv:1203.0291','arXiv:1403.1229','arXiv:1604.01363'],
                           'MadAnalysis5':['arXiv:1206.1599'],
-                          'MadAnalysis':['arXiv:1206.1599'],
                           'collier':['arXiv:1604.06792'],
                           'oneloop':['arXiv:1007.4716'],
                           'maddm':['arXiv:1804.00444'],
@@ -7764,10 +7931,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
     install_server = ['http://madgraph.phys.ucl.ac.be/package_info.dat',
                          'http://madgraph.mi.infn.it/package_info.dat']
 
-    install_name = {'td_mac': 'td', 'td_linux':'td', 'Delphes2':'Delphes',
+    install_name = {'Delphes2':'Delphes',
                 'Delphes3':'Delphes', 'pythia-pgs':'pythia-pgs',
                 'ExRootAnalysis': 'ExRootAnalysis','MadAnalysis':'madanalysis5',
-                'MadAnalysis4':'MadAnalysis',
                 'SysCalc':'SysCalc', 'Golem95': 'golem95',
                     'lhapdf6' : 'lhapdf6_py3',
                 'QCDLoop':'QCDLoop','MadAnalysis5':'madanalysis5',
@@ -7895,9 +8061,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             name = name[args[0]]
         except KeyError:
             name = args[0]
-        if args[0] == 'MadAnalysis4':
-            args[0] = 'MadAnalysis'
-        elif args[0] in ['madstr', 'madSTR']:
+        if args[0] in ['madstr', 'madSTR']:
             args[0] = 'MadSTR'
             name = 'MadSTR'
             
@@ -8010,8 +8174,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             base_compiler= ['FC=g77','FC=gfortran']
             if args[0] == "pythia-pgs":
                 path = os.path.join(MG5DIR, 'pythia-pgs', 'src', 'make_opts')
-            elif args[0] == 'MadAnalysis':
-                path = os.path.join(MG5DIR, 'MadAnalysis', 'makefile')
             if path:
                 text = open(path).read()
                 for base in base_compiler:
@@ -8180,43 +8342,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                 logger.warning('Error detected during the compilation. Please check the compilation error and run make manually.')
 
 
-        # Special treatment for TD/Ghostscript program (require by MadAnalysis)
-        if args[0] == 'MadAnalysis':
-            try:
-                os.system('rm -rf td')
-                os.mkdir(pjoin(MG5DIR, 'td'))
-            except Exception as error:
-                print(error)
-                pass
-
-            if sys.platform == "darwin":
-                logger.info('Downloading TD for Mac')
-                target = 'https://home.fnal.gov/~parke/TD/td_mac_intel64.tar.gz'
-                misc.wget(target, 'td.tgz', cwd=pjoin(MG5DIR,'td'))
-                misc.call(['tar', '-xzpvf', 'td.tgz'],
-                                                  cwd=pjoin(MG5DIR,'td'))
-                files.mv(MG5DIR + '/td/td_intel_mac64',MG5DIR+'/td/td')
-            else:
-                if sys.maxsize > 2**32:
-                    logger.info('Downloading TD for Linux 64 bit')
-                    target = 'https://home.fnal.gov/~parke/TD/td_linux_64bit.tar.gz'
-                    #logger.warning('''td program (needed by MadAnalysis) is not compile for 64 bit computer.
-                #In 99% of the case, this is perfectly fine. If you do not have plot, please follow 
-                #instruction in https://cp3.irmp.ucl.ac.be/projects/madgraph/wiki/TopDrawer .''')
-                else:                    
-                    logger.info('Downloading TD for Linux 32 bit')
-                    target = 'http://madgraph.phys.ucl.ac.be/Downloads/td'
-                misc.wget(target, 'td', cwd=pjoin(MG5DIR,'td'))
-            os.chmod(pjoin(MG5DIR,'td','td'), 0o775)
-            self.options['td_path'] = pjoin(MG5DIR,'td')
-
-            if not misc.which('gs'):
-                logger.warning('''gosthscript not install on your system. This is not required to run MA.
-                    but this prevent to create jpg files and therefore to have the plots in the html output.''')
-                if sys.platform == "darwin":
-                    logger.warning('''You can download this program at the following link:
-                    http://www.macupdate.com/app/mac/9980/gpl-ghostscript''')
-
         if args[0] == 'Delphes2':
             data = open(pjoin(MG5DIR, 'Delphes','data','DetectorCard.dat')).read()
             data = data.replace('data/', 'DELPHESDIR/data/')
@@ -8242,7 +8367,6 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
                            'Delphes2': 'delphes_path',
                            'Delphes3': 'delphes_path',
                            'ExRootAnalysis': 'exrootanalysis_path',
-                           'MadAnalysis': 'madanalysis_path',
                            'SysCalc': 'syscalc_path',
                            'pythia-pgs':'pythia-pgs_path',
                            'Golem95': 'golem'}
@@ -8661,6 +8785,10 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
             else:
                 name = name.strip()
                 value = value.strip()
+                if cmd.is_removed_option(name):
+                    # an old configuration file: drop the entry rather than
+                    # carrying a dead option around in self.options
+                    continue
                 if name not in ['mg5_path', 'f2py_compiler', 'f2py_compiler_py2','f2py_compiler_py3', 'lhapdf']:
                     self.options[name] = value
                 elif hasattr(self, 'set2_%s' % name) and value:
@@ -8939,7 +9067,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
@@ -8955,7 +9084,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     MW.exec_cmd(line)
                 stop = self.define_child_cmd_interface(MW)                
@@ -9146,6 +9276,21 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 options.append([])
             options[-1].append(rule)
         return options
+
+    @staticmethod
+    def get_loaded_restriction_card(model):
+        """The restriction card `model` was loaded with, parsed -- None when it
+        was loaded without one, or the card is not on disk anymore."""
+
+        card = getattr(model, 'restrict_card', None)
+        if isinstance(card, check_param_card.ParamCard):
+            return card
+        if isinstance(card, str) and os.path.isfile(card):
+            try:
+                return check_param_card.ParamCard(card)
+            except Exception:
+                return None
+        return None
 
     @staticmethod
     def get_reference_name(model):
@@ -9898,9 +10043,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             explainer = RestrictionExplainer(self, model_path, baseline,
                                              externals, categories)
 
+        # the question starts from the restriction the model was loaded with:
+        # without it, what that restriction had fixed -- zeros, ones, merged
+        # parameters -- came back at its UFO value, so customizing
+        # SMEFTatNLO-NLO silently switched operators, masses and widths back on
         ask_instance = self.ask('', '0', [], ask_class=AskforCustomize,
                                 categories=categories, explainer=explainer,
-                                baseline_card=baseline, return_instance=True)[1]
+                                baseline_card=baseline,
+                                loaded_card=self.get_loaded_restriction_card(
+                                                            reference_model),
+                                loaded_name=self.get_reference_name(
+                                                            reference_model),
+                                return_instance=True)[1]
 
         set_zero = ask_instance.set_zero
         set_one = ask_instance.set_one
@@ -11345,11 +11499,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 #   	            	contur_path         
 #delphes_path             	eps_viewer               	exrootanalysis_path
 #hepmc_path               	hwpp_path                	
-#madanalysis_path         	mg5amc_py8_interface_path
+#mg5amc_py8_interface_path
 #pineappl                 	pythia-pgs_path          	pythia8_path
 #rivet_path               	                 	syscalc_path
-#td_path                  	              	thepeg_path
-#              	yoda_path
+#thepeg_path              	yoda_path
 
     def set_default(self, name, args, log=True):
         """Generic function to set default options.
@@ -11370,6 +11523,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # This command mainly delegates to set2_xxx functions.
         # which is the recomend way to provide help via docstrings.
         args = self.split_arg(line)
+
+        if args and cmd.is_removed_option(args[0]):
+            cmd.warn_removed_option(args[0], args[1] if len(args) > 1 else None)
+            return
 
         if hasattr(self, 'set2_%s' % args[0]):
             func = getattr(self, 'set2_%s' % args[0])
@@ -13143,6 +13300,12 @@ class AskforCustomize(cmd.SmartQuestion):
         self.default_values = {}        # (lhablock, lhacode) -> value
         # customize_model --explain: report each command as it is entered
         self.explainer = opt.pop('explainer', None)
+        # the restriction the model was loaded with is where the question
+        # starts: its zeros, ones and merged parameters as rules, so that
+        # `done` rebuilds that very model and `set NAME free` releases one
+        self.loaded_restriction = None
+        self.start_from_restriction(opt.pop('loaded_card', None),
+                                    opt.pop('loaded_name', None))
 
         question = self.get_question()
         # determine the possible value and how they are linked to the restriction
@@ -13348,14 +13511,20 @@ class AskforCustomize(cmd.SmartQuestion):
             value = value[1:]
         if len(value) != 1:
             logger.warning('Invalid set command. For a parameter the syntax is:'
-                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME (NAME can be '
-                '\'BLOCK all\' for the 0 and 1 forms)')
+                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME / set NAME '
+                'free (NAME can be \'BLOCK all\' for the 0, 1 and free forms)')
             return
         value = value[0]
         if value == '0':
             self.apply_restriction(keys, 0)
         elif value == '1':
             self.apply_restriction(keys, 1)
+        elif value.lower() == 'free':
+            # back to the value it starts from: undoes one rule, where `clear`
+            # would undo every one of them
+            for key in keys:
+                self.forget_parameter(key)
+            self.explain_change()
         elif value.lower() in self.external_params:
             if len(keys) > 1:
                 logger.warning('A whole block can only be set to 0 or to 1, '
@@ -13363,9 +13532,9 @@ class AskforCustomize(cmd.SmartQuestion):
                 return
             self.do_set_equal('%s %s' % (args[0], value))
         else:
-            logger.warning('%s can only be set to 0, to 1 or to the value of '
-                'another external parameter (\'%s\' is not one of them).',
-                args[0], value)
+            logger.warning('%s can only be set to 0, to 1, to the value of '
+                'another external parameter, or free (\'%s\' is none of '
+                'them).', args[0], value)
 
     #===========================================================================
     # customization of a single parameter/coupling
@@ -13566,6 +13735,56 @@ class AskforCustomize(cmd.SmartQuestion):
             # informative only: a failure here must not stop the customization
             logger.warning('Could not report the effect of that command: %s',
                            error)
+
+    def start_from_restriction(self, card, name=None):
+        """Fill the rules with what the restriction card `card` does.
+
+        Mirrors what the restriction itself does to a card
+        (detect_special_parameters / detect_identical_parameters): a parameter
+        at 0 or 1 is fixed there, and parameters of the same block sharing a
+        value are merged.  Parameters an option of the question already covers
+        -- a massless b, a diagonal CKM -- are left to that option, so they are
+        not listed twice.  Two parameters merged with opposite signs cannot be
+        written as `set A = B`: they are left free.
+        """
+
+        if card is None:
+            return
+        by_lha = dict(((param.lhablock.lower(), tuple(param.lhacode)),
+                       (param.lhablock, tuple(param.lhacode)))
+                      for param in self.external_params.values())
+        covered = set()
+        for category in self.all_categories:
+            for option in category:
+                for lhablock, lhacode, _ in option.get_rules():
+                    if not isinstance(lhacode, (list, tuple)):
+                        lhacode = [lhacode]
+                    covered.add((lhablock.lower(), tuple(lhacode)))
+
+        zeros, ones, groups = [], [], {}
+        for block in card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in card[block]:
+                lha = (block.lower(), tuple(param.lhacode))
+                if lha not in by_lha or lha in covered:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue # an 'auto' width
+                if value == 0.:
+                    zeros.append(by_lha[lha])
+                elif value == 1.:
+                    ones.append(by_lha[lha])
+                elif block.lower() != 'decay': # widths are never merged
+                    groups.setdefault((block.lower(), value), []).append(
+                                                                  by_lha[lha])
+        equal = [(key, keys[0]) for keys in groups.values() if len(keys) > 1
+                 for key in keys[1:]]
+        if zeros or ones or equal:
+            self.set_zero, self.set_one, self.set_equal = zeros, ones, equal
+            self.loaded_restriction = name or 'the loaded one'
 
     def forget_parameter(self, param):
         """remove any previous customization of a given parameter"""
@@ -13879,6 +14098,10 @@ class AskforCustomize(cmd.SmartQuestion):
         for name, expr in self.new_coupling:
             current.append('    %s = %s' % (name, expr))
         question += 'parameter/coupling modifications (use set_zero/set_one):\n'
+        if self.loaded_restriction:
+            question += ('    (starting from %s, the restriction the model was '
+                         'loaded with:\n     \'set NAME free\' releases one, '
+                         '\'clear\' all of them)\n' % self.loaded_restriction)
         if current:
             question += '\n'.join(current) + '\n'
         else:

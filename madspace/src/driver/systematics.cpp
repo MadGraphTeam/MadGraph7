@@ -689,7 +689,8 @@ void SystematicsCalculator::compute(
         if (has_dyn) {
             auto momenta = event_momenta(buffer, i);
             for (int dyn : _config.dyn_scales) {
-                in.dyn_scale[dyn] = dynamical_scale(dyn, momenta);
+                in.dyn_scale[dyn] =
+                    _config.scale_factor * dynamical_scale(dyn, momenta);
             }
         }
     }
@@ -1096,6 +1097,7 @@ void madspace::to_json(json& j, const SystematicsConfig& config) {
         {"muf", config.muf},
         {"together", config.together},
         {"dyn_scales", config.dyn_scales},
+        {"scale_factor", config.scale_factor},
         {"pdf_members", config.pdf_members},
         {"nominal_set_name", config.nominal_set_name},
         {"nominal_lhaid", config.nominal_lhaid},
@@ -1112,6 +1114,7 @@ void madspace::from_json(const json& j, SystematicsConfig& config) {
     config.muf = j.at("muf").get<std::vector<double>>();
     config.together = j.value("together", true);
     config.dyn_scales = j.value("dyn_scales", std::vector<int>{});
+    config.scale_factor = j.value("scale_factor", 1.);
     config.pdf_members = j.value("pdf_members", std::vector<PdfMemberSpec>{});
     config.nominal_set_name = j.value("nominal_set_name", "");
     config.nominal_lhaid = j.value("nominal_lhaid", 0);

@@ -730,7 +730,7 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         cards = ['param_card.dat', 'run_card.dat', 'madweight_card.dat', 
                  'transfer_card.dat', 'input.lhco']
         if not self.force:
-            self.ask_edit_cards(cards, mode='fixed', plot=False)
+            self.ask_edit_cards(cards, mode='fixed')
         else:
             self.configured = 0
             self.configure()
@@ -798,7 +798,7 @@ class MadWeightCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunC
         self.clean_old_run(keep_event=True)     
         if not self.force:
             cards = ['madweight_card.dat'] 
-            self.ask_edit_cards(cards, mode='fixed', plot=False)
+            self.ask_edit_cards(cards, mode='fixed')
             self.exec_cmd("treatcards")
             self.do_compile('', refine=True) # force re-compilation
         
