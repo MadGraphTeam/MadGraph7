@@ -678,7 +678,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
     )
         .def(
-            py::init<double, double, double, double, double, double, bool>(),
+            py::init<double, double, double, double, double, double, bool, bool>(),
             py::arg("t_invariant_power") = 0.,
             py::arg("t_mass") = 0.,
             py::arg("t_width") = 0.,
@@ -686,6 +686,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_mass") = 0.,
             py::arg("s_width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("arcsine_s23") = true,
             pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
         )
         .def(
@@ -741,13 +742,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 std::vector<double>,
                 std::vector<std::vector<double>>,
-                std::vector<std::vector<double>>>(),
+                std::vector<std::vector<double>>,
+                bool>(),
             py::arg("color_order"),
             py::arg("t_invariant_power") = 0.8,
             py::arg("s_invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
+            py::arg("arcsine_s23") = true,
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
         .def(
@@ -1888,6 +1891,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1896,6 +1900,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
+            py::arg("scale_factor") = 1.,
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
@@ -3126,6 +3131,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "dyn_scales",
             &SystematicsConfig::dyn_scales,
             pydoc::doc("SystematicsConfig::dyn_scales")
+        )
+        .def_readwrite(
+            "scale_factor",
+            &SystematicsConfig::scale_factor,
+            pydoc::doc("SystematicsConfig::scale_factor")
         )
         .def_readwrite(
             "pdf_members",

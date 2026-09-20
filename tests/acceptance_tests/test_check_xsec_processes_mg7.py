@@ -32,17 +32,25 @@ tests). Each test:
      the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
-  5. asserts the relative difference to the reference stays within a tolerance.
+  5. asserts the relative difference to the reference stays within the
+     tolerance plus ``MG7_XSEC_NSIGMA`` times the combined MC error.
 
 The source of truth is ``check_xsec_processes_reference.json`` (mirrors the
 table in CLAUDE.md, produced with fixed scale and 1M events).
 
-Two knobs are read from the environment so the CI can dial them without
+Three knobs are read from the environment so the CI can dial them without
 touching the code:
 
-  * ``MG7_XSEC_TOLERANCE`` -- max allowed relative difference (default 0.01, 1%)
-  * ``MG7_XSEC_EVENTS``    -- events per run (default 100000; the reference
-                             used 1M, reduced here to keep the CI affordable)
+  * ``MG7_XSEC_TOLERANCE`` -- allowed relative difference on top of the MC
+                             error (default 0.01, 1%)
+  * ``MG7_XSEC_NSIGMA``    -- how many combined MC errors (this run and the
+                             reference, in quadrature) are allowed on top of
+                             the tolerance (default 3)
+  * ``MG7_XSEC_EVENTS``    -- events per run (default 10000; the reference
+                             used 1M, reduced here to keep the CI affordable:
+                             the MC error is then ~0.25%, hence the
+                             MG7_XSEC_NSIGMA allowance: some processes sit
+                             up to ~0.7% off their reference even at 100k)
 
 Run everything locally with e.g.::
 
@@ -61,6 +69,7 @@ from __future__ import division
 
 import glob
 import json
+import math
 import os
 import re
 import shutil
@@ -87,7 +96,8 @@ _REFERENCE_PDF = 'NNPDF23_lo_as_0130_qed'
 # Environment-tunable knobs (see module docstring). Kept as module globals so
 # the dynamically generated test methods pick up the CI-provided values.
 _TOLERANCE = float(os.environ.get('MG7_XSEC_TOLERANCE', 0.01))
-_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 100000))
+_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 10000))
+_NSIGMA = float(os.environ.get('MG7_XSEC_NSIGMA', 3))
 
 # Optional: when set (by the CI workflow), one JSON result record per process
 # is written here so a later job can build a GitHub Actions job summary out of
@@ -259,7 +269,12 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
 
         ref_x = entry['cross']
         reldiff = abs(got - ref_x) / ref_x if ref_x else float('inf')
-        passed = reldiff <= _TOLERANCE
+        # the tolerance covers genuine differences; the MC error of the run
+        # (and of the reference) comes on top of it, so that fewer events do
+        # not turn statistical fluctuations into failures
+        sigma = math.sqrt(err ** 2 + (entry.get('error') or 0.0) ** 2)
+        allowed = _TOLERANCE + (_NSIGMA * sigma / ref_x if ref_x else 0.0)
+        passed = reldiff <= allowed
         message = None
         if not passed:
             # A cross-section was successfully obtained here, just outside
@@ -267,12 +282,12 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
             # itself is the useful diagnostic.
             message = (
                 '%s (%s): mg7 xsec %.6g +- %.3g pb differs from reference '
-                '%.6g pb by %.3f%% (> %.3f%% tolerance)'
+                '%.6g pb by %.3f%% (> %.3f%% = %.3f%% tolerance + %g sigma)'
                 % (entry['id'], entry['process'], got, err, ref_x,
-                   100 * reldiff, 100 * _TOLERANCE))
+                   100 * reldiff, 100 * allowed, 100 * _TOLERANCE, _NSIGMA))
         self._record_result(entry, section, 'pass' if passed else 'fail',
                              got=got, err=err, message=message)
-        self.assertLessEqual(reldiff, _TOLERANCE, message)
+        self.assertLessEqual(reldiff, allowed, message)
 
 
 def _make_test(entry, defines, section):

@@ -51,6 +51,9 @@ fact_scale1 = %(beam.fact_scale1)s
 fact_scale2 = %(beam.fact_scale2)s
 # options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy
 dynamical_scale_choice = %(beam.dynamical_scale_choice)s
+# factor on the dynamical scale (fixed scales are untouched), e.g. 0.5 with
+# half_transverse_mass is H_T/4, also set by: set dynamical_scale_choice HT/4
+scale_factor = %(beam.scale_factor)s
 
 [generation]
 events = %(generation.events)s

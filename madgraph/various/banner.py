@@ -856,7 +856,9 @@ class ProcCard(list):
     def append(self, line):
         """"add a line in the proc_card perform automatically cleaning"""
         
-        line = line.strip()
+        # type(line), not str: a question answer (extended_cmd.QuestionAnswer)
+        # has to stay recognisable once stored, so write() can leave it out
+        line = type(line)(line.strip()) if isinstance(line, str) else line.strip()
         cmds = line.split()
         if len(cmds) == 0:
             return
@@ -980,6 +982,12 @@ class ProcCard(list):
         fsock = open(path, 'w')
         fsock.write(self.history_header)
         for line in self:
+            # an answer given at a question belongs to the run that asked it,
+            # not to how the process was generated -- and MadSpin and the
+            # reweighting replay every `set` line of a proc card on a bare MG5
+            # prompt, which has no `set width` (extended_cmd.QuestionAnswer)
+            if getattr(line, 'is_answer', False):
+                continue
             while len(line) > 70:
                 sub, line = line[:70]+"\\" , line[70:] 
                 fsock.write(sub+"\n")
@@ -1498,12 +1506,12 @@ class ConfigFile(dict):
                                 v *=  float(split[2*i+2])
                             else:
                                 v /=  float(split[2*i+2])
-                    except:
-                        v=0
-                    finally:
-                        value = int(v)
-                        if value != v:
-                            raise InvalidCmd( "%s can not be mapped to an integer" % v)
+                    except (ValueError, ZeroDivisionError, IndexError):
+                        # was silently 0: "ht/4" became dynamical_scale_choice 0
+                        raise InvalidCmd("%s can not be mapped to an integer" % value)
+                    value = int(v)
+                    if value != v:
+                        raise InvalidCmd( "%s can not be mapped to an integer" % v)
                 else:
                     try:
                         value = float(value.replace('d','e'))
@@ -6709,6 +6717,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'ren_scale', 91.188)
         self.add_toml_param('beam', 'fact_scale1', 91.188)
         self.add_toml_param('beam', 'fact_scale2', 91.188)
+        self.add_toml_param('beam', 'scale_factor', 1.0)
         self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
                      'half_transverse_mass', 'partonic_energy'])
@@ -6968,7 +6977,12 @@ class RunCardMG7(RunCard):
             return True
         if key == 'store_rwgt_info':
             return True
-        if key in ('scalefact', 'mur_over_ref', 'muf_over_ref'):
+        if key == 'scalefact':
+            # applies to the dynamical scale only
+            if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
+                return 1.0
+            return float(beam['scale_factor'])
+        if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
         if key in ('ickkw', 'ievo_eva', 'evaorder'):
             return 0
@@ -7301,6 +7315,15 @@ class RunCardMG7(RunCard):
             if isinstance(energy, (int, float)) and energy <= 0:
                 raise InvalidRunCard("beam.ebeam%d must be positive (got %s)" % (beam, energy))
 
+        beam = self['beam']
+        if float(beam['scale_factor']) <= 0.:
+            raise InvalidRunCard("scale_factor must be strictly positive")
+        if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
+                and beam['fixed_fact_scale']):
+            logger.warning(
+                "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
+                beam['scale_factor'])
+
         # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
         # generic 'allowed' machinery cannot check it on its own.
         devices = self['run']['device']
@@ -7487,6 +7510,7 @@ class RunCardMG7(RunCard):
         'fixed_ren_scale': 'beam.fixed_ren_scale',
         'ebeam1': 'beam.ebeam1',
         'ebeam2': 'beam.ebeam2',
+        'scalefact': 'beam.scale_factor',
         'scale': 'beam.ren_scale',
         'dsqrt_q2fact1': 'beam.fact_scale1',
         'dsqrt_q2fact2': 'beam.fact_scale2',

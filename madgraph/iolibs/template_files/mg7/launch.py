@@ -570,6 +570,7 @@ class MadgraphProcess:
             ren_scale=beam_args["ren_scale"],
             fact_scale1=beam_args["fact_scale1"],
             fact_scale2=beam_args["fact_scale2"],
+            scale_factor=float(beam_args.get("scale_factor", 1.)),
         )
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
@@ -580,6 +581,7 @@ class MadgraphProcess:
                 ren_scale=self.decaying_mass,
                 fact_scale1=self.decaying_mass,
                 fact_scale2=self.decaying_mass,
+                scale_factor=1.,
             )
             self.pdf_grid = None
             self.pdf_grid2 = None
@@ -784,6 +786,8 @@ class MadgraphProcess:
         config.muf = [float(v) for v in syst["muf"]]
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
+        # alternative dynamical scales get the same factor as the nominal one
+        config.scale_factor = float(self.run_card["beam"].get("scale_factor", 1.))
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
         # Without parton luminosity -- a decay, or leptonic beams -- there is no

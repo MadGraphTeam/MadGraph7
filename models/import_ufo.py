@@ -3764,6 +3764,18 @@ class RestrictModel(model_reader.ModelReader):
         new = self['lorentz'][0].__class__(name = name,
                                            spins = spin,
                                            structure = struct)
+        # A UFO Lorentz registers itself in its object_library's all_lorentz: a
+        # module global, cached in sys.modules, that outlives this model.  Left
+        # there, the next import of the same model in the process starts with
+        # this merged structure already defined, grows by it again, and names
+        # its own merged structures one number further on (FFVV1111, then
+        # FFVV1112) -- which is what customize_model's stability check read as
+        # two different restrictions.  UFOMG5Converter.add_lorentz keeps its
+        # structures out of that list too.
+        registered = getattr(sys.modules.get(type(new).__module__),
+                             'all_lorentz', None)
+        if registered is not None:
+            registered[:] = [lor for lor in registered if lor is not new]
         if formfact:
             new.formfactors = formfact
         self['lorentz'].append(new)

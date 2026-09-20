@@ -69,6 +69,30 @@ void update_mass_min_max(
         current_decay->mass ? current_decay->mass : current_decay->max_mass;
 }
 
+// Masses of the external momenta in the order they are handed to boost_beam,
+// i.e. after the channel permutation. A position whose mass differs between
+// permutations gets -1, and boost_beam reads that mass off the momentum.
+std::vector<double> lab_masses(
+    const Topology& topology, const nested_vector2<me_int_t>& permutations
+) {
+    std::vector<double> masses = topology.incoming_masses();
+    const auto& out = topology.outgoing_masses();
+    masses.insert(masses.end(), out.begin(), out.end());
+    if (permutations.empty()) {
+        return masses;
+    }
+    std::vector<double> result(masses.size());
+    for (std::size_t i = 0; i < masses.size(); ++i) {
+        result.at(i) = masses.at(permutations.at(0).at(i));
+        for (const auto& perm : permutations) {
+            if (masses.at(perm.at(i)) != result.at(i)) {
+                result.at(i) = -1.;
+            }
+        }
+    }
+    return result;
+}
+
 nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) {
     nested_vector2<me_int_t> perms_out(perms_in.size());
     for (auto [perm_in, perm_out] : zip(perms_in, perms_out)) {
@@ -398,7 +422,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 if (it != out_idx.end()) {
                     child_to_out.at(a) = std::distance(out_idx.begin(), it);
                 }
-                ++a;
             }
             auto m_inv_full = _cuts.m_inv_min();
             auto dr_full = _cuts.dr_min();
@@ -726,20 +749,24 @@ Value PhaseSpaceMapping::to_lab(
     // boost_beam boosts by the rapidity 0.5 ln(x1 / x2). Without a mirror the
     // partonic and beam boosts are one: scaling x1 by exp(y) and x2 by
     // exp(-y) adds the beam rapidity y.
+    Value masses(lab_masses(_topology, _permutations));
     double exp_plus = std::exp(_beam_rapidity), exp_minus = std::exp(-_beam_rapidity);
     if (_map_luminosity && !_mirror_beams && _beam_rapidity != 0.) {
-        return fb.boost_beam(momenta, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus));
+        return fb.boost_beam(
+            momenta, masses, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)
+        );
     }
     if (_map_luminosity) {
-        momenta = fb.boost_beam(momenta, x1, x2);
+        momenta = fb.boost_beam(momenta, masses, x1, x2);
     }
     if (_mirror_beams) {
+        // a rotation: the masses of the legs are unchanged by it
         momenta = fb.mirror_momenta(
             momenta, conditions.at(_permutations.size() > 1 ? 1 : 0)
         );
     }
     if (_beam_rapidity != 0.) {
-        momenta = fb.boost_beam(momenta, exp_plus, exp_minus);
+        momenta = fb.boost_beam(momenta, masses, exp_plus, exp_minus);
     }
     return momenta;
 }
@@ -751,22 +778,24 @@ Value PhaseSpaceMapping::from_lab(
     Value x2,
     const NamedVector<Value>& conditions
 ) const {
+    Value masses(lab_masses(_topology, _permutations));
     double exp_plus = std::exp(_beam_rapidity), exp_minus = std::exp(-_beam_rapidity);
     if (_map_luminosity && !_mirror_beams && _beam_rapidity != 0.) {
         return fb.boost_beam_inverse(
-            momenta, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)
+            momenta, masses, fb.mul(x1, exp_plus), fb.mul(x2, exp_minus)
         );
     }
     if (_beam_rapidity != 0.) {
-        momenta = fb.boost_beam_inverse(momenta, exp_plus, exp_minus);
+        momenta = fb.boost_beam_inverse(momenta, masses, exp_plus, exp_minus);
     }
     if (_mirror_beams) {
+        // a rotation: the masses of the legs are unchanged by it
         momenta = fb.mirror_momenta(
             momenta, conditions.at(_permutations.size() > 1 ? 1 : 0)
         );
     }
     if (_map_luminosity) {
-        momenta = fb.boost_beam_inverse(momenta, x1, x2);
+        momenta = fb.boost_beam_inverse(momenta, masses, x1, x2);
     }
     return momenta;
 }

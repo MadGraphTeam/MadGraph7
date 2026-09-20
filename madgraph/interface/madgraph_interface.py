@@ -9067,7 +9067,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
@@ -9083,7 +9084,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
                 # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')]
+                config_line = [l for l in self.history if l.strip().startswith('set')
+                               and not cmd.is_question_answer(l)]
                 for line in config_line:
                     MW.exec_cmd(line)
                 stop = self.define_child_cmd_interface(MW)                
@@ -9274,6 +9276,21 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 options.append([])
             options[-1].append(rule)
         return options
+
+    @staticmethod
+    def get_loaded_restriction_card(model):
+        """The restriction card `model` was loaded with, parsed -- None when it
+        was loaded without one, or the card is not on disk anymore."""
+
+        card = getattr(model, 'restrict_card', None)
+        if isinstance(card, check_param_card.ParamCard):
+            return card
+        if isinstance(card, str) and os.path.isfile(card):
+            try:
+                return check_param_card.ParamCard(card)
+            except Exception:
+                return None
+        return None
 
     @staticmethod
     def get_reference_name(model):
@@ -10026,9 +10043,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             explainer = RestrictionExplainer(self, model_path, baseline,
                                              externals, categories)
 
+        # the question starts from the restriction the model was loaded with:
+        # without it, what that restriction had fixed -- zeros, ones, merged
+        # parameters -- came back at its UFO value, so customizing
+        # SMEFTatNLO-NLO silently switched operators, masses and widths back on
         ask_instance = self.ask('', '0', [], ask_class=AskforCustomize,
                                 categories=categories, explainer=explainer,
-                                baseline_card=baseline, return_instance=True)[1]
+                                baseline_card=baseline,
+                                loaded_card=self.get_loaded_restriction_card(
+                                                            reference_model),
+                                loaded_name=self.get_reference_name(
+                                                            reference_model),
+                                return_instance=True)[1]
 
         set_zero = ask_instance.set_zero
         set_one = ask_instance.set_one
@@ -13274,6 +13300,12 @@ class AskforCustomize(cmd.SmartQuestion):
         self.default_values = {}        # (lhablock, lhacode) -> value
         # customize_model --explain: report each command as it is entered
         self.explainer = opt.pop('explainer', None)
+        # the restriction the model was loaded with is where the question
+        # starts: its zeros, ones and merged parameters as rules, so that
+        # `done` rebuilds that very model and `set NAME free` releases one
+        self.loaded_restriction = None
+        self.start_from_restriction(opt.pop('loaded_card', None),
+                                    opt.pop('loaded_name', None))
 
         question = self.get_question()
         # determine the possible value and how they are linked to the restriction
@@ -13479,14 +13511,20 @@ class AskforCustomize(cmd.SmartQuestion):
             value = value[1:]
         if len(value) != 1:
             logger.warning('Invalid set command. For a parameter the syntax is:'
-                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME (NAME can be '
-                '\'BLOCK all\' for the 0 and 1 forms)')
+                ' set NAME 0 / set NAME 1 / set NAME = OTHERNAME / set NAME '
+                'free (NAME can be \'BLOCK all\' for the 0, 1 and free forms)')
             return
         value = value[0]
         if value == '0':
             self.apply_restriction(keys, 0)
         elif value == '1':
             self.apply_restriction(keys, 1)
+        elif value.lower() == 'free':
+            # back to the value it starts from: undoes one rule, where `clear`
+            # would undo every one of them
+            for key in keys:
+                self.forget_parameter(key)
+            self.explain_change()
         elif value.lower() in self.external_params:
             if len(keys) > 1:
                 logger.warning('A whole block can only be set to 0 or to 1, '
@@ -13494,9 +13532,9 @@ class AskforCustomize(cmd.SmartQuestion):
                 return
             self.do_set_equal('%s %s' % (args[0], value))
         else:
-            logger.warning('%s can only be set to 0, to 1 or to the value of '
-                'another external parameter (\'%s\' is not one of them).',
-                args[0], value)
+            logger.warning('%s can only be set to 0, to 1, to the value of '
+                'another external parameter, or free (\'%s\' is none of '
+                'them).', args[0], value)
 
     #===========================================================================
     # customization of a single parameter/coupling
@@ -13697,6 +13735,56 @@ class AskforCustomize(cmd.SmartQuestion):
             # informative only: a failure here must not stop the customization
             logger.warning('Could not report the effect of that command: %s',
                            error)
+
+    def start_from_restriction(self, card, name=None):
+        """Fill the rules with what the restriction card `card` does.
+
+        Mirrors what the restriction itself does to a card
+        (detect_special_parameters / detect_identical_parameters): a parameter
+        at 0 or 1 is fixed there, and parameters of the same block sharing a
+        value are merged.  Parameters an option of the question already covers
+        -- a massless b, a diagonal CKM -- are left to that option, so they are
+        not listed twice.  Two parameters merged with opposite signs cannot be
+        written as `set A = B`: they are left free.
+        """
+
+        if card is None:
+            return
+        by_lha = dict(((param.lhablock.lower(), tuple(param.lhacode)),
+                       (param.lhablock, tuple(param.lhacode)))
+                      for param in self.external_params.values())
+        covered = set()
+        for category in self.all_categories:
+            for option in category:
+                for lhablock, lhacode, _ in option.get_rules():
+                    if not isinstance(lhacode, (list, tuple)):
+                        lhacode = [lhacode]
+                    covered.add((lhablock.lower(), tuple(lhacode)))
+
+        zeros, ones, groups = [], [], {}
+        for block in card:
+            if block.startswith(('qnumbers', 'decay_table')) or 'info' in block:
+                continue
+            for param in card[block]:
+                lha = (block.lower(), tuple(param.lhacode))
+                if lha not in by_lha or lha in covered:
+                    continue
+                try:
+                    value = float(param.value)
+                except (TypeError, ValueError):
+                    continue # an 'auto' width
+                if value == 0.:
+                    zeros.append(by_lha[lha])
+                elif value == 1.:
+                    ones.append(by_lha[lha])
+                elif block.lower() != 'decay': # widths are never merged
+                    groups.setdefault((block.lower(), value), []).append(
+                                                                  by_lha[lha])
+        equal = [(key, keys[0]) for keys in groups.values() if len(keys) > 1
+                 for key in keys[1:]]
+        if zeros or ones or equal:
+            self.set_zero, self.set_one, self.set_equal = zeros, ones, equal
+            self.loaded_restriction = name or 'the loaded one'
 
     def forget_parameter(self, param):
         """remove any previous customization of a given parameter"""
@@ -14010,6 +14098,10 @@ class AskforCustomize(cmd.SmartQuestion):
         for name, expr in self.new_coupling:
             current.append('    %s = %s' % (name, expr))
         question += 'parameter/coupling modifications (use set_zero/set_one):\n'
+        if self.loaded_restriction:
+            question += ('    (starting from %s, the restriction the model was '
+                         'loaded with:\n     \'set NAME free\' releases one, '
+                         '\'clear\' all of them)\n' % self.loaded_restriction)
         if current:
             question += '\n'.join(current) + '\n'
         else:

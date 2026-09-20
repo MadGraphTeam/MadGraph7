@@ -51,6 +51,9 @@ struct SystematicsConfig {
     /// sum of transverse energies, `2` = sum of transverse masses, `3` = half
     /// of that, `4` = partonic center-of-mass energy.
     std::vector<int> dyn_scales;
+    /// Factor already applied to the nominal dynamical scale; the alternative
+    /// dynamical scales are multiplied by it too.
+    double scale_factor = 1.;
     /// Varied PDF members, in output order.
     std::vector<PdfMemberSpec> pdf_members;
     /// LHAPDF set name the events were generated with.
