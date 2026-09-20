@@ -11066,11 +11066,6 @@ C
             if c_list:
                 fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n') 
 
-        # Write the flavor couplings 
-        if self.coups_flv_indep:
-            c_list = [coupl.name for coupl in self.coups_flv_indep]
-            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')
-
         # Write the dependent coupling 
         if self.vector_size and not self.opt['loop_induced']:
             c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_dep]
@@ -11080,19 +11075,18 @@ C
         if c_list:
             fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n')  
 
-        # Write the flavor dependent couplings
-        if self.vector_size and not self.opt['loop_induced']:
-            c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_flv_dep]
-        else:
-            c_list = [coupl.name for coupl in self.coups_flv_dep] 
-        
-        if c_list:
-            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')
-            if self.opt['loop_induced']:
-                raise Exception('Flavor coupling are not supported for loop induced process for the moment')  
+        if self.coups_flv_dep and self.opt['loop_induced']:
+            raise Exception(
+                'Flavor coupling are not supported for loop induced process '
+                'for the moment')
 
-
-        coupling_list = [coupl.name for coupl in self.coups_dep + self.coups_indep_noloop + self.coups_indep_loop + self.coups_flv_dep + self.coups_flv_indep]       
+        # FLV_COUPLING instances are module variables owned by MODEL_OBJECT.
+        # Keeping them out of coupl.inc prevents every generic source routine
+        # that merely needs masses or scalar couplings from having to USE the
+        # derived-type module.  Matrix/ALOHA routines already USE MODEL_OBJECT.
+        coupling_list = [coupl.name for coupl in
+                         self.coups_dep + self.coups_indep_noloop +
+                         self.coups_indep_loop]
 
         fsock.writelines('common/couplings/ '+', '.join(coupling_list)+'\n')
         if self.opt['mp']:
@@ -11514,6 +11508,8 @@ C
          INTEGER :: PARTNER2(%(max_flavor)i)
          TYPE(COUPPTR) :: VAL(%(max_flavor)i)
          END TYPE FLV_COUPLING
+         %(module_include_vector)s
+         %(flv_decl)s
          END MODULE MODEL_OBJECT
 
 
@@ -11569,14 +11565,32 @@ C
         # max size needed for the couplings
         max_flavor = max([len(ids) for ids in self.model['merged_particles'].values()], default=0)
 
+        flv_decl = []
+        if self.coups_flv_indep:
+            flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                coupl.name for coupl in self.coups_flv_indep))
+        if self.coups_flv_dep:
+            if self.vector_size:
+                flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                    '%s(VECSIZE_MEMMAX)' % coupl.name
+                    for coupl in self.coups_flv_dep))
+            else:
+                flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                    coupl.name for coupl in self.coups_flv_dep))
+
         if self.vector_size:
             include_vector = "include \'../vector.inc\'\n"
+            module_include_vector = include_vector \
+                if self.coups_flv_dep else ''
             loop_decl = 'integer j_flv_init' if self.coups_flv_dep else ''
         else:
             include_vector = ''
+            module_include_vector = ''
             loop_decl = ''
         replace = {'max_flavor': max_flavor,
                    'include_vector': include_vector,
+                   'module_include_vector': module_include_vector,
+                   'flv_decl': '\n'.join(flv_decl),
                    'loop_decl': loop_decl,
                    'def_flv': '\n'.join(def_flv)}
         fsock = self.open('flavor_couplings.f', format='fortran')

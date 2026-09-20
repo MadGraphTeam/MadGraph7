@@ -35,8 +35,10 @@ import tests.IOTests as IOTests
 import madgraph.interface.master_interface as MGCmd
 
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.core.base_objects as base_objects
 import madgraph.iolibs.export_fks as export_fks
+import madgraph.iolibs.file_writers as file_writers
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -117,6 +119,107 @@ class TestBornDirCollision(unittest.TestCase):
         exporter.mkdir_born_dir('P%s' % right.shell_string(), right)
         self.assertEqual(sorted(os.listdir('.')),
                          ['P0_cc_c99c', 'P0_cc_c9c', 'P0_cc_cc'])
+
+
+class TestGroupedFKSMetadata(unittest.TestCase):
+    """Physical FKS classes exported through configuration-indexed tables."""
+
+    def test_physical_denominator_factors(self):
+        """Merged rows retain their own final-state symmetry factors."""
+
+        process = base_objects.Process({
+            'legs': base_objects.LegList([
+                base_objects.Leg({'id': 81, 'state': False, 'number': 1}),
+                base_objects.Leg({'id': 81, 'state': False, 'number': 2}),
+                base_objects.Leg({'id': 24, 'state': True, 'number': 3}),
+                base_objects.Leg({'id': 81, 'state': True, 'number': 4}),
+                base_objects.Leg({'id': 81, 'state': True, 'number': 5}),
+            ])})
+
+        class MatrixElementStub(dict):
+            def get_denominator_factor(self):
+                return 72
+
+            def get_external_flavors(self, return_pdgs=False):
+                rows = [[1, 2, 24, 1, 1], [2, 2, 24, 1, 2]]
+                return ([None, None], rows) if return_pdgs else [None, None]
+
+        matrix_element = MatrixElementStub({
+            'processes': [process], 'identical_particle_factor': 2})
+        exporter_class = export_fks.ProcessExporterFortranFKS
+        get_factors = exporter_class.get_flavor_denominator_factors
+        self.assertEqual(
+            get_factors(matrix_element),
+            [72, 36])
+
+    def test_write_fks_info_uses_physical_flavor_classes(self):
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate p p > w+ w- [QCD]')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            interface._fks_multi_proc)
+        matrix_element = helas.get_matrix_elements()[0]
+
+        info_list = matrix_element.get_fks_info_list()
+        self.assertEqual(len(info_list), 16)
+        self.assertTrue(all('flavor_class' in info for info in info_list))
+        self.assertTrue(all(abs(pdg) not in
+                            interface._curr_model.get('merged_particles')
+                            for info in info_list for pdg in info['pdgs']))
+
+        handle, path = tempfile.mkstemp(prefix='fks_info_', suffix='.inc')
+        os.close(handle)
+        try:
+            exporter = export_fks.ProcessExporterFortranFKS.__new__(
+                export_fks.ProcessExporterFortranFKS)
+            writer = file_writers.FortranWriter(path)
+            exporter.write_fks_info_file(
+                writer, matrix_element, None)
+            writer.close()
+            content = open(path).read()
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+        self.assertIn('INTEGER REAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('INTEGER VIRTUAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('PARAMETER (NBORN_FLAVOR_CONFIGS=4)', content)
+        self.assertIn('data born_fks_config_d / 1, 2, 3, 4 /',
+                      content.lower())
+        self.assertIn('data real_flavor_index_d / 1, 2, 3, 4,',
+                      content.lower())
+        self.assertIn('data born_flavor_index_d / 1, 2, 3, 4,',
+                      content.lower())
+        self.assertNotIn(' 81,', content)
+        self.assertNotIn('(-0.333', content)
+
+        real_me = matrix_element.real_processes[0].matrix_element
+        pdf_vars, pdf_data, pdf_lines, ee_vars = \
+            exporter.get_pdf_lines_mir(real_me, 2)
+        self.assertIn("INCLUDE 'fks_info.inc'", pdf_vars)
+        self.assertIn('PDG_TYPE_D(NFKSPROCESS,1)', pdf_lines)
+        self.assertIn('PDG_TYPE_D(NFKSPROCESS,2)', pdf_lines)
+        self.assertIn('PD(IPROC)=FKS_PDF1*FKS_PDF2', pdf_lines)
+        self.assertNotIn('_QUARK', pdf_vars + pdf_data + pdf_lines + ee_vars)
+
+        handle, path = tempfile.mkstemp(
+            prefix='leshouche_info_', suffix='.dat')
+        os.close(handle)
+        try:
+            exporter.write_leshouche_info_file(path, matrix_element)
+            with open(path) as stream:
+                idup_rows = [tuple(int(pdg) for pdg in line.split()[3:])
+                             for line in stream if line.startswith('I')]
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+        self.assertEqual(idup_rows,
+                         [tuple(info['pdgs']) for info in info_list])
+        self.assertTrue(all(abs(pdg) not in
+                            interface._curr_model.get('merged_particles')
+                            for row in idup_rows for pdg in row))
 
 
 class IOExportFKSTest(IOTests.IOTestManager):
@@ -486,6 +589,5 @@ class TestFKSOutput(unittest.TestCase):
             run_cmd('set OLP MadLoop')
 
         shutil.rmtree(path)
-
 
 

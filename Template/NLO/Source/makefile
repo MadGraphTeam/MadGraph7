@@ -31,7 +31,10 @@ $(LIBDIR)librunning.$(libext): RUNNING
 	rm -f $(LIBDIR)librunning.a
 	cd RUNNING; make
 
-$(LIBDIR)libdhelas.a: DHELAS
+# Flavor-aware ALOHA routines USE MODEL_OBJECT for FLV_COUPLING. Build the
+# model module before compiling DHELAS; ordinary ungrouped models also follow
+# this dependency without changing their generated code.
+$(LIBDIR)libdhelas.a: DHELAS $(LIBDIR)libmodel.a
 	rm -f $(LIBDIR)libdhelas.a
 	cd DHELAS; make
 	cp -f DHELAS/aloha_object.mod $(LIBDIR)

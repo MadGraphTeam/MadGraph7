@@ -1104,6 +1104,29 @@ class ModelTest2(unittest.TestCase):
 
         pdg_codes = [p.get('pdg_code') for p in model['particles']]
 
+        source_zqq = [inter for inter in model['interactions']
+                      if len(inter['particles']) == 3 and
+                      inter['particles'][2].get_pdg_code() == 23 and
+                      abs(inter['particles'][0].get_pdg_code()) in
+                      [1, 2, 3, 4] and
+                      abs(inter['particles'][1].get_pdg_code()) in
+                      [1, 2, 3, 4]]
+        # Force one flavor partner to carry an extra structure at a fresh
+        # numeric position. This isolates the remapping contract independently
+        # of the particular SM UFO convention used by the test installation.
+        variant = source_zqq[0]
+        variant['lorentz'] = list(variant['lorentz']) + ['TEST_LORENTZ']
+        first_key, first_coupling = next(iter(variant['couplings'].items()))
+        variant['couplings'][(first_key[0], len(variant['lorentz']) - 1)] = \
+            first_coupling
+        source_zqq_lorentz = [set(inter['lorentz']) for inter in source_zqq]
+        expected_zqq_lorentz = set().union(*source_zqq_lorentz)
+        expected_zqq_keyed_lorentz = set(
+            inter['lorentz'][key[1]]
+            for inter in source_zqq for key in inter['couplings'])
+        self.assertGreater(len(set(frozenset(item)
+                                   for item in source_zqq_lorentz)), 1)
+
         
         model.merge_flavor([1,2,3,4])
 
@@ -1136,6 +1159,19 @@ class ModelTest2(unittest.TestCase):
                 has_inter_n81 += 1
         self.assertEqual(has_inter_81, has_inter_n81)
         self.assertEqual(has_inter_81, 5)
+
+        # Flavor partners can use different Lorentz structures at the same UFO
+        # coupling-list position. The merged Z q q~ interaction must keep their
+        # union and remap coupling keys by structure identity.
+        zqq = [inter for inter in model['interactions']
+               if [part.get_pdg_code() for part in inter['particles']]
+               == [-81, 81, 23]]
+        self.assertEqual(len(zqq), 1)
+        zqq = zqq[0]
+        self.assertEqual(set(zqq['lorentz']), expected_zqq_lorentz)
+        keyed_lorentz = set(zqq['lorentz'][key[1]]
+                            for key in zqq['couplings'])
+        self.assertEqual(keyed_lorentz, expected_zqq_keyed_lorentz)
 
         # check that unmerged vertex are kept
         self.assertTrue(hasattr(model, 'unmerged_interactions'))

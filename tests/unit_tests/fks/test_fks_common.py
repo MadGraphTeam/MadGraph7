@@ -2086,6 +2086,33 @@ class TestFKSCommon(unittest.TestCase):
             
         for leg, split, res in zip(legs_qed, splittings_qed, res_leglists_qed):
             self.assertEqual(res, fks_common.insert_legs(leglist_orig_qed, leg, split,pert='QED'))
+
+    def test_insert_legs_ignores_massless_merged_charge_in_mass_sort(self):
+        """QED insertion must not take abs() of a merged charge tuple."""
+
+        quark = fks_common.FKSLeg({
+            'id': 81, 'number': 2, 'state': False, 'color': 3,
+            'spin': 2, 'massless': True,
+            'charge': (-1. / 3., 2. / 3.),
+            'is_part': True, 'self_antipart': False})
+        legs = fks_common.FKSLegList([
+            quark,
+            fks_common.FKSLeg({
+                'id': 24, 'number': 3, 'state': True, 'color': 1,
+                'spin': 3, 'massless': False, 'charge': 1.,
+                'is_part': True, 'self_antipart': False}),
+            fks_common.FKSLeg({
+                'id': 81, 'number': 4, 'state': True, 'color': 3,
+                'spin': 2, 'massless': True,
+                'charge': (-1. / 3., 2. / 3.),
+                'is_part': True, 'self_antipart': False})])
+        split = [copy.deepcopy(quark), fks_common.FKSLeg({
+            'id': 22, 'state': True, 'color': 1, 'spin': 3,
+            'massless': True, 'charge': 0., 'is_part': True,
+            'self_antipart': True})]
+
+        result = fks_common.insert_legs(legs, quark, split, pert='QED')
+        self.assertEqual([leg['id'] for leg in result], [81, 24, 81, 22])
     
     
     def test_combine_ij(self):

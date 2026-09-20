@@ -483,9 +483,11 @@ def insert_legs(leglist_orig, leg, split,pert='QCD'):
     for col in set([l[color] for l in leglist[firstfinal:] if l['massless']]):
         col_maxindex[col] = max([0] + [leglist.index(l) for l in leglist[firstfinal:]\
                                         if l[color] == col and l['massless']])
-    for col in set([abs(l[color]) for l in leglist[firstfinal:] if not l['massless']]):
+    for col in set([abs(l[color]) for l in leglist[firstfinal:]
+                    if not l['massless']]):
         mass_col_maxindex[col] = max([0] + [leglist.index(l) for l in leglist[firstfinal:]\
-                                             if abs(l[color]) == col and not l['massless']])
+                                             if not l['massless'] and
+                                             abs(l[color]) == col])
     #no need to keep info on particles with color > i
     if pert == 'QCD':
         for col in copy.copy(list(col_maxindex.keys())):

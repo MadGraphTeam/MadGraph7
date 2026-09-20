@@ -225,7 +225,8 @@ C
 C
 C VARIABLES
 C
-      INTEGER I,J,K
+      INTEGER I,J,K,FLAV_IDX
+      INCLUDE 'fks_info.inc'
       include 'orders.inc'
       COMPLEX*16 ANS(2,NSQAMPSO)
       REAL*8 borns(2,0:NSQAMPSO)
@@ -268,7 +269,8 @@ C look for orders which match the born order constraint
       iden=iden_values(nfksprocess)
 force_ijglu_zero = .true.
 
-CALL BORN(P,NHEL,HELL,ANS,borns)
+      FLAV_IDX=BORN_FLAVOR_INDEX_D(NFKSPROCESS)
+      CALL BORN(P,NHEL,HELL,FLAV_IDX,ANS,borns)
 
 ans_summed = 0d0
 max_val = 0d0
@@ -344,7 +346,8 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,j,jj,glu_ij
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij,FLAV_IDX
+       INCLUDE 'fks_info.inc'
       REAL*8 borns(2,0:NSQAMPSO)
       COMPLEX*16 BORNTILDE
       INTEGER NTRY(%(nconfs)d)
@@ -371,6 +374,8 @@ C
       common/cBorn/hel_fac,get_hel,skip
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       logical cond_ij
@@ -378,6 +383,9 @@ C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
+      FLAV_IDX=BORN_FLAVOR_INDEX_D(NFKSPROCESS)
+      IF (CALCULATEDBORN .AND.
+     $    CALCULATED_BORN_FLAVOR.NE.FLAV_IDX) CALCULATEDBORN=.FALSE.
       glu_ij = ij_values(nfksprocess)
       NTRY(nFKSprocess)=NTRY(nFKSprocess)+1
       if (NTRY(nFKSprocess).lt.2) then
@@ -432,7 +440,7 @@ C ----------
         if (cond_ij) then
           IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LT. 2) ) THEN
             
-            CALL BORN(P1,NHEL(1,IHEL),IHEL,T,borns)
+            CALL BORN(P1,NHEL(1,IHEL),IHEL,FLAV_IDX,T,borns)
             DO I=1,NSQAMPSO
                 ANS(1,I)=ANS(1,I)+T(1,I)
                 ANS(2,I)=ANS(2,I)+T(2,I)
@@ -453,10 +461,11 @@ C ----------
       ANS(2,0)=ANS(2,0)+ANS(2,I)
       ENDDO
       calculatedBorn=.true.
+      CALCULATED_BORN_FLAVOR=FLAV_IDX
       END
        
        
-      SUBROUTINE BORN(P,NHEL,HELL,ANS,borns)
+       SUBROUTINE BORN(P,NHEL,HELL,FLAV_IDX,ANS,borns)
 C  
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
@@ -486,7 +495,7 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL-1),borns(2,0:NSQAMPSO)
-      INTEGER NHEL(NEXTERNAL-1), HELL
+       INTEGER NHEL(NEXTERNAL-1), HELL, FLAV_IDX
       COMPLEX*16 ANS(2,NSQAMPSO)
 C  
 C LOCAL VARIABLES 
@@ -502,6 +511,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+%(flavor_mask_decl)s
 C  
 C GLOBAL VARIABLES
 C  
@@ -514,6 +524,9 @@ C
       common/cBorn/hel_fac,get_hel,skip
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
+      DATA CALCULATED_BORN_FLAVOR /0/
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       integer step_hel
@@ -537,6 +550,10 @@ C ----------
       jamp(:,:) = (0d0,0d0)
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)
+
+C     A saved Born amplitude is valid only for the selected physical row.
+      IF (CALCULATEDBORN .AND.
+     $    CALCULATED_BORN_FLAVOR.NE.FLAV_IDX) CALCULATEDBORN=.FALSE.
 
       glu_ij = ij_values(nfksprocess)
       if (force_ijglu_zero) glu_ij = 0
@@ -562,6 +579,7 @@ C ----------
           if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
         endif
         if (.not. calculatedBorn) then
+%(flavor_mask_setup)s
 %(helas_calls)s
         do i=1,ngraphs
           if(ihel.eq.back_hel)then
@@ -631,6 +649,7 @@ C ----------
       ENDDO
       ANS(2,:) = ANS(2,:)/(2d0*DENOM)
       if (glu_ij.ne.0) nhel(glu_ij) = back_hel
+      CALCULATED_BORN_FLAVOR=FLAV_IDX
       END
        
 

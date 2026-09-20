@@ -18,6 +18,7 @@ C     ******************************************************************
       PARAMETER (ZERO=0D0)
       INCLUDE 'coupl.inc'
       INTEGER I,J,ILINK,NLINKS,M,N,ICALL,IPOINT,NPOINTS
+      INTEGER IFLAV_CONFIG
       INTEGER SEED_IJ,SEED_KL
       INTEGER PDG_M,PDG_N,COL_M,COL_N,ITYPE
       REAL*8 BORN, WGT, SQRTS, BORNTILDE, TOTMASS
@@ -114,11 +115,6 @@ C     historical first point exactly.
 
       INCLUDE 'born_pmass.inc'
 
-C     the per-leg electric charges enter the charge-linked Born ([QED]
-C     soft-photon links); they are written by the exporter and must be
-C     filled before SBORN_SF is called on a charge link.
-      INCLUDE 'born_charges.inc'
-
 C     pick a center-of-mass energy comfortably above threshold
       TOTMASS=0D0
       DO I=1,NEXTERNAL-1
@@ -164,16 +160,24 @@ C     deterministic sequence; a rerun with the same seed reproduces it.
 
       DO IPOINT=1,NPOINTS
         CALL GET_MOMENTA(SQRTS,PMASS,P)
-        CALCULATEDBORN=.FALSE.
         WRITE(*,'(A,1X,I0)') 'POINT',IPOINT
         DO I=1,NEXTERNAL-1
           WRITE(*,'(A,1X,I0,4(1X,ES24.16E3))')
      &      'P',I,(P(J,I),J=0,3)
         ENDDO
 
-C       One flavour configuration is available today. Keep the label explicit
-C       so Macrotask 2 can extend the interface without changing point records.
-        WRITE(*,*) '==== FLAVOUR CONFIGURATION', 1, '===='
+C       Evaluate each distinct physical underlying-Born flavor exactly once.
+C       BORN_FKS_CONFIG_D selects a representative physical FKS class whose
+C       topology-local row and scalar charge metadata belong to that flavor.
+        DO IFLAV_CONFIG=1,NBORN_FLAVOR_CONFIGS
+        NFKSPROCESS=BORN_FKS_CONFIG_D(IFLAV_CONFIG)
+        CALCULATEDBORN=.FALSE.
+        WRITE(*,*) '==== FLAVOUR CONFIGURATION', IFLAV_CONFIG, '===='
+
+C       the per-leg electric charges enter the charge-linked Born ([QED]
+C       soft-photon links); they are selected by the physical FKS class and
+C       must be filled before SBORN_SF is called on a charge link.
+        INCLUDE 'born_charges.inc'
 
 C       Evaluate the same point NCALLS times only for timing. Scientific
 C       sampling uses NPOINTS and never advances inside this loop.
@@ -240,6 +244,7 @@ C       Order links by (m,n), including reconstructed diagonals.
         DO ILINK=1,NTOT
           WRITE(*,*) 'B_ij ',MLIST(ILINK),NLIST(ILINK),
      &      WGTLIST(ILINK)
+        ENDDO
         ENDDO
       ENDDO
 

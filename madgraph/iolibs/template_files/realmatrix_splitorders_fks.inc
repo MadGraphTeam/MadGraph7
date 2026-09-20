@@ -108,8 +108,11 @@ C
 C CONSTANTS
 C  
       include 'nexternal.inc'
+      INCLUDE 'nFKSconfigs.inc'
       INTEGER     NCOMB         
       PARAMETER ( NCOMB=%(ncomb)d)
+      INTEGER THEL
+      PARAMETER (THEL=NCOMB*FKS_CONFIGS)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C  
@@ -119,53 +122,62 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,I,J,T_IDENT(NCOMB)
-      REAL*8 T(0:NSQAMPSO),T_SAVE(NCOMB,0:NSQAMPSO)
+      INCLUDE 'fks_info.inc'
+      INTEGER IHEL,IDEN,I,J,FLAV_IDX
+      INTEGER T_IDENT(NCOMB,FKS_CONFIGS)
+      REAL*8 T(0:NSQAMPSO)
+      REAL*8 T_SAVE(NCOMB,0:NSQAMPSO,FKS_CONFIGS)
       SAVE T_SAVE,T_IDENT
       INTEGER NHEL(NEXTERNAL,NCOMB)
 %(helicity_lines)s
-      LOGICAL GOODHEL(NCOMB)
-      DATA GOODHEL/NCOMB*.FALSE./
-      INTEGER NTRY
-      DATA NTRY/0/
+      LOGICAL GOODHEL(NCOMB,FKS_CONFIGS)
+      DATA GOODHEL/THEL*.FALSE./
+      INTEGER NTRY(FKS_CONFIGS)
+      DATA NTRY/FKS_CONFIGS*0/
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
 C ----------
-      NTRY=NTRY+1
+      FLAV_IDX=REAL_FLAVOR_INDEX_D(NFKSPROCESS)
+%(flavor_den_factor_setup)s
+      NTRY(NFKSPROCESS)=NTRY(NFKSPROCESS)+1
       DO I=0,NSQAMPSO
       	ANS(I) = 0D0	  
       ENDDO
       DO IHEL=1,NCOMB
-        IF (GOODHEL(IHEL) .OR. NTRY .LT. 2) THEN
-          IF (NTRY.LT.2) THEN
+        IF (GOODHEL(IHEL,NFKSPROCESS) .OR.
+     $      NTRY(NFKSPROCESS) .LT. 2) THEN
+          IF (NTRY(NFKSPROCESS).LT.2) THEN
 C for the first ps-point, check for helicities that give
 C identical matrix elements
-            call MATRIX_%(proc_prefix)s(P ,NHEL(1,IHEL),T)            
+            call MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
             DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I)=T(I)
+                T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
             ENDDO
-            T_IDENT(IHEL)=-1
+            T_IDENT(IHEL,NFKSPROCESS)=-1
             DO I=1,IHEL-1
                IF (T(0).EQ.0D0) EXIT
-               IF (T_SAVE(I,0).EQ.0D0) CYCLE
+               IF (T_SAVE(I,0,NFKSPROCESS).EQ.0D0) CYCLE
                 do j = 0, nsqampso
-                  IF (ABS(T(j)/T_SAVE(I,j)-1D0) .GT. 1D-12) goto 444
+                  IF (ABS(T(j)/T_SAVE(I,j,NFKSPROCESS)-1D0)
+     $                .GT. 1D-12) goto 444
                 enddo
-                T_IDENT(IHEL) = I
+                T_IDENT(IHEL,NFKSPROCESS) = I
  444            continue
             ENDDO
           ELSE
-            IF (T_IDENT(IHEL).GT.0) THEN
+            IF (T_IDENT(IHEL,NFKSPROCESS).GT.0) THEN
 C if two helicity states are identical, dont recompute
             DO I=0,NSQAMPSO
-              T(I)=T_SAVE(T_IDENT(IHEL),I)
-              T_SAVE(IHEL,I)=T(I)
+              T(I)=T_SAVE(T_IDENT(IHEL,NFKSPROCESS),I,NFKSPROCESS)
+              T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
             ENDDO
             ELSE
-              CALL MATRIX_%(proc_prefix)s(P ,NHEL(1,IHEL),T)            
+              CALL MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
               DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I)=T(I)
+                T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
               ENDDO
             ENDIF
           ENDIF
@@ -173,8 +185,9 @@ C add to the sum of helicities
 	  DO I=1,NSQAMPSO !keep loop from 1!!
              ANS(I)=ANS(I)+T(I)
 	  ENDDO
-          IF (T(0) .NE. 0D0 .AND. .NOT. GOODHEL(IHEL)) THEN
-            GOODHEL(IHEL)=.TRUE.
+          IF (T(0) .NE. 0D0 .AND.
+     $        .NOT. GOODHEL(IHEL,NFKSPROCESS)) THEN
+            GOODHEL(IHEL,NFKSPROCESS)=.TRUE.
           ENDIF
         ENDIF
       ENDDO
@@ -185,7 +198,7 @@ C add to the sum of helicities
       END
        
 
-      SUBROUTINE MATRIX_%(proc_prefix)s(P,NHEL,RES)
+      SUBROUTINE MATRIX_%(proc_prefix)s(P,NHEL,FLAV_IDX,RES)
 C  
 %(info_lines)s
 C
@@ -215,7 +228,7 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL)
-      INTEGER NHEL(NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL),FLAV_IDX
       REAL*8 RES(0:NSQAMPSO)
 C  
 C LOCAL VARIABLES 
@@ -230,6 +243,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+%(flavor_mask_decl)s
 C
 C FUNCTION
 C
@@ -242,6 +256,7 @@ C ----------
 C BEGIN CODE
 C ----------
       jamp(:,:) = (0d0,0d0)
+%(flavor_mask_setup)s
 %(helas_calls)s
 %(jamp_lines)s
 

@@ -6109,13 +6109,31 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     restore_dropped(wf, dropped_wfct, def_wfct, diag)
 
         initial_len = len(self.get('diagrams'))
+        kept_positions = [i for i, diag in enumerate(self.get('diagrams'))
+                          if diag.valid_flavors]
 
-        self['diagrams'] = HelasDiagramList([diag for diag in self.get('diagrams') if diag.valid_flavors])
+        self['diagrams'] = HelasDiagramList(
+            [self.get('diagrams')[i] for i in kept_positions])
         final_len = len(self.get('diagrams'))
         if final_len < initial_len:
             logger.info('removed %d diagrams which were incompatible with flavor restriction: remain %d'%(initial_len - final_len, final_len))
             for i, diag in enumerate(self.get('diagrams')):
                 diag.set('number', i+1)
+
+            # The color basis stores zero-based diagram positions.  Restricted
+            # grouped processes can drop only some topology diagrams after the
+            # basis was built; compacting the HELAS list without rebuilding the
+            # base amplitude leaves stale positions and makes JAMP generation
+            # index beyond the retained list.
+            base_amplitude = self.get('base_amplitude')
+            base_diagrams = base_amplitude.get('diagrams')
+            if len(base_diagrams) == initial_len:
+                base_amplitude.set(
+                    'diagrams',
+                    base_objects.DiagramList(
+                        [base_diagrams[i] for i in kept_positions]))
+                self.set('color_basis', color_amp.ColorBasis())
+                self.process_color()
 
         # reset wfct numbers for those dropped
         for i,wfct in enumerate(self.get_all_wavefunctions()):

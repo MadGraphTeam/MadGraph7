@@ -6504,6 +6504,7 @@ This implies that with decay chains:
                         myleglist.append(fks_tag.MultiTagLeg({'ids':mylegids,
                                                           'state':state,
                                                           'polarization': polarization,
+                                                          'flavor': flavor,
                                                           'onium': {},
                                                           'is_tagged':is_tagged}))
             elif is_onium:

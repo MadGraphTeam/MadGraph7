@@ -2566,15 +2566,16 @@ class MultiProcess(base_objects.PhysicsObject):
                 # Generate leg list for process
                 leg_list = [copy.copy(leg) for leg in islegs]
                 
-                if not fstags: 
-                    def get_flavor(id, fsleg):
-                        flavor = []
-                        if abs(id) in model.get('merged_particles'):
-                            for f in fsleg['flavor']:
-                                # multi-particle store the flavor for many id -> need to filter the one we are looking at
-                                if abs(f) in model.get('merged_particles')[abs(id)]:
-                                    flavor.append(f)
-                        return flavor
+                def get_flavor(id, fsleg):
+                    flavor = []
+                    if abs(id) in model.get('merged_particles'):
+                        for f in fsleg['flavor']:
+                            # multi-particle store the flavor for many id -> need to filter the one we are looking at
+                            if abs(f) in model.get('merged_particles')[abs(id)]:
+                                flavor.append(f)
+                    return flavor
+
+                if not fstags:
                     leg_list.extend([\
                             base_objects.Leg({'id':id, 'state': True,
                                               'polarization': fsleg['polarization'],
@@ -2584,7 +2585,11 @@ class MultiProcess(base_objects.PhysicsObject):
                             for id, fsleg in zip(prod, fslegs)])
                 else:
                     leg_list.extend([\
-                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'onium': fsleg['onium'], 'is_tagged': tag}) \
+                            fks_tag.TagLeg({'id':id, 'state': True,
+                                           'polarization': fsleg['polarization'],
+                                           'flavor': get_flavor(id, fsleg),
+                                           'onium': fsleg['onium'],
+                                           'is_tagged': tag}) \
                             for id, fsleg, tag in zip(prod, fslegs, fstags)])
 
 

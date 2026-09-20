@@ -1061,6 +1061,35 @@ class Interaction(PhysicsObject):
             for coupling in self_couplings.values())
         assert other_couplings
 
+        # Coupling keys contain positions in the interaction's color and
+        # Lorentz lists.  Two flavor partners can have different structures at
+        # the same numeric position (for example Z d d~ uses FFV3 where
+        # Z u u~ uses FFV5).  Build a union by structure identity and translate
+        # the incoming keys before merging their flavor dictionaries.
+        def merge_structure_list(name):
+            own = self.get(name)
+            other = other_flavor.get(name)
+            translated = {}
+            for other_index, structure in enumerate(other):
+                try:
+                    own_index = own.index(structure)
+                except ValueError:
+                    # Color lists can be shared with the preserved unmerged
+                    # interaction; detach before extending the merged one.
+                    own = list(own)
+                    own.append(structure)
+                    self.set(name, own)
+                    own_index = len(own) - 1
+                translated[other_index] = own_index
+            return translated
+
+        color_index = merge_structure_list('color')
+        lorentz_index = merge_structure_list('lorentz')
+
+        def translated_couplings():
+            for (color, lorentz), coupling in other_couplings.items():
+                yield ((color_index[color], lorentz_index[lorentz]), coupling)
+
         debug = False
         #if new_part is anti_part:
         #    debug = True
@@ -1080,22 +1109,21 @@ class Interaction(PhysicsObject):
 
         if all(isinstance(coupling, str)
                for coupling in other_couplings.values()):
-            for color, lor in other_couplings:
+            for (color, lor), other_coupling in translated_couplings():
                 if (color, lor) in self_couplings:
                     # only need to update the flavor content of the existing Flavor coupling
                     flav_dict = self_couplings[color, lor].get('flavors')
-                    flav_dict[flav] = other_couplings[color, lor]
+                    flav_dict[flav] = other_coupling
                 else:
                     # need to create a new flavor coupling
                     coupling = FLV_Coupling()
                     coupling.set('flavors', {
-                        flav: other_couplings[color, lor]})
+                        flav: other_coupling})
                     self_couplings[color, lor] = coupling
         elif all(isinstance(coupling, FLV_Coupling)
                  for coupling in other_couplings.values()):
-            for color, lor in other_couplings:
-                other_flav_dict = other_couplings[color, lor].get(
-                    'flavors')
+            for (color, lor), other_coupling in translated_couplings():
+                other_flav_dict = other_coupling.get('flavors')
                 transformed = {}
                 for base_flav, base_coupling in other_flav_dict.items():
                     new_flav = tuple(base_flav[i] + flav[i]

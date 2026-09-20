@@ -44,7 +44,7 @@ endif
 
 all: $(LIBRARIES) $(LIBDIR)libdhelas.$(libext) $(LIBDIR)libmodel.$(libext)
 # Libraries
-$(LIBDIR)libdhelas.$(libext): DHELAS
+$(LIBDIR)libdhelas.$(libext): DHELAS $(LIBDIR)libmodel.$(libext)
 	cd DHELAS; make
 $(LIBDIR)libmodel.$(libext): MODEL
 	cd MODEL; make	 

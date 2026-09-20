@@ -12,6 +12,7 @@ C
 C###############################################################################
 
       module ALOHA_OBJECT
+         USE MODEL_OBJECT
 c     Same layout as the plain HELAS library (aloha_functions.f), with the
 c     momentum and the wavefunction components promoted to dual numbers:
 c     their extra components carry the derivatives with respect to the

@@ -11,6 +11,7 @@ C distribution.
 C
 C###############################################################################
            module ALOHA_OBJECT
+              USE MODEL_OBJECT
               TYPE ALOHA
                  SEQUENCE
                  double complex::W(5)

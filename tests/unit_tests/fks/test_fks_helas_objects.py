@@ -913,6 +913,68 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual(first_physical['born_flavor_index'], 1)
         self.assertEqual(first_physical['extra_cnt_flavor_index'], 4)
 
+    def test_grouped_fks_explicit_flavor_restrictions(self):
+        """Fixed particles inside merged groups stay fixed in NLO syntax."""
+
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate e+ e- > d d~ [real=QCD]')
+        self.assertTrue(interface.options['include_lepton_initiated_processes'])
+
+        process = interface._fks_multi_proc['born_processes'][0].born_amp[
+            'process']
+        self.assertEqual([leg['flavor'] for leg in process['legs']],
+                         [[11], [-11], [1], [-1]])
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_elements = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_elements), 1)
+        flavor_map = matrix_elements[0].get_fks_flavor_map()
+        self.assertTrue(flavor_map)
+        self.assertTrue(all(entry['born_pdgs'] == [-11, 11, 1, -1]
+                            for entry in flavor_map))
+
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate u u~ > w+ w- [real=QED]')
+        matrix_element = fks_helas.FKSHelasMultiProcess(
+            interface._fks_multi_proc).get_matrix_elements()[0]
+        self.assertTrue(matrix_element.born_me.get_color_amplitudes())
+        self.assertTrue(all(entry['born_pdgs'] == [2, -2, 24, -24]
+                            for entry in matrix_element.get_fks_flavor_map()))
+
+    def test_grouped_mixed_wj_physical_maps(self):
+        """Mixed QCD/QED W+j keeps only executable physical FKS classes."""
+
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('set nlo_mixed_expansion True')
+        interface.exec_cmd(
+            'import model ./tests/input_files/LoopSMEWTest')
+        interface.exec_cmd(
+            'define p = 21 2 4 1 3 -2 -4 -1 -3 5 -5 22')
+        interface.exec_cmd('define j = p')
+        interface.exec_cmd(
+            'generate p p > w+ j QED^2=4 QCD^2=4 [real=QCD QED]')
+
+        matrix_elements = fks_helas.FKSHelasMultiProcess(
+            interface._fks_multi_proc).get_matrix_elements()
+        maps = [matrix_element.get_fks_flavor_map(resolve_virtual=False)
+                for matrix_element in matrix_elements]
+        self.assertTrue(all(flavor_map for flavor_map in maps))
+        self.assertEqual(
+            sorted(set(entry['extra_cnt_flavor_index']
+                       for entry in maps[0]
+                       if entry['extra_cnt_flavor_index'])),
+            [1, 2])
+        for flavor_map in maps:
+            config_indices = sorted(set(entry['fks_config_index']
+                                        for entry in flavor_map))
+            self.assertEqual(config_indices,
+                             list(range(1, len(config_indices) + 1)))
+
     def test_grouped_fks_low_memory_flavor_map(self):
         """The real multicore/low-memory path must preserve flavor couplings
         and produce the same physical class cardinality as in-process QCD

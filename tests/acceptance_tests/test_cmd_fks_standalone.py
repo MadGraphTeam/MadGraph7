@@ -87,6 +87,12 @@ PROCESSES = [
     {'id': 'uux_ttx',
      'process': 'u u~ > t t~ [QCD]',
      'model': 'loop_sm',
+     # This fixed-parton process has lpp1=lpp2=0. Once IDUP_D correctly
+     # contains physical quarks, genps_fks rejects its incoming-j collinear
+     # configurations because fixed shat is unsupported. The corresponding
+     # hadronic p p > t t~ limit oracle below covers those configurations with
+     # PDFs and requires every check to pass.
+     'limits': False,
      'born': 0.59212443086238242,
      'borntilde': 0.0,
      'bij': {(1, 1): 0.5853472637786112,
@@ -160,12 +166,17 @@ class TestFKSStandalone(unittest.TestCase):
     def _output_fks_sa(self, process, model, path, limits=False):
         """generate + 'output standalone_fortran --fks' + launch (builds & runs
         check_fks, and with limits=True also test_soft_col_limits)."""
+        cmd = self._generate_fks_sa(process, model, path, limits=limits)
+        self._run(cmd, 'launch %s -f' % path)
+
+    def _generate_fks_sa(self, process, model, path, limits=False):
+        """Generate FKS standalone source without compiling or launching it."""
         cmd = self._new_cmd()
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
         self._run(cmd, 'output standalone_fortran --fks %s%s -f'
                   % ('--limits ' if limits else '', path))
-        self._run(cmd, 'launch %s -f' % path)
+        return cmd
 
     def _output_amcatnlo(self, process, model, path):
         """generate + plain (full) aMC@NLO output of the same process."""
@@ -210,24 +221,46 @@ class TestFKSStandalone(unittest.TestCase):
         """Parse the stable POINT/P/value records emitted by check_fks."""
         points = []
         point = None
+        configuration = None
         for line in output.splitlines():
             toks = line.split()
             if len(toks) == 2 and toks[0] == 'POINT':
                 point = {'index': int(toks[1]), 'momenta': {},
-                         'born': None, 'borntilde': None, 'bij': {}}
+                          'born': None, 'borntilde': None, 'bij': {},
+                          'configurations': []}
+                configuration = None
                 points.append(point)
+            elif point is not None and len(toks) == 5 and \
+                    toks[:3] == ['====', 'FLAVOUR', 'CONFIGURATION'] and \
+                    toks[4] == '====':
+                configuration = {
+                    'index': int(toks[3]), 'born': None,
+                    'borntilde': None, 'bij': {}}
+                point['configurations'].append(configuration)
             elif point is not None and len(toks) == 6 and toks[0] == 'P':
                 point['momenta'][int(toks[1])] = tuple(
                     cls._fortran_float(v) for v in toks[2:])
             elif point is not None and len(toks) == 3 and \
                     toks[0] == 'BORN' and toks[1] == '=':
-                point['born'] = cls._fortran_float(toks[2])
+                target = configuration if configuration is not None else point
+                target['born'] = cls._fortran_float(toks[2])
             elif point is not None and len(toks) == 3 and \
                     toks[0] == 'BORNTILDE' and toks[1] == '=':
-                point['borntilde'] = cls._fortran_float(toks[2])
+                target = configuration if configuration is not None else point
+                target['borntilde'] = cls._fortran_float(toks[2])
             elif point is not None and len(toks) == 4 and toks[0] == 'B_ij':
                 key = (int(toks[1]), int(toks[2]))
-                point['bij'][key] = cls._fortran_float(toks[3])
+                target = configuration if configuration is not None else point
+                target['bij'][key] = cls._fortran_float(toks[3])
+        # Preserve the historical top-level interface: for grouped output it
+        # denotes the first physical configuration rather than whichever row
+        # happened to be printed last.
+        for parsed_point in points:
+            if parsed_point['configurations']:
+                first = parsed_point['configurations'][0]
+                parsed_point['born'] = first['born']
+                parsed_point['borntilde'] = first['borntilde']
+                parsed_point['bij'] = first['bij']
         return points
 
     @classmethod
@@ -300,6 +333,274 @@ class TestFKSStandalone(unittest.TestCase):
         for spec in PROCESSES:
             with self.subTest(process=spec['process']):
                 self._check_born_values(spec)
+
+    def test_fks_standalone_grouped_physical_flavors(self):
+        """Grouped QCD output evaluates every physical Born row independently.
+
+        Two points and three repeated calls exercise the flavor-aware Born and
+        color-link caches. Down/up rows differ, while generation-equivalent
+        first/second-generation rows agree and match fixed-flavor references.
+        """
+
+        path = pjoin(self.tmpdir, 'grouped_qcd')
+        self._output_fks_sa('p p > w+ w- [real=QCD]', 'loop_sm', path)
+        expected = {
+            'P0_QQx_wpwm': [
+                [0.022213760524088497, 0.0051099582274946693],
+                [0.0057460860777143481, 0.016065806963586577],
+            ],
+            'P0_QxQ_wpwm': [
+                [0.0046865329655036867, 0.022651095898120144],
+                [0.015592504815818439, 0.0062100269962616240],
+            ],
+        }
+        born_dirs = sorted(glob.glob(pjoin(path, 'SubProcesses', 'P*')))
+        self.assertEqual(set(os.path.basename(item) for item in born_dirs),
+                         set(expected))
+        for born_dir in born_dirs:
+            points = self.parse_check_fks_points(self._run_check_fks(
+                born_dir, points=2, seed=(1802, 9373), calls=3))
+            self.assertEqual(len(points), 2)
+            for point, reference in zip(
+                    points, expected[os.path.basename(born_dir)]):
+                configurations = point['configurations']
+                self.assertEqual([item['index'] for item in configurations],
+                                 [1, 2, 3, 4])
+                self.assertClose(configurations[0]['born'], reference[0])
+                self.assertClose(configurations[1]['born'], reference[1])
+                self.assertClose(configurations[2]['born'], reference[0])
+                self.assertClose(configurations[3]['born'], reference[1])
+                self.assertNotEqual(configurations[0]['born'],
+                                    configurations[1]['born'])
+                self.assertEqual(configurations[0]['bij'],
+                                 configurations[2]['bij'])
+                self.assertEqual(configurations[1]['bij'],
+                                 configurations[3]['bij'])
+
+    @staticmethod
+    def _mixed_wj_driver_source():
+        """Fixed-point real/extra-counterterm oracle for mixed W+j output."""
+        return r"""      PROGRAM CHECK_MIXED_WJ
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'nFKSconfigs.inc'
+      INTEGER I,J,K,NFKSPROCESS
+      DOUBLE PRECISION PR(0:3,NEXTERNAL),PB(0:3,NEXTERNAL-1)
+      DOUBLE PRECISION WGT,E,E3,E4,MW,S
+      DOUBLE COMPLEX CNTS(2,NSPLITORDERS)
+      LOGICAL TARGET
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      CALL SETPARA('param_card.dat')
+      MW=80.419D0
+      S=1000D0
+      E=(S-MW)/2D0
+      PR(:,:)=0D0
+      PR(0,1)=S/2D0
+      PR(3,1)=S/2D0
+      PR(0,2)=S/2D0
+      PR(3,2)=-S/2D0
+      PR(0,3)=MW
+      PR(0,4)=E
+      PR(1,4)=E
+      PR(0,5)=E
+      PR(1,5)=-E
+      E3=(S*S+MW*MW)/(2D0*S)
+      E4=(S*S-MW*MW)/(2D0*S)
+      PB(:,:)=0D0
+      PB(0,1)=S/2D0
+      PB(3,1)=S/2D0
+      PB(0,2)=S/2D0
+      PB(3,2)=-S/2D0
+      PB(0,3)=E3
+      PB(1,3)=E4
+      PB(0,4)=E4
+      PB(1,4)=-E4
+      DO K=1,3
+        DO I=1,FKS_CONFIGS
+          TARGET=(PDG_TYPE_D(I,1).EQ.1.AND.
+     $      PDG_TYPE_D(I,2).EQ.2.AND.PDG_TYPE_D(I,3).EQ.24.AND.
+     $      PDG_TYPE_D(I,4).EQ.1.AND.PDG_TYPE_D(I,5).EQ.1).OR.
+     $      (PDG_TYPE_D(I,1).EQ.2.AND.
+     $      PDG_TYPE_D(I,2).EQ.2.AND.PDG_TYPE_D(I,3).EQ.24.AND.
+     $      PDG_TYPE_D(I,4).EQ.1.AND.PDG_TYPE_D(I,5).EQ.2)
+          IF (TARGET) THEN
+            NFKSPROCESS=I
+            WRITE(*,*) 'ORACLE_BEGIN',K,I
+            WRITE(*,*) 'ORACLE_PDGS',
+     $        (PDG_TYPE_D(I,J),J=1,NEXTERNAL)
+            WRITE(*,*) 'ORACLE_INDICES',REAL_FLAVOR_INDEX_D(I),
+     $        BORN_FLAVOR_INDEX_D(I),EXTRA_CNT_FLAVOR_INDEX_D(I),
+     $        EXTRA_CNT_D(I)
+            WRITE(*,*) 'ORACLE_EXTRA_PDGS',
+     $        (EXTRA_CNT_PDG_D(I,J),J=1,NEXTERNAL-1)
+            WRITE(*,*) 'ORACLE_EXTRA_COLORS',
+     $        (EXTRA_CNT_COLOR_D(I,J),J=1,NEXTERNAL-1)
+            WRITE(*,*) 'ORACLE_EXTRA_CHARGES',
+     $        (EXTRA_CNT_CHARGE_D(I,J),J=1,NEXTERNAL-1)
+            CALL SMATRIX_REAL(PR,WGT)
+            WRITE(*,*) 'ORACLE_REAL',WGT
+            CALL EXTRA_CNT(PB,EXTRA_CNT_D(I),CNTS)
+            DO J=1,NSPLITORDERS
+              WRITE(*,*) 'ORACLE_CNT',J,DBLE(CNTS(1,J)),
+     $          DIMAG(CNTS(1,J)),DBLE(CNTS(2,J)),
+     $          DIMAG(CNTS(2,J))
+            ENDDO
+            WRITE(*,*) 'ORACLE_END'
+          ENDIF
+        ENDDO
+      ENDDO
+      END
+"""
+
+    def _run_mixed_wj_driver(self, output_path, subproc_pattern):
+        """Compile and run the mixed W+j oracle in one subprocess."""
+        found = glob.glob(pjoin(output_path, 'SubProcesses', subproc_pattern))
+        self.assertEqual(len(found), 1, found)
+        subproc = found[0]
+        misc.compile(cwd=pjoin(output_path, 'Source'))
+
+        matrix_objects = [
+            os.path.basename(path)[:-2] + '.o' for path in
+            sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
+        counterterm_objects = [
+            os.path.basename(path)[:-2] + '.o' for path in
+            sorted(glob.glob(pjoin(subproc, 'born_cnt_*.f')))]
+        objects = (matrix_objects + counterterm_objects +
+                   ['real_me_chooser.o', 'extra_cnt_wrapper.o',
+                    'splitorders_stuff.o'])
+        self.assertTrue(matrix_objects)
+        self.assertTrue(counterterm_objects)
+
+        source = pjoin(subproc, 'check_mixed_wj.f')
+        with open(source, 'w') as fsock:
+            fsock.write(self._mixed_wj_driver_source())
+        misc.compile(objects + ['check_mixed_wj.o'], cwd=subproc)
+
+        executable = pjoin(subproc, 'check_mixed_wj')
+        libdir = pjoin(output_path, 'lib')
+        subprocess.check_call(
+            ['gfortran', '-o', executable, 'check_mixed_wj.o'] + objects +
+            ['-L%s' % libdir, '-ldhelas', '-lmodel'], cwd=subproc)
+        output = subprocess.check_output(
+            [executable], cwd=subproc, stderr=subprocess.STDOUT)
+        return self._parse_mixed_wj_driver(output.decode(errors='replace'))
+
+    @classmethod
+    def _parse_mixed_wj_driver(cls, output):
+        """Parse ORACLE_* records, ignoring diagnostics from matrix calls."""
+        records = {}
+        current = None
+        for line in output.splitlines():
+            tokens = line.split()
+            if not tokens or not tokens[0].startswith('ORACLE_'):
+                continue
+            tag = tokens[0][7:].lower()
+            if tag == 'begin':
+                current = {'repeat': int(tokens[1]), 'row': int(tokens[2]),
+                           'counterterms': {}}
+                continue
+            if current is None:
+                continue
+            if tag in ('pdgs', 'extra_pdgs', 'extra_colors', 'indices'):
+                current[tag] = tuple(int(value) for value in tokens[1:])
+            elif tag == 'extra_charges':
+                current[tag] = tuple(cls._fortran_float(value)
+                                     for value in tokens[1:])
+            elif tag == 'real':
+                current['real'] = cls._fortran_float(tokens[1])
+            elif tag == 'cnt':
+                current['counterterms'][int(tokens[1])] = tuple(
+                    cls._fortran_float(value) for value in tokens[2:])
+            elif tag == 'end':
+                records.setdefault(current['pdgs'], []).append(current)
+                current = None
+        return records
+
+    def test_fks_standalone_grouped_mixed_wj_tree_values(self):
+        """Grouped mixed-QCD/QED W+j real and extra-counterterm rows match
+        fixed-flavour output, including physical metadata and repeated calls."""
+        model = pjoin(MG5DIR, 'tests', 'input_files', 'LoopSMEWTest')
+        grouped_path = pjoin(self.tmpdir, 'grouped_mixed_wj')
+        reference_path = pjoin(self.tmpdir, 'fixed_mixed_wj')
+
+        cmd = self._new_cmd()
+        self._run(cmd, 'set nlo_mixed_expansion True --no_save')
+        self._run(cmd, 'set apply_flavor_grouping True --no_save')
+        self._run(cmd, 'import model %s' % model)
+        self._run(cmd, 'generate p p > w+ j QED^2=4 QCD^2=4 '
+                       '[real=QCD QED]')
+        self._run(cmd, 'output standalone_fortran --fks --limits %s -f' %
+                  grouped_path)
+
+        cmd = self._new_cmd()
+        self._run(cmd, 'set nlo_mixed_expansion True --no_save')
+        self._run(cmd, 'set apply_flavor_grouping False --no_save')
+        self._run(cmd, 'import model %s' % model)
+        self._run(cmd, 'generate g u > w+ d QED^2=4 QCD^2=4 '
+                       '[real=QCD QED]')
+        self._run(cmd, 'output standalone_fortran --fks --limits %s -f' %
+                  reference_path)
+
+        grouped = self._run_mixed_wj_driver(grouped_path, 'P*_gQ_wpQ')
+        reference = self._run_mixed_wj_driver(reference_path, 'P*_gu_wpd')
+        target_pdgs = ((1, 2, 24, 1, 1), (2, 2, 24, 1, 2))
+        self.assertEqual(set(grouped), set(target_pdgs))
+        self.assertEqual(set(reference), set(target_pdgs))
+
+        expected_real = {
+            target_pdgs[0]: 2.4497695572173661e-4,
+            target_pdgs[1]: 4.9257600649863040e-4,
+        }
+        for pdgs in target_pdgs:
+            self.assertEqual(len(grouped[pdgs]), 3)
+            self.assertEqual(len(reference[pdgs]), 3)
+            for actual, fixed in zip(grouped[pdgs], reference[pdgs]):
+                self.assertEqual(actual['repeat'], fixed['repeat'])
+                self.assertEqual(actual['pdgs'], pdgs)
+                self.assertEqual(actual['extra_pdgs'], (22, 2, 24, 1))
+                self.assertEqual(actual['extra_colors'], (1, 3, 1, 3))
+                for charge, expected in zip(
+                        actual['extra_charges'], (0., 2./3., 1., -1./3.)):
+                    self.assertClose(charge, expected, rel=1e-12)
+                self.assertEqual(actual['extra_pdgs'], fixed['extra_pdgs'])
+                self.assertEqual(actual['extra_colors'],
+                                 fixed['extra_colors'])
+                self.assertEqual(actual['extra_charges'],
+                                 fixed['extra_charges'])
+                self.assertClose(actual['real'], fixed['real'], rel=1e-12)
+                self.assertClose(actual['real'], expected_real[pdgs],
+                                 rel=1e-12)
+                self.assertEqual(set(actual['counterterms']),
+                                 set(fixed['counterterms']))
+                for order in actual['counterterms']:
+                    for value, expected in zip(
+                            actual['counterterms'][order],
+                            fixed['counterterms'][order]):
+                        self.assertClose(value, expected, rel=1e-12)
+
+        self.assertEqual(grouped[target_pdgs[0]][0]['indices'],
+                         (1, 1, 1, 1))
+        self.assertEqual(grouped[target_pdgs[1]][0]['indices'],
+                         (3, 1, 1, 1))
+        self.assertEqual(reference[target_pdgs[0]][0]['indices'],
+                         (1, 1, 0, 1))
+        self.assertEqual(reference[target_pdgs[1]][0]['indices'],
+                         (1, 1, 0, 1))
+
+        for pdgs in target_pdgs:
+            first = grouped[pdgs][0]
+            for repeated in grouped[pdgs][1:]:
+                self.assertEqual(repeated['indices'], first['indices'])
+                self.assertClose(repeated['real'], first['real'], rel=1e-14)
+                self.assertEqual(set(repeated['counterterms']),
+                                 set(first['counterterms']))
+                for order in repeated['counterterms']:
+                    for value, expected in zip(
+                            repeated['counterterms'][order],
+                            first['counterterms'][order]):
+                        self.assertClose(value, expected, rel=1e-14)
 
     def _check_vs_amcatnlo(self, spec):
         """the standalone Born building blocks match the ones computed by the
@@ -565,15 +866,16 @@ class TestFKSStandalone(unittest.TestCase):
 
     def test_fks_standalone_limits_pp_ttx(self):
         """soft and collinear limits of p p > t t~ [QCD] through the
-        '--limits' standalone output: every partonic channel (gg, q q~,
-        q~ q) must pass test_soft_col_limits, the initial-state collinear
-        ones included (hadronic beams with the built-in PDF set)."""
+        '--limits' standalone output: every grouped partonic family (gg,
+        Q Q~, Q~ Q) must pass test_soft_col_limits, the initial-state
+        collinear ones included (hadronic beams with the built-in PDF set)."""
         path = pjoin(self.tmpdir, 'pp_ttx_limits')
         self._output_fks_sa('p p > t t~ [QCD]', 'loop_sm', path, limits=True)
         born_dirs = self._assert_limits_passed(path)
         names = [os.path.basename(d) for d in born_dirs]
         self.assertIn('P0_gg_ttx', names)
-        self.assertTrue(any(n.startswith('P0_uux') for n in names), names)
+        self.assertIn('P0_QQx_ttx', names)
+        self.assertIn('P0_QxQ_ttx', names)
 
 
 if __name__ == '__main__':

@@ -739,7 +739,19 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # check if any initial-state leg contains leptons. If so, switch 
         # include_lepton_initiated_processes to True
         lep_ids = [11, -11, 13, -13, 15, -15]
-        initial_ids = sum([l['ids'] for l in myprocdef['legs'] if not l['state']], [])
+        initial_ids = []
+        merged_particles = myprocdef['model'].get('merged_particles')
+        for leg in [leg for leg in myprocdef['legs'] if not leg['state']]:
+            if leg.get('flavor'):
+                initial_ids.extend(leg['flavor'])
+                continue
+            for pdg in leg['ids']:
+                members = merged_particles.get(abs(pdg))
+                if members:
+                    initial_ids.extend(member if pdg > 0 else -member
+                                       for member in members)
+                else:
+                    initial_ids.append(pdg)
         if any([idd in lep_ids for idd in initial_ids]) and \
                 not self.options['include_lepton_initiated_processes']:
             logger.warning('The process definition has leptons in the initial state')

@@ -1521,6 +1521,8 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         # type(aloha) / type(mp_aloha) must be accessible for the tree-level
         # wavefunction arguments that are now passed as structured types.
         out.write('use ALOHA_OBJECT\n')
+        if 'M' in self.tag:
+            out.write('use MODEL_OBJECT\n')
         out.write('implicit none\n')
         # define the complex number CI = 0+1j
         if 'MP' in self.tag:
@@ -1563,6 +1565,9 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
                     continue
                 out.write(' %s %s\n' % (self.type2def['complex'], name))
                 out.write(' external %s\n' % (name))
+            elif name.startswith('COUP') and 'M' in self.tag:
+                out.write(' type(flv_coupling) M%s\n' % name)
+                out.write(' %s %s\n' % (self.type2def[type], name))
             else:
                 out.write(' %s %s\n' % (self.type2def[type], name))
 
@@ -1691,10 +1696,10 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         out = StringIO()
         # define the type of function and argument
         
+        arguments = [arg for format, arg in self.define_argument_list(couplings)]
         if 'M' in self.tag:
-            arguments = ['M%s' % arg for format, arg in self.define_argument_list(couplings)]
-        else:
-            arguments = [arg for format, arg in self.define_argument_list(couplings)]
+            arguments = ['M%s' % arg if arg.startswith('COUP') else arg
+                         for arg in arguments]
         self.declaration.add(('list_complex', 'P%s'% self.outgoing))
         self.declaration.add(('list_complex', 'P%s'% self.l_helas_id))        
         self.declaration.add(('list_complex', 'coeff'))
