@@ -159,6 +159,35 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn(
             'IF (MAX_VIRTUAL_FLAVOR_INDEX.GT.1) MC_HEL=0', content)
 
+    def test_fixed_order_stratifies_physical_flavors_by_topology(self):
+        """Grouped FO sampling sums flavours inside one sampled topology."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        with open(os.path.join(template_dir, 'driver_mintFO.f')) as stream:
+            content = ' '.join(
+                stream.read().upper().replace('$', '').split())
+
+        self.assertIn('CALL SETUP_PHYSICAL_FKS_MAP(PHYSICAL_FKS_MAP)',
+                      content)
+        self.assertIn(
+            'FKS_TOPOLOGY_D(EXISTING_FKS).EQ. FKS_TOPOLOGY_D(IFKS)',
+            content)
+        self.assertIn('DO IFLAV_CONFIG=1,NBORN_FLAVOR_CONFIGS', content)
+        self.assertIn(
+            'NFKS_BORN=BORN_FKS_CONFIG_D(IFLAV_CONFIG)', content)
+        self.assertIn(
+            'DO J=1,PHYSICAL_FKS_MAP(IRAN_PICKED,0,NFKS_SECTOR)',
+            content)
+        self.assertIn(
+            'IF (BORN_FLAVOR_INDEX_D(IFKS).NE.BORN_CLASS) CYCLE',
+            content)
+        self.assertIn('JAC=1D0/VOL', content)
+        self.assertIn('SIG_NO_NBODY=SIG_NO_NBODY+SIG', content)
+        self.assertIn('ABS(SIG_NO_NBODY)*VOL)', content)
+        self.assertNotIn('GET_MC_INTEGER_GROUP_VOLUME', content)
+
     def test_grouped_poles_use_physical_born_classes(self):
         """Pole checks select links and virtuals from each physical class."""
 
