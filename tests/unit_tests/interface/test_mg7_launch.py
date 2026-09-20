@@ -585,6 +585,50 @@ class MG7CmdTest(unittest.TestCase):
         process.write_hwu(None)
         self.assertFalse(os.path.exists(self.hwu_path()))
 
+    # -- the Events/<run>/plots switch --------------------------------------
+    def plot_maker(self, make_plots):
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['make_plots'] = make_plots
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def plot_dir(self):
+        return os.path.join(self.me_dir,
+                            self.launch.MadgraphProcess.plot_dir_name)
+
+    def test_plots_are_on_by_default(self):
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['make_plots'], True)
+
+    def test_plots_can_be_switched_off(self):
+        process = self.plot_maker(False)
+        process.make_plots(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_no_histograms_no_plot_directory(self):
+        process = self.plot_maker(True)
+        process.make_plots(None)
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_missing_matplotlib_does_not_fail_the_run(self):
+        """the numbers are in info.json: a run without the backend carries on"""
+        from madgraph.iolibs.template_files.mg7 import plots
+        saved = plots._pyplot
+
+        def no_matplotlib():
+            raise plots.BackendMissing("No module named 'matplotlib'")
+
+        plots._pyplot = no_matplotlib
+        try:
+            process = self.plot_maker(True)
+            process.make_plots(self.FakeHistograms())   # must not raise
+        finally:
+            plots._pyplot = saved
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
     # -- "set histograms ..." in the launch question ------------------------
     def histogram_selector(self, card_text=None):
         """An MG7Selector reduced to what do_set needs, on this output's card."""

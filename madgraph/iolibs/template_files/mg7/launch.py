@@ -35,6 +35,7 @@ import madspace as ms
 _drop_install_path()
 from models.check_param_card import ParamCard
 from madgraph.iolibs.template_files.mg7 import hwu_output
+from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
@@ -1483,12 +1484,40 @@ class MadgraphProcess:
         else:
             raise ValueError("Unknown output format")
         self.write_hwu(histograms)
+        self.make_plots(histograms)
         if systematics is not None:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
 
     hwu_file_name = "MADatLO.HwU"
+    plot_dir_name = "plots"
+
+    def make_plots(self, histograms) -> None:
+        """Draw the event-sample histograms into Events/<run>/plots, with the
+        scale and PDF bands info.json carries, and say where they landed.
+
+        This does not go through the HwU file: the bands are already computed
+        per bin by madspace, so drawing them directly is both fewer steps and
+        more than histograms.py can do without the LHAPDF python module.
+        """
+        if histograms is None or not self.run_card["run"]["make_plots"]:
+            return
+        out_dir = os.path.join(self.run_path, self.plot_dir_name)
+        try:
+            data = json.loads(histograms.to_json(self.systematics))
+            written = plots.render(data, out_dir)
+        except plots.BackendMissing as error:
+            logger.info("matplotlib is not available (%s): no plots. The "
+                        "distributions are in %s",
+                        error, os.path.join(self.run_path, "info.json"))
+            return
+        except Exception as error:
+            logger.warning("could not draw the histograms: %s", error)
+            return
+        if not written:
+            return
+        logger.info("%d plot(s) stored in %s", len(written), out_dir)
 
     def write_hwu(self, histograms) -> None:
         """Write the event-sample histograms next to the events in the HwU

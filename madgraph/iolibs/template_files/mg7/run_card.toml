@@ -24,6 +24,10 @@ cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
+# draw the [histograms] distributions, bands included, into Events/<run>/plots
+# (one PDF per observable). Needs matplotlib: without it the run says so once
+# and carries on, the numbers being in Events/<run>/info.json either way.
+make_plots = %(run.make_plots)s
 # write the [histograms] distributions as MADatLO.HwU next to the events, in
 # the format aMC@NLO writes as MADatNLO.HwU, so that an LO run can be overlaid
 # on an NLO one with madgraph/various/histograms.py. The same numbers (bands
