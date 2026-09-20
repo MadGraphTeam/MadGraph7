@@ -246,6 +246,21 @@ jobs:
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_flavor_grouping_consistency_mg7 -pA -t0 -l INFO
 
+      # ---- acceptancetest_mg7_polarised_mirror ----
+      # The initial-state mirror against a polarised (non Lorentz invariant)
+      # matrix element: sigma(p p > z{+} j) and sigma(p p > z{-} j) evaluated in
+      # the Z rest frame (me_frame = [3]) must agree, because the two beams of a
+      # symmetric pp collider cannot be told apart and the mirror is what
+      # averages over them. Guards that the matrix element is evaluated on the
+      # momenta the event is written with. Self-skips if the madspace + LHAPDF
+      # stack is unavailable.
+      - name: "acceptancetest_mg7_polarised_mirror"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            ./tests/test_manager.py test_polarised_mirror_symmetry_mg7 -pA -t0 -l INFO
+
       # ---- acceptancetest_mg7_vegas_reproducibility ----
       # mg7 seeded-generation reproducibility (p p > t t~, plain VEGAS-optimized
       # run): the same run_card seed must give a byte-identical LHE file across

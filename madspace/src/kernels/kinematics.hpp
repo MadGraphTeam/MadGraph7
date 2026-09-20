@@ -1014,5 +1014,60 @@ kernel_momenta_to_x1x2(FIn<T, 2> p_ext, FIn<T, 0> e_cm, FOut<T, 0> x1, FOut<T, 0
     x2 = 2. * p_ext[1][0] / e_cm;
 }
 
+// Boost every external momentum into the rest frame of the sum of the momenta
+// selected by frame_mask. This is the frame the matrix element is evaluated in
+// when the run card asks for one (me_frame); it only makes a difference for an
+// amplitude that is not Lorentz invariant, i.e. a polarised one. Same
+// definition as madevent's boost_to_frame (Template/LO/SubProcesses/genps.f).
+template <typename T>
+KERNELSPEC void
+kernel_boost_to_frame(FIn<T, 2> p_ext, IIn<T, 1> frame_mask, FOut<T, 2> p_out) {
+    FourMom<T> p_boost{0., 0., 0., 0.};
+    std::size_t selected_count = 0, selected_index = 0;
+    for (std::size_t i = 0; i < p_ext.size(); ++i) {
+        if (single_index(frame_mask[i]) == 0) {
+            continue;
+        }
+        auto p_i = p_ext[i];
+        for (int j = 0; j < 4; ++j) {
+            p_boost[j] = p_boost[j] + p_i[j];
+        }
+        ++selected_count;
+        selected_index = i;
+    }
+    if (selected_count == 0) {
+        // Nothing selected, so nothing defines a frame: pass the momenta
+        // through rather than boosting by a null vector, whose zero invariant
+        // mass boost() would floor at EPS2 and turn every energy into garbage.
+        // Same choice as the qq == 0 branch of the HELAS boostx madevent uses.
+        for (std::size_t i = 0; i < p_ext.size(); ++i) {
+            store_mom<T>(p_out[i], load_mom<T>(p_ext[i]));
+        }
+        return;
+    }
+    for (std::size_t i = 0; i < p_ext.size(); ++i) {
+        auto p_i = boost<T>(load_mom<T>(p_ext[i]), p_boost, -1.);
+        // A single particle defining the frame must come out exactly at rest.
+        // boost() only gets there up to the rounding of the boost factor,
+        // leaving a residual three-momentum of a few 1e-14 whose direction is
+        // pure noise, and that is not harmless: vxxxxx branches on pp == 0 and
+        // for a massive vector at exactly zero three-momentum takes the frame z
+        // axis as quantisation axis; otherwise it builds the polarisation
+        // vectors from the momentum direction, i.e. from the rounding noise. So
+        // impose the defining property of the frame explicitly. The energy is
+        // left untouched: zeroing the three-momentum shifts the invariant mass
+        // by O(1e-28) relative, and HELAS takes the mass as a separate
+        // argument anyway. With two or more selected particles it is only their
+        // sum that is at rest and no single leg sits on the branch point, so
+        // this is needed for selected_count == 1 only.
+        if (selected_count == 1 && i == selected_index) {
+            p_i[1] = 0.;
+            p_i[2] = 0.;
+            p_i[3] = 0.;
+        }
+        store_mom<T>(p_out[i], p_i);
+    }
+}
+
 } // namespace kernels
 } // namespace madspace

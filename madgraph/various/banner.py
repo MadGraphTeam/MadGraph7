@@ -6683,6 +6683,21 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)
+        # Lorentz frame the matrix element is evaluated in, as a list of the
+        # external particles whose momenta are summed up to define it (same
+        # convention as the legacy run_card me_frame). The default [] means no
+        # boost at all: the matrix element sees the momenta in the frame they
+        # are generated in, which for a collision is the lab frame. [1, 2] is
+        # the partonic centre of mass, i.e. the frame madevent evaluates in,
+        # and [1] its equivalent for a 1 -> n decay. Only matters for a matrix
+        # element that is not Lorentz invariant, i.e. a polarised one, so the
+        # default costs nothing and leaves every other run unchanged.
+        self.add_toml_param('run', 'me_frame', [], typelist=int,
+            comment="external particles whose momenta are summed up to define the "
+                    "rest frame in which to evaluate the matrix element; [] (the "
+                    "default) applies no boost, [1,2] is the partonic centre of "
+                    "mass (what madevent evaluates in). Only matters for a non "
+                    "Lorentz invariant (polarised) matrix element")
 
         # ---------------------------- [gridpack] ----------------------
         self.add_toml_param('gridpack', 'save_gridpack', False)
@@ -7292,6 +7307,19 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard(
                     "Invalid device '%s': the device index must be a non-negative integer"
                     % entry)
+
+        # me_frame lists external particles by their (one based) position; the
+        # number of external particles is only known to the run directory, so
+        # all that can be checked here is that the entries could name one.
+        me_frame = self['run']['me_frame']
+        if len(set(me_frame)) != len(me_frame):
+            raise InvalidRunCard(
+                "me_frame lists the same particle twice: %s" % (me_frame,))
+        for entry in me_frame:
+            if entry < 1:
+                raise InvalidRunCard(
+                    "Invalid me_frame entry %s: particles are numbered from 1 "
+                    "(1 and 2 are the initial state)" % entry)
 
     # ------------------------------------------------------------------
     # writing TOML

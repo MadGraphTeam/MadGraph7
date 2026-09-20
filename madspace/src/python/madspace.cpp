@@ -216,6 +216,18 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::classh<Value>(m, "Value", pydoc::doc("Value"))
         .def(py::init<me_int_t>(), py::arg("value"), pydoc::doc("Value::Value#2"))
         .def(py::init<double>(), py::arg("value"), pydoc::doc("Value::Value#3"))
+        // constant (non-batched) tensors, e.g. the frame_mask of
+        // boost_to_frame or the permutations of permute_momenta
+        .def(
+            py::init<const std::vector<me_int_t>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
+        .def(
+            py::init<const std::vector<double>&, const std::vector<int>&>(),
+            py::arg("values"),
+            py::arg("shape") = std::vector<int>{}
+        )
         .def("__str__", &to_string<Value>)
         .def("__repr__", &to_string<Value>)
         .def_readonly("type", &Value::type, pydoc::doc("Value::type"))
@@ -1287,7 +1299,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
                 std::size_t,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             // C++ defaults to {momenta_in} / {matrix_element_out}; kept required
@@ -1297,6 +1311,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("outputs"),
             py::arg("diagram_count") = 1,
             py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
@@ -1304,11 +1320,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const MatrixElementApi&,
                 const std::vector<MatrixElement::MatrixElementInput>&,
                 const std::vector<MatrixElement::MatrixElementOutput>&,
-                bool>(),
+                bool,
+                const std::vector<me_int_t>&,
+                std::size_t>(),
             py::arg("matrix_element_api"),
             py::arg("inputs"),
             py::arg("outputs"),
             py::arg("sample_random_inputs") = false,
+            py::arg("me_frame") = std::vector<me_int_t>{},
+            py::arg("incoming_count") = 2,
             pydoc::doc("MatrixElement::MatrixElement#2")
         )
         .def(
@@ -1332,6 +1352,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "external_inputs",
             &MatrixElement::external_inputs,
             pydoc::doc("MatrixElement::external_inputs")
+        )
+        .def(
+            "frame_mask",
+            &MatrixElement::frame_mask,
+            pydoc::doc("MatrixElement::frame_mask")
+        )
+        .def(
+            "reference_mask",
+            &MatrixElement::reference_mask,
+            pydoc::doc("MatrixElement::reference_mask")
         );
 
     py::classh<MLP, FunctionGenerator> mlp(m, "MLP", pydoc::doc("MLP"));
