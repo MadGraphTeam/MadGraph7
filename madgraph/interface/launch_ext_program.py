@@ -588,10 +588,145 @@ class SALauncher(ExtLauncher):
             return None
 
 
+class FKSSALauncher(ExtLauncher):
+    """Launch the FKS Born building-block standalone check ('check_fks').
+
+    Produced by 'output standalone_fortran --fks'. ExtLauncher.run() first offers to
+    edit the param_card (bypassed with -f); launch_program() then compiles the
+    Source libraries, builds 'check_fks' in every born subprocess directory and
+    runs it, echoing the Born, spin-correlated Born and color/charge-linked
+    Borns for one phase-space point. The --energy / --timings / --nb_run
+    options are honoured.
+
+    For an output made with '--limits', it then also builds and runs the
+    aMC@NLO soft/collinear limit test (test_soft_col_limits) in every born
+    directory and reports whether the real emission approaches its
+    counterterms, which are built from these same Born building blocks.
+    """
+
+    # same input as the aMC@NLO launch uses for its 'test_ME' check: ME
+    # (not MC) counterterms, random energy/angle, 100 soft and 100 collinear
+    # points, all FKS configurations, first diagram
+    limits_input = "2\n-2 -2\n100 100\n0\n" + "-1\n" * 50
+
+    def __init__(self, cmd_int, running_dir, **options):
+        """initialize the FKS standalone version"""
+        ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
+        self.with_limits = os.path.isfile(
+            pjoin(running_dir, 'SubProcesses', 'check_sa_fks_limits'))
+        self.cards = ['param_card.dat']
+        if self.with_limits:
+            # the limit test reads the beams/energy from the run_card
+            self.cards.append('run_card.dat')
+
+    def launch_program(self):
+        """compile and run check_fks in each born subprocess directory."""
+        me_dir = self.running_dir
+        logger.info(
+            'Compiling Source libraries for the FKS standalone check...')
+        misc.compile(cwd=pjoin(me_dir, 'Source'))
+
+        sub_path = pjoin(me_dir, 'SubProcesses')
+        born_dirs = sorted(pjoin(sub_path, p) for p in os.listdir(sub_path)
+                           if p.startswith('P') and os.path.isfile(
+                               pjoin(sub_path, p, 'check_sa_fks.f')))
+        if not born_dirs:
+            logger.error(
+                'No FKS standalone born directory found in %s' % sub_path)
+            return
+
+        energy = float(getattr(self, 'energy', 0) or 0)
+        timings = int(getattr(self, 'timings', 0) or 0)
+        nb_run = int(getattr(self, 'nb_run', 1) or 1)
+
+        for born_path in born_dirs:
+            pdir = os.path.basename(born_path)
+            logger.info('Building check_fks in %s ...' % pdir)
+            misc.compile(['check_fks'], cwd=born_path)
+            logger.info('==== %s ====' % pdir)
+            # print the building-block values once (honouring --energy)
+            output = subprocess.Popen(
+                ['./check_fks', self._energy_arg(energy)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                cwd=born_path).communicate()[0]
+            if isinstance(output, bytes):
+                output = output.decode('utf-8', errors='replace')
+            logger.info(output)
+            if timings > 0:
+                self._run_with_timings(born_path, energy, timings, nb_run)
+
+        if self.with_limits:
+            failed = [os.path.basename(p) for p in born_dirs
+                      if not self._run_limits(p)]
+            if failed:
+                from madgraph import MadGraph5Error
+                raise MadGraph5Error('Soft/collinear limit test FAILED in %s '
+                    '(see test_ME.log there)' % ', '.join(failed))
+
+    def _run_limits(self, born_path):
+        """build and run test_soft_col_limits; True if no check FAILED."""
+        pdir = os.path.basename(born_path)
+        logger.info('Building test_soft_col_limits in %s ...' % pdir)
+        misc.compile(['test_soft_col_limits'], cwd=born_path)
+        log = pjoin(born_path, 'test_ME.log')
+        with open(pjoin(born_path, 'test_ME_input.txt'), 'w') as fsock:
+            fsock.write(self.limits_input)
+        with open(pjoin(born_path, 'test_ME_input.txt')) as stdin, \
+                open(log, 'w') as stdout:
+            misc.call(['./test_soft_col_limits'], cwd=born_path, stdin=stdin,
+                      stdout=stdout, stderr=subprocess.STDOUT)
+        content = open(log, errors='replace').read()
+        if 'incoming j_fks, but fixed shat' in content:
+            # an initial-state FKS parton needs a varying momentum fraction,
+            # i.e. PDF beams; for incoming leptons ([QED]) that means lepton
+            # densities, which the default run_card does not set up
+            logger.warning('%s: soft/collinear limit test NOT RUN: an FKS '
+                'parton is in the initial state, which needs PDF beams '
+                '(set lpp1/lpp2 in Cards/run_card.dat). See %s' % (pdir, log))
+            return True
+        npass, nfail = content.count('PASSED'), content.count('FAILED')
+        if nfail or not npass:
+            logger.error('%s: soft/collinear limit test FAILED '
+                         '(%d passed, %d failed), see %s'
+                         % (pdir, npass, nfail, log))
+            return False
+        logger.info('%s: soft/collinear limit test passed (%d checks)'
+                    % (pdir, npass))
+        return True
+
+    @staticmethod
+    def _energy_arg(energy):
+        """command-line sqrt(s) for check_fks; '0' means built-in default."""
+        return ('%.16g' % energy) if energy and energy > 0 else '0'
+
+    def _run_with_timings(self, born_path, energy, nb_try, nb_run):
+        """time nb_try Born re-evaluations, averaged over nb_run repetitions."""
+        run_times = []
+        for _ in range(nb_run):
+            t0 = time.time()
+            subprocess.call(
+                ['./check_fks', self._energy_arg(energy), str(nb_try)],
+                cwd=born_path, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            run_times.append(time.time() - t0)
+        avg = sum(run_times) / len(run_times)
+        if len(run_times) > 1:
+            sigma = math.sqrt(sum((t - avg) ** 2 for t in run_times)
+                              / (len(run_times) - 1))
+        else:
+            sigma = 0.0
+        sep = '=' * 60
+        print('\n' + sep)
+        print('Timing summary (%s): %d Born evaluation(s)/run, %d run(s)'
+              % (os.path.basename(born_path), nb_try, nb_run))
+        print('  wall time per run: %.6f +/- %.6f s' % (avg, sigma))
+        print(sep + '\n')
+
+
 class MWLauncher(ExtLauncher):
     """ A class to launch a simple Standalone test """
-    
-    
+
+
     def __init__(self, cmd_int, running_dir, **options):
         """ initialize the StandAlone Version"""
         ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
