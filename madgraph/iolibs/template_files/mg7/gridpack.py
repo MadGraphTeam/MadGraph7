@@ -50,6 +50,23 @@ def resolve_seed(seed: int) -> int:
     return seed
 
 
+def write_lhe_header(run_path: str, systematics) -> None:
+    """Write header.lhe next to events.npy: the <header>/<init> blocks the
+    npy formats otherwise drop, with no events. A gridpack has no run/param
+    card text or beam info at hand here, so, like the "lhe" format's own
+    <init> block, this is limited to the <initrwgt> weight-variation header
+    when systematics are configured."""
+    headers = []
+    if systematics is not None and systematics.weight_ids:
+        headers.append(ms.LHEHeader(
+            name="initrwgt", content=systematics.initrwgt(), escape_content=False
+        ))
+    writer = ms.LHEFileWriter(
+        os.path.join(run_path, "header.lhe"), ms.LHEMeta(headers=headers)
+    )
+    del writer  # closes the file (writes the closing tag)
+
+
 def main() -> None:
     # load run card and metadata. Use the RunCardMG7 representation when the
     # madgraph package is importable; gridpacks are meant to be portable, so
@@ -205,11 +222,13 @@ def main() -> None:
         event_generator.combine_to_compact_npy(
             os.path.join(run_path, "events.npy"), systematics
         )
+        write_lhe_header(run_path, systematics)
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
             os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
+        write_lhe_header(run_path, systematics)
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         lhe_path = os.path.join(run_path, "events.lhe")
