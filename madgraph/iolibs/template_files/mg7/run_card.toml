@@ -124,6 +124,18 @@ $multiparticles
 $cuts
 
 [histograms]
+# The observables to histogram, written at output time for this final state.
+# Same names as the cuts above, with "_1", "_2", ... selecting the hardest,
+# second hardest, ... particle of a group (order_by says what "hardest" means,
+# pt by default). Each needs a range and a number of bins:
+#     jet_1-pt.min = 0.0
+#     jet_1-pt.max = 500.0
+#     jet_1-pt.bin_count = 50
+# "weight" is the one name that is not an observable of the momenta: it is the
+# distribution of the event weight, in units of the cross section (so a fully
+# unweighted sample is a spike at 1).
+# "set histograms OFF" in the launch question removes them all, and
+# "set histograms default" puts the generated ones back.
 $histograms
 
 [madnis]

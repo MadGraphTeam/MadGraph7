@@ -217,6 +217,11 @@ class HistItem:
     min: float
     max: float
     bin_count: int
+    # the distribution of the event weight itself (the reserved "weight" key
+    # of [histograms]); it is read off the event record, not computed from
+    # the momenta, so it has no observable
+    name: str = ""
+    from_weight: bool = False
 
 
 class MadgraphProcess:
@@ -447,20 +452,29 @@ class MadgraphProcess:
             if key != "order_by"
         ]
 
+    # [histograms] key that means "the distribution of the event weight",
+    # normalised to the cross section (the mean weight), rather than an
+    # observable of the momenta: an unweighted sample is a spike at 1 and a
+    # partially unweighted one shows its spread, whatever the cross section.
+    weight_histogram_key = "weight"
+
     def init_histograms(self) -> None:
-        inf = float("inf")
         order_observable = self.run_card["histograms"].get("order_by", "pt")
-        #TODO: add reasonable defaults for min, max, bin_count
-        self.hist_data = [
-            HistItem(
-                observable_kwargs=self.parse_observable(key, order_observable),
+        self.hist_data = []
+        for key, values in self.run_card["histograms"].items():
+            if key == "order_by":
+                continue
+            from_weight = key == self.weight_histogram_key
+            self.hist_data.append(HistItem(
+                observable_kwargs=(
+                    None if from_weight
+                    else self.parse_observable(key, order_observable)),
                 min=values["min"],
                 max=values["max"],
                 bin_count=values["bin_count"],
-            )
-            for key, values in self.run_card["histograms"].items()
-            if key != "order_by"
-        ]
+                name=key,
+                from_weight=from_weight,
+            ))
 
     def ensure_pdf_set(self, pdf_set: str) -> misc.LhapdfPaths:
         """Make sure the requested LHAPDF set is available, downloading it into
@@ -876,21 +890,40 @@ class MadgraphProcess:
         context = ms.Context(device=ms.cpu_device(), thread_count=1)
         specs = [
             ms.EventHistogramSpec(
-                name=item.observable_kwargs["name"], min=item.min, max=item.max,
-                bin_count=item.bin_count)
+                name=item.name, min=item.min, max=item.max,
+                bin_count=item.bin_count, from_weight=item.from_weight)
             for item in self.hist_data
         ]
+        from_momenta = [item for item in self.hist_data if not item.from_weight]
         observables = []
         for meta in self.subprocess_data:
+            if not from_momenta:
+                # nothing to evaluate on the momenta (only the weight is
+                # histogrammed): no observable runtime to build
+                observables.append(None)
+                continue
             all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
             values = ms.ObservableValues([
                 ms.Observable(all_pids, **item.observable_kwargs)
-                for item in self.hist_data
+                for item in from_momenta
             ])
             observables.append(ms.SubprocessObservables(values, len(all_pids)))
+        # the weight histograms are drawn in units of the cross section, which
+        # is what the mean event weight is once the events are combined
         self.event_histograms_context = context
-        self.event_histograms = ms.EventHistograms(context, specs, observables)
+        self.event_histograms = ms.EventHistograms(
+            context, specs, observables,
+            reference_weight=self._mean_event_weight())
         return self.event_histograms
+
+    def _mean_event_weight(self) -> float:
+        """The cross section the generation converged to, used as the unit of
+        the weight histograms. 0 (the raw weight) when it is not available."""
+        try:
+            return float(self.event_generator.status().mean)
+        except Exception as error:
+            logger.debug("no cross section for the weight histograms: %s", error)
+            return 0.
 
     def log_systematics_summary(self) -> None:
         """Print the scale/PDF uncertainties on the total cross section (the
@@ -1992,6 +2025,11 @@ class MadgraphSubprocess:
             if len(self.process.cut_data) > 0
             else None
         )
+        # the integration histograms are functions of the momenta; the weight
+        # distribution is a property of the final event sample, so it is only
+        # filled by MadgraphProcess.build_event_histograms at combine time
+        momentum_hists = [item for item in self.process.hist_data
+                          if not item.from_weight]
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
@@ -2000,9 +2038,9 @@ class MadgraphSubprocess:
                     max=hist_item.max,
                     bin_count=hist_item.bin_count,
                 )
-                for hist_item in self.process.hist_data
+                for hist_item in momentum_hists
             ])
-            if len(self.process.hist_data) > 0
+            if momentum_hists
             else None
         )
 
@@ -3010,6 +3048,36 @@ def build_selector_cmd(mother=None):
                         run_card.remove_all_cut()
                         logger.info("removing all cuts from the run_card.toml")
                         self.modified_card.add("run")
+                        return
+                    # [histograms] is a list of observables, not a parameter,
+                    # so "set histograms ..." can only mean the whole section.
+                    if nlow in ("histograms", "histogram", "plots"):
+                        value = rest.lower()
+                        if value in ("off", "none", "no", "false", "0"):
+                            run_card.remove_all_histograms()
+                            logger.info(
+                                "removing all histograms from the run_card.toml")
+                            self.modified_card.add("run")
+                            return
+                        if value in ("default", "on"):
+                            if run_card.restore_default_histograms(
+                                    self.paths.get("run_default")):
+                                logger.info(
+                                    "restored the %d histograms written at "
+                                    "output time",
+                                    len(run_card["histograms"]))
+                                self.modified_card.add("run")
+                            else:
+                                logger.warning(
+                                    "no run_card_default.toml to restore the "
+                                    "histograms from")
+                            return
+                        logger.warning(
+                            "'set histograms %s': only OFF (remove them all) "
+                            "and default (put the generated ones back) are "
+                            "understood; edit the [histograms] section of "
+                            "Cards/run_card.toml for anything else",
+                            rest or "(no value)")
                         return
                     if nlow in ("lhc", "lep", "ilc", "lcc") and rest:
                         ecm = run_card.set_collider(nlow, rest, masses)

@@ -3363,13 +3363,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init([](const std::string& name,
                         double min,
                         double max,
-                        std::size_t bin_count) {
-                return EventHistogramSpec{name, min, max, bin_count};
+                        std::size_t bin_count,
+                        bool from_weight) {
+                return EventHistogramSpec{name, min, max, bin_count, from_weight};
             }),
             py::arg("name"),
             py::arg("min"),
             py::arg("max"),
-            py::arg("bin_count")
+            py::arg("bin_count"),
+            py::arg("from_weight") = false
         )
         .def_readwrite(
             "name", &EventHistogramSpec::name, pydoc::doc("EventHistogramSpec::name")
@@ -3384,6 +3386,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "bin_count",
             &EventHistogramSpec::bin_count,
             pydoc::doc("EventHistogramSpec::bin_count")
+        )
+        .def_readwrite(
+            "from_weight",
+            &EventHistogramSpec::from_weight,
+            pydoc::doc("EventHistogramSpec::from_weight")
         );
     py::classh<SubprocessObservables>(
         m, "SubprocessObservables", pydoc::doc("SubprocessObservables")
@@ -3400,10 +3407,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 ContextPtr,
                 const std::vector<EventHistogramSpec>&,
-                const std::vector<std::optional<SubprocessObservables>>&>(),
+                const std::vector<std::optional<SubprocessObservables>>&,
+                double>(),
             py::arg("context"),
             py::arg("specs"),
             py::arg("observables"),
+            py::arg("reference_weight") = 0.,
             pydoc::doc("EventHistograms::EventHistograms")
         )
         .def_property_readonly(

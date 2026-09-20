@@ -537,6 +537,53 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(self.output_format({'madspin': 'ON'},
                                             initial='lhe_npy'), 'lhe')
 
+    # -- "set histograms ..." in the launch question ------------------------
+    def histogram_selector(self, card_text=None):
+        """An MG7Selector reduced to what do_set needs, on this output's card."""
+        from madgraph.various.banner import RunCardMG7
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        default_path = os.path.join(self.me_dir, 'Cards',
+                                    'run_card_default.toml')
+        card = RunCardMG7()
+        card.dynamic_sections['histograms'].update({
+            'jet_1-pt': {'min': 0., 'max': 500., 'bin_count': 50},
+            'sqrt_s': {'min': 0., 'max': 2000., 'bin_count': 50},
+        })
+        card.write(path)
+        card.write(default_path)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            selector_class, _ = self.launch.build_selector_cmd()
+        finally:
+            os.chdir(cwd)
+        obj = selector_class.__new__(selector_class)
+        obj.run_card = RunCardMG7(path, consistency=False)
+        obj.paths = {'run_default': default_path}
+        obj.modified_card = set()
+        return obj
+
+    def test_set_histograms_off_removes_them_all(self):
+        obj = self.histogram_selector()
+        self.assertTrue(obj.run_card['histograms'])
+        obj.do_set('histograms OFF')
+        self.assertEqual(dict(obj.run_card['histograms']), {})
+        self.assertIn('run', obj.modified_card)
+
+    def test_set_histograms_default_puts_them_back(self):
+        obj = self.histogram_selector()
+        obj.do_set('histograms off')
+        obj.do_set('histograms default')
+        self.assertIn('jet_1-pt', obj.run_card['histograms'])
+
+    def test_set_histograms_rejects_anything_else(self):
+        """a value that is not OFF/default leaves the section alone"""
+        obj = self.histogram_selector()
+        before = dict(obj.run_card['histograms'])
+        obj.do_set('histograms 42')
+        self.assertEqual(dict(obj.run_card['histograms']), before)
+        self.assertNotIn('run', obj.modified_card)
+
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')
         self.assertEqual(self.output_format(None), 'compact_npy')
