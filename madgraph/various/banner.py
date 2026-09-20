@@ -4438,7 +4438,9 @@ class RunCardLO(RunCard):
     retro_compatible_modes = ['vector.inc']
 
     if MG5DIR:
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_lo.dat")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_lo.dat")
+    else:
+        default_run_card = None
     
     def default_setup(self):
         """default value for the run_card.dat"""
@@ -5376,7 +5378,7 @@ class RunCardLO(RunCard):
 
         # Read file input/default_run_card_lo.dat
         # This has to be LAST !!
-        if os.path.exists(self.default_run_card):
+        if self.default_run_card and os.path.exists(self.default_run_card):
             self.read(self.default_run_card, consistency=False)
             
     def write(self, output_file, template=None, python_template=False,
@@ -5876,7 +5878,9 @@ class RunCardNLO(RunCard):
                       }
 
     if MG5DIR:
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_nlo.dat")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_nlo.dat")
+    else:
+        default_run_card = None
                       
         
     def default_setup(self):
@@ -6500,7 +6504,7 @@ class RunCardNLO(RunCard):
             
         # Read file input/default_run_card_nlo.dat
         # This has to be LAST !!
-        if os.path.exists(self.default_run_card):
+        if self.default_run_card and os.path.exists(self.default_run_card):
             self.read(self.default_run_card, consistency=False)
 
 
@@ -6596,7 +6600,7 @@ class RunCardMG7(RunCard):
     if MG5DIR:
         template_run_card = pjoin(MG5DIR, 'madgraph', 'iolibs',
                                   'template_files', 'mg7', 'run_card.toml')
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_mg7.toml")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_mg7.toml")
     else:
         template_run_card = None
         default_run_card = None

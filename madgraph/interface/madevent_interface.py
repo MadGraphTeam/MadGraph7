@@ -906,13 +906,14 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
-            return
+            return self.allowed_reweight
         self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
         opts = misc.from_plugin_import(plugin_path, 'new_reweight', warning=False)
         self.allowed_reweight += opts
+        return self.allowed_reweight
         
     def set_default_reweight(self):
         """initialise the switch for reweight"""

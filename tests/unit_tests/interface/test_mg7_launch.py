@@ -515,6 +515,35 @@ class MG7CmdTest(unittest.TestCase):
         switch = {'shower': 'Pythia8'}
         self.assertEqual(cmd._apply_laststep(switch, {'laststep': ''}), switch)
 
+    def output_format(self, switch, initial='compact_npy'):
+        """Run force_lhe_output_if_needed on a run_card asking for `initial`
+        and return the format the run ends up with."""
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        with open(path, 'w') as stream:
+            stream.write('[run]\nrun_name = "run"\n'
+                         'output_format = "%s"\n' % initial)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            self.launch.force_lhe_output_if_needed(switch)
+        finally:
+            os.chdir(cwd)
+        from madgraph.various.banner import RunCardMG7
+        return RunCardMG7(path, consistency=False)['run']['output_format']
+
+    def test_post_processing_forces_the_lhe_output(self):
+        """the npy formats carry no event record a shower could read"""
+        self.assertEqual(self.output_format({'shower': 'Pythia8'}), 'lhe')
+        self.assertEqual(self.output_format({'madspin': 'ON'},
+                                            initial='lhe_npy'), 'lhe')
+
+    def test_no_post_processing_keeps_the_npy_output(self):
+        self.assertEqual(self.output_format({}), 'compact_npy')
+        self.assertEqual(self.output_format(None), 'compact_npy')
+        self.assertEqual(
+            self.output_format({'shower': 'OFF', 'analysis': 'Not Avail.'}),
+            'compact_npy')
+
     def test_run_name_is_written_to_the_run_card(self):
         cmd = self.make_cmd()
         cwd = os.getcwd()

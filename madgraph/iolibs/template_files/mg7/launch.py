@@ -2856,7 +2856,7 @@ class MG7Cmd(Cmd):
             if not opts['force']:
                 switch = ask_edit_cards(mother=self)
             switch = self._apply_laststep(switch, opts)
-            check_lhe_output_required(switch)
+            force_lhe_output_if_needed(switch)
             _raise_open_file_limit()
             run_generation(switch)
         finally:
@@ -3746,11 +3746,13 @@ def run_generation(switch=None) -> None:
         _release_channel_generators(run_single(switch))
 
 
-def check_lhe_output_required(switch) -> None:
+def force_lhe_output_if_needed(switch) -> None:
     """Any post-processing tool (shower/detector/madspin/reweight/analysis)
-    operates on an LHE file, so raise rather than silently override an
-    output_format the user deliberately set to something else (compact_npy/
-    lhe_npy are incompatible with those tools)."""
+    operates on an LHE file, so make sure the events are written in that format
+    when one of them is enabled: the npy formats carry no event record those
+    tools could read. The run_card is rewritten rather than refused, so that
+    asking for a shower in the launch question is enough -- the user does not
+    have to know that it constrains output_format."""
     if not switch:
         return
     active = [k for k in ("shower", "detector", "madspin", "reweight", "analysis")
@@ -3761,11 +3763,12 @@ def check_lhe_output_required(switch) -> None:
     path = os.path.join("Cards", "run_card.toml")
     run_card = RunCardMG7(path, consistency=False)
     if run_card["run"]["output_format"] != "lhe":
-        raise RuntimeError(
-            "output_format = '%s' is incompatible with the selected "
-            "post-processing (%s), which requires an LHE event file. "
-            "Either set output_format = 'lhe' or turn those tools off."
-            % (run_card["run"]["output_format"], ", ".join(active)))
+        logging.getLogger("madevent").info(
+            "output_format set to 'lhe' (was '%s'): required by the selected "
+            "post-processing (%s).",
+            run_card["run"]["output_format"], ", ".join(active))
+        run_card["run"]["output_format"] = "lhe"
+        run_card.write(path)
 
 
 def _raise_open_file_limit() -> None:
