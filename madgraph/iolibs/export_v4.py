@@ -410,6 +410,28 @@ def split_order_tables(matrix_element):
                                for o, v in zip(split_orders, sqso))
                       for sqso in squared_orders]}
 
+# The templates the compressed color matrix may be written for: those that
+# declare CF in the common block INIT_CF fills, call INIT_CF before the color
+# sum, and carry a %(color_init_routine)s slot for it. Every other template
+# leaves CF as a plain array whose only filling is the DATA statements of
+# get_color_data_lines, so dropping those in favour of the compressed form
+# would leave the color matrix at zero and the matrix element with it.
+COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
+    'matrix_standalone_v4.inc',
+    # --hel_recycling rewrites SMATRIX/MATRIX into this one and appends the
+    # rest of matrix_standalone_v4.inc verbatim, INIT_CF included, so the
+    # answer color_matrix_encoding_allowed gives for the template it is
+    # selected through (matrix_standalone_v4.inc) holds for it too
+    'matrix_standalone_hel_orig_v4.inc',
+    'matrix_standalone_v4_onia.inc',
+    'matrix_standalone_v4_onia_pwave.inc',
+    'matrix_madevent_v4.inc',
+    'matrix_madevent_group_v4.inc',
+    'matrix_madevent_group_v4_hel.inc',
+    'matrix_madevent_group_v4_onia.inc',
+    'matrix_madevent_group_v4_onia_pwave.inc',
+))
+
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
@@ -2985,6 +3007,36 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    def color_matrix_encoding_allowed(self, matrix_element):
+        """Whether the compressed color matrix may be used here: only the
+        templates which rebuild CF at run time, the same check as
+        jamp_orbit_allowed makes for the definitions. Anywhere else the DATA
+        statements are the only thing filling CF, and dropping them would
+        leave the color matrix -- and the matrix element -- at zero."""
+
+        if isinstance(self, ProcessExporterFortranME):
+            if matrix_element.get_nonia() > 0:
+                template = self.matrix_file.replace('.inc',
+                                '_onia_pwave.inc' if matrix_element.get_npwave()
+                                else '_onia.inc')
+            else:
+                template = self.matrix_file
+            return template in COLOR_MATRIX_ENCODING_TEMPLATES
+
+        # matchbox and the loop/FKS exporters derive from the standalone one
+        # but write their own templates
+        if type(self) is not ProcessExporterFortranSA:
+            return False
+        if self.matrix_template not in COLOR_MATRIX_ENCODING_TEMPLATES:
+            return False
+        if self.opt.get('export_format') in ('standalone_msP',
+                                             'standalone_msF', 'matchbox',
+                                             'madloop_matchbox'):
+            return False
+        # split orders select matrix_standalone_splitOrders_v4.inc; the onium
+        # templates are reached from matrix_standalone_v4.inc and do rebuild CF
+        return not matrix_element.get('processes')[0].get('split_orders')
+
     def get_color_matrix_encoding(self, matrix_element):
         """Describe the color matrix by one line per orbit of the index
         permutations leaving the color basis invariant, plus the permutations
@@ -2994,6 +3046,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         permuted, so this replaces the N*(N+1)/2 entries by (nrep+ngen+3)*N
         numbers. That is only a gain once the basis is large enough, and None
         is returned otherwise so that the entries are written out as before."""
+
+        if not self.color_matrix_encoding_allowed(matrix_element):
+            return None
 
         color_matrix = matrix_element.get('color_matrix')
         if not color_matrix:
@@ -3039,16 +3094,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'slot': [place[representative[i]] + 1
                          for i in range(nb_color)]}
 
-    def get_color_data_lines(self, matrix_element, n=128, plain=False):
+    def get_color_data_lines(self, matrix_element, n=128):
         """Return the color matrix definition lines for this matrix element. Split
-        rows in chunks of size n.
-
-        The compressed form written here is not plain DATA the reader can
-        simply sum over: it leaves the entries to be rebuilt at run time by
-        INIT_CF, so the template being written has to carry that call. This
-        method is shared by every fortran exporter, several of which write
-        into templates that do not. Those callers pass plain=True and get
-        every entry of the upper triangle written out."""
+        rows in chunks of size n."""
 
         if not matrix_element.get('color_matrix'):
             if matrix_element.get_nonia() > 0:
@@ -3057,7 +3105,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             # unchanged for everything else: a single trivial colour structure
             return ["DATA %(proc_prefix)sDenom/1/", "DATA %(proc_prefix)sCF/1/"]
 
-        if not plain and self.get_color_matrix_encoding(matrix_element):
+        if self.get_color_matrix_encoding(matrix_element):
             # the entries are rebuilt at run time by INIT_CF, only the overall
             # denominator is still needed here
             denominator = max(matrix_element.get('color_matrix').\

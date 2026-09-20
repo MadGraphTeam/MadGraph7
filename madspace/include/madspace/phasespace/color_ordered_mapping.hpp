@@ -66,6 +66,10 @@ public:
      * @param dr_min            Symmetric matrix of minimum pair `delta_r`
      *                          separations; empty disables the cut. See
      *                          @ref Cuts.
+     * @param arcsine_s23       Remap the random number of every 2->3
+     *                          invariant with the arcsine map in the azimuth,
+     *                          removing the `1/|sin(phi)|` edge peak of the
+     *                          weight; see @ref TwoToThreeParticleScattering.
      */
     ColorOrderedMapping(
         const std::vector<std::size_t>& color_order,
@@ -73,7 +77,8 @@ public:
         double s_invariant_power = 0.8,
         const std::vector<double>& pt_min = {},
         const std::vector<std::vector<double>>& m_inv_min = {},
-        const std::vector<std::vector<double>>& dr_min = {}
+        const std::vector<std::vector<double>>& dr_min = {},
+        bool arcsine_s23 = true
     );
 
     /// Number of continuous unit-hypercube inputs consumed by the forward map.

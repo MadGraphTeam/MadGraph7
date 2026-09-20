@@ -3675,7 +3675,17 @@ set boost_choice [5, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [complex(0.00023372225290581268, 0.0), complex(2.992104346897159e-05, 1.3619536899390321e-05), complex(-0.0003642188579323614, -0.00015844039142370002), complex(0.00139802591124443, 0.0007920419915143803), complex(0.00017033924905323185, 0.0), complex(-0.00032992574370686504, 4.193590849513727e-05), complex(0.0003643209305432805, 0.0001612632121261497), complex(0.5380535522498318, 0.0), complex(0.036326666049751606, 0.016499687600510533), complex(0.46154238624820915, 0.0)]
+        # Regenerated when the density mode's boost_choice started summing the
+        # legs it names: it used to count LHE lines, status-2 ones included, so
+        # the status-2 top of this decay chain shifted it onto t (the resonance
+        # line) + W+ instead of b + t~. The previous numbers were in that frame.
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.002572819258503627+0j), (0.00022287625051417933+0.000269373544283043j), (0.034620381554042186-0.0031148240475356633j),
+                            (0.003493349987547038+0.0030943536658021155j), (0.002492794223097223+0j), (0.0022714731159374324-0.0025077711911968975j),
+                            (0.03329882105505325-0.001669052089828375j), (0.5122804070927276+0j), (0.043564252872336236+0.03090169904947277j),
+                            (0.48265397942567173+0j)]
 
 
         event_of_reference = """<event>
@@ -3686,7 +3696,7 @@ set boost_choice [5, -6]
         5  1    3    3  501    0 +4.3637392514e+01 +4.9281743782e+00 -1.3060449857e+01 4.6056207819e+01 4.7000000000e+00 0.0000e+00 -1.0000e+00
        24  1    3    3    0    0 -5.4634276257e+01 +1.8631606795e+02 -1.6969165851e+02 2.7011304345e+02 8.0419002446e+01 0.0000e+00 -1.0000e+00
        -6  1    1    2    0  503 +1.0996883743e+01 -1.9124424233e+02 -3.5723989432e+02 4.4073192960e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
-<density> (0.00023359526522495882+0j) (2.9956750131603144e-05+1.3622977588717694e-05j) (-0.00037002831548626185-0.0001606402006384915j) (0.0013988914248279838+0.0007925330810912253j) (0.0001701973522356173+0j) (-0.0003301297581403585+4.196117432997617e-05j) (0.0003588942963018077+0.00015927990509450137j) (0.5380495499305434+0j) (0.03639176740610352+0.01649755017431808j) (0.4615466574519961+0j) </density>
+<density> (0.0025697944663450214+0j) (0.00022583206322766304+0.0002724023671240153j) (0.03458000936877068-0.003111931365020864j) (0.003535839291923179+0.0031321719755733556j) (0.002495767955975634+0j) (0.002308240777864438-0.002551169179285921j) (0.03333888343971259-0.0016718211497894133j) (0.5116911466377606+0j) (0.04414462084336885+0.031496541741920014j) (0.48324329093991875+0j) </density>
 </event>
 """
         
@@ -3703,12 +3713,12 @@ set boost_choice [5, -6]
         self.assertAlmostEqual(concurrence_ref, concurrence_check, places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.5057128357315946
+        purity_ref = 0.505810869888376
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
         #4) here we check that magic is computed properly
-        magic_ref = 0.018629615817657534
+        magic_ref = 0.04539434702919854
         magic_check = rho_instance.Magic_Mixed()
         self.assertAlmostEqual(magic_ref, magic_check, places=7)
 
@@ -3766,7 +3776,20 @@ set boost_choice [24, -6]
             density_check = event.density
 
         #reference density matrix
-        density_ref = [complex(0.00021667298775917345, 0.0), complex(1.85743468695675e-05, 3.31618796958022e-05), complex(-8.543458188937342e-06, 4.609484294547139e-06), complex(-5.960810964036419e-06, -5.137669654422628e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.00014784864285082047, 0.0), complex(1.2619209329155549e-05, -3.410166864571879e-05), complex(8.5453056621656e-06, -4.676631517642126e-06), complex(0.0, 0.0), complex(0.0, 0.0), complex(0.41432659216924983, 0.0), complex(0.03551486851231066, 0.06340678451506068), complex(-0.03267269377361773, 0.01762802198822147), complex(-0.022795892127448817, -0.01964795795996489), complex(0.2827318650363218, 0.0), complex(0.048259563394429404, -0.130414798339352), complex(0.03267975905394175, -0.0178848126939771), complex(0.12249538940094126, 0.0), complex(-0.0153800506412504, -0.02753614388390608), complex(0.1800816317628771, 0.0)]
+        # Regenerated when the density mode's boost_choice started summing the
+        # legs it names: it used to count LHE lines, status-2 ones included, so
+        # the status-2 top of this decay chain shifted it onto b + W+ instead of
+        # W+ + t~. The previous numbers were in that frame.
+        # and again by the crossing branch: the internal top propagator loses
+        # its width (it is an external field there, zerowidth_external) and the
+        # canonical NHEL encoder removed a small C-parity asymmetry.
+        density_ref = [(0.03462856093584298+0j), (0.004222692552048597-3.914851804525198e-06j), (-0.09315136922763956-0.06424541106056061j),
+                            (-0.012161343076623666-0.007852907982114157j), (-0.0021548339817954705-0.02299216606257348j), (0.004000989959849888+0.0004271687621753295j),
+                            (0.022124992142446936+0j), (-0.004976106543712062-0.007632363502328344j), (-0.05784211938393767-0.041606353301745905j),
+                            (-0.034560622408768275-0.028594347672533223j), (-0.012757048104007053-0.018079926753134273j), (0.374857868204696+0j),
+                            (0.029720084211203073-0.012771984245079535j), (0.03485290974186369+0.0484732992793134j), (-0.01064461469034376+0.0037920989793522506j),
+                            (0.2350541853144974+0j), (0.14918389804980686+0.014260521941388894j), (0.045994627672498976+0.008149821823945263j),
+                            (0.1306812643391364+0j), (0.0037983745012122867+0.02048399076640624j), (0.20265312906338015+0j)]
 
         
         #1) here we check that the density matrix is computed properly
@@ -3777,14 +3800,16 @@ set boost_choice [24, -6]
         rho_instance = dens.DensityMatrixObservables(density_check)
 
         #2) here we check that the smaller eigenvalue of the partialy transposed density matrix is computed properly
-        flag_ref, eigval_ref = False, [0.0001309876717898993, 0.00023352764119576687, 0.10041292697359551, 0.12793991437047847, 0.2557969764840398, 0.5154856668589005]
+        flag_ref, eigval_ref = False, [1.30947427e-04, 2.33695634e-04,
+                                       1.00468437e-01, 1.27838949e-01,
+                                       2.55651384e-01, 5.15676588e-01]
         flag_check, eigval_check = rho_instance.PeresHorodecki_criterion(['boson', 'fermion'])
         self.assertEqual(flag_ref, flag_check)
         for i in range(len(eigval_ref)):
             self.assertAlmostEqual(eigval_ref[i], eigval_check[i], places=7)
       
         #3) here we check that purity is computed properly
-        purity_ref = 0.357609015200801
+        purity_ref = 0.35771674847320956
         purity_check = rho_instance.Get_Purity()
         self.assertAlmostEqual(purity_ref, purity_check, places=7)
 
