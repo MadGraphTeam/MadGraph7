@@ -422,12 +422,16 @@ jobs:
       # split_leg, the P-directory name-collision check and the separation of
       # differently-polarised subprocess groups, and that a HelasWavefunction
       # carries its polarisation into its identity.
+      # And the colour-matrix encoding gate: the compressed matrix may only be
+      # written for the templates that rebuild CF with INIT_CF, otherwise CF is
+      # left at zero and the matrix element with it (it silently zeroed the FKS
+      # real emissions of g g > t t~ g g g).
       - name: "unittest_29: misc unit tests not previously covered"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
-            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization -t0
+            ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization test_standalone_compresses test_fks_writes_the_entries_out test_split_orders_and_madspin_write_the_entries_out test_madevent_compresses_and_madweight_does_not test_whitelist_matches_the_templates -t0
 
 
   unittest_new_coverage:
