@@ -15,6 +15,7 @@
 from __future__ import division
 from __future__ import absolute_import
 import glob
+import json
 import math
 import shlex
 import subprocess
@@ -165,7 +166,8 @@ class TestCmdLoop(unittest.TestCase):
         This is the Phase-02.05 numerical oracle.  It exercises both beam
         orientations and both MadLoop exporters at one fixed physical point,
         checking the Born interference, finite term and both poles.  The
-        references were produced by separate ungrouped d/u/s/c outputs.
+        references were produced by independent physical subprocesses at the
+        pre-grouping commit 844829d3ef, not by the current opt-out path.
         """
 
         scratch_root = '/scratch' if os.path.isdir('/scratch') else None
@@ -178,35 +180,23 @@ class TestCmdLoop(unittest.TestCase):
             pjoin(hep_tools, 'collier'),
             env.get('LD_LIBRARY_PATH', '')])
 
-        mw = 80.419
-        energy, px, py = 500.0, 300.0, 100.0
-        pz = math.sqrt(energy**2 - mw**2 - px**2 - py**2)
-        ps_input = '\n'.join([
-            '%.17e 0 0 %.17e' % (energy, energy),
-            '%.17e 0 0 %.17e' % (energy, -energy),
-            '%.17e %.17e %.17e %.17e' % (energy, px, py, pz),
-            '%.17e %.17e %.17e %.17e' %
-            (energy, -px, -py, -pz)]) + '\n'
-
+        oracle_path = pjoin(
+            MG5DIR, 'tests', 'input_files',
+            'nlo_pre_grouping_wpwm_oracle.json')
+        with open(oracle_path) as stream:
+            pre_grouping = json.load(stream)
+        self.assertEqual(
+            pre_grouping['metadata']['source_commit'],
+            '844829d3ef0b13d294045f34dbbeef3a3d743e9b')
+        ps_input = '\n'.join(
+            ' '.join('%.17e' % value for value in momentum)
+            for momentum in pre_grouping['virtual']['momenta']) + '\n'
+        old_virtuals = pre_grouping['virtual']['oracles']
         references = {
-            'q_qbar': {
-                'down': {'born': 2.0363673365466498e-3,
-                         'finite': 1.2168963400867409e-4,
-                         '1eps': -1.5297423026975471e-4,
-                         '2eps': -1.0198282017981687e-4},
-                'up': {'born': 9.5527946025762367e-2,
-                       'finite': 4.4751560754114914e-3,
-                       '1eps': -7.1761675612869707e-3,
-                       '2eps': -4.7841117075246532e-3}},
-            'qbar_q': {
-                'down': {'born': 9.5272593957172705e-2,
-                         'finite': 4.4830996327674417e-3,
-                         '1eps': -7.1569852228869253e-3,
-                         '2eps': -4.7713234819246114e-3},
-                'up': {'born': 2.2668575128819246e-3,
-                       'finite': 1.3698331110629505e-4,
-                       '1eps': -1.7028891519146937e-4,
-                       '2eps': -1.1352594346101632e-4}}}
+            'q_qbar': {'down': old_virtuals['P0_ddx_wpwm'],
+                       'up': old_virtuals['P0_uux_wpwm']},
+            'qbar_q': {'down': old_virtuals['P0_dxd_wpwm'],
+                       'up': old_virtuals['P0_uxu_wpwm']}}
         rows = ((1, 'down'), (6, 'up'), (11, 'down'), (16, 'up'))
         row_families = dict(rows)
         row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)

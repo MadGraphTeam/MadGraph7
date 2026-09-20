@@ -23,6 +23,7 @@ multi-point determinism, output shape, invalid controls and FKS limits.
 from __future__ import division
 from __future__ import absolute_import
 import glob
+import json
 import os
 import re
 import shutil
@@ -199,15 +200,16 @@ class TestFKSStandalone(unittest.TestCase):
         return os.path.dirname(found[0])
 
     def _run_check_fks(self, born_dir, points=None, seed=(1802, 9373),
-                       energy=0, calls=1):
+                       energy=0, calls=1, flavor=0):
         """run an already-built check_fks and return its stdout."""
         exe = pjoin(born_dir, 'check_fks')
         self.assertTrue(os.path.isfile(exe),
                         'check_fks not built in %s' % born_dir)
         command = [exe]
-        if points is not None:
+        if points is not None or flavor:
+            points = 1 if points is None else points
             command.extend([str(energy), str(calls), str(points),
-                            str(seed[0]), str(seed[1])])
+                            str(seed[0]), str(seed[1]), str(flavor)])
         out = subprocess.check_output(command, cwd=born_dir,
                                       stderr=subprocess.STDOUT)
         return out.decode(errors='replace')
@@ -254,9 +256,16 @@ class TestFKSStandalone(unittest.TestCase):
                     toks[:3] == ['====', 'FLAVOUR', 'CONFIGURATION'] and \
                     toks[4] == '====':
                 configuration = {
-                    'index': int(toks[3]), 'born': None,
-                    'borntilde': None, 'bij': {}}
+                     'index': int(toks[3]), 'born': None,
+                     'borntilde': None, 'bij': {}, 'pdgs': None,
+                     'flavor_index': None}
                 point['configurations'].append(configuration)
+            elif configuration is not None and toks and toks[0] == 'PDG':
+                configuration['pdgs'] = tuple(int(value)
+                                              for value in toks[1:])
+            elif configuration is not None and len(toks) == 4 and \
+                    toks[:3] == ['LOCAL', 'FLAVOUR', 'INDEX']:
+                configuration['flavor_index'] = int(toks[3])
             elif point is not None and len(toks) == 6 and toks[0] == 'P':
                 point['momenta'][int(toks[1])] = tuple(
                     cls._fortran_float(v) for v in toks[2:])
@@ -358,21 +367,40 @@ class TestFKSStandalone(unittest.TestCase):
         """Grouped QCD output evaluates every physical Born row independently.
 
         Two points and three repeated calls exercise the flavor-aware Born and
-        color-link caches. Down/up rows differ, while generation-equivalent
-        first/second-generation rows agree and match fixed-flavor references.
+        color-link caches. Every row is then selected on its own at sixteen
+        points and compared with an independent pre-grouping oracle from
+        commit 844829d3ef. Down/up rows differ, while generation-equivalent
+        first/second-generation rows agree and match the old physical
+        subprocesses.
         """
 
         path = pjoin(self.tmpdir, 'grouped_qcd')
         self._output_fks_sa('p p > w+ w- [real=QCD]', 'loop_sm', path)
+        oracle_path = pjoin(
+            MG5DIR, 'tests', 'input_files',
+            'nlo_pre_grouping_wpwm_oracle.json')
+        with open(oracle_path) as stream:
+            pre_grouping = json.load(stream)
+        self.assertEqual(
+            pre_grouping['metadata']['source_commit'],
+            '844829d3ef0b13d294045f34dbbeef3a3d743e9b')
+        self.assertEqual(pre_grouping['born']['points'], 16)
+        self.assertEqual(pre_grouping['born']['seed'], [1802, 9373])
         expected = {
-            'P0_QQx_wpwm': [
+            'P0_QQx_wpwm': ([(1, -1, 24, -24),
+                              (2, -2, 24, -24),
+                              (3, -3, 24, -24),
+                              (4, -4, 24, -24)], [
                 [0.022213760524088497, 0.0051099582274946693],
                 [0.0057460860777143481, 0.016065806963586577],
-            ],
-            'P0_QxQ_wpwm': [
+            ]),
+            'P0_QxQ_wpwm': ([(-1, 1, 24, -24),
+                              (-2, 2, 24, -24),
+                              (-3, 3, 24, -24),
+                              (-4, 4, 24, -24)], [
                 [0.0046865329655036867, 0.022651095898120144],
                 [0.015592504815818439, 0.0062100269962616240],
-            ],
+            ]),
         }
         born_dirs = sorted(glob.glob(pjoin(path, 'SubProcesses', 'P*')))
         self.assertEqual(set(os.path.basename(item) for item in born_dirs),
@@ -381,11 +409,16 @@ class TestFKSStandalone(unittest.TestCase):
             points = self.parse_check_fks_points(self._run_check_fks(
                 born_dir, points=2, seed=(1802, 9373), calls=3))
             self.assertEqual(len(points), 2)
-            for point, reference in zip(
-                    points, expected[os.path.basename(born_dir)]):
+            expected_pdgs, references = expected[os.path.basename(born_dir)]
+            for point, reference in zip(points, references):
                 configurations = point['configurations']
                 self.assertEqual([item['index'] for item in configurations],
                                  [1, 2, 3, 4])
+                self.assertEqual([item['pdgs'] for item in configurations],
+                                 expected_pdgs)
+                self.assertEqual(
+                    [item['flavor_index'] for item in configurations],
+                    [1, 2, 3, 4])
                 self.assertClose(configurations[0]['born'], reference[0])
                 self.assertClose(configurations[1]['born'], reference[1])
                 self.assertClose(configurations[2]['born'], reference[0])
@@ -396,6 +429,187 @@ class TestFKSStandalone(unittest.TestCase):
                                  configurations[2]['bij'])
                 self.assertEqual(configurations[1]['bij'],
                                  configurations[3]['bij'])
+
+            # As in the ordinary standalone/MadMatrix driver, a one-based
+            # physical flavour selector evaluates only that row. Its first two
+            # points must be identical to the same row in the all-flavour run.
+            # All sixteen points must also reproduce the standalone output
+            # generated by the genuinely pre-grouping source commit above.
+            for flavor in range(1, 5):
+                selected = self.parse_check_fks_points(self._run_check_fks(
+                    born_dir, points=16, seed=(1802, 9373), calls=3,
+                    flavor=flavor))
+                self.assertEqual(
+                    [item['momenta'] for item in selected[:2]],
+                    [item['momenta'] for item in points])
+                for selected_point, all_point in zip(selected[:2], points):
+                    self.assertEqual(len(selected_point['configurations']), 1)
+                    actual = selected_point['configurations'][0]
+                    reference = all_point['configurations'][flavor - 1]
+                    self.assertEqual(actual, reference)
+
+                pdgs = selected[0]['configurations'][0]['pdgs']
+                channel_key = ','.join(str(pdg) for pdg in pdgs)
+                old_subprocess = pre_grouping['born'][
+                    'physical_channels'][channel_key]
+                old_points = pre_grouping['born']['oracles'][old_subprocess]
+                self.assertEqual(len(old_points), len(selected))
+                for index, (actual_point, old_point) in enumerate(
+                        zip(selected, old_points)):
+                    expected_momenta = dict(
+                        (leg, tuple(momentum)) for leg, momentum in enumerate(
+                            pre_grouping['born']['momenta'][index], 1))
+                    self.assertEqual(actual_point['momenta'],
+                                     expected_momenta)
+                    self.assertEqual(len(actual_point['configurations']), 1)
+                    actual = actual_point['configurations'][0]
+                    self.assertEqual(actual['pdgs'], pdgs)
+                    for key in ('born', 'borntilde'):
+                        expected_value = old_point[key]
+                        self.assertAlmostEqual(
+                            actual[key], expected_value,
+                            delta=max(abs(expected_value) * 1e-12, 1e-14),
+                            msg='%s point %d %s' %
+                                (channel_key, index + 1, key))
+                    expected_bij = dict(
+                        (tuple(int(value) for value in key.split(',')), weight)
+                        for key, weight in old_point['bij'].items())
+                    self.assertEqual(set(actual['bij']), set(expected_bij))
+                    for key, expected_value in expected_bij.items():
+                        self.assertAlmostEqual(
+                            actual['bij'][key], expected_value,
+                            delta=max(abs(expected_value) * 1e-12, 1e-14),
+                            msg='%s point %d B_ij%s' %
+                                (channel_key, index + 1, key))
+
+        # Exercise the public named option as well as the direct positional
+        # driver interface used above.
+        cmd = self._new_cmd()
+        self._run(cmd, 'launch %s --flavor=2 --points=2 -f' % path)
+
+        invalid = subprocess.run(
+            [pjoin(born_dirs[0], 'check_fks'),
+             '0', '1', '1', '1802', '9373', '5'],
+            cwd=born_dirs[0], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True)
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertIn('flavour index must be between 0 and', invalid.stdout)
+
+    @staticmethod
+    def _wpwm_real_driver_source():
+        """Fixed-point real-ME oracle for grouped W-pair output."""
+        return r"""      PROGRAM CHECK_REAL_ORACLE
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'nFKSconfigs.inc'
+      INTEGER I,J,NFKSPROCESS
+      DOUBLE PRECISION P(0:3,NEXTERNAL),WGT,MW,PZ
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      CALL SETPARA('param_card.dat')
+      MW=80.419D0
+      PZ=SQRT(400D0**2-100D0**2-MW**2)
+      P(:,:)=0D0
+      P(0,1)=500D0
+      P(3,1)=500D0
+      P(0,2)=500D0
+      P(3,2)=-500D0
+      P(0,3)=400D0
+      P(1,3)=-100D0
+      P(3,3)=PZ
+      P(0,4)=400D0
+      P(1,4)=-100D0
+      P(3,4)=-PZ
+      P(0,5)=200D0
+      P(1,5)=200D0
+      DO I=1,FKS_CONFIGS
+        NFKSPROCESS=I
+        CALL SMATRIX_REAL(P,WGT)
+        WRITE(*,*) 'ORACLE_REAL',I,
+     $    (PDG_TYPE_D(I,J),J=1,NEXTERNAL),EXTRA_CNT_D(I),WGT
+      ENDDO
+      END
+"""
+
+    def _run_wpwm_real_driver(self, output_path):
+        """Build the W-pair real oracle and return all physical FKS rows."""
+        misc.compile(cwd=pjoin(output_path, 'Source'))
+        records = []
+        for subproc in sorted(glob.glob(
+                pjoin(output_path, 'SubProcesses', 'P*'))):
+            matrix_objects = [
+                os.path.basename(path)[:-2] + '.o' for path in
+                sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
+            self.assertTrue(matrix_objects)
+            objects = matrix_objects + [
+                'real_me_chooser.o', 'splitorders_stuff.o',
+                'check_real_oracle.o']
+            source = pjoin(subproc, 'check_real_oracle.f')
+            with open(source, 'w') as stream:
+                stream.write(self._wpwm_real_driver_source())
+            misc.compile(objects, cwd=subproc)
+            executable = pjoin(subproc, 'check_real_oracle')
+            subprocess.check_call(
+                ['gfortran', '-o', executable] + objects + [
+                    '-L%s' % pjoin(output_path, 'lib'),
+                    '-ldhelas', '-lmodel'], cwd=subproc)
+            output = subprocess.check_output(
+                [executable], cwd=subproc, stderr=subprocess.STDOUT)
+            for line in output.decode(errors='replace').splitlines():
+                tokens = line.split()
+                if not tokens or tokens[0] != 'ORACLE_REAL':
+                    continue
+                records.append({
+                    'subprocess': os.path.basename(subproc),
+                    'configuration': int(tokens[1]),
+                    'pdgs': tuple(int(value) for value in tokens[2:-2]),
+                    'extra_counterterm': int(tokens[-2]),
+                    'value': self._fortran_float(tokens[-1])})
+        return records
+
+    def test_fks_standalone_grouped_real_vs_pre_grouping(self):
+        """Every grouped W-pair real row matches commit 844829d3ef.
+
+        ``--limits`` retains the production real matrix elements in FKS
+        standalone output. Evaluate all 32 physical FKS classes at one fixed
+        point and compare with the independently generated pre-grouping
+        subprocesses. This process has no extra counterterms.
+        """
+        path = pjoin(self.tmpdir, 'grouped_qcd_real')
+        self._generate_fks_sa(
+            'p p > w+ w- [real=QCD]', 'loop_sm', path, limits=True)
+        records = self._run_wpwm_real_driver(path)
+        self.assertEqual(len(records), 32)
+
+        oracle_path = pjoin(
+            MG5DIR, 'tests', 'input_files',
+            'nlo_pre_grouping_wpwm_oracle.json')
+        with open(oracle_path) as stream:
+            pre_grouping = json.load(stream)
+        self.assertEqual(
+            pre_grouping['metadata']['source_commit'],
+            '844829d3ef0b13d294045f34dbbeef3a3d743e9b')
+        old_reals = pre_grouping['real']['oracles']
+
+        def canonical_pdgs(pdgs):
+            canonical = []
+            for pdg in pdgs:
+                sign = -1 if pdg < 0 else 1
+                absolute = {3: 1, 4: 2}.get(abs(pdg), abs(pdg))
+                canonical.append(sign * absolute)
+            return tuple(canonical)
+
+        for record in records:
+            self.assertEqual(record['extra_counterterm'], 0)
+            key = ','.join(str(pdg) for pdg in
+                           canonical_pdgs(record['pdgs']))
+            expected = old_reals[key]
+            self.assertAlmostEqual(
+                record['value'], expected,
+                delta=max(abs(expected) * 1e-12, 1e-20),
+                msg='%s FKS row %d %s' %
+                    (record['subprocess'], record['configuration'],
+                     record['pdgs']))
 
     @staticmethod
     def _mixed_wj_driver_source():
@@ -766,6 +980,7 @@ class TestFKSStandalone(unittest.TestCase):
                 ({'points': 0}, '--points'),
                 ({'seed': 'broken'}, '--seed'),
                 ({'seed': '31329,0'}, '--seed'),
+                ({'flavor': -1}, '--flavor'),
                 ({'timings': -1}, '--timings'),
                 ({'timings': 1, 'nb_run': 0}, '--nb_run')]:
             with self.subTest(options=options):

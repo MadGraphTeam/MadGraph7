@@ -1122,14 +1122,14 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                  PARAMETER (NBORNAMPS=%d)"""%nbornamps
             dict['nBornAmps'] = nbornamps
             dict['clear_dp_born_amps'] = '\n'.join([
-                'C Clear flavor-masked Born amplitudes before selecting a row.',
+                '! Clear flavor-masked Born amplitudes before selecting a row.',
                 'DO H=1,NCOMB',
                 '  DO I=1,NBORNAMPS',
                 '    AMP(I,H)=(0.0d0,0.0d0)',
                 '  ENDDO',
                 'ENDDO'])
             dict['clear_mp_born_amps'] = '\n'.join([
-                "C Clear this helicity's flavor-masked MP amplitudes.",
+                "! Clear this helicity's flavor-masked MP amplitudes.",
                 'DO I=1,NBORNAMPS',
                 '  AMP(I,H)=(0.0e0_16,0.0e0_16)',
                 'ENDDO',

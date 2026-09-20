@@ -18,7 +18,7 @@ C     ******************************************************************
       PARAMETER (ZERO=0D0)
       INCLUDE 'coupl.inc'
       INTEGER I,J,ILINK,NLINKS,M,N,ICALL,IPOINT,NPOINTS
-      INTEGER IFLAV_CONFIG
+      INTEGER IFLAV_CONFIG, SELECTED_FLAVOR
       INTEGER SEED_IJ,SEED_KL
       INTEGER PDG_M,PDG_N,COL_M,COL_N,ITYPE
       REAL*8 BORN, WGT, SQRTS, BORNTILDE, TOTMASS
@@ -27,6 +27,7 @@ C       arg1 = sqrt(s) of the phase-space point (<=0 -> built-in default)
 C       arg2 = number of Born re-evaluations (for the launch --timings mode)
 C       arg3 = number of successive phase-space points
 C       arg4,arg5 = RANMAR IJ,KL seed pair
+C       arg6 = physical Born flavour configuration (0 -> all)
       INTEGER NARGS, NCALLS, IARGC
       REAL*8 USER_ENERGY
       CHARACTER*100 ARG
@@ -86,6 +87,7 @@ C     historical first point exactly.
       NPOINTS=1
       SEED_IJ=1802
       SEED_KL=9373
+      SELECTED_FLAVOR=0
       NARGS=IARGC()
       IF (NARGS.GE.1) THEN
         CALL GETARG(1,ARG)
@@ -107,8 +109,18 @@ C     historical first point exactly.
         CALL GETARG(5,ARG)
         READ(ARG,*) SEED_KL
       ENDIF
+      IF (NARGS.GE.6) THEN
+        CALL GETARG(6,ARG)
+        READ(ARG,*) SELECTED_FLAVOR
+      ENDIF
       IF (NCALLS.LT.1) NCALLS=1
       IF (NPOINTS.LT.1) NPOINTS=1
+      IF (SELECTED_FLAVOR.LT.0 .OR.
+     &    SELECTED_FLAVOR.GT.NBORN_FLAVOR_CONFIGS) THEN
+        WRITE(*,*) 'ERROR: flavour index must be between 0 and',
+     &    NBORN_FLAVOR_CONFIGS
+        STOP 1
+      ENDIF
 
       CALL SETPARA('param_card.dat')
       CALL PRINTOUT()
@@ -170,9 +182,15 @@ C       Evaluate each distinct physical underlying-Born flavor exactly once.
 C       BORN_FKS_CONFIG_D selects a representative physical FKS class whose
 C       topology-local row and scalar charge metadata belong to that flavor.
         DO IFLAV_CONFIG=1,NBORN_FLAVOR_CONFIGS
+        IF (SELECTED_FLAVOR.GT.0 .AND.
+     &      SELECTED_FLAVOR.NE.IFLAV_CONFIG) CYCLE
         NFKSPROCESS=BORN_FKS_CONFIG_D(IFLAV_CONFIG)
         CALCULATEDBORN=.FALSE.
         WRITE(*,*) '==== FLAVOUR CONFIGURATION', IFLAV_CONFIG, '===='
+        WRITE(*,*) 'PDG',
+     &    (BORN_PDG_TYPE_D(NFKSPROCESS,I),I=1,NEXTERNAL-1)
+        WRITE(*,*) 'LOCAL FLAVOUR INDEX',
+     &    BORN_FLAVOR_INDEX_D(NFKSPROCESS)
 
 C       the per-leg electric charges enter the charge-linked Born ([QED]
 C       soft-photon links); they are selected by the physical FKS class and

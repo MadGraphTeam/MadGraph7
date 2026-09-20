@@ -549,6 +549,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info(" > --energy=E   sqrt(s) of the phase-space point (default: built-in)")
         logger.info(" > --points=N   number of successive deterministic points (default: 1)")
         logger.info(" > --seed=IJ,KL RANMAR seed pair (default: 1802,9373)")
+        logger.info(" > --flavor=N   select physical Born flavour row N (default: 0, all)")
         logger.info(" > --timings=N --nb_run=Y   time N Born re-evaluations over Y runs")
         logger.info(" > If the output was made with --limits, also builds and runs the")
         logger.info("   soft/collinear limit test (test_soft_col_limits) and reports whether")
@@ -13187,6 +13188,8 @@ _launch_parser.add_option("", "--points", default=1, type='int',
                             help="[FKS standalone] Number of deterministic phase-space points")
 _launch_parser.add_option("", "--seed", default='1802,9373', type='str',
                             help="[FKS standalone] RANMAR seed pair IJ,KL")
+_launch_parser.add_option("", "--flavor", default=0, type='int',
+                            help="[FKS standalone] Physical Born flavor row (0=all)")
 
 #===============================================================================
 # Interface for customize question.

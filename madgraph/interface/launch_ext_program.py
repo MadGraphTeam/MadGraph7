@@ -596,8 +596,8 @@ class FKSSALauncher(ExtLauncher):
     offers to edit the param_card (bypassed with -f); launch_program() compiles
     Source libraries, builds 'check_fks' in every born subprocess directory and
     runs it, echoing the momenta, Born, spin-correlated Born and
-    color/charge-linked Borns. The --energy, --points, --seed, --timings and
-    --nb_run options are honoured.
+    color/charge-linked Borns. The --energy, --points, --seed, --flavor,
+    --timings and --nb_run options are honoured.
 
     For an output made with '--limits', it then also builds and runs the
     aMC@NLO soft/collinear limit test (test_soft_col_limits) in every born
@@ -616,12 +616,15 @@ class FKSSALauncher(ExtLauncher):
         self.points = int(getattr(self, 'points', 1))
         self.timings = int(getattr(self, 'timings', 0))
         self.nb_run = int(getattr(self, 'nb_run', 1))
+        self.flavor = int(getattr(self, 'flavor', 0))
         self.seed_ij, self.seed_kl = self._parse_seed(
             getattr(self, 'seed', '1802,9373'))
         if self.points < 1:
             raise MadGraph5Error('--points must be a positive integer')
         if self.timings < 0:
             raise MadGraph5Error('--timings must be non-negative')
+        if self.flavor < 0:
+            raise MadGraph5Error('--flavor must be a non-negative integer')
         if self.timings and self.nb_run < 1:
             raise MadGraph5Error(
                 '--nb_run must be positive when --timings is enabled')
@@ -658,7 +661,8 @@ class FKSSALauncher(ExtLauncher):
             # separate processes below, with one point and the same seed.
             process = subprocess.Popen(
                 ['./check_fks'] + self._driver_args(
-                    energy, 1, self.points, self.seed_ij, self.seed_kl),
+                    energy, 1, self.points, self.seed_ij, self.seed_kl,
+                    self.flavor),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=born_path)
             output = process.communicate()[0]
@@ -677,7 +681,7 @@ class FKSSALauncher(ExtLauncher):
                     (pdir, point_count, self.points))
             if self.timings > 0:
                 self._run_with_timings(born_path, energy, self.timings,
-                                       self.nb_run)
+                                       self.nb_run, self.flavor)
 
         if self.with_limits:
             failed = [os.path.basename(p) for p in born_dirs
@@ -745,19 +749,19 @@ class FKSSALauncher(ExtLauncher):
         return ij, kl
 
     @classmethod
-    def _driver_args(cls, energy, ncalls, points, seed_ij, seed_kl):
+    def _driver_args(cls, energy, ncalls, points, seed_ij, seed_kl, flavor=0):
         """Build the positional check_fks arguments used behind the CLI."""
         return [cls._energy_arg(energy), str(ncalls), str(points),
-                str(seed_ij), str(seed_kl)]
+                str(seed_ij), str(seed_kl), str(flavor)]
 
-    def _run_with_timings(self, born_path, energy, nb_try, nb_run):
+    def _run_with_timings(self, born_path, energy, nb_try, nb_run, flavor=0):
         """time nb_try Born re-evaluations, averaged over nb_run repetitions."""
         run_times = []
         for _ in range(nb_run):
             t0 = time.time()
             returncode = subprocess.call(
                 ['./check_fks'] + self._driver_args(
-                    energy, nb_try, 1, self.seed_ij, self.seed_kl),
+                    energy, nb_try, 1, self.seed_ij, self.seed_kl, flavor),
                 cwd=born_path, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
             if returncode:
