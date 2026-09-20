@@ -7,6 +7,7 @@ c to the list of weights using the add_wgt subroutine
       include 'coupl.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+      include 'fks_info.inc'
       include 'run.inc'
       include 'genps.inc'
       integer i
@@ -16,6 +17,8 @@ c to the list of weights using the add_wgt subroutine
       include 'born_leshouche.inc'
       integer orders(nsplitorders)
       integer iamp
+      integer nFKSprocess,born_id1,born_id2
+      common/c_nFKSprocess/nFKSprocess
 
       double precision wgt_c
       double precision wgt1
@@ -48,8 +51,15 @@ c (identity unless the run_card asks for a frame; see boost_to_frame.f).
         wgt1=amp_split(iamp)*f_b/g**(qcd_power)
 c     For UPC processes, we only need to fill the Born contribution for
 c     photon-photon initial state
+        if (HAS_PHYSICAL_FKS_CLASSES) then
+          born_id1=BORN_PDG_TYPE_D(nFKSprocess,1)
+          born_id2=BORN_PDG_TYPE_D(nFKSprocess,2)
+        else
+          born_id1=idup(1,1)
+          born_id2=idup(2,1)
+        endif
         if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) 
-     &   .and. .not. (idup(1,1).eq.22 .and. idup(2,1).eq.22)) then
+     &   .and. .not. (born_id1.eq.22 .and. born_id2.eq.22)) then
           cycle
         endif
         call add_wgt(2,orders,wgt1,0d0,0d0)
@@ -75,6 +85,7 @@ C in the LO cross section
       double precision p_born(0:3,nexternal-1)
       common /pborn/   p_born
       include 'orders.inc'
+      include 'fks_info.inc'
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_6to5f(amp_split_size),
@@ -84,13 +95,12 @@ C in the LO cross section
      &                            amp_split_6to5f_mur
       integer orders_to_amp_split_pos
       integer niglu
-      save niglu
       integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
      $     icolup(2,nexternal,maxflow),niprocs
       common /c_leshouche_inc/idup,mothup,icolup,niprocs
       integer i, j, k
-      logical firsttime
-      data firsttime /.true./
+      integer nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
       double precision tf, pi
       parameter (tf=0.5d0)
       parameter (pi=3.1415926535897932385d0)
@@ -119,14 +129,14 @@ C      where n is the power of alphas for the Born xsec sigma(0)
 C      Add a term −alphas TF/3pi log (mt^2/muF^2) sigma(0) for each
 C      gluon in the initial state
 
-      if (firsttime) then
-          ! count the number of gluons
-          do i = 1, nincoming
-              if (idup(i, 1).eq.21) niglu = niglu + 1
-          enddo
-          write(*,*) 'compute_6to5flav_cnt found n initial gluons:', niglu
-          firsttime=.false.
-      endif
+      niglu=0
+      do i = 1, nincoming
+          if (HAS_PHYSICAL_FKS_CLASSES) then
+              if (BORN_PDG_TYPE_D(nFKSprocess,i).eq.21) niglu=niglu+1
+          elseif (idup(i,1).eq.21) then
+              niglu=niglu+1
+          endif
+      enddo
 
       ! compute the born
       call sborn_frame(p_born,wgtborn)
@@ -2013,6 +2023,8 @@ C for UPC processes set scale to Ellis-Sexton scale
       endif
       g_strong(icontr)=g
       nFKS(icontr)=nFKSprocess
+      fks_flavor_class(icontr)=FKS_FLAVOR_CLASS_D(nFKSprocess)
+      born_flavor_class(icontr)=BORN_FLAVOR_INDEX_D(nFKSprocess)
       y_bst(icontr)=ybst_til_tolab
       shower_scale(icontr)=-99d9
       ifold_cnt(icontr)=ifold_counter
@@ -2459,6 +2471,8 @@ c update the event weight to be written in the file
          enddo
          g_strong(ict_new)=g_strong(ict)
          nFKS(ict_new)=nFKS(ict)
+         fks_flavor_class(ict_new)=fks_flavor_class(ict)
+         born_flavor_class(ict_new)=born_flavor_class(ict)
          y_bst(ict_new)=y_bst(ict)
          QCDpower(ict_new)=QCDpower(ict)
          cpower(ict_new)=cpower(ict)
@@ -2499,6 +2513,32 @@ c update the event weight to be written in the file
 c save also the separate contributions to the PDFs and the corresponding
 c PDG codes
       niproc(ict)=iproc
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         if (iproc.ne.1) then
+            write (*,*) 'Physical FKS weight has multiple IPROCs',
+     $           iFKS,iproc
+            stop 1
+         endif
+         if (nincoming.eq.2) then
+            parton_iproc(1,ict)=pd(1)*conv
+         else
+            parton_iproc(1,ict)=pd(1)
+         endif
+         do k=1,nexternal
+            parton_pdg(k,1,ict)=idup_d(iFKS,k,1)
+            if (k.lt.nexternal) then
+               parton_pdg_uborn(k,1,ict)=BORN_PDG_TYPE_D(iFKS,k)
+            elseif (split_type_d(iFKS,qcd_pos)) then
+               parton_pdg_uborn(k,1,ict)=21
+            elseif (split_type_d(iFKS,qed_pos)) then
+               parton_pdg_uborn(k,1,ict)=22
+            else
+               write (*,*) 'set_pdg_codes: no physical split type',iFKS
+               stop 1
+            endif
+         enddo
+         return
+      endif
       do j=1,iproc
          if (nincoming.eq.2) then
             parton_iproc(j,ict)=pd(j)*conv
@@ -3321,6 +3361,12 @@ c     Identical contributions found: sum the contribution "i" to "ii"
 c S-event: we can sum everything to 'i_soft': all the contributions to
 c the S-events can be summed together. Ignore the shower_scale: this
 c will be updated later
+            if (HAS_PHYSICAL_FKS_CLASSES .and.
+     $          born_flavor_class(i).ne.born_flavor_class(i_soft)) then
+               write (*,*) 'Cannot sum different physical Born classes',
+     $              born_flavor_class(i_soft),born_flavor_class(i)
+               stop 1
+            endif
             icontr_sum(0,i_soft)=icontr_sum(0,i_soft)+1
             icontr_sum(icontr_sum(0,i_soft),i_soft)=i
             do j=1,niproc(i_soft)
@@ -6843,10 +6889,13 @@ c For the MINT folding
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       INTEGER nFKSprocess, nFKSprocess_save, nFKSprocess_col, nFKSprocess_chg
       COMMON/c_nFKSprocess/nFKSprocess
       data nFKSprocess_col / 0 /
       data nFKSprocess_chg / 0 /
+      integer nFKSprocess_col_used,nFKSprocess_chg_used,born_class
+      logical need_color_links_bsv,need_charge_links_bsv
       double precision bsv_wgt_mufoqes, bsv_wgt_mufomur
       double precision contr_mufoqes, contr_mufomur
 C to keep track of the various split orders
@@ -6906,6 +6955,36 @@ C links
          nFKSprocess = nFKSprocess_save
          call fks_inc_chooser()
       endif
+
+c The integrated soft terms must use color/charge-linked Borns from the
+c same physical underlying-Born class as the contribution being evaluated.
+c The legacy output has one luminosity row for all of its physical flavours,
+c so preserve its process-wide representatives there.
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         born_class=BORN_FLAVOR_INDEX_D(nFKSprocess)
+         need_color_links_bsv=.false.
+         need_charge_links_bsv=.false.
+         nFKSprocess_col_used=0
+         nFKSprocess_chg_used=0
+         do i=1,FKS_configs
+            if (BORN_FLAVOR_INDEX_D(i).ne.born_class) cycle
+            if (NEED_COLOR_LINKS_D(i).and.
+     $           .not.need_color_links_bsv) then
+               need_color_links_bsv=.true.
+               nFKSprocess_col_used=i
+            endif
+            if (NEED_CHARGE_LINKS_D(i).and.
+     $           .not.need_charge_links_bsv) then
+               need_charge_links_bsv=.true.
+               nFKSprocess_chg_used=i
+            endif
+         enddo
+      else
+         need_color_links_bsv=need_color_links_used
+         need_charge_links_bsv=need_charge_links_used
+         nFKSprocess_col_used=nFKSprocess_col
+         nFKSprocess_chg_used=nFKSprocess_chg
+      endif
          
 
       aso2pi=g**2/(8*pi**2)
@@ -6915,7 +6994,7 @@ C links
       amp_split_virt(1:amp_split_size)=0d0
       amp_split_avv(1:amp_split_size)=0d0
 
-      if (.not.(need_color_links_used.or.need_charge_links_used)) then
+      if (.not.(need_color_links_bsv.or.need_charge_links_bsv)) then
 C just return 0
          bsv_wgt=0d0
          virt_wgt=0d0
@@ -7049,15 +7128,15 @@ c I(reg) terms, eq 5.5 of FKS
       nFKSprocess_save = nFKSprocess
       do iord = 1, nsplitorders
          if (iord.eq.qcd_pos) then
-            if (.not. need_color_links_used) cycle
-            need_color_links=need_color_links_used
+            if (.not. need_color_links_bsv) cycle
+            need_color_links=need_color_links_bsv
             need_charge_links=.false.
-            nFKSprocess=nFKSprocess_col
+            nFKSprocess=nFKSprocess_col_used
          else if (iord.eq.qed_pos) then
-            if (.not. need_charge_links_used) cycle
-            need_charge_links=need_charge_links_used
+            if (.not. need_charge_links_bsv) cycle
+            need_charge_links=need_charge_links_bsv
             need_color_links=.false.
-            nFKSprocess=nFKSprocess_chg
+            nFKSprocess=nFKSprocess_chg_used
          else
             cycle
          endif

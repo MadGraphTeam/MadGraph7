@@ -3816,23 +3816,52 @@ Parameters              %(params)s\n\
                 '%d' % info.get('flavor_class', {}).get(
                     'virtual_flavor_index', 0)
                 for info in fks_info_list)
-            born_flavor_configs = []
-            seen_born_flavors = set()
+            has_physical_fks_classes = all(
+                info.get('flavor_class') for info in fks_info_list)
+            replace_dict['has_physical_fks_classes'] = (
+                '.true.' if has_physical_fks_classes else '.false.')
+            replace_dict['fks_flavor_class_values'] = ', '.join(
+                '%d' % (index if has_physical_fks_classes else 0)
+                for index, unused in enumerate(fks_info_list, 1))
+            replace_dict['fks_topology_values'] = ', '.join(
+                '%d' % info.get('flavor_class', {}).get(
+                    'fks_config_index', index)
+                for index, info in enumerate(fks_info_list, 1))
+
+            # Pick one soft-capable representative for each physical Born
+            # row whenever possible.  BORN_FKS_MAP_D is the direct map from
+            # every physical FKS class to that representative; unlike the
+            # compact BORN_FKS_CONFIG_D list it does not assume dense local
+            # Born row numbers.
+            born_representatives = {}
             for config_index, info in enumerate(fks_info_list, 1):
                 born_flavor_index = info.get('flavor_class', {}).get(
                     'born_flavor_index', 1)
-                if born_flavor_index not in seen_born_flavors:
-                    seen_born_flavors.add(born_flavor_index)
-                    born_flavor_configs.append(config_index)
+                current = born_representatives.get(born_flavor_index)
+                has_links = (info['fks_info']['need_color_links'] or
+                             info['fks_info']['need_charge_links'])
+                if current is None or (has_links and not current[1]):
+                    born_representatives[born_flavor_index] = (
+                        config_index, has_links)
+            born_flavor_configs = [
+                value[0] for unused, value in
+                sorted(born_representatives.items())]
             replace_dict['n_born_flavor_configs'] = len(
                 born_flavor_configs)
             replace_dict['born_fks_config_values'] = ', '.join(
                 '%d' % config_index
                 for config_index in born_flavor_configs)
+            replace_dict['born_fks_map_values'] = ', '.join(
+                '%d' % born_representatives[
+                    info.get('flavor_class', {}).get(
+                        'born_flavor_index', 1)][0]
+                if has_physical_fks_classes else '%d' % config_index
+                for config_index, info in enumerate(fks_info_list, 1))
 
             col_lines = []
             pdg_lines = []
             charge_lines = []
+            born_pdg_lines = []
             born_charge_lines = []
             extra_cnt_pdg_lines = []
             extra_cnt_color_lines = []
@@ -3845,6 +3874,7 @@ Parameters              %(params)s\n\
                 if flavor_class:
                     colors = flavor_class['real_colors']
                     charges = flavor_class['real_charges']
+                    born_pdgs = flavor_class['born_pdgs']
                     born_charges = flavor_class['born_charges']
                     extra_cnt_pdgs = flavor_class['extra_cnt_pdgs']
                     extra_cnt_colors = flavor_class['extra_cnt_colors']
@@ -3853,6 +3883,7 @@ Parameters              %(params)s\n\
                     real_process = fksborn.real_processes[info['n_me']-1]
                     colors = real_process.colors
                     charges = real_process.charges
+                    born_pdgs = [0] * (len(charges) - 1)
                     born_charges = fksborn.charges_born
                     extra_cnt_index = info['fks_info']['extra_cnt_index']
                     if extra_cnt_index != -1:
@@ -3881,7 +3912,11 @@ Parameters              %(params)s\n\
                 charge_lines.append(\
                     'DATA (PARTICLE_CHARGE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /'\
                     % (i + 1, ', '.join('%19.15fd0' % charg\
-                                        for charg in charges)))
+                                         for charg in charges)))
+                born_pdg_lines.append(
+                    'DATA (BORN_PDG_TYPE_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%d' % pdg for pdg in born_pdgs)))
                 born_charge_lines.append(
                     'DATA (BORN_PARTICLE_CHARGE_D(%d, IPOS), '
                     'IPOS=1, NEXTERNAL-1) / %s /' %
@@ -3967,6 +4002,10 @@ Parameters              %(params)s\n\
             replace_dict['born_flavor_index_values'] = '1'
             replace_dict['extra_cnt_flavor_index_values'] = '0'
             replace_dict['virtual_flavor_index_values'] = '0'
+            replace_dict['has_physical_fks_classes'] = '.false.'
+            replace_dict['fks_flavor_class_values'] = '0'
+            replace_dict['fks_topology_values'] = '1'
+            replace_dict['born_fks_map_values'] = '1'
             replace_dict['n_born_flavor_configs'] = 1
             replace_dict['born_fks_config_values'] = '1'
 
@@ -3976,6 +4015,10 @@ Parameters              %(params)s\n\
                             % ', '.join([str(pdg) for pdg in pdgs])]
             charge_lines = ['DATA (PARTICLE_CHARGE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             % ', '.join('%19.15fd0' % charg for charg in charges)]
+            born_pdg_lines = [
+                'DATA (BORN_PDG_TYPE_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('0' for unused in charges[:-1])]
             born_charge_lines = [
                 'DATA (BORN_PARTICLE_CHARGE_D(1, IPOS), '
                 'IPOS=1, NEXTERNAL-1) / %s /' %
@@ -4005,6 +4048,7 @@ Parameters              %(params)s\n\
         replace_dict['col_lines'] = '\n'.join(col_lines)
         replace_dict['pdg_lines'] = '\n'.join(pdg_lines)
         replace_dict['charge_lines'] = '\n'.join(charge_lines)
+        replace_dict['born_pdg_lines'] = '\n'.join(born_pdg_lines)
         replace_dict['born_charge_lines'] = '\n'.join(born_charge_lines)
         replace_dict['extra_cnt_pdg_lines'] = '\n'.join(
             extra_cnt_pdg_lines)

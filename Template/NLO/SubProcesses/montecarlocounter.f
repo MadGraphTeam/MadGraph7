@@ -1550,6 +1550,7 @@ c  1<=iBtoR(k)<=nexternal,  1<=k<=nexternal-1
 
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
+      include 'fks_info.inc'
 
       double precision emscav_tmp(nexternal)
       double precision emscav_tmp_a(nexternal,nexternal)
@@ -1712,7 +1713,11 @@ c S-event information:
 c id's and mothers read from born_leshouche.inc;
 c colour configuration read from born_leshouche.inc and jflow 
       do i=1,nexternal-1
-        IDUP_S(i)=IDUP(i,1)
+        if (HAS_PHYSICAL_FKS_CLASSES) then
+          IDUP_S(i)=BORN_PDG_TYPE_D(NFKSPROCESS,i)
+        else
+          IDUP_S(i)=IDUP(i,1)
+        endif
         MOTHUP_S(1,i)=MOTHUP(1,i,1)
         MOTHUP_S(2,i)=MOTHUP(2,i,1)
         ICOLUP_S(1,i)=ICOLUP(1,i,jflow)

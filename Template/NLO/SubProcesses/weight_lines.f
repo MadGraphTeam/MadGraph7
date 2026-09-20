@@ -5,7 +5,8 @@
          integer max_contr,max_wgt,max_iproc,icontr,iwgt,icontr_picked
      $        ,iproc_picked
          logical, allocatable :: H_event(:)
-         integer, allocatable :: itype(:),nFKS(:),QCDpower(:),pdg(:,:)
+         integer, allocatable :: itype(:),nFKS(:),fks_flavor_class(:)
+     $        ,born_flavor_class(:),QCDpower(:),pdg(:,:)
      $        ,pdg_uborn(:,:),parton_pdg_uborn(:,:,:),parton_pdg(:,:,:)
      $        ,plot_id(:),niproc(:),ipr(:),parton_pdf(:,:,:)
      $        ,icontr_sum(:,:),ifold_cnt(:) ,icolour_con(:,:,:)
@@ -84,6 +85,14 @@ c nFKS
          allocate(itemp1(n_contr))
          itemp1(1:max_contr)=nFKS
          call move_alloc(itemp1,nFKS)
+c fks_flavor_class
+         allocate(itemp1(n_contr))
+         itemp1(1:max_contr)=fks_flavor_class
+         call move_alloc(itemp1,fks_flavor_class)
+c born_flavor_class
+         allocate(itemp1(n_contr))
+         itemp1(1:max_contr)=born_flavor_class
+         call move_alloc(itemp1,born_flavor_class)
 c QCDpower         
          allocate(itemp1(n_contr))
          itemp1(1:max_contr)=QCDpower
@@ -221,6 +230,8 @@ c update maximum
       allocate(H_event(1))
       allocate(itype(1))
       allocate(nFKS(1))
+      allocate(fks_flavor_class(1))
+      allocate(born_flavor_class(1))
       allocate(QCDpower(1))
       allocate(pdg(nexternal,0:1))
       allocate(pdg_uborn(nexternal,0:1))
@@ -267,6 +278,8 @@ c update maximum
       if (allocated(H_event)) deallocate(H_event)
       if (allocated(itype)) deallocate(itype)
       if (allocated(nFKS)) deallocate(nFKS)
+      if (allocated(fks_flavor_class)) deallocate(fks_flavor_class)
+      if (allocated(born_flavor_class)) deallocate(born_flavor_class)
       if (allocated(QCDpower)) deallocate(QCDpower)
       if (allocated(pdg)) deallocate(pdg)
       if (allocated(pdg_uborn)) deallocate(pdg_uborn)

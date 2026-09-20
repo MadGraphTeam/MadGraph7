@@ -8,6 +8,7 @@ c absolute value).
       include 'nFKSconfigs.inc'
       include 'run.inc'
       include 'orders.inc'
+      include 'fks_info.inc'
       INTEGER              IPROC
       DOUBLE PRECISION PD(0:MAXPROC)
       COMMON /SUBPROC/ PD, IPROC
@@ -34,6 +35,38 @@ c     This is the common block that this subroutine fills
      $     ,etoi(maxproc,fks_configs),maxproc_found
       common/cproc_combination/iproc_save,eto,etoi,maxproc_found
 cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+c A grouped FKS directory is already one physical flavour class and owns
+c exactly one local IPROC. The event-generation process map combines only
+c directories with the same physical underlying-Born class, so its local
+c IPROC map is the identity. Keep the legacy all-directory comparison below
+c for ordinary output, where every directory carries all subprocess rows.
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         maxproc_found=1
+         do i=1,fks_configs
+            iproc_save(i)=0
+            do j=1,maxproc
+               eto(j,i)=0
+               etoi(j,i)=0
+            enddo
+         enddo
+         do nFKSprocess=1,fks_configs
+            call fks_inc_chooser()
+            call leshouche_inc_chooser()
+            xbk(1)=0.5d0
+            xbk(2)=0.5d0
+            dummy=dlum()
+            if (iproc.ne.1) then
+               write (*,*) 'Physical FKS class must own one IPROC',
+     $              nFKSprocess,iproc
+               stop 1
+            endif
+            iproc_save(nFKSprocess)=1
+            eto(1,nFKSprocess)=1
+            etoi(1,nFKSprocess)=1
+         enddo
+         return
+      endif
       
       !MZ safety stop
       if (split_type(QCD_pos).and.split_type(QED_pos)) then

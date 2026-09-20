@@ -435,6 +435,7 @@ c
       include 'nexternal.inc'
       include 'genps.inc'
       include 'nFKSconfigs.inc'
+      include 'orders.inc'
       include 'fks_info.inc'
       include 'run.inc'
 c
@@ -703,10 +704,12 @@ c
       integer i,j,ifl,proc_map(0:fks_configs,0:fks_configs)
      $     ,nFKS_picked_nbody,nFKS_in,nFKS_out,izero,ione,itwo,mohdr
      $     ,iFKS,sum
+      integer born_class_map(fks_configs)
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt,vol1,probne,gfactsf
      $     ,gfactcl,replace_MC_subt,sudakov_damp,sigintF,n1body_wgt
-      save vol1,proc_map
+     $     ,born_vol1
+      save vol1,born_vol1,proc_map,born_class_map
       integer             ini_fin_fks
       common/fks_channels/ini_fin_fks
       external passcuts
@@ -749,6 +752,9 @@ c Find the nFKSprocess for which we compute the Born-like contributions
 c Determines the proc_map that sets which FKS configuration can be
 c summed explicitly and which by MC-ing.
          call setup_proc_map(sum,proc_map,ini_fin_fks)
+         do i=1,proc_map(0,0)
+            born_class_map(i)=BORN_FLAVOR_INDEX_D(proc_map(i,1))
+         enddo
 c For the S-events, we can combine processes when they give identical
 c processes at the Born. Make sure we check that we get indeed identical
 c IRPOC's
@@ -783,8 +789,15 @@ c "npNLO".
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
          enddo
-         if (ifl.eq.0)
-     &        call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+         if (ifl.eq.0) then
+            call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+            if (HAS_PHYSICAL_FKS_CLASSES) then
+               call get_MC_integer_group_volume(1,proc_map(0,0),
+     $              born_class_map,proc_map(0,1),born_vol1)
+            else
+               born_vol1=1d0/dble(proc_map(0,0))
+            endif
+         endif
 
 c The nbody contributions
          if (abrv.eq.'real') goto 11
@@ -805,10 +818,16 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
          else
             jac=0.5d0
          endif
-c Also the Born needs to be included in the Importance Sampling over the
-c FKS configurations (for the shower scale) (multiply by
-c 1/proc_map(0,0)*vol1)
-         jac=jac/(proc_map(0,0)*vol1)
+c Also the Born needs to be included in the importance sampling over the
+c FKS configurations (for the shower scale). Ordinary output has one Born
+c luminosity shared by all process-map groups. Grouped output instead has
+c one luminosity per physical Born class, so divide by the total sampling
+c probability of the selected class rather than the selected topology.
+         if (HAS_PHYSICAL_FKS_CLASSES) then
+            jac=jac/born_vol1
+         else
+            jac=jac/(proc_map(0,0)*vol1)
+         endif
          call generate_momenta(nndim,iconfig,jac,x,p)
          if (p_born(0,1).lt.0d0) goto 12
          call compute_prefactors_nbody(vegas_wgt)
@@ -976,6 +995,8 @@ c summed explicitly and which by MC-ing.
       include 'run.inc'
       include 'genps.inc'
       include 'nFKSconfigs.inc'
+      include 'orders.inc'
+      include 'fks_info.inc'
       double precision lum,dlum
       external dlum
       logical found_ini1,found_ini2,found_fnl
@@ -1008,6 +1029,13 @@ c Set Bjorken x's to some random value before calling the dlum() function
          lum=dlum()  ! updates IPROC
       enddo
       write (*,*) 'Total number of FKS directories is', fks_configs
+c Physical classes replace each topology-level subprocess list by one
+c executable flavour row. Build the same soft/non-soft groups as the legacy
+c code, but require a common physical underlying-Born row and split type.
+      if (sum.eq.3 .and. HAS_PHYSICAL_FKS_CLASSES) then
+         call setup_physical_proc_map(proc_map,ini_fin_fks)
+         goto 20
+      endif
 c For sum over identical FKS pairs, need to find the identical structures
       if (sum.eq.3) then
 c MC over FKS pairs that have soft singularity
@@ -1140,11 +1168,101 @@ c MC over FKS directories (1 FKS directory per nbody PS point)
          write (*,*) 'sum not known in driver_mintMC.f',sum
          stop
       endif
+ 20   continue
       write (*,*) 'FKS process map (sum=',sum,') :'
       do i=1,proc_map(0,0)
          write (*,*) i,'-->',proc_map(i,0),':',
      &        (proc_map(i,j),j=1,proc_map(i,0))
       enddo
+      return
+      end
+c
+
+
+      subroutine setup_physical_proc_map(proc_map,ini_fin_fks)
+c Build event-generation groups for one-row physical FKS classes. Each group
+c starts with a soft-capable class and can only receive non-soft classes with
+c the same physical Born row, initial/final emitter sector and primary split.
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'orders.inc'
+      include 'fks_info.inc'
+      integer proc_map(0:fks_configs,0:fks_configs),ini_fin_fks
+      integer i,j,k,nFKSprocess,soft_fks,primary_split
+      logical found,same_sector,same_split
+
+      proc_map(0,0)=0
+      do i=1,fks_configs
+         proc_map(i,0)=0
+      enddo
+
+c First create one group for every physical class with a soft singularity.
+      do nFKSprocess=1,fks_configs
+         if (ini_fin_fks.eq.1 .and.
+     $       FKS_J_D(nFKSprocess).le.nincoming) cycle
+         if (ini_fin_fks.eq.2 .and.
+     $       FKS_J_D(nFKSprocess).gt.nincoming) cycle
+         if (NEED_COLOR_LINKS_D(nFKSprocess).or.
+     $       NEED_CHARGE_LINKS_D(nFKSprocess)) then
+            proc_map(0,0)=proc_map(0,0)+1
+            proc_map(proc_map(0,0),0)=1
+            proc_map(proc_map(0,0),1)=nFKSprocess
+         endif
+      enddo
+
+c Attach every purely collinear class to its own physical soft class.
+      do nFKSprocess=1,fks_configs
+         if (ini_fin_fks.eq.1 .and.
+     $       FKS_J_D(nFKSprocess).le.nincoming) cycle
+         if (ini_fin_fks.eq.2 .and.
+     $       FKS_J_D(nFKSprocess).gt.nincoming) cycle
+         if (NEED_COLOR_LINKS_D(nFKSprocess).or.
+     $       NEED_CHARGE_LINKS_D(nFKSprocess)) cycle
+         found=.false.
+         do i=1,proc_map(0,0)
+            soft_fks=proc_map(i,1)
+            same_sector=(FKS_J_D(nFKSprocess).eq.1 .and.
+     $                   FKS_J_D(soft_fks).eq.1) .or.
+     $                  (FKS_J_D(nFKSprocess).eq.2 .and.
+     $                   FKS_J_D(soft_fks).eq.2) .or.
+     $                  (FKS_J_D(nFKSprocess).gt.nincoming .and.
+     $                   FKS_J_D(soft_fks).gt.nincoming)
+            if (.not.same_sector) cycle
+            if (BORN_FLAVOR_INDEX_D(nFKSprocess).ne.
+     $          BORN_FLAVOR_INDEX_D(soft_fks)) cycle
+            if (EXTRA_CNT_D(nFKSprocess).gt.0) then
+c A g/a -> q qbar class also advertises the alternate splitting used by
+c its extra counterterm.  Its process-map anchor is nevertheless selected
+c by the primary underlying-Born splitting.
+               primary_split=ISPLITORDER_BORN_D(nFKSprocess)
+               same_split=primary_split.gt.0 .and.
+     $              SPLIT_TYPE_D(soft_fks,primary_split)
+            else
+               same_split=.true.
+               do j=1,nsplitorders
+                  if (SPLIT_TYPE_D(nFKSprocess,j).neqv.
+     $                SPLIT_TYPE_D(soft_fks,j)) same_split=.false.
+               enddo
+            endif
+            if (.not.same_split) cycle
+            k=proc_map(i,0)+1
+            proc_map(i,0)=k
+            proc_map(i,k)=nFKSprocess
+            found=.true.
+            exit
+         enddo
+         if (.not.found) then
+            write (*,*) 'No physical soft FKS class for',nFKSprocess,
+     $           BORN_FLAVOR_INDEX_D(nFKSprocess),
+     $           FKS_TOPOLOGY_D(nFKSprocess)
+            stop 1
+         endif
+      enddo
+      if (proc_map(0,0).eq.0) then
+         write (*,*) 'No physical FKS class with a soft singularity'
+         stop 1
+      endif
       return
       end
 c
@@ -1255,6 +1373,11 @@ c     include all quarks (except top quark) and the gluon.
       data firsttime /.true./
       save nFKSprocessBorn
 c
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         nFKS_out=BORN_FKS_MAP_D(nFKS_in)
+         return
+      endif
+c
       if (firsttime) then
          firsttime=.false.
          do iFKS=1,fks_configs
@@ -1350,4 +1473,3 @@ c     if there are no soft singularities at all, just do something trivial
       endif
       return
       end
-

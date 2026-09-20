@@ -343,9 +343,9 @@ c timing statistics
       include 'orders.inc'
       include 'fks_info.inc'
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
-     $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt
+     $     ,nexternal),rwgt,vol,born_vol,sig,x(99),MC_int_wgt
       integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp
-     $     ,nFKS_max,izero,ione,itwo,mohdr,i,iran_picked
+     $     ,nFKS_max,izero,ione,itwo,mohdr,i,iran_picked,nFKS_sector
       parameter (izero=0,ione=1,itwo=2,mohdr=-100)
       logical passcuts,passcuts_nbody,passcuts_n1body,sum,firsttime
       data firsttime/.true./
@@ -376,6 +376,7 @@ c PineAPPL
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
+      integer born_class_map(fks_configs)
       save ini_fin_fks_map
       include 'has_ewsudakov.inc'
 
@@ -416,9 +417,21 @@ c PineAPPL
       if (ickkw.eq.-1) H1_factor_virt=0d0
       if (ickkw.eq.3) call set_FxFx_scale(0,p)
       call update_vegas_x(xx,x)
-      call get_MC_integer(max(ini_fin_fks(ichan),1)
-     $     ,ini_fin_fks_map(ini_fin_fks(ichan),0),iran_picked,vol)
-      nFKS_picked=ini_fin_fks_map(ini_fin_fks(ichan),iran_picked)
+      nFKS_sector=ini_fin_fks(ichan)
+      call get_MC_integer(max(nFKS_sector,1)
+     $     ,ini_fin_fks_map(nFKS_sector,0),iran_picked,vol)
+      nFKS_picked=ini_fin_fks_map(nFKS_sector,iran_picked)
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         do i=1,ini_fin_fks_map(nFKS_sector,0)
+            born_class_map(i)=BORN_FLAVOR_INDEX_D(
+     $           ini_fin_fks_map(nFKS_sector,i))
+         enddo
+         call get_MC_integer_group_volume(max(nFKS_sector,1),
+     $        ini_fin_fks_map(nFKS_sector,0),born_class_map,
+     $        iran_picked,born_vol)
+      else
+         born_vol=1d0
+      endif
       
 c The nbody contributions
       if (abrv.eq.'real') goto 11
@@ -431,6 +444,7 @@ c The nbody contributions
       else
          jac=0.5d0
       endif
+      jac=jac/born_vol
       call generate_momenta(nndim,iconfig,jac,x,p)
       if (p_born(0,1).lt.0d0) goto 12
       call compute_prefactors_nbody(vegas_wgt)
@@ -604,6 +618,11 @@ c Finalize PS point
       logical firsttime
       data firsttime /.true./
       save nFKSprocessBorn
+c
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         nFKS_out=BORN_FKS_MAP_D(nFKS_in)
+         return
+      endif
 c
       if (firsttime) then
          firsttime=.false.

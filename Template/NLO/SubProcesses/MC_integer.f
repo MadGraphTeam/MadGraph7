@@ -136,6 +136,44 @@ c Compute the volume 'vol'
       return
       end
 
+      subroutine get_MC_integer_group_volume(this_dim,niint_thisd,
+     &     labels,iint,vol)
+c Return the total sampling probability of all intervals which carry the
+c same physical label as the selected interval. This is needed when the
+c sampled integer resolves a finer partition than the contribution being
+c evaluated, e.g. physical FKS topologies versus underlying-Born flavours.
+      implicit none
+      integer this_dim,niint_thisd,labels(niint_thisd),iint,i
+      double precision vol
+      integer maxdim
+      parameter (maxdim=50)
+      integer maxintervals
+      parameter (maxintervals=200)
+      integer ncall(0:maxintervals,maxdim),nintervals(maxdim)
+      double precision grid(0:maxintervals,maxdim),acc(0:maxintervals
+     &     ,maxdim)
+      common/integration_integer/grid,acc,ncall,nintervals
+      if (this_dim.lt.1.or.this_dim.gt.maxdim .or.
+     &    niint_thisd.ne.nintervals(this_dim) .or.
+     &    iint.lt.1.or.iint.gt.niint_thisd) then
+         write (*,*) 'ERROR in get_MC_integer_group_volume',this_dim,
+     &        niint_thisd,nintervals(this_dim),iint
+         stop 1
+      endif
+      vol=0d0
+      do i=1,niint_thisd
+         if (labels(i).eq.labels(iint)) then
+            vol=vol+grid(i,this_dim)-grid(i-1,this_dim)
+         endif
+      enddo
+      if (vol.le.0d0) then
+         write (*,*) 'Non-positive grouped MC integer volume',this_dim,
+     &        labels(iint),vol
+         stop 1
+      endif
+      return
+      end
+
       subroutine reset_MC_grid
       implicit none
       integer i,this_dim

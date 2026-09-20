@@ -5,6 +5,11 @@
       INTEGER BORN_FLAVOR_INDEX_D(%(nconfs)d)
       INTEGER EXTRA_CNT_FLAVOR_INDEX_D(%(nconfs)d)
       INTEGER VIRTUAL_FLAVOR_INDEX_D(%(nconfs)d)
+      LOGICAL HAS_PHYSICAL_FKS_CLASSES
+      PARAMETER (HAS_PHYSICAL_FKS_CLASSES=%(has_physical_fks_classes)s)
+      INTEGER FKS_FLAVOR_CLASS_D(%(nconfs)d)
+      INTEGER FKS_TOPOLOGY_D(%(nconfs)d)
+      INTEGER BORN_FKS_MAP_D(%(nconfs)d)
       INTEGER NBORN_FLAVOR_CONFIGS
       PARAMETER (NBORN_FLAVOR_CONFIGS=%(n_born_flavor_configs)d)
       INTEGER BORN_FKS_CONFIG_D(NBORN_FLAVOR_CONFIGS)
@@ -12,6 +17,7 @@
       INTEGER PARTICLE_TYPE_D(%(nconfs)d, NEXTERNAL), PDG_TYPE_D(%(nconfs)d, NEXTERNAL)
       LOGICAL PARTICLE_TAG_D(%(nconfs)d, NEXTERNAL)
       REAL*8 PARTICLE_CHARGE_D(%(nconfs)d, NEXTERNAL)
+      INTEGER BORN_PDG_TYPE_D(%(nconfs)d, NEXTERNAL-1)
       REAL*8 BORN_PARTICLE_CHARGE_D(%(nconfs)d, NEXTERNAL-1)
       INTEGER EXTRA_CNT_PDG_D(%(nconfs)d, NEXTERNAL-1)
       INTEGER EXTRA_CNT_COLOR_D(%(nconfs)d, NEXTERNAL-1)
@@ -32,6 +38,9 @@ data real_flavor_index_d / %(real_flavor_index_values)s /
 data born_flavor_index_d / %(born_flavor_index_values)s /
 data extra_cnt_flavor_index_d / %(extra_cnt_flavor_index_values)s /
 data virtual_flavor_index_d / %(virtual_flavor_index_values)s /
+data fks_flavor_class_d / %(fks_flavor_class_values)s /
+data fks_topology_d / %(fks_topology_values)s /
+data born_fks_map_d / %(born_fks_map_values)s /
 data born_fks_config_d / %(born_fks_config_values)s /
 
 %(fks_j_from_i_lines)s
@@ -63,6 +72,7 @@ C     charge is set 0. with QCD corrections, which is irrelevant
 %(charge_lines)s
 
 C     Physical charges of the corresponding underlying-Born row.
+%(born_pdg_lines)s
 %(born_charge_lines)s
 
 C     Physical metadata of the alternate extra-counterterm Born row.
@@ -76,4 +86,3 @@ C
 C     Tagged particles:
 C     
 %(tag_lines)s
-

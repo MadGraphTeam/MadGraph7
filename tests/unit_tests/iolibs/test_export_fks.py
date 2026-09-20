@@ -185,15 +185,32 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn('INTEGER REAL_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER VIRTUAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('PARAMETER (HAS_PHYSICAL_FKS_CLASSES=.TRUE.)',
+                      content)
+        compact_content = ' '.join(content.lower().replace('$', '').split())
+        compact_content = compact_content.replace(' ,', ',')
         self.assertIn('PARAMETER (NBORN_FLAVOR_CONFIGS=4)', content)
         self.assertIn('data born_fks_config_d / 1, 2, 3, 4 /',
                       content.lower())
+        self.assertIn(
+            'data born_fks_map_d / 1, 2, 3, 4, 1, 2, 3, 4, '
+            '1, 2, 3, 4, 1, 2, 3, 4 /', compact_content)
+        self.assertIn(
+            'data fks_topology_d / 1, 1, 1, 1, 2, 2, 2, 2, '
+            '3, 3, 3, 3, 4, 4, 4, 4 /', compact_content)
         self.assertIn('data real_flavor_index_d / 1, 2, 3, 4,',
                       content.lower())
         self.assertIn('data born_flavor_index_d / 1, 2, 3, 4,',
                       content.lower())
         self.assertNotIn(' 81,', content)
         self.assertNotIn('(-0.333', content)
+        for index, info in enumerate(info_list, 1):
+            self.assertIn(
+                'DATA (BORN_PDG_TYPE_D(%d, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                (index, ', '.join(str(pdg) for pdg in
+                                  info['flavor_class']['born_pdgs'])),
+                compact_content.upper())
 
         real_me = matrix_element.real_processes[0].matrix_element
         pdf_vars, pdf_data, pdf_lines, ee_vars = \
@@ -589,5 +606,3 @@ class TestFKSOutput(unittest.TestCase):
             run_cmd('set OLP MadLoop')
 
         shutil.rmtree(path)
-
-

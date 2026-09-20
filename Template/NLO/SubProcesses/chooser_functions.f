@@ -469,6 +469,20 @@ c mother and the extra (n+1) parton is given the PDG code of the gluon.
       do k=1,nexternal
          pdg(k,ict)=idup(k,1)
       enddo
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         do k=1,nexternal-1
+            pdg_uborn(k,ict)=BORN_PDG_TYPE_D(iFKS,k)
+         enddo
+         if (split_type_d(iFKS,qcd_pos)) then
+            pdg_uborn(nexternal,ict)=21
+         elseif (split_type_d(iFKS,qed_pos)) then
+            pdg_uborn(nexternal,ict)=22
+         else
+            write (*,*) 'set_pdg: physical class has no split type',iFKS
+            stop 1
+         endif
+         return
+      endif
       do k=1,nexternal
          if (k.lt.fks_j_d(iFKS)) then
             pdg_uborn(k,ict)=pdg(k,ict)
@@ -566,5 +580,4 @@ c initial state gluon splitting (gluon is j_fks):  g -> XX
       write(*,*) 'SPLIT TYPE USED:', split_type_used
       return
       end
-
 
