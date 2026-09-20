@@ -1561,3 +1561,122 @@ class TestRecoveredDefaults(unittest.TestCase):
         param_card = self.cmd.get_full_param_card(self.full_model)
         self.cmd.warn_recovered_defaults([('decay', (15,))], set(), param_card,
                     self.sm_path, 'restrict_ckm.dat', FakeAsk())
+
+
+#===============================================================================
+# the question starts from the restriction the model was loaded with
+#===============================================================================
+class TestStartFromTheLoadedRestriction(unittest.TestCase):
+    """customize_model used to start from the full model with the values of
+    the loaded one, so a parameter the loaded restriction had fixed came back
+    at its UFO value: customizing SMEFTatNLO-NLO and answering `done` gave 2013
+    interactions against the 1932 loaded, operators, masses and widths
+    switched back on.  The rules now start as that restriction."""
+
+    @classmethod
+    def setUpClass(cls):
+        sm_path = import_ufo.find_ufo_path('sm')
+        cls.full_model = import_ufo.import_full_model(sm_path)
+
+    def ask(self, card, set_scheme=None):
+        cmd = mg_interface.MadGraphCmd()
+        cmd._curr_model = self.full_model
+        categories = cmd.get_customize_categories(self.full_model,
+                                                  self.full_model)
+        if set_scheme:
+            for category in categories:
+                for option in category:
+                    if option.name == 'flavour scheme':
+                        option.status = set_scheme
+        return mg_interface.AskforCustomize(
+            '', mother_interface=cmd, categories=categories,
+            loaded_card=check_param_card.ParamCard(card.split('\n')),
+            loaded_name='test')
+
+    CARD = """
+Block mass
+    5 0.0 # MB
+    6 172.0 # MT
+   15 1.777 # MTA
+   23 91.188 # MZ
+Block yukawa
+    5 0.0 # ymb
+    6 172.0 # ymt
+   15 1.777 # ymtau
+DECAY 6 0.0 # WT
+DECAY 23 1.0 # WZ
+"""
+
+    def test_zeros_ones_and_merges_become_rules(self):
+        ask = self.ask(self.CARD)
+        self.assertIn(('MASS', (5,)), ask.set_zero)
+        self.assertIn(('YUKAWA', (5,)), ask.set_zero)
+        self.assertIn(('DECAY', (6,)), ask.set_zero)     # a zero width stays
+        self.assertIn(('DECAY', (23,)), ask.set_one)
+        # the same value inside a block is a merge; ymt = MT is across two
+        # blocks, which the restriction does not merge
+        self.assertEqual(ask.set_equal, [])
+        self.assertIn('test', ask.get_question())
+
+    def test_a_merge_inside_a_block(self):
+        card = self.CARD.replace('15 1.777 # MTA', '15 172.0 # MTA')
+        ask = self.ask(card)
+        self.assertEqual(ask.set_equal, [(('MASS', (15,)), ('MASS', (6,)))])
+
+    def test_opposite_signs_are_left_free(self):
+        """`set A = B` has no sign: a pair the restriction merged as A = -B
+        cannot be written as a rule"""
+
+        card = self.CARD.replace('15 1.777 # MTA', '15 -172.0 # MTA')
+        self.assertEqual(self.ask(card).set_equal, [])
+
+    def test_what_an_option_covers_is_left_to_it(self):
+        """a 5F scheme zeroes the b mass itself: not listed twice"""
+
+        ask = self.ask(self.CARD, set_scheme='5F')
+        self.assertNotIn(('MASS', (5,)), ask.set_zero)
+        self.assertIn(('DECAY', (6,)), ask.set_zero)
+
+    def test_set_free_releases_one(self):
+        ask = self.ask(self.CARD)
+        ask.do_set('MB free')
+        self.assertNotIn(('MASS', (5,)), ask.set_zero)
+        self.assertIn(('YUKAWA', (5,)), ask.set_zero)    # the others stay
+
+    def test_without_a_card_nothing_is_prefilled(self):
+        cmd = mg_interface.MadGraphCmd()
+        cmd._curr_model = self.full_model
+        ask = mg_interface.AskforCustomize(
+            '', mother_interface=cmd,
+            categories=cmd.get_customize_categories(self.full_model,
+                                                    self.full_model))
+        self.assertEqual((ask.set_zero, ask.set_one, ask.set_equal),
+                         ([], [], []))
+
+
+class TestCustomizeKeepsTheLoadedRestriction(unittest.TestCase):
+    """End to end: from sm-no_widths, answering `done` keeps every width at
+    zero -- before, they all came back at the values of the UFO."""
+
+    def test_done_rebuilds_the_loaded_model(self):
+        import tempfile
+        import madgraph.interface.master_interface as master_interface
+
+        cmd = master_interface.MasterCmd()
+        cmd.options['crash_on_error'] = False
+        cmd.exec_cmd('import model sm-no_widths', printcmd=False)
+        loaded = len(cmd._curr_model.get('interactions'))
+
+        handle, path = tempfile.mkstemp(suffix='.mg5')
+        try:
+            with os.fdopen(handle, 'w') as script:
+                script.write('customize_model\ndone\n')
+            cmd.exec_cmd('import command %s' % path, printcmd=False)
+        finally:
+            os.remove(path)
+
+        widths = [param for param in cmd._curr_model.get('parameters').get(
+                                                          ('external',), [])
+                  if param.lhablock.upper() == 'DECAY']
+        self.assertEqual(widths, [], 'a width came back as a free parameter')
+        self.assertEqual(len(cmd._curr_model.get('interactions')), loaded)

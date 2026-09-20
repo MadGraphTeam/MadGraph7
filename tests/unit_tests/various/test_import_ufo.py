@@ -1719,3 +1719,45 @@ class TestLorentzStructureCanonicalisation(unittest.TestCase):
         # a symmetric part that matches does not excuse an asymmetric part
         self.assertNotEqual(canon('Metric(1,2)*ProjM(3,4)'),
                             canon('Metric(2,1)*ProjM(4,3)'))
+
+
+class TestRestrictionDoesNotLeakIntoTheUFO(unittest.TestCase):
+    """A Lorentz structure the restriction merges must stay in that model.
+
+    A UFO Lorentz registers itself in its object_library's `all_lorentz`, a
+    module global that stays in sys.modules.  RestrictModel.add_lorentz left
+    the merged structure there, so every later import of the same model in the
+    process started with more structures (658, 661, 664 for SMEFTatNLO-NLO)
+    and named its own merged ones one number further on -- which made
+    customize_model's stability check refuse SMEFTatNLO-NLO outright.
+    """
+
+    def setUp(self):
+        import types
+
+        self.name = 'fake_ufo_object_library_for_restriction_test'
+        library = types.ModuleType(self.name)
+        exec('all_lorentz = []\n'
+             'class Lorentz(object):\n'
+             '    def __init__(self, name, spins, structure="external", **opt):\n'
+             '        self.name = name\n'
+             '        self.spins = spins\n'
+             '        self.structure = structure\n'
+             '        global all_lorentz\n'
+             '        all_lorentz.append(self)\n', library.__dict__)
+        sys.modules[self.name] = library
+        self.library = library
+
+    def tearDown(self):
+        sys.modules.pop(self.name, None)
+
+    def test_a_merged_structure_is_not_registered_in_the_ufo(self):
+        original = self.library.Lorentz('FFVV1', [2, 2, 3, 3], 'Gamma(3,2,1)')
+        model = import_ufo.RestrictModel()
+        model['lorentz'] = [original]
+
+        model.add_lorentz('FFVV99', [2, 2, 3, 3], 'Gamma(4,2,1)')
+
+        self.assertIn('FFVV99', [l.name for l in model['lorentz']])
+        self.assertEqual([l.name for l in self.library.all_lorentz],
+                         ['FFVV1'])
