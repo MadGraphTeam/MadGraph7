@@ -34,6 +34,7 @@ import madspace as ms
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
 from models.check_param_card import ParamCard
+from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
@@ -1481,10 +1482,34 @@ class MadgraphProcess:
             misc.gzip(lhe_path)
         else:
             raise ValueError("Unknown output format")
+        self.write_hwu(histograms)
         if systematics is not None:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
+
+    hwu_file_name = "MADatLO.HwU"
+
+    def write_hwu(self, histograms) -> None:
+        """Write the event-sample histograms next to the events in the HwU
+        format (MADatLO.HwU), the one an aMC@NLO run writes as MADatNLO.HwU
+        and madgraph/various/histograms.py reads: an mg7 distribution can then
+        be overlaid on an NLO one without converting anything in between. The
+        numbers are the ones info.json carries, bands included."""
+        if histograms is None:
+            return
+        try:
+            data = json.loads(histograms.to_json(self.systematics))
+            summary = (json.loads(self.systematics.summary())
+                       if self.systematics is not None else None)
+            text = hwu_output.to_hwu(data, summary)
+        except Exception as error:
+            logger.warning("could not write the HwU histograms: %s", error)
+            return
+        if not text:
+            return
+        with open(os.path.join(self.run_path, self.hwu_file_name), "w") as f:
+            f.write(text)
 
     def write_systematics_sidecar(self) -> None:
         """Describe the variation weights next to the event file
