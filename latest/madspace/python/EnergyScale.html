@@ -610,7 +610,7 @@
 <div class="math notranslate nohighlight">
 \[\mu = H_\mathrm{T} = \sum_i \sqrt{m_i^2 + p_{\mathrm{T},i}^2},\]</div>
 </div>
-<p>with DynamicalScaleType selecting <span class="math notranslate nohighlight">\(E_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}/2\)</span> (<code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>) or <span class="math notranslate nohighlight">\(\sqrt{\hat s}\)</span> (<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code>).</p>
+<p>with DynamicalScaleType selecting <span class="math notranslate nohighlight">\(E_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}\)</span> (<code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code>), <span class="math notranslate nohighlight">\(H_\mathrm{T}/2\)</span> (<code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code>) or <span class="math notranslate nohighlight">\(\sqrt{\hat s}\)</span> (<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code>). The dynamical scale is multiplied by <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code>, e.g. <span class="math notranslate nohighlight">\(H_\mathrm{T}/4\)</span> is <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code> with <code class="docutils literal notranslate"><span class="pre">scale_factor</span> <span class="pre">=</span> <span class="pre">0.5</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong></p>
 <ul class="simple">
@@ -663,7 +663,7 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 </dd>
 </dl>
 <ol class="arabic simple" start="4">
-<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.EnergyScale, particle_count: typing.SupportsInt, dynamical_scale_type: madspace._madspace_py.EnergyScale.DynamicalScaleType, ren_scale_fixed: bool, fact_scale_fixed: bool, ren_scale: typing.SupportsFloat, fact_scale1: typing.SupportsFloat, fact_scale2: typing.SupportsFloat, scale_factor: typing.SupportsFloat = 1.0) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -675,6 +675,7 @@ processes”, <a class="reference external" href="https://arxiv.org/abs/1507.000
 <li><p><strong>ren_scale</strong> – Fixed renormalization-scale value.</p></li>
 <li><p><strong>fact_scale1</strong> – Fixed factorization scale for the first beam.</p></li>
 <li><p><strong>fact_scale2</strong> – Fixed factorization scale for the second beam.</p></li>
+<li><p><strong>scale_factor</strong> – Factor on the dynamical scale; fixed scales are left alone.</p></li>
 </ul>
 </dd>
 </dl>
