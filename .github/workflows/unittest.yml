@@ -192,6 +192,16 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_customize_model -t0
 
+      # ---- unittest_madspace_install ----
+      # tests/unit_tests/various/test_madspace_install.py: how madspace/install.py
+      # resolves the source-build options (a command-line flag beats the saved
+      # settings under --yes); pip and cmake are stubbed, nothing is built
+      - name: "unittest_madspace_install: run the madspace installer unit tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madspace_install -t0
+
 
   unittest_bundle_2:
     # former jobs, run one after the other: unittest_1 unittest_4 unittest_5
@@ -458,3 +468,4 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_write_model -t0
+
