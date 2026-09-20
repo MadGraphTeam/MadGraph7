@@ -28,6 +28,7 @@ import madgraph.interface.madevent_interface as me_cmd
 import madgraph.various.misc as misc
 import madgraph.various.process_checks as process_checks
 import madgraph.various.banner as banner_mod
+import madgraph.interface.extended_cmd as extended_cmd
 import sys
 
 #from madgraph import MG4DIR, MG5DIR, MadGraph5Error
@@ -627,7 +628,10 @@ class MWLauncher(ExtLauncher):
             usecmd = MW.MadWeightCmd(me_dir=self.running_dir, options=self.options)
             usecmd.pass_in_web_mode()
         #Check if some configuration were overwritten by a command. If so use it    
-        set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')]
+        set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')
+                   # an answer to an earlier launch's question is not a
+                   # setting of this prompt (extended_cmd.QuestionAnswer)
+                   and not extended_cmd.is_question_answer(l)]
         for line in set_cmd:
             try:
                 usecmd.do_set(line[3:], log=False)
@@ -720,7 +724,10 @@ class aMCatNLOLauncher(ExtLauncher):
             usecmd = run_int.aMCatNLOCmd(me_dir=self.running_dir, options = self.cmd_int.options)
         
         #Check if some configuration were overwritten by a command. If so use it    
-        set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')]
+        set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')
+                   # an answer to an earlier launch's question is not a
+                   # setting of this prompt (extended_cmd.QuestionAnswer)
+                   and not extended_cmd.is_question_answer(l)]
         all_options = list(usecmd.options_configuration.keys()) +  list(usecmd.options_madgraph.keys()) + list(usecmd.options_madevent.keys())
         for line in set_cmd:
             arg = line.split()
@@ -830,7 +837,10 @@ class MELauncher(ExtLauncher):
                 usecmd = ME.MadEventCmd(me_dir=self.running_dir, options=self.options, force_run=True)
                 usecmd.pass_in_web_mode()
             #Check if some configuration were overwritten by a command. If so use it    
-            set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')]
+            set_cmd = [l for l in self.cmd_int.history if l.strip().startswith('set')
+                       # an answer to an earlier launch's question is not a
+                       # setting of this prompt (extended_cmd.QuestionAnswer)
+                       and not extended_cmd.is_question_answer(l)]
             all_options = list(usecmd.options_configuration.keys()) +  list(usecmd.options_madgraph.keys()) + list(usecmd.options_madevent.keys())
             for line in set_cmd:
                 arg = line.split()

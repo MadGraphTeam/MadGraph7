@@ -643,6 +643,9 @@ boost_beam:
     - name: p1
       type: [float, n, 4]
       desc: "momenta in the partonic center-of-mass frame"
+    - name: masses
+      type: [float, n]
+      desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
       desc: "momentum fraction of beam 1"
@@ -660,6 +663,9 @@ boost_beam_inverse:
     - name: p1
       type: [float, n, 4]
       desc: "momenta in the lab frame"
+    - name: masses
+      type: [float, n]
+      desc: "mass of each particle, or a negative value to read it off its momentum"
     - name: x1
       type: [float]
       desc: "momentum fraction of beam 1"
@@ -1007,15 +1013,18 @@ two_to_three_particle_scattering:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the already-generated third particle"
-    - name: s23
+    - name: u
       type: [float]
-      desc: "invariant mass squared of particles 2 and 3"
+      desc: "position of s23 in its kinematic range, (s23 - s23_min) / (s23_max - s23_min)"
+    - name: u_c
+      type: [float]
+      desc: "1 - u, (s23_max - s23) / (s23_max - s23_min)"
     - name: t1_abs
       type: [float]
       desc: "absolute value of the first momentum transfer"
@@ -1051,15 +1060,12 @@ two_to_three_particle_scattering_inverse:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: t1_abs
       type: [float]
       desc: "absolute value of the first momentum transfer"
-    - name: s23
-      type: [float]
-      desc: "invariant mass squared of particles 2 and 3"
   outputs:
     - name: m1
       type: [float]
@@ -1070,6 +1076,12 @@ two_to_three_particle_scattering_inverse:
     - name: phi_choice
       type: [int]
       desc: "branch selector for the azimuthal solution"
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range, read off the azimuth"
+    - name: u_c
+      type: [float]
+      desc: "1 - u, read off the azimuth"
     - name: det
       type: [float]
       desc: "Jacobian of the mapping"
@@ -1561,9 +1573,9 @@ s23_min_max:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1590,9 +1602,6 @@ s23_value_and_min_max:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
-      type: [float, 4]
-      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1622,9 +1631,9 @@ s23_min_max_cut:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
+    - name: p12
       type: [float, 4]
-      desc: "second incoming momentum"
+      desc: "momentum of the system of the first and second outgoing particles"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1663,9 +1672,6 @@ s23_value_and_min_max_cut:
     - name: pa
       type: [float, 4]
       desc: "first incoming momentum"
-    - name: pb
-      type: [float, 4]
-      desc: "second incoming momentum"
     - name: p3
       type: [float, 4]
       desc: "momentum of the third particle"
@@ -1701,6 +1707,96 @@ s23_value_and_min_max_cut:
       type: [float]
       desc: "upper limit of the 2-3 invariant mass squared"
   desc: "The 2-3 invariant mass squared and its cut-restricted limits. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
+
+s23_position:
+  inputs:
+    - name: s23
+      type: [float]
+      desc: "the 2-3 invariant mass squared"
+    - name: s_phys_min
+      type: [float]
+      desc: "lower kinematic limit of the 2-3 invariant mass squared"
+    - name: s_phys_max
+      type: [float]
+      desc: "upper kinematic limit of the 2-3 invariant mass squared"
+  outputs:
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range"
+    - name: u_c
+      type: [float]
+      desc: "1 - u"
+  desc: "Position of the 2-3 invariant in its kinematic range, from both ends. Building block of @ref TwoToThreeParticleScattering."
+
+s23_arcsine_sample:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: s_min
+      type: [float]
+      desc: "lower limit of the sampled 2-3 invariant mass squared"
+    - name: s_max
+      type: [float]
+      desc: "upper limit of the sampled 2-3 invariant mass squared"
+    - name: s_phys_min
+      type: [float]
+      desc: "lower kinematic limit of the 2-3 invariant mass squared"
+    - name: s_phys_max
+      type: [float]
+      desc: "upper kinematic limit of the 2-3 invariant mass squared"
+    - name: power
+      type: [float]
+      desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
+    - name: mass
+      type: [float]
+      desc: "pole mass of the sampling, as in @ref Invariant"
+  outputs:
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range"
+    - name: u_c
+      type: [float]
+      desc: "1 - u"
+    - name: det
+      type: [float]
+      desc: "Jacobian d s23 / d r"
+  desc: "Arcsine map in the azimuth composed with the importance sampling of the 2-3 invariant, returning its position in the kinematic range at full relative precision near both ends. Building block of @ref TwoToThreeParticleScattering."
+
+s23_arcsine_sample_inverse:
+  inputs:
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range"
+    - name: u_c
+      type: [float]
+      desc: "1 - u"
+    - name: s_min
+      type: [float]
+      desc: "lower limit of the sampled 2-3 invariant mass squared"
+    - name: s_max
+      type: [float]
+      desc: "upper limit of the sampled 2-3 invariant mass squared"
+    - name: s_phys_min
+      type: [float]
+      desc: "lower kinematic limit of the 2-3 invariant mass squared"
+    - name: s_phys_max
+      type: [float]
+      desc: "upper kinematic limit of the 2-3 invariant mass squared"
+    - name: power
+      type: [float]
+      desc: "exponent of the 1/(s - m^2)^power sampling, as in @ref Invariant"
+    - name: mass
+      type: [float]
+      desc: "pole mass of the sampling, as in @ref Invariant"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: det
+      type: [float]
+      desc: "Jacobian d r / d s23"
+  desc: "Inverse of `s23_arcsine_sample`. Building block of @ref TwoToThreeParticleScattering."
 
 invariants_from_momenta:
   inputs:

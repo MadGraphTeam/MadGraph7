@@ -36,6 +36,7 @@ if '__main__' == __name__:
     import sys
     sys.path.append(pjoin(os.path.dirname(__file__), '..'))
 
+import madgraph
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.madgraph_interface as mg_interface
 import madgraph.interface.master_interface as master_interface
@@ -1194,7 +1195,16 @@ class MadSpinInterface(extended_cmd.Cmd):
         has_cms = re.compile(r'''set\s+complex_mass_scheme\s*(True|T|1|true|$|;)''')
         for line in self.banner.proc_card:
             if line.startswith('set'):
-                self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
+                                         postcmd=False)
+                except madgraph.InvalidCmd:
+                    # A proc card can carry a `set` that is no MG5 option --
+                    # an answer to a launch card question (`set width 6
+                    # auto`) was written into it before those were kept
+                    # out.  It says nothing about the process: skip it.
+                    logger.debug('proc card line ignored: %s', line)
+                    continue
                 if has_cms.search(line):
                     complex_mass = True
         
@@ -1230,7 +1240,12 @@ class MadSpinInterface(extended_cmd.Cmd):
                         if key in self.multiparticles_ms:
                             del self.multiparticles_ms[key]            
             elif line.startswith('set') and not line.startswith('set gauge'):
-                self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False, postcmd=False)
+                try:
+                    self.mg5cmd.exec_cmd(line, printcmd=False, precmd=False,
+                                         postcmd=False)
+                except madgraph.InvalidCmd:
+                    # not an MG5 option: see the proc card loop above
+                    logger.debug('proc card line ignored: %s', line)
             elif line.startswith('import model'):
                 if model_name in line:
                     final_model = True

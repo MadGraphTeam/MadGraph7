@@ -1,0 +1,203 @@
+# GPU CI on a CECI cluster, through a self-hosted runner that lives inside ONE Slurm
+# allocation per workflow run: all the CI jobs below share that allocation.
+# Called by gpu_manneback_cuda.yml and gpu_lemaitre4_hip.yml; see .github/gpu_ci/README.md.
+#
+#   start_runner    GitHub-hosted   ssh to the cluster (key of the `ceci-gpu` environment),
+#                                   sbatch the runner on the GPU partition, wait until online
+#   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
+#   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
+#   ...             cluster runner  more CI jobs: same runs-on, and add them to stop_runner's needs
+#   stop_runner     cluster runner  clean up and end the allocation (no ssh key needed)
+#
+# The runner runs under a personal cluster account, hence:
+#   - only start_runner gets the ssh key, through the `ceci-gpu` environment (main only);
+#   - the runner refuses every job that is not part of the workflow run that started it
+#     (.github/gpu_ci/job_started_hook.sh), so no branch or pull request can use it.
+
+name: GPU CI on a CECI cluster (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      cluster:
+        description: 'ssh host alias of the cluster (see .github/actions/ceci_ssh)'
+        type: string
+        required: true
+      runner_label:
+        description: 'label (and name) of the runner registered by .github/gpu_ci/install_runner.sh'
+        type: string
+        required: true
+      partition:
+        description: 'Slurm partition'
+        type: string
+        required: true
+      backend:
+        description: 'GPU backend: cuda or hip'
+        type: string
+        required: true
+      modules:
+        description: 'Modules to load on the GPU node, in order (space separated)'
+        type: string
+        required: true
+      gres:
+        type: string
+        default: 'gpu:1'
+      cpus:
+        type: string
+        default: '8'
+      mem:
+        type: string
+        default: '32G'
+      time_limit:
+        description: 'Slurm --time of the runner allocation, i.e. of all the CI jobs together'
+        type: string
+        default: '02:00:00'
+      extra_sbatch:
+        description: 'Extra sbatch options, space separated, no quotes'
+        type: string
+        default: ''
+      gpu_arch:
+        description: 'CUDA compute capability (e.g. 80) or HIP target (e.g. gfx942); empty = the GPU of the node'
+        type: string
+        default: ''
+      nevents:
+        type: string
+        default: '10000'
+      pdf_set:
+        type: string
+        default: 'NNPDF23_lo_as_0130_qed'
+      keep_workdir:
+        description: 'Keep the run directory on the cluster even if every job succeeds'
+        type: boolean
+        default: false
+
+env:
+  RUN_TAG: mg7-run-${{ github.run_id }}-${{ github.run_attempt }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  start_runner:
+    runs-on: ubuntu-22.04 # the other MadGraph7 workflows use ubuntu-24.04
+    # holds CECI_KEY; restrict it to the main branch (and optionally add reviewers)
+    environment: ceci-gpu
+    timeout-minutes: 300 # mostly the time the runner job waits in the Slurm queue
+    env:
+      CLUSTER: ${{ inputs.cluster }}
+      LABEL: ${{ inputs.runner_label }}
+      PARTITION: ${{ inputs.partition }}
+      GRES: ${{ inputs.gres }}
+      CPUS: ${{ inputs.cpus }}
+      MEM: ${{ inputs.mem }}
+      TIME_LIMIT: ${{ inputs.time_limit }}
+      EXTRA_SBATCH: ${{ inputs.extra_sbatch }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/ceci_ssh
+        with:
+          key: ${{ secrets.CECI_KEY }}
+          user: ${{ vars.CECI_USER || 'omatt' }}
+      - name: check the ssh access to the cluster
+        run: ssh "$CLUSTER" 'echo "connected to $(hostname) as $USER"'
+      - name: copy the runner batch script and job hook to the cluster
+        run: |
+          scp .github/gpu_ci/runner_batch.sh .github/gpu_ci/job_started_hook.sh "$CLUSTER:mg7-gpu-ci/runner-$LABEL/" || {
+            echo "::error::no runner in ~/mg7-gpu-ci/runner-$LABEL on $CLUSTER: install it with .github/gpu_ci/install_runner.sh (see .github/gpu_ci/README.md)"
+            exit 1
+          }
+      - name: start the runner in a Slurm job and wait until it is online
+        run: |
+          read -r -a extra <<< "$EXTRA_SBATCH"
+          ssh "$CLUSTER" "bash -l -s -- $(printf '%q ' "$LABEL" "$GITHUB_RUN_ID" "$RUN_TAG" 10 \
+              --partition="$PARTITION" --gres="$GRES" --cpus-per-task="$CPUS" \
+              --mem="$MEM" --time="$TIME_LIMIT" "${extra[@]}")" \
+            < .github/gpu_ci/remote_start_runner.sh
+
+  build_madspace:
+    needs: start_runner
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+    outputs:
+      venv: ${{ steps.build.outputs.venv }}
+      madspace_prefix: ${{ steps.build.outputs.madspace_prefix }}
+    steps:
+      - name: where are we
+        run: echo "Slurm job $SLURM_JOB_ID on $(hostname), partition $SLURM_JOB_PARTITION, $SLURM_CPUS_PER_TASK cpus"
+      - uses: actions/checkout@v5
+      - name: build madspace for ${{ inputs.backend }}
+        id: build
+        run: .github/gpu_ci/build_madspace_gpu.sh
+
+  pp_ttx:
+    needs: build_madspace
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      BACKEND: ${{ inputs.backend }}
+      MODULES: ${{ inputs.modules }}
+      GPU_ARCH: ${{ inputs.gpu_arch }}
+      NEVENTS: ${{ inputs.nevents }}
+      PDF_SET: ${{ inputs.pdf_set }}
+      VENV: ${{ needs.build_madspace.outputs.venv }}
+      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: run directory
+        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/pp_ttx" >> "$GITHUB_ENV"
+      - name: p p > t t~ on the GPU
+        run: .github/gpu_ci/pp_ttx_mg7.sh
+      - name: collect logs and cards
+        if: always()
+        run: |
+          mkdir -p results
+          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt pp_ttx.mg7 output.log generate_events.log \
+              PROC_pp_ttx/Cards PROC_pp_ttx/Events/*/info.json PROC_pp_ttx/Events/*/*.log 2> /dev/null) | tar -xf - -C results || true
+          find results -type f | sort
+      - name: job summary
+        if: always()
+        run: |
+          {
+            echo "### p p > t t~ on ${{ inputs.cluster }} ($BACKEND)"
+            if [ -f results/summary.txt ]; then
+              echo "| | |"
+              echo "|---|---|"
+              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
+            else
+              echo "No summary.txt: the job stopped early, see the log of the 'p p > t t~ on the GPU' step."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpu-pp_ttx-${{ inputs.cluster }}-${{ inputs.backend }}
+          path: results/
+          if-no-files-found: warn
+
+  stop_runner:
+    # must list every job that runs on the self-hosted runner
+    needs: [start_runner, build_madspace, pp_ttx]
+    if: always() && needs.start_runner.result == 'success'
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    defaults:
+      run:
+        shell: bash -l -eo pipefail {0}
+    env:
+      CLEAN: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !inputs.keep_workdir }}
+    steps:
+      - name: clean up the run directories
+        run: |
+          RUNS=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs
+          if [ "$CLEAN" = true ]; then rm -rf -- "${RUNS:?}/$RUN_TAG"; fi
+          # directories kept by failed runs are removed after two weeks
+          find "$RUNS" -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} + || true
+      - name: end the Slurm allocation
+        run: touch "$CI_STOP_FILE" # set by runner_batch.sh, which then stops the runner
