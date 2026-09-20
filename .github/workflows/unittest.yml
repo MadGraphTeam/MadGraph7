@@ -445,7 +445,8 @@ jobs:
 
 
   unittest_new_coverage:
-    # New unit tests added in 3.7.1: q_polynomial and hepmc_parser
+    # New unit tests added in 3.7.1: q_polynomial and hepmc_parser, and the
+    # reweight density / merged-label ones added with crossing symmetry
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     permissions:
@@ -453,11 +454,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/restore-pip-cache
 
       - name: test q_polynomial and hepmc_parser modules
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_q_polynomial test_hepmc_parser -t0
+
+      # TestAverageDensityMatrix: the average-density-matrix helpers shared by
+      # DensityInterface and do_reweight's multicore recombination.
+      # TestPdgForMeCall: merged-particle labels, both signs, resolved to the
+      # event's concrete PDGs before the fortran call. Pure python.
+      - name: reweight density / merged-label unit tests
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py TestAverageDensityMatrix TestPdgForMeCall -t0
 
 
   unittest_write_model:

@@ -212,8 +212,101 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
             read('loop_optimized', 'loop_matrix_standalone.inc'))
 
+    def test_matchbox_drivers_use_the_matrix_element_prefix(self):
+        """check_sa.f calls the matrix element by name, and matchbox renames
+        every routine after the process id -- ignoring the --prefix a caller
+        may have passed. The driver has to be given that same name or it does
+        not link, which nothing notices because the matchbox `make` is a no-op.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        matchbox = export_v4.ProcessExporterFortranMatchBox()
+        proc_id = self.mymatrixelement.get('processes')[0].get('id')
 
-    @IOTests.createIOTest() 
+        self.assertEqual('', sa.get_proc_prefix(self.mymatrixelement))
+        self.assertEqual('M1_', sa.get_proc_prefix(self.mymatrixelement, 'M1_'))
+        # what write_matrix_element_v4 puts on the routines, whatever it is
+        # handed
+        self.assertEqual('MG5_%i_' % proc_id,
+                         matchbox.get_proc_prefix(self.mymatrixelement))
+        self.assertEqual('MG5_%i_' % proc_id,
+                         matchbox.get_proc_prefix(self.mymatrixelement, 'M1_'))
+
+    def test_matrix_template_provides_reports_the_missing_entry_points(self):
+        """The blocks check_sa.f writes -- the density driver, the crossing
+        demonstration -- call routines that only the default template has.
+        Each is emitted behind this predicate, so pin what it answers for the
+        two templates that differ.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        matchbox = export_v4.ProcessExporterFortranMatchBox()
+
+        self.assertEqual('matrix_standalone_v4.inc',
+                         sa.get_matrix_template(self.mymatrixelement))
+        self.assertEqual('matrix_standalone_matchbox.inc',
+                         matchbox.get_matrix_template(self.mymatrixelement))
+
+        for marker in ('GET_DENSITY', '%(flavor_pdg_function)s'):
+            self.assertTrue(
+                sa.matrix_template_provides(self.mymatrixelement, marker),
+                '%s missing from the default standalone template' % marker)
+            self.assertFalse(
+                matchbox.matrix_template_provides(self.mymatrixelement, marker),
+                '%s unexpectedly in the matchbox template' % marker)
+
+    def test_splitorders_template_carries_the_standalone_api(self):
+        """Which parts of matrix_standalone_v4.inc the split-orders template
+        deliberately does and does not carry.
+
+        The two drifted apart, and the point of pinning it here is that a
+        reader can tell an intended difference from an accident.
+        """
+        sa = export_v4.ProcessExporterFortranSA()
+        process = self.mymatrixelement.get('processes')[0]
+        saved = process.get('split_orders')
+        try:
+            process.set('split_orders', ['QCD', 'QED'])
+            self.assertEqual('matrix_standalone_splitOrders_v4.inc',
+                             sa.get_matrix_template(self.mymatrixelement))
+
+            # Carried: the canonical helicity table, the C-parity
+            # de-duplication, the flavor-aware denominator accessor, and --
+            # through holes of its own, filled by
+            # fill_crossing_replace_dict_so -- the crossing machinery.
+            for marker in ('DECODE_HEL', 'FILL_NHEL', '%(hel_allow_data)s',
+                           '%(flip_data)s', 'GET_NHEL_IDX', 'GET_DENSITY',
+                           'GET_ALL_INTER', '%(so_crossing_routines)s',
+                           '%(so_pdg_function)s', '%(so_cross_decode)s'):
+                self.assertTrue(
+                    sa.matrix_template_provides(self.mymatrixelement, marker),
+                    '%s missing from the split-orders template' % marker)
+
+            # ... so the crossing demonstration check_sa.f writes must be
+            # emitted against it: it calls GET_PDG_FOR_FLAVOR, which this
+            # template reaches through so_pdg_function rather than the default
+            # template's hole, and asking for the wrong hole name is how that
+            # block went missing from a folded output that could run it.
+            self.assertTrue(
+                sa.matrix_template_has_pdg_decoder(self.mymatrixelement))
+
+            # Left out on purpose. The _IDX / _CROSSED / RESCALE density stack
+            # takes a crossing-carrying index the FLAVOR-array entry points
+            # cannot express -- the density here stays uncrossed. HELCODE
+            # because the external helicity label is the row number, which is
+            # what MadLoop passes. ENCODE_HEL because nothing anywhere calls
+            # it. The default template's own crossing holes because this one
+            # has its own set, shaped for a vector ANS/T.
+            for marker in ('ENCODE_HEL', 'HELCODE', 'GET_DENSITY_IDX',
+                           'GET_ALL_INTER_IDX', 'GET_ALL_INTER_CROSSED',
+                           'GET_INTER_RESCALE', '%(flavor_pdg_function)s',
+                           '%(crossing_routines)s'):
+                self.assertFalse(
+                    sa.matrix_template_provides(self.mymatrixelement, marker),
+                    '%s unexpectedly in the split-orders template' % marker)
+        finally:
+            process.set('split_orders', saved)
+
+
+    @IOTests.createIOTest()
     def testIO_export_matrix_element_v4_standalone(self):
         """target: matrix.f
         """
@@ -3682,7 +3775,11 @@ C       This is dummy particle used in multiparticle vertices
 
 """)
 
-        # Test leshouche.inc output
+        # Test leshouche.inc output.
+        # The madevent exporter drops the ICOLUP colour-flow table from
+        # leshouche.inc when the matrix element carries a canonical colour code
+        # (drop_icolup): addmothers.f now rebuilds the Les Houches colour tags
+        # from colorflow.inc instead. leshouche.inc keeps only IDUP and MOTHUP.
         writer = writers.FortranWriter(self.give_pos('leshouche'))
         exporter.write_leshouche_file(writer, matrix_element)
         writer.close()
@@ -3691,18 +3788,27 @@ C       This is dummy particle used in multiparticle vertices
                          """      DATA (IDUP(I,1,1),I=1,6)/2,-2,2,-2,2,-2/
       DATA (MOTHUP(1,I),I=1, 6)/  0,  0,  1,  1,  1,  1/
       DATA (MOTHUP(2,I),I=1, 6)/  0,  0,  2,  2,  2,  2/
-      DATA (ICOLUP(1,I,1,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,1,1),I=1, 6)/  0,501,  0,502,  0,503/
-      DATA (ICOLUP(1,I,2,1),I=1, 6)/501,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,2,1),I=1, 6)/  0,501,  0,503,  0,502/
-      DATA (ICOLUP(1,I,3,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,3,1),I=1, 6)/  0,501,  0,501,  0,503/
-      DATA (ICOLUP(1,I,4,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,4,1),I=1, 6)/  0,501,  0,501,  0,502/
-      DATA (ICOLUP(1,I,5,1),I=1, 6)/502,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,5,1),I=1, 6)/  0,501,  0,503,  0,501/
-      DATA (ICOLUP(1,I,6,1),I=1, 6)/503,  0,502,  0,503,  0/
-      DATA (ICOLUP(2,I,6,1),I=1, 6)/  0,501,  0,502,  0,501/
+""")
+
+        # Test colorflow.inc output: the six colour flows that used to be the
+        # ICOLUP rows above are now encoded by the canonical colour code, which
+        # addmothers.f decodes back into the very same tags. The old rows, for
+        # reference (colour anti-colour per external leg, one flow per line):
+        #   501   0 502   0 503   0 /   0 501   0 502   0 503
+        #   501   0 502   0 503   0 /   0 501   0 503   0 502
+        #   502   0 502   0 503   0 /   0 501   0 501   0 503
+        #   503   0 502   0 503   0 /   0 501   0 501   0 502
+        #   502   0 502   0 503   0 /   0 501   0 503   0 501
+        #   503   0 502   0 503   0 /   0 501   0 502   0 501
+        writer = writers.FortranWriter(self.give_pos('colorflow'))
+        exporter.write_colorflow_file(writer, matrix_element)
+        writer.close()
+
+        self.assertFileContains('colorflow',
+                         """      DATA NCOLSLOT(1)/3/
+      DATA (ICOLCSL(I,1),I=1,3)/2,3,5/
+      DATA (ICOLASL(I,1),I=1,3)/1,4,6/
+      DATA (ICOLCODE(I,1),I=1,6)/21,15,19,7,11,5/
 """)
 
         # Test pdf output (for auto_dsig.f)
@@ -10132,8 +10238,12 @@ C
       F1%P(:) = +F2%P(:)+V3%P(:)
       P1(:) = -F1 % P (:)
       F1 % FLV_INDEX = F2 % FLV_INDEX
-      DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1 -CI
-     $ * W1))"""
+      IF (DBLE(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1 * (M1
+     $   -CI* W1))
+      ELSE
+        DENOM = COUP/(P1(0)**2-P1(1)**2-P1(2)**2-P1(3)**2 - M1**2)
+      ENDIF"""
 
         abstract_M = create_aloha.AbstractRoutineBuilder(FFV1).compute_routine(1)
         abstract_M.add_symmetry(2)
@@ -10141,8 +10251,12 @@ C
         
         self.assertTrue(os.path.exists('/tmp/FFV1_1.f'))
         textfile = open('/tmp/FFV1_1.f','r').read()
-        split_sol = solution.split('\n')
-        self.assertEqual(split_sol, textfile.split('\n')[:len(split_sol)])
+        # rstrip each line: the ALOHA line wrapper can leave a trailing space
+        # (e.g. after "(M1 " when the width term spills to a continuation), and
+        # that cosmetic whitespace is not what this test is checking.
+        split_sol = [l.rstrip() for l in solution.split('\n')]
+        split_cur = [l.rstrip() for l in textfile.split('\n')[:len(split_sol)]]
+        self.assertEqual(split_sol, split_cur)
 
 
 class UFO_model_to_mg4_Test(unittest.TestCase):

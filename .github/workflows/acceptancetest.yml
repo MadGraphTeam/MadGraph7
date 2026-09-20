@@ -976,3 +976,61 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+
+  acceptancetest_crossing_bundle:
+    # Crossing symmetry (tests/acceptance_tests/test_standalone_cross_symmetry.py)
+    # and the madmatrix OpenMP build, run one after the other. Each keeps its own
+    # step, run even when an earlier one failed.
+    #
+    # NOTE: test_manager.py exits 1 when a test is SKIPPED, and the crossing
+    # tests self-skip without gfortran / f2py / g++: restore-pip-cache (meson,
+    # ninja, f2py_compiler) is what keeps these steps green.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+
+      # ---- crossing, static ----
+      # Generated code / python objects only, no compilation: the crossing
+      # partition, the multi-channel config map (a mis-paired map leaves every
+      # ME and the cross section correct and only degrades the sampling, so no
+      # xsec comparison catches it), the colour-flow code, and the outputs
+      # that cannot decode a crossing.
+      - name: "crossing: partition / config map / colour-flow code / unsupported outputs"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput -t0 -l INFO
+
+      # ---- crossing, fortran standalone ----
+      # A crossed SMATRIX call must reproduce the process it crosses into, the
+      # density matrix must follow the crossing, and the C-parity helicity
+      # de-duplication must hold where it engages and refuse itself elsewhere.
+      - name: "crossing: fortran standalone + C-parity good-helicity dedup"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneCrossSymmetry TestGoodHelCParityDedup -t0 -l INFO
+
+      # ---- crossing, madmatrix ----
+      # `output standalone` (incl. the per-event mixed-crossing SIMD page) and
+      # the `check crossing` subcommand over both exporters.
+      - name: "crossing: madmatrix backend and check crossing"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestStandaloneMg7CrossSymmetry TestCheckCrossingCommand -t0 -l INFO
+
+      # ---- madmatrix OpenMP ----
+      # The CPU sigmaKin loop is an 'omp parallel for default( none )': every
+      # variable it uses must sit in its shared() clause or CPPProcess.cc does
+      # not compile. OpenMP is opt-in (USEOPENMP=1) and off on Darwin, so
+      # nothing else ever builds it.
+      - name: "test_standalone_mg7_openmp"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_mg7_openmp -pA -t0 -l INFO

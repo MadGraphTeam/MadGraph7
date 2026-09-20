@@ -2161,6 +2161,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         export_v4.ProcessExporterFortran._fill_broken_sym_replace_dict(
             replace_dict, sym_data)
 
+        # Crossing-symmetry holes (identity fills when use_crossing is off ->
+        # byte-identical output). See get_madmatrix_crossing_dict.
+        replace_dict.update(self.get_madmatrix_crossing_dict(self.matrix_elements[0]))
+
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
             file_lines = file.split('\n')
@@ -2194,11 +2198,20 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # is not the size of the color basis when the color sum runs on the DDM one
         replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
 
+        # Crossing-symmetry hole (per-event denominator); identity fill when off.
+        replace_dict.update(self.get_madmatrix_crossing_dict(self.matrix_elements[0]))
+
+        # The BLAS variant of the helicity loop is a second copy of the loop
+        # below, so it carries the same crossing holes and has to be filled
+        # here, before the outer template is substituted. It does NOT carry the
+        # csym holes: the C-parity reuse stays on the scalar path only, which
+        # costs the batch nothing but the shortcut.
         replace_dict['cpp_blas_helicity_loop'] = ''
         replace_dict['cpp_blas_helicity_loop_end'] = ''
         if self.cpp_blas_wanted():
             replace_dict['cpp_blas_helicity_loop'] = \
-                self.read_template_file(self.blas_helicity_loop_template)
+                self.read_template_file(self.blas_helicity_loop_template) \
+                % replace_dict
             replace_dict['cpp_blas_helicity_loop_end'] = \
                 '\n#endif // MGONGPU_CPP_HAS_BLAS'
 
@@ -2219,11 +2232,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if self.single_helicities:
             ###misc.sprint(type(self.helas_call_writer))
             ###misc.sprint( 'before get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # WRONG value of nwf, eg 7 for gg_tt
-            helas_calls = self.helas_call_writer.get_matrix_element_calls(\
+            # Crossing symmetry: tell the helas writer to emit the per-event
+            # momentum-permutation preamble + NSF-blended external calls. Read at
+            # emission time and reset afterwards (the writer is reused across
+            # outputs, per the fortran/standalone_cpp lesson).
+            self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
+            try:
+                helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
                                                     color_amplitudes[0],
                                                     multi_channel_map = self.multi_channel_map
                                                     )
+            finally:
+                self.helas_call_writer.use_crossing_ic = False
             ###misc.sprint( 'after get_matrix_element_calls', self.matrix_elements[0].get_number_of_wavefunctions() ) # CORRECT value of nwf, eg 5 for gg_tt
             assert len(self.matrix_elements) == 1 or len(self.matrix_elements) == 2 # how to handle if this is not true?
             self.couplings2order = self.helas_call_writer.couplings2order
@@ -2382,7 +2403,16 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             file_extend.append( file )
             assert i == 0, "more than one ME in get_all_sigmaKin_lines" # AV sanity check (added for color_sum.cc but valid independently)
         ret_lines.extend( file_extend )
-        return '\n'.join(ret_lines)
+        result = '\n'.join(ret_lines)
+        if getattr(self, 'use_crossing', False):
+            # (A) Per-lane crossing: calculate_jamps takes the per-lane helicity
+            # rows (host only), read by the external block. Gated so a
+            # non-crossing build keeps the historical signature byte-for-byte.
+            result = result.replace(
+                'const int ievt00                   // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)\n#endif',
+                'const int ievt00,                  // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)\n'
+                '                   const int _ighel = -1              // crossing: good-hel index; the external block derives the per-lane helicity per page (>=0 = crossing, -1 = scalar ihel)\n#endif', 1)
+        return result
 
     # AV - modify export_cpp.OneProcessExporterCPP method (replace '# Process' by '// Process')
     def get_process_info_lines(self, matrix_element):
@@ -2404,11 +2434,127 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
+        self.edit_crossing_demo() # per-process folded-crossing flavor ids for check_sa
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
+
+    def _folded_crossing_flavorids(self, matrix_element):
+        """Extended flavor ids of the crossed subprocesses folded into this base
+        ME (merge_crossing='record'). One id per asked crossing direction
+        (mirror pairs collapsed), matched LABEL-AWARE against the reachable
+        (index, cross, flav, pdg) enumeration so a merged _quark leg matches any
+        same-sign flavor -- the same selection check_sa.f's crossing demo uses.
+        The index IS the mg7 flavor id (cross*nflav+flav0), so flavorPDG(id, k)
+        gives the crossed PDG at runtime."""
+        crossed = matrix_element.get('crossed_processes')
+        if not crossed:
+            return []
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        merged = matrix_element.get('processes')[0].get('model').get(
+            'merged_particles')
+        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
+        pdg_to_id = {}
+        for (index, _cross, _flav0, pdg) in entries:
+            pdg_to_id.setdefault(pdg, index)
+        reach = [pdg for (_i, _c, _f, pdg) in entries]
+
+        def leg_matches(leg_id, pdg):
+            a = abs(leg_id)
+            if a in merged:
+                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
+            return pdg == leg_id
+
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        ids, seen = [], set()
+        for (proc, _bp, _xp) in crossed:
+            legs = [l.get('id') for l in proc.get('legs')]
+            orients = [legs]
+            if ninitial == 2:
+                orients.append([legs[1], legs[0]] + legs[2:])
+            hit = None
+            for orient in orients:
+                for r in reach:
+                    if len(r) == len(orient) and \
+                       all(leg_matches(L, P) for L, P in zip(orient, r)):
+                        hit = r
+                        break
+                if hit is not None:
+                    break
+            if hit is None:
+                continue
+            mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
+            if hit in seen or mirror in seen:
+                continue
+            seen.add(hit)
+            seen.add(mirror)
+            ids.append(pdg_to_id[hit])
+        return ids
+
+    def _scanned_crossings(self, matrix_element):
+        """Crossing codes the good-helicity scan has to visit.
+
+        A crossing code is only ever carried by an event if this ME actually
+        RECORDED that crossed subprocess (merge_crossing='record'), so the scan
+        needs the recorded codes and nothing else. Enumerating every code that
+        is merely structurally applicable instead costs a full ncomb-helicity
+        scan per code -- 48 of them for g g > t t~ g g g, which records none at
+        all -- and every one past the recorded set builds a cGoodHelOfCross row
+        no event can ever index. See the runtime guard in _crossing_preamble for
+        what happens if an unrecorded code does show up.
+
+        The identity (0) is always included: it is the base process itself.
+
+        NB this is deliberately NOT _folded_crossing_flavorids. That one answers
+        a different question -- one representative id per crossed subprocess,
+        mirror pairs collapsed -- which is what a demo wants and what a scan must
+        not use: the runtime may hand us EITHER member of a mirror pair, and a
+        collapsed partner would hit the guard and abort. Here every reachable
+        entry matching a recorded process in either orientation is kept."""
+        crossings = set([0])
+        crossed = matrix_element.get('crossed_processes')
+        if not crossed:
+            return sorted(crossings)
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        merged = matrix_element.get('processes')[0].get('model').get(
+            'merged_particles')
+        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
+
+        def leg_matches(leg_id, pdg):
+            a = abs(leg_id)
+            if a in merged:
+                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
+            return pdg == leg_id
+
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        for (proc, _bp, _xp) in crossed:
+            legs = [l.get('id') for l in proc.get('legs')]
+            orients = [legs]
+            if ninitial == 2:
+                orients.append([legs[1], legs[0]] + legs[2:])
+            for (_index, cross, _flav0, pdg) in entries:
+                if any(len(pdg) == len(orient) and
+                       all(leg_matches(L, P) for L, P in zip(orient, pdg))
+                       for orient in orients):
+                    crossings.add(cross)
+        return sorted(crossings)
+
+    def edit_crossing_demo(self):
+        """Write crossing_demo.dat (the folded-crossing flavor ids) into the P*
+        directory so the shared check_sa.exe can demonstrate each crossed
+        subprocess at its own RAMBO point. Nothing is written when the ME has no
+        folded crossings (check_sa then just shows the base flavors)."""
+        if not getattr(self, 'use_crossing', False):
+            return
+        ids = self._folded_crossing_flavorids(self.matrix_elements[0])
+        if not ids:
+            return
+        with open(pjoin(self.path, 'crossing_demo.dat'), 'w') as fsock:
+            fsock.write(' '.join(str(i) for i in ids) + '\n')
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -2625,7 +2771,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_coloramps')
         template = open(pjoin(self.template_path,'madmatrix','coloramps.h'),'r').read()
-        ff = open(pjoin(self.path, 'coloramps.h'),'w')
+        # NB: coloramps.h is opened only once the whole content is built, so a
+        # failure below cannot leave a truncated (0 byte) header behind -- which
+        # then looks like a silently skipped process at build time.
         # The following five lines from OneProcessExporterCPP.get_sigmaKin_lines (using OneProcessExporterCPP.get_icolamp_lines)
         replace_dict={}
 
@@ -2676,6 +2824,36 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
+
+        # Canonical colour-flow code of each colour flow -- baked so the ME can
+        # return the self-describing code (the MG7 colour encoding) instead of a
+        # raw flow index. Same encoding as the fortran output / subprocesses.json
+        # (get_color_code_tables); valid==false leaves the flows to the fallback.
+        codes = None
+        if self.color_basis:
+            n_initial = self.matrix_element.get_nexternal_ninitial()[1]
+            legs = self.process.get_legs_with_decays()
+            repr_dict = {leg.get("number"):
+                         self.model.get_particle(leg.get("id")).get_color()
+                         * (-1) ** (1 + leg.get("state")) for leg in legs}
+            # This is about colour FLOWS, so always the trace basis: with the
+            # DDM basis the elements are products of f's and have no single
+            # flow each (color_flow_decomposition raises on it). get_flow_basis
+            # returns the basis itself when the colour sum is not on DDM.
+            color_flow_dicts = self.color_flow_basis.color_flow_decomposition(
+                repr_dict, n_initial)
+            codes, _slots = self.get_color_code_tables(color_flow_dicts, legs)
+        if codes is None:
+            replace_dict['colorflowcode_valid'] = 'false'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    0, // colour flow %d (no usable code -- use the tag table)'
+                % i for i in range(nb_color))
+        else:
+            replace_dict['colorflowcode_valid'] = 'true'
+            replace_dict['colorflowcode_lines'] = '\n'.join(
+                '    %d, // colour flow %d' % (c, i)
+                for i, c in enumerate(codes))
+        ff = open(pjoin(self.path, 'coloramps.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
@@ -2907,6 +3085,698 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Get lines to reset jamps"""
         ret_lines = ""
         return ret_lines
+
+    # ------------------------------------------------------------------
+    # Crossing symmetry (extended flavor id) for the madmatrix / cudacpp
+    # CPU-SIMD backend. Mirrors export_cpp.get_crossing_replace_dict and the
+    # fortran path but adapted to the SIMD structure of this backend: the
+    # per-event momentum permutation lives in calculate_jamps (emitted by the
+    # helas writer, gated by use_crossing_ic), while the crossing-aware
+    # good-helicity union, the per-event denominator and the crossed flavorPDG
+    # accessor are filled here. When self.use_crossing is False every hole gets
+    # the historical code so the output is byte-for-byte the old one.
+    # ------------------------------------------------------------------
+    def get_madmatrix_crossing_dict(self, matrix_element):
+        plain = {
+            'crossing_decl': '',
+            'goodhel_scan_count': 'nmaxflavor',
+            'goodhel_scan_skip': '',
+            'sigmakin_denominator':
+                '      MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) )'
+                ' / static_cast<fptype>( helcolDenominators[0] );',
+            'flavorpdg_body': '    return flavorPDGs[iflavor][ipar];',
+            # No crossing: the base row, or -- when the C-parity dedup is on and
+            # cGoodHel therefore holds one representative per mirror pair -- that
+            # representative or its partner, at equal rate (csym_selected_row).
+            'selected_hel_code_1':
+                'csym_selected_row( cGoodHel[ighel], allrndhel[ievt] * _ctot, _clo, _chi ) + 1',
+            'selected_hel_code_2':
+                'csym_selected_row( cGoodHel[ighel], allrndhel[ievt2] * _ctot, _clo, _chi ) + 1',
+            # No crossing: union good-hel loop, scalar helicity (historical).
+            'goodhel_percross_statics': '',
+            'goodhel_percross_decl': '',
+            'goodhel_percross_record': '',
+            'goodhel_percross_build': '',
+            'sigmakin_hel_bound': 'cNGoodHel',
+            'sigmakin_perlane_decl': '',
+            'sigmakin_ihel_expr': 'cGoodHel[ighel]',
+            'calc_jamps_ihlane_arg': '',
+            # ---- C-parity good-helicity de-duplication (uncrossed only) ----
+            # Two helicity rows that are exact mirrors (every helicity negated)
+            # give an identical |M|^2 under a parity/C-conserving amplitude, so
+            # only one of the two need ever be computed. This is the NON-crossing
+            # path: cGoodHel is REDUCED to the lower-index representative of each
+            # surviving C-pair, every representative carries a weight of 2, and
+            # the event-by-event helicity choice returns the representative or its
+            # cFlip partner at equal rate. That halves the sigmaKin trip count,
+            # the calculate_jamps + colour-sum calls and (on GPU builds, where the
+            # dedup is currently disabled, see below) it would halve the allJamps
+            # super-buffer, which is sized from nGoodHel.
+            # csym is detected in the (serial) getGoodHel scan, so sigmaKin only
+            # ever reads the tables and stays thread-safe.
+            # The crossing path keeps the full sum -- for an IMPLEMENTATION
+            # reason, not a physics one (see the crossing return).
+            'csym_statics':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static int cFlip[ncomb];      // C-parity partner: every helicity negated (an involution)\n'
+                '  static bool cCsymBad;         // latched: ANY row unpaired or |M(ihel)| != |M(cFlip)| at a scan point\n'
+                '  static bool cCsymScanned;     // the validating scan actually ran (never trust a default)\n'
+                '  static bool cCsymOk;          // all-or-nothing: every good hel sits in a distinct C-symmetric pair\n'
+                '\n'
+                '  // Pick the helicity row to report for the ighel-th (reduced) good\n'
+                '  // helicity. Without the dedup that is the row itself. With it, the row\n'
+                '  // stands for a C-parity PAIR counted twice, so either member must come\n'
+                '  // out at equal rate or the event-level helicity distribution is biased\n'
+                '  // while |M|^2 and the cross section stay perfectly correct.\n'
+                '  // The fair coin is recycled from the selection variate itself: given\n'
+                '  // that the (unnormalised) CDF landed in [lo,hi), rnd is exactly uniform\n'
+                '  // on that interval, so its position within the bin is an independent\n'
+                '  // U(0,1). Drawing a fresh random number instead would desynchronise the\n'
+                '  // stream shared with the Fortran integrator.\n'
+                '  static inline int csym_selected_row( const int ihel, const fptype rnd, const fptype lo, const fptype hi )\n'
+                '  {\n'
+                '    if( !cCsymOk ) return ihel;\n'
+                '    const fptype _w = hi - lo;\n'
+                '    if( !( _w > (fptype)0 ) ) return ihel; // degenerate bin: cannot be selected anyway\n'
+                '    return ( ( rnd - lo ) < (fptype)0.5 * _w ) ? ihel : cFlip[ihel];\n'
+                '  }\n'
+                '#endif',
+            'csym_gh_flip':
+                '    fptype me_scan[ncomb][neppV]; // per-hel |M|^2 of this scan page, for the C-parity test\n'
+                '    cCsymBad = false;\n'
+                '    cCsymScanned = false;\n'
+                '    for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '      cFlip[_h] = _h;\n'
+                '      for( int _j = 0; _j < ncomb; _j++ ) {\n'
+                '        bool _same = true;\n'
+                '        for( int _k = 0; _k < npar; _k++ ) if( cHel[_j][_k] != -cHel[_h][_k] ) _same = false;\n'
+                '        if( _same ) { cFlip[_h] = _j; break; }\n'
+                '      }\n'
+                '    }\n',
+            'csym_gh_record':
+                '        for( int _ie = 0; _ie < neppV; ++_ie ) me_scan[ihel][_ie] = allMEs[ievt00 + _ie];\n',
+            'csym_gh_check':
+                '      { // Largest |M|^2 of this (flavor, page): the scale a difference\n'
+                '        // has to be significant against. A RELATIVE test alone compares\n'
+                '        // the roundoff noise of two numerically-zero rows against itself\n'
+                '        // and fails at random -- which latched "not C-symmetric" on\n'
+                '        // manifestly C-symmetric processes (the MHV-vanishing gluon\n'
+                '        // configurations of u u~ > g g sit at |M|^2 ~ 1e-30 out of ~10),\n'
+                '        // silently disabling the dedup. A row that far below the largest\n'
+                '        // cannot bias the helicity sum whichever way it is paired, while\n'
+                '        // a genuine parity violation shows up at the relative level.\n'
+                '        fptype _mmax = (fptype)0.;\n'
+                '        for( int _h = 0; _h < ncomb; _h++ )\n'
+                '          for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '            const fptype _v = me_scan[_h][_ie] < (fptype)0. ? -me_scan[_h][_ie] : me_scan[_h][_ie];\n'
+                '            if( _v > _mmax ) _mmax = _v;\n'
+                '          }\n'
+                '        for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '          if( cFlip[_h] > _h ) {\n'
+                '            for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '              const fptype _a = me_scan[_h][_ie];\n'
+                '              const fptype _b = me_scan[cFlip[_h]][_ie];\n'
+                '              fptype _d = _a - _b; if( _d < (fptype)0. ) _d = -_d;\n'
+                '              fptype _aa = _a < (fptype)0. ? -_a : _a;\n'
+                '              fptype _bb = _b < (fptype)0. ? -_b : _b;\n'
+                '              if( _d > (fptype)1e-6 * ( _aa + _bb ) && _d > (fptype)1e-12 * _mmax ) cCsymBad = true;\n'
+                '            }\n'
+                '          }\n'
+                '        }\n'
+                '      }\n'
+                '      cCsymScanned = true; // a full ncomb-row comparison has been made\n',
+            'csym_pairbuild':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '    // All-or-nothing C-parity verdict. cCsymScanned is the load-bearing\n'
+                '    // term: if the validating scan never ran (cached good helicities, an\n'
+                '    // API caller reaching setGoodHel on its own) the flag must default to\n'
+                '    // OFF, never to ON -- trusting an un-run scan is how this dedup was\n'
+                '    // once silently enabled on a parity-violating process.\n'
+                '    cCsymOk = cCsymScanned && !cCsymBad;\n'
+                '    for( int _h = 0; _h < ncomb; _h++ )\n'
+                '      if( isGoodHel[_h] && ( cFlip[_h] == _h || !isGoodHel[cFlip[_h]] ) ) cCsymOk = false;\n'
+                '#ifdef MGONGPU_NOCSYM\n'
+                '    cCsymOk = false; // ablation knob: force the full helicity sum\n'
+                '#endif\n'
+                '    if( cCsymOk )\n'
+                '    {\n'
+                '      // Keep only the lower-index representative of every C-parity pair.\n'
+                '      // sigmaKin counts each one twice and csym_selected_row hands back the\n'
+                '      // representative or its mirror at equal rate, so this is exact rather\n'
+                '      // than approximate: the dropped rows have an identical |M|^2.\n'
+                '      int _n = 0;\n'
+                '      for( int _g = 0; _g < nGoodHel; _g++ )\n'
+                '        if( goodHel[_g] < cFlip[goodHel[_g]] ) { cGoodHel[_n] = goodHel[_g]; _n++; }\n'
+                '      for( int _h = _n; _h < ncomb; _h++ ) cGoodHel[_h] = 0;\n'
+                '      cNGoodHel = _n;\n'
+                '      nGoodHel = _n;\n'
+                '    }\n'
+                '#endif\n',
+            # cCsymOk is read lexically inside the OMP `default(none)` region (in
+            # csym_weight), so it needs an explicit data-sharing attribute; cFlip is
+            # only touched from inside csym_selected_row, which is a function call
+            # and therefore outside the construct's scope. Both are written once in
+            # the serial getGoodHel/setGoodHel and only read here.
+            'csym_page_decl': '',
+            'extra_omp_shared': ', cCsymOk',
+            # Snapshot the running |M|^2 sum before this helicity's contribution is
+            # added, so csym_weight can add the very same contribution a second time.
+            'csym_me_before':
+                '        const fptype_sv _me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '        const fptype_sv _me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '#endif\n',
+            # Weight 2: cGoodHel now holds one representative per C-parity pair, and
+            # the mirror row it stands for has an identical |M|^2. MEs_ighel must be
+            # updated too -- it is the running CDF the helicity choice samples.
+            'csym_weight':
+                '        if( cCsymOk ) {\n'
+                '          fptype_sv& _me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '          _me1 = _me1 + ( MEs_ighel[ighel] - _me1before );\n'
+                '          MEs_ighel[ighel] = _me1;\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '          fptype_sv& _me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '          _me2 = _me2 + ( MEs_ighel2[ighel] - _me2before );\n'
+                '          MEs_ighel2[ighel] = _me2;\n'
+                '#endif\n'
+                '        }\n',
+            # Unnormalised CDF bin [_clo,_chi) of the selected ighel, and the total
+            # _ctot the stored variate is normalised by (okhel tested rnd < hi/tot).
+            'csym_sel_1':
+                '            fptype _clo = (fptype)0;\n'
+                '#if defined MGONGPU_CPPSIMD\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodHel - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1][ieppV];\n'
+                '#else\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodHel - 1];\n'
+                '            const fptype _chi = MEs_ighel[ighel];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1];\n'
+                '#endif\n',
+            'csym_sel_2':
+                '            fptype _clo = (fptype)0;\n'
+                '            const fptype _ctot = MEs_ighel2[cNGoodHel - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel2[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel2[ighel - 1][ieppV];\n',
+        }
+        if not getattr(self, 'use_crossing', False):
+            return plain
+
+        import madgraph.iolibs.export_v4 as export_v4
+        Fort = export_v4.ProcessExporterFortran
+        me = matrix_element
+        tables = Fort.compute_crossing_tables(self, me)
+        nexternal = tables['nexternal']
+        ninitial = tables['ninitial']
+        ncross = (nexternal + 1) * (nexternal + 1)
+        nflav = len(me.get_external_flavors_with_iden())
+        # Per-leg base tables only: the crossing is decoded at runtime
+        # (cross_perm_ic, mirroring the fortran GET_CROSS_PERM) instead of
+        # tabulating anything per crossing. _build_flav_pdg_tables gives the base
+        # signed PDG per (flavor, leg) and its charge conjugate, from which
+        # flavorPDG rebuilds the crossed PDGs at runtime (see flavorpdg_body).
+        n_flavors, pdg_flat, antipdg_flat = Fort._build_flav_pdg_tables(self, me)
+        scanned_crossings = set(self._scanned_crossings(me))
+
+        def arr(vals):
+            return '{ ' + ', '.join(str(v) for v in vals) + ' }'
+
+        crossing_decl = (
+            "  // ---- Crossing symmetry (extended id = cross*nmaxflavor + flav) ----\n"
+            "  // A crossing is a fixed slot relabelling decoded from the crossing\n"
+            "  // code at runtime (cross_perm_ic, mirroring the fortran\n"
+            "  // GET_CROSS_PERM): perm[k] is the input slot landing in crossed slot\n"
+            "  // k and ic[k] its NSF sign flip, left a valid permutation (identity\n"
+            "  // for an inapplicable code) so a momentum gather never reads out of\n"
+            "  // range. The two halves of the denominator are rebuilt from small\n"
+            "  // per-leg tables, so no cross-indexed table is stored.\n"
+            "  __host__ __device__ inline bool cross_perm_ic( int cross, int* perm, int* ic )\n"
+            "  {\n"
+            "    constexpr int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    for ( int k = 0; k < npar; k++ ) { perm[k] = k; ic[k] = 1; }\n"
+            "    if ( cross < 0 || cross >= ncross ) return false;\n"
+            "    const int xi = cross / ( npar + 1 );\n"
+            "    const int xj = cross %% ( npar + 1 );\n"
+            "    // Overlapping-swap codes compose into a 3-cycle the consumers read\n"
+            "    // with opposite orientation: pure redundancy, invalid.\n"
+            "    if ( xi != 0 && xi != 1 && xj != 0 && xj != 2 &&\n"
+            "         ( xi == 2 || xj == 1 || xi == xj ) ) return false;\n"
+            "    if ( xi != 0 && xi != 1 )\n"
+            "    { int t = perm[0]; perm[0] = perm[xi - 1]; perm[xi - 1] = t; ic[0] = -ic[0]; ic[xi - 1] = -ic[xi - 1]; }\n"
+            "    if ( xj != 0 && xj != 2 )\n"
+            "    { int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t; ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1]; }\n"
+            "    return true;\n"
+            "  }\n"
+            "  // Crossing codes this ME actually RECORDED (merge_crossing='record'),\n"
+            "  // i.e. the only ones an event can ever carry. cross_perm_ic above\n"
+            "  // answers whether a code is structurally APPLICABLE, which is a much\n"
+            "  // weaker statement: g g > t t~ g g g has 48 applicable codes and 0\n"
+            "  // recorded ones. The good-helicity scan walks THIS set (one full\n"
+            "  // ncomb-helicity scan per code), and calculate_jamps checks incoming\n"
+            "  // events against it. The identity is always in.\n"
+            "  __device__ inline bool cross_recorded( int cross )\n"
+            "  {\n"
+            "    constexpr int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    static const bool recorded[ncross] = %(cross_recorded)s;\n"
+            "    return cross >= 0 && cross < ncross && recorded[cross];\n"
+            "  }\n"
+            "  // Initial-state spin*color average of the crossed process: product of\n"
+            "  // the per-leg spin*color (spincol_part, conjugation invariant) over\n"
+            "  // the legs the crossing puts in the initial state. 0 if inapplicable.\n"
+            "  __device__ inline int spincol_cross( int cross )\n"
+            "  {\n"
+            "    static const int spincol_part[npar] = %(spincol_part)s;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    if ( !cross_perm_ic( cross, perm, ic ) ) return 0;\n"
+            "    int factor = 1;\n"
+            "    for ( int k = 0; k < %(ninitial)d; k++ ) factor *= spincol_part[perm[k]];\n"
+            "    return factor;\n"
+            "  }\n"
+            "  // Identical-final-state factor (product of n!) of the crossed\n"
+            "  // process. Flavor dependent -> runtime: two crossed final legs are\n"
+            "  // identical when they carry the same flavor group (same representative\n"
+            "  // PDG -- ids_base, conjugated to antipid_base when the leg swapped\n"
+            "  // side) and the same actual flavor. FLAVOR is not permuted, so slot k\n"
+            "  // reads cFlavors[iflavor][perm[k]].\n"
+            "  __device__ int ident_cross( int cross, int iflavor )\n"
+            "  {\n"
+            "    static const int ids_base[npar] = %(ids_base)s;\n"
+            "    static const int antipid_base[npar] = %(antipid_base)s;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    cross_perm_ic( cross, perm, ic );\n"
+            "    int bpid[npar];\n"
+            "    for ( int k = 0; k < npar; k++ )\n"
+            "      bpid[k] = ( ic[k] == 1 ) ? ids_base[perm[k]] : antipid_base[perm[k]];\n"
+            "    bool used[npar];\n"
+            "    for ( int k = 0; k < npar; k++ ) used[k] = false;\n"
+            "    int fact = 1;\n"
+            "    for ( int k = %(ninitial)d; k < npar; k++ )\n"
+            "    {\n"
+            "      if ( used[k] ) continue;\n"
+            "      int n = 1;\n"
+            "      for ( int l = k + 1; l < npar; l++ )\n"
+            "      {\n"
+            "        if ( used[l] ) continue;\n"
+            "        if ( bpid[k] == bpid[l] &&\n"
+            "             cFlavors[iflavor][perm[k]] == cFlavors[iflavor][perm[l]] )\n"
+            "        {\n"
+            "          used[l] = true;\n"
+            "          n = n + 1;\n"
+            "          fact = fact * n;\n"
+            "        }\n"
+            "      }\n"
+            "    }\n"
+            "    return fact;\n"
+            "  }\n"
+        ) % {'spincol_part': arr(tables['spincol_part']),
+             'ids_base': arr(tables['ids_base']),
+             'antipid_base': arr(tables['antipid_base']),
+             'cross_recorded': arr(['true' if c in scanned_crossings else 'false'
+                                    for c in range(ncross)]),
+             'ninitial': ninitial}
+
+        # Per-leg helicity states used to re-encode a crossed helicity config
+        # into its canonical code. allow_reverse=True is NOT optional: it is the
+        # order the cHel/tHel table itself is built in (get_helicity_matrix
+        # above, allow_reverse=True) AND the order the fortran ENCODE_HEL STATES
+        # table uses (get_helicity_encoder_dict), which together define the
+        # canonical code. get_helicity_states reverses the list for an
+        # ANTIparticle leg, so with allow_reverse=False every such leg's digit
+        # lookup is off by one state and the code comes out wrong: for
+        # u u~ > t t~ legs 1 and 4 give (+1,-1) not (-1,+1), and all 16 rows
+        # mis-encode. Like the fortran encoder this deliberately ignores
+        # wf['polarization'] -- the code space is the FULL mixed-radix space, a
+        # polarized leg simply never reaches its filtered-out digits.
+        pdict = me.get('processes')[0].get('model').get('particle_dict')
+        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(True)
+                   for wf in me.get_external_wavefunctions()]
+        hnstate = [len(s) for s in hstates]
+        maxhel = max(hnstate) if hnstate else 1
+        states_flat = []
+        for k in range(nexternal):
+            states_flat.extend(hstates[k][i] if i < hnstate[k] else 0
+                               for i in range(maxhel))
+        # Crossed-event selected helicity (allselhel), validated at runtime
+        # against the fortran backend -- see the generated comment.
+        crossing_decl = crossing_decl + (
+            "  // ---- Crossed-event selected helicity code (allselhel) ----\n"
+            "  // For a crossed event the reported per-event helicity must be the\n"
+            "  // CROSSED code, not the base row: mirror the fortran\n"
+            "  // APPLY_CROSSING_TABLE, which permutes the base NHEL config by the\n"
+            "  // crossing slot permutation (NHEL(k)=NHEL_IN(perm(k)), no sign flip\n"
+            "  // -- the NSF sign lives in IC), then ENCODE_HEL it into the\n"
+            "  // canonical mixed-radix code over the base per-leg helicity states.\n"
+            "  // cross 0 is the identity (base row+1), so the non-crossing path is\n"
+            "  // unchanged.\n"
+            "  //\n"
+            "  // The perm digit-permute with NO NSF sign flip is the right\n"
+            "  // transform, and it is what mg7 needs: the LHE writer indexes the\n"
+            "  // BASE helicity table POSITIONALLY (export_mg7 ships\n"
+            "  // get_helicity_matrix() as `helicities`, lhe_output.cpp reads row\n"
+            "  // `helicity_index` slot by slot), so the reported row must be the\n"
+            "  // base row whose config EQUALS the crossed one -- not the row the\n"
+            "  // lane evaluated. Validated at runtime against the fortran backend\n"
+            "  // (SMATRIXHEL per canonical code at the same momenta and the same\n"
+            "  // extended flavor id): for the recorded crossing of p p > w+ j and\n"
+            "  // for u u~ > g g crossed to u g > u g, every reported code has a\n"
+            "  // non-zero |M|^2 and the reported frequencies follow the fortran\n"
+            "  // per-code |M|^2 weights.\n"
+            "  //\n"
+            "  // xhel_states MUST be the allow_reverse=True per-leg order: it is\n"
+            "  // both the order cHel is built in and the order the fortran\n"
+            "  // ENCODE_HEL STATES table uses. allow_reverse=False reverses every\n"
+            "  // ANTIparticle leg, which silently shifts the code onto a row whose\n"
+            "  // |M|^2 is zero and aborts helicity-by-helicity reweighting.\n"
+            "  //\n"
+            "  // Limitation (shared with the fortran ENCODE_HEL, whose D=1 fallback\n"
+            "  // this mirrors): a crossing that lands a leg in a slot with a\n"
+            "  // DIFFERENT number of helicity states -- e.g. a massive vector moved\n"
+            "  // into a fermion slot -- has no representable base row, and the\n"
+            "  // lookup falls back to digit 0. That can only happen for a crossing\n"
+            "  // that is merely APPLICABLE and never recorded by the generation\n"
+            "  // (a recorded one only ever swaps partons, all 2-state); consumers\n"
+            "  // must intersect with the recorded crossing codes anyway.\n"
+            "  __device__ inline int selected_hel_code( int base_ihel, unsigned int flavor_id )\n"
+            "  {\n"
+            "    const int xcross = (int)( flavor_id / nmaxflavor );\n"
+            "    if ( xcross == 0 ) return base_ihel + 1;\n"
+            "    constexpr int maxhel = %(maxhel)d;\n"
+            "    static const int xhel_nhstate[npar] = %(xnhstate)s;\n"
+            "    static const int xhel_states[npar * maxhel] = %(xstates)s;\n"
+            "    int xperm[npar], xic[npar];\n"
+            "    cross_perm_ic( xcross, xperm, xic ); // NSF sign in xic is not used here\n"
+            "    int code = 0;\n"
+            "    for ( int k = 0; k < npar; k++ )\n"
+            "    {\n"
+            "      const int val = (int)cHel[base_ihel][xperm[k]];\n"
+            "      int d = 0;\n"
+            "      for ( int dd = 0; dd < xhel_nhstate[k]; dd++ )\n"
+            "      {\n"
+            "        if ( xhel_states[k * maxhel + dd] == val )\n"
+            "        {\n"
+            "          d = dd;\n"
+            "          break;\n"
+            "        }\n"
+            "      }\n"
+            "      code = code * xhel_nhstate[k] + d;\n"
+            "    }\n"
+            "    return code + 1;\n"
+            "  }\n"
+            "#ifndef MGONGPUCPP_GPUIMPL\n"
+            "  // Reported helicity of ONE lane. The host good-helicity loop runs\n"
+            "  // over cNGoodMaxCross and every lane evaluates its OWN crossing's\n"
+            "  // ighel-th good helicity (cGoodHelOfCross, see calculate_jamps), so\n"
+            "  // the reported row must be read from that same per-crossing list.\n"
+            "  // Reading the union cGoodHel[ighel] instead names a row the lane\n"
+            "  // never evaluated: as soon as the crossings widen the union beyond a\n"
+            "  // single crossing's list the two lists stop agreeing even for the\n"
+            "  // identity crossing, and the event is written out with a helicity\n"
+            "  // whose |M|^2 is zero (breaking helicity-by-helicity reweighting).\n"
+            "  __device__ inline int selected_hel_code_lane( int ighel, unsigned int flavor_id )\n"
+            "  {\n"
+            "    const int lcross = (int)( flavor_id / nmaxflavor );\n"
+            "    const int lngood = cNGoodPerCross[lcross];\n"
+            "    // ighel < lngood always holds when the CDF selected this lane's\n"
+            "    // row (the rows past lngood add nothing to the running sum); the\n"
+            "    // clamp only keeps a degenerate lane inside the table.\n"
+            "    const int lbase = cGoodHelOfCross[lcross][( ighel < lngood ) ? ighel\n"
+            "                                              : ( lngood > 0 ? lngood - 1 : 0 )];\n"
+            "    return selected_hel_code( lbase, flavor_id );\n"
+            "  }\n"
+            "\n"
+            "  // Same, for a lane whose crossing is C-parity de-duplicated: the row it\n"
+            "  // evaluated stands for a PAIR counted twice, so the representative and\n"
+            "  // its mirror must come out at equal rate or the event helicity\n"
+            "  // distribution is biased while |M|^2 stays perfectly correct. The fair\n"
+            "  // coin is recycled from the selection variate -- given that the\n"
+            "  // (unnormalised) CDF landed in [lo,hi), rnd is uniform there, so its\n"
+            "  // position inside the bin is an independent U(0,1) -- so no extra random\n"
+            "  // number is drawn and the stream shared with the integrator is intact.\n"
+            "  __device__ inline int selected_hel_code_lane_csym( int ighel, unsigned int flavor_id,\n"
+            "                                                    fptype rnd, fptype lo, fptype hi )\n"
+            "  {\n"
+            "    const int lcross = (int)( flavor_id / nmaxflavor );\n"
+            "    const int lngood = cNGoodPerCross[lcross];\n"
+            "    int lbase = cGoodHelOfCross[lcross][( ighel < lngood ) ? ighel\n"
+            "                                        : ( lngood > 0 ? lngood - 1 : 0 )];\n"
+            "    if( cCsymOkCross[lcross] ) {\n"
+            "      const fptype _w = hi - lo;\n"
+            "      if( _w > (fptype)0 && !( ( rnd - lo ) < (fptype)0.5 * _w ) ) lbase = cFlip[lbase];\n"
+            "    }\n"
+            "    return selected_hel_code( lbase, flavor_id );\n"
+            "  }\n"
+            "#endif\n"
+        ) % {'xnhstate': arr(hnstate),
+             'maxhel': maxhel, 'xstates': arr(states_flat)}
+
+        sigmakin_denominator = (
+            "      // Per-event crossing-aware denominator: cross may differ per event.\n"
+            "      // cross==0 keeps the historical IDEN/BROKEN_SYM path; a genuine\n"
+            "      // crossing rebuilds it from the crossed initial-state spin*color\n"
+            "      // times the identical-final-state factor of the actual flavors.\n"
+            "      // Applied per lane straight onto MEs_sv: an invalid crossing must\n"
+            "      // ASSIGN 0 (not multiply), because its unphysical momentum\n"
+            "      // relabelling can make the lane's |M|^2 a NaN and nan*0 = nan.\n"
+            "      for ( int ieppV = 0; ieppV < neppV; ++ieppV )\n"
+            "      {\n"
+            "        const unsigned int fid = iflavorVec[ievt0 + ieppV];\n"
+            "        const int dcr = (int)( fid / nmaxflavor );\n"
+            "        const int dfl = (int)( fid % nmaxflavor );\n"
+            "        fptype& me = reinterpret_cast<fptype*>( &MEs_sv )[ieppV];\n"
+            "        if ( dcr == 0 )\n"
+            "          me *= (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];\n"
+            "        else if ( spincol_cross( dcr ) == 0 )\n"
+            "          me = (fptype)0.; // invalid crossing (out of range / overlapping swap) -> ME 0\n"
+            "        else\n"
+            "          me *= (fptype)1. / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );\n"
+            "      }"
+        )
+
+        # Crossed physical signed PDG per (extended id, leg), rebuilt at runtime
+        # like the fortran GET_PDG_FOR_FLAVOR: base signed PDG of the leg the
+        # crossing moves into slot ipar (base_pdg per (flavor, leg)), charge-
+        # conjugated when that leg swapped side -- no per-crossing PDG table.
+        flavorpdg_body = (
+            "    const int ncross = ( npar + 1 ) * ( npar + 1 );\n"
+            "    if ( iflavor < 0 || iflavor >= ncross * nmaxflavor ) return 0;\n"
+            "    static const int base_pdg[nmaxflavor * npar] = %(base_pdg)s;\n"
+            "    static const int base_antipdg[nmaxflavor * npar] = %(base_antipdg)s;\n"
+            "    const int cross = iflavor / nmaxflavor;\n"
+            "    const int flav0 = iflavor %% nmaxflavor;\n"
+            "    int perm[npar], ic[npar];\n"
+            "    if ( !cross_perm_ic( cross, perm, ic ) ) return 0; // invalid crossing\n"
+            "    const int src = perm[ipar];\n"
+            "    return ( ic[ipar] == 1 ) ? base_pdg[flav0 * npar + src]\n"
+            "                             : base_antipdg[flav0 * npar + src];"
+        ) % {'base_pdg': arr(pdg_flat[:nflav * nexternal]),
+             'base_antipdg': arr(antipdg_flat[:nflav * nexternal])}
+
+        return {
+            'crossing_decl': crossing_decl,
+            # Good-helicity UNION now also spans crossings: sample every
+            # RECORDED extended flavor id (see cross_recorded; spincol==0 is
+            # still skipped) so cGoodHel covers the crossed helicity rows too. A
+            # helicity that vanishes for a given event's crossing simply
+            # contributes 0 at run time.
+            #
+            # The loop still counts to ncross*nflav but the two gates below cost
+            # nothing on a skipped code, whereas each code that gets through
+            # costs a full ncomb-helicity calculate_jamps scan. Scanning all
+            # APPLICABLE codes rather than the recorded ones was a 46x one-off
+            # startup cost on g g > t t~ g g g (48 applicable, 0 recorded), which
+            # check_sa's `perf 1 32 8` reports as a 4.2x matrix-element slowdown
+            # because it amortises the scan over 8 iterations.
+            'goodhel_scan_count': str(ncross * nflav),
+            'goodhel_scan_skip':
+                '      if ( !cross_recorded( iflav / nmaxflavor ) ) continue;\n'
+                '      if ( spincol_cross( iflav / nmaxflavor ) == 0 ) continue;\n    ',
+            'sigmakin_denominator': sigmakin_denominator,
+            'flavorpdg_body': flavorpdg_body,
+            # Reported per-event helicity: the row this lane actually evaluated
+            # (its crossing's ighel-th good helicity, NOT the union list), mapped
+            # to the crossed code for the event's crossing (the crossed mapping
+            # itself is unvalidated at runtime, see selected_hel_code).
+            'selected_hel_code_1':
+                'selected_hel_code_lane_csym( ighel, iflavorVec[ievt], allrndhel[ievt] * _ctot, _clo, _chi )',
+            'selected_hel_code_2':
+                'selected_hel_code_lane_csym( ighel, iflavorVec[ievt2], allrndhel[ievt2] * _ctot, _clo, _chi )',
+            # (A) Per-lane helicity: the C++ good-hel loop runs once over the
+            # per-crossing good-hel count; each lane uses its crossing's ighel-th
+            # good helicity (the union is never materialised on the hot path).
+            # Host only -- GPU + mixed-precision stay on the union (untested here).
+            # Validated byte-identical on sse4 with divergent lanes (see
+            # [[mg7-perlane-helicity]]).
+            'goodhel_percross_statics':
+                '#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static constexpr int cNcross = ( npar + 1 ) * ( npar + 1 );\n'
+                '  static int cGoodHelOfCross[cNcross][ncomb]; // per-crossing good-hel rows\n'
+                '  static int cNGoodPerCross[cNcross];         // #good hel per crossing\n'
+                '  static int cNGoodMaxCross;                  // max over crossings\n'
+                '#endif',
+            'goodhel_percross_decl':
+                '    static bool _gpc[cNcross][ncomb];\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) for( int _h = 0; _h < ncomb; _h++ ) _gpc[_c][_h] = false;\n',
+            'goodhel_percross_record':
+                '            _gpc[iflav / nmaxflavor][ihel] = true;\n',
+            'goodhel_percross_build':
+                '    for( int _c = 0; _c < cNcross; _c++ ) {\n'
+                '      int _n = 0;\n'
+                '      for( int _h = 0; _h < ncomb; _h++ ) if( _gpc[_c][_h] ) { cGoodHelOfCross[_c][_n] = _h; _n++; }\n'
+                '      cNGoodPerCross[_c] = _n;\n'
+                '      // Per-crossing C-parity verdict: the validating scan ran, no pair\n'
+                '      // mismatched for THIS crossing, and every good row of this crossing\n'
+                '      // sits in a distinct pair whose partner is also good for it.\n'
+                '      bool _ok = cCsymScanned && !cCsymBadCross[_c] && _n > 0;\n'
+                '      for( int _h = 0; _h < ncomb && _ok; _h++ )\n'
+                '        if( _gpc[_c][_h] && ( cFlip[_h] == _h || !_gpc[_c][cFlip[_h]] ) ) _ok = false;\n'
+                '#ifdef MGONGPU_NOCSYM\n'
+                '      _ok = false; // ablation knob: force the full helicity sum\n'
+                '#endif\n'
+                '      cCsymOkCross[_c] = _ok;\n'
+                '    }\n'
+                '    // ALL-OR-NOTHING ACROSS CROSSINGS, and not for a physics reason:\n'
+                '    // reducing only some of them would leave cNGoodPerCross non-uniform,\n'
+                '    // and the lanes of a SHORTER crossing would then reach the\n'
+                '    // ighel >= cNGoodPerCross padding row (_hr = -1 in calculate_jamps).\n'
+                '    // That row yields NaN rather than 0 -- its zeroed wavefunctions give a\n'
+                '    // 0/0 propagator, and for a VALID crossing the per-event denominator\n'
+                '    // multiplies instead of assigning 0, so the NaN reaches the output.\n'
+                '    // Pre-existing hazard (reproduce with -DMGONGPU_NOCSYM by shortening\n'
+                '    // one crossing\'s list by hand), latent today only because every\n'
+                '    // crossing happens to have the same good-hel count. Keeping the\n'
+                '    // verdict uniform preserves that invariant exactly.\n'
+                '    bool _allok = cCsymScanned;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ )\n'
+                '      if( cNGoodPerCross[_c] > 0 && !cCsymOkCross[_c] ) _allok = false;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) {\n'
+                '      if( !_allok ) { cCsymOkCross[_c] = false; continue; }\n'
+                '      if( !cCsymOkCross[_c] ) continue;\n'
+                '      int _r = 0;\n'
+                '      for( int _g = 0; _g < cNGoodPerCross[_c]; _g++ )\n'
+                '        if( cGoodHelOfCross[_c][_g] < cFlip[cGoodHelOfCross[_c][_g]] )\n'
+                '          { cGoodHelOfCross[_c][_r] = cGoodHelOfCross[_c][_g]; _r++; }\n'
+                '      for( int _g = _r; _g < ncomb; _g++ ) cGoodHelOfCross[_c][_g] = 0;\n'
+                '      cNGoodPerCross[_c] = _r;\n'
+                '    }\n'
+                '    cNGoodMaxCross = 0;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) if( cNGoodPerCross[_c] > cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[_c];\n',
+            'sigmakin_hel_bound': 'cNGoodMaxCross',
+            # No per-page precompute in sigmaKin: pass the good-hel index ighel
+            # and let the external block derive the per-lane helicity per page
+            # (so mixed precision's second page is handled). The scalar ihel arg
+            # is unused when crossing (a dummy 0).
+            'sigmakin_perlane_decl': '',
+            'sigmakin_ihel_expr': '0',
+            'calc_jamps_ihlane_arg': ', ighel',
+            # ---- C-parity de-duplication, PER CROSSING ----
+            # The symmetry holds under crossing: a crossing acts on a helicity
+            # row as a slot permutation plus a per-leg sign flip, and global
+            # negation commutes with both, so mirror(crossed row) ==
+            # crossed(mirror row) and each crossing's good-hel set is closed
+            # under the mirror (verified exactly, reldiff 0 on every row, for
+            # u u~ > g g at extended flavor ids 1, 3, 4, 5, 6 and 21).
+            # What makes this harder than the uncrossed path is that lanes of ONE
+            # SIMD page may carry DIFFERENT crossings, so the verdict, the weight
+            # and the 50/50 are all per crossing and applied PER LANE.
+            # NB emitted right after goodhel_percross_statics (the template
+            # concatenates the two holes), so cNcross is already in scope.
+            'csym_statics':
+                '\n#ifndef MGONGPUCPP_GPUIMPL\n'
+                '  static int cFlip[ncomb];            // C-parity partner: every helicity negated\n'
+                '  static bool cCsymScanned;           // the validating scan actually ran\n'
+                '  static bool cCsymBadCross[cNcross]; // per crossing: a pair mismatched\n'
+                '  static bool cCsymOkCross[cNcross];  // per crossing: de-duplication on\n'
+                '#endif',
+            'csym_gh_flip':
+                '    fptype me_scan[ncomb][neppV]; // per-hel |M|^2 of this scan page, for the C-parity test\n'
+                '    cCsymScanned = false;\n'
+                '    for( int _c = 0; _c < cNcross; _c++ ) { cCsymBadCross[_c] = false; cCsymOkCross[_c] = false; }\n'
+                '    for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '      cFlip[_h] = _h;\n'
+                '      for( int _j = 0; _j < ncomb; _j++ ) {\n'
+                '        bool _same = true;\n'
+                '        for( int _k = 0; _k < npar; _k++ ) if( cHel[_j][_k] != -cHel[_h][_k] ) _same = false;\n'
+                '        if( _same ) { cFlip[_h] = _j; break; }\n'
+                '      }\n'
+                '    }\n',
+            'csym_gh_record':
+                '        for( int _ie = 0; _ie < neppV; ++_ie ) me_scan[ihel][_ie] = allMEs[ievt00 + _ie];\n',
+            # Latch per CROSSING (iflav encodes cross*nmaxflavor + flav) so one
+            # parity-violating crossing cannot disable the others. Same absolute
+            # floor as the uncrossed path: a relative test alone compares the
+            # roundoff noise of two numerically-zero rows against itself.
+            'csym_gh_check':
+                '      { fptype _mmax = (fptype)0.;\n'
+                '        for( int _h = 0; _h < ncomb; _h++ )\n'
+                '          for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '            const fptype _v = me_scan[_h][_ie] < (fptype)0. ? -me_scan[_h][_ie] : me_scan[_h][_ie];\n'
+                '            if( _v > _mmax ) _mmax = _v;\n'
+                '          }\n'
+                '        const int _cr = iflav / nmaxflavor;\n'
+                '        for( int _h = 0; _h < ncomb; _h++ ) {\n'
+                '          if( cFlip[_h] > _h ) {\n'
+                '            for( int _ie = 0; _ie < neppV; ++_ie ) {\n'
+                '              const fptype _a = me_scan[_h][_ie];\n'
+                '              const fptype _b = me_scan[cFlip[_h]][_ie];\n'
+                '              fptype _d = _a - _b; if( _d < (fptype)0. ) _d = -_d;\n'
+                '              fptype _aa = _a < (fptype)0. ? -_a : _a;\n'
+                '              fptype _bb = _b < (fptype)0. ? -_b : _b;\n'
+                '              if( _d > (fptype)1e-6 * ( _aa + _bb ) && _d > (fptype)1e-12 * _mmax ) cCsymBadCross[_cr] = true;\n'
+                '            }\n'
+                '          }\n'
+                '        }\n'
+                '      }\n'
+                '      cCsymScanned = true;\n',
+            'csym_pairbuild': '',
+            # Per-lane doubling: the crossing is a per-event property, so build a
+            # 0/1 vector once per page rather than per helicity.
+            'csym_page_decl':
+                '      fptype_sv _csymExtra{}; // per lane: 1 where this lane\'s crossing is de-duplicated\n'
+                '      for( int _ie = 0; _ie < neppV; _ie++ ) {\n'
+                '        const int _cr = (int)( iflavorVec[ievt00 + _ie] / nmaxflavor );\n'
+                '        reinterpret_cast<fptype*>( &_csymExtra )[_ie] = cCsymOkCross[_cr] ? (fptype)1. : (fptype)0.;\n'
+                '      }\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '      fptype_sv _csymExtra2{};\n'
+                '      for( int _ie = 0; _ie < neppV; _ie++ ) {\n'
+                '        const int _cr = (int)( iflavorVec[ievt00 + neppV + _ie] / nmaxflavor );\n'
+                '        reinterpret_cast<fptype*>( &_csymExtra2 )[_ie] = cCsymOkCross[_cr] ? (fptype)1. : (fptype)0.;\n'
+                '      }\n'
+                '#endif\n',
+            'csym_me_before':
+                '        const fptype_sv _me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '        const fptype_sv _me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '#endif\n',
+            'csym_weight':
+                '        {\n'
+                '          fptype_sv& _me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );\n'
+                '          _me1 = _me1 + ( MEs_ighel[ighel] - _me1before ) * _csymExtra;\n'
+                '          MEs_ighel[ighel] = _me1;\n'
+                '#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT\n'
+                '          fptype_sv& _me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );\n'
+                '          _me2 = _me2 + ( MEs_ighel2[ighel] - _me2before ) * _csymExtra2;\n'
+                '          MEs_ighel2[ighel] = _me2;\n'
+                '#endif\n'
+                '        }\n',
+            'csym_sel_1':
+                '            fptype _clo = (fptype)0;\n'
+                '#if defined MGONGPU_CPPSIMD\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodMaxCross - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1][ieppV];\n'
+                '#else\n'
+                '            const fptype _ctot = MEs_ighel[cNGoodMaxCross - 1];\n'
+                '            const fptype _chi = MEs_ighel[ighel];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel[ighel - 1];\n'
+                '#endif\n',
+            'csym_sel_2':
+                '            fptype _clo = (fptype)0;\n'
+                '            const fptype _ctot = MEs_ighel2[cNGoodMaxCross - 1][ieppV];\n'
+                '            const fptype _chi = MEs_ighel2[ighel][ieppV];\n'
+                '            if( ighel > 0 ) _clo = MEs_ighel2[ighel - 1][ieppV];\n',
+            'extra_omp_shared': ', cCsymOkCross, cNGoodMaxCross',
+        }
 
 
 # Standalone mode: P*/makefile points at the wrapper that also builds check_sa.exe
@@ -3390,13 +4260,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       // for GPU it is an int
       // for SIMD it is also an int, since it is constant across the SIMD vector
 #ifdef MGONGPUCPP_GPUIMPL
-      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
+      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec )""" + self._crossing_flav_reduce() + """;
 #else
       const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
-      const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0];
+      const unsigned int iflavor = reinterpret_cast<const unsigned int*>(&iflavor_sv)[0]""" + self._crossing_flav_reduce() + """;
 #endif
-""")
+""" + (self._crossing_preamble(matrix_element) if getattr(self, 'use_crossing_ic', False) else ''))
         diagrams = matrix_element.get('diagrams')
         diag_to_config = {}
         for config in sorted(multi_channel_map.keys()):
@@ -3605,13 +4475,195 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             if not item.startswith('\n') and not item.startswith('#'): res[i]='      '+item
         return res
 
+    # ------------------------------------------------------------------
+    # Crossing-symmetry helpers (only active when self.use_crossing_ic).
+    # When off, every path below is a no-op and the emitted code is
+    # byte-identical to the historical (no-crossing) output.
+    # ------------------------------------------------------------------
+    def _crossing_flav_reduce(self):
+        """Reduce the extended flavor id to the flavor group index (flav_use).
+        The runtime iflavorVec entry is cross*nmaxflavor+flav_use; flav_use is
+        what indexes cFlavors/masks (constant across the SIMD page)."""
+        return ' % nmaxflavor' if getattr(self, 'use_crossing_ic', False) else ''
+
+    def _crossing_tables(self, matrix_element):
+        import madgraph.iolibs.export_v4 as export_v4
+        return export_v4.ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+
+    def _crossing_preamble(self, matrix_element):
+        """Per-event momentum permutation for crossing symmetry (C++/SIMD).
+
+        All events in a SIMD page share flav_use but may carry DIFFERENT
+        crossings, so this gather is genuinely per-event (NOT vectorized): for
+        each event we permute its momenta into the crossed slot order (xmom,
+        positive energy preserved) and record the per-event NSF sign flips
+        (icsign). The momentum sign flip of a swapped leg is applied through the
+        NSF flag inside the HELAS routines (see _crossing_external_block)."""
+        return """#ifndef MGONGPUCPP_GPUIMPL
+      // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
+      // The crossing slot permutation and NSF signs are decoded per event from
+      // its crossing code (cross_perm_ic), not read from a per-crossing table.
+      alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
+      fptype_sv icsign[npar];
+      // 2 scratch external wavefunctions for the per-event NSF-sign blend
+      fptype_sv pvec_x[2][np4];
+      cxtype_sv w_x[2][nw6];
+      ALOHAOBJ aloha_x[2];
+      aloha_x[0] = ALOHAOBJ{ pvec_x[0], w_x[0] };
+      aloha_x[1] = ALOHAOBJ{ pvec_x[1], w_x[1] };
+      for( int ieppV = 0; ieppV < neppV; ++ieppV )
+      {
+        const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
+        // GUARD: the good-helicity scan only builds a cGoodHelOfCross row for the
+        // crossings this ME records, so a code outside that set would find an
+        // empty row, mask every helicity in the per-lane blend below, and hand
+        // back a SILENTLY ZERO |M|^2 -- an event quietly lost, not a crash. Fail
+        // loudly instead. (_ighel < 0 is the good-helicity scan itself, which
+        // runs before the table exists and is gated by cross_recorded already.)
+        //
+        // A structurally INVALID code (an overlapping swap, spincol_cross == 0)
+        // is deliberately NOT an error: the per-event denominator already
+        // ASSIGNS 0 for it, which is the documented contract. Only an
+        // APPLICABLE-but-unrecorded code is the ambiguous, dangerous case.
+        //
+        // Order matters: cross_recorded is a table lookup but spincol_cross runs
+        // cross_perm_ic, and this sits in the per-helicity path (ncomb calls per
+        // page). Short-circuiting on the recorded test keeps spincol_cross off
+        // the hot path for every event that has a recorded crossing, i.e. all
+        // of them outside the error case.
+        if( _ighel >= 0 && !cross_recorded( xcr ) && spincol_cross( xcr ) != 0 )
+        {
+          std::cerr << "ERROR! calculate_jamps: event " << ( ievt0 + ieppV )
+                    << " carries crossing code " << xcr
+                    << ", which this process does not record: no good-helicity row was"
+                    << " scanned for it and its matrix element would be silently zero."
+                    << std::endl;
+          std::abort();
+        }
+        int xperm[npar], xic[npar];
+        cross_perm_ic( xcr, xperm, xic );
+        for( int s = 0; s < npar; ++s )
+        {
+          const int src = xperm[s];
+          for( int ip4 = 0; ip4 < np4; ++ip4 )
+            xmom[s * np4 * neppV + ip4 * neppV + ieppV] =
+              MemoryAccessMomenta::ieventAccessIp4IparConst( momenta, ieppV, ip4, src );
+          reinterpret_cast<fptype*>( &icsign[s] )[ieppV] = (fptype)xic[s];
+        }
+      }
+#endif
+"""
+
+    @staticmethod
+    def _hel_state_values(spin, mass):
+        """Helicity values of an external leg (matching Particle.get_helicity_
+        states) so the per-lane blend can loop over exactly the states cHel
+        holds. Scalars (spin 1) have none. Massive vectors add the 0 state."""
+        massless = mass in ('ZERO', 'zero')
+        if spin == 2:                     # fermion
+            return [-1, 1]
+        if spin == 3:                     # vector
+            return [-1, 1] if massless else [-1, 0, 1]
+        if spin == 5:                     # spin-2
+            return [-2, 2] if massless else [-2, -1, 0, 1, 2]
+        return None                       # spin 1 scalar (no helicity)
+
+    def _crossing_external_block(self, wf, argument):
+        """External HELAS call under crossing symmetry (C++/SIMD).
+
+        Reads the per-event permuted momenta (xmom, in crossed slot order) and
+        applies the per-event NSF sign flip by computing the wavefunction twice
+        (nsf = +base and -base) and blending lane-wise through icsign.
+
+        Helicity is PER-LANE: each lane's helicity row is _ihlane[lane] (set by
+        sigmaKin from the event's crossing; nullptr -> the scalar ihel, used by
+        getGoodHel). For a helicity-carrying leg the wavefunction is built for
+        each of the leg's helicity states and accumulated weighted by a per-lane
+        mask (does this lane want state _v?), so a single pass computes each
+        lane's own good helicity. get_amp downstream stays fully SIMD. Scalars
+        carry no helicity, so their block is the plain NSF blend. GPU unchanged."""
+        routine = helas_call_writers.HelasCallWriter.mother_dict[
+            argument.get_spin_state_number()].lower()
+        routine = routine + 'x' * (6 - len(routine))
+        routine = routine + '<M_ACCESS, W_ACCESS>'
+        s = wf.get('number_external') - 1
+        me = wf.get('me_id') - 1
+        spin = argument.get('spin')
+        if spin == 1:
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        elif argument.is_boson():
+            nsf = (-1) ** (wf.get('state') == 'initial')
+        else:
+            nsf = - (-1) ** wf.get_with_flow('is_part')
+        mass = wf.get('mass')
+        states = self._hel_state_values(spin, mass)
+
+        def one_call(sign, obj, hel=None):
+            if spin == 1:
+                call = '%s( xmom, %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, sign, s, obj, s)
+            else:
+                call = '%s( xmom, m_pars->%s, %s, %+d, cFlavors[iflavor][%d], %s, %d );' % \
+                       (routine, mass, hel, sign, s, obj, s)
+            return self.format_coupling(call)
+
+        lines = ['#ifndef MGONGPUCPP_GPUIMPL']
+        if states is None:
+            # Scalar: no helicity, plain NSF blend (unchanged).
+            lines.append('      ' + one_call(nsf, 'aloha_x[0]'))
+            lines.append('      ' + one_call(-nsf, 'aloha_x[1]'))
+            lines.append('      { const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+            lines.append('        const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+            lines.append('        for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
+            lines.append('        for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _sp * w_x[0][_k] + _sm * w_x[1][_k];' % me)
+            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        else:
+            stlist = ', '.join(str(v) for v in states)
+            lines.append('      { static const int _st%d[%d] = { %s };' % (s, len(states), stlist))
+            lines.append('        bool _first%d = true;' % s)
+            lines.append('        for( int _vi = 0; _vi < %d; _vi++ ) {' % len(states))
+            lines.append('          const int _v = _st%d[_vi];' % s)
+            lines.append('          ' + one_call(nsf, 'aloha_x[0]', '_v'))
+            lines.append('          ' + one_call(-nsf, 'aloha_x[1]', '_v'))
+            lines.append('          const fptype_sv _sp = ( icsign[%d] + (fptype)1. ) * (fptype)0.5;' % s)
+            lines.append('          const fptype_sv _sm = ( (fptype)1. - icsign[%d] ) * (fptype)0.5;' % s)
+            lines.append('          fptype_sv _hm{};')
+            # Per-lane helicity row, derived PER PAGE (ievt0 = this iParity page's
+            # first event) so mixed precision (nParity=2) picks the right page.
+            # _ighel<0 -> scalar ihel (getGoodHel scan / non-crossing).
+            lines.append('          for( int _ie = 0; _ie < neppV; _ie++ ) {')
+            lines.append('            int _hr;')
+            lines.append('            if( _ighel < 0 ) { _hr = ihel; }')
+            lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
+            lines.append('            reinterpret_cast<fptype*>( &_hm )[_ie] = ( _hr >= 0 && (int)cHel[_hr][%d] == _v ) ? (fptype)1. : (fptype)0.;' % s)
+            lines.append('          }')
+            lines.append('          if( _first%d ) {' % s)
+            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
+            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
+            lines.append('            _first%d = false;' % s)
+            lines.append('          } else {')
+            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] += _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
+            lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] += _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
+            lines.append('          } }')
+            lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)
+        lines.append('#else')
+        # GPU: crossing not implemented; emit the plain (identity) external call
+        # so the file still compiles for GPU (only CPU/SIMD is validated).
+        gpu = self.get_external(wf, argument, _no_crossing=True)
+        lines.append(gpu.rstrip('\n'))
+        lines.append('#endif\n')
+        return '\n'.join(lines)
+
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
     first_get_external = True
-    def get_external(self, wf, argument):
+    def get_external(self, wf, argument, _no_crossing=False):
+        if getattr(self, 'use_crossing_ic', False) and not _no_crossing:
+            return self._crossing_external_block(wf, argument)
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')
         split_line = [ str.lstrip(' ').rstrip(' ') for str in split_line] # AV

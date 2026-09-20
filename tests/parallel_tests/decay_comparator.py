@@ -349,7 +349,7 @@ class DecayComparator(object):
         os.system('rm -rf %s >/dev/null' % dir_name)
         os.system('rm -rf %s_dec >/dev/null' % dir_name)
         self.cmd.run_cmd('set automatic_html_opening False --no-save')
-        self.cmd.exec_cmd('generate %s > %s %s %s $ all $$ %s --optimize' % 
+        self.cmd.exec_cmd('generate %s > %s %s %s $ all $$ %s --optimize' %
                           (part, multi1, multi2, multi3, ' '.join(to_avoid)))
         print('generate %s > %s %s %s $ all $$ %s --optimize' % \
                           (part, multi1, multi2, multi3, ' '.join(to_avoid)))

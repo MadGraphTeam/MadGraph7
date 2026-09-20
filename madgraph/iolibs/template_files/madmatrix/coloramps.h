@@ -63,6 +63,24 @@ namespace mgOnGpu
 %(is_LC)s
   };
 
+  // Canonical colour-flow CODE of each colour flow (the MG7 colour encoding, the
+  // same integer the Fortran madevent output writes into colorflow.inc and that
+  // subprocesses.json carries as "color_codes"). colorflowcode[icol] is the
+  // self-describing code of colour flow icol (0-based, the select_col_and_diag
+  // index minus one). A consumer that writes the event colour returns THIS code
+  // instead of the raw flow index, and decodes it with the flow-independent slot
+  // structure ("color_slots" in subprocesses.json) rather than looking the flow
+  // up in an ICOLUP-style table.
+  //
+  // colorflowcode_valid is false when the flows have no usable code (a colour
+  // sextet's two-slot leg, or an epsilon/epsilon-bar structure): the caller then
+  // falls back to the per-flow tag table. See the fortran side in
+  // export_v4._color_flow_code and the encoder in export_mg7.get_color_code_tables.
+  constexpr bool colorflowcode_valid = %(colorflowcode_valid)s;
+  __device__ constexpr int colorflowcode[%(nb_color)s] = { // note: a trailing comma in the initializer list is allowed
+%(colorflowcode_lines)s
+  };
+
 }
 
 #endif // COLORAMPS_H

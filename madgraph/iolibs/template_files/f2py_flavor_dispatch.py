@@ -19,6 +19,26 @@ Example
 >>> me.initialisemodel('param_card.dat')
 >>> ans = me.get_value(P, alphas, nhel, 3)              # by flavor index
 >>> ans = me.get_value(P, alphas, nhel, [1, -1, 2, -2]) # by flavor array
+
+Crossing / PDG matching
+-----------------------
+When the module was generated with crossing symmetry on, a single flavor index
+also carries a *crossing*: the extended ``FLAV_IDX = cross*NFLAV + flav`` makes
+the one generated matrix element evaluate any process related to it by moving
+legs between the initial and the final state. The caller usually does not want
+to think in those indices -- they have a physical process as a list of signed
+PDG codes and want the right index. ``find_pdg`` does that lookup and
+``matrix_element_pdg`` / ``get_value_pdg`` call straight through:
+
+>>> me.find_pdg([2, 21, 2, 21])            # u g > u g from a u u~ > g g module
+4
+>>> ans = me.get_value_pdg(P, alphas, nhel, [2, 21, 2, 21])
+
+The PDG list is matched in the leg order the momenta are given in: the index
+``find_pdg`` returns is exactly the one to pass to the ``*_idx`` entry points
+together with momenta in that same order. A crossed leg is conjugated (an
+incoming ``u~`` that a crossing turns into an outgoing ``u`` matches pdg +2),
+which is why the match is on signed PDG codes.
 """
 
 import numbers
@@ -101,6 +121,99 @@ class FlavorDispatch(object):
 
     def get_value(self, p, alphas, nhel, flavor):
         return self._call('get_value', [p, alphas, nhel, flavor])
+
+    # -- crossing / PDG matching ---------------------------------------------
+    def _find_one(self, suffix):
+        """Return the single module function whose (lowercased) name ends with
+        *suffix*, or None. Cached under a distinct key so it never collides
+        with the (array, idx) pairs stored by _resolve."""
+        key = ('one', suffix)
+        if key in self._cache:
+            return self._cache[key]
+        found = None
+        for name in dir(self.module):
+            if name.lower().endswith(suffix):
+                found = getattr(self.module, name)
+                break
+        self._cache[key] = found
+        return found
+
+    def flavor_layout(self):
+        """Return (nflav, nexternal, ncross) from GET_FLAVOR_LAYOUT.
+
+        ncross = (nexternal+1)**2 is the number of crossing codes, so the
+        extended index ranges over 1 .. ncross*nflav. Raises if the module was
+        built without the crossing entry points (an old or non-standalone-v4
+        output)."""
+        func = self._find_one('get_flavor_layout')
+        if func is None:
+            raise AttributeError(
+                "This module exposes no 'get_flavor_layout': it was not built "
+                "with the crossing/PDG entry points.")
+        nflav, nexternal, ncross = func()
+        return int(nflav), int(nexternal), int(ncross)
+
+    def pdg_for_index(self, flav_idx):
+        """Signed per-leg PDG codes of the process an extended FLAV_IDX selects,
+        or None if the index names no valid flavor/crossing.
+
+        The codes are in the leg order the momenta must be supplied in for that
+        index; a leg that the crossing moved between the initial and the final
+        state is conjugated."""
+        func = self._find_one('get_pdg_for_flavor')
+        if func is None:
+            raise AttributeError(
+                "This module exposes no 'get_pdg_for_flavor': it was not built "
+                "with the crossing/PDG entry points.")
+        pdgs = tuple(int(x) for x in func(flav_idx))
+        # The Fortran routine zero-fills PDGS for an index it cannot resolve.
+        if all(code == 0 for code in pdgs):
+            return None
+        return pdgs
+
+    def _pdg_map(self):
+        """{signed-PDG-tuple: extended FLAV_IDX} over every valid index.
+
+        Built once and cached. When two indices give the same PDG signature in
+        the same leg order (physically the same process, e.g. a crossing that
+        coincides with the identity for a symmetric flavor) the first is kept:
+        they evaluate to the same matrix element."""
+        if 'pdg_map' in self._cache:
+            return self._cache['pdg_map']
+        nflav, _nexternal, ncross = self.flavor_layout()
+        mapping = {}
+        for cross in range(ncross):
+            for flav in range(1, nflav + 1):
+                flav_idx = cross * nflav + flav
+                pdgs = self.pdg_for_index(flav_idx)
+                if pdgs is not None:
+                    mapping.setdefault(pdgs, flav_idx)
+        self._cache['pdg_map'] = mapping
+        return mapping
+
+    def find_pdg(self, pdgs):
+        """Extended FLAV_IDX whose crossed process is *pdgs* (signed, in the
+        given leg order), or None if no crossing of the generated matrix
+        element reproduces it."""
+        return self._pdg_map().get(tuple(int(code) for code in pdgs))
+
+    def _require_pdg(self, pdgs):
+        flav_idx = self.find_pdg(pdgs)
+        if flav_idx is None:
+            raise ValueError(
+                "No crossing of the generated matrix element yields the "
+                "process %s" % (tuple(int(code) for code in pdgs),))
+        return flav_idx
+
+    def matrix_element_pdg(self, p, pdgs):
+        """SMATRIX for the process *pdgs*, reached through crossing. Momenta
+        must be given in the same leg order as *pdgs*."""
+        return self.smatrix(p, self._require_pdg(pdgs))
+
+    def get_value_pdg(self, p, alphas, nhel, pdgs):
+        """get_value for the process *pdgs*, reached through crossing. Momenta
+        must be given in the same leg order as *pdgs*."""
+        return self.get_value(p, alphas, nhel, self._require_pdg(pdgs))
 
     # -- pass-through for the model initialiser -------------------------------
     def initialisemodel(self, path):

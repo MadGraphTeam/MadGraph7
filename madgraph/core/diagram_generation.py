@@ -883,6 +883,13 @@ class Amplitude(base_objects.PhysicsObject):
         # has_mirror_process is True if the same process but with the
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
+        # Crossed subprocesses folded into this amplitude and NOT generated on
+        # their own (merge_crossing='record'): each entry is
+        # (crossed Process, base_permutation, crossed_permutation), enough for
+        # the exporter to reach the crossed process through this amplitude's
+        # crossing-aware SMATRIX (see MultiProcess.cross_amplitude for the same
+        # permutation pair). Empty in the historical modes.
+        self['crossed_processes'] = []
 
     def __init__(self, argument=None):
         """Allow initialization with Process"""
@@ -909,6 +916,9 @@ class Amplitude(base_objects.PhysicsObject):
         if name == 'has_mirror_process':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid boolean" % str(value))
+        if name == 'crossed_processes':
+            if not isinstance(value, list):
+                raise self.PhysicsObjectError("%s is not a valid list" % str(value))
         return True
 
     def get(self, name):
@@ -926,7 +936,8 @@ class Amplitude(base_objects.PhysicsObject):
     def get_sorted_keys(self):
         """Return diagram property names as a nicely sorted list."""
 
-        return ['process', 'diagrams', 'has_mirror_process']
+        return ['process', 'diagrams', 'has_mirror_process',
+                'crossed_processes']
 
     def get_number_of_diagrams(self):
         """Returns number of diagrams for this amplitude"""
@@ -2119,24 +2130,59 @@ class DecayChainAmplitude(Amplitude):
         self['amplitudes'] = AmplitudeList()
         self['decay_chains'] = DecayChainAmplitudeList()
 
+    @staticmethod
+    def _decays_break_crossing(process_definition):
+        """True if any decay (recursively) pins a specific s-channel propagator,
+        or carries a polarized leg or a bound state.
+
+        Crossing acts at the production level and lets the force-onshell decays
+        ride along, so a plain decay chain keeps crossing (see
+        export_v4.breaks_crossing_symmetry). But a decay that names a required or
+        forbidden s-channel does break it, and the production generator cannot
+        see that constraint (the core process it builds has the decays stripped
+        off). Detect it here so the production is recorded with merge_crossing off
+        in that case, keeping generation and the crossing-machinery emission
+        (which tests the full process) in agreement.
+        """
+        for decay in process_definition.get('decay_chains'):
+            if decay.get('required_s_channels') or \
+               decay.get('forbidden_s_channels') or \
+               any(l.get('polarization') or l.get('onium')
+                   for l in decay.get('legs')) or \
+               DecayChainAmplitude._decays_break_crossing(decay):
+                return True
+        return False
+
     def __init__(self, argument = None, collect_mirror_procs = False,
-                 ignore_six_quark_processes = False, loop_filter=None, diagram_filter=False):
+                 ignore_six_quark_processes = False, loop_filter=None,
+                 diagram_filter=False, merge_crossing=False):
         """Allow initialization with Process and with ProcessDefinition"""
- 
+
         if isinstance(argument, base_objects.Process):
             super(DecayChainAmplitude, self).__init__()
             from madgraph.loop.loop_diagram_generation import LoopMultiProcess
             if argument['perturbation_couplings']:
                 MultiProcessClass=LoopMultiProcess
             else:
-                MultiProcessClass=MultiProcess                             
+                MultiProcessClass=MultiProcess
+            # Record the production's crossings onto the base amplitude (so the
+            # decay-chain matrix element inherits them and the crossed
+            # subprocesses are not generated separately), UNLESS a decay breaks
+            # crossing (see _decays_break_crossing) -- then the crossing
+            # machinery is not emitted downstream and the crossed subprocesses
+            # must stay fully generated.
+            prod_merge_crossing = merge_crossing
+            if isinstance(argument, base_objects.ProcessDefinition) and \
+                    self._decays_break_crossing(argument):
+                prod_merge_crossing = False
             if isinstance(argument, base_objects.ProcessDefinition):
                 self['amplitudes'].extend(\
                   MultiProcessClass.generate_multi_amplitudes(argument,
                                                     collect_mirror_procs,
                                                     ignore_six_quark_processes,
                                                     loop_filter=loop_filter,
-                                                    diagram_filter=diagram_filter))
+                                                    diagram_filter=diagram_filter,
+                                                    merge_crossing=prod_merge_crossing))
             else:
                 self['amplitudes'].append(\
                   MultiProcessClass.get_amplitude_from_proc(argument,
@@ -2414,7 +2460,8 @@ class MultiProcess(base_objects.PhysicsObject):
                         DecayChainAmplitude(process_def,
                                        self.get('collect_mirror_procs'),
                                        self.get('ignore_six_quark_processes'),
-                                       diagram_filter=self['diagram_filter']))
+                                       diagram_filter=self['diagram_filter'],
+                                       merge_crossing=self['merge_crossing']))
                 else:
                     self['amplitudes'].extend(\
                        self.generate_multi_amplitudes(process_def,
@@ -2659,11 +2706,29 @@ class MultiProcess(base_objects.PhysicsObject):
                         continue
                         
                 # Check for successful crossings, unless we have specified
-                # properties that break crossing symmetry
+                # properties that break crossing symmetry. Crossing is a
+                # tree-level construction: a perturbative process (anything with
+                # the [...] syntax -- NLO, loop-induced, loop) must NOT be
+                # crossed, not even its tree-level Born/real sub-amplitudes, so
+                # its output stays byte-identical to a no-crossing build. (The
+                # 'loop_diagrams' guard below only catches an actual loop
+                # amplitude; the Born of an NLO process is an ordinary tree.)
                 if not process.get('required_s_channels') and \
                    not process.get('forbidden_onsh_s_channels') and \
                    not process.get('forbidden_s_channels') and \
-                   not process.get('is_decay_chain') and not diagram_filter:
+                   not process.get('is_decay_chain') and not diagram_filter and \
+                   not process.get('perturbation_couplings'):
+                    # Recording a crossing hands the process to the crossing
+                    # machinery of its base, and the exporter does not write
+                    # that machinery for a polarized leg or a bound state (see
+                    # export_v4.breaks_crossing_symmetry): recorded there, the
+                    # crossed process would be lost. Reuse the diagrams instead
+                    # and keep it as a matrix element of its own.
+                    this_merge = merge_crossing
+                    if this_merge == 'record' and \
+                       any(l.get('polarization') or l.get('onium')
+                           for l in process.get('legs')):
+                        this_merge = False
                     try:
                         crossed_index = success_procs.index(sorted_legs)
                         # The relabeling of legs for loop amplitudes is cumbersome
@@ -2676,7 +2741,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
-                        if not merge_crossing:
+                        if not this_merge:
                             # Found crossing - reuse amplitude
                             amplitude = MultiProcess.cross_amplitude(\
                                 amplitudes[crossed_index],
@@ -2689,6 +2754,20 @@ class MultiProcess(base_objects.PhysicsObject):
                             non_permuted_procs.append(fast_proc)
                             logger.info("Crossed process found for %s, reuse diagrams." % \
                                         process.base_string())
+                        elif this_merge == 'record':
+                            # Found crossing - do NOT generate a separate
+                            # amplitude, but record the crossed process on the
+                            # base so the exporter can still reach it through the
+                            # base's crossing-aware SMATRIX (its partonic
+                            # contribution is not lost, unlike merge_crossing=True).
+                            amplitudes[crossed_index].get('crossed_processes')\
+                                .append((process, permutations[crossed_index],
+                                         permutation))
+                            logger.info("Crossed process %s recorded on %s "
+                                        "(not generated)." %
+                                        (process.base_string(),
+                                         amplitudes[crossed_index].get('process')
+                                         .base_string()))
                         else:
                             logger.info("Crossed process found for %s, do not generate diagrams." % \
                                         process.base_string())

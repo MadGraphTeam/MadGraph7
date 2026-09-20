@@ -569,3 +569,64 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madevent_merged_flavor_uq test_madevent_flavor_zjj -pA -t0 -l INFO
 
+
+  acceptancetest_madevent_crossing_bundle:
+    # Crossing symmetry end to end in madevent, plus the density reweighting
+    # that splits over cores. Run one after the other; each keeps its own step,
+    # run even when an earlier one failed.
+    #
+    # restore_heptools: the default LO PDF is an LHAPDF set (NNPDF4.0), so
+    # every madevent launch needs lhapdf-config.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+
+      # ---- crossed event labels ----
+      # The W+ helicity of p p > w+ j (a crossed massive vector) and the colour
+      # flow of u u~ > u u~ (98/2 asymmetric, so a swapped label shows).
+      - name: "crossing: crossed helicity and colour-flow labels written to the LHE"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventCrossingHelicity TestMadeventColorFlowRatio -t0 -l INFO
+
+      # ---- within-group router colour selection (~4 min) ----
+      # A router must RESELECT the colour flow with its own mask, not relabel
+      # its base's pick. Only an event-level comparison sees it: the cross
+      # section agreed to 0.02% while ~10% of a flavour class carried a flow
+      # the uncrossed build never picks.
+      - name: "crossing: within-group router colour selection"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventRouterColorSelection -t0 -l INFO
+
+      # ---- crossing cross sections ----
+      # Crossing-routed vs --use_crossing=False, same seed: p p > w+ j, w+ > j j
+      # (decay chain on a crossed production) and p p > t t~ j j (the only
+      # integration of the cross-GROUP router).
+      - name: "crossing: cross-section regressions (decay chain + inclusive)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing TestMadeventInclusiveCrossingXsec -t0 -l INFO
+
+      # ---- folded layout + reweight labels ----
+      - name: "crossing: folded subprocesses + merged anti-particle labels in reweight"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_crossing_folds_qqx_subprocess test_reweight_merged_antiparticle_labels -pA -t0 -l INFO
+
+      # ---- density, multicore ----
+      # The event file is split across jobs; each writes the average density
+      # matrix of its chunk and the mother interface must recombine them.
+      - name: "test_density_mode_multicore"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_multicore -pA -t0 -l INFO
