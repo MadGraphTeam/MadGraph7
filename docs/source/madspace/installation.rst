@@ -32,11 +32,25 @@ non-interactive use, for example::
 
 Run ``python madspace/install.py --help`` for the full list of options. The options of
 the last build are remembered, so ``--source --system -y`` rebuilds with the same
-settings.
+settings. A flag given on the command line still wins over them, per option, so
+``--source --system -y --cuda --cuda-arch 80`` rebuilds the remembered configuration
+with CUDA added.
 
 The build directory ``madspace/build`` is kept between builds, so you can run ``make``
 there directly for faster incremental builds during development. Note that this does not
 update the Python module itself, for which the install command has to be run again.
+
+Rebuilds are therefore incremental. ``--clean`` deletes ``madspace/build`` and
+``madspace/install`` first, for when that build tree is in the way -- after a toolchain
+change, say, or a half-finished build -- at the price of recompiling MadSpace and its
+vendored OpenBLAS from scratch::
+
+    python madspace/install.py --source --system --clean
+
+The remembered options are kept: they are stored outside both directories. The installer
+also wipes the build tree on its own in the cases where reusing it cannot work, such as a
+build configured with a compiler or a Python interpreter that is no longer the current
+one.
 
 Installation for MadGraph7
 --------------------------
