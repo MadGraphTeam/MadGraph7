@@ -9,7 +9,7 @@ DEFAULT_CPP_COMPILER = g++
 # Rest of the makefile
 ifeq ($(origin FFLAGS),undefined)
   #FFLAGS= -O -w
-  FFLAGS = -O 
+  FFLAGS = -O0 -g -fopenmp
   #FFLAGS+= -g -fbounds-check -ffpe-trap=invalid,zero,overflow,underflow,denormal -Wall
 endif
 
@@ -75,6 +75,8 @@ endif
 UNAME := $(shell uname)
 
 # Option dynamic
+
+LDFLAGS += -fopenmp
 
 ifdef dynamic
   ifeq ($(UNAME), Darwin)

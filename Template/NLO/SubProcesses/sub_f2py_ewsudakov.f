@@ -1,4 +1,4 @@
-      subroutine ewsudakov_py(p_born_in, nexternal, gstr_in, results) 
+      subroutine ewsudakov_py(p_born_in, nexternal, gstr_in, results)
 c**************************************************************************
 c     This is the driver for the whole calulation
 c**************************************************************************
@@ -16,5 +16,5 @@ C      include 'nexternal.inc'
       double precision gstr_in, results(6)
       ! results contain (born, sud0, sud1)
       call ewsudakov_f77(p_born_in, gstr_in, results)
-      return 
+      return
       end

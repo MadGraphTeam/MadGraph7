@@ -1,4 +1,4 @@
-      SUBROUTINE SBORN_HEL(P,ANS_SUMMED)
+      SUBROUTINE SBORN_HEL(P,ANS_SUMMED,LOC_SAVEAMP,wgt_hel)
 C
 C     Return the sum of the split orders which are required in orders.inc (BORN_ORDERS)
 C     Also the values needed for the counterterms are stored in the C_BORN_CNT common block
@@ -8,23 +8,21 @@ C CONSTANTS
 C 
 implicit none
       include 'nexternal.inc'
+      include 'orders.inc'
+      INCLUDE 'born_nhel.inc'
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C  
 C ARGUMENTS 
 C 
       REAL*8 P(0:3,NEXTERNAL-1), ANS_SUMMED
+      double complex loc_saveamp(%(ngraphs)d,max_bhel)
 C
 C VARIABLES
 C
       INTEGER I, J
-      include 'orders.inc'
       REAL*8 ANS(0:NSQAMPSO)
-      INCLUDE 'born_nhel.inc'
       DOUBLE PRECISION WGT_HEL(NSQAMPSO, MAX_BHEL)
-      COMMON/C_BORN_HEL_SPLIT/WGT_HEL
-      DOUBLE PRECISION WGT_HEL_SUMMED(MAX_BHEL)
-      COMMON/C_BORN_HEL/WGT_HEL_SUMMED
 C
 C     FUNCTIONS
 C
@@ -37,23 +35,17 @@ C of the fact that they satisfy or not the squared-orders constraints
 
 
 C look for orders which match the born order constraint 
-	  CALL SBORN_HEL_SPLITORDERS(P,ANS)
+	  CALL SBORN_HEL_SPLITORDERS(P,ANS,LOC_SAVEAMP,WGT_HEL)
 ans_summed = 0d0
-  DO J = 1, MAX_BHEL
-    WGT_HEL_SUMMED(J) = 0d0
-  ENDDO
   DO I = 1, NSQAMPSO
     ANS_SUMMED = ANS_SUMMED + ANS(I)
-    DO J = 1, MAX_BHEL
-        WGT_HEL_SUMMED(J) = WGT_HEL_SUMMED(J) + WGT_HEL(I,J)
-    ENDDO
   ENDDO
 
 return
 END
 
 
-    SUBROUTINE SBORN_HEL_SPLITORDERS(P1,ANS)
+    SUBROUTINE SBORN_HEL_SPLITORDERS(P1,ANS,LOC_SAVEAMP,WGT_HEL)
 C  
 %(info_lines)s
 C
@@ -81,6 +73,7 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P1(0:3,NEXTERNAL-1),ANS(0:NSQAMPSO)
+      double complex loc_saveamp(ngraphs,max_bhel)
 C  
 C LOCAL VARIABLES 
 C  
@@ -99,29 +92,28 @@ C
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       double precision wgt_hel(NSQAMPSO, max_bhel)
-      COMMON/C_BORN_HEL_SPLIT/WGT_HEL
 C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
-      if (calculatedBorn) then
-         do j=1,nexternal-1
-            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
-               calculatedBorn=.false.
-               write(*,*) 'Error in sborn_hel_splitorders: momenta not the same in the born'
-               stop
-            endif
-         enddo
-      else
-         write(*,*) 'Error in sborn_hel_splitorders: this should be called only with calculatedborn = true'
-         stop
-      endif
+C      if (calculatedBorn) then
+C         do j=1,nexternal-1
+C            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
+C               calculatedBorn=.false.
+C               write(*,*) 'Error in sborn_hel_splitorders: momenta not the same in the born'
+C               stop
+C            endif
+C         enddo
+C      else
+C         write(*,*) 'Error in sborn_hel_splitorders: this should be called only with calculatedborn = true'
+C         stop
+C      endif
       DO I=0,NSQAMPSO
           ANS(I) = 0D0
       ENDDO
       DO IHEL=1,NCOMB
          IF (GOODHEL(IHEL,nFKSprocess)) THEN
-           CALL BORN_HEL_SPLITORDERS(P1,IHEL,T)
+           CALL BORN_HEL_SPLITORDERS(P1,IHEL,T,LOC_SAVEAMP)
            DO I=1,NSQAMPSO
              wgt_hel(i, ihel) = T(I) / DBLE(IDEN)
              ANS(I)=ANS(I)+T(I)
@@ -135,7 +127,7 @@ C ----------
       END
        
        
-      SUBROUTINE BORN_HEL_SPLITORDERS(P,HELL,ANS)
+      SUBROUTINE BORN_HEL_SPLITORDERS(P,HELL,ANS,LOC_SAVEAMP)
 C  
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
@@ -165,6 +157,7 @@ C
       REAL*8 P(0:3,NEXTERNAL-1)
       INTEGER HELL
       REAL*8 ANS(NSQAMPSO)
+      double complex loc_saveamp(ngraphs,max_bhel)
 C  
 C LOCAL VARIABLES 
 C  
@@ -176,8 +169,6 @@ C
 C  
 C GLOBAL VARIABLES
 C  
-      double complex saveamp(ngraphs,max_bhel)
-      common/to_saveamp/saveamp
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
 C
@@ -191,14 +182,14 @@ C
 C ----------
 C BEGIN CODE
 C ----------
-      if (.not. calculatedBorn) then
-        write(*,*) 'Error in b_sf: color_linked borns should be called only with calculatedborn = true'
-        stop
-      elseif (calculatedBorn) then
+C      if (.not. calculatedBorn) then
+C        write(*,*) 'Error in b_sf: color_linked borns should be called only with calculatedborn = true'
+C        stop
+C      elseif (calculatedBorn) then
       do i=1,ngraphs
-         amp(i)=saveamp(i,hell)
+         amp(i)=loc_saveamp(i,hell)
       enddo
-      endif
+C      endif
 %(jamp_lines)s
     ANS(:) = 0d0
     DO M = 1, NAMPSO
@@ -218,9 +209,10 @@ C ----------
        
 
 
-subroutine PickHelicityMC(p,goodhel,hel,ihel_out,vol)
+subroutine PickHelicityMC(p,goodhel,hel,ihel_out,vol,loc_saveamp)
 implicit none
 include 'nexternal.inc'
+include 'orders.inc'
 INCLUDE 'born_nhel.inc'
 double precision p(0:3, nexternal-1)
 integer goodhel(max_bhel),hel(0:max_bhel)
@@ -230,7 +222,6 @@ double precision vol
 INTEGER NSQAMPSO
 PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 DOUBLE PRECISION WGT_HEL(NSQAMPSO, MAX_BHEL)
-COMMON/C_BORN_HEL_SPLIT/WGT_HEL
 double precision sum_hel(nsqampso)
 integer i, ihel
 
@@ -238,10 +229,11 @@ integer n_nonzero_ord
 double precision sum_all
 double precision accum, target 
 double precision born_wgt_recomp_direct
+double complex loc_saveamp(%(ngraphs)d,max_bhel)
 
 double precision ran2
 
-call sborn_hel(p,born_wgt_recomp_direct)
+call sborn_hel(p,born_wgt_recomp_direct,loc_saveamp,wgt_hel)
 
 C Loop over the various orders of squared Feynman diagrams and compute for each order the sum
 n_nonzero_ord = 0

@@ -21,6 +21,9 @@ RUNNING = ../alfas_functions.o ../RUNNING/matrix_exponential.o ../RUNNING/c8lib.
 
 all: $(LIBDIR)$(LIBRARY) ../param_card.inc
 
+coupl.o: coupl.f90
+	$(FC) $(FFLAGS) -ffixed-form -c -o coupl.o coupl.f90
+
 rw_para.o: ../param_card.inc 
 	$(FC) $(FFLAGS) -c -o rw_para.o rw_para.f
 

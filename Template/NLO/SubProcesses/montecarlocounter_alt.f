@@ -520,13 +520,26 @@ c Particle types (=colour) of i_fks, j_fks and fks_mother
       common /c_is_aorg/is_aorg
 
       ! amp split stuff
+      include 'genps.inc'
       include 'orders.inc'
+      include 'born_nhel.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer iamp
       double precision amp_split_gfunc(amp_split_size)
       common /to_amp_split_gfunc/amp_split_gfunc
       double precision amp_split_s(amp_split_size), 
      $                 amp_split_c(amp_split_size), 
      $                 amp_split_sc(amp_split_size)
+
+C Born variables
+      double precision p_born(0:3,nexternal-1)
+      common /pborn/   p_born
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2,nsplitorders)
+      double complex born_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
 
       include "pmass.inc"
 c
@@ -537,21 +550,25 @@ c
       ! this contribution is needed only for i_fks being a gluon/photon
       ! (soft limit)
       if (is_aorg(i_fks))then
+         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
 c i_fks is gluon/photon
          call set_cms_stuff(izero)
-         call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts)
+         call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_s(iamp) = amp_split(iamp)
+           amp_split_s(iamp) = ret_amp_split(iamp)
          enddo
          call set_cms_stuff(ione)
-         call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc)
+         call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_c(iamp) = amp_split(iamp)
+           amp_split_c(iamp) = ret_amp_split(iamp)
          enddo
          call set_cms_stuff(itwo)
-         call sreal(p1_cnt(0,1,2),zero,one,wgtsc)
+         call sreal(p1_cnt(0,1,2),zero,one,wgtsc,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_sc(iamp) = amp_split(iamp)
+           amp_split_sc(iamp) = ret_amp_split(iamp)
          enddo
          wgt=wgts+(1-gfactcl)*(wgtc-wgtsc)
          wgt=wgt*(1-gfactsf)
@@ -1308,7 +1325,7 @@ c the same method
       common/pborn/p_born
 
       double Precision amp2(ngraphs), jamp2(0:ncolor)
-      common/to_amps/  amp2,       jamp2
+C      common/to_amps/  amp2,       jamp2
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -1354,7 +1371,10 @@ c Particle types (=color) of i_fks, j_fks and fks_mother
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
       complex*16 ans_cnt(2, nsplitorders), wgt1(2)
-      common /c_born_cnt/ ans_cnt
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
       double complex ans_extra_cnt(2,nsplitorders)
       integer iord, iextra_cnt, isplitorder_born, isplitorder_cnt
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
@@ -1381,7 +1401,7 @@ C BORN
         if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
         born(iord)=dble(ans_cnt(1,iord))
         do iamp=1, amp_split_size
-          amp_split_born(iamp,iord) = dble(amp_split_cnt(iamp,1,iord))
+          amp_split_born(iamp,iord) = dble(dummy_amp_split_cnt(iamp,1,iord))
         enddo
       enddo
 
@@ -1447,7 +1467,7 @@ C check if any extra_cnt is needed
             if (abs(m_type).eq.3.or.dabs(ch_m).gt.0d0) then
               amp_split_borntilde(iamp,iord) = czero
             else
-              amp_split_borntilde(iamp,iord) = amp_split_cnt(iamp,2,iord)
+              amp_split_borntilde(iamp,iord) = dummy_amp_split_cnt(iamp,2,iord)
             endif
           enddo
         enddo

@@ -412,6 +412,21 @@ class HelasCallWriter(base_objects.PhysicsObject):
             return ""
         else:
             return call(amplitude)
+        
+    def get_amplitude_call_ivec(self, amplitude):
+        """Return the function for writing the amplitude
+        corresponding to the key"""
+
+        try:
+            call = self["amplitudes"][amplitude.get_call_key()]
+        except KeyError as error:
+            return ""
+        else:
+            # misc.sprint(type(amplitude))
+            coups = [x + "(ivec)" for x in amplitude.get('coupling')]
+            amplitude.set('coupling', coups)
+            # misc.sprint(str(call(amplitude)))
+            return call(amplitude)
 
     def add_wavefunction(self, key, function):
         """Set the function for writing the wavefunction

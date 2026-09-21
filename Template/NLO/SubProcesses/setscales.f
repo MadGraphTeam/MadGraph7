@@ -159,6 +159,121 @@ cc         call setpara('param_card.dat')
       return
       end
 
+      
+      subroutine set_alphaS_vec(xp,vecid)
+c This subroutine sets the values of the renormalization, factorization,
+c and Ellis-Sexton scales, and computes the value of alpha_S through the
+c call to set_ren_scale (for backward compatibility).
+c The scale and couplings values are updated in the relevant common blocks
+c (mostly in run.inc, and one  in coupl.inc)
+      implicit none
+      include "genps.inc"
+      include "nexternal.inc"
+      include "run.inc"
+      include "coupl.inc"
+      include "timing_variables.inc"
+      
+      double precision xp(0:3,nexternal)
+      double precision dummy,dummyQES,dummies(2)
+      integer i,j
+      integer vecid
+
+      character*80 muR_id_str,muF1_id_str,muF2_id_str,QES_id_str
+      common/cscales_id_string/muR_id_str,muF1_id_str,
+     #                         muF2_id_str,QES_id_str
+
+c put momenta in common block for couplings.f
+      double precision PP(0:3,max_particles)
+      COMMON /MOMENTA_PP/PP
+
+      logical firsttime
+      data firsttime/.true./
+
+      call cpu_time(tBefore)
+c
+      if (firsttime) then
+        firsttime=.false.
+c Set scales and check that everything is all right
+c Renormalization
+        call set_ren_scale(xp,dummy)
+        if(dummy.lt.0.2d0)then
+          write(*,*)'Error in set_alphaS: muR too soft',dummy
+          stop
+        endif
+c Factorization
+        call set_fac_scale(xp,dummies)
+        if(dummies(1).lt.0.2d0.or.dummies(2).lt.0.2d0)then
+          write(*,*)'Error in set_alphaS: muF too soft',
+     #              dummies(1),dummies(2)
+          stop
+        endif
+c Ellis-Sexton
+        call set_QES_scale(xp,dummyQES)
+        if(scale.lt.0.2d0)then
+          write(*,*)'Error in set_alphaS: QES too soft',dummyQES
+          stop
+        endif
+c
+        write(*,*)'Scale values (may change event by event):'
+        write(*,200)'muR,  muR_reference: ',dummy,
+     #              dummy/muR_over_ref,muR_over_ref
+        write(*,200)'muF1, muF1_reference:',dummies(1),
+     #              dummies(1)/muF1_over_ref,muF1_over_ref
+        write(*,200)'muF2, muF2_reference:',dummies(2),
+     #              dummies(2)/muF2_over_ref,muF2_over_ref
+        write(*,200)'QES,  QES_reference: ',dummyQES,
+     #              dummyQES/QES_over_ref,QES_over_ref
+        write(*,*)' '
+        write(*,*)'muR_reference [functional form]:'
+        write(*,*)'   ',muR_id_str(1:len_trim(muR_id_str))
+        write(*,*)'muF1_reference [functional form]:'
+        write(*,*)'   ',muF1_id_str(1:len_trim(muF1_id_str))
+        write(*,*)'muF2_reference [functional form]:'
+        write(*,*)'   ',muF2_id_str(1:len_trim(muF2_id_str))
+        write(*,*)'QES_reference [functional form]: '
+        write(*,*)'   ',QES_id_str(1:len_trim(QES_id_str))
+        write(*,*)' '
+        write(*,*) 'alpha_s=',g**2/(16d0*atan(1d0))
+c
+cc        if(fixed_ren_scale) then
+cc          call setpara('param_card.dat')
+cc        endif
+c Put momenta in the common block to zero to start
+        do i=0,3
+          do j=1,max_particles
+            pp(i,j) = 0d0
+          enddo
+        enddo
+      endif
+c
+c Recompute scales
+c
+      call set_QES_scale(xp,dummyQES)
+      call set_fac_scale(xp,dummies)
+      call set_ren_scale_vec(xp,dummy,vecid)
+c
+
+c Pass momenta to couplings.f
+      if ( .not.fixed_ren_scale.or.
+     &         .not.fixed_couplings.or.
+     &             .not.fixed_QES_scale) then
+        if (.not.fixed_couplings)then
+          do i=0,3
+            do j=1,nexternal
+              PP(i,j)=xp(i,j)
+            enddo
+          enddo
+        endif
+cc         call setpara('param_card.dat')
+      endif
+
+      call cpu_time(tAfter)
+      t_coupl=t_coupl+(tAfter-tBefore)
+      
+ 200  format(1x,a,2(1x,d12.6),2x,f4.2)
+
+      return
+      end
 
       subroutine set_ren_scale(pp,muR)
 c Sets the value of the renormalization scale, returned as muR.
@@ -204,11 +319,61 @@ c Reset calculatedBorn, because the couplings might have been changed.
 c This is needed in particular for the MC events, because there the
 c coupling should be set according to the real-emission kinematics,
 c even when computing the Born matrix elements.
-      calculatedBorn=.false.
+      ! calculatedBorn=.false.
 c
       return
       end
 
+      
+      subroutine set_ren_scale_vec(pp,muR,vecid)
+c Sets the value of the renormalization scale, returned as muR.
+c For backward compatibility, computes the value of alpha_S, and sets 
+c the value of variable scale in common block /to_scale/
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'run.inc'
+      include 'coupl.inc'
+      double precision pp(0:3,nexternal),muR
+      double precision mur_temp,mur_ref_dynamic,alphas
+      double precision pi
+      integer vecid
+      parameter (pi=3.14159265358979323846d0)
+      character*80 muR_id_str,muF1_id_str,muF2_id_str,QES_id_str
+      common/cscales_id_string/muR_id_str,muF1_id_str,
+     #                         muF2_id_str,QES_id_str
+      character*80 temp_scale_id
+      common/ctemp_scale_id/temp_scale_id
+c this is to avoid too low dynamic scales      
+      double precision minscaleR
+      parameter (minscaleR=2d0)
+c After recomputing alphaS, be sure to set 'calculatedBorn' to false
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+c
+      temp_scale_id='  '
+      if(fixed_ren_scale)then
+        mur_temp=muR_ref_fixed
+        temp_scale_id='fixed'
+      else
+        mur_temp=max(minscaleR,muR_ref_dynamic(pp))
+      endif
+      muR=muR_over_ref*mur_temp
+      muR2_current=muR**2
+      muR_id_str=temp_scale_id
+      mu_r = muR
+c The following is for backward compatibility. DO NOT REMOVE
+      scale=muR
+      g=sqrt(4d0*pi*alphas(scale))
+      call update_as_param_vec(vecid)
+c Reset calculatedBorn, because the couplings might have been changed.
+c This is needed in particular for the MC events, because there the
+c coupling should be set according to the real-emission kinematics,
+c even when computing the Born matrix elements.
+      ! calculatedBorn=.false.
+c
+      return
+      end
 
       function muR_ref_dynamic(pp)
 c This is a function of the kinematic configuration pp, which returns

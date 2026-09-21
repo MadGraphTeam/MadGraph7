@@ -621,8 +621,11 @@ c min(i_fks,j_fks) is the mother of the FKS pair
 
       
       subroutine compute_xmcsubt_complete(p,probne,gfactsf,gfactcl
-     $     ,flagmc,lzone,zhw,nofpartners,xmcxsec)
+     $     ,flagmc,lzone,zhw,nofpartners,xmcxsec,born_wgt
+     $     ,born_cnt,born_split_cnt,born_jamp2
+     $     ,rot_cnt,rot_split_cnt,rot_jamp2)
       implicit none
+      include 'genps.inc'
       include 'nexternal.inc'
       include 'madfks_mcatnlo.inc'
       include 'born_nhel.inc'
@@ -632,6 +635,7 @@ c min(i_fks,j_fks) is the mother of the FKS pair
       logical lzone(nexternal),flagmc
       double precision bornbars(max_bcol,nsplitorders),
      $     bornbarstilde(max_bcol,nsplitorders)
+      double precision born_wgt
       double precision p(0:3,nexternal),probne,zhw(nexternal)
      $     ,xmcxsec(nexternal),xkern(2),xkernazi(2),factor,N_p
      $     ,emscwgt(nexternal),MCsec(nexternal,max_bcol),sumMCsec
@@ -669,6 +673,14 @@ c min(i_fks,j_fks) is the mother of the FKS pair
 !     dependent in case of delta
       integer cur_part
       common /to_ref_scale/cur_part
+      
+      complex*16 born_cnt(2, nsplitorders)
+      double complex born_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision born_jamp2(0:ncolor)
+      complex*16 rot_cnt(2, nsplitorders)
+      double complex rot_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision rot_jamp2(0:ncolor)
+
 c -- call to MC counterterm functions
       first_MCcnt_call=.true.
       is_pt_hard=.false.
@@ -679,9 +691,11 @@ c -- call to MC counterterm functions
       amp_split_xmcxsec(1:amp_split_size,1:nexternal)=0d0
       do npartner=1,ipartners(0)
          if (mcatnlo_delta) cur_part=ipartners(npartner)
-         call xmcsubt(p,xi_i_fks_ev,y_ij_fks_ev,gfactsf,gfactcl,probne
+         call xmcsubt_store(p,xi_i_fks_ev,y_ij_fks_ev,gfactsf,gfactcl,probne
      $        ,nofpartners,lzone,flagmc,zhw,xkern,xkernazi,emscwgt
-     $        ,bornbars,bornbarstilde,npartner)
+     $        ,bornbars,bornbarstilde,npartner
+     $        ,born_cnt,born_split_cnt,born_jamp2
+     $        ,rot_cnt,rot_split_cnt,rot_jamp2)
          if(is_pt_hard)exit
          if(dampMCsubt) then
             if (.not.mcatnlo_delta) then
@@ -761,11 +775,11 @@ c min(i_fks,j_fks) is the mother of the FKS pair
       if (mcatnlo_delta) then
 ! compute and include the Delta Sudakov:
          if(.not.is_pt_hard) call complete_xmcsubt(p,lzone,xmcxsec
-     $        ,xmcxsec2,MCsec,probne)
+     $        ,xmcxsec2,MCsec,probne,born_wgt,born_jamp2)
       else
 ! assign emsca on statistical basis (don't need flow here): 
-         if(.not.is_pt_hard) call assign_emsca_and_flow_statistical(
-     $        xmcxsec,xmcxsec2,MCsec,lzone,idum,ddum)
+         if(.not.is_pt_hard) call assign_emsca_and_flow_statistical_store(
+     $        xmcxsec,xmcxsec2,MCsec,lzone,idum,ddum,born_wgt,born_jamp2)
 ! include the bogus no-emission probability:
          xmcxsec(1:ipartners(0))=xmcxsec(1:ipartners(0))*probne
          amp_split_xmcxsec(1:amp_split_size,1:ipartners(0))=
@@ -853,7 +867,12 @@ c Particle types (=colour) of i_fks, j_fks and fks_mother
       logical is_aorg(nexternal)
       common /c_is_aorg/is_aorg
       ! amp split stuff
+      include 'genps.inc'
       include 'orders.inc'
+      include 'born_nhel.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer iamp
       double precision amp_split_gfunc(amp_split_size)
       common /to_amp_split_gfunc/amp_split_gfunc
@@ -861,6 +880,13 @@ c Particle types (=colour) of i_fks, j_fks and fks_mother
      $                 amp_split_c(amp_split_size), 
      $                 amp_split_sc(amp_split_size)
       double precision pmass(nexternal)
+C Born variables
+      double precision p_born(0:3,nexternal-1)
+      common /pborn/   p_born
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2,nsplitorders)
+      double complex born_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
       include "pmass.inc"
 c
       wgt=0d0
@@ -870,21 +896,25 @@ c
       ! this contribution is needed only for i_fks being a gluon/photon
       ! (soft limit)
       if (is_aorg(i_fks))then
+         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
 c i_fks is gluon/photon
          call set_cms_stuff(izero)
-         call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts)
+         call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_s(iamp) = amp_split(iamp)
+           amp_split_s(iamp) = ret_amp_split(iamp)
          enddo
          call set_cms_stuff(ione)
-         call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc)
+         call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_c(iamp) = amp_split(iamp)
+           amp_split_c(iamp) = ret_amp_split(iamp)
          enddo
          call set_cms_stuff(itwo)
-         call sreal(p1_cnt(0,1,2),zero,one,wgtsc)
+         call sreal(p1_cnt(0,1,2),zero,one,wgtsc,ret_amp_split
+     $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
-           amp_split_sc(iamp) = amp_split(iamp)
+           amp_split_sc(iamp) = ret_amp_split(iamp)
          enddo
          wgt=wgts+(1-gfactcl)*(wgtc-wgtsc)
          wgt=wgt*(1-gfactsf)
@@ -1492,12 +1522,614 @@ c Main loop over colour partners used to end here
       return
       end
 
+c Main routine for MC counterterms. Now to be called inside a loop
+c over colour partners
+      subroutine xmcsubt_store(pp,xi_i_fks,y_ij_fks,gfactsf,gfactcl,probne,
+     &     nofpartners,lzone,flagmc,z,xkern,xkernazi,emscwgt,
+     &     bornbars,bornbarstilde,npartner,
+     &     born_cnt,born_split_cnt,born_jamp2,
+     &     rot_cnt,rot_split_cnt,rot_jamp2)
+      implicit none
+      include 'genps.inc'
+      include "nexternal.inc"
+      include "coupl.inc"
+      include "born_nhel.inc"
+      include "fks_powers.inc"
+      include "madfks_mcatnlo.inc"
+      include "run.inc"
+      include "../../Source/MODEL/input.inc"
+      include 'nFKSconfigs.inc'
+      include 'orders.inc'
+      logical split_type(nsplitorders) 
+      common /c_split_type/split_type
+      integer fks_j_from_i(nexternal,0:nexternal)
+     &     ,particle_type(nexternal),pdg_type(nexternal)
+      common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
+      double precision particle_charge(nexternal)
+      common /c_charges/particle_charge
+
+      double precision pp(0:3,nexternal),gfactsf,gfactcl,probne,wgt
+      double precision xi_i_fks,y_ij_fks,xm12,xm22
+      double precision xmcxsec(nexternal)
+      integer nofpartners
+      logical lzone(nexternal),flagmc,limit,non_limit
+
+      double precision emsca_bare,ptresc,rrnd,ref_scale,
+     & scalemin,scalemax,qMC,emscainv,emscafun
+      double precision emscwgt(nexternal),emscav(nexternal)
+      double precision emscav_a(nexternal,nexternal)
+      double precision emscav_a2(nexternal,nexternal)
+      integer jpartner
+      logical emscasharp
+      double precision emscav_tmp(nexternal)
+      double precision emscav_tmp_a(nexternal,nexternal)
+      double precision emscav_tmp_a2(nexternal,nexternal)
+      common/cemscav_tmp/emscav_tmp
+      common/cemscav_tmp_a/emscav_tmp_a,emscav_tmp_a2
+
+      double precision shattmp,dot,xkern(2),xkernazi(2)
+      double precision bornbars(max_bcol,nsplitorders),
+     $     bornbarstilde(max_bcol,nsplitorders)
+
+      complex*16 born_cnt(2, nsplitorders)
+      double complex born_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision born_jamp2(0:ncolor)
+      complex*16 rot_cnt(2, nsplitorders)
+      double complex rot_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision rot_jamp2(0:ncolor)
+
+      integer i,j,npartner,ileg,N_p
+      double precision tk,uk,q1q,q2q,E0sq(nexternal),x,yi,yj,xij,ap(2)
+     $     ,Q(2),s,w1,w2,beta,xfact,prefact,kn,knbar,kn0,betae0,betad
+     $     ,betas,gfactazi,gfunction,bogus_probne_fun,z(nexternal)
+     $     ,xi(nexternal),xjac(nexternal),ztmp,xitmp,xjactmp,zHW6,xiHW6
+     $     ,xjacHW6_xiztoxy,zHWPP,xiHWPP,xjacHWPP_xiztoxy,zPY6Q,xiPY6Q
+     $     ,xjacPY6Q_xiztoxy,zPY6PT,xiPY6PT,xjacPY6PT_xiztoxy,zPY8,xiPY8
+     $     ,xjacPY8_xiztoxy,wcc
+      common/cqMC/qMC
+
+      common/cscaleminmax/xm12,ileg
+      double precision veckn_ev,veckbarn_ev,xp0jfks
+      common/cgenps_fks/veckn_ev,veckbarn_ev,xp0jfks
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
+     #                        sqrtshat,shat
+
+      integer ipartners(0:nexternal-1),colorflow(nexternal-1,0:max_bcol)
+      common /MC_info/ ipartners,colorflow
+      logical isspecial(max_bcol)
+      common/cisspecial/isspecial
+
+      integer fksfather
+      common/cfksfather/fksfather
+
+      logical softtest,colltest
+      common/sctests/softtest,colltest
+
+      double precision emsca
+      common/cemsca/emsca,emsca_bare,emscasharp,scalemin,scalemax
+
+      double precision ptresc_a(nexternal,nexternal)
+      logical emscasharp_a(nexternal,nexternal)
+      double precision emsca_a(nexternal,nexternal)
+     $     ,emsca_bare_a(nexternal,nexternal),emsca_bare_a2(nexternal
+     $     ,nexternal),scalemin_a(nexternal,nexternal)
+     $     ,scalemax_a(nexternal ,nexternal),emscwgt_a(nexternal
+     $     ,nexternal)
+      common/cemsca_a/emsca_a,emsca_bare_a,emsca_bare_a2, emscasharp_a
+     $     ,scalemin_a,scalemax_a,emscwgt_a
+
+      double precision ran2,iseed
+      external ran2
+      logical extra
+
+c Stuff to be written (depending on AddInfoLHE) onto the LHE file
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      integer iSorH_lhe,ifks_lhe(fks_configs) ,jfks_lhe(fks_configs)
+     &     ,fksfather_lhe(fks_configs) ,ipartner_lhe(fks_configs)
+      double precision scale1_lhe(fks_configs),scale2_lhe(fks_configs)
+      common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
+     #                fksfather_lhe,ipartner_lhe
+      common/cto_LHE2/scale1_lhe,scale2_lhe
+
+c Radiation hardness needed (pt_hardness) for the theta function
+c Should be zero if there are no jets at the Born
+      double precision shower_S_scale(fks_configs*2)
+     &     ,shower_H_scale(fks_configs*2),ref_H_scale(fks_configs*2)
+     &     ,pt_hardness
+      common /cshowerscale2/shower_S_scale,shower_H_scale,ref_H_scale
+     &     ,pt_hardness
+      integer              MCcntcalled
+      common/c_MCcntcalled/MCcntcalled
+
+      double precision becl,delta
+c alsf and besf are the parameters that control gfunsoft
+      double precision alsf,besf
+      common/cgfunsfp/alsf,besf
+c alazi and beazi are the parameters that control gfunazi
+      double precision alazi,beazi
+      common/cgfunazi/alazi,beazi
+
+c Particle types (=color) of i_fks, j_fks and fks_mother
+      integer i_type,j_type,m_type
+      double precision ch_i,ch_j,ch_m
+      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+
+      double precision zero,one,tiny,vtiny,ymin
+      parameter (zero=0d0)
+      parameter (one=1d0)
+      parameter (vtiny=1d-10)
+      parameter (ymin=0.9d0)
+
+      double precision pi
+      parameter(pi=3.1415926535897932384626433d0)
+
+      double precision vcf,vtf,vca
+      parameter (vcf=4d0/3d0)
+      parameter (vtf=1d0/2d0)
+      parameter (vca=3d0)
+
+      logical first_MCcnt_call,is_pt_hard
+      common/cMCcall/first_MCcnt_call,is_pt_hard
+
+      double precision pmass(nexternal)
+      double precision Eem,qMC_a2(nexternal-1,nexternal-1)
+      common /to_complete/qMC_a2
+      integer iBtoR(nexternal-1)
+
+      save
+      include "pmass.inc"
+
+c Initialise if first time
+      if(.not.first_MCcnt_call)goto 222
+      if (split_type(QED_pos)) then
+         ! QED partners are dynamically found
+         call find_ipartner_QED(pp,nofpartners)
+      endif
+      flagmc   = .false.
+      ztmp     = 0d0
+      xitmp    = 0d0
+      xjactmp  = 0d0
+      gfactazi = 0d0
+      xkern(1:2)    = 0d0
+      xkernazi(1:2) = 0d0
+      kn       = veckn_ev
+      knbar    = veckbarn_ev
+      kn0      = xp0jfks
+      nofpartners = ipartners(0)
+      tiny = 1d-6
+      if (softtest.or.colltest)tiny = 1d-12
+c Logical variables to control the IR limits:
+c one can remove any reference to xi_i_fks
+      limit = 1-y_ij_fks.lt.tiny .and. xi_i_fks.ge.tiny
+      non_limit = xi_i_fks.ge.tiny
+
+c Discard if unphysical kinematics
+      if(pp(0,1).le.0d0)return
+
+c Determine invariants, ileg, and MC hardness qMC
+      extra=dampMCsubt.or.AddInfoLHE.or.UseSudakov
+      call kinematics_driver(xi_i_fks,y_ij_fks,shat,pp,ileg,
+     &                       xm12,xm22,tk,uk,q1q,q2q,qMC,extra)
+      w1=-q1q+q2q-tk
+      w2=-q2q+q1q-uk
+      if(extra.and.qMC.lt.0d0)then
+         write(*,*)'Error in xmcsubt: qMC=',qMC
+         stop
+      endif
+
+c Check ileg, and special case for PYTHIA6PT
+      if(ileg.lt.0.or.ileg.gt.4)then
+         write(*,*)'Error in xmcsubt: ileg=',ileg
+         stop
+      endif
+      if(ileg.gt.2.and.shower_mc.eq.'PYTHIA6PT')then
+         write(*,*)'FSR not allowed when matching PY6PT'
+         stop
+      endif
+
+c New or standard MC@NLO formulation
+      probne=bogus_probne_fun(qMC)
+      if(.not.UseSudakov)probne=1.d0
+
+c Call barred Born and assign shower scale
+      call get_mbar_store(pp,y_ij_fks,ileg,bornbars,bornbarstilde,
+     &                       born_cnt,born_split_cnt,born_jamp2,
+     &                       rot_cnt,rot_split_cnt,rot_jamp2)
+      call assign_emsca(pp,xi_i_fks,y_ij_fks)
+      if (mcatnlo_delta) call assign_emsca_array(pp,xi_i_fks,y_ij_fks)
+
+c Distinguish ISR and FSR
+      if(ileg.le.2)then
+         delta=min(1d0,deltaI)
+         yj=0d0
+         yi=y_ij_fks
+      elseif(ileg.ge.3)then
+         delta=min(1d0,deltaO)
+         yj=y_ij_fks
+         yi=0d0
+      endif
+      x=1-xi_i_fks
+      s=shat
+      xij=2*(1-xm12/s-(1-x))/(2-(1-x)*(1-yj)) 
+
+c G-function parameters 
+      gfactsf=gfunction(x,alsf,besf,2d0)
+      if(abs(i_type).eq.3)gfactsf=1d0
+      becl=-(1d0-ymin)
+      gfactcl=gfunction(y_ij_fks,alsf,becl,1d0)
+      if(alazi.lt.0d0)gfactazi=1-gfunction(y_ij_fks,-alazi,beazi,delta)
+c For processes that have jets at the Born level, we need to include a
+c theta-function: The radiation from the shower should always be softer
+c than the jets at the Born, hence no need to include the MC counter
+c terms when the radiation is hard.
+      if(pt_hardness.gt.shower_S_scale(nFKSprocess*2-1))then
+         emsca=2d0*sqrt(ebeam(1)*ebeam(2))
+         emsca_a=2d0*sqrt(ebeam(1)*ebeam(2))
+         is_pt_hard=.true.
+         return
+      endif
+
+      if (btest(MCcntcalled,2)) then
+         write (*,*) 'Third bit of MCcntcalled should not be set yet'
+     $        ,MCcntcalled
+         stop 1
+      endif
+
+      MCcntcalled=MCcntcalled+4
+      
+      
+c Shower variables
+      if(shower_mc.eq.'HERWIGPP')then
+         ztmp=zHWPP(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xitmp=xiHWPP(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xjactmp=xjacHWPP_xiztoxy(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+      elseif(shower_mc.eq.'PYTHIA6Q')then
+         ztmp=zPY6Q(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xitmp=xiPY6Q(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xjactmp=xjacPY6Q_xiztoxy(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+      elseif(shower_mc.eq.'PYTHIA6PT')then
+         ztmp=zPY6PT(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xitmp=xiPY6PT(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xjactmp=xjacPY6PT_xiztoxy(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+      elseif(shower_mc.eq.'PYTHIA8')then
+         ztmp=zPY8(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xitmp=xiPY8(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+         xjactmp=xjacPY8_xiztoxy(ileg,xm12,xm22,shat,x,yi,yj,tk,uk,q1q,q2q)
+      endif
+      
+      first_MCcnt_call=.false.
+ 222  continue
+c Main loop over colour partners used to begin here
+      E0sq(npartner)=dot(p_born(0,fksfather),p_born(0,ipartners(npartner)))
+      if(E0sq(npartner).lt.0d0)then
+         write(*,*)'Error in xmcsubt: negative E0sq'
+         write(*,*)E0sq(npartner),ileg,npartner
+         stop
+      endif
+      z(npartner)=ztmp
+      xi(npartner)=xitmp
+      xjac(npartner)=xjactmp
+      if(shower_mc.eq.'HERWIG6')then
+         z(npartner)=zHW6(ileg,E0sq(npartner),xm12,xm22,shat,
+     &                    x,yi,yj,tk,uk,q1q,q2q)
+         xi(npartner)=xiHW6(ileg,E0sq(npartner),xm12,xm22,shat,
+     &                      x,yi,yj,tk,uk,q1q,q2q)
+         xjac(npartner)=xjacHW6_xiztoxy(ileg,E0sq(npartner),xm12,xm22,
+     &                                  shat,x,yi,yj,tk,uk,q1q,q2q)
+      endif
+c Compute dead zones
+      call get_dead_zone(ileg,z(npartner),xi(npartner),s,x,yi,
+     &  xm12,xm22,w1,w2,qMC,scalemax,ipartners(npartner),fksfather,
+     &  lzone(npartner),wcc)
+
+c Compute MC subtraction terms
+      if(lzone(npartner))then
+         if(.not.flagmc)flagmc=.true.
+         if( (ileg.ge.3 .and. (m_type.eq.8.or.(m_type.eq.1.and.dabs(ch_m).lt.tiny))) .or.
+     &       (ileg.le.2 .and. (j_type.eq.8.or.(j_type.eq.1.and.dabs(ch_j).lt.tiny))) )then
+            if(i_type.eq.8)then
+c g->gg, go->gog (icode=1)
+               if(ileg.le.2)then
+                  N_p=2
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*8*vca*(1-x*(1-x))**2/(s*x**2)
+                     xkernazi(1)=-(g**2/N_p)*16*vca*(1-x)**2/(s*x**2)
+                     xkern(2)=0d0
+                     xkernazi(2)=0d0
+                  elseif(non_limit)then
+                     xfact=(1-yi)*(1-x)/x
+                     prefact=4/(s*N_p)
+                     call AP_reduced(m_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                     call Qterms_reduced_spacelike(m_type,i_type,ch_m,ch_i,one,z(npartner),Q)
+                     Q(1:2)=Q(1:2)/(1-z(npartner))
+                     xkernazi(1:2)=prefact*xfact*xjac(npartner)*Q(1:2)/xi(npartner)
+                     if (xkern(2).ne.0d0 .or.xkernazi(2).ne.0d0) then
+                        write(*,*) 'ERROR#1, g->gg splitting QED' /
+     $                       /'contributions should be 0', xkern,
+     $                       xkernazi
+                        stop
+                     endif
+                  endif
+c
+               elseif(ileg.eq.3)then
+                  N_p=2
+                  if(non_limit)then
+                     xfact=(2-(1-x)*(1-(kn0/kn)*yj))/kn*knbar*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced_SUSY(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.4)then
+                  N_p=2
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*( 8*vca*
+     &                    (s**2*(1-(1-x)*x)-s*(1+x)*xm12+xm12**2)**2 )/
+     &                    ( s*(s-xm12)**2*(s*x-xm12)**2 )
+                     xkernazi(1)=-(g**2/N_p)*(16*vca*s*(1-x)**2)/((s-xm12)**2)
+                     xkern(2)=0d0
+                     xkernazi(2)=0d0
+                  elseif(non_limit)then
+                     xfact=(2-(1-x)*(1-yj))/xij*(1-xm12/s)*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                     call Qterms_reduced_timelike(j_type,i_type,ch_m,ch_i,one,z(npartner),Q)
+                     Q(1:2)=Q(1:2)/(1-z(npartner))
+                     xkernazi(1:2)=prefact*xfact*xjac(npartner)*Q(1:2)/xi(npartner)
+                     if (xkern(2).ne.0d0 .or.xkernazi(2).ne.0d0) then
+                        write(*,*) 'ERROR#1, g->gg splitting QED' /
+     $                       /'contributions should be 0', xkern,
+     $                       xkernazi
+                        stop
+                     endif
+                  endif
+               endif
+            elseif(abs(i_type).eq.3.or.(i_type.eq.1.and.dabs(ch_i).gt.tiny))then
+c g->qq, a->qq, a->ee (icode=2)
+               if(ileg.le.2)then
+                  N_p=1
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*4*vtf*(1-x)*((1-x)**2+x**2)/(s*x)
+                     xkern(2)=xkern(1) * dble(gal(1))**2 / g**2 * 
+     &                                    ch_i**2 * abs(i_type) / vtf
+                  elseif(non_limit)then
+                     xfact=(1-yi)*(1-x)/x
+                     prefact=4/(s*N_p)
+                     call AP_reduced(m_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.4)then
+                  N_p=2
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*( 4*vtf*(1-x)*
+     &                     (s**2*(1-2*(1-x)*x)-2*s*x*xm12+xm12**2) )/
+     &                     ( (s-xm12)**2*(s*x-xm12) )
+                     xkern(2)=xkern(1) * dble(gal(1))**2 / g**2 *
+     &                     ch_i**2 * abs(i_type) / vtf
+                     xkernazi(1)=(g**2/N_p)*(16*vtf*s*(1-x)**2)/((s-xm12)**2)
+                     xkernazi(2)=xkernazi(1) * dble(gal(1))**2 / g**2 *
+     &                     ch_i**2 * abs(i_type) / vtf
+                  elseif(non_limit)then
+                     xfact=(2-(1-x)*(1-yj))/xij*(1-xm12/s)*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                     call Qterms_reduced_timelike(j_type,i_type,ch_m,ch_i,one,z(npartner),Q)
+                     Q(1:2)=Q(1:2)/(1-z(npartner))
+                     xkernazi(1:2)=prefact*xfact*xjac(npartner)*Q(1:2)/xi(npartner)
+                  endif
+               endif
+            else
+               write(*,*)'Error 1 in xmcsubt: unknown particle type'
+               write(*,*)i_type
+               stop
+            endif
+            elseif( (ileg.ge.3 .and. (abs(m_type).eq.3.or.(m_type.eq.1.and.dabs(ch_m).gt.tiny))) .or.
+     &              (ileg.le.2 .and. (abs(j_type).eq.3.or.(j_type.eq.1.and.dabs(ch_j).gt.tiny))) )then
+               if(abs(i_type).eq.3.or.(i_type.eq.1.and.dabs(ch_i).gt.tiny))then
+c q->gq, q->aq, e->ae (icode=3)
+               if(ileg.le.2)then
+                  N_p=2
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*4*vcf*(1-x)*((1-x)**2+1)/(s*x**2)
+                     xkern(2)=xkern(1) * (dble(gal(1))**2 / g**2) * 
+     &                                   (ch_i**2 / vcf)
+                     xkernazi(1)=-(g**2/N_p)*16*vcf*(1-x)**2/(s*x**2)
+                     xkernazi(2)=xkernazi(1) * (dble(gal(1))**2 / g**2) *
+     &                                   (ch_i**2 / vcf)
+                  elseif(non_limit)then
+                     xfact=(1-yi)*(1-x)/x
+                     prefact=4/(s*N_p)
+                     call AP_reduced(m_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                     call Qterms_reduced_spacelike(m_type,i_type,ch_m,ch_i,one,z(npartner),Q)
+                     Q(1:2)=Q(1:2)/(1-z(npartner))
+                     xkernazi(1:2)=prefact*xfact*xjac(npartner)*Q(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.3)then
+                  N_p=1
+                  if(non_limit)then
+                     xfact=(2-(1-x)*(1-(kn0/kn)*yj))/kn*knbar*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.4)then
+                  N_p=1
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*
+     &                    ( 4*vcf*(1-x)*(s**2*(1-x)**2+(s-xm12)**2) )/
+     &                    ( (s-xm12)*(s*x-xm12)**2 )
+                     xkern(2)=xkern(1) * (dble(gal(1))**2 / g**2) * 
+     &                                   (ch_i**2 / vcf)
+                  elseif(non_limit)then
+                     xfact=(2-(1-x)*(1-yj))/xij*(1-xm12/s)*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+               endif
+            elseif(i_type.eq.8.or.(i_type.eq.1.and.dabs(ch_i).lt.tiny))then
+c q->qg, q->qa, sq->sqg, sq->sqa, e->ea (icode=4)
+               if(ileg.le.2)then
+                  N_p=1
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*4*vcf*(1+x**2)/(s*x)
+                     xkern(2)=xkern(1) * (dble(gal(1))**2 / g**2) * 
+     &                                  (ch_m**2 / vcf)
+                  elseif(non_limit)then
+                     xfact=(1-yi)*(1-x)/x
+                     prefact=4/(s*N_p)
+                     call AP_reduced(m_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.3)then
+                  N_p=1
+                  if(non_limit)then
+                     xfact=(2-(1-x)*(1-(kn0/kn)*yj))/kn*knbar*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     if(abs(PDG_type(j_fks)).le.6)then
+                        if(shower_mc.ne.'HERWIGPP')
+     &                  call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                        if(shower_mc.eq.'HERWIGPP')
+     &                  call AP_reduced_massive(j_type,i_type,ch_m,ch_i,one,z(npartner),
+     &                                              xi(npartner),xm12,ap)
+                     else
+                        call AP_reduced_SUSY(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     endif
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+c
+               elseif(ileg.eq.4)then
+                  N_p=1
+                  if(limit)then
+                     xkern(1)=(g**2/N_p)*4*vcf*
+     &                     ( s**2*(1+x**2)-2*xm12*(s*(1+x)-xm12) )/
+     &                     ( s*(s-xm12)*(s*x-xm12) )
+                     xkern(2)=xkern(1) * (dble(gal(1))**2 / g**2) * 
+     &                                   (ch_j**2 / vcf)
+                  elseif(non_limit)then
+                     xfact=(2-(1-x)*(1-yj))/xij*(1-xm12/s)*(1-x)*(1-yj)
+                     prefact=2/(s*N_p)
+                     call AP_reduced(j_type,i_type,ch_m,ch_i,one,z(npartner),ap)
+                     ap(1:2)=ap(1:2)/(1-z(npartner))
+                     xkern(1:2)=prefact*xfact*xjac(npartner)*ap(1:2)/xi(npartner)
+                  endif
+               endif
+            else
+               write(*,*)'Error 2 in xmcsubt: unknown particle type'
+               write(*,*)i_type
+               stop
+            endif
+         else
+            write(*,*)'Error 3 in xmcsubt: unknown particle type'
+            write(*,*)j_type,i_type
+            stop
+         endif
+      else
+c Dead zone
+        xkern(1:2)=0d0
+        xkernazi(1:2)=0d0
+      endif
+c
+      xkern(1:2)=xkern(1:2)*gfactsf*wcc
+      xkernazi(1:2)=xkernazi(1:2)*gfactazi*gfactsf*wcc
+
+c Emsca stuff
+      if(dampMCsubt)then
+         if(emscasharp)then
+            if(qMC.le.scalemax)then
+               emscwgt(npartner)=1d0
+               emscav(npartner)=emsca_bare
+            else
+               emscwgt(npartner)=0d0
+               emscav(npartner)=scalemax
+            endif
+         else
+            ptresc=(qMC-scalemin)/(scalemax-scalemin)
+            if(ptresc.le.0d0)then
+               emscwgt(npartner)=1d0
+               emscav(npartner)=emsca_bare
+            elseif(ptresc.lt.1d0)then 
+               emscwgt(npartner)=1-emscafun(ptresc,one)
+               emscav(npartner)=emsca_bare
+            else
+               emscwgt(npartner)=0d0
+               emscav(npartner)=scalemax
+            endif
+         endif
+         emscav_tmp(npartner)=emscav(npartner)
+      else
+         write(*,*)'dampMCsubt = .false. : reconsider scale assignment'
+         stop
+      endif
+c
+c Emsca stuff for multiple scales
+      if(dampMCsubt .and. mcatnlo_delta)then
+         call assign_qMC_array(xi_i_fks,y_ij_fks,shat,pp,qMC,qMC_a2)
+         do i=1,nexternal-1
+            do j=1,nexternal-1
+               if(j.eq.i)cycle
+               if(emscasharp_a(i,j))then
+                  if(qMC_a2(i,j).le.scalemax_a(i,j))then
+                     emscav_a(i,j)=emsca_bare_a(i,j)
+                     emscav_a2(i,j)=emsca_bare_a2(i,j)
+                  else
+                     emscav_a(i,j)=scalemax_a(i,j)
+                     emscav_a2(i,j)=scalemax_a(i,j)
+                  endif
+               else
+                  ptresc_a(i,j)=(qMC_a2(i,j)-scalemin_a(i,j))/
+     &                          (scalemax_a(i,j)-scalemin_a(i,j))
+                  if(ptresc_a(i,j).lt.1d0)then 
+                     emscav_a(i,j)=emsca_bare_a(i,j)
+                     emscav_a2(i,j)=emsca_bare_a2(i,j)
+                  else
+                     emscav_a(i,j)=scalemax_a(i,j)
+                     emscav_a2(i,j)=scalemax_a(i,j)
+                  endif
+               endif
+               emscav_tmp_a(i,j)=emscav_a(i,j)
+               emscav_tmp_a2(i,j)=emscav_a2(i,j)
+            enddo
+         enddo
+      elseif(.not. dampMCsubt) then
+         write(*,*)'dampMCsubt = .false. : reconsider scale assignment'
+         stop
+      endif
+c Main loop over colour partners used to end here
+      return
+      end
+
 
 c Finalises the MC counterterm computations performed in xmcsubt(),
 c fills arrays relevant to shower scales, and computes Delta
       subroutine complete_xmcsubt(p,lzone,xmcxsec,xmcxsec2,MCsec
-     $     ,probne)
+     $     ,probne,born_wgt,born_jamp2)
       implicit none
+      include 'genps.inc'
       include "born_nhel.inc"
       include 'nFKSconfigs.inc'
       include 'nexternal.inc'
@@ -1507,6 +2139,10 @@ c fills arrays relevant to shower scales, and computes Delta
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
+
+      double precision born_wgt
+
+      double precision born_jamp2(0:ncolor)
 
       double precision emsca_bare,ptresc,ref_scale,
      & scalemin,scalemax,emscainv
@@ -1573,7 +2209,6 @@ c For the boost to the lab frame
 
       double precision xkern(2),xkernazi(2),factor
       double precision MCsec(nexternal,max_bcol)
-      include "genps.inc"
       integer idup(nexternal-1,maxproc)
       integer mothup(2,nexternal-1,maxproc)
       integer icolup(2,nexternal-1,max_bcol)
@@ -1706,8 +2341,8 @@ c
       pythia_cmd_file=''
       
 c Given xmcxec,etc., returns jflow, wgt and fills emsca in common block:
-      call assign_emsca_and_flow_statistical(xmcxsec,xmcxsec2,MCsec
-     $     ,lzone,jflow,wgt)
+      call assign_emsca_and_flow_statistical_store(xmcxsec,xmcxsec2,MCsec
+     $     ,lzone,jflow,wgt,born_wgt,born_jamp2)
       
 c S-event information:
 c id's and mothers read from born_leshouche.inc;
@@ -2534,7 +3169,7 @@ c
 
       
       subroutine assign_emsca_and_flow_statistical(xmcxsec,xmcxsec2
-     $     ,MCsec,lzone,jflow,wgt)
+     $     ,MCsec,lzone,jflow,wgt,dummy)
       implicit none
       include 'nexternal.inc'
       include 'run.inc'
@@ -2542,6 +3177,7 @@ c
       include 'madfks_mcatnlo.inc'
       include "genps.inc"
       include 'nFKSconfigs.inc'
+      include 'orders.inc'
       double precision tiny
       parameter       (tiny=1d-7)
       integer npartner,cflows,i,jflow,jpartner,mpartner
@@ -2560,7 +3196,11 @@ c
       common /pborn/   p_born
 c Jamp amplitudes of the Born (to be filled with a call the sborn())
       double Precision amp2(ngraphs),jamp2(0:ncolor)
-      common/to_amps/  amp2         ,jamp2
+      complex*16 ans_cnt(2,nsplitorders)
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_saveamp(ngraphs,max_bhel)
+C      common/to_amps/  amp2         ,jamp2
 c Stuff to be written (depending on AddInfoLHE) onto the LHE file
       integer iSorH_lhe,ifks_lhe(fks_configs) ,jfks_lhe(fks_configs)
      &     ,fksfather_lhe(fks_configs) ,ipartner_lhe(fks_configs)
@@ -2599,6 +3239,10 @@ c Input check
 c Compute MC cross section
          wgt=0d0
          wgt2=0d0
+
+         amp2(:) = 0d0
+         jamp2(:) = 0d0
+
          do i=1,max_bcol
             sumMCsec(i)=0d0
          enddo
@@ -2744,6 +3388,229 @@ c min() avoids troubles if ran2()=1
       end
 
 
+      subroutine assign_emsca_and_flow_statistical_store(xmcxsec,xmcxsec2
+     $     ,MCsec,lzone,jflow,wgt,dummy
+     $     ,born_jamp2)
+      implicit none
+      include 'nexternal.inc'
+      include 'run.inc'
+      include "born_nhel.inc"
+      include 'madfks_mcatnlo.inc'
+      include "genps.inc"
+      include 'nFKSconfigs.inc'
+      include 'orders.inc'
+      double precision tiny
+      parameter       (tiny=1d-7)
+      integer npartner,cflows,i,jflow,jpartner,mpartner
+      double precision xmcxsec(nexternal),xmcxsec2(max_bcol),wgt,wgt2,
+     $     sumMCsec(max_bcol),MCsec(nexternal,max_bcol),rrnd,wgt1
+     $     ,dummy
+      logical lzone(nexternal)
+      integer            i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      integer           fksfather
+      common/cfksfather/fksfather
+      integer          ipartners(0:nexternal-1)
+     &                          ,colorflow(nexternal-1,0:max_bcol)
+      common /MC_info/ ipartners,colorflow
+      double precision p_born(0:3,nexternal-1)
+      common /pborn/   p_born
+c Jamp amplitudes of the Born (to be filled with a call the sborn())
+      double Precision amp2(ngraphs),jamp2(0:ncolor),born_jamp2(0:ncolor)
+      complex*16 ans_cnt(2,nsplitorders)
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_saveamp(ngraphs,max_bhel)
+C      common/to_amps/  amp2         ,jamp2
+c Stuff to be written (depending on AddInfoLHE) onto the LHE file
+      integer iSorH_lhe,ifks_lhe(fks_configs) ,jfks_lhe(fks_configs)
+     &     ,fksfather_lhe(fks_configs) ,ipartner_lhe(fks_configs)
+      double precision scale1_lhe(fks_configs),scale2_lhe(fks_configs)
+      common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
+     &                fksfather_lhe,ipartner_lhe
+      common/cto_LHE2/scale1_lhe,scale2_lhe
+      double precision emsca,emsca_bare,           scalemin,scalemax
+      logical                           emscasharp
+      common /cemsca/  emsca,emsca_bare,emscasharp,scalemin,scalemax
+      double precision   emscav_tmp(nexternal)
+      common/cemscav_tmp/emscav_tmp
+      double precision qMC
+      common /cqMC/    qMC
+      INTEGER              NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      double precision ran2
+      external ran2
+      if (mcatnlo_delta) then
+c Input check
+         do npartner=1,ipartners(0)
+            if(xmcxsec(npartner).lt.0d0)then
+               write(*,*)'Fatal error 1 in complete_xmcsubt'
+               write(*,*)npartner,xmcxsec(npartner)
+               stop
+            endif
+         enddo
+         do cflows=1,max_bcol
+            if(xmcxsec2(cflows).lt.0d0)then
+               write(*,*)'Fatal error 2 in complete_xmcsubt'
+               write(*,*)cflows,xmcxsec2(cflows)
+               stop
+            endif
+         enddo
+
+c Compute MC cross section
+         wgt=0d0
+         wgt2=0d0
+
+         amp2(:) = 0d0
+         jamp2(:) = 0d0
+
+         do i=1,max_bcol
+            sumMCsec(i)=0d0
+         enddo
+         do npartner=1,ipartners(0)
+            wgt=wgt+xmcxsec(npartner)
+         enddo
+         do cflows=1,max_bcol
+            wgt2=wgt2+xmcxsec2(cflows)
+         enddo
+         do cflows=1,max_bcol
+            do npartner=1,ipartners(0)
+               sumMCsec(cflows)=sumMCsec(cflows)+MCsec(npartner,cflows)
+            enddo
+         enddo
+c     
+         if((abs(wgt).gt.1.d-10 .and.abs(wgt-wgt2)/abs(wgt).gt.tiny).or.
+     &        (abs(wgt).le.1.d-10 .and.abs(wgt-wgt2).gt.tiny) )then
+            write(*,*)'Fatal error 3 in complete_xmcsubt'
+            write(*,*)wgt,wgt2
+            stop
+         endif
+
+         jamp2(:)=born_jamp2(:)
+
+         do cflows=1,max_bcol
+            if( (abs(sumMCsec(cflows)).gt.1.d-10 .and.
+     &            abs(sumMCsec(cflows)-xmcxsec2(cflows))/
+     &            abs(sumMCsec(cflows)).gt.tiny) .or.
+     &           (abs(sumMCsec(cflows)).le.1.d-10 .and.
+     &            abs(sumMCsec(cflows)-xmcxsec2(cflows)).gt.tiny) )then
+               write(*,*)'Fatal error 3 in complete_xmcsubt'
+               write(*,*)sumMCsec(cflows),xmcxsec2(cflows)
+               stop
+            endif
+         enddo
+
+c Assign flow on statistical basis
+         if (wgt2.gt.0d0) then
+            ! use born-bars times kernels
+            rrnd=ran2()
+            wgt1=0d0
+            jflow=0
+            cflows=0
+            do while(jflow.eq.0.and.cflows.lt.max_bcol)
+               cflows=cflows+1
+               wgt1=wgt1+xmcxsec2(cflows)
+               if(wgt1.ge.rrnd*wgt2)jflow=cflows
+            enddo
+            if(jflow.eq.0)then
+               write(*,*)'Error in xmcsubt: flow unweighting failed'
+               stop
+            endif
+         else
+             ! use the born-bars
+C            call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,dummy,ans_cnt,born_saveamp)
+            wgt1=0.d0
+            do i=1,max_bcol
+               wgt1=wgt1+jamp2(i)
+            enddo
+            wgt2=ran2()*wgt1
+            jflow=0
+            wgt1=0d0
+            do while (wgt1 .lt. wgt2)
+               jflow=jflow+1
+               wgt1=wgt1+jamp2(jflow)
+            enddo
+         endif
+c Assign emsca (scalar) on statistical basis -- ensure backward compatibility
+         if(dampMCsubt.and.wgt.gt.1d-30)then
+            rrnd=ran2()
+            wgt1=0d0
+            jpartner=0
+            do npartner=1,ipartners(0)
+               if(lzone(npartner).and.jpartner.eq.0)then
+                  wgt1=wgt1+MCsec(npartner,jflow)
+                  if(wgt1.ge.rrnd*xmcxsec2(jflow))then
+                     jpartner=ipartners(npartner)
+                     mpartner=npartner
+                  endif
+               endif
+            enddo
+            if(jpartner.eq.0)then
+               write(*,*)'Error in xmcsubt: emsca unweighting failed'
+               stop
+            else
+               emsca=emscav_tmp(mpartner)
+            endif
+         endif
+         if(dampMCsubt.and.wgt.lt.1d-30)emsca=scalemax
+
+      else                      ! mcatnlo-delta = .false.
+c Compute MC cross section
+         wgt=0d0
+         do npartner=1,ipartners(0)
+            wgt=wgt+xmcxsec(npartner)
+         enddo
+c Assign emsca on statistical basis
+         if(dampMCsubt.and.wgt.gt.1d-30)then
+            rrnd=ran2()
+            wgt1=0d0
+            jpartner=0
+            do npartner=1,ipartners(0)
+               if(lzone(npartner).and.jpartner.eq.0)then
+                  wgt1=wgt1+xmcxsec(npartner)
+                  if(wgt1.ge.rrnd*wgt)then
+                     jpartner=ipartners(npartner)
+                     mpartner=npartner
+                  endif
+               endif
+            enddo
+            if(jpartner.eq.0)then
+               write(*,*)'Error in xmcsubt: emsca unweighting failed'
+               stop
+            else
+               emsca=emscav_tmp(mpartner)
+            endif
+         endif
+         if(dampMCsubt.and.wgt.lt.1d-30)emsca=scalemax
+      endif
+
+
+c Additional information for LHE
+      if(AddInfoLHE)then
+         ifks_lhe(nFKSprocess)=i_fks
+         jfks_lhe(nFKSprocess)=j_fks
+         fksfather_lhe(nFKSprocess)=fksfather
+         if(jpartner.ne.0)then
+            ipartner_lhe(nFKSprocess)=jpartner
+         else
+c min() avoids troubles if ran2()=1
+            ipartner_lhe(nFKSprocess)=min(int(ran2()*ipartners(0))+1,
+     $           ipartners(0) )
+            ipartner_lhe(nFKSprocess)=
+     $           ipartners(ipartner_lhe(nFKSprocess))
+         endif
+         scale1_lhe(nFKSprocess)=qMC
+      endif
+      if(dampMCsubt)then
+         if(emsca.lt.scalemin)then
+            write(*,*)'Error in xmcsubt: emsca too small'
+            write(*,*)emsca,jpartner,lzone
+            stop
+         endif
+      endif
+      return
+      end
+
 
       function get_to_zero(sc,xlow,xupp)
       implicit none
@@ -2851,7 +3718,7 @@ c the same method
       common/pborn/p_born
 
       double Precision amp2(ngraphs), jamp2(0:ncolor)
-      common/to_amps/  amp2,       jamp2
+C      common/to_amps/  amp2,       jamp2
 
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -2897,7 +3764,10 @@ c Particle types (=color) of i_fks, j_fks and fks_mother
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
       complex*16 ans_cnt(2, nsplitorders), wgt1(2)
-      common /c_born_cnt/ ans_cnt
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
       double complex ans_extra_cnt(2,nsplitorders)
       integer iord, iextra_cnt, isplitorder_born, isplitorder_cnt
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
@@ -2969,11 +3839,318 @@ C check if any extra_cnt is needed
         born(iord) = dble(wgt1(1))
         borntilde(iord) = wgt1(2)
         do iamp=1, amp_split_size
-          amp_split_born(iamp,iord) = dble(amp_split_cnt(iamp,1,iord))
+          amp_split_born(iamp,iord) = dble(dummy_amp_split_cnt(iamp,1,iord))
           if (abs(m_type).eq.3.or.dabs(ch_m).gt.0d0) then
             amp_split_borntilde(iamp,iord) = czero
           else
-            amp_split_borntilde(iamp,iord) = amp_split_cnt(iamp,2,iord)
+            amp_split_borntilde(iamp,iord) = dummy_amp_split_cnt(iamp,2,iord)
+          endif
+        enddo
+      enddo
+      
+c BORN TILDE
+      if(ileg.eq.1.or.ileg.eq.2)then
+c Insert <ij>/[ij] which is not included by sborn()
+         if (1d0-y_ij_fks.lt.vtiny)then
+            azifact=xij_aor
+         else
+            do i=0,3
+               pi(i)=p_i_fks_ev(i)
+               pj(i)=p(i,j_fks)
+            enddo
+            if(j_fks.eq.2)then
+c Rotation according to innerpin.m. Use rotate_invar() if a more 
+c general rotation is needed
+               pi(1)=-pi(1)
+               pi(3)=-pi(3)
+               pj(1)=-pj(1)
+               pj(3)=-pj(3)
+            endif
+            CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
+            CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
+            CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
+            CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+            Wij_angle=(0d0,0d0)
+            Wij_recta=(0d0,0d0)
+            do i=1,4
+               Wij_angle = Wij_angle + W1(i)*W2(i)
+               Wij_recta = Wij_recta + W3(i)*W4(i)
+            enddo
+            azifact=Wij_angle/Wij_recta
+         endif
+c Insert the extra factor due to Madgraph convention for polarization vectors
+         if(j_fks.eq.2)then
+            cphi_mother=-1.d0
+            sphi_mother=0.d0
+         else
+            cphi_mother=1.d0
+            sphi_mother=0.d0
+         endif
+         do iord=1, nsplitorders
+           borntilde(iord) = -(cphi_mother+ximag*sphi_mother)**2 *
+     #                borntilde(iord) * dconjg(azifact)
+           do iamp=1, amp_split_size
+             amp_split_borntilde(iamp,iord) = -(cphi_mother+ximag*sphi_mother)**2 *
+     #                amp_split_borntilde(iamp,iord) * dconjg(azifact)
+            enddo
+         enddo
+      elseif(ileg.eq.3.or.ileg.eq.4)then
+         if((abs(j_type).eq.3.or.ch_j.ne.0d0).and.
+     &     (i_type.eq.8.or.i_type.eq.1).and.
+     &     ch_i.eq.0d0)then
+            do iord=1, nsplitorders
+               borntilde(iord)=czero
+               do iamp=1, amp_split_size
+                 amp_split_borntilde(iamp,iord) = czero
+               enddo
+            enddo
+         elseif((m_type.eq.8.or.m_type.eq.1).and.ch_m.eq.0d0)then
+c Insert <ij>/[ij] which is not included by sborn()
+            if(1.d0-y_ij_fks.lt.vtiny)then
+               azifact=xij_aor
+            else
+               do i=0,3
+                  pi(i)=p_i_fks_ev(i)
+                  pj(i)=p(i,j_fks)
+               enddo
+               CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
+               CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
+               CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
+               CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+               Wij_angle=(0d0,0d0)
+               Wij_recta=(0d0,0d0)
+               do i=1,4
+                  Wij_angle = Wij_angle + W1(i)*W2(i)
+                  Wij_recta = Wij_recta + W3(i)*W4(i)
+               enddo
+               azifact=Wij_angle/Wij_recta
+            endif
+c Insert the extra factor due to Madgraph convention for polarization vectors
+            imother_fks=min(i_fks,j_fks)
+            call getaziangles(p_born(0,imother_fks),
+     #                        cphi_mother,sphi_mother)
+            do iord=1, nsplitorders
+               borntilde(iord) = -(cphi_mother-ximag*sphi_mother)**2 *
+     #                  borntilde(iord) * azifact
+               do iamp=1, amp_split_size
+                 amp_split_borntilde(iamp,iord) = -(cphi_mother-ximag*sphi_mother)**2 *
+     #                amp_split_borntilde(iamp,iord) * azifact
+               enddo
+            enddo
+         else
+            write(*,*)'FATAL ERROR in get_mbar',
+     #           i_type,j_type,i_fks,j_fks
+            stop
+         endif
+      else
+         write(*,*)'unknown ileg in get_mbar'
+         stop
+      endif
+
+CMZ! this has to be all changed according to the correct jamps
+
+c born is the total born amplitude squared
+      sumborn=0.d0
+      do i=1,max_bcol
+         if(is_leading_cflow(i))sumborn=sumborn+jamp2(i)
+c sumborn is the sum of the leading-color amplitudes squared
+      enddo
+
+
+c BARRED AMPLITUDES
+      do i=1,max_bcol
+        do iord=1,nsplitorders
+          if (sumborn.ne.0d0.and.is_leading_cflow(i)) then
+            bornbars(i,iord)=jamp2(i)/sumborn * born(iord) *iden_comp
+            do iamp=1,amp_split_size
+              amp_split_bornbars(iamp,i,iord)=jamp2(i)/sumborn * 
+     &                              amp_split_born(iamp,iord) *iden_comp
+            enddo
+          elseif (born(iord).eq.0d0 .or. jamp2(i).eq.0d0
+     &           .or..not.is_leading_cflow(i)) then
+            bornbars(i,iord)=0d0
+            do iamp=1,amp_split_size
+              amp_split_bornbars(iamp,i,iord)=0d0
+            enddo
+          else
+            write (*,*) 'ERROR #1, dividing by zero'
+            stop
+          endif
+          if (sumborn.ne.0d0.and.is_leading_cflow(i)) then
+            bornbarstilde(i,iord)=jamp2(i)/sumborn * dble(borntilde(iord)) *iden_comp
+            do iamp=1,amp_split_size
+              amp_split_bornbarstilde(iamp,i,iord)=jamp2(i)/sumborn * 
+     &                      dble(amp_split_borntilde(iamp,iord)) *iden_comp
+            enddo
+          elseif (borntilde(iord).eq.0d0 .or. jamp2(i).eq.0d0
+     &           .or..not.is_leading_cflow(i)) then
+            bornbarstilde(i,iord)=0d0
+            do iamp=1,amp_split_size
+              amp_split_bornbarstilde(iamp,i,iord)=0d0 
+            enddo
+          else
+            write (*,*) 'ERROR #2, dividing by zero'
+            stop
+          endif      
+c bornbars(i) is the i-th leading-color amplitude squared re-weighted
+c in such a way that the sum of bornbars(i) is born rather than sumborn.
+c the same holds for bornbarstilde(i).
+        enddo
+      enddo
+
+      return
+      end
+
+
+      subroutine get_mbar_store(p,y_ij_fks,ileg,bornbars,bornbarstilde
+     $                         ,born_cnt,born_split_cnt,born_jamp2
+     $                         ,rot_cnt,rot_split_cnt,rot_jamp2)
+c Computes barred amplitudes (bornbars) squared according
+c to Odagiri's prescription (hep-ph/9806531).
+c Computes barred azimuthal amplitudes (bornbarstilde) with
+c the same method 
+      implicit none
+
+      include "genps.inc"
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      include "orders.inc"
+
+      double precision p(0:3,nexternal)
+      double precision y_ij_fks,bornbars(max_bcol,nsplitorders),
+     &                          bornbarstilde(max_bcol,nsplitorders)
+
+      double precision zero
+      parameter (zero=0.d0)
+      double complex czero
+      parameter (czero=dcmplx(0d0,0d0))
+      double precision p_born_rot(0:3,nexternal-1)
+
+      integer imother_fks,ileg
+
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+
+      double Precision amp2(ngraphs), jamp2(0:ncolor)
+      double precision born_jamp2(0:ncolor)
+      double precision rot_jamp2(0:ncolor)
+C      common/to_amps/  amp2,       jamp2
+
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+
+      double precision wgt_born
+      double complex W1(6),W2(6),W3(6),W4(6),Wij_angle,Wij_recta
+      double complex azifact
+
+      double complex xij_aor
+      common/cxij_aor/xij_aor
+
+      double precision sumborn
+      integer i
+
+      double precision vtiny,pi(0:3),pj(0:3),cphi_mother,sphi_mother
+      parameter (vtiny=1d-12)
+      double complex ximag
+      parameter (ximag=(0.d0,1.d0))
+
+      double precision xi_i_fks_ev,y_ij_fks_ev,t
+      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+
+      double precision cthbe,sthbe,cphibe,sphibe
+      common/cbeangles/cthbe,sthbe,cphibe,sphibe
+
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      double precision iden_comp
+      common /c_iden_comp/iden_comp
+
+c Particle types (=color) of i_fks, j_fks and fks_mother
+      integer i_type,j_type,m_type
+      double precision ch_i,ch_j,ch_m
+      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+
+      double precision born(nsplitorders)
+      double complex borntilde(nsplitorders)
+      logical split_type(nsplitorders) 
+      common /c_split_type/split_type
+      complex*16 ans_cnt(2, nsplitorders), wgt1(2)
+      complex*16 born_cnt(2, nsplitorders)
+      complex*16 rot_cnt(2, nsplitorders)
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex rot_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex born_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
+      double complex ans_extra_cnt(2,nsplitorders)
+      integer iord, iextra_cnt, isplitorder_born, isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
+
+      integer iamp
+      double precision amp_split_born(amp_split_size,nsplitorders) 
+      double complex amp_split_borntilde(amp_split_size,nsplitorders)
+      double precision amp_split_bornbars(amp_split_size,max_bcol,nsplitorders),
+     $                 amp_split_bornbarstilde(amp_split_size,max_bcol,nsplitorders)
+      common /to_amp_split_bornbars/amp_split_bornbars,
+     $                              amp_split_bornbarstilde
+c
+      logical is_leading_cflow(max_bcol)
+      integer num_leading_cflows
+      common/c_leading_cflows/is_leading_cflow,num_leading_cflows
+      
+c
+c BORN/BORNTILDE
+C check if momenta have to be rotated
+      amp2(:) = 0d0
+      if ((ileg.eq.1.or.ileg.eq.2) .and.
+     &    (j_fks.eq.2 .and. nexternal-1.ne.3)) then
+c Rotation according to innerpin.m. Use rotate_invar() if a more 
+c general rotation is needed.
+c Exclude 2->1 (at the Born level) processes: matrix elements are
+c independent of the PS point, but non-zero helicity configurations
+c might flip when rotating the momenta.
+         jamp2(:) = rot_jamp2(:)
+         ans_cnt(:,:) = rot_cnt(:,:)
+         dummy_amp_split_cnt(:,:,:) = rot_split_cnt(:,:,:)
+      else
+         jamp2(:) = born_jamp2(:)
+         ans_cnt(:,:) = born_cnt(:,:)
+         dummy_amp_split_cnt(:,:,:) = born_split_cnt(:,:,:)
+      endif
+
+      do iord = 1, nsplitorders
+        if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
+C check if any extra_cnt is needed
+        if (iextra_cnt.gt.0) then
+            write(*,*) 'FIXEXTRACNTMC'
+            stop
+            if (iord.eq.isplitorder_born) then
+            ! this is the contribution from the born ME
+               wgt1(1) = ans_cnt(1,iord)
+               wgt1(2) = ans_cnt(2,iord)
+            else if (iord.eq.isplitorder_cnt) then
+            ! this is the contribution from the extra cnt
+               wgt1(1) = ans_extra_cnt(1,iord)
+               wgt1(2) = ans_extra_cnt(2,iord)
+            else
+               write(*,*) 'ERROR in sborncol_isr', iord
+               stop
+            endif
+        else
+           wgt1(1) = ans_cnt(1,iord)
+           wgt1(2) = ans_cnt(2,iord)
+        endif
+        if (abs(m_type).eq.3.or.dabs(ch_m).gt.0d0) wgt1(2) = czero
+        born(iord) = dble(wgt1(1))
+        borntilde(iord) = wgt1(2)
+        do iamp=1, amp_split_size
+          amp_split_born(iamp,iord) = dble(dummy_amp_split_cnt(iamp,1,iord))
+          if (abs(m_type).eq.3.or.dabs(ch_m).gt.0d0) then
+            amp_split_borntilde(iamp,iord) = czero
+          else
+            amp_split_borntilde(iamp,iord) = dummy_amp_split_cnt(iamp,2,iord)
           endif
         enddo
       enddo

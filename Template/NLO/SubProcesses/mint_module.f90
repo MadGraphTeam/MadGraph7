@@ -157,7 +157,7 @@ module mint_module
   common /c_fnlo_nlops/fixed_order,nlo_ps
 
 ! functions and subroutines:
-  public :: mint,gen,read_grids_from_file
+  public :: mint,gen,read_grids_from_file,mint_vec
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
        &,check_desired_accuracy,update_integration_grids &
@@ -200,6 +200,7 @@ contains
 2      kpoint_iter=kpoint_iter+1
        do kpoint=1,ncalls
           new_point=.true.
+          call get_channel
           call get_random_x(x,vol,kfold)
           call compute_integrand(fun,x,vol)
           call accumulate_the_point(x)
@@ -217,6 +218,62 @@ contains
     enddo
     call finalise_mint
   end subroutine mint
+
+  
+  subroutine mint_vec(fun)
+   use driver_vec
+    implicit none
+    integer kpoint
+    double precision :: vol
+    double precision, dimension(ndimmax) :: x
+    integer, dimension(ndimmax) :: kfold
+    double precision, external :: fun
+    logical :: enough_points,channel_loop_done
+    integer :: vector_size, ivec
+    double precision :: max_f
+    call initialise_mint
+      if(driver_vector_size.eq.0) then
+         write(*,*)'Error: driver_vector_size not set in mint_vec'
+         stop 1
+      endif
+      vector_size=driver_vector_size
+    do while (nit.lt.itmax)
+       call start_iteration
+2      kpoint_iter=kpoint_iter+1
+       do kpoint=1,ncalls,vector_size
+         f_vec(:,:)=0d0
+          new_point=.true.
+          call get_channel
+          do ivec=1,vector_size
+             call get_random_x(x,vol,kfold)
+             x_mint_vec(:,ivec)=x
+             vegas_wgt_vec(ivec)=vol
+          enddo
+          call compute_integrand_vec(fun)
+          do ivec=1,vector_size
+             x(:)=x_mint_vec(:,ivec)
+             f(:)=f_vec(:,ivec)
+             virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
+               born_wgt_mint(:)=born_wgt_vec(:,ivec)
+             pass_cuts_check=pass_cuts_check_vec(ivec)
+             call accumulate_the_point(x)
+             virt_wgt_vec(:,ivec)=virt_wgt_mint
+               born_wgt_vec(:,ivec)=born_wgt_mint
+          enddo
+       enddo
+       call get_amount_of_points(enough_points)
+       if (.not.enough_points) goto 2
+       if (imode.eq.0 .and. nit.eq.1 .and. double_events) then
+          call check_for_special_channels_loop(channel_loop_done)
+          if (.not.channel_loop_done) goto 2
+          call combine_results_channels_special_loop
+       else
+          call combine_results_channels
+       endif
+       call update_accumulated_results
+    enddo
+    call finalise_mint
+  end subroutine mint_vec
 
   subroutine initialise_mint
     implicit none
@@ -811,6 +868,54 @@ contains
        f(1:nintegrals)=f1(1:nintegrals)
     endif
   end subroutine compute_integrand
+
+  
+  subroutine compute_integrand_vec(fun)
+    use driver_vec
+    implicit none
+    integer :: ifirst,iret
+    integer, dimension(ndimmax) :: kfold
+    double precision :: dummy,vol
+    double precision, dimension(nintegrals) :: f1
+    double precision, dimension(ndimmax) :: x
+    double precision, external :: fun
+    integer :: ivec, vector_size
+    ! contribution to integral
+    ifirst=0
+    vector_size = driver_vector_size
+    if(vector_size.eq.0) then
+         write(*,*) 'ERROR: driver_vector_size not set in compute_integrand_vec'
+         stop 1
+    endif
+    if(imode.eq.0) then
+       dummy=fun(ifirst)
+       if (.not. fixed_order) dummy=fun(2)
+       f(1:nintegrals)=f_vec(1:nintegrals,1)
+    else
+       f(1:nintegrals)=0d0
+       f_vec(1:nintegrals,1:vector_size)=0d0
+       kfold(1:ndim)=1
+1      continue
+       ! this accumulated value will not be used
+       dummy=fun(ifirst)
+       ifirst=1
+       call nextlexi(ifold,kfold,iret)
+       if(iret.eq.0) then
+          do ivec=1,vector_size
+            x(:) = x_mint_vec(:,ivec)
+            vol = vegas_wgt_vec(ivec)
+            call get_random_x_next_fold(x,vol,kfold)
+            x_mint_vec(:,ivec) = x(:)
+            vegas_wgt_vec(ivec) = vol
+          enddo
+          goto 1
+       endif
+       !closing call: accumulated value with correct sign
+       ifirst=2
+       dummy=fun(2)
+       f(1:nintegrals)=f_vec(1:nintegrals,1)
+    endif
+  end subroutine compute_integrand_vec
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
@@ -818,7 +923,7 @@ contains
     integer, dimension(ndimmax) :: kfold
     double precision :: vol,dx
     double precision, dimension(ndimmax) :: x
-    call get_channel
+!    call get_channel
 ! find random x, and its random cell
     do kdim=1,ndim
 ! if(even_rn), we should compute the ncell and the rand from the ran3()
@@ -1551,8 +1656,6 @@ contains
 
 
 
-
-
   subroutine gen(fun,gen_mode,vn,x)
     implicit none
     integer :: vn,gen_mode
@@ -1584,41 +1687,128 @@ contains
     endif
   end subroutine gen
 
+
+  subroutine gen_vec(fun,gen_mode,vn)
+   use driver_vec
+    implicit none
+    integer :: vn,gen_mode
+    logical :: found_point, found_point_loc
+    double precision, external :: fun
+    double precision, dimension(ndimmax) :: x
+    double precision :: vol
+    integer :: vector_size,ivec
+    if (driver_vector_size.le.0) then
+      write (*,*) "Error: driver_vector_size not set in gen_vec"
+      stop 1
+    else
+       vector_size=driver_vector_size
+      endif
+    if (gen_mode.eq.0) then
+       call initialise_mint_gen
+    elseif(gen_mode.eq.3) then
+       call print_gen_counters
+    elseif(gen_mode.eq.1) then
+       call increase_gen_counters_before_vec(vn,vector_size)
+10     continue
+       new_point=.true.
+       do ivec=1,vector_size
+         if (vn.eq.1) then
+            call get_random_cell_flat(x,vol)
+         else
+            call get_weighted_cell(x,vol)
+         endif
+         x_mint_vec(:,ivec)=x
+         vegas_wgt_vec(ivec)=vol
+       enddo
+       call compute_integrand_vec(fun)
+       call increase_gen_counters_middle_vec(vn,vector_size)
+       call check_upper_bound_vec(vn,found_point)
+       if (.not.found_point) goto 10
+       call increase_gen_counters_end_vec(vn,vector_size)
+    else
+       write (*,*) "Unknown gen_mode in gen (from mint_module)",gen_mode
+       stop 1
+    endif
+  end subroutine gen_vec
+
   subroutine increase_gen_counters_middle(vn)
     implicit none
     integer :: vn
-    gen_counters(3)=gen_counters(3)+1
+   !  gen_counters(3)=gen_counters(3)+1
+   !  if (vn.eq.1) then
+   !     gen_counters(5)=gen_counters(5)+1
+   !  else
+   !     gen_counters(6)=gen_counters(6)+1
+   !  endif
+   !  if (f(1).eq.0d0) then
+   !     gen_counters(4)=gen_counters(4)+1
+   !  endif
+    call increase_gen_counters_middle_vec(vn,1)
+  end subroutine increase_gen_counters_middle
+
+  subroutine increase_gen_counters_middle_vec(vn,vector_size)
+    implicit none
+    integer :: vn
+    integer :: vector_size
+    gen_counters(3)=gen_counters(3)+vector_size
     if (vn.eq.1) then
-       gen_counters(5)=gen_counters(5)+1
+       gen_counters(5)=gen_counters(5)+vector_size
     else
-       gen_counters(6)=gen_counters(6)+1
+       gen_counters(6)=gen_counters(6)+vector_size
     endif
     if (f(1).eq.0d0) then
-       gen_counters(4)=gen_counters(4)+1
+       gen_counters(4)=gen_counters(4)+vector_size
     endif
-  end subroutine increase_gen_counters_middle
+  end subroutine increase_gen_counters_middle_vec
+
   
   subroutine increase_gen_counters_before(vn)
     implicit none
     integer :: vn
-    if (vn.eq.1) then
-       gen_counters(1)=gen_counters(1)+1
-    else
-       gen_counters(2)=gen_counters(2)+1
-    endif
+   !  if (vn.eq.1) then
+   !     gen_counters(1)=gen_counters(1)+1
+   !  else
+   !     gen_counters(2)=gen_counters(2)+1
+   !  endif
+      call increase_gen_counters_before_vec(vn,1)
   end subroutine increase_gen_counters_before
+
+  subroutine increase_gen_counters_before_vec(vn,vector_size)
+    implicit none
+    integer :: vn
+    integer :: vector_size
+    if (vn.eq.1) then
+       gen_counters(1)=gen_counters(1)+vector_size
+    else
+       gen_counters(2)=gen_counters(2)+vector_size
+    endif
+  end subroutine increase_gen_counters_before_vec
 
   subroutine increase_gen_counters_end(vn)
     implicit none
     integer :: vn
-    if (vn.eq.2) then
-       gen_counters(11)=gen_counters(11)+1
-    elseif (vn.eq.1) then
-       gen_counters(12)=gen_counters(12)+1
-    elseif (vn.eq.3) then
-       gen_counters(13)=gen_counters(13)+1
-    endif
+   !  if (vn.eq.2) then
+   !     gen_counters(11)=gen_counters(11)+1
+   !  elseif (vn.eq.1) then
+   !     gen_counters(12)=gen_counters(12)+1
+   !  elseif (vn.eq.3) then
+   !     gen_counters(13)=gen_counters(13)+1
+   !  endif
+      call increase_gen_counters_end_vec(vn,1)
   end subroutine increase_gen_counters_end
+
+  subroutine increase_gen_counters_end_vec(vn,vector_size)
+    implicit none
+    integer :: vn
+    integer :: vector_size
+    if (vn.eq.2) then
+       gen_counters(11)=gen_counters(11)+vector_size
+    elseif (vn.eq.1) then
+       gen_counters(12)=gen_counters(12)+vector_size
+    elseif (vn.eq.3) then
+       gen_counters(13)=gen_counters(13)+vector_size
+    endif
+  end subroutine increase_gen_counters_end_vec
 
   subroutine check_upper_bound(vn,found_point)
     implicit none
@@ -1641,12 +1831,40 @@ contains
        found_point=.true.
     endif
   end subroutine check_upper_bound
+
+  
+  subroutine check_upper_bound_vec(vn,found_point)
+   use driver_vec
+    implicit none
+    logical :: found_point
+    integer :: vn
+    integer :: ivec
+    found_point=.false.
+    do ivec=1,driver_vector_size
+      if (f_vec(1,ivec).gt.upper_bound) then
+         if (vn.eq.2) then
+            gen_counters(7)=gen_counters(7)+1
+         elseif (vn.eq.1) then
+            gen_counters(8)=gen_counters(8)+1
+         elseif(vn.eq.3) then
+            gen_counters(9)=gen_counters(9)+1
+         endif
+      endif
+      upper_bound=upper_bound*ran3(.false.)
+      if (upper_bound.gt.f_vec(1,ivec)) then
+         gen_counters(10)=gen_counters(10)+1
+      else
+         found_point=.true.
+      endif
+   enddo
+  end subroutine check_upper_bound_vec
   
   subroutine get_random_cell_flat(x,vol)
     implicit none
     double precision :: vol
     double precision, dimension(ndimmax) :: x
     integer, dimension(ndimmax) :: kfold
+    call get_channel
     call get_random_x(x,vol,kfold)
     upper_bound=ymax_virt(ichan)
   end subroutine get_random_cell_flat

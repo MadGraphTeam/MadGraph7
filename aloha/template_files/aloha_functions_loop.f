@@ -72,7 +72,7 @@ C###############################################################################
          END FUNCTION MP_GET_FLV_COUPLING_VALUE
       end module ALOHA_OBJECT
 
-      subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
+      recursive subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -224,7 +224,7 @@ c
       end
 
 
-      subroutine ixxxso(p, fmass, nhel, nsf, flavor ,fi)
+      recursive subroutine ixxxso(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -380,7 +380,7 @@ c
       end
 
 
-      subroutine mp_ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
+      recursive subroutine mp_ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number, in QUADRUPLE PRECISIOn
@@ -488,7 +488,7 @@ c
       return
       end
 
-      subroutine oxxxxx(p,fmass,nhel,nsf, flavor , fo)
+      recursive subroutine oxxxxx(p,fmass,nhel,nsf, flavor , fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -641,7 +641,7 @@ c
       return
       end
 
-      subroutine oxxxso(p,fmass,nhel,nsf, flavor , fo)
+      recursive subroutine oxxxso(p,fmass,nhel,nsf, flavor , fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -761,7 +761,7 @@ c
       return
       end
 
-      subroutine mp_oxxxxx(p,fmass,nhel,nsf, flavor , fo)
+      recursive subroutine mp_oxxxxx(p,fmass,nhel,nsf, flavor , fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number in quadruple precision.
@@ -873,7 +873,7 @@ c
       return
       end
 
-      subroutine pxxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine pxxxxx(p,tmass,nhel,nst , tc)
 
 c    CP3 2009.NOV
 
@@ -919,7 +919,7 @@ c     Convention for loop computations
       return
       end
 
-      subroutine mp_pxxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine mp_pxxxxx(p,tmass,nhel,nst , tc)
 
 c    CP3 2009.NOV
 
@@ -965,7 +965,7 @@ c     Convention for loop computations
       return
       end
 
-      subroutine sxxxxx(p,nss , sc)
+      recursive subroutine sxxxxx(p,nss , sc)
 c
 c This subroutine computes a complex SCALAR wavefunction.
 c
@@ -1032,7 +1032,7 @@ c
       return
       end
 
-      subroutine mp_sxxxxx(p,nss , sc)
+      recursive subroutine mp_sxxxxx(p,nss , sc)
 c
 c This subroutine computes a complex SCALAR wavefunction.
 c in quadrupole precision.
@@ -1068,7 +1068,7 @@ c
       return
       end
 
-      subroutine txxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine txxxxx(p,tmass,nhel,nst , tc)
 c
 c This subroutine computes a TENSOR wavefunction.
 c
@@ -1244,7 +1244,7 @@ c construct eps0
       end
 
 
-      subroutine mp_txxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine mp_txxxxx(p,tmass,nhel,nst , tc)
 c
 c This subroutine computes a TENSOR wavefunction.
 c
@@ -1419,7 +1419,7 @@ c construct eps0
       return
       end
 
-      subroutine vxxxxx(p,vmass,nhel,nsv , vc)
+      recursive subroutine vxxxxx(p,vmass,nhel,nsv , vc)
 c
 c This subroutine computes a VECTOR wavefunction.
 c
@@ -1571,7 +1571,7 @@ c
       return
       end
 
-      subroutine mp_vxxxxx(p,vmass,nhel,nsv , vc)
+      recursive subroutine mp_vxxxxx(p,vmass,nhel,nsv , vc)
 c
 c This subroutine computes a VECTOR wavefunction in quadruple precision.
 c
@@ -1657,7 +1657,7 @@ c
       return
       end
 
-      subroutine boostx(p,q , pboost)
+      recursive subroutine boostx(p,q , pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -1737,7 +1737,7 @@ c
       return
       end
 
-      subroutine boostm(p,q,m, pboost)
+      recursive subroutine boostm(p,q,m, pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -1823,7 +1823,7 @@ c
       return
       end
 
-      subroutine momntx(energy,mass,costh,phi , p)
+      recursive subroutine momntx(energy,mass,costh,phi , p)
 c
 c This subroutine sets up a four-momentum from the four inputs.
 c
@@ -1897,7 +1897,7 @@ c#endif
 c
       return
       end
-      subroutine rotxxx(p,q , prot)
+      recursive subroutine rotxxx(p,q , prot)
 c
 c This subroutine performs the spacial rotation of a four-momentum.
 c the momentum p is assumed to be given in the frame where the spacial
@@ -1964,7 +1964,7 @@ c
       return
       end
 
-      subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
+      recursive subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
 c
 c This subroutine sets up two four-momenta in the two particle rest
 c frame.
@@ -2053,7 +2053,7 @@ C===============================================================================
 C Subroutines to create the external wavefunctions of the L-cut particles 
 C===============================================================================
 
-      SUBROUTINE LCUT_F(Q,CFIG,W)
+      recursive subroutine LCUT_F(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*16 Q(0:3)
@@ -2063,7 +2063,7 @@ C===============================================================================
       CALL LCUT_V(Q,CFIG,W)
       END
 
-      SUBROUTINE LCUT_AF(Q,CFIG,W)
+      recursive subroutine LCUT_AF(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*16 Q(0:3)
@@ -2073,7 +2073,7 @@ C===============================================================================
       CALL LCUT_V(Q,CFIG,W)
       END
 
-      SUBROUTINE LCUT_V(Q,CFIG,W)
+      recursive subroutine LCUT_V(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*16 Q(0:3)
@@ -2093,7 +2093,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE LCUT_S(Q,CFIG,W)
+      recursive subroutine LCUT_S(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*16 Q(0:3)
@@ -2109,7 +2109,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE LCUT_AS(Q,CFIG,W)
+      recursive subroutine LCUT_AS(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*16 Q(0:3)
@@ -2125,7 +2125,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE MP_LCUT_F(Q,CFIG,W)
+      recursive subroutine MP_LCUT_F(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*32 Q(0:3)
@@ -2135,7 +2135,7 @@ C===============================================================================
       CALL MP_LCUT_V(Q,CFIG,W)
       END
 
-      SUBROUTINE MP_LCUT_AF(Q,CFIG,W)
+      recursive subroutine MP_LCUT_AF(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*32 Q(0:3)
@@ -2145,7 +2145,7 @@ C===============================================================================
       CALL MP_LCUT_V(Q,CFIG,W)
       END
 
-      SUBROUTINE MP_LCUT_V(Q,CFIG,W)
+      recursive subroutine MP_LCUT_V(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*32 Q(0:3)
@@ -2168,7 +2168,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE MP_LCUT_AS(Q,CFIG,W)
+      recursive subroutine MP_LCUT_AS(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*32 Q(0:3)
@@ -2186,7 +2186,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE MP_LCUT_S(Q,CFIG,W)
+      recursive subroutine MP_LCUT_S(Q,CFIG,W)
 
       USE ALOHA_OBJECT
       COMPLEX*32 Q(0:3)
@@ -2208,7 +2208,7 @@ C===============================================================================
 C Subroutines to close the lorentz traces of loops, 
 C===============================================================================
 
-      SUBROUTINE CLOSE_4(AMPS,RES)
+      recursive subroutine CLOSE_4(AMPS,RES)
       
       COMPLEX*16 RES
       COMPLEX*16 AMPS(4)
@@ -2217,7 +2217,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE CLOSE_1(AMPS,RES)
+      recursive subroutine CLOSE_1(AMPS,RES)
       
       COMPLEX*16 RES
       COMPLEX*16 AMPS
@@ -2226,7 +2226,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE MP_CLOSE_4(AMPS,RES)
+      recursive subroutine MP_CLOSE_4(AMPS,RES)
       
       COMPLEX*32 RES
       COMPLEX*32 AMPS(4)
@@ -2235,7 +2235,7 @@ C===============================================================================
 
       END
 
-      SUBROUTINE MP_CLOSE_1(AMPS,RES)
+      recursive subroutine MP_CLOSE_1(AMPS,RES)
       
       COMPLEX*32 RES
       COMPLEX*32 AMPS
@@ -2249,7 +2249,7 @@ C OLD Subroutines to close the lorentz traces of loops,
 c                           OBSOLETE 
 C===============================================================================
 
-      SUBROUTINE CLOSE_V(Q,M,AMPS,RES)
+      recursive subroutine CLOSE_V(Q,M,AMPS,RES)
       
       COMPLEX*16 Q(0:3)
       COMPLEX*16 RES
@@ -2267,7 +2267,7 @@ c This subroutine is to recreate the fermion propagator with 4 helicities
 c only. This has problems with certain configuration of the imaginary
 c momentum q, so it is not implemented yet.
 
-      SUBROUTINE CLOSE_F4HEL(Q,M,AMPS,RES)      
+      recursive subroutine CLOSE_F4HEL(Q,M,AMPS,RES)      
       
       COMPLEX*16 Q(0:3)
       COMPLEX*16 RES, QNORM
@@ -2293,7 +2293,7 @@ c momentum q, so it is not implemented yet.
 
       END
 
-      SUBROUTINE CLOSE_F(Q,M,AMPS,RES)      
+      recursive subroutine CLOSE_F(Q,M,AMPS,RES)      
       
       COMPLEX*16 Q(0:3)
       COMPLEX*16 RES
@@ -2315,7 +2315,7 @@ c momentum q, so it is not implemented yet.
 
       END
 
-      SUBROUTINE CLOSE_S(Q,AMP,RES)
+      recursive subroutine CLOSE_S(Q,AMP,RES)
 
       COMPLEX*16 Q(0:3)
       COMPLEX*16 RES
@@ -2327,7 +2327,7 @@ c momentum q, so it is not implemented yet.
 
 c     // QUAD PREC VERSIONS OF THE ABOVE //
 
-      SUBROUTINE MP_CLOSE_V(Q,M,AMPS,RES)
+      recursive subroutine MP_CLOSE_V(Q,M,AMPS,RES)
       
       COMPLEX*32 Q(0:3)
       COMPLEX*32 RES
@@ -2341,7 +2341,7 @@ c     // QUAD PREC VERSIONS OF THE ABOVE //
 
       END
 
-      SUBROUTINE MP_CLOSE_F(Q,M,AMPS,RES)      
+      recursive subroutine MP_CLOSE_F(Q,M,AMPS,RES)      
       
       COMPLEX*32 Q(0:3)
       COMPLEX*32 RES
@@ -2363,7 +2363,7 @@ c     // QUAD PREC VERSIONS OF THE ABOVE //
 
       END
 
-      SUBROUTINE MP_CLOSE_S(Q,AMP,RES)
+      recursive subroutine MP_CLOSE_S(Q,AMP,RES)
 
       COMPLEX*32 Q(0:3)
       COMPLEX*32 RES
@@ -2382,7 +2382,7 @@ c This subroutine is to recreate the fermion propagator with 4 helicities
 c only. This has problems with certain configuration of the imaginary
 c momentum q, so it is not implemented yet.
 
-      SUBROUTINE LCUT_F4HEL(Q,M,CFIG,SCD,W)
+      recursive subroutine LCUT_F4HEL(Q,M,CFIG,SCD,W)
 
       COMPLEX*16 Q(0:3)
       INTEGER CFIG,J
@@ -2436,7 +2436,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT SPINORS
 
       END
 
-      SUBROUTINE OLD_LCUT_F(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_LCUT_F(Q,M,CFIG,SCD,W)
 
       COMPLEX*16 Q(0:3)
       INTEGER CFIG
@@ -2537,7 +2537,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT SPINORS
 
       END
 
-      SUBROUTINE OLD_MP_LCUT_F(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_MP_LCUT_F(Q,M,CFIG,SCD,W)
 
       COMPLEX*32 Q(0:3)
       INTEGER CFIG
@@ -2642,7 +2642,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT SPINORS
 
       END
 
-      SUBROUTINE OLD_LCUT_CF(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_LCUT_CF(Q,M,CFIG,SCD,W)
 
       COMPLEX*16 Q(0:3)
       INTEGER CFIG
@@ -2693,7 +2693,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT SPINORS
 
       END
 
-      SUBROUTINE OLD_LCUT_V(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_LCUT_V(Q,M,CFIG,SCD,W)
 
       COMPLEX*16 Q(0:3)
       INTEGER CFIG
@@ -2732,7 +2732,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT VECTORS
 
       END
 
-      SUBROUTINE OLD_MP_LCUT_V(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_MP_LCUT_V(Q,M,CFIG,SCD,W)
 
       COMPLEX*32 Q(0:3)
       INTEGER CFIG
@@ -2776,7 +2776,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND L-CUT VECTORS
 
       END
 
-      SUBROUTINE OLD_LCUT_S(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_LCUT_S(Q,M,CFIG,SCD,W)
 
       COMPLEX*16 Q(0:3)
       COMPLEX*16 M
@@ -2801,7 +2801,7 @@ C     REVERSE THE MOMENTUM IN THE WF FOR THE SECOND SCALAR
 
       END
 
-      SUBROUTINE OLD_MP_LCUT_S(Q,M,CFIG,SCD,W)
+      recursive subroutine OLD_MP_LCUT_S(Q,M,CFIG,SCD,W)
 
       COMPLEX*32 Q(0:3)
       COMPLEX*32 M
@@ -2836,7 +2836,7 @@ C===============================================================================
 C     The subroutine with charge conjugation are not yet implemented
 c     Obsolete by now too
 
-      subroutine oclxxx(p,ffmass,nhel,nsf,fo)
+      recursive subroutine oclxxx(p,ffmass,nhel,nsf,fo)
 
       implicit none
       double complex fo(8),p(0:3)
@@ -2847,7 +2847,7 @@ c     Obsolete by now too
 
       end
 
-      subroutine iclxxx(p,ffmass,nhel,nsf,fi)
+      recursive subroutine iclxxx(p,ffmass,nhel,nsf,fi)
 
       implicit none
       double complex fi(8),p(0:3)
@@ -2858,7 +2858,7 @@ c     Obsolete by now too
 
       end
 
-      subroutine ilxxxx(p,ffmass,nhel,nsf,fi)
+      recursive subroutine ilxxxx(p,ffmass,nhel,nsf,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number and defined with complex ONSHELL momentium.
@@ -2989,7 +2989,7 @@ c        end if
       return
       end
 
-      subroutine olxxxx(p,ffmass,nhel,nsf,fo)
+      recursive subroutine olxxxx(p,ffmass,nhel,nsf,fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number and defined with complex ONSHELL  momentum.

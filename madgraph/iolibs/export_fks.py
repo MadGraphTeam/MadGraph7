@@ -734,6 +734,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'pythia_unlops.f',
                      'driver_mintMC.f',
                      'driver_mintFO.f',
+                     'driver.f90',
+                     'driver_vec.f',
                      'pineappl_interface.cc',
                      'pineappl_interface_dummy.f',
                      'pineappl_common.inc',
@@ -752,6 +754,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'veto_xsec.f',
                      'veto_xsec.inc',
                      'weight_lines.f',
+                     'weight_lines_vec.f',
                      'genps_fks.f',
                      'boostwdir2.f',
                      'boost_to_frame.f',
@@ -1431,10 +1434,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         text += 'integer amp_split_size, amp_split_size_born\n'
         text += 'parameter (amp_split_size = %d)\n' % amp_split_size
         text += '! the first entries in the next line in amp_split are for the born \n'
-        text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
-        text += 'double precision amp_split(amp_split_size)\n'
-        text += 'double complex amp_split_cnt(amp_split_size,2,nsplitorders)\n'
-        text += 'common /to_amp_split/amp_split, amp_split_cnt\n'
+        # text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
+        # text += 'double precision amp_split(amp_split_size)\n'
+        # text += 'double complex amp_split_cnt(amp_split_size,2,nsplitorders)\n'
+        # text += 'common /to_amp_split/amp_split, amp_split_cnt\n'
         writer.line_length=132
         writer.writelines(text)
 
@@ -1884,13 +1887,28 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         # the real me wrapper
         text = \
-            """subroutine smatrix_real(p, wgt)
+            """subroutine smatrix_real(p, ret_amp_split, wgt)
             implicit none
             include 'nexternal.inc'
+            include 'orders.inc'
+            double precision ret_amp_split(amp_split_size)
             double precision p(0:3, nexternal)
             double precision wgt
             integer nfksprocess
             common/c_nfksprocess/nfksprocess
+            """ 
+        # the real me wrapper
+        text_vec = \
+             """recursive subroutine smatrix_real_vec(p, ret_amp_split, wgt, ivec, nfksprocess)
+             implicit none
+             include 'nexternal.inc'
+             include 'orders.inc'
+             include 'fks_info.inc'
+            double precision ret_amp_split(amp_split_size)
+            double precision p(0:3, nexternal)
+            double precision wgt
+            integer ivec
+            integer nfksprocess
             """ 
         # the pdf wrapper
         text1 = \
@@ -1899,16 +1917,31 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             integer nfksprocess
             common/c_nfksprocess/nfksprocess
             """
+        # the pdf wrapper
+        text1_vec = \
+            """\n\ndouble precision function dlum_vec(nfksprocess)
+            implicit none
+            integer nfksprocess
+            """
 
         if matrix_element.real_processes:
             for n, info in enumerate(matrix_element.get_fks_info_list()):
                 text += \
                     """if (nfksprocess.eq.%(n)d) then
-                    call smatrix%(n_me)d(p, wgt)
+                    call smatrix%(n_me)d_amp(p, ret_amp_split, wgt)
+                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+                text_vec += \
+                    """if (nfksprocess.eq.%(n)d) then
+                    call smatrix%(n_me)d_amp_vec(p, ret_amp_split, wgt, ivec,
+     $                   REAL_FLAVOR_INDEX_D(nfksprocess))
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
                 text1 += \
                     """if (nfksprocess.eq.%(n)d) then
                     call dlum_%(n_me)d(dlum)
+                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+                text1_vec += \
+                    """if (nfksprocess.eq.%(n)d) then
+                    call dlum_%(n_me)d(dlum_vec)
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
 
             text += \
@@ -1917,13 +1950,30 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 stop\n endif
                 return \n end
                 """
+            text_vec += \
+                """
+                write(*,*) 'ERROR: invalid n in real_matrix_vec :', nfksprocess
+                stop\n endif
+                return \n end
+                """
             text1 += \
                 """
                 write(*,*) 'ERROR: invalid n in dlum :', nfksprocess\n stop\n endif
                 return \nend
                 """
+            text1_vec += \
+                """
+                write(*,*) 'ERROR: invalid n in dlum_vec :', nfksprocess\n stop\n endif
+                return \nend
+                """
         else:
             text += \
+                """
+                wgt=0d0
+                return
+                end
+                """
+            text_vec += \
                 """
                 wgt=0d0
                 return
@@ -1935,10 +1985,18 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 return
                 end
                 """
+            text1_vec += \
+                """
+                call dlum_0(dlum_vec)
+                return
+                end
+                """
 
         # Write the file
         writer_me.writelines(text)
+        writer_me.writelines(text_vec)
         writer_lum.writelines(text1)
+        writer_lum.writelines(text1_vec)
         return 0
 
 
@@ -2148,6 +2206,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             fortran_model.me_n_flavors = 0
             fortran_model.me_active_flavor_mask = None
         replace_dict['helas_calls'] = "\n".join(helas_calls)
+        
+        coupling_dep = fortran_model.get('model').get('coupling_dep')
+        hel_vec = "\n".join(helas_calls)
+        for coup in coupling_dep.keys():
+            hel_vec = hel_vec.replace(coup+",", coup + "_vec(ivec),")
+        
+        replace_dict['helas_calls_vec'] = hel_vec
 
         # Extract version number and date from VERSION file
         info_lines = self.get_mg5_info_lines()
@@ -2987,6 +3052,7 @@ Parameters              %(params)s\n\
 
         replace_dict['nsqorders'] = nsqorders
         replace_dict['iflines_col'] = ''
+        replace_dict['iflines_col_nocheck'] = ''
          
         for i, c_link in enumerate(color_links):
             ilink = i+1
@@ -2996,21 +3062,33 @@ Parameters              %(params)s\n\
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
+                    call sb_sf_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                replace_dict['iflines_col_nocheck'] += \
+                "c link partons %(m)d and %(n)d \n\
+                    %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
+                    call sb_sf_nocheck_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
                     % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
             else:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
+                    call sb_sf_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                replace_dict['iflines_col_nocheck'] += \
+                "c link partons %(m)d and %(n)d \n\
+                    %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
+                    call sb_sf_nocheck_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
                     % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
 
         
         if replace_dict['iflines_col']:
             replace_dict['iflines_col'] += 'endif\n'
+            replace_dict['iflines_col_nocheck'] += 'endif\n'
         else:
             # this is when no color links are there
             replace_dict['iflines_col'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
+            replace_dict['iflines_col_nocheck'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/sborn_sf_fks.inc')).read()
@@ -5686,6 +5764,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                      'add_write_info.f',
                      'coupl.inc',
                      'weight_lines.f',
+                     'weight_lines_vec.f',
                      'run.inc',
                      'run_card.inc',
                      'q_es.inc',

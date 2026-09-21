@@ -1,4 +1,5 @@
-      subroutine compute_born
+C      subroutine compute_born(p_born,ret_amp2,ret_jamp2,ret_amp_split,ret_amp_split_cnt,wgt_c,ret_ans_cnt,ret_saveamp)
+      subroutine compute_born(ret_amp_split,wgt_c)
 c This subroutine computes the Born matrix elements and adds its value
 c to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -20,10 +21,18 @@ c to the list of weights using the add_wgt subroutine
       integer nFKSprocess,born_id1,born_id2
       common/c_nFKSprocess/nFKSprocess
 
+      double precision ret_amp2(ngraphs), ret_jamp2(0:ncolor)
+      complex*16 ret_ans_cnt(2,nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+
+      include 'born_nhel.inc'
+      double complex ret_saveamp(ngraphs,max_bhel)
+
       double precision wgt_c
       double precision wgt1
       double precision p_born(0:3,nexternal-1)
-      common /pborn/   p_born
+C      common /pborn/   p_born
       double precision   xiimax_cnt(-2:2)
       common /cxiimaxcnt/xiimax_cnt
       double precision  xi_i_hat_ev,xi_i_hat_cnt(-2:2)
@@ -37,18 +46,15 @@ c to the list of weights using the add_wgt subroutine
       call cpu_time(tBefore)
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-c Born of the n-body contribution, evaluated in the me_frame rest frame
-c (identity unless the run_card asks for a frame; see boost_to_frame.f).
-      call sborn_frame(p_born,wgt_c)
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0) cycle
+        if (ret_amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         QCD_power=orders(qcd_pos)
         wgtcpower=0d0
         if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
-        wgt1=amp_split(iamp)*f_b/g**(qcd_power)
+        wgt1=ret_amp_split(iamp)*f_b/g**(qcd_power)
 c     For UPC processes, we only need to fill the Born contribution for
 c     photon-photon initial state
         if (HAS_PHYSICAL_FKS_CLASSES) then
@@ -58,11 +64,11 @@ c     photon-photon initial state
           born_id1=idup(1,1)
           born_id2=idup(2,1)
         endif
-        if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) 
+        if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2)
      &   .and. .not. (born_id1.eq.22 .and. born_id2.eq.22)) then
           cycle
         endif
-        call add_wgt(2,orders,wgt1,0d0,0d0)
+        call add_wgt(2,orders,wgt1,0d0,0d0,wgt_c,0d0)
       enddo
 
       call cpu_time(tAfter)
@@ -71,7 +77,8 @@ c     photon-photon initial state
       end
 
 
-      subroutine compute_6to5flav_cnt()
+      subroutine compute_6to5flav_cnt(amp_split_6to5f,amp_split_6to5f_muf,amp_split_6to5f_mur
+     &                               ,ret_amp_split)
 C This is the counterterm for the 6f->5f scheme change 
 C of parton distributions (e.g. NNPDF2.3). 
 C It is called in this function such that if is included
@@ -85,16 +92,24 @@ C in the LO cross section
       double precision p_born(0:3,nexternal-1)
       common /pborn/   p_born
       include 'orders.inc'
-      include 'fks_info.inc'
+
+      include 'born_nhel.inc'
+      double complex ret_saveamp(ngraphs,max_bhel)
+
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_6to5f(amp_split_size),
      &                 amp_split_6to5f_muf(amp_split_size),
      &                 amp_split_6to5f_mur(amp_split_size)
-      common /to_amp_split_6to5f/ amp_split_6to5f, amp_split_6to5f_muf, 
-     &                            amp_split_6to5f_mur
       integer orders_to_amp_split_pos
       integer niglu
+      save niglu
+      
+      double precision ret_amp2(ngraphs), ret_jamp2(0:ncolor)
+      complex*16 ret_ans_cnt(2,nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+
       integer idup(nexternal,maxproc),mothup(2,nexternal,maxproc),
      $     icolup(2,nexternal,maxflow),niprocs
       common /c_leshouche_inc/idup,mothup,icolup,niprocs
@@ -138,11 +153,9 @@ C      gluon in the initial state
           endif
       enddo
 
-      ! compute the born
-      call sborn_frame(p_born,wgtborn)
       alphas = g**2/4d0/pi
       do iamp = 1, amp_split_size
-        if (amp_split(iamp).eq.0d0) cycle
+        if (ret_amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         alphasbpow = orders(qcd_pos)/2
         if (niglu.ne.0 .or. alphasbpow.ne.0) then
@@ -153,15 +166,15 @@ C      gluon in the initial state
           if (orders(qcd_pos).gt.nlo_orders(qcd_pos)) cycle
 
           amp_split_6to5f_muf(orders_to_amp_split_pos(orders)) = 
-     &     alphas / 3d0 / pi * TF * dble(niglu) * amp_split(iamp)  
+     &     alphas / 3d0 / pi * TF * dble(niglu) * ret_amp_split(iamp)  
 
           amp_split_6to5f_mur(orders_to_amp_split_pos(orders)) = 
-     &    - alphas / 3d0 / pi * TF * dble(alphasbpow) * amp_split(iamp) 
-        
+     &    - alphas / 3d0 / pi * TF * dble(alphasbpow) * ret_amp_split(iamp) 
+
           amp_split_6to5f(orders_to_amp_split_pos(orders)) = 
      &    dlog(qes2/mdl_mt**2) * 
      &     (alphas / 3d0 / pi * TF * dble(niglu)   
-     &    - alphas / 3d0 / pi * TF * dble(alphasbpow)) * amp_split(iamp)
+     &    - alphas / 3d0 / pi * TF * dble(alphasbpow)) * ret_amp_split(iamp)
         endif
       enddo
 
@@ -169,7 +182,7 @@ C      gluon in the initial state
       end
 
 
-      subroutine compute_ewsudakov
+      subroutine compute_ewsudakov(p_born,wgt_c,ret_saveamp)
 c This subroutine computes the NLO EW corrections in the Sudakov
 c   approximation
       use extra_weights
@@ -182,10 +195,19 @@ c   approximation
       integer orders_qcd(nsplitorders), orders_ew(nsplitorders)
       integer iamp
 
+      include 'genps.inc'
+      include 'born_nhel.inc'
+      double precision ret_amp2(ngraphs), ret_jamp2(0:ncolor)
+      complex*16 ret_ans_cnt(2,nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double complex loc_saveamp(ngraphs,max_bhel)
+
       double precision wgt_c
       double precision wgt1
       double precision p_born(0:3,nexternal-1)
-      common /pborn/   p_born
+C      common /pborn/   p_born
       double precision   xiimax_cnt(-2:2)
       common /cxiimaxcnt/xiimax_cnt
       double precision  xi_i_hat_ev,xi_i_hat_cnt(-2:2)
@@ -228,8 +250,8 @@ c   approximation
       ! sud_mod = 0
       do sud_mod = 0,1
 
-       call sborn_frame(p_born,wgt_c)
-       call sudakov_wrapper(p_born)
+       loc_saveamp(:,:) = ret_saveamp(:,:)
+       call sudakov_wrapper_frame(p_born,ret_saveamp)
        do iamp=1, amp_split_size
         if (amp_split_ewsud_lsc(iamp).eq.0d0.and.
      $      amp_split_ewsud_ssc(iamp).eq.0d0.and.
@@ -259,7 +281,7 @@ c   approximation
      $         *f_b/g**(qcd_power)
           wgt1=wgt1*2d0 ! missing factor in the sudakov correction
           ! the type will be 20+the value of the sudakov mode
-          call add_wgt(20+sud_mod,orders_ew,wgt1,0d0,0d0)
+          call add_wgt(20+sud_mod,orders_ew,wgt1,0d0,0d0,wgt_c,0d0)
         endif
 
         !!!! then the contribution of QCD origin
@@ -277,7 +299,7 @@ c   approximation
      $         *f_b/g**(qcd_power)
           wgt1=wgt1*2d0 ! missing factor in the sudakov correction
           ! the type will be 20+the value of the sudakov mode
-          call add_wgt(20+sud_mod,orders_qcd,wgt1,0d0,0d0)
+          call add_wgt(20+sud_mod,orders_qcd,wgt1,0d0,0d0,wgt_c,0d0)
         endif
        enddo
       enddo
@@ -288,7 +310,8 @@ c   approximation
 
 
 
-      subroutine compute_alpha_cnt()
+      subroutine compute_alpha_cnt(amp_split_alpha,amp_split_alpha_muf,amp_split_alpha_mur,
+     &                             ret_amp_split)
 C This is the counterterm for the change of scheme
 C in the UV renormalisation for alpha in (leptonic) PDFs
 C wrt the hard matrix element. Relevant for lepton collisions. 
@@ -303,13 +326,19 @@ C in the LO cross section
       double precision p_born(0:3,nexternal-1)
       common /pborn/   p_born
       include 'orders.inc'
+      include 'born_nhel.inc'
+      
+      double precision ret_amp2(ngraphs), ret_jamp2(0:ncolor)
+      complex*16 ret_ans_cnt(2,nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_alpha(amp_split_size),
      &                 amp_split_alpha_muf(amp_split_size),
      &                 amp_split_alpha_mur(amp_split_size)
-      common /to_amp_split_alpha/ amp_split_alpha, amp_split_alpha_muf, 
-     &                            amp_split_alpha_mur
       integer orders_to_amp_split_pos
       integer i, j, k
       logical firsttime
@@ -361,8 +390,6 @@ c     wgt3 : coefficient of the weight multiplying the log[mu_F^2/Q^2]
          ! virtuals are computed in the MSbar scheme, unlike in the
          ! processes automatically generated by MadGraph7
          jsign = sign(1,alphascheme)
-         ! compute the born
-         call sborn_frame(p_born,wgtborn)
          ! assumes alpha(MZ) for model, MSbar for PDFs
          ! the number of flavours depends on mur.
          ! here we will treat all leptons as massless, 
@@ -409,7 +436,7 @@ c     wgt3 : coefficient of the weight multiplying the log[mu_F^2/Q^2]
          endif
          alpha = dble(gal(1))**2/4d0/pi
          do iamp = 1, amp_split_size
-           if (amp_split(iamp).eq.0d0) cycle
+           if (ret_amp_split(iamp).eq.0d0) cycle
            call amp_split_pos_to_orders(iamp, orders)
            alphabpow = orders(qed_pos)/2
            if (alphabpow.ne.0) then
@@ -418,10 +445,10 @@ c     wgt3 : coefficient of the weight multiplying the log[mu_F^2/Q^2]
              orders(qed_pos) = orders(qed_pos) + 2
              amp_split_alpha_muf(orders_to_amp_split_pos(orders)) = 0d0 
              amp_split_alpha_mur(orders_to_amp_split_pos(orders)) = 
-     &           - jsign * alpha / 3d0 / pi * alphabpow * amp_split(iamp) *
+     &           - jsign * alpha / 3d0 / pi * alphabpow * ret_amp_split(iamp) *
      &              beta0
              amp_split_alpha(orders_to_amp_split_pos(orders)) = 
-     &           - jsign * alpha / 3d0 / pi * alphabpow * amp_split(iamp) * 
+     &           - jsign * alpha / 3d0 / pi * alphabpow * ret_amp_split(iamp) * 
      &            (beta0 * dlog(qes2/mdl_mz**2) + 
      &             w_thresh * dlog(mdl_mw**2/mdl_mz**2) + const)
            endif
@@ -437,7 +464,10 @@ c     wgt3 : coefficient of the weight multiplying the log[mu_F^2/Q^2]
 
 
 
-      subroutine compute_nbody_noborn
+      subroutine compute_nbody_noborn(p,bsv_wgt,virt_wgt,born_wgt
+     &           ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     &           ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
+     &           ,born_split,wgt_born)
 c This subroutine computes the soft-virtual matrix elements and adds its
 c value to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -450,42 +480,34 @@ c value to the list of weights using the add_wgt subroutine
       include 'orders.inc'
       integer orders(nsplitorders)
       integer iamp, i
+      double precision born_split(amp_split_size)
       double precision amp_split_virt(amp_split_size),
      &     amp_split_born_for_virt(amp_split_size),
      &     amp_split_avv(amp_split_size)
-      common /to_amp_split_virt/amp_split_virt,
-     &                          amp_split_born_for_virt,
-     &                          amp_split_avv
       double precision amp_split_wgtnstmp(amp_split_size),
      $                 amp_split_wgtwnstmpmuf(amp_split_size),
      $                 amp_split_wgtwnstmpmur(amp_split_size)
-      common /to_amp_split_bsv/amp_split_wgtnstmp,
-     $                         amp_split_wgtwnstmpmuf,
-     $                         amp_split_wgtwnstmpmur
 
       ! stuff for the 6->5 flav scheme
       double precision amp_split_6to5f(amp_split_size),
      &                 amp_split_6to5f_muf(amp_split_size),
      &                 amp_split_6to5f_mur(amp_split_size)
-      common /to_amp_split_6to5f/ amp_split_6to5f, amp_split_6to5f_muf, 
-     &                            amp_split_6to5f_mur
 
       ! stuff for the alpha UV-scheme in lepton collisions
       double precision amp_split_alpha(amp_split_size),
      &                 amp_split_alpha_muf(amp_split_size),
      &                 amp_split_alpha_mur(amp_split_size)
-      common /to_amp_split_alpha/ amp_split_alpha, amp_split_alpha_muf, 
-     &                            amp_split_alpha_mur
 
       double precision wgt6f1,wgt6f2,wgt6f3
       double precision wgtal1,wgtal2,wgtal3
 
       double precision wgt1,wgt2,wgt3,bsv_wgt,virt_wgt,born_wgt,pi,g2
-     &     ,g22,wgt4
+     &     ,g22,wgt4,wgt_born
       parameter (pi=3.1415926535897932385d0)
-      double precision    p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
-     $                    ,pswgt_cnt(-2:2),jac_cnt(-2:2)
-      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      double precision p(0:3,nexternal)
+   !    double precision    p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+   !   $                    ,pswgt_cnt(-2:2),jac_cnt(-2:2)
+   !    common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       double precision   xiimax_cnt(-2:2)
       common /cxiimaxcnt/xiimax_cnt
       double precision  xi_i_hat_ev,xi_i_hat_cnt(-2:2)
@@ -503,7 +525,9 @@ c value to the list of weights using the add_wgt subroutine
       call cpu_time(tBefore)
       if (f_nb.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
-      call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt)
+   !    call bornsoftvirtual(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
+   !   $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+   !   $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur)
       if (ickkw.eq.-1) then
          if (wgtbpower.ne.0) then
             write (*,*) 'ERROR in VETO XSec: bpower should'/
@@ -520,7 +544,7 @@ C to make sure that it cannot be incorrectly understood.
          do i=1,nsplitorders
            orders(i)=-1
          enddo
-         call add_wgt(7,orders,-veto_compensating_factor*f_nb,0d0,0d0)
+         call add_wgt(7,orders,-veto_compensating_factor*f_nb,0d0,0d0,wgt_born,0d0)
         write(*,*) 'FIX VETOXSEC in FKS_EW'
         stop
       endif
@@ -554,8 +578,8 @@ C to make sure that it cannot be incorrectly understood.
            g2=g**(QCD_power-2)
            wgt1=wgt1 - fxfx_exp_rewgt*born_wgt*f_nb/g2/(4d0*pi)
         endif
-        call add_wgt(3,orders,wgt1,wgt2,wgt3)
-        call add_wgt(15,orders,wgt4,0d0,0d0)
+        call add_wgt(3,orders,wgt1,wgt2,wgt3,wgt_born,0d0)
+        call add_wgt(15,orders,wgt4,0d0,0d0,wgt_born,0d0)
       enddo
 c Special for the soft-virtual needed for the virt-tricks. The
 c *_wgt_mint variable should be directly passed to the mint-integrator
@@ -576,12 +600,12 @@ c and not be part of the plots nor computation of the cross section.
         born_wgt_mint(iamp)=born_wgt_mint(iamp)
      $       +amp_split_born_for_virt(iamp)*f_nb
         wgt1=wgt1/g**(QCD_power)
-        call add_wgt(14,orders,wgt1,0d0,0d0)
+        call add_wgt(14,orders,wgt1,0d0,0d0,wgt_born,0d0)
       enddo
 
 C This is the counterterm for the 6f->5f scheme change 
 C of parton distributions (e.g. NNPDF2.3). 
-      call compute_6to5flav_cnt()
+      call compute_6to5flav_cnt(amp_split_6to5f,amp_split_6to5f_muf,amp_split_6to5f_mur,born_split)
       do iamp=1, amp_split_size
         if (amp_split_6to5f(iamp).eq.0d0.and.
      $      amp_split_6to5f_mur(iamp).eq.0d0.and.
@@ -596,13 +620,13 @@ C of parton distributions (e.g. NNPDF2.3).
         wgt6f1=amp_split_6to5f(iamp)*f_nb/g**(qcd_power)
         wgt6f2=amp_split_6to5f_mur(iamp)*f_nb/g**(qcd_power)
         wgt6f3=amp_split_6to5f_muf(iamp)*f_nb/g**(qcd_power)
-        call add_wgt(3,orders,wgt6f1,wgt6f2,wgt6f3)
+        call add_wgt(3,orders,wgt6f1,wgt6f2,wgt6f3,wgt_born,0d0)
       enddo
 
 C This is the counterterm for the change of scheme
 C in the UV renormalisation for alpha in (leptonic) PDFs
 C wrt the hard matrix element. Relevant for lepton collisions. 
-      call compute_alpha_cnt()
+      call compute_alpha_cnt(amp_split_alpha,amp_split_alpha_muf,amp_split_alpha_mur,born_split)
       do iamp=1, amp_split_size
         if (amp_split_alpha(iamp).eq.0d0.and.
      $      amp_split_alpha_mur(iamp).eq.0d0.and.
@@ -617,7 +641,7 @@ C wrt the hard matrix element. Relevant for lepton collisions.
         wgtal1=amp_split_alpha(iamp)*f_nb/g**(qcd_power)
         wgtal2=amp_split_alpha_mur(iamp)*f_nb/g**(qcd_power)
         wgtal3=amp_split_alpha_muf(iamp)*f_nb/g**(qcd_power)
-        call add_wgt(3,orders,wgtal1,wgtal2,wgtal3)
+        call add_wgt(3,orders,wgtal1,wgtal2,wgtal3,wgt_born,0d0)
       enddo
 
       call cpu_time(tAfter)
@@ -625,7 +649,7 @@ C wrt the hard matrix element. Relevant for lepton collisions.
       return
       end
 
-      subroutine compute_real_emission(p,sudakov_damp)
+      subroutine compute_real_emission(p,sudakov_damp,ret_amp_split,fx_ev)
 c This subroutine computes the real-emission matrix elements and adds
 c its value to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -634,6 +658,10 @@ c its value to the list of weights using the add_wgt subroutine
       include 'coupl.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+      include 'genps.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer orders(nsplitorders)
       integer iamp
       double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev
@@ -651,21 +679,21 @@ c its value to the list of weights using the add_wgt subroutine
       if (f_r.eq.0d0) return
       s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
       if (s_ev.le.0.d0) return
-      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev)
+C      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,ret_amp_split)
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0) cycle
+        if (ret_amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         QCD_power=orders(qcd_pos)
         wgtcpower=0d0
         if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
         orders_tag=get_orders_tag(orders)
         amp_pos=iamp
-        wgt1=amp_split(iamp)*s_ev*f_r/g**(qcd_power)
+        wgt1=ret_amp_split(iamp)*s_ev*f_r/g**(qcd_power)
         if (sudakov_damp.gt.0d0) then
-          call add_wgt(1,orders,wgt1*sudakov_damp,0d0,0d0)
+          call add_wgt(1,orders,wgt1*sudakov_damp,0d0,0d0,0d0,fx_ev)
         endif
         if (sudakov_damp.lt.1d0) then
-          call add_wgt(11,orders,wgt1*(1d0-sudakov_damp),0d0,0d0)
+          call add_wgt(11,orders,wgt1*(1d0-sudakov_damp),0d0,0d0,0d0,fx_ev)
         endif
       enddo
       call cpu_time(tAfter)
@@ -673,7 +701,7 @@ c its value to the list of weights using the add_wgt subroutine
       return
       end
 
-      subroutine compute_soft_counter_term(replace_MC_subt)
+      subroutine compute_soft_counter_term(replace_MC_subt,ret_amp_split,fx_s)
 c This subroutine computes the soft counter term and adds its value to
 c the list of weights using the add_wgt subroutine
       use extra_weights
@@ -682,6 +710,9 @@ c the list of weights using the add_wgt subroutine
       include 'coupl.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer orders(nsplitorders)
       integer iamp
       double precision wgt1,s_s,fks_Sij,fx_s,zero,replace_MC_subt,g22
@@ -714,10 +745,10 @@ c the list of weights using the add_wgt subroutine
      $     return
       s_s = fks_Sij(p1_cnt(0,1,0),i_fks,j_fks,zero,y_ij_fks_ev)
       if (s_s.le.0d0) return
-      call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s)
+C      call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,ret_amp_split)
 
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0) cycle
+        if (ret_amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
         QCD_power=orders(qcd_pos)
         wgtcpower=0d0
@@ -726,16 +757,16 @@ c the list of weights using the add_wgt subroutine
         amp_pos=iamp
         g22=g**(QCD_power)
         if (replace_MC_subt.gt.0d0) then
-          wgt1=amp_split(iamp)*s_s/g22*replace_MC_subt
-          call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0)
+          wgt1=ret_amp_split(iamp)*s_s/g22*replace_MC_subt
+          call add_wgt(8,orders,-wgt1*f_s_MC_H,0d0,0d0,0d0,fx_s)
           wgt1=wgt1*f_s_MC_S
         else
           wgt1=0d0
         endif
         if (xi_i_fks_ev.le.xiScut_used) then
-          wgt1=wgt1-amp_split(iamp)*s_s*f_s/g22
+          wgt1=wgt1-ret_amp_split(iamp)*s_s*f_s/g22
         endif
-        if (wgt1.ne.0d0) call add_wgt(4,orders,wgt1,0d0,0d0)
+        if (wgt1.ne.0d0) call add_wgt(4,orders,wgt1,0d0,0d0,0d0,fx_s)
       enddo
 
       call cpu_time(tAfter)
@@ -743,7 +774,11 @@ c the list of weights using the add_wgt subroutine
       return
       end
 
-      subroutine compute_collinear_counter_term(replace_MC_subt)
+      subroutine compute_collinear_counter_term(replace_MC_subt,ret_amp_split,fx_c,
+     &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     &    amp_split_wgtdegrem_muF,
+     &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     &    amp_split_wgtpsch_d)
 c This subroutine computes the collinear counter term and adds its value
 c to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -753,21 +788,24 @@ c to the list of weights using the add_wgt subroutine
       include 'fks_powers.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_wgtdegrem_xi(amp_split_size),
      $                 amp_split_wgtdegrem_lxi(amp_split_size),
      $                 amp_split_wgtdegrem_muF(amp_split_size)
-      common /to_amp_split_deg/amp_split_wgtdegrem_xi,
-     $                         amp_split_wgtdegrem_lxi,
-     $                         amp_split_wgtdegrem_muF
+   !    common /to_amp_split_deg/amp_split_wgtdegrem_xi,
+   !   $                         amp_split_wgtdegrem_lxi,
+   !   $                         amp_split_wgtdegrem_muF
       ! amp_split for the PDF scheme
       double precision amp_split_wgtpsch_p(amp_split_size),
      $                 amp_split_wgtpsch_l(amp_split_size),
      $                 amp_split_wgtpsch_d(amp_split_size)
-      common /to_amp_split_dis/amp_split_wgtpsch_p,
-     $                         amp_split_wgtpsch_l,
-     $                         amp_split_wgtpsch_d
+   !    common /to_amp_split_dis/amp_split_wgtpsch_p,
+   !   $                         amp_split_wgtpsch_l,
+   !   $                         amp_split_wgtpsch_d
       double precision zero,one,s_c,fks_Sij,fx_c,deg_xi_c,deg_lxi_c,wgt1
      &     ,wgt3,g22,replace_MC_subt
       external fks_Sij
@@ -800,12 +838,12 @@ c to the list of weights using the add_wgt subroutine
       if (s_c.le.0d0) return
       ! sreal_deg should be called **BEFORE** sreal 
       ! in order not to overwrtie the amp_split array
-      call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c
-     $     ,deg_lxi_c)
-      call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c)
+C      call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c
+C     $     ,deg_lxi_c)
+C      call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,ret_amp_split)
 
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0.and.
+        if (ret_amp_split(iamp).eq.0d0.and.
      $      amp_split_wgtdegrem_xi(iamp).eq.0d0.and.
      $      amp_split_wgtdegrem_lxi(iamp).eq.0d0.and.
      $      amp_split_wgtpsch_p(iamp).eq.0d0.and.
@@ -820,14 +858,14 @@ c to the list of weights using the add_wgt subroutine
         amp_pos=iamp
         g22=g**(QCD_power)
         if (replace_MC_subt.gt.0d0) then
-          wgt1=amp_split(iamp)*s_c/g22*replace_MC_subt
-          call add_wgt(9,orders,-wgt1*f_c_MC_H,0d0,0d0)
+          wgt1=ret_amp_split(iamp)*s_c/g22*replace_MC_subt
+          call add_wgt(9,orders,-wgt1*f_c_MC_H,0d0,0d0,0d0,fx_c)
           wgt1=wgt1*f_c_MC_S
         else
           wgt1=0d0
         endif
         if (y_ij_fks_ev.gt.1d0-deltaS) then
-          wgt1=wgt1-amp_split(iamp)*s_c*f_c/g22
+          wgt1=wgt1-ret_amp_split(iamp)*s_c*f_c/g22
           wgt1=wgt1+
      $         (amp_split_wgtdegrem_xi(iamp)+amp_split_wgtpsch_p(iamp)+
      $         (amp_split_wgtdegrem_lxi(iamp)+amp_split_wgtpsch_l(iamp))
@@ -836,7 +874,7 @@ c to the list of weights using the add_wgt subroutine
         else
           wgt3=0d0
         endif
-        if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt(5,orders,wgt1,0d0,wgt3)
+        if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt(5,orders,wgt1,0d0,wgt3,0d0,fx_c)
       enddo
 
       call cpu_time(tAfter)
@@ -844,7 +882,11 @@ c to the list of weights using the add_wgt subroutine
       return
       end
 
-      subroutine compute_soft_collinear_counter_term(replace_MC_subt)
+      subroutine compute_soft_collinear_counter_term(replace_MC_subt, ret_amp_split,fx_sc,
+     #    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     #    amp_split_wgtdegrem_muF,
+     #    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     #    amp_split_wgtpsch_d)
 c This subroutine computes the soft-collinear counter term and adds its
 c value to the list of weights using the add_wgt subroutine
       use extra_weights
@@ -854,21 +896,24 @@ c value to the list of weights using the add_wgt subroutine
       include 'fks_powers.inc'
       include 'timing_variables.inc'
       include 'orders.inc'
+
+      double precision ret_amp_split(amp_split_size)
+
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_wgtdegrem_xi(amp_split_size),
      $                 amp_split_wgtdegrem_lxi(amp_split_size),
      $                 amp_split_wgtdegrem_muF(amp_split_size)
-      common /to_amp_split_deg/amp_split_wgtdegrem_xi,
-     $                         amp_split_wgtdegrem_lxi,
-     $                         amp_split_wgtdegrem_muF
+   !    common /to_amp_split_deg/amp_split_wgtdegrem_xi,
+   !   $                         amp_split_wgtdegrem_lxi,
+   !   $                         amp_split_wgtdegrem_muF
       ! amp_split for the PDF scheme
       double precision amp_split_wgtpsch_p(amp_split_size),
      $                 amp_split_wgtpsch_l(amp_split_size),
      $                 amp_split_wgtpsch_d(amp_split_size)
-      common /to_amp_split_dis/amp_split_wgtpsch_p,
-     $                         amp_split_wgtpsch_l,
-     $                         amp_split_wgtpsch_d
+   !    common /to_amp_split_dis/amp_split_wgtpsch_p,
+   !   $                         amp_split_wgtpsch_l,
+   !   $                         amp_split_wgtpsch_d
       double precision zero,one,s_sc,fks_Sij,fx_sc,wgt1,wgt3,deg_xi_sc
      $     ,deg_lxi_sc,g22,replace_MC_subt
       external fks_Sij
@@ -912,11 +957,11 @@ c value to the list of weights using the add_wgt subroutine
       if (s_sc.le.0d0) return
       ! sreal_deg should be called **BEFORE** sreal 
       ! in order not to overwrtie the amp_split array
-      call sreal_deg(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc)
-      call sreal(p1_cnt(0,1,2),zero,one,fx_sc)
+C      call sreal_deg(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc)
+C      call sreal(p1_cnt(0,1,2),zero,one,fx_sc,ret_amp_split)
 
       do iamp=1, amp_split_size
-        if (amp_split(iamp).eq.0d0.and.
+        if (ret_amp_split(iamp).eq.0d0.and.
      $      amp_split_wgtdegrem_xi(iamp).eq.0d0.and.
      $      amp_split_wgtdegrem_lxi(iamp).eq.0d0.and.
      $      amp_split_wgtpsch_p(iamp).eq.0d0.and.
@@ -930,15 +975,15 @@ c value to the list of weights using the add_wgt subroutine
         amp_pos=iamp
         g22=g**(QCD_power)
         if (replace_MC_subt.gt.0d0) then
-          wgt1=-amp_split(iamp)*s_sc/g22*replace_MC_subt
-          call add_wgt(10,orders,-wgt1*f_sc_MC_H,0d0,0d0)
+          wgt1=-ret_amp_split(iamp)*s_sc/g22*replace_MC_subt
+          call add_wgt(10,orders,-wgt1*f_sc_MC_H,0d0,0d0,0d0,fx_sc)
           wgt1=wgt1*f_sc_MC_S
         else
           wgt1=0d0
         endif
         if (xi_i_fks_cnt(1).lt.xiScut_used .and. 
      $      y_ij_fks_ev.gt.1d0-deltaS) then
-          wgt1=wgt1+amp_split(iamp)*s_sc*f_sc/g22
+          wgt1=wgt1+ret_amp_split(iamp)*s_sc*f_sc/g22
           wgt1=wgt1+
      $         (-(amp_split_wgtdegrem_xi(iamp)+amp_split_wgtpsch_p(iamp)+
      $           (amp_split_wgtdegrem_lxi(iamp)+amp_split_wgtpsch_l(iamp))
@@ -952,7 +997,7 @@ c value to the list of weights using the add_wgt subroutine
         else
           wgt3=0d0
         endif
-        if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt(6,orders,wgt1,0d0,wgt3)
+        if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt(6,orders,wgt1,0d0,wgt3,0d0,fx_sc)
       enddo
 
       call cpu_time(tAfter)
@@ -960,7 +1005,9 @@ c value to the list of weights using the add_wgt subroutine
       return
       end
 
-      subroutine compute_MC_subt_term(p,passcuts,gfactsf,gfactcl,probne)
+      subroutine compute_MC_subt_term(p,passcuts,gfactsf,gfactcl,probne
+     $                               ,born_cnt,born_split_cnt,born_jamp2
+     $                               ,rot_cnt,rot_split_cnt,rot_jamp2)
       use extra_weights
       implicit none
 c This subroutine computes the MonteCarlo subtraction terms and adds
@@ -969,6 +1016,7 @@ c returns the values for the gfactsf, gfactcl and probne to check if we
 c need to include the FKS subtraction terms as replacements in the soft
 c and collinear limits and the Sudakov damping for the real-emission,
 c respectively.
+      include 'genps.inc'
       include 'nexternal.inc'
       include 'madfks_mcatnlo.inc'
       include 'timing_variables.inc'
@@ -981,6 +1029,7 @@ c respectively.
      $     ,sevmc,zhw(nexternal),xmcxsec(nexternal),g22,wgt1
      $     ,xlum_mc_fact,fks_Hij
       external fks_Sij,fks_Hij
+      double precision    born_wgt
       logical lzone(nexternal),flagmc,passcuts
       double precision    xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
      $                    ,p_i_fks_cnt(0:3,-2:2)
@@ -1001,9 +1050,19 @@ c respectively.
       integer get_orders_tag
       integer                     n_MC_subt_diverge
       common/counter_subt_diverge/n_MC_subt_diverge
+
+      complex*16 born_cnt(2, nsplitorders)
+      double complex born_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision born_jamp2(0:ncolor)
+      complex*16 rot_cnt(2, nsplitorders)
+      double complex rot_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)      
+      double precision rot_jamp2(0:ncolor)
+
       call cpu_time(tBefore)
       call compute_xmcsubt_complete(p,probne,gfactsf,gfactcl,flagmc
-     $     ,lzone,zhw,nofpartners,xmcxsec)
+     $     ,lzone,zhw,nofpartners,xmcxsec,born_wgt
+     $     ,born_cnt,born_split_cnt,born_jamp2
+     $     ,rot_cnt,rot_split_cnt,rot_jamp2)
       if (f_MC_S.eq.0d0 .and. f_MC_H.eq.0d0) return
       if(UseSfun)then
          sevmc = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
@@ -1026,10 +1085,10 @@ c respectively.
                 g22=g**(QCD_power)
                 wgt1=sevmc*f_MC_S*xlum_mc_fact*
      &               amp_split_xmcxsec(iamp,i)/g22
-                call add_wgt(12,orders,wgt1,0d0,0d0)
+                call add_wgt(12,orders,wgt1,0d0,0d0,born_wgt,0d0)
                 wgt1=sevmc*f_MC_H*xlum_mc_fact*
      &               amp_split_xmcxsec(iamp,i)/g22
-                call add_wgt(13,orders,-wgt1,0d0,0d0)
+                call add_wgt(13,orders,-wgt1,0d0,0d0,born_wgt,0d0)
               enddo
             endif
          enddo
@@ -1150,7 +1209,7 @@ c Check if they are equal
       momenta_equal_uborn=momenta_equal(pb1,pb2)
       end
       
-      subroutine set_FxFx_scale(iterm,p)
+      subroutine set_FxFx_scale(iterm,p,nFKSprocess)
 c Sets the FxFx cluster scale and multiplies the f_* factors (computed
 c by 'compute_prefactors_nbody' and 'compute_prefactors_n1body') by the
 c Sudakov suppression. If called more than once with the same momenta
@@ -1198,7 +1257,7 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
       integer            i_fks,j_fks
       common/fks_indices/i_fks,j_fks
       INTEGER              NFKSPROCESS
-      COMMON/C_NFKSPROCESS/NFKSPROCESS
+C      COMMON/C_NFKSPROCESS/NFKSPROCESS
       save rewgt_mohdr_calculated,rewgt_izero_calculated,p_last_izero
      &     ,p_last_mohdr,iterm_last_izero,iterm_last_mohdr
      &     ,fxfx_ren_scales_izero ,fxfx_ren_scales_mohdr
@@ -1447,13 +1506,15 @@ c f_* multiplication factors for Born and nbody
       end
 
 
-      subroutine include_multichannel_enhance(imode)
+      subroutine include_multichannel_enhance(imode,born_amp2,ev_amp2,norad_amp2)
       implicit none
       include 'nexternal.inc'
       include 'run.inc'
       include 'genps.inc'
+      include 'orders.inc'
       include 'nFKSconfigs.inc'
       include 'timing_variables.inc'
+      include 'born_nhel.inc'
       double precision xnoborn_cnt,xtot,wgt_c,enhance,enhance_real
      $     ,pas(0:3,nexternal)
       data xnoborn_cnt /0d0/
@@ -1484,7 +1545,13 @@ c f_* multiplication factors for Born and nbody
       integer            this_config
       common/to_mconfigs/this_config
       Double Precision amp2(ngraphs), jamp2(0:ncolor)
-      common/to_amps/  amp2,          jamp2
+      double precision born_amp2(ngraphs), ev_amp2(ngraphs)
+     $     , norad_amp2(ngraphs)
+      complex*16 dummy_ans(2,nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+C      common/to_amps/  amp2,          jamp2
       double precision   diagramsymmetryfactor
       common /dsymfactor/diagramsymmetryfactor
       double precision      f_b,f_nb
@@ -1511,11 +1578,10 @@ c f_* multiplication factors for Born and nbody
 
 c Compute the multi-channel enhancement factor 'enhance'.
       enhance=1.d0
+      amp2(:) = 0d0
+      jamp2(:) = 0d0
       if (p_born(0,1).gt.0d0) then
-c Must use the same frame as every other SBORN call in this event: the
-c amplitudes are cached against (E,p_z) and shared. The multi-channel
-c weights stay a partition of unity in any frame, so this is free.
-         call sborn_frame(p_born,wgt_c)
+         amp2(:) = born_amp2(:)
       elseif(p_born(0,1).lt.0d0)then
          enhance=0d0
       endif
@@ -1546,28 +1612,29 @@ c weights stay a partition of unity in any frame, so this is free.
          endif
       endif
 
+      amp2(:) = 0d0
+      jamp2(:) = 0d0
+
 c In the case there is the special phase-space mapping for resonances,
 C or when not doing event projection
 c use the Born computed with those as the mapping.
       enhance_real=1.d0
       if ((granny_is_res .or. .not.use_evpr).and. imode.eq.2) then
-         if (granny_is_res) p_born_used(:,:) = p_born_ev(:,:) 
-         if (.not.use_evpr) p_born_used(:,:) = p_born_norad(:,:) 
-         if (p_born_ev(0,1).gt.0d0) then
-            calculatedBorn=.false.
-            pas(0:3,nexternal)=0d0
-            pas(0:3,1:nexternal-1)=p_born_used(0:3,1:nexternal-1)
-            call set_alphas(pas)
-c Own frame, rebuilt from p_born_used: this is a different kinematic
-c configuration. Cache-isolated by the calculatedBorn resets around it.
-            call sborn_frame(p_born_used,wgt_c)
-            call set_alphas(p_ev)
-            calculatedBorn=.false.
-         elseif(p_born_used(0,1).lt.0d0)then
-            if (enhance.ne.0d0) then 
+         ! if (granny_is_res) p_born_used(:,:) = p_born_ev(:,:) 
+         ! if (.not.use_evpr) p_born_used(:,:) = p_born_norad(:,:) 
+         if (granny_is_res.and.use_evpr) then
+            if(p_born_ev(0,1).gt.0d0) then
+               amp2(:) = ev_amp2(:)
+               call set_alphas(p_ev)
+            else 
                enhance_real=enhance
-            else
-               enhance_real=0d0
+            endif
+         else 
+            if(p_born_norad(0,1).gt.0d0) then
+               amp2(:) = norad_amp2(:)
+               call set_alphas(p_ev)
+            else 
+               enhance_real=enhance
             endif
          endif
 c Compute the multi-channel enhancement factor 'enhance_real'.
@@ -1801,7 +1868,7 @@ c equal to ione, so no need to define separate factors.
       end
 
       
-      subroutine add_wgt(type,orders,wgt1,wgt2,wgt3)
+      subroutine add_wgt(type,orders,wgt1,wgt2,wgt3,wgt_born,wgt_real)
 c Adds a contribution to the list in weight_lines. 'type' sets the type
 c of the contribution and wgt1..wgt3 are the coefficients multiplying
 c the logs. The arguments are:
@@ -1903,6 +1970,7 @@ c        contribution
       integer type,i,j
       logical foundIt,foundOrders
       double precision wgt1,wgt2,wgt3
+      double precision wgt_born,wgt_real
       integer orders(nsplitorders)
       integer              nFKSprocess
       common/c_nFKSprocess/nFKSprocess
@@ -1920,8 +1988,6 @@ c        contribution
       integer                                      ngluons,nquarks(-6:6)
       common/numberofparticles/fkssymmetryfactor,fkssymmetryfactorBorn,
      &                         fkssymmetryfactorDeg,ngluons,nquarks
-      double precision       wgt_ME_born,wgt_ME_real
-      common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
       integer need_matching_S(nexternal),need_matching_H(nexternal)
      $     ,need_matching_cuts(nexternal)
       common /c_need_matching/ need_matching_S,need_matching_H
@@ -2039,8 +2105,8 @@ C for UPC processes set scale to Ellis-Sexton scale
 c Compensate for the fact that in the Born matrix elements, we use the
 c identical particle symmetry factor of the corresponding real emission
 c matrix elements
-      wgt_ME_tree(1,icontr)=wgt_me_born
-      wgt_ME_tree(2,icontr)=wgt_me_real
+      wgt_ME_tree(1,icontr)=wgt_born
+      wgt_ME_tree(2,icontr)=wgt_real
       do i=1,nexternal
          do j=0,3
             if (p1_cnt(0,1,0).gt.0d0.and.type.ne.5) then
@@ -2135,10 +2201,10 @@ c or to fill histograms.
       integer i,j,k,iamp,icontr_orig
       logical virt_found
       double precision xlum,dlum,pi,mu2_r,mu2_f,mu2_q,rwgt_muR_dep_fac
-     $     ,wgt_wo_pdf,conv
+     $     ,wgt_wo_pdf,conv, dlum_vec
       external rwgt_muR_dep_fac
       parameter (pi=3.1415926535897932385d0)
-      external dlum
+      external dlum, dlum_vec
       integer              nFKSprocess
       common/c_nFKSprocess/nFKSprocess
       INTEGER              IPROC
@@ -2168,7 +2234,7 @@ c for UPC processes set scale to Ellis-Sexton scale
             q2fact(2)=QES2
          endif
 c call the PDFs
-         xlum = dlum()
+         xlum = dlum_vec(nFKSprocess)
 c iwgt=1 is the central value (i.e. no scale/PDF reweighting).
          iwgt=1
          call weight_lines_allocated(nexternal,max_contr,iwgt,iproc)
@@ -3709,6 +3775,7 @@ c on the imode we should or should not include the virtual corrections.
                sigint_ABS=sigint_ABS+abs(unwgt(j,i))
                sigint1=sigint1+unwgt(j,i) ! for consistency check
                max_weight=max(max_weight,abs(unwgt(j,i)))
+               ! write(*,*) 'Debug: unwgt(',j,',',i,') = ',unwgt(j,i)
             enddo
          enddo
 c check the consistency of the results up to machine precision (10^-10 here)
@@ -3779,6 +3846,110 @@ c n1body_wgt is used for the importance sampling over FKS directories
       end
 
 
+      subroutine fill_mint_function_NLOPS_vec(n1body_wgt,ivec)
+c Fills the function that is returned to the MINT integrator. Depending
+c on the imode we should or should not include the virtual corrections.
+      use weight_lines
+      use mint_module
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      integer i,j,ict,iamp,ithree,isix
+      double precision f(nintegrals),sigint,sigint1,sigint_ABS
+     $     ,n1body_wgt,tmp_wgt,max_weight
+      double precision virtual_over_born
+      common /c_vob/   virtual_over_born
+      integer ivec
+      sigint=0d0
+      sigint1=0d0
+      sigint_ABS=0d0
+      n1body_wgt=0d0
+      max_weight=0d0
+      if (icontr.eq.0) then
+         sigint_ABS=0d0
+         sigint=0d0
+         sigint1=0d0
+      else
+         do i=1,icontr
+            if(vector_index(i).ne.ivec) cycle
+            sigint=sigint+wgts(1,i)
+            max_weight=max(max_weight,abs(wgts(1,i)))
+            if (icontr_sum(0,i).eq.0) cycle
+            do j=1,niproc(i)
+               sigint_ABS=sigint_ABS+abs(unwgt(j,i))
+               sigint1=sigint1+unwgt(j,i) ! for consistency check
+               max_weight=max(max_weight,abs(unwgt(j,i)))
+            enddo
+         enddo
+c check the consistency of the results up to machine precision (10^-10 here)
+         if (imode.ne.1 .or. only_virt) then
+            if (abs((sigint-sigint1)/max_weight).gt.1d-10) then
+               write (*,*) 'ERROR: inconsistent integrals #0',sigint
+     $              ,sigint1,max_weight,abs((sigint-sigint1)/max_weight)
+               do i=1, icontr
+                  write (*,*) i,icontr_sum(0,i),niproc(i),wgts(1,i)
+     $                 ,H_event(i),itype(i),nFKS(i)
+                  if (icontr_sum(0,i).eq.0) cycle
+                  do j=1,niproc(i)
+                     write (*,*) j,unwgt(j,i)
+                  enddo
+               enddo
+               stop 1
+            endif
+         else
+            sigint1=sigint1+virt_wgt_mint(0)
+            if (abs((sigint-sigint1)/max_weight).gt.1d-10) then
+               write (*,*) 'ERROR: inconsistent integrals #1',sigint
+     $              ,sigint1,max_weight,abs((sigint-sigint1)/max_weight)
+     $              ,virt_wgt_mint
+               do i=1, icontr
+                  write (*,*) i,icontr_sum(0,i),niproc(i),wgts(1,i)
+                  if (icontr_sum(0,i).eq.0) cycle
+                  do j=1,niproc(i)
+                     write (*,*) j,unwgt(j,i)
+                  enddo
+               enddo
+               stop 1
+            endif
+         endif
+c n1body_wgt is used for the importance sampling over FKS directories
+         do i=1,icontr
+            if (icontr_sum(0,i).eq.0) cycle
+            tmp_wgt=0d0
+            do j=1,icontr_sum(0,i)
+               ict=icontr_sum(j,i)
+               if ( itype(ict).ne.2  .and. itype(ict).ne.3 .and.
+     $              itype(ict).ne.14 .and. itype(ict).ne.15)
+     $                              tmp_wgt=tmp_wgt+wgts(1,ict)
+            enddo
+            n1body_wgt=n1body_wgt+abs(tmp_wgt)
+         enddo
+      endif
+      f_vec(1,ivec)=sigint_ABS
+      f_vec(2,ivec)=sigint
+      f_vec(4,ivec)=virtual_over_born
+      do iamp=0,amp_split_size
+         if (iamp.eq.0) then
+            f_vec(3,ivec)=0d0
+            f_vec(6,ivec)=0d0
+            f_vec(5,ivec)=0d0
+            do i=1,amp_split_size
+               f_vec(3,ivec)=f_vec(3,ivec)+virt_wgt_mint(i)
+               f_vec(6,ivec)=f_vec(6,ivec)+born_wgt_mint(i)
+            enddo
+            f_vec(5,ivec)=abs(f_vec(3,ivec))!v3.5.4, this fixes a wrong behaviour
+         else
+            ithree=2*iamp+5
+            isix=2*iamp+6
+            f_vec(ithree,ivec)=virt_wgt_mint(iamp)
+            f_vec(isix,ivec)=born_wgt_mint(iamp)
+         endif
+      enddo
+      return
+      end
+
+
       subroutine pick_unweight_contr(iFKS_picked,ifold_picked)
 c Randomly pick (weighted by the ABS values) the contribution to a given
 c PS point that should be written in the event file.
@@ -3839,6 +4010,168 @@ c PS point that should be written in the event file.
          current=current+abs(unwgt(j,i))
       enddo
 c found the contribution that should be written:
+      icontr_picked=i
+      iproc_picked=j
+      if (H_event(icontr_picked)) then
+         Hevents=.true.
+         i_process_addwrite=iproc_picked
+         iFKS_picked=nFKS(icontr_picked)
+         ifold_picked=ifold_cnt(icontr_picked)
+         SCALUP(iFKS_picked*2)=shower_scale(icontr_picked)
+         do k=1,nexternal
+            do l=1,nexternal
+               SCALUP_a(iFKS_picked*2,k,l)=shower_scale_a(icontr_picked
+     $              ,k,l)
+            enddo
+         enddo
+         colour_connections(1:2,1:nexternal)=icolour_con(1:2
+     $        ,1:nexternal,icontr_picked)
+      else
+         Hevents=.false.
+         i_process_addwrite=etoi(iproc_picked,nFKS(icontr_picked))
+c For S-events, ifold_picked is already set in
+c update_shower_scale_Sevents(). Note that for S-events, the fold chosen
+c doesn't really matter.
+c$$$         ifold_picked=ifold_cnt(icontr_picked)
+         do k=1,icontr_sum(0,icontr_picked)
+            ict=icontr_sum(k,icontr_picked)
+            !MZif (particle_type_d(nFKS(ict),fks_i_d(nFKS(ict))).eq.8) then
+            if (need_color_links_d(nFKS(ict)).or.need_charge_links_d(nFKS(ict))) then
+               iFKS_picked=nFKS(ict)
+               exit
+            endif
+            if (k.eq.icontr_sum(0,icontr_picked)) then
+               write (*,*) 'ERROR: no configuration with i_fks a gluon'
+               stop 1
+            endif
+         enddo
+         SCALUP(iFKS_picked*2-1)=shower_scale(icontr_picked)
+         do k=1,nexternal
+            do l=1,nexternal
+               SCALUP_a(iFKS_picked*2-1,k,l)
+     $              =shower_scale_a(icontr_picked,k,l)
+            enddo
+         enddo
+         colour_connections(1:2,1:nexternal)=icolour_con(1:2,1:nexternal
+     $        ,icontr_picked)
+c Determine if we need to write the granny (based only on the special
+c mapping in genps_fks) randomly, weighted by the seperate contributions
+c that are summed together in a single S-event.
+         do i=1,fks_configs
+            tmp_wgt(i)=0d0
+         enddo
+c fill tmp_wgt with the sum of weights per FKS configuration
+         do k=1,icontr_sum(0,icontr_picked)
+            ict=icontr_sum(k,icontr_picked)
+            tmp_wgt(nFKS(ict))=tmp_wgt(nFKS(ict))+wgts(1,ict)
+         enddo
+c Randomly select an FKS configuration
+         sum_granny_wgt=0d0
+         do i=1,fks_configs
+            sum_granny_wgt=sum_granny_wgt+abs(tmp_wgt(i))
+         enddo
+         target=ran2()*sum_granny_wgt
+         current=0d0
+         i=0
+         do while (current.le.target)
+            i=i+1
+            current=current+abs(tmp_wgt(i))
+         enddo
+c Overwrite the granny information of the FKS configuration with the
+c soft singularity with the FKS configuration randomly chosen.
+         write_granny(iFKS_picked)=write_granny(i)
+         which_is_granny(iFKS_picked)=which_is_granny(i)
+      endif
+      evtsgn=sign(1d0,unwgt(iproc_picked,icontr_picked))
+      need_matching(1:nexternal)=need_match(1:nexternal,icontr_picked)
+      call cpu_time(tAfter)
+      t_p_unw=t_p_unw+(tAfter-tBefore)
+      return
+      end
+
+      subroutine pick_unweight_contr_vec(iFKS_picked,ifold_picked,ivec_picked)
+c Randomly pick (weighted by the ABS values) the contribution to a given
+c PS point that should be written in the event file.
+      use weight_lines
+      use weight_lines_vec
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      include 'timing_variables.inc'
+      integer i,j,k,l,iFKS_picked,ict,ifold_picked,jj,ii
+      double precision tot_sum,rnd,ran2,current,target
+      external ran2
+      integer           i_process_addwrite
+      common/c_addwrite/i_process_addwrite
+      logical         Hevents
+      common/SHevents/Hevents
+      logical                 dummy
+      double precision evtsgn
+      common /c_unwgt/ evtsgn,dummy
+      integer iproc_save(fks_configs),eto(maxproc,fks_configs)
+     $     ,etoi(maxproc,fks_configs),maxproc_found
+      common/cproc_combination/iproc_save,eto,etoi,maxproc_found
+      integer              nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+      double precision     SCALUP(fks_configs*2)
+      common /cshowerscale/SCALUP
+      double precision     SCALUP_a(fks_configs*2,nexternal,nexternal)
+      common /cshowerscale_a/SCALUP_a
+      integer colour_connections(2,nexternal)
+      common /colour_connections_to_write/ colour_connections
+      double precision tmp_wgt(fks_configs),sum_granny_wgt
+      logical write_granny(fks_configs)
+      integer which_is_granny(fks_configs)
+      common/write_granny_resonance/which_is_granny,write_granny
+      integer need_matching(nexternal)
+      common /c_need_matching_to_write/ need_matching
+
+      integer ivec, ivec_picked
+      logical non_zero_contr
+
+
+      call cpu_time(tBefore)
+      if (icontr.eq.0) then
+         do ivec=1,driver_vector_size
+            if(icontr_vec(ivec).ne.0) non_zero_contr=.true.
+         enddo
+         if(.not.non_zero_contr) return
+      endif
+      tot_sum=0d0
+      do ivec=1,driver_vector_size
+         do i=1,icontr_vec(ivec)
+            do j=1,niproc_vec(i,ivec)
+               tot_sum=tot_sum+abs(unwgt_vec(j,i,ivec))
+            enddo
+         enddo   
+      enddo
+      rnd=ran2()
+      current=0d0
+      target=rnd*tot_sum
+      i=1
+      j=0
+      ivec_picked=1
+      do while (current.lt.target)
+         j=j+1
+         if (mod(j,niproc_vec(i,ivec_picked)+1).eq.0) then
+            j=1
+            i=i+1
+         endif
+         if (i.gt.icontr_vec(ivec_picked)) then
+            i=1
+            ivec_picked=ivec_picked+1
+            if (ivec_picked.gt.driver_vector_size) then
+               write(*,*) 'ERROR in pick_unweight_contr_vec: ivec_picked'
+               stop 1
+            endif
+         endif
+         current=current+abs(unwgt_vec(j,i,ivec_picked))
+      enddo
+c found the contribution that should be written:
+      call retrieve_weight_lines(nexternal,ivec_picked)
       icontr_picked=i
       iproc_picked=j
       if (H_event(icontr_picked)) then
@@ -4680,7 +5013,8 @@ c$$$                  shower_H_scale(iFKS)=ref_H_scale(iFKS)-pt_hardness
 
 
 
-      subroutine sreal(pp,xi_i_fks,y_ij_fks,wgt)
+      subroutine sreal(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     &                 ans_cnt, ret_amp_split_cnt, ret_saveamp)
 c Wrapper for the n+1 contribution. Returns the n+1 matrix element
 c squared reduced by the FKS damping factor xi**2*(1-y).
 c Close to the soft or collinear limits it calls the corresponding
@@ -4688,9 +5022,14 @@ c Born and multiplies with the AP splitting function or eikonal factors.
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
 
       double precision pp(0:3,nexternal),wgt
       double precision xi_i_fks,y_ij_fks
+
+      double precision ret_amp_split(amp_split_size)
 
       double precision shattmp,dot
       integer i,j
@@ -4710,10 +5049,17 @@ c Born and multiplies with the AP splitting function or eikonal factors.
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
 
-      double precision pmass(nexternal)
-      include 'orders.inc'
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2, nsplitorders)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
 
+      double precision pmass(nexternal)
       include "pmass.inc"
+
+
 
       if (softtest.or.colltest) then
          tiny=1d-12
@@ -4742,36 +5088,156 @@ c entering this function
 
       if (1d0-y_ij_fks.lt.tiny)then
          if (pmass(j_fks).eq.zero.and.j_fks.le.nincoming)then
-            call sborncol_isr(pp,xi_i_fks,y_ij_fks,wgt)
+            call sborncol_isr(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,ans_cnt,ret_amp_split_cnt)
          elseif (pmass(j_fks).eq.zero.and.j_fks.ge.nincoming+1)then
-            call sborncol_fsr(pp,xi_i_fks,y_ij_fks,wgt)
+            call sborncol_fsr(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,ans_cnt,ret_amp_split_cnt)
          else
             wgt=0d0
-            amp_split(1:amp_split_size) = 0d0
+            ret_amp_split(1:amp_split_size) = 0d0
          endif
       elseif (xi_i_fks.lt.tiny)then
          if (need_color_links.or.need_charge_links)then
 c has soft singularities
-            call sbornsoft(pp,xi_i_fks,y_ij_fks,wgt)
+            call sbornsoft(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,ret_saveamp,ret_amp_split_cnt)
          else
             wgt=0d0
-            amp_split(1:amp_split_size) = 0d0
+            ret_amp_split(1:amp_split_size) = 0d0
          endif
       else
-         call smatrix_real_frame(pp,wgt)
+         call smatrix_real(pp,ret_amp_split,wgt)
          wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
-         amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         ret_amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
       endif
+
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
+
+      return
+      end
+
+
+      subroutine sreal_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,real_amp_split,
+     &                 born_split,born_cnt,born_split_cnt,born_saveamp,
+     &                 coll_split,coll_cnt,coll_split_cnt,coll_saveamp)
+c Wrapper for the n+1 contribution. Returns the n+1 matrix element
+c squared reduced by the FKS damping factor xi**2*(1-y).
+c Close to the soft or collinear limits it calls the corresponding
+c Born and multiplies with the AP splitting function or eikonal factors.
+      implicit none
+      include "nexternal.inc"
+      include "coupl.inc"
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
+
+      double precision pp(0:3,nexternal),wgt
+      double precision xi_i_fks,y_ij_fks
+
+      double precision ret_amp_split(amp_split_size)
+
+      double precision real_amp_split(amp_split_size)
+
+      double precision shattmp,dot
+      integer i,j
+
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
+     #                        sqrtshat,shat
+
+      logical softtest,colltest
+      common/sctests/softtest,colltest
+
+      double precision zero,tiny
+      parameter (zero=0d0)
+      logical need_color_links, need_charge_links
+      common /c_need_links/need_color_links, need_charge_links
+
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      double precision born_split(amp_split_size)
+      complex*16 born_cnt(2, nsplitorders)
+      double complex born_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
+      double precision coll_split(amp_split_size)
+      complex*16 coll_cnt(2, nsplitorders)
+      double complex coll_split_cnt(amp_split_size,2,nsplitorders)
+      double complex coll_saveamp(ngraphs,max_bhel)
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+
+      double precision pmass(nexternal)
+      include "pmass.inc"
+
+
+
+      if (softtest.or.colltest) then
+         tiny=1d-12
+      else
+         tiny=1d-6
+      endif
+
+      if(pp(0,1).le.0.d0)then
+c Unphysical kinematics: set matrix elements equal to zero
+        wgt=0.d0
+        return
+      endif
+
+c Consistency check -- call to set_cms_stuff() must be done prior to
+c entering this function
+      if (nincoming.eq.2) then
+         shattmp=2d0*dot(pp(0,1),pp(0,2))
+      else
+         shattmp=pp(0,1)**2
+      endif
+      if(abs(shattmp/shat-1.d0).gt.1.d-5)then
+        write(*,*)'Error in sreal: inconsistent shat'
+        write(*,*)shattmp,shat
+        stop
+      endif
+
+      ret_amp_split(:) = 0d0
+
+      if (1d0-y_ij_fks.lt.tiny)then
+         ret_amp_split(:) = born_split(:)
+         if (pmass(j_fks).eq.zero.and.j_fks.le.nincoming)then
+            call sborncol_isr_store(pp,xi_i_fks,y_ij_fks,wgt
+     &                       ,ret_amp_split,born_cnt,born_split_cnt
+     &                       ,coll_split,coll_cnt,coll_split_cnt)
+         elseif (pmass(j_fks).eq.zero.and.j_fks.ge.nincoming+1)then
+            call sborncol_fsr(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,born_cnt,born_split_cnt)
+         else
+            wgt=0d0
+            ret_amp_split(1:amp_split_size) = 0d0
+         endif
+      elseif (xi_i_fks.lt.tiny)then
+         if (need_color_links.or.need_charge_links)then
+c has soft singularities
+            ret_amp_split(:) = born_split(:)
+            call sbornsoft_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,born_saveamp,born_split_cnt)
+         else
+            wgt=0d0
+            ret_amp_split(1:amp_split_size) = 0d0
+         endif
+      else
+C         call smatrix_real(pp,ret_amp_split,wgt)
+         ret_amp_split(:) = real_amp_split(:)
+         wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
+         ret_amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+      endif
+
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
 
       return
       end
 
 
 
-      subroutine sborncol_fsr(p,xi_i_fks,y_ij_fks,wgt)
-      USE ALOHA_OBJECT
+      subroutine sborncol_fsr(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     &                        ans_cnt, ret_amp_split_cnt)
       implicit none
       include "nexternal.inc"
+      include 'genps.inc'
       double precision p(0:3,nexternal),wgt
       double precision xi_i_fks,y_ij_fks
 C  
@@ -4819,11 +5285,16 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       parameter (ximag=(0.d0,1.d0))
 
       include 'orders.inc'
+      include 'born_nhel.inc'
       double precision amp_split_local(amp_split_size)
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
+      double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2, nsplitorders), wgt1(2)
-      common /c_born_cnt/ ans_cnt
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
       double complex ans_extra_cnt(2,nsplitorders)
       integer iextra_cnt, isplitorder_born, isplitorder_cnt
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
@@ -4845,7 +5316,6 @@ c Unphysical kinematics: set matrix elements equal to zero
       E_i_fks = p(0,i_fks)
       z = 1d0 - E_i_fks/(E_i_fks+E_j_fks)
       t = z * shat/4d0
-      call sborn_frame(p_born,wgt_born)
       if (iextra_cnt.gt.0)
      1    call extra_cnt_frame(p_born, iextra_cnt, ans_extra_cnt)
       call AP_reduced(j_type,i_type,ch_j,ch_i,t,z,ap)
@@ -4857,7 +5327,6 @@ c Unphysical kinematics: set matrix elements equal to zero
 C check if any extra_cnt is needed
          if (iextra_cnt.gt.0) then
             if (iord.eq.isplitorder_born) then
-               call sborn_frame(p_born,wgt_born)
                wgt1(1) = ans_cnt(1,iord)
                wgt1(2) = ans_cnt(2,iord)
             elseif (iord.eq.isplitorder_cnt) then
@@ -4870,7 +5339,6 @@ C check if any extra_cnt is needed
                stop
             endif
          else
-            call sborn_frame(p_born,wgt_born)
             wgt1(1) = ans_cnt(1,iord)
             wgt1(2) = ans_cnt(2,iord)
          endif
@@ -4917,8 +5385,8 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
      #                       cphi_mother,sphi_mother)
             wgt1(2) = -(cphi_mother-ximag*sphi_mother)**2 *
      #             wgt1(2) * azifact
-            amp_split_cnt(1:amp_split_size,2,iord) = -(cphi_mother-ximag
-     $           *sphi_mother)**2 *amp_split_cnt(1:amp_split_size,2
+            ret_amp_split_cnt(1:amp_split_size,2,iord) = -(cphi_mother-ximag
+     $           *sphi_mother)**2 *ret_amp_split_cnt(1:amp_split_size,2
      $           ,iord) * azifact
             endif
          else
@@ -4930,27 +5398,28 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
             wgt=wgt+dble(wgt1(1)*ap(1)+wgt1(2)*Q(1))
             amp_split_local(1:amp_split_size) =
      $           amp_split_local(1:amp_split_size)
-     $           +dble(amp_split_cnt(1:amp_split_size,1,iord)*AP(1)
-     $           +amp_split_cnt(1:amp_split_size,2,iord)*Q(1))
+     $           +dble(ret_amp_split_cnt(1:amp_split_size,1,iord)*AP(1)
+     $           +ret_amp_split_cnt(1:amp_split_size,2,iord)*Q(1))
          endif
          if (iord.eq.qed_pos) then
             wgt=wgt+dble(wgt1(1)*ap(2)+wgt1(2)*Q(2))
             amp_split_local(1:amp_split_size) =
      $           amp_split_local(1:amp_split_size)
-     $           +dble(amp_split_cnt(1:amp_split_size,1,iord)*AP(2)
-     $           +amp_split_cnt(1:amp_split_size,2,iord)*Q(2))
+     $           +dble(ret_amp_split_cnt(1:amp_split_size,1,iord)*AP(2)
+     $           +ret_amp_split_cnt(1:amp_split_size,2,iord)*Q(2))
          endif
       enddo
       wgt=wgt*iden_comp
-      amp_split(1:amp_split_size) = amp_split_local(1:amp_split_size)
+      ret_amp_split(1:amp_split_size) = amp_split_local(1:amp_split_size)
      $     *iden_comp
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
       return
       end
 
 
 
-      subroutine sborncol_isr(p,xi_i_fks,y_ij_fks,wgt)
-      USE ALOHA_OBJECT
+      subroutine sborncol_isr(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     &                        ans_cnt, ret_amp_split_cnt)
       implicit none
       include "nexternal.inc"
       double precision p(0:3,nexternal),wgt
@@ -5002,13 +5471,19 @@ C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
       parameter (ximag=(0.d0,1.d0))
 
       include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
       double precision amp_split_local(amp_split_size)
       double complex amp_split_cnt_local(amp_split_size,2,nsplitorders)
       integer iamp
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
+      double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2, nsplitorders), wgt1(2)
-      common /c_born_cnt/ ans_cnt
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
       double complex ans_extra_cnt(2,nsplitorders)
       integer iextra_cnt, isplitorder_born, isplitorder_cnt
       common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
@@ -5052,7 +5527,6 @@ C check if any extra_cnt is needed
          if (iextra_cnt.gt.0) then
             if (iord.eq.isplitorder_born) then
             ! this is the contribution from the born ME
-               call sborn_frame(p_born_used,wgt_born)
                wgt1(1:2) = ans_cnt(1:2,iord)
             else if (iord.eq.isplitorder_cnt) then
             ! this is the contribution from the extra cnt
@@ -5063,13 +5537,12 @@ C check if any extra_cnt is needed
                stop
             endif
          else
-            call sborn_frame(p_born_used,wgt_born)
             wgt1(1:2) = ans_cnt(1:2,iord)
         endif
         amp_split_cnt_local(1:amp_split_size,1,iord)=
-     $       amp_split_cnt(1:amp_split_size,1,iord)
+     $       ret_amp_split_cnt(1:amp_split_size,1,iord)
         amp_split_cnt_local(1:amp_split_size,2,iord)=
-     $       amp_split_cnt(1:amp_split_size,2,iord)
+     $       ret_amp_split_cnt(1:amp_split_size,2,iord)
         if (abs(m_type).eq.3.or.ch_m.ne.0d0) then
            Q(1)=0d0
            Q(2)=0d0
@@ -5147,8 +5620,208 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
          endif
       enddo
       wgt=wgt*iden_comp
-      amp_split(1:amp_split_size) = amp_split_local(1:amp_split_size)
+      ret_amp_split(1:amp_split_size) = amp_split_local(1:amp_split_size)
      $     *iden_comp
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
+      return
+      end
+
+
+      subroutine sborncol_isr_store(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     &                        ans_cnt, ret_amp_split_cnt,
+     &                        coll_split, coll_cnt, coll_split_cnt)
+      implicit none
+      include "nexternal.inc"
+      double precision p(0:3,nexternal),wgt
+      double precision xi_i_fks,y_ij_fks
+C  
+      double precision p_born_coll(0:3,nexternal-1)
+      common/pborn_coll/p_born_coll
+
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+
+      double precision p_born_used(0:3,nexternal-1)
+
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+
+      double precision ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
+      common/parton_cms_stuff/ybst_til_tolab,ybst_til_tocm,
+     #                        sqrtshat,shat
+
+      double precision xi_i_fks_ev,y_ij_fks_ev
+      double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+
+      double complex xij_aor
+      common/cxij_aor/xij_aor
+
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+
+c Particle types (=color/charges) of i_fks, j_fks and fks_mother
+      integer i_type,j_type,m_type
+      double precision ch_i,ch_j,ch_m
+      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+
+      integer i, j, iord
+C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
+      double precision t,z,ap(2),Q(2),cphi_mother,sphi_mother,
+     $ pi(0:3),pj(0:3),wgt_born
+      double complex W1(6),W2(6),W3(6),W4(6),Wij_angle,Wij_recta
+      double complex azifact
+
+      double precision zero,vtiny
+      parameter (zero=0d0)
+      parameter (vtiny=1d-8)
+      double complex ximag
+      parameter (ximag=(0.d0,1.d0))
+
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
+      double precision amp_split_local(amp_split_size)
+      double complex amp_split_cnt_local(amp_split_size,2,nsplitorders)
+      integer iamp
+      logical split_type(nsplitorders) 
+      common /c_split_type/split_type
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2, nsplitorders), wgt1(2)
+      complex*16 coll_cnt(2, nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double precision coll_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex coll_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+c      common /c_born_cnt/ ans_cnt
+      double complex ans_extra_cnt(2,nsplitorders)
+      integer iextra_cnt, isplitorder_born, isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt, isplitorder_born, isplitorder_cnt
+
+      double precision iden_comp
+      common /c_iden_comp/iden_comp
+
+      logical use_evpr
+      common /to_use_evpr/use_evpr
+C  
+      amp_split_local(1:amp_split_size) = 0d0
+
+C in the case of the collinear CT, use p_born_coll
+C  (when not doing event projection). 
+C For the soft-collinear one, use p_born
+      if (xi_i_fks.gt.0d0.and..not.use_evpr) then
+          p_born_used(:,:) = p_born_coll(:,:)
+          ret_amp_split(:) = coll_split(:)
+          ans_cnt(:,:) = coll_cnt(:,:)
+          ret_amp_split_cnt(:,:,:) = coll_split_cnt(:,:,:)
+      else ! if (xi_i_fks.eq.0d0) then
+          p_born_used(:,:) = p_born(:,:)
+      endif
+
+      if(p_born_used(0,1).le.0.d0)then
+c Unphysical kinematics: set matrix elements equal to zero
+         write (*,*) "No born momenta in sborncol_isr"
+         wgt=0.d0
+         return
+      endif
+
+      z = 1d0 - xi_i_fks
+c sreal return {\cal M} of FKS except for the partonic flux 1/(2*s).
+c Thus, an extra factor z (implicit in the flux of the reduced Born
+c in FKS) has to be inserted here
+      t = z*shat/4d0
+      call AP_reduced(m_type,i_type,ch_m,ch_i,t,z,ap)
+      call Qterms_reduced_spacelike(m_type,i_type,ch_m,ch_i,t,z,Q)
+      wgt=0d0
+      do iord = 1, nsplitorders
+         if (.not.split_type(iord) .or. (iord.ne.qed_pos .and.
+     $        iord.ne.qcd_pos)) cycle
+C check if any extra_cnt is needed
+         if (iextra_cnt.gt.0) then
+            if (iord.eq.isplitorder_born) then
+            ! this is the contribution from the born ME
+               wgt1(1:2) = ans_cnt(1:2,iord)
+            else if (iord.eq.isplitorder_cnt) then
+            ! this is the contribution from the extra cnt
+               call extra_cnt(p_born_used, iextra_cnt, ans_extra_cnt)
+               wgt1(1:2) = ans_extra_cnt(1:2,iord)
+            else
+               write(*,*) 'ERROR in sborncol_isr', iord
+               stop
+            endif
+         else
+            wgt1(1:2) = ans_cnt(1:2,iord)
+        endif
+        amp_split_cnt_local(1:amp_split_size,1,iord)=
+     $       ret_amp_split_cnt(1:amp_split_size,1,iord)
+        amp_split_cnt_local(1:amp_split_size,2,iord)=
+     $       ret_amp_split_cnt(1:amp_split_size,2,iord)
+        if (abs(m_type).eq.3.or.ch_m.ne.0d0) then
+           Q(1)=0d0
+           Q(2)=0d0
+           wgt1(2)=dcmplx(0d0,0d0)
+           amp_split_cnt_local(1:amp_split_size,2,iord)=dcmplx(0d0,0d0)
+        else
+c Insert <ij>/[ij] which is not included by sborn()
+           if (1d0-y_ij_fks.lt.vtiny)then
+              azifact=xij_aor
+           else
+              do i=0,3
+                 pi(i)=p_i_fks_ev(i)
+                 pj(i)=p(i,j_fks)
+              enddo
+              if(j_fks.eq.2 .and. nincoming.eq.2)then
+c Rotation according to innerpin.m. Use rotate_invar() if a more 
+c general rotation is needed
+                 pi(1)=-pi(1)
+                 pi(3)=-pi(3)
+                 pj(1)=-pj(1)
+                 pj(3)=-pj(3)
+              endif
+              CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
+              CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
+              CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
+              CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+              Wij_angle=(0d0,0d0)
+              Wij_recta=(0d0,0d0)
+              do i=1,4
+                 Wij_angle = Wij_angle + W1(i)*W2(i)
+                 Wij_recta = Wij_recta + W3(i)*W4(i)
+              enddo
+              azifact=Wij_angle/Wij_recta
+           endif
+c Insert the extra factor due to Madgraph convention for polarization vectors
+           cphi_mother=1.d0
+           sphi_mother=0.d0
+           wgt1(2) = -(cphi_mother+ximag*sphi_mother)**2 * wgt1(2) *
+     $          dconjg(azifact)
+           amp_split_cnt_local(1:amp_split_size,2,iord) = -(cphi_mother
+     $          +ximag*sphi_mother)**2
+     $          *amp_split_cnt_local(1:amp_split_size,2,iord) *
+     $          dconjg(azifact)
+        endif
+        if (iord.eq.qcd_pos) then
+            wgt=wgt+dble(wgt1(1)*ap(1)+wgt1(2)*Q(1))
+            amp_split_local(1:amp_split_size) =
+     $           amp_split_local(1:amp_split_size)
+     $           +dble(amp_split_cnt_local(1:amp_split_size,1,iord)
+     $           *AP(1)+amp_split_cnt_local(1:amp_split_size,2,iord)
+     $           *Q(1))
+         endif
+         if (iord.eq.qed_pos) then
+            wgt=wgt+dble(wgt1(1)*ap(2)+wgt1(2)*Q(2))
+            amp_split_local(1:amp_split_size) =
+     $           amp_split_local(1:amp_split_size)
+     $           +dble(amp_split_cnt_local(1:amp_split_size,1,iord)
+     $           *AP(2)+amp_split_cnt_local(1:amp_split_size,2,iord)
+     $           *Q(2))
+         endif
+      enddo
+      wgt=wgt*iden_comp
+      ret_amp_split(1:amp_split_size) = amp_split_local(1:amp_split_size)
+     $     *iden_comp
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
       return
       end
 
@@ -5773,7 +6446,8 @@ c q->gq splitting
 
 
 
-      subroutine sbornsoft(pp,xi_i_fks,y_ij_fks,wgt)
+      subroutine sbornsoft(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     $                     ret_saveamp, ret_amp_split_cnt)
       implicit none
 
       include "nexternal.inc"
@@ -5782,6 +6456,16 @@ c      include "fks.inc"
      &     ,particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
       include "coupl.inc"
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
+
+      complex*16 ans_cnt(2,nsplitorders)
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex local_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
 
       integer m,n
 
@@ -5802,23 +6486,17 @@ c      include "fks.inc"
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
       integer ipos_ord
-      include 'orders.inc'
+      double precision soft_prefactor
       double precision amp_split_soft(amp_split_size)
-      common /to_amp_split_soft/amp_split_soft
 
       double precision iden_comp
       common /c_iden_comp/iden_comp
 
       include "pmass.inc"
 c
-c Call the Born to be sure that 'CalculatedBorn' is done correctly. This
-c should always be done before calling the color-correlated Borns,
-c because of the caching of the diagrams.
-c
-      call sborn_frame(p_born(0,1),wgt1)
-c
 C Reset the amp_split array
-      amp_split(1:amp_split_size) = 0d0
+      ret_amp_split(1:amp_split_size) = 0d0
+      local_split_cnt(:,:,:) = ret_amp_split_cnt(:,:,:)
 
       softcontr=0d0
       do i=1,fks_j_from_i(i_fks,0)
@@ -5827,8 +6505,8 @@ C Reset the amp_split array
             n=fks_j_from_i(i_fks,j)
             if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO)) .and.
      &           n.ne.i_fks.and.m.ne.i_fks) then
-C wgt includes the gs/w^2 
-               call sborn_sf_frame(p_born,m,n,wgt)
+C wgt includes the gs/w^2
+               call sborn_sf(p_born,m,n,wgt,ans_cnt,local_split_cnt,ret_saveamp,amp_split_soft)
                if (wgt.ne.0d0) then
                   call eikonal_reduced(pp,m,n,i_fks,j_fks,
      #                                 xi_i_fks,y_ij_fks,eik)
@@ -5836,7 +6514,7 @@ C wgt includes the gs/w^2
                   ! update the amp_split array
                   if (need_color_links) ipos_ord = qcd_pos
                   if (need_charge_links) ipos_ord = qed_pos
-                  amp_split(1:amp_split_size) = amp_split(1:amp_split_size)
+                  ret_amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
      $                - 2d0 * eik * amp_split_soft(1:amp_split_size)*iden_comp
                endif
             endif
@@ -5847,8 +6525,94 @@ c Add minus sign to compensate the minus in the color factor
 c of the color-linked Borns (b_sf_0??.f)
 c Factor two to fix the limits.
       wgt=-2d0*wgt
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
       return
       end
+      
+      subroutine sbornsoft_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     $                     ret_saveamp, ret_amp_split_cnt)
+      implicit none
+
+      include "nexternal.inc"
+c      include "fks.inc"
+      integer fks_j_from_i(nexternal,0:nexternal)
+     &     ,particle_type(nexternal),pdg_type(nexternal)
+      common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
+      include "coupl.inc"
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
+
+      complex*16 ans_cnt(2,nsplitorders)
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex local_split_cnt(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
+
+      integer m,n
+
+      double precision softcontr,pp(0:3,nexternal),wgt,eik,xi_i_fks
+     &     ,y_ij_fks
+      double precision wgt1
+      integer i,j,k 
+
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+
+      double precision zero,pmass(nexternal)
+      parameter(zero=0d0)
+
+      logical need_color_links, need_charge_links
+      common /c_need_links/need_color_links, need_charge_links
+      integer ipos_ord
+      double precision soft_prefactor
+      double precision amp_split_soft(amp_split_size)
+
+      double precision iden_comp
+      common /c_iden_comp/iden_comp
+
+      include "pmass.inc"
+C
+C Reset the amp_split array
+      ret_amp_split(1:amp_split_size) = 0d0
+      local_split_cnt(:,:,:) = ret_amp_split_cnt(:,:,:)
+
+      softcontr=0d0
+      do i=1,fks_j_from_i(i_fks,0)
+         do j=1,i
+            m=fks_j_from_i(i_fks,i)
+            n=fks_j_from_i(i_fks,j)
+            if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO)) .and.
+     &           n.ne.i_fks.and.m.ne.i_fks) then
+C wgt includes the gs/w^2
+               call sborn_sf_store(p_born,m,n,wgt
+     &                            ,ans_cnt,local_split_cnt,ret_saveamp,amp_split_soft)
+               if (wgt.ne.0d0) then
+                  call eikonal_reduced(pp,m,n,i_fks,j_fks,
+     &                                 xi_i_fks,y_ij_fks,eik)
+                  softcontr=softcontr+wgt*eik*iden_comp
+                  ! update the amp_split array
+                  if (need_color_links) ipos_ord = qcd_pos
+                  if (need_charge_links) ipos_ord = qed_pos
+                  ret_amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
+     $                - 2d0 * eik * amp_split_soft(1:amp_split_size)*iden_comp
+               endif
+            endif
+         enddo
+      enddo
+      wgt=softcontr
+c Add minus sign to compensate the minus in the color factor
+c of the color-linked Borns (b_sf_0??.f)
+c Factor two to fix the limits.
+      wgt=-2d0*wgt
+c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
+      return
+      end
+
 
 
       subroutine eikonal_reduced(pp,m,n,i_fks,j_fks,xi_i_fks,y_ij_fks,eik)
@@ -5931,7 +6695,13 @@ c Calculate the eikonal factor
 
 
       subroutine sreal_deg(p,xi_i_fks,y_ij_fks,
-     #                     collrem_xi,collrem_lxi)
+     #                     collrem_xi,collrem_lxi,
+     #    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     #    amp_split_wgtdegrem_muF,
+     #    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     #    amp_split_wgtpsch_d,
+     #    ans_cnt,ret_amp_split_cnt,
+     #    coll_ans_cnt,coll_split_cnt)
       use extra_weights
       implicit none
       include "genps.inc"
@@ -5940,6 +6710,7 @@ c Calculate the eikonal factor
       include 'q_es.inc'
       include "run.inc"
       include "orders.inc"
+      include "born_nhel.inc"
 
       integer iord, iap
       double precision p(0:3,nexternal),collrem_xi,collrem_lxi
@@ -5972,8 +6743,14 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       integer i_type,j_type,m_type
       double precision ch_i, ch_j, ch_m
       common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+      double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2, nsplitorders), wgt1(2)
-      common /c_born_cnt/ ans_cnt
+      complex*16 coll_ans_cnt(2, nsplitorders), used_cnt(2, nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex coll_split_cnt(amp_split_size,2,nsplitorders)
+      double complex used_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
       
@@ -5996,16 +6773,9 @@ C keep track of each split orders
      $                 amp_split_wgtdegrem_xi(amp_split_size),
      $                 amp_split_wgtdegrem_lxi(amp_split_size),
      $                 amp_split_wgtdegrem_muF(amp_split_size)
-      common /to_amp_split_deg/amp_split_wgtdegrem_xi,
-     $                         amp_split_wgtdegrem_lxi,
-     $                         amp_split_wgtdegrem_muF
-      ! amp_split for the PDF scheme
       double precision amp_split_wgtpsch_p(amp_split_size),
      $                 amp_split_wgtpsch_l(amp_split_size),
      $                 amp_split_wgtpsch_d(amp_split_size)
-      common /to_amp_split_dis/amp_split_wgtpsch_p,
-     $                         amp_split_wgtpsch_l,
-     $                         amp_split_wgtpsch_d
       double precision prefact_xi
 
       logical use_evpr
@@ -6044,8 +6814,12 @@ C  (when not doing event projection).
 C For the soft-collinear one, use p_born
       if (xi_i_fks.gt.0d0.and..not.use_evpr) then
           p_born_used(:,:) = p_born_coll(:,:)
+          used_split_cnt(:,:,:) = coll_split_cnt(:,:,:)
+          used_cnt(:,:) = coll_ans_cnt(:,:)
       else ! if (xi_i_fks.eq.0d0) then
           p_born_used(:,:) = p_born(:,:)
+          used_split_cnt(:,:,:) = ret_amp_split_cnt(:,:,:)
+          used_cnt(:,:) = ans_cnt(:,:)
       endif
 
       if(j_fks.gt.nincoming)then
@@ -6104,7 +6878,6 @@ c A factor gS^2 is included in the Altarelli-Parisi kernels
 
       collrem_xi=0.d0
       collrem_lxi=0.d0
-      calculatedborn=.false.
       do iord = 1, nsplitorders
         if (.not.split_type(iord).or.(iord.ne.qed_pos.and.iord.ne.qcd_pos)) cycle
 
@@ -6112,9 +6885,8 @@ C check if any extra_cnt is needed
         if (iextra_cnt.gt.0) then
             if (iord.eq.isplitorder_born) then
             ! this is the contribution from the born ME
-               call sborn_frame(p_born_used,wgt_born)
-               wgt1(1) = ans_cnt(1,iord)
-               wgt1(2) = ans_cnt(2,iord)
+               wgt1(1) = used_cnt(1,iord)
+               wgt1(2) = used_cnt(2,iord)
             else if (iord.eq.isplitorder_cnt) then
             ! this is the contribution from the extra cnt
                call extra_cnt_frame(p_born_used,iextra_cnt,ans_extra_cnt)
@@ -6125,9 +6897,8 @@ C check if any extra_cnt is needed
                stop
             endif
         else
-           call sborn_frame(p_born_used,wgt_born)
-           wgt1(1) = ans_cnt(1,iord)
-           wgt1(2) = ans_cnt(2,iord)
+           wgt1(1) = used_cnt(1,iord)
+           wgt1(2) = used_cnt(2,iord)
         endif
         
         if (iord.eq.qcd_pos) iap = 1
@@ -6147,29 +6918,29 @@ c has to be inserted here
      &       xnorm
 
         amp_split_collrem_xi(1:amp_split_size) = amp_split_collrem_xi(1:amp_split_size)+ 
-     &   dble(amp_split_cnt(1:amp_split_size,1,iord))*oo2pi*collrem_xi_tmp*xnorm
+     &   dble(used_split_cnt(1:amp_split_size,1,iord))*oo2pi*collrem_xi_tmp*xnorm
         amp_split_collrem_lxi(1:amp_split_size) = amp_split_collrem_lxi(1:amp_split_size)+
-     &   dble(amp_split_cnt(1:amp_split_size,1,iord))*oo2pi*collrem_lxi_tmp*xnorm
+     &   dble(used_split_cnt(1:amp_split_size,1,iord))*oo2pi*collrem_lxi_tmp*xnorm
 
         prefact_xi=ap(iap)*log(shat*delta_used/(2*QES2)) -
      &               apprime(iap)
         amp_split_wgtdegrem_xi(1:amp_split_size) = amp_split_wgtdegrem_xi(1:amp_split_size)+
-     &   oo2pi*dble(amp_split_cnt(1:amp_split_size,1,iord))*prefact_xi*xnorm
+     &   oo2pi*dble(used_split_cnt(1:amp_split_size,1,iord))*prefact_xi*xnorm
         amp_split_wgtdegrem_lxi(1:amp_split_size) = amp_split_collrem_lxi(1:amp_split_size)
         amp_split_wgtdegrem_muF(1:amp_split_size) = amp_split_wgtdegrem_muF(1:amp_split_size)-
-     &   oo2pi*dble(amp_split_cnt(1:amp_split_size,1,iord))*ap(iap)*xnorm
+     &   oo2pi*dble(used_split_cnt(1:amp_split_size,1,iord))*ap(iap)*xnorm
         ! amp split for the PDF scheme
         if (PDFscheme.ne.0) then
           amp_split_wgtpsch_p(1:amp_split_size) = amp_split_wgtpsch_p(1:amp_split_size) - 
-     $     dble(amp_split_cnt(1:amp_split_size,1,iord))*xkkernp(iap)*oo2pi*xnorm
+     $     dble(used_split_cnt(1:amp_split_size,1,iord))*xkkernp(iap)*oo2pi*xnorm
           amp_split_wgtpsch_l(1:amp_split_size) = amp_split_wgtpsch_l(1:amp_split_size) - 
-     $     dble(amp_split_cnt(1:amp_split_size,1,iord))*xkkernl(iap)*oo2pi*xnorm
+     $     dble(used_split_cnt(1:amp_split_size,1,iord))*xkkernl(iap)*oo2pi*xnorm
           amp_split_wgtpsch_d(1:amp_split_size) = amp_split_wgtpsch_d(1:amp_split_size) - 
-     $     dble(amp_split_cnt(1:amp_split_size,1,iord))*xkkernd(iap)*oo2pi*xnorm
+     $     dble(used_split_cnt(1:amp_split_size,1,iord))*xkkernd(iap)*oo2pi*xnorm
         endif
 
       enddo
-      calculatedborn=.false.
+C      calculatedborn=.false.
 
       return
       end
@@ -6781,7 +7552,10 @@ c
       
 
 
-      subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
+      subroutine bornsoftvirtual(p,p_born,bsv_wgt,virt_wgt,born_wgt
+     &           ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     &           ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
+     &           ,born_wgt_arg,born_cnt,born_split_cnt,born_saveamp,ret_amp_split)
       use extra_weights
       use mint_module
       implicit none
@@ -6803,6 +7577,7 @@ c      include "fks.inc"
       double precision pp(0:3,nexternal)
       
       double precision wgt1
+      double precision born_wgt_arg,wgt_born
       double precision rwgt,Q,Ej,wgt,contr,eikIreg,m1l_W_finite_CDR
       double precision aso2pi, aeo2pi
       double precision shattmp,dot
@@ -6824,7 +7599,7 @@ c      include "fks.inc"
       common/fks_colors/c,gamma,gammap,gamma_ph,gammap_ph
       double precision c_used, gamma_used, gammap_used
       double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
+C      common/pborn/p_born
       double precision double,single,xmu2
       logical ComputePoles,fksprefact
       parameter (ComputePoles=.false.)
@@ -6873,6 +7648,7 @@ c For the MINT folding
       parameter (zero=0d0)
       parameter (tiny=1d-6)
       include 'orders.inc'
+      include 'born_nhel.inc'
       logical firsttime
       data firsttime / .true. /
       logical need_color_links_used, need_charge_links_used
@@ -6884,8 +7660,14 @@ c For the MINT folding
       common/to_split_type_used/split_type_used
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
+      double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2, nsplitorders)
-      common /c_born_cnt/ ans_cnt
+      complex*16 born_cnt(2, nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double complex born_saveamp(ngraphs,max_bhel)
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include 'nFKSconfigs.inc'
@@ -6901,26 +7683,19 @@ c For the MINT folding
 C to keep track of the various split orders
       integer iamp
       integer orders(nsplitorders)
+      double precision soft_prefactor
       double precision amp_split_born(amp_split_size)
       double precision amp_split_bsv(amp_split_size)
       double precision amp_split_soft(amp_split_size)
-      common /to_amp_split_soft/amp_split_soft
       double precision amp_split_finite_ML(amp_split_size)
-      common /to_amp_split_finite/amp_split_finite_ML
       double precision amp_split_virt_save(amp_split_size)
       save amp_split_virt_save
       double precision amp_split_virt(amp_split_size),
      &      amp_split_born_for_virt(amp_split_size),
      &      amp_split_avv(amp_split_size)
-      common /to_amp_split_virt/amp_split_virt,
-     &                          amp_split_born_for_virt,
-     &                          amp_split_avv
       double precision amp_split_wgtnstmp(amp_split_size),
      $                 amp_split_wgtwnstmpmuf(amp_split_size),
      $                 amp_split_wgtwnstmpmur(amp_split_size)
-      common /to_amp_split_bsv/amp_split_wgtnstmp,
-     $                         amp_split_wgtwnstmpmuf,
-     $                         amp_split_wgtwnstmpmur
       double precision coupl_wgtwnstmpmuf
 
       double precision amp_tot
@@ -7014,18 +7789,18 @@ c entering this function
          write(*,*)shattmp,shat
          stop
       endif
-
-c Born of the n-body contribution, evaluated in the me_frame rest frame
-c (identity unless the run_card asks for a frame; see boost_to_frame.f).
-      call sborn_frame(p_born,wgt1)
+      ans_cnt(:,:) = born_cnt(:,:)
+      ret_amp_split_cnt(:,:,:) = born_split_cnt(:,:,:)
+      ret_saveamp(:,:) = born_saveamp(:,:)
+      wgt1 = born_wgt_arg
 
 c Born contribution:
       bsv_wgt=wgt1
       born_wgt=wgt1
       virt_wgt=0d0
       avv_wgt=0d0 
-      amp_split_born(1:amp_split_size)=amp_split(1:amp_split_size)
-      amp_split_bsv(1:amp_split_size)=amp_split(1:amp_split_size)
+      amp_split_born(1:amp_split_size)=ret_amp_split(1:amp_split_size)
+      amp_split_bsv(1:amp_split_size)=ret_amp_split(1:amp_split_size)
 
       if (abrv.eq.'born') goto 549
       if (abrv.eq.'virt') goto 547
@@ -7109,13 +7884,13 @@ C end of the external particle loop
             bsv_wgt = bsv_wgt+aso2pi*Q*dble(ans_cnt(1,qcd_pos))
             amp_split_bsv(1:amp_split_size)=
      $           amp_split_bsv(1:amp_split_size)+aso2pi*Q
-     $           *dble(amp_split_cnt(1:amp_split_size,1,qcd_pos))
+     $           *dble(ret_amp_split_cnt(1:amp_split_size,1,qcd_pos))
          endif
          if (ipos_ord.eq.qed_pos) then
             bsv_wgt = bsv_wgt+aeo2pi*Q*dble(ans_cnt(1,qed_pos))
             amp_split_bsv(1:amp_split_size)=
      $           amp_split_bsv(1:amp_split_size)+aeo2pi*Q
-     $           *dble(amp_split_cnt(1:amp_split_size,1,qed_pos))
+     $           *dble(ret_amp_split_cnt(1:amp_split_size,1,qed_pos))
          endif
       enddo
 
@@ -7143,7 +7918,9 @@ c I(reg) terms, eq 5.5 of FKS
 C setup the fks i/j info
          call fks_inc_chooser()
 C the following call to born is to setup the goodhel(nfksprocess)
-         call sborn_frame(p_born,wgt1)
+C ZW: should be removed when initital tests are separated from evaluations
+C         ! calculatedBorn = .false.
+C         ! call sborn_amp(p_born,amp2,jamp2,ret_amp_split,ret_amp_split_cnt,wgt1,ans_cnt,ret_saveamp)
          contr=0d0
          do i=1,fks_j_from_i(i_fks,0)
             do j=1,i
@@ -7154,8 +7931,9 @@ C the following call to born is to setup the goodhel(nfksprocess)
 c To be sure that color-correlated Borns work well, we need to have
 c *always* a call to sborn(p_born,wgt) just before. This is okay,
 c because there is a call above in this subroutine
-C wgt includes the gs/w^2 
-                  call sborn_sf_frame(p_born,m,n,wgt)
+C wgt includes the gs/w^2
+                  call sborn_sf_store(p_born,m,n,wgt,ans_cnt,ret_amp_split_cnt
+     &                               ,ret_saveamp,amp_split_soft) 
                   if (wgt.ne.0d0) then
                      call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
@@ -7186,7 +7964,7 @@ c Finite part of one-loop corrections
 c convert to Binoth Les Houches Accord standards
       virt_wgt=0d0
 
-      call sborn_frame(p_born, wgt1)
+      ret_amp_split_cnt(:,:,:) = born_split_cnt(:,:,:)
       ! use the amp_split_cnt as the born to approximate the virtual
       ! check which one of the two (QCD, QED) is !=0
 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -7197,11 +7975,11 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       do iamp=1, amp_split_size
          amp_split_virt(iamp)=0d0
          amp_split_born_for_virt(iamp)=0d0
-         if (dble(amp_split_cnt(iamp,1,qcd_pos)).ne.0d0) then
-            amp_split_born_for_virt(iamp)=dble(amp_split_cnt(iamp,1
+         if (dble(ret_amp_split_cnt(iamp,1,qcd_pos)).ne.0d0) then
+            amp_split_born_for_virt(iamp)=dble(ret_amp_split_cnt(iamp,1
      $           ,qcd_pos))
-         else if (dble(amp_split_cnt(iamp,1,qed_pos)).ne.0d0) then
-            amp_split_born_for_virt(iamp)=dble(amp_split_cnt(iamp,1
+         else if (dble(ret_amp_split_cnt(iamp,1,qed_pos)).ne.0d0) then
+            amp_split_born_for_virt(iamp)=dble(ret_amp_split_cnt(iamp,1
      $           ,qed_pos))
          endif
       enddo
@@ -7210,7 +7988,9 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
          if ((ran2().le.virtual_fraction(ichan) .and.
      $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             call cpu_time(tBefore)
-            Call binothlha_frame(p_born,born_wgt,virt_wgt)
+            Call binothlha_amp_frame(p_born,born_wgt,virt_wgt,
+     $           ret_amp_split,ret_saveamp,amp_split_finite_ML,
+     $           ret_amp_split_cnt)
             do iamp=1,amp_split_size
                amp_split_virt(iamp)=amp_split_finite_ML(iamp)
             enddo
@@ -7269,17 +8049,15 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 
 c eq.(MadFKS.C.13)
       if(abrv.ne.'virt')then
-         ! this is to update the amp_split array
-         call sborn_frame(p_born,wgt1)
          bsv_wgt_mufoqes=0d0
          do iamp=1,amp_split_size
-            if (dble(amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
+            if (dble(ret_amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
             call amp_split_pos_to_orders(iamp, orders)
             wgtcpower=0d0
             if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
             contr_mufoqes=2*pi*(beta0*dble(orders(qcd_pos)-2)/2d0
      $           +ren_group_coeff*wgtcpower)*log(q2fact(1)/QES2)*aso2pi
-     $           *dble(amp_split_cnt(iamp,1,qcd_pos))
+     $           *dble(ret_amp_split_cnt(iamp,1,qcd_pos))
             amp_split_bsv(iamp) = amp_split_bsv(iamp)+contr_mufoqes
             bsv_wgt_mufoqes=bsv_wgt_mufoqes+contr_mufoqes
          enddo
@@ -7290,13 +8068,13 @@ c  eq.(MadFKS.C.14)
       if(abrv(1:2).ne.'vi')then
          bsv_wgt_mufomur=0d0
          do iamp=1,amp_split_size
-            if (dble(amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
+            if (dble(ret_amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
             call amp_split_pos_to_orders(iamp, orders)
             wgtcpower=0d0
             if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
             contr_mufomur=-2*pi*(beta0*dble(orders(qcd_pos)-2)/2d0
      $           +ren_group_coeff*wgtcpower)*log(q2fact(1)/scale**2)
-     $           *aso2pi*dble(amp_split_cnt(iamp,1,qcd_pos))
+     $           *aso2pi*dble(ret_amp_split_cnt(iamp,1,qcd_pos))
             amp_split_bsv(iamp) = amp_split_bsv(iamp)+contr_mufomur
             bsv_wgt_mufomur=bsv_wgt_mufomur+contr_mufomur
          enddo
@@ -7313,7 +8091,6 @@ c  eq.(MadFKS.C.14)
       amp_split_wgtwnstmpmur(1:amp_split_size)=0d0
 
       if(abrv.ne.'born' .and. abrv.ne.'grid')then
-         call sborn_frame(p_born,wgt1)
          if(abrv(1:2).eq.'vi')then
             wgtwnstmpmur=0.d0
          else
@@ -7354,7 +8131,7 @@ C     set charge factors
                      endif
                   endif
                   do iamp=1,amp_split_size
-                     if (dble(amp_split_cnt(iamp,1,ipos_ord)).eq.0d0)
+                     if (dble(ret_amp_split_cnt(iamp,1,ipos_ord)).eq.0d0)
      $                    cycle
                      if (ipos_ord.eq.qcd_pos) then
                         coupl_wgtwnstmpmuf=aso2pi
@@ -7364,17 +8141,17 @@ C     set charge factors
                      amp_split_wgtwnstmpmuf(iamp)
      $                    =amp_split_wgtwnstmpmuf(iamp)-(gamma_used+2d0
      $                    *c_used*dlog(xicut_used))
-     $                    *dble(amp_split_cnt(iamp,1,ipos_ord))
+     $                    *dble(ret_amp_split_cnt(iamp,1,ipos_ord))
      $                    *coupl_wgtwnstmpmuf
                   enddo
                enddo            !end loop i=1,nincoming
             enddo               !end loop iord=1,2
             do iamp=1,amp_split_size
-               if (dble(amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
+               if (dble(ret_amp_split_cnt(iamp,1,qcd_pos)).eq.0d0) cycle
                call amp_split_pos_to_orders(iamp, orders)
                wgtcpower=0d0
                if (cpower_pos.gt.0) wgtcpower=dble(orders(cpower_pos))
-               amp_split_wgtwnstmpmur(iamp)=dble(amp_split_cnt(iamp,1
+               amp_split_wgtwnstmpmur(iamp)=dble(ret_amp_split_cnt(iamp,1
      $              ,qcd_pos))*2d0*pi*(beta0*dble(orders(qcd_pos)-2)/2d0
      $              +ren_group_coeff*wgtcpower)*aso2pi
             enddo
@@ -7388,7 +8165,7 @@ c we need the pure NLO terms only
      $        /QES2)*amp_split_wgtwnstmpmur(1:amp_split_size)
       endif
 
-      amp_split(1:amp_split_size)=amp_split_bsv(1:amp_split_size)
+      ret_amp_split(1:amp_split_size)=amp_split_bsv(1:amp_split_size)
 
       if (abrv(1:2).eq.'vi') then
          bsv_wgt=bsv_wgt-born_wgt
@@ -7396,12 +8173,11 @@ c we need the pure NLO terms only
       endif
 
       if (ComputePoles) then
-         call sborn_frame(p_born,wgt1)
 
          print*,"           "
          write(*,123)((p(i,j),i=0,3),j=1,nexternal)
          xmu2=q2fact(1)
-         call getpoles(p,xmu2,double,single,fksprefact)
+         call getpoles_vec(p,xmu2,double,single,fksprefact,ret_amp_split_cnt)
          print*,"BORN",born_wgt!/conv
          print*,"DOUBLE",double
          print*,"SINGLE",single
@@ -7661,7 +8437,7 @@ c
       END
 
 
-      subroutine getpoles(p,xmu2,double,single,fksprefact)
+      subroutine getpoles(p,xmu2,double,single,fksprefact,ret_amp_split_cnt)
 c Returns the residues of double and single poles according to 
 c eq.(B.1) and eq.(B.2) if fksprefact=.true.. When fksprefact=.false.,
 c the prefactor (mu2/Q2)^ep in eq.(B.1) is expanded, and giving an
@@ -7696,14 +8472,23 @@ c      include "fks.inc"
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0d0)
       include 'orders.inc'
+      include 'born_nhel.inc'
       double precision amp_split_poles_FKS(amp_split_size,2)
       common /to_amp_split_poles_FKS/amp_split_poles_FKS
+      double precision soft_prefactor
       double precision amp_split_soft(amp_split_size)
-      common /to_amp_split_soft/amp_split_soft
+      double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2, nsplitorders)
-      common /c_born_cnt/ ans_cnt
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
+
+c      common /c_born_cnt/ ans_cnt
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
+      logical calculatedBorn
+      common /ccalculatedBorn/ calculatedBorn
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include "nFKSconfigs.inc"
@@ -7749,7 +8534,7 @@ C links
       enddo
       aso2pi=g**2/(8d0*pi**2)
       aeo2pi=dble(gal(1))**2/(8d0*pi**2)
-      call sborn_frame(p_born,wgt1)
+      dummy_amp_split_cnt(:,:,:) = ret_amp_split_cnt(:,:,:)
 c QCD Born terms
       contr1 = 0d0
       contr2 = 0d0
@@ -7775,9 +8560,9 @@ c QCD Born terms
 
       do i=1,amp_split_size
         amp_split_poles_FKS(i,1) = amp_split_poles_FKS(i,1)+
-     %      dble(amp_split_cnt(i,1,qcd_pos))*contr1*aso2pi
+     %      dble(dummy_amp_split_cnt(i,1,qcd_pos))*contr1*aso2pi
         amp_split_poles_FKS(i,2) = amp_split_poles_FKS(i,2)+
-     %      dble(amp_split_cnt(i,1,qcd_pos))*contr2*aso2pi
+     %      dble(dummy_amp_split_cnt(i,1,qcd_pos))*contr2*aso2pi
       enddo
 
 c QED Born terms
@@ -7804,9 +8589,9 @@ c QED Born terms
 
       do i=1,amp_split_size
         amp_split_poles_FKS(i,1) = amp_split_poles_FKS(i,1)+
-     %      dble(amp_split_cnt(i,1,qed_pos))*contr1*aeo2pi
+     %      dble(dummy_amp_split_cnt(i,1,qed_pos))*contr1*aeo2pi
         amp_split_poles_FKS(i,2) = amp_split_poles_FKS(i,2)+
-     %      dble(amp_split_cnt(i,1,qed_pos))*contr2*aeo2pi
+     %      dble(dummy_amp_split_cnt(i,1,qed_pos))*contr2*aeo2pi
       enddo
 
 c Colour and charge-linked Born terms
@@ -7827,7 +8612,8 @@ c Colour and charge-linked Born terms
 C setup the fks i/j info
         call fks_inc_chooser()
 C the following call to born is to setup the goodhel(nfksprocess)
-        call sborn_frame(p_born,wgt1)
+        calculatedBorn = .false.
+        call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
 
         contr1=0d0
         do i=1,fks_j_from_i(i_fks,0)
@@ -7836,7 +8622,7 @@ C the following call to born is to setup the goodhel(nfksprocess)
             n=fks_j_from_i(i_fks,j)
             if( m.ne.n .and. n.ne.i_fks .and. m.ne.i_fks )then
 C wgt includes the gs/w^2 factor
-              call sborn_sf_frame(p_born,m,n,wgt)
+              call sborn_sf(p_born,m,n,wgt,ans_cnt,DUMMY_AMP_SPLIT_CNT,ret_saveamp,amp_split_soft)
 c The factor -2 compensate for that missing in sborn_sf
               wgt=-2d0*wgt
               if(wgt.ne.0.d0)then
@@ -7881,6 +8667,235 @@ C restore need_color/charge_links
 c
       return
       end
+
+      
+      subroutine getpoles_vec(p,xmu2,double,single,fksprefact,ret_amp_split_cnt)
+c Returns the residues of double and single poles according to 
+c eq.(B.1) and eq.(B.2) if fksprefact=.true.. When fksprefact=.false.,
+c the prefactor (mu2/Q2)^ep in eq.(B.1) is expanded, and giving an
+c extra contribution to the single pole
+      implicit none
+      include "genps.inc"
+      include 'nexternal.inc'
+c      include "fks.inc"
+      integer fks_j_from_i(nexternal,0:nexternal)
+     &     ,particle_type(nexternal),pdg_type(nexternal)
+      common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
+      double precision particle_charge(nexternal), particle_charge_born(nexternal-1)
+      common /c_charges/particle_charge
+      common /c_charges_born/particle_charge_born
+      logical particle_tag(nexternal)
+      common /c_particle_tag/particle_tag
+      include 'coupl.inc'
+      include 'q_es.inc'
+      double precision p(0:3,nexternal),xmu2,double,single
+      logical fksprefact
+      double precision c(0:1),gamma(0:1),gammap(0:1),gamma_ph,gammap_ph
+      common/fks_colors/c,gamma,gammap,gamma_ph,gammap_ph
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      double precision wgt1
+      double precision born,wgt,kikj,dot,vij,aso2pi,aeo2pi
+      double precision contr1, contr2
+      integer aj,i,j,m,n,ilink,k
+      double precision pmass(nexternal),zero,pi
+      parameter (pi=3.1415926535897932385d0)
+      parameter (zero=0d0)
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision amp_split_poles_FKS(amp_split_size,2)
+      common /to_amp_split_poles_FKS/amp_split_poles_FKS
+      double precision soft_prefactor
+      double precision amp_split_soft(amp_split_size)
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2, nsplitorders)
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
+
+c      common /c_born_cnt/ ans_cnt
+      logical need_color_links, need_charge_links
+      common /c_need_links/need_color_links, need_charge_links
+      logical calculatedBorn
+      common /ccalculatedBorn/ calculatedBorn
+      double precision oneo8pi2
+      parameter(oneo8pi2 = 1d0/(8d0*pi**2))
+      include "nFKSconfigs.inc"
+      INTEGER nFKSprocess, nFKSprocess_save, nFKSprocess_col, nFKSprocess_chg
+      COMMON/c_nFKSprocess/nFKSprocess
+      logical need_color_links_used, need_charge_links_used
+      double precision soft_fact
+
+      include "pmass.inc"
+
+      nFKSprocess_col = 0
+      nFKSprocess_chg = 0
+
+      need_color_links_used = .false.
+      need_charge_links_used = .false.
+      
+C check if any real emission need cahrge/color links
+      nFKSprocess_save = nFKSprocess
+      do nFKSprocess = 1, FKS_configs
+        call fks_inc_chooser()
+        need_color_links_used = need_color_links_used .or. need_color_links
+        need_charge_links_used = need_charge_links_used .or. need_charge_links
+C keep track of which FKS configuration actually needs color/charge
+C links
+        if (need_color_links.and.nFKSprocess_col.eq.0)
+     1          nFKSprocess_col = nFKSprocess
+        if (need_charge_links.and.nFKSprocess_chg.eq.0)
+     1          nFKSprocess_chg = nFKSprocess
+      enddo
+      nFKSprocess = nFKSprocess_save
+      call fks_inc_chooser()
+
+      double=0.d0
+      single=0.d0
+      ! reset the amp_split_poles_FKS
+      do i=1,amp_split_size
+        amp_split_poles_FKS(i,1)=0d0
+        amp_split_poles_FKS(i,2)=0d0
+      enddo
+      aso2pi=g**2/(8d0*pi**2)
+      aeo2pi=dble(gal(1))**2/(8d0*pi**2)
+      dummy_amp_split_cnt(:,:,:) = ret_amp_split_cnt(:,:,:)
+c QCD Born terms
+      contr1 = 0d0
+      contr2 = 0d0
+      born=dble(ans_cnt(1,qcd_pos))
+      do i=1,nexternal
+        if(i.ne.i_fks .and. particle_type(i).ne.1)then
+          if (particle_type(i).eq.8) then
+             aj=0
+          elseif(abs(particle_type(i)).eq.3) then
+             aj=1
+          endif
+          if(pmass(i).eq.ZERO)then
+            contr2=contr2-c(aj)
+            contr1=contr1-gamma(aj)
+          else
+            contr1=contr1-c(aj)
+          endif
+        endif
+      enddo
+
+      double=double+contr2*born*aso2pi
+      single=single+contr1*born*aso2pi
+
+      do i=1,amp_split_size
+        amp_split_poles_FKS(i,1) = amp_split_poles_FKS(i,1)+
+     %      dble(dummy_amp_split_cnt(i,1,qcd_pos))*contr1*aso2pi
+        amp_split_poles_FKS(i,2) = amp_split_poles_FKS(i,2)+
+     %      dble(dummy_amp_split_cnt(i,1,qcd_pos))*contr2*aso2pi
+      enddo
+
+c QED Born terms
+      contr1 = 0d0
+      contr2 = 0d0
+      born=dble(ans_cnt(1,qed_pos))
+      do i=1,nexternal
+        if(i.ne.i_fks.and.(particle_charge(i).ne.0d0.or.pdg_type(i).eq.22))then
+          if(pmass(i).eq.ZERO)then
+            if (pdg_type(i).ne.22) then
+              contr2=contr2-particle_charge(i)**2
+              contr1=contr1-3d0/2d0*particle_charge(i)**2
+            elseif (.not.particle_tag(i)) then
+              contr1=contr1-gamma_ph
+            endif
+          else
+            contr1=contr1-particle_charge(i)**2
+          endif
+        endif
+      enddo
+
+      double=double+contr2*born*aeo2pi
+      single=single+contr1*born*aeo2pi
+
+      do i=1,amp_split_size
+        amp_split_poles_FKS(i,1) = amp_split_poles_FKS(i,1)+
+     %      dble(dummy_amp_split_cnt(i,1,qed_pos))*contr1*aeo2pi
+        amp_split_poles_FKS(i,2) = amp_split_poles_FKS(i,2)+
+     %      dble(dummy_amp_split_cnt(i,1,qed_pos))*contr2*aeo2pi
+      enddo
+
+c Colour and charge-linked Born terms
+      nFKSprocess_save = nFKSprocess
+      do ilink = 1, 2
+        if (ilink.eq.1) then
+          if (.not. need_color_links_used) cycle
+          need_color_links = .true.
+          need_charge_links = .false.
+          nFKSprocess=nFKSprocess_col
+        else
+          if (.not. need_charge_links_used) cycle
+          need_color_links = .false.
+          need_charge_links = .true.
+          nFKSprocess=nFKSprocess_chg
+        endif
+
+C setup the fks i/j info
+        call fks_inc_chooser()
+C the following call to born is to setup the goodhel(nfksprocess)
+C        calculatedBorn = .false.
+C        call sborn_amp(p_born,amp2,jamp2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,wgt1,ans_cnt,ret_saveamp)
+
+        contr1=0d0
+        do i=1,fks_j_from_i(i_fks,0)
+          do j=1,i
+            m=fks_j_from_i(i_fks,i)
+            n=fks_j_from_i(i_fks,j)
+            if( m.ne.n .and. n.ne.i_fks .and. m.ne.i_fks )then
+C wgt includes the gs/w^2 factor
+              call sborn_sf_store(p_born,m,n,wgt,ans_cnt,DUMMY_AMP_SPLIT_CNT,ret_saveamp,amp_split_soft)
+c The factor -2 compensate for that missing in sborn_sf
+              wgt=-2d0*wgt
+              if(wgt.ne.0.d0)then
+                if(pmass(m).eq.zero.and.pmass(n).eq.zero)then
+                  kikj=dot(p(0,n),p(0,m))
+                  soft_fact=dlog(2d0*kikj/QES2)
+                elseif(pmass(m).ne.zero.and.pmass(n).eq.zero)then
+                  kikj=dot(p(0,n),p(0,m))
+                  soft_fact=-0.5d0*dlog(pmass(m)**2/QES2)+dlog(2d0*kikj/QES2)
+                elseif(pmass(m).eq.zero.and.pmass(n).ne.zero)then
+                  kikj=dot(p(0,n),p(0,m))
+                  soft_fact=-0.5d0*dlog(pmass(n)**2/QES2)+dlog(2d0*kikj/QES2)
+                elseif(pmass(m).ne.zero.and.pmass(n).ne.zero)then
+                  kikj=dot(p(0,n),p(0,m))
+                  vij=dsqrt(1d0-(pmass(n)*pmass(m)/kikj)**2)
+                  if (vij .gt. 1d-6) then
+                    soft_fact=0.5d0*1/vij*log((1+vij)/(1-vij))
+                  else
+                    soft_fact=(1d0+vij**2/3d0+vij**4/5d0)
+                  endif
+                else
+                  write(*,*)'Error in getpoles',i,j,n,m,pmass(n),pmass(m)
+                  stop
+                endif
+                contr1=contr1+soft_fact*wgt
+                do k=1,amp_split_size
+                  amp_split_poles_FKS(k,1)=amp_split_poles_FKS(k,1)+
+     $             amp_split_soft(k)*(-2d0)*soft_fact*oneo8pi2
+                enddo
+              endif
+            endif
+          enddo
+        enddo
+        single=single+contr1*oneo8pi2
+      enddo
+
+C restore need_color/charge_links
+      nFKSprocess = nFKSprocess_save
+      call fks_inc_chooser()
+
+      if(.not.fksprefact)single=single+double*dlog(xmu2/QES2)
+c
+      return
+      end
+
 
 
       subroutine setfksfactor(match_to_shower)

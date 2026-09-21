@@ -61,7 +61,7 @@ C###############################################################################
       end module ALOHA_OBJECT
 
 
-      subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
+      recursive subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -227,7 +227,7 @@ c
 
 
 
-      subroutine oxxxxx(p,fmass,nhel,nsf , flavor, fo)
+      recursive subroutine oxxxxx(p,fmass,nhel,nsf , flavor, fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -387,7 +387,7 @@ c
       return
       end
 
-      subroutine pxxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine pxxxxx(p,tmass,nhel,nst , tc)
 
 c    CP3 2009.NOV
 
@@ -427,7 +427,7 @@ c
       return
       end
 
-      subroutine sxxxxx(p,nss , sc)
+      recursive subroutine sxxxxx(p,nss , sc)
 c
 c This subroutine computes a complex SCALAR wavefunction.
 c
@@ -489,7 +489,7 @@ c
       return
       end
 
-      subroutine txxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine txxxxx(p,tmass,nhel,nst , tc)
 c
 c This subroutine computes a TENSOR wavefunction.
 c
@@ -663,7 +663,7 @@ c construct eps0
       end
 
 
-      subroutine vxxxxx(p,vmass,nhel,nsv , vc)
+      recursive subroutine vxxxxx(p,vmass,nhel,nsv , vc)
 c
 c This subroutine computes a VECTOR wavefunction.
 c
@@ -868,7 +868,7 @@ c     spin triplet
       return
       end
 
-      subroutine boostx(p,q , pboost)
+      recursive subroutine boostx(p,q , pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -954,7 +954,7 @@ c
       return
       end
 
-      subroutine boostm(p,q,m, pboost)
+      recursive subroutine boostm(p,q,m, pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -1040,7 +1040,7 @@ c
       return
       end
 
-      subroutine momntx(energy,mass,costh,phi , p)
+      recursive subroutine momntx(energy,mass,costh,phi , p)
 c
 c This subroutine sets up a four-momentum from the four inputs.
 c
@@ -1114,7 +1114,7 @@ c#endif
 c
       return
       end
-      subroutine rotxxx(p,q , prot)
+      recursive subroutine rotxxx(p,q , prot)
 c
 c This subroutine performs the spacial rotation of a four-momentum.
 c the momentum p is assumed to be given in the frame where the spacial
@@ -1181,7 +1181,7 @@ c
       return
       end
 
-      subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
+      recursive subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
 c
 c This subroutine sets up two four-momenta in the two particle rest
 c frame.
@@ -1264,7 +1264,7 @@ c
 
 
 
-      subroutine irxxxx(p,rmass,nhel,nsr , ri)
+      recursive subroutine irxxxx(p,rmass,nhel,nsr , ri)
 c
 c This subroutine computes a Rarita-Schwinger wavefunction of spin-3/2
 c fermion with the flowing-IN fermion number.
@@ -1611,7 +1611,7 @@ c spin-3/2 fermion wavefunction
 
       return
       end
-      subroutine orxxxx(p,rmass,nhel,nsr , ro)
+      recursive subroutine orxxxx(p,rmass,nhel,nsr , ro)
 c
 c This subroutine computes a Rarita-Schwinger wavefunction of spin-3/2
 c fermion with the flowing-IN fermion number.
@@ -2020,7 +2020,7 @@ c spin-3/2 fermion wavefunction
       return
       end
 
-      subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
+      recursive subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
 
       use aloha_object
       integer nb ! size of the vectors
@@ -2040,7 +2040,7 @@ c     local variable
       return
       end
      
-      subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
+      recursive subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
       use aloha_object
       implicit none 
       integer nb ! size of the vectors

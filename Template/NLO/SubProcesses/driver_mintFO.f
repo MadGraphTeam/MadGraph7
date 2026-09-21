@@ -342,6 +342,8 @@ c timing statistics
       include 'run.inc'
       include 'orders.inc'
       include 'fks_info.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,born_vol,sig,x(99),MC_int_wgt
      $     ,f_class(nintegrals),sig_no_nbody
@@ -364,6 +366,10 @@ c timing statistics
       common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
       double precision p_born(0:3,nexternal-1)
       common /pborn/   p_born
+      
+      double precision p_born_coll(0:3,nexternal-1)
+      common/pborn_coll/p_born_coll
+
       double precision virtual_over_born
       common/c_vob/virtual_over_born
       logical                calculatedBorn
@@ -373,14 +379,71 @@ c timing statistics
 c PineAPPL
       logical pineappl
       common /for_pineappl/ pineappl
-      double precision       wgt_ME_born,wgt_ME_real
-      common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
+c      double precision       wgt_ME_born,wgt_ME_real
+c      common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
       integer physical_fks_map(0:fks_configs,0:fks_configs,0:2)
       save ini_fin_fks_map,physical_fks_map
       include 'has_ewsudakov.inc'
+
+C Born variables
+      double precision born_amp2(ngraphs), born_jamp2(0:ncolor)
+      double precision ev_amp2(ngraphs),norad_amp2(ngraphs)
+      complex*16 born_ans_cnt(2,nsplitorders)
+      double precision born_amp_split(amp_split_size)
+      double complex born_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
+      double precision wgt_born
+
+C Storage for born-like collinears
+      double precision coll_amp2(ngraphs), coll_jamp2(0:ncolor)
+      complex*16 coll_ans_cnt(2,nsplitorders)
+      double precision coll_amp_split(amp_split_size)
+      double complex coll_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex coll_saveamp(ngraphs,max_bhel)
+      double precision wgt_coll
+
+C Virtual variables
+      double precision amp_split_virt(amp_split_size),
+     &     amp_split_born_for_virt(amp_split_size),
+     &     amp_split_avv(amp_split_size)
+      double precision amp_split_wgtnstmp(amp_split_size),
+     $                 amp_split_wgtwnstmpmuf(amp_split_size),
+     $                 amp_split_wgtwnstmpmur(amp_split_size)
+      double precision bsv_wgt,virt_wgt,born_wgt
+
+C Real variables
+      double precision zero, one
+      parameter (zero=0d0,one=1d0)
+      double precision real_amp_split(amp_split_size)
+      double precision fx_ev, fx_s, fx_c, fx_sc
+      double precision deg_xi_c, deg_lxi_c, deg_xi_sc, deg_lxi_sc
+      double precision    xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
+     $                    ,p_i_fks_cnt(0:3,-2:2)
+      common/fksvariables/xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev,p_i_fks_cnt
+      double precision   xi_i_fks_cnt(-2:2)
+      common /cxiifkscnt/xi_i_fks_cnt
+C Real deg amplitudes
+      double precision amp_split_collrem_xi(amp_split_size), 
+     $                 amp_split_collrem_lxi(amp_split_size),
+     $                 amp_split_wgtdegrem_xi(amp_split_size),
+     $                 amp_split_wgtdegrem_lxi(amp_split_size),
+     $                 amp_split_wgtdegrem_muF(amp_split_size)
+      double precision amp_split_wgtpsch_p(amp_split_size),
+     $                 amp_split_wgtpsch_l(amp_split_size),
+     $                 amp_split_wgtpsch_d(amp_split_size)
+      double precision p_born_used(0:3,nexternal-1)
+      double precision p_born_ev(0:3,nexternal-1)
+      common/pborn_ev/p_born_ev
+      double precision p_born_norad(0:3,nexternal-1)
+      common/pborn_norad/p_born_norad
+
+      logical storeCalculatedBorn
+
+      integer              nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
 
       logical use_evpr, passcuts_coll
       common /to_use_evpr/use_evpr
@@ -417,10 +480,10 @@ c PineAPPL
          born_wgt_mint(iamp)=0d0
       enddo
       virtual_over_born=0d0
-      wgt_me_born=0d0
-      wgt_me_real=0d0
+c      wgt_me_born=0d0
+c      wgt_me_real=0d0
       if (ickkw.eq.-1) H1_factor_virt=0d0
-      if (ickkw.eq.3) call set_FxFx_scale(0,p)
+      if (ickkw.eq.3) call set_FxFx_scale(0,p,nFKSprocess)
       call update_vegas_x(xx,x)
       nFKS_sector=ini_fin_fks(ichan)
 
@@ -443,7 +506,7 @@ c that flavour is stratified rather than Monte Carlo sampled.
             wgt_me_born=0d0
             wgt_me_real=0d0
             if (ickkw.eq.-1) H1_factor_virt=0d0
-            if (ickkw.eq.3) call set_FxFx_scale(0,p)
+            if (ickkw.eq.3) call set_FxFx_scale(0,p,nFKSprocess)
 
             nFKS_born=BORN_FKS_CONFIG_D(iflav_config)
             born_class=BORN_FLAVOR_INDEX_D(nFKS_born)
@@ -453,7 +516,7 @@ c Evaluate each physical Born class once without a topology correction.
             if (abrv.ne.'real') then
                nbody=.true.
                calculatedBorn=.false.
-               call update_fks_dir(nFKS_born)
+               call update_fks_dir_FO(nFKS_born)
                if (nFKS_sector.eq.0) then
                   jac=1d0
                else
@@ -464,20 +527,41 @@ c Evaluate each physical Born class once without a topology correction.
                   call compute_prefactors_nbody(vegas_wgt)
                   call set_cms_stuff(izero)
                   if (ickkw.eq.3)
-     $                 call set_FxFx_scale(1,p1_cnt(0,1,0))
+     $                 call set_FxFx_scale(1,p1_cnt(0,1,0),
+     $                 nFKSprocess)
                   passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
                   if (passcuts_nbody) then
                      pass_cuts_check=.true.
                      call set_alphaS(p1_cnt(0,1,0))
-                     call include_multichannel_enhance(1)
-                     if (abrv(1:2).ne.'vi') then
-                        call compute_born
-                        if(abrv.ne.'born'.and.abrv.ne.'bovi')
-     $                       call compute_ewsudakov
-                     endif
-                     if (abrv.ne.'born'.and.abrv.ne.'bosk') then
-                        call compute_nbody_noborn
-                     endif
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call include_multichannel_enhance(1,born_amp2,
+     $                     ev_amp2,norad_amp2)
+                      if (abrv(1:2).ne.'vi') then
+                         call compute_born(born_amp_split,wgt_born)
+                         if(abrv.ne.'born'.and.abrv.ne.'bovi')
+     $                       call compute_ewsudakov(p_born,wgt_born,
+     $                       born_saveamp)
+                      endif
+                      if (abrv.ne.'born'.and.abrv.ne.'bosk') then
+                         call bornsoftvirtual(p1_cnt(0,1,0),p_born,
+     $                    bsv_wgt,virt_wgt,born_wgt,
+     $                    amp_split_virt,amp_split_born_for_virt,
+     $                    amp_split_avv,amp_split_wgtnstmp,
+     $                    amp_split_wgtwnstmpmuf,
+     $                    amp_split_wgtwnstmpmur,wgt_born,
+     $                    born_ans_cnt,born_amp_split_cnt,
+     $                    born_saveamp,born_amp_split)
+                         call compute_nbody_noborn(p1_cnt(0,1,0),
+     $                    bsv_wgt,virt_wgt,born_wgt,
+     $                    amp_split_virt,amp_split_born_for_virt,
+     $                    amp_split_avv,amp_split_wgtnstmp,
+     $                    amp_split_wgtwnstmpmuf,
+     $                    amp_split_wgtwnstmpmur,born_amp_split,
+     $                    wgt_born)
+                      endif
                   endif
                endif
             endif
@@ -498,40 +582,177 @@ c associated to the initial state. Do not extend this to event generation.
                wgt_me_born=0d0
                wgt_me_real=0d0
                jac=1d0/vol
-               call update_fks_dir(iFKS)
+               call update_fks_dir_FO(iFKS)
                call generate_momenta(nndim,iconfig,jac,x,p)
                if (p_born(0,1).ge.0d0) then
                   call compute_prefactors_n1body(vegas_wgt,jac)
                   call set_cms_stuff(izero)
                   if (ickkw.eq.3)
-     $                 call set_FxFx_scale(2,p1_cnt(0,1,0))
+     $                 call set_FxFx_scale(2,p1_cnt(0,1,0),
+     $                 nFKSprocess)
                   passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
                   call set_cms_stuff(ione)
                   passcuts_coll=(use_evpr.and.passcuts_nbody).or.
      $                 passcuts(p1_cnt(0,1,1),rwgt)
                   call set_cms_stuff(mohdr)
-                  if (ickkw.eq.3) call set_FxFx_scale(3,p)
+                  if (ickkw.eq.3)
+     $                 call set_FxFx_scale(3,p,nFKSprocess)
                   passcuts_n1body=passcuts(p,rwgt)
                   if (passcuts_nbody .and. abrv.ne.'real') then
                      pass_cuts_check=.true.
                      call set_cms_stuff(izero)
                      call set_alphaS(p1_cnt(0,1,0))
-                     call include_multichannel_enhance(3)
-                     call compute_soft_counter_term(0d0)
-                     call set_cms_stuff(itwo)
-                     call compute_soft_collinear_counter_term(0d0)
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,real_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call include_multichannel_enhance(3,born_amp2,
+     $                     ev_amp2,norad_amp2)
+                      call sreal_store(p1_cnt(0,1,0),0d0,
+     $                     y_ij_fks_ev,fx_s,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,
+     $                     born_amp_split_cnt,born_saveamp,
+     $                     coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_soft_counter_term(0d0,
+     $                     real_amp_split,fx_s)
+                      call set_cms_stuff(itwo)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_deg(p1_cnt(0,1,2),zero,one,
+     $                     deg_xi_sc,deg_lxi_sc,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d,born_ans_cnt,
+     $                     born_amp_split_cnt,coll_ans_cnt,
+     $                     coll_amp_split_cnt)
+                      p_born_used(:,:)=p_born(:,:)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_store(p1_cnt(0,1,2),zero,one,
+     $                     fx_sc,real_amp_split,born_amp_split,
+     $                     born_ans_cnt,born_amp_split_cnt,
+     $                     born_saveamp,coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_soft_collinear_counter_term(0d0,
+     $                     real_amp_split,fx_sc,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d)
                   endif
                   if (passcuts_coll .and. abrv.ne.'real') then
                      call set_alphaS(p1_cnt(0,1,1))
                      call set_cms_stuff(ione)
-                     call compute_collinear_counter_term(0d0)
+                      storeCalculatedBorn=calculatedBorn
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),
+     $                     one,deg_xi_c,deg_lxi_c,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d,born_ans_cnt,
+     $                     born_amp_split_cnt,coll_ans_cnt,
+     $                     coll_amp_split_cnt)
+                      p_born_used(:,:)=p_born(:,:)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_store(p1_cnt(0,1,1),
+     $                     xi_i_fks_cnt(1),one,fx_c,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,
+     $                     born_amp_split_cnt,born_saveamp,
+     $                     coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_collinear_counter_term(0d0,
+     $                     real_amp_split,fx_c,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d)
                   endif
                   if (passcuts_n1body) then
                      pass_cuts_check=.true.
-                     call set_cms_stuff(mohdr)
-                     call set_alphaS(p)
-                     call include_multichannel_enhance(2)
-                     call compute_real_emission(p,1d0)
+                      call set_cms_stuff(mohdr)
+                      call set_alphaS(p)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      ev_amp2(:)=0d0
+                      norad_amp2(:)=0d0
+                      if (p_born_ev(0,1).gt.0d0) then
+                         calculatedBorn=.false.
+                         call sborn_amp_frame(p_born_ev,ev_amp2,
+     $                        coll_jamp2,coll_amp_split,
+     $                        coll_amp_split_cnt,wgt_coll,
+     $                        coll_ans_cnt,coll_saveamp)
+                      endif
+                      if (p_born_norad(0,1).gt.0d0) then
+                         calculatedBorn=.false.
+                         call sborn_amp_frame(p_born_norad,norad_amp2,
+     $                        coll_jamp2,coll_amp_split,
+     $                        coll_amp_split_cnt,wgt_coll,
+     $                        coll_ans_cnt,coll_saveamp)
+                      endif
+                      call include_multichannel_enhance(2,born_amp2,
+     $                     ev_amp2,norad_amp2)
+                      storeCalculatedBorn=calculatedBorn
+                      p_born_used(:,:)=p_born(:,:)
+                      calculatedBorn=.false.
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,
+     $                     fx_ev,real_amp_split,born_amp_split,
+     $                     born_ans_cnt,born_amp_split_cnt,
+     $                     born_saveamp,coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_real_emission(p,1d0,
+     $                     real_amp_split,fx_ev)
                   endif
                endif
             enddo
@@ -560,7 +781,7 @@ c The nbody contributions
       nbody=.true.
       calculatedBorn=.false.
       call get_born_nFKSprocess(nFKS_picked,nFKS_born)
-      call update_fks_dir(nFKS_born)
+      call update_fks_dir_FO(nFKS_born)
       if (ini_fin_fks(ichan).eq.0) then
          jac=1d0
       else
@@ -571,18 +792,32 @@ c The nbody contributions
       if (p_born(0,1).lt.0d0) goto 12
       call compute_prefactors_nbody(vegas_wgt)
       call set_cms_stuff(izero)
-      if (ickkw.eq.3) call set_FxFx_scale(1,p1_cnt(0,1,0))
+      if (ickkw.eq.3) call set_FxFx_scale(1,p1_cnt(0,1,0),nFKSprocess)
       passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
       if (passcuts_nbody) then
          pass_cuts_check=.true.
          call set_alphaS(p1_cnt(0,1,0))
-         call include_multichannel_enhance(1)
+         call sborn_amp_frame(p_born,born_amp2,born_jamp2,
+     $        born_amp_split,born_amp_split_cnt,wgt_born,
+     $        born_ans_cnt,born_saveamp)
+         call include_multichannel_enhance(1,born_amp2,ev_amp2,
+     $        norad_amp2)
          if (abrv(1:2).ne.'vi') then
-            call compute_born
-            if(abrv.ne.'born'.and.abrv.ne.'bovi') call compute_ewsudakov
+            call compute_born(born_amp_split,wgt_born)
+            if(abrv.ne.'born'.and.abrv.ne.'bovi')
+     $           call compute_ewsudakov(p_born,wgt_born,born_saveamp)
          endif
          if (abrv.ne.'born'.and.abrv.ne.'bosk') then
-            call compute_nbody_noborn
+            call bornsoftvirtual(p1_cnt(0,1,0),p_born,bsv_wgt,
+     $     virt_wgt,born_wgt
+     $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,
+     $     amp_split_wgtwnstmpmur,wgt_born,born_ans_cnt,
+     $     born_amp_split_cnt,born_saveamp,born_amp_split)
+            call compute_nbody_noborn(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
+     $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
+     $     ,born_amp_split,wgt_born)
          endif
       endif
 
@@ -609,42 +844,133 @@ c The n+1-body contributions (including counter terms)
          ! MZ this is a temporary fix for processes without
          ! soft singularities associated to the initial state
          ! DO NOT extend this fix to event generation
-         wgt_me_born=0d0
-         wgt_me_real=0d0
+c         wgt_me_born=0d0
+c         wgt_me_real=0d0
          jac=MC_int_wgt
-         call update_fks_dir(iFKS)
+         call update_fks_dir_FO(iFKS)
          call generate_momenta(nndim,iconfig,jac,x,p)
          if (p_born(0,1).lt.0d0) cycle
          call compute_prefactors_n1body(vegas_wgt,jac)
          call set_cms_stuff(izero)
-         if (ickkw.eq.3) call set_FxFx_scale(2,p1_cnt(0,1,0))
+         if (ickkw.eq.3) call set_FxFx_scale(2,p1_cnt(0,1,0),nFKSprocess)
          passcuts_nbody =passcuts(p1_cnt(0,1,0),rwgt)
          ! needed for the mapping without event projection
          call set_cms_stuff(ione)
          passcuts_coll =(use_evpr.and.passcuts_nbody).or.passcuts(p1_cnt(0,1,1),rwgt)
          call set_cms_stuff(mohdr)
-         if (ickkw.eq.3) call set_FxFx_scale(3,p)
+         if (ickkw.eq.3) call set_FxFx_scale(3,p,nFKSprocess)
          passcuts_n1body=passcuts(p,rwgt)
          if (passcuts_nbody .and. abrv.ne.'real') then
             pass_cuts_check=.true.
             call set_cms_stuff(izero)
             call set_alphaS(p1_cnt(0,1,0))
-            call include_multichannel_enhance(3)
-            call compute_soft_counter_term(0d0)
+            call include_multichannel_enhance(3,born_amp2,ev_amp2,
+     $           norad_amp2)
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,real_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+            call sreal_store(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,real_amp_split
+     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_soft_counter_term(0d0,real_amp_split,fx_s)
             call set_cms_stuff(itwo)
-            call compute_soft_collinear_counter_term(0d0)
+            calculatedBorn=.false.
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+            calculatedBorn=.false.
+            call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+            call sreal_deg(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc,
+     $    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muF,
+     $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
+     $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
+               p_born_used(:,:) = p_born(:,:)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               call sreal_store(p1_cnt(0,1,2),zero,one,fx_sc,real_amp_split
+     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_soft_collinear_counter_term(0d0,real_amp_split,fx_sc,
+     &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     &    amp_split_wgtdegrem_muF,
+     &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     &    amp_split_wgtpsch_d)
          endif
          if (passcuts_coll .and. abrv.ne.'real') then
            call set_alphaS(p1_cnt(0,1,1))
            call set_cms_stuff(ione)
-           call compute_collinear_counter_term(0d0)
+               storeCalculatedBorn=calculatedBorn
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               call sreal_deg(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c,deg_lxi_c,
+     $    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muF,
+     $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
+     $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
+               p_born_used(:,:) = p_born(:,:)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               call sreal_store(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,real_amp_split
+     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+           call compute_collinear_counter_term(0d0,real_amp_split,fx_c,
+     &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     &    amp_split_wgtdegrem_muF,
+     &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     &    amp_split_wgtpsch_d)
          endif
          if (passcuts_n1body) then
             pass_cuts_check=.true.
             call set_cms_stuff(mohdr)
             call set_alphaS(p)
-            call include_multichannel_enhance(2)
-            call compute_real_emission(p,1d0)
+            calculatedBorn=.false.
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,
+     $           born_amp_split,born_amp_split_cnt,wgt_born,
+     $           born_ans_cnt,born_saveamp)
+   !          storeCalculatedBorn=calculatedBorn
+   !          p_born_used(:,:) = p_born(:,:)
+   !          calculatedBorn=.false.
+   !          call sborn_amp(p_born_used,born_amp2,born_jamp2,born_amp_split
+   !   $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+   !          calculatedBorn=storeCalculatedBorn
+            ev_amp2(:)=0d0
+            norad_amp2(:)=0d0
+            if (p_born_ev(0,1).gt.0d0) then
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_ev,ev_amp2,coll_jamp2,
+     $              coll_amp_split,coll_amp_split_cnt,wgt_coll,
+     $              coll_ans_cnt,coll_saveamp)
+            endif
+            if (p_born_norad(0,1).gt.0d0) then
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_norad,norad_amp2,
+     $              coll_jamp2,coll_amp_split,coll_amp_split_cnt,
+     $              wgt_coll,coll_ans_cnt,coll_saveamp)
+            endif
+            call include_multichannel_enhance(2,born_amp2,ev_amp2,
+     $           norad_amp2)
+               storeCalculatedBorn=calculatedBorn
+               p_born_used(:,:) = p_born(:,:)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               calculatedBorn=.false.
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,real_amp_split
+     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_real_emission(p,1d0,real_amp_split,fx_ev)
          endif
       enddo
       
@@ -688,7 +1014,6 @@ c Finalize PS point
       return
       end
 
-
       subroutine finalize_fixed_order_born_class(vegas_wgt,f,sig)
 c Apply PDFs, reweighting and analysis to one physical Born class. Keeping
 c this local is needed because virtual-trick weights have no flavour index
@@ -720,7 +1045,10 @@ c and must receive exactly one luminosity.
       return
       end
 
-      subroutine update_fks_dir(nFKS)
+      subroutine update_fks_dir_FO(nFKS)
+c Fixed-order variant of update_fks_dir: unlike the version in
+c driver_vec.f (used by the multi-event interface), setfksfactor is
+c called with .false. here.
       implicit none
       include 'run.inc'
       integer nFKS
@@ -762,7 +1090,6 @@ c and must receive exactly one luminosity.
       enddo
       return
       end
-
 
       subroutine setup_physical_fks_map(physical_fks_map)
 c Collapse physical FKS rows onto the topology that generated them. The map

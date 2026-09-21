@@ -364,7 +364,35 @@ c**************************************************************************
       end
 
 
-      subroutine sborn_onehel_frame(p_in, hel1, chosen_hel, ans)
+      subroutine sborn_amp_frame(p_in,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
+c**************************************************************************
+c     Returned-amplitude Born interface in the frame selected by me_frame.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1),ans_summed
+      double precision amp2(ngraphs),jamp2(0:ncolor)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ans_cnt(2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call sborn_amp(p_f,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
+
+      return
+      end
+
+
+      subroutine sborn_onehel_frame(p_in,hel1,chosen_hel,ans,
+     $     ret_saveamp)
 c**************************************************************************
 c     One-helicity Born in the frame selected by me_frame.
 c
@@ -379,12 +407,14 @@ c**************************************************************************
       double precision p_in(0:3,nexternal-1)
       integer hel1, chosen_hel
       double precision ans
+      include 'born_nhel.inc'
+      double complex ret_saveamp(ngraphs,max_bhel)
       double precision p_f(0:3,nexternal-1)
       integer ids(nexternal-1)
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
-      call sborn_onehel(p_f, hel1, chosen_hel, ans)
+      call sborn_onehel(p_f,hel1,chosen_hel,ans,ret_saveamp)
 
       return
       end
@@ -420,14 +450,52 @@ c         than assumed.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
       double precision born_wgt, virt_wgt
+      double precision local_born,amp2(ngraphs),jamp2(0:ncolor)
+      double precision ret_amp_split(amp_split_size)
+      double precision amp_split_finite_ML(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ans_cnt(2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
       double precision p_f(0:3,nexternal-1)
       integer ids(nexternal-1)
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
-      call BinothLHA(p_f, born_wgt, virt_wgt)
+      call sborn_amp(p_f,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,local_born,ans_cnt,ret_saveamp)
+      call BinothLHA(p_f,born_wgt,virt_wgt,ret_amp_split,
+     $     ret_saveamp,amp_split_finite_ML,ret_amp_split_cnt)
+
+      return
+      end
+
+
+      subroutine binothlha_amp_frame(p_in,born_wgt,virt_wgt,
+     $     ret_amp_split,ret_saveamp,amp_split_finite_ML,
+     $     ret_amp_split_cnt)
+c**************************************************************************
+c     Returned-amplitude virtual interface in the selected ME frame.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1),born_wgt,virt_wgt
+      double precision ret_amp_split(amp_split_size)
+      double precision amp_split_finite_ML(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call BinothLHA(p_f,born_wgt,virt_wgt,ret_amp_split,
+     $     ret_saveamp,amp_split_finite_ML,ret_amp_split_cnt)
 
       return
       end
@@ -443,15 +511,26 @@ c     handed, or it silently returns amplitudes from the other frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
       integer m, n
-      double precision wgt
+      double precision wgt,ans_summed
+      double precision amp2(ngraphs),jamp2(0:ncolor)
+      double precision ret_amp_split(amp_split_size)
+      double precision amp_split_soft(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ans_cnt(2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
       double precision p_f(0:3,nexternal-1)
       integer ids(nexternal-1)
 
       call get_frame_mask_born(ids)
       call boost_to_me_frame(p_in, nexternal-1, ids, p_f)
-      call sborn_sf(p_f, m, n, wgt)
+      call sborn_amp(p_f,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
+      call sborn_sf(p_f,m,n,wgt,ans_cnt,ret_amp_split_cnt,
+     $     ret_saveamp,amp_split_soft)
 
       return
       end
@@ -488,8 +567,10 @@ c     Born mask and i_fks of the current FKS configuration.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'orders.inc'
       double precision p_in(0:3,nexternal)
       double precision wgt
+      double precision ret_amp_split(amp_split_size)
       double precision p_f(0:3,nexternal)
       integer ids(nexternal)
       integer nFKSprocess
@@ -497,7 +578,28 @@ c**************************************************************************
 
       call get_frame_mask_real(nFKSprocess, ids)
       call boost_to_me_frame(p_in, nexternal, ids, p_f)
-      call smatrix_real(p_f, wgt)
+      call smatrix_real(p_f,ret_amp_split,wgt)
+      amp_split(:)=ret_amp_split(:)
+
+      return
+      end
+
+
+      subroutine sudakov_wrapper_frame(p_in,ret_saveamp)
+c**************************************************************************
+c     EW-Sudakov wrapper in the selected ME frame.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call sudakov_wrapper(p_f,ret_saveamp)
 
       return
       end

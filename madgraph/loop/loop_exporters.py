@@ -1626,6 +1626,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
     def write_loopmatrix(self, writer, matrix_element, fortran_model,
                                                                  noSplit=False):
         """Create the loop_matrix.f file."""
+        # misc.sprint("WRITING FROM LINE 1565") # this is not the one that is used
         
         if not matrix_element.get('processes') or \
                not matrix_element.get('diagrams'):
@@ -3141,7 +3142,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     def write_loopmatrix(self, writer, matrix_element, fortran_model, \
                                                    write_auxiliary_files=True,):
         """Create the loop_matrix.f file."""
-        
+        # misc.sprint("WRITING FROM LINE 2887") # this is the one that's used
+
         if not matrix_element.get('processes') or \
                not matrix_element.get('diagrams'):
             return 0

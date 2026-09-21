@@ -22,7 +22,8 @@ c absolute value).
       integer fks_j_from_i(nexternal,0:nexternal)
      &     ,particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
-      double precision dummy,dlum
+      double precision dummy,dlum,dlum_vec
+      external dlum,dlum_vec
       integer maxproc_found_first,i,j,ii,jj,k,kk
       integer id_current(nexternal,maxproc),id_first(nexternal,maxproc)
      $     ,nequal,equal_to(maxproc,fks_configs)
@@ -80,7 +81,7 @@ c for ordinary output, where every directory carries all subprocess rows.
 c Set Bjorken x's to some random value before calling the dlum() function
          xbk(1)=0.5d0
          xbk(2)=0.5d0
-         dummy=dlum()
+         dummy=dlum_vec(nFKSprocess)
 c 1. First map the IPROC's for this nFKSprocess to the underlying Born
 c to get the unique IPROC's
          iproc_save(nFKSprocess)=iproc

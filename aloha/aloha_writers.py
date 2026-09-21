@@ -555,7 +555,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         else:
             args = ', '.join(arguments)
         
-        out.write('subroutine %(name)s(%(args)s,%(output)s)\n' % \
+        out.write('recursive subroutine %(name)s(%(args)s,%(output)s)\n' % \
                   {'output':output, 'name': name, 'args': args})
         
         return out.getvalue() 
