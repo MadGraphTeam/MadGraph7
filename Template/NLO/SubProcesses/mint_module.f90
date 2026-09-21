@@ -157,7 +157,7 @@ module mint_module
   common /c_fnlo_nlops/fixed_order,nlo_ps
 
 ! functions and subroutines:
-  public :: mint,gen,read_grids_from_file,mint_vec
+  public :: mint,gen,read_grids_from_file,mint_vec,get_ave_virt
   private :: initialise_mint,setup_basic_mint &
        &,update_accumulated_results,prepare_next_iteration &
        &,check_desired_accuracy,update_integration_grids &
@@ -177,7 +177,7 @@ module mint_module
        &,reset_upper_bounding_envelope,setup_imode_m1,setup_imode_0 &
        &,reset_mint_grids,setup_common,write_grids_to_file &
        &,double_grid,regrid,smooth_xacc,nextlexi ,init_ave_virt&
-       &,get_ave_virt,fill_ave_virt,regrid_ave_virt ,double_ave_virt&
+       &,fill_ave_virt,regrid_ave_virt ,double_ave_virt&
        &,get_channel,close_run_zero_res,ran3 &
        &,initialize_even_random_numbers,get_ran &
        &,increase_gen_counters_middle,increase_gen_counters_before &
@@ -241,16 +241,17 @@ contains
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
        do kpoint=1,ncalls,vector_size
+          driver_active_size=min(vector_size,ncalls-kpoint+1)
          f_vec(:,:)=0d0
           new_point=.true.
           call get_channel
-          do ivec=1,vector_size
+           do ivec=1,driver_active_size
              call get_random_x(x,vol,kfold)
              x_mint_vec(:,ivec)=x
              vegas_wgt_vec(ivec)=vol
           enddo
           call compute_integrand_vec(fun)
-          do ivec=1,vector_size
+           do ivec=1,driver_active_size
              x(:)=x_mint_vec(:,ivec)
              f(:)=f_vec(:,ivec)
              virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
@@ -882,7 +883,7 @@ contains
     integer :: ivec, vector_size
     ! contribution to integral
     ifirst=0
-    vector_size = driver_vector_size
+    vector_size = driver_active_size
     if(vector_size.eq.0) then
          write(*,*) 'ERROR: driver_vector_size not set in compute_integrand_vec'
          stop 1
@@ -1692,10 +1693,11 @@ contains
    use driver_vec
     implicit none
     integer :: vn,gen_mode
-    logical :: found_point, found_point_loc
+    logical :: found_point
     double precision, external :: fun
     double precision, dimension(ndimmax) :: x
     double precision :: vol
+    double precision, allocatable :: upper_bounds(:)
     integer :: vector_size,ivec
     if (driver_vector_size.le.0) then
       write (*,*) "Error: driver_vector_size not set in gen_vec"
@@ -1708,23 +1710,27 @@ contains
     elseif(gen_mode.eq.3) then
        call print_gen_counters
     elseif(gen_mode.eq.1) then
-       call increase_gen_counters_before_vec(vn,vector_size)
-10     continue
+       driver_active_size=vector_size
+       allocate(upper_bounds(vector_size))
+       call increase_gen_counters_before_vec(vn,1)
+ 10     continue
        new_point=.true.
        do ivec=1,vector_size
          if (vn.eq.1) then
             call get_random_cell_flat(x,vol)
          else
             call get_weighted_cell(x,vol)
-         endif
-         x_mint_vec(:,ivec)=x
-         vegas_wgt_vec(ivec)=vol
+          endif
+          x_mint_vec(:,ivec)=x
+          vegas_wgt_vec(ivec)=vol
+          upper_bounds(ivec)=upper_bound
        enddo
        call compute_integrand_vec(fun)
        call increase_gen_counters_middle_vec(vn,vector_size)
-       call check_upper_bound_vec(vn,found_point)
+       call check_upper_bound_vec(vn,upper_bounds,found_point)
        if (.not.found_point) goto 10
-       call increase_gen_counters_end_vec(vn,vector_size)
+       call increase_gen_counters_end_vec(vn,1)
+       deallocate(upper_bounds)
     else
        write (*,*) "Unknown gen_mode in gen (from mint_module)",gen_mode
        stop 1
@@ -1747,8 +1753,9 @@ contains
   end subroutine increase_gen_counters_middle
 
   subroutine increase_gen_counters_middle_vec(vn,vector_size)
+    use driver_vec
     implicit none
-    integer :: vn
+    integer :: vn,ivec
     integer :: vector_size
     gen_counters(3)=gen_counters(3)+vector_size
     if (vn.eq.1) then
@@ -1756,9 +1763,11 @@ contains
     else
        gen_counters(6)=gen_counters(6)+vector_size
     endif
-    if (f(1).eq.0d0) then
-       gen_counters(4)=gen_counters(4)+vector_size
-    endif
+    do ivec=1,vector_size
+       if (f_vec(1,ivec).eq.0d0) then
+          gen_counters(4)=gen_counters(4)+1
+       endif
+    enddo
   end subroutine increase_gen_counters_middle_vec
 
   
@@ -1833,15 +1842,18 @@ contains
   end subroutine check_upper_bound
 
   
-  subroutine check_upper_bound_vec(vn,found_point)
+  subroutine check_upper_bound_vec(vn,upper_bounds,found_point)
    use driver_vec
     implicit none
     logical :: found_point
     integer :: vn
     integer :: ivec
+    double precision :: test_bound
+    double precision, dimension(:) :: upper_bounds
     found_point=.false.
-    do ivec=1,driver_vector_size
-      if (f_vec(1,ivec).gt.upper_bound) then
+    driver_accepted(:)=.false.
+    do ivec=1,driver_active_size
+      if (f_vec(1,ivec).gt.upper_bounds(ivec)) then
          if (vn.eq.2) then
             gen_counters(7)=gen_counters(7)+1
          elseif (vn.eq.1) then
@@ -1850,10 +1862,11 @@ contains
             gen_counters(9)=gen_counters(9)+1
          endif
       endif
-      upper_bound=upper_bound*ran3(.false.)
-      if (upper_bound.gt.f_vec(1,ivec)) then
+      test_bound=upper_bounds(ivec)*ran3(.false.)
+      if (test_bound.gt.f_vec(1,ivec)) then
          gen_counters(10)=gen_counters(10)+1
       else
+          driver_accepted(ivec)=.true.
          found_point=.true.
       endif
    enddo

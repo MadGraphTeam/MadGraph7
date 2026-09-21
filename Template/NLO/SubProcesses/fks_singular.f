@@ -85,6 +85,7 @@ C It is called in this function such that if is included
 C in the LO cross section
       implicit none
       include 'nexternal.inc'
+      include 'fks_info.inc'
       include 'coupl.inc' 
       include 'q_es.inc'
       include 'run.inc'
@@ -4129,47 +4130,61 @@ c PS point that should be written in the event file.
       integer need_matching(nexternal)
       common /c_need_matching_to_write/ need_matching
 
-      integer ivec, ivec_picked
-      logical non_zero_contr
+      integer ivec,ivec_picked,naccepted,accepted_picked
 
 
       call cpu_time(tBefore)
-      if (icontr.eq.0) then
-         do ivec=1,driver_vector_size
-            if(icontr_vec(ivec).ne.0) non_zero_contr=.true.
-         enddo
-         if(.not.non_zero_contr) return
-      endif
-      tot_sum=0d0
-      do ivec=1,driver_vector_size
-         do i=1,icontr_vec(ivec)
-            do j=1,niproc_vec(i,ivec)
-               tot_sum=tot_sum+abs(unwgt_vec(j,i,ivec))
-            enddo
-         enddo   
+      naccepted=0
+      do ivec=1,driver_active_size
+         if (driver_accepted(ivec)) naccepted=naccepted+1
       enddo
-      rnd=ran2()
-      current=0d0
-      target=rnd*tot_sum
-      i=1
-      j=0
-      ivec_picked=1
-      do while (current.lt.target)
-         j=j+1
-         if (mod(j,niproc_vec(i,ivec_picked)+1).eq.0) then
-            j=1
-            i=i+1
-         endif
-         if (i.gt.icontr_vec(ivec_picked)) then
-            i=1
-            ivec_picked=ivec_picked+1
-            if (ivec_picked.gt.driver_vector_size) then
-               write(*,*) 'ERROR in pick_unweight_contr_vec: ivec_picked'
-               stop 1
+      if (naccepted.eq.0) then
+         write(*,*) 'ERROR in pick_unweight_contr_vec: no accepted lane'
+         stop 1
+      endif
+
+c Pick one accepted event uniformly. The accept/reject step has already
+c distributed each accepted lane according to its absolute weight; weighting
+c the lanes by that weight a second time would bias the event sample.
+      accepted_picked=min(int(ran2()*naccepted)+1,naccepted)
+      naccepted=0
+      ivec_picked=0
+      do ivec=1,driver_active_size
+         if (driver_accepted(ivec)) then
+            naccepted=naccepted+1
+            if (naccepted.eq.accepted_picked) then
+               ivec_picked=ivec
+               exit
             endif
          endif
-         current=current+abs(unwgt_vec(j,i,ivec_picked))
       enddo
+
+      tot_sum=0d0
+      do i=1,icontr_vec(ivec_picked)
+         do j=1,niproc_vec(i,ivec_picked)
+            tot_sum=tot_sum+abs(unwgt_vec(j,i,ivec_picked))
+         enddo
+      enddo
+      if (tot_sum.le.0d0) then
+         write(*,*) 'ERROR in pick_unweight_contr_vec: zero lane weight'
+         stop 1
+      endif
+
+      target=ran2()*tot_sum
+      current=0d0
+      i=0
+      j=0
+      do ii=1,icontr_vec(ivec_picked)
+         do jj=1,niproc_vec(ii,ivec_picked)
+            if (abs(unwgt_vec(jj,ii,ivec_picked)).gt.0d0) then
+               i=ii
+               j=jj
+               current=current+abs(unwgt_vec(jj,ii,ivec_picked))
+               if (current.ge.target) goto 10
+            endif
+         enddo
+      enddo
+ 10   continue
 c found the contribution that should be written:
       call retrieve_weight_lines(nexternal,ivec_picked)
       icontr_picked=i
@@ -5235,6 +5250,7 @@ c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
 
       subroutine sborncol_fsr(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
      &                        ans_cnt, ret_amp_split_cnt)
+      USE ALOHA_OBJECT
       implicit none
       include "nexternal.inc"
       include 'genps.inc'
@@ -5420,6 +5436,7 @@ c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
 
       subroutine sborncol_isr(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
      &                        ans_cnt, ret_amp_split_cnt)
+      USE ALOHA_OBJECT
       implicit none
       include "nexternal.inc"
       double precision p(0:3,nexternal),wgt

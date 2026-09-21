@@ -3866,15 +3866,15 @@ c general rotation is needed
                pj(1)=-pj(1)
                pj(3)=-pj(3)
             endif
-            CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
-            CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
-            CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
-            CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+            CALL IXXXXX(pi,ZERO,+1,+1,1,W1)
+            CALL OXXXXX(pj,ZERO,-1,+1,1,W2)
+            CALL IXXXXX(pi,ZERO,-1,+1,1,W3)
+            CALL OXXXXX(pj,ZERO,+1,+1,1,W4)
             Wij_angle=(0d0,0d0)
             Wij_recta=(0d0,0d0)
             do i=1,4
-               Wij_angle = Wij_angle + W1(i)*W2(i)
-               Wij_recta = Wij_recta + W3(i)*W4(i)
+               Wij_angle = Wij_angle + W1%W(i)*W2%W(i)
+               Wij_recta = Wij_recta + W3%W(i)*W4%W(i)
             enddo
             azifact=Wij_angle/Wij_recta
          endif
@@ -3913,15 +3913,15 @@ c Insert <ij>/[ij] which is not included by sborn()
                   pi(i)=p_i_fks_ev(i)
                   pj(i)=p(i,j_fks)
                enddo
-               CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
-               CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
-               CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
-               CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+               CALL IXXXXX(pi,ZERO,+1,+1,1,W1)
+               CALL OXXXXX(pj,ZERO,-1,+1,1,W2)
+               CALL IXXXXX(pi,ZERO,-1,+1,1,W3)
+               CALL OXXXXX(pj,ZERO,+1,+1,1,W4)
                Wij_angle=(0d0,0d0)
                Wij_recta=(0d0,0d0)
                do i=1,4
-                  Wij_angle = Wij_angle + W1(i)*W2(i)
-                  Wij_recta = Wij_recta + W3(i)*W4(i)
+                  Wij_angle = Wij_angle + W1%W(i)*W2%W(i)
+                  Wij_recta = Wij_recta + W3%W(i)*W4%W(i)
                enddo
                azifact=Wij_angle/Wij_recta
             endif
@@ -4009,6 +4009,7 @@ c Computes barred amplitudes (bornbars) squared according
 c to Odagiri's prescription (hep-ph/9806531).
 c Computes barred azimuthal amplitudes (bornbarstilde) with
 c the same method 
+      USE ALOHA_OBJECT
       implicit none
 
       include "genps.inc"
@@ -4040,7 +4041,8 @@ C      common/to_amps/  amp2,       jamp2
       common/fks_indices/i_fks,j_fks
 
       double precision wgt_born
-      double complex W1(6),W2(6),W3(6),W4(6),Wij_angle,Wij_recta
+      TYPE(ALOHA) W1,W2,W3,W4
+      double complex Wij_angle,Wij_recta
       double complex azifact
 
       double complex xij_aor
@@ -4053,6 +4055,9 @@ C      common/to_amps/  amp2,       jamp2
       parameter (vtiny=1d-12)
       double complex ximag
       parameter (ximag=(0.d0,1.d0))
+
+      double precision pboost(0:3)
+      logical me_boosted
 
       double precision xi_i_fks_ev,y_ij_fks_ev,t
       double precision p_i_fks_ev(0:3),p_i_fks_cnt(0:3,-2:2)
@@ -4103,9 +4108,10 @@ c
 c
 c BORN/BORNTILDE
 C check if momenta have to be rotated
+      call me_frame_born_boost(p_born,pboost,me_boosted)
       amp2(:) = 0d0
       if ((ileg.eq.1.or.ileg.eq.2) .and.
-     &    (j_fks.eq.2 .and. nexternal-1.ne.3)) then
+     &    (j_fks.eq.2 .and. nexternal-1.ne.3) .and. .not.me_boosted) then
 c Rotation according to innerpin.m. Use rotate_invar() if a more 
 c general rotation is needed.
 c Exclude 2->1 (at the Born level) processes: matrix elements are

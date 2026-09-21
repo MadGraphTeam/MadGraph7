@@ -371,6 +371,7 @@ c     Returned-amplitude Born interface in the frame selected by me_frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       include 'orders.inc'
       include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1),ans_summed
@@ -404,6 +405,7 @@ c     sborn_frame. check_sudakov does exactly that mix.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       double precision p_in(0:3,nexternal-1)
       integer hel1, chosen_hel
       double precision ans
@@ -450,6 +452,7 @@ c         than assumed.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       include 'orders.inc'
       include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
@@ -482,6 +485,7 @@ c     Returned-amplitude virtual interface in the selected ME frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       include 'orders.inc'
       include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1),born_wgt,virt_wgt
@@ -511,6 +515,7 @@ c     handed, or it silently returns amplitudes from the other frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       include 'orders.inc'
       include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
@@ -591,6 +596,7 @@ c     EW-Sudakov wrapper in the selected ME frame.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
+      include 'genps.inc'
       include 'born_nhel.inc'
       double precision p_in(0:3,nexternal-1)
       double complex ret_saveamp(ngraphs,max_bhel)

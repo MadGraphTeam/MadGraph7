@@ -35,7 +35,6 @@ COUPL = $(MODDIR)coupl.o
 COUMODS = $(MODDIR)couplings.mod 
 
 STORAGE = driver.o
-STOREMOD = driver_vec.mod
 
 ifneq ("$(wildcard ../../Source/RUNNING)","")
     LINKLIBS += -lrunning
@@ -88,7 +87,8 @@ MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
 POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
 
 # Files for check_sudakov
-EWSUD= $(RUN) check_sudakov.o BinothLHA.o
+EWSUD= $(RUN) check_sudakov.o BinothLHA.o pythia8_fortran_dummy.o \
+	write_event.o handling_lhe_events.o
 
 EWSUDSA = sa_ewsudakov.o sub_f2py_ewsudakov.o $(FILESSUD)
 EWSUDLIB = $(FILESSUD)
@@ -98,10 +98,11 @@ EWSUDLIB = $(FILESSUD)
 # chain is deliberately left out to keep the link minimal.
 FKSSA = check_sa_fks.o born.o sborn_sf.o				\
 	$(patsubst %.f,%.o,$(wildcard b_sf_???.f))			\
-	splitorders_stuff.o orderstags_glob.o
+	splitorders_stuff.o orderstags_glob.o driver.o
 
 # Files for check_sudakov_angle2
-EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o
+EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o pythia8_fortran_dummy.o \
+	write_event.o handling_lhe_events.o
 
 # Files for tests
 TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
@@ -142,8 +143,7 @@ gensym: $(SYM)
 	$(FC) $(LDFLAGS) -o gensym $(SYM) $(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(FJLIBS)
 	rm fks_singular.o
 
-storedriver: $(STORAGE) $(STOREMOD) 
-	$(FC) $(FFLAGS) -c -o driver.o driver.f90
+storedriver: $(STORAGE)
 
 couplmod:
 	ln -sf ../../Source/MODEL/couplings.mod .
@@ -160,7 +160,7 @@ check_sudakov: couplmod $(EWSUD) $(libmadloop)
 ewsudakov_sa: couplmod $(EWSUDSA) 
 	$(FC) -o ewsudakov_sa $(EWSUDSA) $(LINKLIBS)  $(LDFLAGS)
 
-check_fks: $(FKSSA)
+check_fks: couplmod storedriver $(FKSSA)
 	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(LDFLAGS)
 
 $(LIBDIR)/libdhelas.$(dylibext):
@@ -198,6 +198,8 @@ libMadLoop.a:
 	for dir in `ls -d V*`; do cd $$dir; make; cd ../; done
 
 mint_module.o : FKSParams.o
+$(patsubst %.f,%.o,$(wildcard matrix_*.f)): couplmod
+born.o: couplmod driver.o
 BinothLHA_OLP.o: FKSParams.o
 BinothLHA.o: FKSParams.o
 reweight_xsec_events.o: weight_lines.o weight_lines_vec.o

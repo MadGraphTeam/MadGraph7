@@ -181,8 +181,6 @@ c Only do the reweighting when actually generating the events
      $  call allocate_couplings(vector_size*(4*FKS_configs + 1))
       vector_size_wgt = vector_size
       
-!call omp_set_num_thread(vector_size)
-
       if(imode.eq.0)then
         flat_grid=.true.
       else
@@ -904,7 +902,6 @@ C Real deg amplitudes
       common /to_use_evpr/use_evpr
 
       integer vector_size, ivec, icontr_bfr
-      save vector_size
 
 c
       if (new_point .and. ifl.ne.2) then
@@ -913,9 +910,12 @@ c
       endif
 
       sigintF_vec=0d0
-      if(vector_size.eq.0) then
-         vector_size=driver_vector_size
-      end if
+      vector_size=driver_active_size
+      if(vector_size.lt.1.or.vector_size.gt.driver_vector_size) then
+         write(*,*) 'Invalid active vector size',vector_size,
+     $        driver_vector_size
+         stop 1
+      endif
 c Find the nFKSprocess for which we compute the Born-like contributions
       if (firsttime) then
          firsttime=.false.
@@ -955,6 +955,7 @@ c "npNLO".
             virt_wgt_mint(0:amp_split_size)=0d0
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
+            virtual_over_born_vec(:)=0d0
          endif
          MCcntcalled=0
          MCcnt_vec(:)=0
@@ -965,6 +966,15 @@ c "npNLO".
             xx(:) = x_mint_vec(:,ivec)
             call update_vegas_x(xx,x)
             x_vegas_vec(:,ivec)=x
+            do k=0,n_ord_virt
+               if (use_poly_virtual) then
+                  call get_polyfit(ichan,k,x(1:ndim-3),polyfit(k))
+               else
+                  call get_ave_virt(x,k)
+               endif
+               average_virtual_vec(k,ivec)=average_virtual(k,ichan)
+               polyfit_vec(k,ivec)=polyfit(k)
+            enddo
          enddo
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
@@ -1022,6 +1032,9 @@ c The nbody contributions
          x(:)=x_vegas_vec(:,ivec)
          virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
          born_wgt_mint(:)=born_wgt_vec(:,ivec)
+         average_virtual(:,ichan)=average_virtual_vec(:,ivec)
+         polyfit(:)=polyfit_vec(:,ivec)
+         virtual_over_born=virtual_over_born_vec(ivec)
          icontr_bfr=icontr
          icolup_s(1,1)=-1 ! set colour connection to -1: i.e., complete_xmcsubt has not been called
          if (ini_fin_fks.eq.0) then
@@ -1262,6 +1275,7 @@ c subtraction terms.
          if(allocated(itype)) call append_weight_lines(nexternal,ivec)
          virt_wgt_vec(:,ivec)=virt_wgt_mint
          born_wgt_vec(:,ivec)=born_wgt_mint
+         virtual_over_born_vec(ivec)=virtual_over_born
          vegas_wgt_vec(ivec)=vegas_wgt
       enddo
       elseif(ifl.eq.2) then
@@ -1287,6 +1301,7 @@ c correctly.
             f(:) = f_vec(:,ivec)
             virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
             born_wgt_mint(:)=born_wgt_vec(:,ivec)
+            virtual_over_born=virtual_over_born_vec(ivec)
             MCcntcalled=MCcnt_vec(ivec)
             vegas_wgt=vegas_wgt_vec(ivec)
             call special_check_SoftSing(proc_map(proc_map(0,1),1))
@@ -1691,87 +1706,6 @@ c     include all quarks (except top quark) and the gluon.
 
 
 
-      subroutine get_born_nFKSprocess(nFKS_in,nFKS_out)
-      implicit none
-      include 'nexternal.inc'
-      include 'nFKSconfigs.inc'
-      include 'fks_info.inc'
-      integer nFKS_in,nFKS_out,iFKS,iiFKS,nFKSprocessBorn(fks_configs)
-      logical firsttime
-      data firsttime /.true./
-      save nFKSprocessBorn
-c
-      if (HAS_PHYSICAL_FKS_CLASSES) then
-         nFKS_out=BORN_FKS_MAP_D(nFKS_in)
-         return
-      endif
-c
-      if (firsttime) then
-         firsttime=.false.
-         do iFKS=1,fks_configs
-            nFKSprocessBorn(iFKS)=0
-            if ( need_color_links_D(iFKS) .or. 
-     &           need_charge_links_D(iFKS) )then
-               nFKSprocessBorn(iFKS)=iFKS
-            endif
-            if (nFKSprocessBorn(iFKS).eq.0) then
-c     try to find the process that has the same j_fks but with i_fks a
-c     gluon
-               do iiFKS=1,fks_configs
-                  if ( (need_color_links_D(iiFKS) .or.
-     &                  need_charge_links_D(iiFKS)) .and.
-     &                 fks_j_D(iFKS).eq.fks_j_D(iiFKS) ) then
-                     nFKSprocessBorn(iFKS)=iiFKS
-                     exit
-                  endif
-               enddo
-            endif
-c     try to find the process that has the j_fks initial state if
-c     current j_fks is initial state (and similar for final state j_fks)
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_configs
-                  if ( need_color_links_D(iiFKS) .or.
-     &                 need_charge_links_D(iiFKS) ) then
-                     if ( fks_j_D(iiFKS).le.nincoming .and.
-     &                    fks_j_D(iFKS).le.nincoming ) then
-                        nFKSprocessBorn(iFKS)=iiFKS
-                        exit
-                     elseif ( fks_j_D(iiFKS).gt.nincoming .and.
-     &                        fks_j_D(iFKS).gt.nincoming ) then
-                        nFKSprocessBorn(iFKS)=iiFKS
-                        exit
-                     endif
-                  endif
-               enddo
-            endif
-c     If still not found, just pick any one that has a soft singularity
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_configs
-                  if ( need_color_links_D(iiFKS) .or.
-     &                 need_charge_links_D(iiFKS) ) then
-                     nFKSprocessBorn(iFKS)=iiFKS
-                  endif
-               enddo
-            endif
-c     if there are no soft singularities at all, just do something trivial
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               nFKSprocessBorn(iFKS)=iFKS
-            endif
-         enddo
-         write (*,*) 'Total number of FKS directories is', fks_configs
-         write (*,*) 'For the Born we use nFKSprocesses:'
-         write (*,*)  nFKSprocessBorn
-      endif
-      if (nFKSprocessBorn(nFKS_in).eq.0) then
-         write(*,*) 'Could not find the correct map to Born '/
-     &        /'FKS configuration for the NLO FKS '/
-     &        /'configuration', nFKS_in
-         stop 1
-      else
-         nFKS_out=nFKSprocessBorn(nFKS_in)
-      endif
-      return
-      end
 
 
       subroutine special_check_SoftSing(isoft)

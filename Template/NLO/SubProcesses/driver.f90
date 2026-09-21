@@ -3,6 +3,7 @@ module driver_vec
   ! state variables to see the status of driver_vec
   logical, public :: driver_is_allocated = .false.
   integer, public :: driver_vector_size = 0
+  integer, public :: driver_active_size = 0
   ! surrounding infrastructure variables
   integer, allocatable, public :: MCcnt_vec(:)
   double precision, allocatable, public :: vegas_wgt_vec(:)
@@ -11,11 +12,14 @@ module driver_vec
   double precision, allocatable, public :: x_save_vec(:,:,:)
   double precision, allocatable, public :: f_vec(:,:)
   logical, allocatable, public :: skip_iter_vec(:)
+  logical, allocatable, public :: driver_accepted(:)
   logical, allocatable, public :: pass_cuts_check_vec(:)
   logical, allocatable, public :: passcuts_born_vec(:)
   logical, allocatable, public :: passcuts_nbody_vec(:,:)
   logical, allocatable, public :: passcuts_n1body_vec(:,:)
   double precision, allocatable, public :: virt_wgt_vec(:,:), born_wgt_vec(:,:)
+  double precision, allocatable, public :: average_virtual_vec(:,:), polyfit_vec(:,:)
+  double precision, allocatable, public :: virtual_over_born_vec(:)
  ! born helicities
   integer, allocatable, public :: nhel_vec(:,:,:)
   ! n-body kinematics Borns
@@ -88,6 +92,7 @@ module driver_vec
    include 'orders.inc'
    include 'born_nhel.inc'
     driver_vector_size = vector_size
+    driver_active_size = vector_size
     ! surrounding infrastructure variables
     allocate(MCcnt_vec(vector_size))
     allocate(vegas_wgt_vec(vector_size))
@@ -95,13 +100,17 @@ module driver_vec
     allocate(x_vegas_vec(99,vector_size))
     allocate(x_save_vec(ndimmax,max_fold,vector_size))
     allocate(f_vec(nintegrals,vector_size))
+    allocate(driver_accepted(vector_size))
     allocate(pass_cuts_check_vec(vector_size))
     allocate(passcuts_born_vec(vector_size))
     allocate(passcuts_nbody_vec(FKS_configs,vector_size))
     allocate(passcuts_n1body_vec(FKS_configs,vector_size))
     ! Virtual and born weights for MINT
-    allocate(virt_wgt_vec(0:n_ave_virt,vector_size))
-    allocate(born_wgt_vec(0:n_ave_virt,vector_size))
+     allocate(virt_wgt_vec(0:n_ave_virt,vector_size))
+     allocate(born_wgt_vec(0:n_ave_virt,vector_size))
+     allocate(average_virtual_vec(0:n_ave_virt,vector_size))
+     allocate(polyfit_vec(0:n_ave_virt,vector_size))
+     allocate(virtual_over_born_vec(vector_size))
     ! born helicities
     allocate(nhel_vec(nexternal-1,max_bhel,vector_size))
    ! n-body kinematics Borns
@@ -168,9 +177,13 @@ subroutine reset_storage()
   implicit none
    include 'nFKSconfigs.inc'
    include 'born_nhel.inc'
+   driver_accepted(:) = .false.
    ! Born and virtual storage reset
    virt_wgt_vec(:,:) = 0d0
-    born_wgt_vec(:,:) = 0d0
+     born_wgt_vec(:,:) = 0d0
+     average_virtual_vec(:,:) = 0d0
+     polyfit_vec(:,:) = 0d0
+     virtual_over_born_vec(:) = 0d0
    ! n-body kinematics Borns
    snb_amp2(:,:,:) = 0d0
    snb_jamp2(:,:,:) = 0d0
@@ -234,6 +247,7 @@ subroutine deallocate_storage()
     implicit none
     driver_is_allocated = .false.
     driver_vector_size = 0
+    driver_active_size = 0
     ! surrounding infrastructure variables
     if (allocated(MCcnt_vec)) deallocate(MCcnt_vec)
     if (allocated(vegas_wgt_vec)) deallocate(vegas_wgt_vec)
@@ -241,12 +255,16 @@ subroutine deallocate_storage()
     if (allocated(x_vegas_vec)) deallocate(x_vegas_vec)
     if (allocated(x_save_vec)) deallocate(x_save_vec)
     if (allocated(f_vec)) deallocate(f_vec)
+    if (allocated(driver_accepted)) deallocate(driver_accepted)
     if (allocated(pass_cuts_check_vec)) deallocate(pass_cuts_check_vec)
     if (allocated(passcuts_born_vec)) deallocate(passcuts_born_vec)
     if (allocated(passcuts_nbody_vec)) deallocate(passcuts_nbody_vec)
     if (allocated(passcuts_n1body_vec)) deallocate(passcuts_n1body_vec)
     if (allocated(virt_wgt_vec)) deallocate(virt_wgt_vec)
     if (allocated(born_wgt_vec)) deallocate(born_wgt_vec)
+    if (allocated(average_virtual_vec)) deallocate(average_virtual_vec)
+    if (allocated(polyfit_vec)) deallocate(polyfit_vec)
+    if (allocated(virtual_over_born_vec)) deallocate(virtual_over_born_vec)
   ! born helicities
     if (allocated(nhel_vec)) deallocate(nhel_vec)
     ! n-body kinematics Borns

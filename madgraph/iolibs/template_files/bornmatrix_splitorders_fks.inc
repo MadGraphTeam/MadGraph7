@@ -204,7 +204,7 @@ C AMP_SPLIT_CNT(:,:,:) = RET_AMP_SPLIT_CNT(:,:,:)
 END
 
 
-      recursive subroutine SBORN_AMP_VEC(P,AMP2,JAMP2,RET_AMP_SPLIT,RET_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,RET_SAVEAMP,ivec,IIND,ifks)
+      recursive subroutine SBORN_AMP_VEC(P,AMP2,JAMP2,RET_AMP_SPLIT,RET_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,RET_SAVEAMP,ivec,IIND,ifks,FLAV_IDX)
 C  
 %(info_lines)s
 C
@@ -238,7 +238,7 @@ C
       DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
       DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
       double complex ret_saveamp(ngraphs,max_bhel)
-      integer ivec, ifks, IIND
+      integer ivec, ifks, IIND, FLAV_IDX
 
 C
 C VARIABLES
@@ -278,7 +278,7 @@ C if (firsttime) then
 C   call FIRSTTIME_SETUP(firsttime)
 C endif
 
-CALL SBORN_SPLITORDERS_VEC(P,AMP2B,JAMP2B,ANS,ret_saveamp,ivec,IIND,ifks)
+CALL SBORN_SPLITORDERS_VEC(P,AMP2B,JAMP2B,ANS,ret_saveamp,ivec,IIND,ifks,FLAV_IDX)
 
 C the born to be integrated
 ans_summed = 0d0
@@ -700,7 +700,7 @@ C ----------
 
 
 
-recursive subroutine SBORN_SPLITORDERS_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,IVEC,IIND,IFKS)
+recursive subroutine SBORN_SPLITORDERS_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,IVEC,IIND,IFKS,FLAV_IDX)
 C  
 %(info_lines)s
 C
@@ -731,11 +731,11 @@ C
       REAL*8 P1(0:3,NEXTERNAL-1)
       Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
-      integer ivec,ifks,IIND
+       integer ivec,ifks,IIND,FLAV_IDX
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,j,jj,glu_ij,FLAV_IDX
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij
       INCLUDE 'fks_info.inc'
       REAL*8 borns(2,0:NSQAMPSO)
       COMPLEX*16 BORNTILDE
@@ -759,10 +759,9 @@ C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(ifks)
-      FLAV_IDX=BORN_FLAVOR_INDEX_D(IFKS)
       glu_ij = ij_values(ifks)
 C      if(DO_TRY(ifks)) then
-C        call SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY(ifks),IVEC,IFKS)
+C        call SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY(ifks),IVEC,IFKS,FLAV_IDX)
 C      else
       DO JJ=1,NGRAPHS
           amp2(jj)=0d0
@@ -965,7 +964,7 @@ C ----------
       END
 
 
-      recursive subroutine SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY,IVEC,IFKS)
+      recursive subroutine SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY,IVEC,IFKS,FLAV_IDX)
 C  
 %(info_lines)s
 C
@@ -995,11 +994,11 @@ C
       REAL*8 P1(0:3,NEXTERNAL-1)
       Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
-      INTEGER IVEC,IFKS
+      INTEGER IVEC,IFKS,FLAV_IDX
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,j,jj,glu_ij,FLAV_IDX
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij
       INCLUDE 'fks_info.inc'
       LOGICAL DO_TRY
       REAL*8 borns(2,0:NSQAMPSO)
@@ -1032,7 +1031,6 @@ C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(IFKS)
-      FLAV_IDX=BORN_FLAVOR_INDEX_D(IFKS)
       glu_ij = ij_values(IFKS)
       NTRY(IFKS)=NTRY(ifks)+1
       if (glu_ij.eq.0) then

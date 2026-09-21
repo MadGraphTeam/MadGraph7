@@ -95,6 +95,7 @@ C split orders stuff
 
 C Born variables
       double precision amp2(ngraphs), jamp2(0:ncolor)
+      double precision born_wgt
       complex*16 ans_cnt(2,nsplitorders)
       double complex born_split_cnt(amp_split_size,2,nsplitorders)
       double complex born_saveamp(ngraphs,max_bhel)
@@ -334,7 +335,8 @@ c Note that tests are always performed at fixed energy with Bjorken x=1.
             if (ilim.eq.2) then
                calculatedBorn=.false.
                call set_cms_stuff(0)
-C               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
 c Set xi_i_fks to zero, to correctly generate the collinear momenta for the
@@ -351,7 +353,8 @@ c Initialise shower_S_scale to a large value, not to get spurious dead zones
                if(ilim.eq.0)then
                   call xmcsubt_wrap(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx)
                else
-C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
                endif
             endif
@@ -367,7 +370,8 @@ C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt
             enddo
             if (ilim.eq.2) then
                call set_cms_stuff(-100)
-C               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
 c Now generate the momenta for the original xi_i_fks=0.1, slightly shifted,
@@ -409,7 +413,8 @@ c because otherwise fresh random will be used...
                call generate_momenta(ndim,iconfig,wgt,x,p)
                if (ilim.eq.2) then
                   calculatedBorn=.false.
-C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call set_cms_stuff(0)
                   call sreal(p1_cnt(0,1,0),zero,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
                   fxl(i)=fx*wgt
@@ -420,7 +425,8 @@ C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt
                   enddo
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
-C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
               else
 c The reference (the soft limit) does not depend on i: it is the one
@@ -591,7 +597,8 @@ c
             if(ilim.eq.0)then
                call xmcsubt_wrap(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx)
             else
-C               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             endif
             fxl(1)=fx*jac_cnt(1)
@@ -610,7 +617,8 @@ c No new phase-space point in between, so clear the 'xmcsubt done' bit
 c by hand: with ilim=0 the call above was already an xmcsubt_wrap one.
             MCcntcalled=0
             if (ilim.eq.2) then
-C               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $              born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
             else
                call xmcsubt_wrap(p,xi_i_fks_ev,y_ij_fks_ev,fx)
@@ -645,7 +653,8 @@ C               call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wg
                if (ilim.eq.2) then
                   calculatedBorn=.false.
                   call set_cms_stuff(1)
-C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp) 
                   fxl(i)=fx*jac_cnt(1)
                   wfxl(i)=jac_cnt(1)
@@ -655,7 +664,8 @@ C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt
                   enddo
                   calculatedBorn=.false.
                   call set_cms_stuff(-100)
-C                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+                  call sborn_amp(p_born,amp2,jamp2,ret_amp_split,
+     $                 born_split_cnt,born_wgt,ans_cnt,born_saveamp)
                   call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx,ret_amp_split,ans_cnt,born_split_cnt,born_saveamp)
                else
 c Same as in the soft test: the collinear limit is the i=1 reference.
@@ -784,4 +794,3 @@ c
  502  format('Collinear test ',I2,' FAILED. Fraction of failures: ',
      & f4.2) 
       end
-

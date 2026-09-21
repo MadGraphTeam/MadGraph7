@@ -34,6 +34,7 @@ import unittest
 from madgraph import MG5DIR, MadGraph5Error
 import madgraph.interface.master_interface as MGCmd
 import madgraph.interface.launch_ext_program as launch_ext
+import madgraph.various.banner as banner_mod
 import madgraph.various.misc as misc
 
 pjoin = os.path.join
@@ -185,6 +186,15 @@ class TestFKSStandalone(unittest.TestCase):
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
         self._run(cmd, 'output %s -f' % path)
+        # The production comparison needs model and helicity libraries but no
+        # PDF values. Keep the acceptance test self-contained on systems where
+        # LHAPDF is not installed, just like the standalone output under test.
+        for name in ('run_card_default.dat', 'run_card.dat'):
+            card_path = pjoin(path, 'Cards', name)
+            run_card = banner_mod.RunCardNLO(card_path)
+            run_card['pdlabel'] = 'nn23nlo'
+            run_card['reweight_pdf'] = [False]
+            run_card.write(card_path)
 
     def _born_dir(self, path):
         """the P* subprocess directory holding the standalone driver.
@@ -502,8 +512,10 @@ class TestFKSStandalone(unittest.TestCase):
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'nFKSconfigs.inc'
+      INCLUDE 'orders.inc'
       INTEGER I,J,NFKSPROCESS
       DOUBLE PRECISION P(0:3,NEXTERNAL),WGT,MW,PZ
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
       COMMON/C_NFKSPROCESS/NFKSPROCESS
       INCLUDE 'fks_info.inc'
       CALL SETPARA('param_card.dat')
@@ -524,7 +536,7 @@ class TestFKSStandalone(unittest.TestCase):
       P(1,5)=200D0
       DO I=1,FKS_CONFIGS
         NFKSPROCESS=I
-        CALL SMATRIX_REAL(P,WGT)
+        CALL SMATRIX_REAL(P,RET_AMP_SPLIT,WGT)
         WRITE(*,*) 'ORACLE_REAL',I,
      $    (PDG_TYPE_D(I,J),J=1,NEXTERNAL),EXTRA_CNT_D(I),WGT
       ENDDO
@@ -622,6 +634,7 @@ class TestFKSStandalone(unittest.TestCase):
       INTEGER I,J,K,NFKSPROCESS
       DOUBLE PRECISION PR(0:3,NEXTERNAL),PB(0:3,NEXTERNAL-1)
       DOUBLE PRECISION WGT,E,E3,E4,MW,S
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
       DOUBLE COMPLEX CNTS(2,NSPLITORDERS)
       LOGICAL TARGET
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -673,7 +686,7 @@ class TestFKSStandalone(unittest.TestCase):
      $        (EXTRA_CNT_COLOR_D(I,J),J=1,NEXTERNAL-1)
             WRITE(*,*) 'ORACLE_EXTRA_CHARGES',
      $        (EXTRA_CNT_CHARGE_D(I,J),J=1,NEXTERNAL-1)
-            CALL SMATRIX_REAL(PR,WGT)
+            CALL SMATRIX_REAL(PR,RET_AMP_SPLIT,WGT)
             WRITE(*,*) 'ORACLE_REAL',WGT
             CALL EXTRA_CNT(PB,EXTRA_CNT_D(I),CNTS)
             DO J=1,NSPLITORDERS

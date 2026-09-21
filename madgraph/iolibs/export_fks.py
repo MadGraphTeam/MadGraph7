@@ -1434,10 +1434,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         text += 'integer amp_split_size, amp_split_size_born\n'
         text += 'parameter (amp_split_size = %d)\n' % amp_split_size
         text += '! the first entries in the next line in amp_split are for the born \n'
-        # text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
-        # text += 'double precision amp_split(amp_split_size)\n'
-        # text += 'double complex amp_split_cnt(amp_split_size,2,nsplitorders)\n'
-        # text += 'common /to_amp_split/amp_split, amp_split_cnt\n'
+        text += 'parameter (amp_split_size_born = %d)\n' % amp_split_size_born
+        text += 'double precision amp_split(amp_split_size)\n'
+        text += 'double complex amp_split_cnt(amp_split_size,2,nsplitorders)\n'
+        text += 'common /to_amp_split/amp_split, amp_split_cnt\n'
         writer.line_length=132
         writer.writelines(text)
 
@@ -1899,16 +1899,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             """ 
         # the real me wrapper
         text_vec = \
-             """recursive subroutine smatrix_real_vec(p, ret_amp_split, wgt, ivec, nfksprocess)
+             """recursive subroutine smatrix_real_vec(p, ret_amp_split, wgt, ivec, nfksprocess, real_flav_idx)
              implicit none
              include 'nexternal.inc'
              include 'orders.inc'
-             include 'fks_info.inc'
-            double precision ret_amp_split(amp_split_size)
-            double precision p(0:3, nexternal)
-            double precision wgt
-            integer ivec
-            integer nfksprocess
+             double precision ret_amp_split(amp_split_size)
+             double precision p(0:3, nexternal)
+             double precision wgt
+             integer ivec
+             integer nfksprocess, real_flav_idx
             """ 
         # the pdf wrapper
         text1 = \
@@ -1933,7 +1932,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 text_vec += \
                     """if (nfksprocess.eq.%(n)d) then
                     call smatrix%(n_me)d_amp_vec(p, ret_amp_split, wgt, ivec,
-     $                   REAL_FLAVOR_INDEX_D(nfksprocess))
+     $                   real_flav_idx)
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
                 text1 += \
                     """if (nfksprocess.eq.%(n)d) then
@@ -2209,7 +2208,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         
         coupling_dep = fortran_model.get('model').get('coupling_dep')
         hel_vec = "\n".join(helas_calls)
-        for coup in coupling_dep.keys():
+        # Only couplings recomputed for each scale point are arrays in the
+        # generated COUPLINGS module.  Electroweak-only dependencies such as
+        # aEWM1 remain scalar and must not acquire a spurious _VEC suffix.
+        for coup, dependencies in coupling_dep.items():
+            if not any(dep in ('aS', 'MU_R') for dep in dependencies):
+                continue
             hel_vec = hel_vec.replace(coup+",", coup + "_vec(ivec),")
         
         replace_dict['helas_calls_vec'] = hel_vec
@@ -5875,8 +5879,9 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     # target of the P* makefile. Kept in sync with the makefile template;
     # b_sf_*.f is globbed because the count is process dependent (a pure [QED]
     # Born has none) and check_sa_fks.f is the driver we just copied in.
-    check_fks_sources = ('check_sa_fks.f', 'born.f', 'sborn_sf.f',
-                         'splitorders_stuff.f', 'orderstags_glob.f')
+    check_fks_sources = ('check_sa_fks.f', 'born.f', 'driver.f90',
+                         'sborn_sf.f', 'splitorders_stuff.f',
+                         'orderstags_glob.f')
     # the build file plus the run-time inputs the driver reads (the
     # param_card.dat symlink and the link-topology data file), and the files
     # the 'launch' flow itself touches in each P* directory. born_leshouche.inc
@@ -6035,17 +6040,16 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         return result
 
     def create_run_card(self, processes, history):
-        """Regular NLO run_card, but with --limits use a built-in PDF set.
+        """Regular NLO run_card with no external PDF dependency.
 
-        test_soft_col_limits only compares the real emission with its
-        counterterms, so PDF values never enter; hadronic beams are still
-        needed when an FKS parton is in the initial state (the momentum
-        fraction must vary), and setrun then initialises the PDF for
-        alpha_s(MZ). The built-in set keeps LHAPDF out of the check."""
+        ``check_fks`` does not use PDF values. ``test_soft_col_limits`` only
+        compares the real emission with its counterterms; hadronic beams are
+        nevertheless needed when an FKS parton is in the initial state (the
+        momentum fraction must vary), and setrun then initialises a PDF for
+        alpha_s(MZ). Use the built-in set for both paths to keep LHAPDF out of
+        these self-contained checks."""
         super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
                                                                   history)
-        if not self.opt.get('fks_limits'):
-            return
         for name in ('run_card_default.dat', 'run_card.dat'):
             path = pjoin(self.dir_path, 'Cards', name)
             run_card = banner_mod.RunCardNLO(path)

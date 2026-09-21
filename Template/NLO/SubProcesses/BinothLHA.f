@@ -494,6 +494,7 @@ c or more non-zero (independent) helicities
          !This is to prevent the code from hanging if one does MC over
          ! helicities and the pole-check fails at the first PS point
          firsttime = .false..or.cpol
+         virtual_flavor_checked(virtual_flavor)=.not.firsttime
       endif
 c Update the statistics using the MadLoop return code (ret_code)
       ntot = ntot+1             ! total number of PS
@@ -603,6 +604,8 @@ c
       include 'genps.inc'
       include "../../Source/MODEL/input.inc"
       include 'born_nhel.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       double precision pi, zero,mone
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0d0)
@@ -617,6 +620,11 @@ c
       data firsttime,firsttime_conversion /.true.,.true./
       logical firsttime_run
       data firsttime_run /.true./
+      integer nFKSprocess,virtual_flavor
+      common/c_nFKSprocess/nFKSprocess
+      logical virtual_flavor_checked(MAX_VIRTUAL_FLAVOR_INDEX)
+      save virtual_flavor_checked
+      data virtual_flavor_checked/MAX_VIRTUAL_FLAVOR_INDEX*.false./
       double precision qes2
       common /coupl_es/ qes2
       logical fksprefact
@@ -686,6 +694,17 @@ c masses
       data nbad / 0 /
 
       IOErrCounter = 0
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         virtual_flavor=VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+      else
+         virtual_flavor=1
+      endif
+      if (virtual_flavor.lt.1.or.
+     $    virtual_flavor.gt.MAX_VIRTUAL_FLAVOR_INDEX) then
+         write(*,*) 'Invalid virtual flavor index',virtual_flavor,
+     $        nFKSprocess
+         stop 1
+      endif
 c update the ren_scale for MadLoop and the couplings (should be the
 c Ellis-Sexton scale)
       mu_r = sqrt(QES2)
@@ -732,13 +751,14 @@ c splips unnoticed.
          endif
          firsttime_run = .false.
       endif
-      firsttime=firsttime.or.force_polecheck
+      firsttime=(.not.virtual_flavor_checked(virtual_flavor)).or.
+     $     force_polecheck
       if (firsttime) then
          write(*,*) "alpha_s value used for the virtuals"/
      &        /" is (for the first PS point): ", alpha_S
          tolerance=IRPoleCheckThreshold/10d0 ! for the pole check below
-         call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies,
-     $        ret_code)
+          call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
+     $        tolerance,accuracies,ret_code)
 C        look for orders which match the nlo order constraint 
          do i = 1, nsqso
            keep_order(i) = .true.
@@ -780,8 +800,8 @@ c Just set the accuracy found to a positive value as it is not specified
 c once the initial pole check is performed.
          if (mc_hel.eq.0) then
 
-            call sloopmatrix_thres(p,virt_wgts,tolerance,accuracies
-     $           ,ret_code)
+             call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
+     $           tolerance,accuracies,ret_code)
             do i = 1, nsqso
               if (keep_order(i)) then
                 virt_wgt= virt_wgt + virt_wgts(1,i)
@@ -808,8 +828,8 @@ c virtual as flat as possible
             call PickHelicityMC(p,goodhel,hel,ihel,volh,loc_saveamp)
             !
             fillh=.false.
-            call sloopmatrixhel_thres(p,hel(ihel),virt_wgts_hel
-     $           ,tolerance,accuracies,ret_code)
+             call sloopmatrixhel_thres_flavor(p,hel(ihel),virtual_flavor,
+     $           virt_wgts_hel,tolerance,accuracies,ret_code)
             hel_fact = dble(goodhel(ihel))/volh/4d0
             do i = 1, nsqso
               if (keep_order(i)) then

@@ -16,6 +16,26 @@
        end
 
 
+      double complex function bigL(s)
+      implicit none
+      include 'coupl.inc'
+      double precision s,pi
+      parameter (pi=3.1415926535897932d0)
+      bigL=dble(gal(1))**2/(4d0*pi)**2*dlog(s/mdl_mw**2)**2
+      return
+      end
+
+
+      double complex function smallL(s)
+      implicit none
+      include 'coupl.inc'
+      double precision s,pi
+      parameter (pi=3.1415926535897932d0)
+      smallL=dble(gal(1))**2/(4d0*pi)**2*dlog(s/mdl_mw**2)
+      return
+      end
+
+
 
       subroutine sdk_get_invariants(p, iflist, invariants)
       implicit none

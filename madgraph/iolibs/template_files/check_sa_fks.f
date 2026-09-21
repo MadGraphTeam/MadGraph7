@@ -12,6 +12,8 @@ C     ******************************************************************
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'orders.inc'
+      INCLUDE 'genps.inc'
+      INCLUDE 'born_nhel.inc'
       REAL*8 P(0:3,NEXTERNAL-1)
       REAL*8 PMASS(NEXTERNAL-1)
       REAL*8 ZERO
@@ -49,6 +51,9 @@ C     the missing massless diagonals below.
       REAL*8 LINKSUM, RTMP
       COMPLEX*16 ANS_CNT(2,NSPLITORDERS)
       COMMON /C_BORN_CNT/ ANS_CNT
+      DOUBLE COMPLEX GLOBAL_SAVEAMP(NGRAPHS,MAX_BHEL)
+      COMMON /TO_SAVEAMP/GLOBAL_SAVEAMP
+      DOUBLE PRECISION AMP_SPLIT_SOFT(AMP_SPLIT_SIZE)
       LOGICAL NEED_COLOR_LINKS, NEED_CHARGE_LINKS
       COMMON /C_NEED_LINKS/ NEED_COLOR_LINKS, NEED_CHARGE_LINKS
       LOGICAL CALCULATEDBORN
@@ -206,7 +211,8 @@ C       sampling uses NPOINTS and never advances inside this loop.
             BORNTILDE=BORNTILDE+DBLE(ANS_CNT(2,J))
           ENDDO
           DO ILINK=1,NLINKS
-            CALL SBORN_SF(P,MBASE(ILINK),NBASE(ILINK),WGT)
+            CALL SBORN_SF(P,MBASE(ILINK),NBASE(ILINK),WGT,ANS_CNT,
+     &        AMP_SPLIT_CNT,GLOBAL_SAVEAMP,AMP_SPLIT_SOFT)
             WGTBASE(ILINK)=WGT
           ENDDO
         ENDDO
