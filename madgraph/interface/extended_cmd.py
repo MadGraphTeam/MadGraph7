@@ -56,6 +56,62 @@ question_hint = None
 suppress_timeout = False
 
 
+# Options MG7 used to have and does not support any more. Setting one must not
+# be an error: old command files, old process directories and old configuration
+# files still carry them, and a crash there is far worse than a dead setting.
+# The value is dropped instead -- silently when it would only have switched the
+# option off, with a warning otherwise, so a user who really was relying on it
+# hears about it once.
+removed_options = {
+    'madanalysis_path': 'MadAnalysis4 support has been removed, use MadAnalysis5',
+    'td_path': 'topdrawer was only used by MadAnalysis4, which has been removed',
+}
+
+
+def is_removed_option(name):
+    """True if `name` is an option that is not supported any more."""
+
+    return name in removed_options
+
+
+def warn_removed_option(name, value=None):
+    """Tell the user that a retired option is being ignored.
+
+    A value that would only have disabled the option (None/False/empty) says
+    nothing new -- the option is gone, so it is already off -- and stays quiet.
+    """
+
+    if not is_removed_option(name):
+        return
+    if str(value).strip().lower() in ('none', 'false', ''):
+        return
+    logger.warning("'%s' is not supported any more (%s). Ignoring it.",
+                   name, removed_options[name])
+
+
+class QuestionAnswer(str):
+    """A line of history that answered a question instead of being a command.
+
+    It is kept -- `history` has to replay the answers, or the file it writes
+    reruns a launch with the defaults -- but it is not a command of the prompt
+    whose history holds it.  `set width 6 auto` typed at the launch card
+    question is a card edit; replayed as an MG5 command it is an error.  So
+    everything that turns a history into commands for something else skips
+    these: the proc card an `output` writes (MadSpin and the reweighting replay
+    its `set` lines), and the `set` lines a launch copies into the run it
+    starts.  Test with is_question_answer(), which needs no import of this
+    module.
+    """
+
+    is_answer = True
+
+
+def is_question_answer(line):
+    """True for a history line recorded by record_answer_in_history()."""
+
+    return bool(getattr(line, 'is_answer', False))
+
+
 def record_answer_in_history(interface, answer):
     """Append an answer to the history of `interface` and everything above it.
 
@@ -69,6 +125,7 @@ def record_answer_in_history(interface, answer):
     answer = str(answer).strip() if answer is not None else ''
     if not answer:
         return
+    answer = QuestionAnswer(answer)
     seen = set()
     while interface is not None and id(interface) not in seen:
         seen.add(id(interface))
@@ -535,6 +592,12 @@ class OriginalCmd(object):
 #===============================================================================
 class BasicCmd(OriginalCmd):
     """Simple extension for the readline"""
+
+    # set by complete() and read back by print_suggestions, which readline
+    # calls on the object owning the completer. A question which is answered
+    # before any completion ever ran has never been through complete(), so the
+    # hook used to die with 'object has no attribute completion_matches'.
+    completion_matches = []
 
     def set_readline_completion_display_matches_hook(self):
         """ This has been refactorized here so that it can be called when another
@@ -1427,7 +1490,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             debug_file.write('Fail to write options with error %s' % error)
         
         #add the cards:
-        for card in ['proc_card_mg5.dat','param_card.dat', 'run_card.dat']:
+        for card in ['proc_card_mg5.dat','param_card.dat', 'run_card.dat', 'onia_card.dat']:
             try:
                 ff = open(pjoin(self.me_dir, 'Cards', card))
                 debug_file.write(ff.read())
@@ -1626,12 +1689,37 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         
 
 
+    def notify_failed_command(self, line):
+        """Hook: `line` raised instead of running.
+
+        Does nothing here. postcmd is not a substitute: it is skipped when a
+        command raises inside exec_cmd, and when it is reached -- the
+        interactive path -- it cannot tell a command that worked from one that
+        did not. The tutorial mode overrides this to say something instead of
+        leaving the user in front of a bare error message."""
+
+        pass
+
+    @staticmethod
+    def safe_notify_failed_command(interface, line):
+        """Tell `interface` that `line` raised, without ever replacing the
+        error the user is about to see by one of our own."""
+
+        notify = getattr(interface, 'notify_failed_command', None)
+        if notify is None:
+            return
+        try:
+            notify(line)
+        except Exception as error:
+            logger.debug('notify_failed_command failed: %s', error)
+
     def onecmd(self, line, **opt):
         """catch all error and stop properly command accordingly"""
            
         try:
             return self.onecmd_orig(line, **opt)
         except BaseException as error: 
+            Cmd.safe_notify_failed_command(self, line)
             return self.error_handling(error, line)
             
     
@@ -1668,9 +1756,16 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             if errorhandling or \
                 (hasattr(self, 'options') and 'crash_on_error' in self.options and 
                  self.options['crash_on_error']=='never'):
+                # onecmd catches the error itself, and has already told the hook
                 stop = current_interface.onecmd(line, **opt)
             else:
-                stop = Cmd.onecmd_orig(current_interface, line, **opt)
+                try:
+                    stop = Cmd.onecmd_orig(current_interface, line, **opt)
+                except BaseException:
+                    # the error goes up to whoever asked for the command, but
+                    # not before the interface is told: postcmd is skipped here
+                    Cmd.safe_notify_failed_command(current_interface, line)
+                    raise
             if postcmd:
                 stop = current_interface.postcmd(stop, line)
         finally:

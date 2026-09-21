@@ -1881,7 +1881,7 @@ class width_estimate(object):
         if not opts['path']:
             opts['path'] = pjoin(self.me_dir, 'Cards', 'param_card.dat')
             if not opts['force'] :
-                self.ask_edit_cards(['param_card'],[], plot=False)
+                self.ask_edit_cards(['param_card'],[])
         
         
         commandline = 'import model %s' % model.get('modelpath+restriction') 
@@ -4054,6 +4054,14 @@ class decay_all_events(object):
                 if mode=='full_me':
                     file_madspin=pjoin(MG5DIR, 'MadSpin', 'src', 'ranmar.f')
                     shutil.copyfile(file_madspin, pjoin(new_path,"ranmar.f"))
+                    # driver.f's boost_to_frame/boost_to_frame_prod call
+                    # impose_frame_rest, which is shared with the LO and NLO
+                    # templates rather than inlined a third and fourth time.
+                    # Only full_me builds driver.o, so only it needs the file.
+                    file_madspin=pjoin(MG5DIR, 'Template', 'Common', 'Source',
+                                       'impose_frame_rest.f')
+                    shutil.copyfile(file_madspin,
+                                    pjoin(new_path, "impose_frame_rest.f"))
                     file_madspin=pjoin(path_me, 'seeds.dat')  
                     files.ln(file_madspin, new_path)
                     file_madspin=pjoin(new_path, 'offset.dat')

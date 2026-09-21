@@ -114,7 +114,7 @@ def async_generate_born(args):
         # if the pdg_list is not there, it has been removed
         # because there are no diagrams
         try:
-            idx = pdg_list.index(amp.pdgs)
+            idx = pdg_list.index(amp.pdgs_pols)
             infilename = realmapout[idx]
             infile = open(infilename,'rb')
             realdata = cPickle.load(infile)
@@ -304,8 +304,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             real_amp_list = []
             for born in born_procs:
                 for amp in born.real_amps:
-                    if not pdg_list.count(amp.pdgs):
-                        pdg_list.append(amp.pdgs)
+                    if not pdg_list.count(amp.pdgs_pols):
+                        pdg_list.append(amp.pdgs_pols)
                         real_amp_list.append(amp)
                         
             #generating and store in tmp files all output corresponding to each real_amplitude
@@ -693,7 +693,9 @@ class FKSHelasProcess(object):
             self.real_processes = []
             self.extra_cnt_me_list = []
             self.perturbation = fksproc.perturbation
-            self.charges_born = fksproc.get_charges() 
+            self.charges_born = fksproc.get_charges()
+            # user numbering of the born legs, for me_frame (frame_info.inc)
+            self.user_leg_order = fksproc.user_leg_order
             real_amps_new = []
 
             for extra_cnt in fksproc.extra_cnt_amp_list:
@@ -848,15 +850,15 @@ class FKSHelasProcess(object):
         return (nexternal, ninitial)
     
     def __eq__(self, other):
-        """the equality between two FKSHelasProcesses is defined up to the 
+        """the equality between two FKSHelasProcesses is defined up to the
         color links"""
         #first compare the born
-        selftag = helas_objects.IdentifyMETag.\
-                        create_tag(self.born_me.get('base_amplitude'))
-        othertag = helas_objects.IdentifyMETag.\
-                        create_tag(other.born_me.get('base_amplitude'))
+        selfamp = self.born_me.get('base_amplitude')
+        otheramp = other.born_me.get('base_amplitude')
+        selftag = helas_objects.IdentifyMETag.create_tag(selfamp)
+        othertag = helas_objects.IdentifyMETag.create_tag(otheramp)
 
-        # MZ: if EW sudakov are included, do not combine. 
+        # MZ: if EW sudakov are included, do not combine.
         # This is not 100% ideal, as it is quite inefficient, but it is the safest option
         if self.ewsudakov:
             logger.warning('With --ewsudakov, matrix elements will not be combined')

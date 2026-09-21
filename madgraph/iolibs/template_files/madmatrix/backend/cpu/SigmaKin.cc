@@ -31,7 +31,7 @@
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 
 #include <cassert>
-#include <cstring> // for memcpy
+#include <cstring>
 #include <limits>
 #include <vector>
 

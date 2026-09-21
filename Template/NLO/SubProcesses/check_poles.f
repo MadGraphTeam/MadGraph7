@@ -221,11 +221,16 @@ c initialization
           enddo
 
           CALL UPDATE_AS_PARAM()
-          call sborn(p_born, born)
+          call sborn_frame(p_born, born)
           ! extra initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
-          call BinothLHA(p_born, born, virt_wgt)
+c The virtual must be evaluated in the same frame as the Born above: the
+c poles are proportional to the Born, so a frame mismatch here shows up as
+c a per-point constant ratio between the MadFKS and the OLP poles and the
+c check fails for every point. Go through binothlha_frame, exactly as the
+c integration does at fks_singular.f (bornsoftvirtual).
+          call binothlha_frame(p_born, born, virt_wgt)
           if (npointsChecked.eq.0) then
              if (mod(ret_code_ml,100)/10.eq.3 .or.
      &            mod(ret_code_ml,100)/10.eq.4) then

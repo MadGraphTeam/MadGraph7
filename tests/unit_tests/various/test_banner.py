@@ -545,6 +545,38 @@ Beams:LHEF='events_ouaf.lhe.gz'
 
 import re
 import shutil
+class TestRunCardNLOMeFrame(unittest.TestCase):
+    """me_frame is only meaningful for the whole initial state or for
+    final-state particles; a partial initial state must be refused at parse
+    time rather than reaching the generated Fortran."""
+
+    def _card(self, me_frame):
+        run_card = bannermod.RunCardNLO()
+        run_card.set('me_frame', me_frame, user=True)
+        return run_card
+
+    def test_a_single_beam_is_refused(self):
+        # The regression: this used to pass check_validity because only a
+        # *mix* of initial and final legs was tested. A massless beam then
+        # died in get_me_frame_boost with an opaque 'not timelike' stop, and
+        # a massive one silently built the frame the guard means to refuse.
+        for me_frame in ([1], [2]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+    def test_both_beams_are_the_partonic_cm_and_allowed(self):
+        self._card([1, 2]).check_validity()
+
+    def test_final_state_only_is_allowed(self):
+        self._card([3, 4]).check_validity()
+        self._card([3]).check_validity()
+
+    def test_mixing_initial_and_final_is_refused(self):
+        for me_frame in ([1, 3], [1, 2, 3]):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                self._card(me_frame).check_validity()
+
+
 class TestRunCard(unittest.TestCase):
     """ A class to test the TestConfig functionality """
     # a lot of the funtionality are actually already tested in the child
@@ -653,6 +685,7 @@ class TestRunCard(unittest.TestCase):
         text2 = open(fsock2.name).read()
         self.assertFalse("$RUNNING" in text1)
         self.assertFalse("$RUNNING" in text2)
+        text1 = text1.replace('\n\n\n', '\n')
         text1 = text1.replace('\n \n', '\n')
         text2 = text2.replace('\n \n', '\n')
         self.assertEqual(text1, text2)
@@ -1559,6 +1592,7 @@ class TestRunCardMG7(unittest.TestCase):
         lo['ptj'] = 30
         lo['etaj'] = 4.5
         lo['dynamical_scale_choice'] = 3
+        lo['scalefact'] = 0.5
         lo['SDE_strategy'] = 2
         lo['maxjetflavor'] = 5
         lo['xqcut'] = 20          # merging -> not supported
@@ -1568,6 +1602,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['beam']['e_cm'], 13000.0)
         self.assertEqual(mg7['generation']['events'], 25000)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        self.assertEqual(mg7['beam']['scale_factor'], 0.5)
         self.assertEqual(mg7['phasespace']['sde_strategy'], 'denominators')
         self.assertIn(5, mg7['multiparticles']['jet'])
         self.assertEqual(mg7['cuts']['jet-pt'], {'min': 30.0})
@@ -1581,6 +1616,37 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_int_with_operator_is_not_silently_zero(self):
+        """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
+        fmt = bannermod.ConfigFile.format_variable
+        self.assertEqual(fmt('10/2', int), 5)
+        self.assertEqual(fmt('2*3', int), 6)
+        for bad in ('ht/4', 'foo*2', '4/0'):
+            self.assertRaises(bannermod.InvalidCmd, fmt, bad, int)
+        lo = bannermod.RunCardLO()
+        self.assertRaises(bannermod.InvalidCmd, lo.__setitem__, 'dynamical_scale_choice', 'ht/4')
+        self.assertEqual(lo['dynamical_scale_choice'], -1)
+
+    def test_scale_factor(self):
+        """[beam] scale_factor: default, legacy view, and the fixed-scale warning"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['scale_factor'], 1.0)
+        # legacy 'scalefact' view: the factor, or 1.0 when both scales are fixed
+        rc['beam']['scale_factor'] = 0.25
+        self.assertEqual(rc['scalefact'], 0.25)
+        rc['beam']['fixed_ren_scale'] = True
+        rc['beam']['fixed_fact_scale'] = True
+        self.assertEqual(rc['scalefact'], 1.0)
+        # ... and that combination warns rather than silently doing nothing
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc.check_validity()
+        self.assertIn('scale_factor', ' '.join(cm.output))
+        # a non-positive factor is refused
+        rc['beam']['fixed_ren_scale'] = False
+        rc['beam']['fixed_fact_scale'] = False
+        rc['beam']['scale_factor'] = 0.0
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""

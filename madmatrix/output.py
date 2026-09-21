@@ -121,8 +121,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # bin/generate_events can offer to enable and edit them.
                      'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
                                   ['madspin_card_default.dat', 'reweight_card_default.dat',
-                                   'density_card_default.dat', 'delphes_card_default.dat',
-                                   'plot_card.dat']) +
+                                   'density_card_default.dat',
+                                   'delphes_card_default.dat']) +
                               relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
                                   ['pythia8_card_default.dat',
                                    'madanalysis5_parton_card_default.dat',
@@ -295,11 +295,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
     # AV (default from OM's tutorial) - add a debug printout
-    def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[]):
+    def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
+        # **opts: an option meant for one exporter (npwave, for the dual HELAS
+        # libraries of P-wave bound states) is passed by keyword to all of them
         if hasattr(model , 'cudacpp_wanted_ordered_couplings'):
             wanted_couplings = model.cudacpp_wanted_ordered_couplings
             del model.cudacpp_wanted_ordered_couplings
-        return super().convert_model(model, wanted_lorentz, wanted_couplings)
+        return super().convert_model(model, wanted_lorentz, wanted_couplings, **opts)
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout
     def modify_grouping(self, matrix_element):

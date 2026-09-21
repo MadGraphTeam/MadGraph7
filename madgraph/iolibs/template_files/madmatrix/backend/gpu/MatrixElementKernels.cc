@@ -6,8 +6,8 @@
 
 #include "MatrixElementKernels.h"
 
+#include "CPPProcess.h" // for CPPProcess::ncolor_flow
 #include "ProcessData.h"
-#include "CPPProcess.h" // for ncolor_flow (the color-choice buffer)
 #include "SigmaKin.h"
 #include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"

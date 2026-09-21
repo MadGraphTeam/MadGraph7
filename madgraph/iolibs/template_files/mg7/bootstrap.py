@@ -39,13 +39,16 @@ def madspace_is_installed() -> bool:
     return (INSTALL_DIR / "madspace").is_dir()
 
 
-def ensure_madspace(interactive=None) -> None:
+def ensure_madspace(interactive=None, jobs=None) -> None:
     """Install madspace if needed, then put it on ``sys.path``.
 
     ``interactive`` says whether the installer may take over the terminal and
     ask questions. ``None`` falls back to auto-detection from ``sys.stdin``,
     which is only correct for ``bin/generate_events``; every in-process caller
     should pass the value explicitly.
+
+    ``jobs`` is the number of parallel compilation jobs for the source build
+    (MG5's ``nb_core``); ``None`` lets the installer use every core.
     """
     if not madspace_is_installed():
         if interactive is None:
@@ -64,6 +67,8 @@ def ensure_madspace(interactive=None) -> None:
         install_stdin = None if interactive else subprocess.DEVNULL
         if not interactive:
             install_cmd += ["--source", "--yes"]
+        if jobs:
+            install_cmd += ["-j", str(jobs)]
         # Expose madgraph on PYTHONPATH so the installer subprocess can import
         # cmd.ask for its prompts.
         install_env = os.environ.copy()

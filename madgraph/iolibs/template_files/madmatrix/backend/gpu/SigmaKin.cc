@@ -50,26 +50,6 @@ namespace madmatrix
                  "The squared split-order color sum is implemented for the CPU backends only: use a CPU "
                  "backend, or generate the process with a constraint that leaves a single amplitude split order." );
 
-  // Per-color running sum of |jamp|^2 over helicities, for event-by-event color choice.
-  class DeviceAccessJamp2
-  {
-  public:
-    static __device__ inline fptype_amp&
-    kernelAccessIcol( fptype_amp* buffer, const int icol )
-    {
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
-      return buffer[icol * nevt + ievt];
-    }
-    static __device__ inline const fptype_amp&
-    kernelAccessIcolConst( const fptype_amp* buffer, const int icol )
-    {
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
-      return buffer[icol * nevt + ievt];
-    }
-  };
-
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
   __device__ __constant__ short cHel[ncomb][npar];
@@ -113,6 +93,28 @@ namespace madmatrix
   {
     if( n > 0 ) gpuMemcpyToSymbol( bsmIndepParam, values, n * sizeof( double ) );
   }
+
+  //--------------------------------------------------------------------------
+
+  // Per-event access into the ncolor_flow super-buffer of jamp2 values (one fptype_amp per event per color)
+  class DeviceAccessJamp2
+  {
+  public:
+    static __device__ inline fptype_amp&
+    kernelAccessIcol( fptype_amp* buffer, const int icol )
+    {
+      const int nevt = gridDim.x * blockDim.x;
+      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      return buffer[icol * nevt + ievt];
+    }
+    static __device__ inline const fptype_amp&
+    kernelAccessIcolConst( const fptype_amp* buffer, const int icol )
+    {
+      const int nevt = gridDim.x * blockDim.x;
+      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      return buffer[icol * nevt + ievt];
+    }
+  };
 
   //--------------------------------------------------------------------------
 

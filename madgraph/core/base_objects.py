@@ -1267,6 +1267,7 @@ class Model(PhysicsObject):
         self['limitations'] = [] # MLM means that the model can sometimes have issue with MLM/default scale. 
                                  # fix_scale means that the model should use fix_scale computation.
         self['startfromalpha0'] = False
+        self['dual_mass_scheme'] = False
         # attribute which might be define if needed
         #self['name2pdg'] = {'name': pdg}
         #self['unmerged_interactions'] = InteractionList()
@@ -1328,7 +1329,7 @@ class Model(PhysicsObject):
             if not (isinstance(value, list)):
                 raise self.PhysicsObjectError("Object of type %s is not a list" % type(value))
 
-        elif name in ['case_sensitive', 'startfromalpha0']:
+        elif name in ['case_sensitive', 'startfromalpha0', 'dual_mass_scheme']:
             if not value in [True ,False]:
                 raise self.PhysicsObjectError("Object of type %s is not a boolean" % type(value))
             
@@ -1880,6 +1881,30 @@ class Model(PhysicsObject):
                 if p['spin'] == 2 and p['is_part'] and \
                 p ['color'] != 1 and p['mass'].lower() == 'zero' and \
                 p['pdg_code'] not in self.merged_particles])
+
+
+    def get_flavour_scheme(self):
+        """Return the number of light quark flavours of the flavour-number
+        scheme this model corresponds to: the largest n in (3, 4, 5) such that
+        the quarks with PDG code 1..n are all massless.
+
+        This single number drives both the default 'p'/'j' multiparticles and
+        the run_card default for maxjetflavor, so the two always agree.
+        Returns None when the model does not define all of d, u, s, c, b or
+        when one of d, u, s is massive: no scheme is imposed in that case."""
+
+        quarks = [self.get_particle(pdg) for pdg in range(1, 6)]
+        if not all(quarks):
+            return None
+        massless = [q.get('mass').lower() == 'zero' for q in quarks]
+        if not all(massless[:3]):
+            return None
+        nflav = 3
+        for pdg in (4, 5):
+            if not massless[pdg - 1]:
+                break
+            nflav = pdg
+        return nflav
 
 
     def get_quark_pdgs(self):
@@ -2676,6 +2701,33 @@ class FLV_Coupling(PhysicsObject):
 #===============================================================================
 # Leg
 #===============================================================================
+def canonical_polarization(polarization):
+    """The canonical form of a polarization restriction: sorted, deduplicated.
+
+    Two legs carry the *same* restriction exactly when this returns equal
+    values, so every key that decides whether two processes may share a
+    matrix element, a directory or a subprocess group has to be built from
+    it and not from its own copy of the expression:
+
+      Process.shell_polarization              P-directory names
+      helas_objects.IdentifyMETag.link_from_leg   matrix-element identity
+      fks_base.FKSRealProcess.pdgs_pols       real-amplitude recycling
+      group_subprocs.SubProcessGroup          subprocess grouping
+
+    Those were four hand-kept copies agreeing only by comment. A divergence
+    between any two of them silently merges physics that must stay separate
+    (one born taking another's reals, two polarisations sharing one matrix
+    element) or splits what should combine -- which is the class of bug the
+    polarised-NLO work exists to fix, so it should not be reintroducible by
+    editing one site and missing three.
+
+    The '{}' parser refuses a repeated helicity outright, so set() is a
+    no-op for anything typed at the prompt; it matters for a list built
+    directly through the Python API, which never passes that parser.
+    """
+    return tuple(sorted(set(polarization or ())))
+
+
 def polarization_to_string(polarization):
     """Render a leg 'polarization' list as the brace content of a process
     string. The propagator-only entries (4,5,6,7,9,99) are printed as the
@@ -2729,6 +2781,8 @@ class Leg(PhysicsObject):
         # filter on the helicty
         self['polarization'] = []
         self['flavor'] = []
+        # propteries of bound state
+        self['onium'] = {}
 
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -2766,12 +2820,33 @@ class Leg(PhysicsObject):
                     raise self.PhysicsObjectError( \
                           "%s is not a valid polarization" % str(value))
                                                                     
+        elif name == 'onium':
+            if not isinstance(value, dict):
+                raise self.PhysicsObjectError( \
+                        "%s is not a valid dictionary" % str(value))
+            if value:
+                if not value['N'] > 0:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid principal quantum number" % str(value['N']))
+                if value['S'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid spin type" % str(2*value['S']+1))
+                if value['L'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid orbital angular momentum" % str(value['L']))
+                if value['J'] not in range(abs(value['L']-value['S']),value['L']+value['S']+1):
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid total angular momentum" % str(value['J']))
+                if value['C'] not in [1, 8]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid color configuartion" % str(value['C']))
+                                                                    
         return True
 
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor']
+        return ['id', 'number', 'state', 'from_group', 'loop_line', 'onshell', 'polarization', 'flavor', 'onium']
 
     def is_fermion(self, model):
         """Returns True if the particle corresponding to the leg is a
@@ -2945,6 +3020,7 @@ class MultiLeg(PhysicsObject):
         self['state'] = True
         self['polarization'] = []
         self['flavor'] = []
+        self['onium'] = {}
         self['offshell'] = False
 
     def filter(self, name, value):
@@ -2975,6 +3051,27 @@ class MultiLeg(PhysicsObject):
                     raise self.PhysicsObjectError( \
                           "%s is not a valid flavor" % str(value))
                 
+        if name == 'onium':
+            if not isinstance(value, dict):
+                raise self.PhysicsObjectError( \
+                        "%s is not a valid list" % str(value))
+            if value:
+                if not value['N'] > 0:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid principal quantum number" % str(value['N']))
+                if value['S'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid spin type" % str(2*value['S']+1))
+                if value['L'] not in [0, 1, 99]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid orbital angular momentum" % str(value['L']))
+                if value['J'] not in range(abs(value['L']-value['S']),value['L']+value['S']+1):
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid total angular momentum" % str(value['J']))
+                if value['C'] not in [1, 8]:
+                    raise self.PhysicsObjectError( \
+                      " %s is not a valid color configuartion" % str(value['C']))
+
         if name == 'state':
             if not isinstance(value, bool):
                 raise self.PhysicsObjectError("%s is not a valid leg state (initial|final)" % \
@@ -2985,7 +3082,7 @@ class MultiLeg(PhysicsObject):
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
 
-        return ['ids', 'state', 'polarization', 'flavor', 'offshell']
+        return ['ids', 'state', 'polarization', 'flavor', 'onium', 'offshell']
 
 #===============================================================================
 # LegList
@@ -3738,6 +3835,31 @@ class Process(PhysicsObject):
         
         return False
 
+    @staticmethod
+    def shell_polarization(polarization):
+        """Render one leg's polarization for use inside a file/directory name.
+
+        The stored list is the typed order, but it means the *set* of allowed
+        helicities -- as get_polarization_key already compares it.  Rendering
+        sorted(set(...)) makes the name identify the restriction and not the
+        spelling, and is injective over subsets of
+        Leg.list_of_allowed_polarizations.  Unpolarized legs return ''.
+
+        The '{}' parser now refuses a repeated helicity outright, so set() is
+        a no-op for anything typed at the prompt; it is kept because a list
+        built directly through the Python API never passes that parser.
+        """
+        if not polarization:
+            return ''
+        pol = list(canonical_polarization(polarization))
+        if pol == [-1, 1]:
+            return 'T'
+        elif pol == [-1]:
+            return 'L'
+        elif pol == [1]:
+            return 'R'
+        return ''.join(str(p).replace('-', 'm') for p in pol)
+
     def set(self, name, value):
         """Special set for forbidden particles - set to abs value."""
 
@@ -3806,6 +3928,7 @@ class Process(PhysicsObject):
         else:
             mystr = ""
         prevleg = None
+        onia = []
         for leg in self['legs']:
             mypart = self['model'].get('particle_dict')[leg['id']]
             if prevleg and prevleg['state'] == False \
@@ -3821,22 +3944,27 @@ class Process(PhysicsObject):
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + ' > '
 
-            mystr = mystr + mypart.get_name()
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + '{T}'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + '{L}'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + '{R}'
-                else:
-                    mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization')) 
+            if leg.get('onium'):
+                if leg.get('onium').get('index') not in onia:
+                    mystr = mystr + leg.get('onium').get('name') + ' '
+                    onia += [leg.get('onium').get('index')]
+            else:
+                mystr = mystr + mypart.get_name()
+                if leg.get('polarization'):
+                    if leg.get('polarization') in [[-1,1],[1,-1]]:
+                        mystr = mystr + '{T}'
+                    elif leg.get('polarization') == [-1]:
+                        mystr = mystr + '{L}'
+                    elif leg.get('polarization') == [1]:
+                        mystr = mystr + '{R}'
+                    else:
+                        mystr = mystr + '{%s}' % polarization_to_string(leg.get('polarization')) 
 
-            if leg.get('offshell'):
-                mystr = mystr + '*'
+                if leg.get('offshell'):
+                    mystr = mystr + '*'
 
-            mystr = mystr + ' '
-            #mystr = mystr + '(%i) ' % leg['number']
+                mystr = mystr + ' '
+                #mystr = mystr + '(%i) ' % leg['number']
             prevleg = leg
 
         # Add orders
@@ -4120,8 +4248,12 @@ class Process(PhysicsObject):
                                                 for req_id in id_list]) \
                                     for id_list in self['required_s_channels']])
                     mystr = mystr + '_'
-
-            if abs(leg.get('id')) in self['model'].get('merged_particles'):
+            if leg.get('onium'):
+                if prevleg.get('onium'):
+                    if prevleg.get('onium').get('index') == leg.get('onium').get('index'):
+                        mystr = mystr + leg.get('onium').get('name')
+                        mystr = mystr.replace('|','').replace('(','').replace(')','')
+            elif abs(leg.get('id')) in self['model'].get('merged_particles'):
                 if len(leg['flavor']) == 1:
                     single_pdg = abs(leg['flavor'][0]) * leg.get('id')/abs(leg.get('id'))
                     onepart = self['model'].get_particle(single_pdg)
@@ -4136,15 +4268,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 
@@ -4198,15 +4322,7 @@ class Process(PhysicsObject):
                 mystr = mystr + mypart['name']
             else:
                 mystr = mystr + mypart['antiname']
-            if leg.get('polarization'):
-                if leg.get('polarization') in [[-1,1],[1,-1]]:
-                    mystr = mystr + 'T'
-                elif leg.get('polarization') == [-1]:
-                    mystr = mystr + 'L'
-                elif leg.get('polarization') == [1]:
-                    mystr = mystr + 'R'
-                else:
-                    mystr = mystr + '%s ' %''.join([str(p).replace('-','m') for p in leg.get('polarization')])   
+            mystr = mystr + self.shell_polarization(leg.get('polarization'))
 
             prevleg = leg
 
@@ -4461,10 +4577,17 @@ class Process(PhysicsObject):
         final_legs = [leg for leg in self.get_legs_with_decays() if leg.get('state') == True]
 
         identical_indices = collections.defaultdict(int)
+        onia = []
         for leg in final_legs:
-            key = (leg.get('id'), tuple(leg.get('polarization')))
+            if leg.get('onium'):
+                key = (leg.get('onium').get('id'), tuple(leg.get('polarization')))
+                if leg.get('onium').get('index') in onia:
+                    identical_indices[key] -= 1
+                else:
+                    onia.append(leg.get('onium').get('index'))
+            else:
+                key = (leg.get('id'), tuple(leg.get('polarization')))
             identical_indices[key] += 1
-
 
         return reduce(lambda x, y: x * y, [ math.factorial(val) for val in \
                         identical_indices.values() ], 1)
@@ -4701,22 +4824,36 @@ class ProcessDefinition(Process):
                  if leg['state'] == False]
         fsids = [leg['ids'] for leg in self['legs'] \
                  if leg['state'] == True]
+        # The polarization restriction lives on the multileg and has to be
+        # carried onto each expanded leg, or a polarized multiparticle
+        # process silently comes back unpolarized. MultiProcess.
+        # generate_multi_amplitudes (diagram_generation.py) does the same for
+        # the path MG5 itself uses.
+        ispols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == False]
+        fspols = [leg['polarization'] for leg in self['legs'] \
+                 if leg['state'] == True]
 
         red_isidlist = []
         # Generate all combinations for the initial state
         for prod in itertools.product(*isids):
-            islegs = [Leg({'id':id, 'state': False}) for id in prod]  
+            # list() so that every yielded process owns its polarization
+            # rather than sharing the definition's list object
+            islegs = [Leg({'id':id, 'state': False, 'polarization': list(pol)})
+                      for id, pol in zip(prod, ispols)]
             if tuple(sorted(prod)) in red_isidlist:
-                    continue        
-            red_isidlist.append(tuple(sorted(prod)))      
+                    continue
+            red_isidlist.append(tuple(sorted(prod)))
             red_fsidlist = []
             for prod in itertools.product(*fsids):
                 # Remove double counting between final states
                 if tuple(sorted(prod)) in red_fsidlist:
-                    continue        
+                    continue
                 red_fsidlist.append(tuple(sorted(prod)))
                 leg_list = [copy.copy(leg) for leg in islegs]
-                leg_list.extend([Leg({'id':id, 'state': True}) for id in prod])
+                leg_list.extend([Leg({'id':id, 'state': True,
+                                      'polarization': list(pol)})
+                                 for id, pol in zip(prod, fspols)])
                 legs = LegList(leg_list)
                 process = self.get_process_with_legs(legs)
                 yield process
@@ -4859,21 +4996,27 @@ class ProcessDefinition(Process):
         """ Return a Process object which has the same properties of this 
             ProcessDefinition but with the specified given leg ids. """
         
+        # The polarization is not passed in argument, it has to be read from the
+        # multi-legs of this process definition, which are ordered in the same
+        # way as the ids given in argument (initial states first).
+        my_islegs = [leg for leg in self.get('legs') if not leg.get('state')]
+        my_fslegs = [leg for leg in self.get('legs') if leg.get('state')]
+
         # First make sure that the desired particle ids belong to those defined
         # in this process definition.
         if __debug__:
-            my_isids = [leg.get('ids') for leg in self.get('legs') \
-                  if not leg.get('state')]
-            my_fsids = [leg.get('ids') for leg in self.get('legs') \
-                 if leg.get('state')]            
             for i, is_id in enumerate(initial_state_ids):
-                assert is_id in my_isids[i]
+                assert is_id in my_islegs[i].get('ids')
             for i, fs_id in enumerate(final_state_ids):
-                assert fs_id in my_fsids[i]
-        
+                assert fs_id in my_fslegs[i].get('ids')
+
         return self.get_process_with_legs(LegList(\
-               [Leg({'id': id, 'state':False, 'polarization':[]}) for id in initial_state_ids] + \
-               [Leg({'id': id, 'state':True, 'polarization':[]}) for id in final_state_ids]))
+               [Leg({'id': id, 'state':False,
+                     'polarization': list(leg.get('polarization'))}) \
+                for id, leg in zip(initial_state_ids, my_islegs)] + \
+               [Leg({'id': id, 'state':True,
+                     'polarization': list(leg.get('polarization'))}) \
+                for id, leg in zip(final_state_ids, my_fslegs)]))
 
     def __eq__(self, other):
         """Overloading the equality operator, so that only comparison

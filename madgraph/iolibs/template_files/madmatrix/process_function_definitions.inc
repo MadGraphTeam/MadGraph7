@@ -22,7 +22,7 @@
 namespace madmatrix
 {
   using namespace ProcessData;
-  using ProcessTables::nMF; // max #merged flavors, sizes the tIPF_* arrays in initProc
+  using namespace ProcessTables; // for nMF (flavor-coupling setup in initProc)
 
   //--------------------------------------------------------------------------
 

@@ -24,6 +24,7 @@
 
 #include "Parameters.h"
 #include "ProcessData.h"
+#include "ProcessTables.h" // for nMF (flavor-coupling setup in initProc)
 #include "SigmaKin.h" // for the setters CPPProcess's constructor/initProc call
 %(helamps_h)s
 

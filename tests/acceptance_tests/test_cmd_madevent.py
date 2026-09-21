@@ -340,18 +340,9 @@ class TestMECmdShell(unittest.TestCase):
             stdout=devnull
             stderr=devnull
 
-        #if not os.path.exists(pjoin(MG5DIR, 'MadAnalysis')):
-        #    print("install MadAnalysis")
-        #    p = subprocess.Popen([pjoin(MG5DIR,'bin','madgraph')],
-        #                     stdin=subprocess.PIPE,
-        #                     stdout=stdout,stderr=stderr)
-        #    out = p.communicate('install MadAnalysis4'.encode())
-        #misc.compile(cwd=pjoin(MG5DIR,'MadAnalysis'))
-
         #if not misc.which('root'):
         #    raise Exception('root is require for this test')
         #interface.exec_cmd('set pythia-pgs_path %s --no_save' % pjoin(MG5DIR, 'pythia-pgs'))
-        interface.exec_cmd('set madanalysis_path %s --no_save' % pjoin(MG5DIR, 'MadAnalysis'))
         interface.onecmd('output madevent %s -f' % self.run_dir)            
         
         if os.path.exists(pjoin(interface.options['syscalc_path'],'sys_calc')):
@@ -638,8 +629,6 @@ class TestMECmdShell(unittest.TestCase):
                     '%s/Cards/run_card.dat' % self.run_dir)
         shutil.copy('%s/Cards/pythia_card_default.dat' % self.run_dir,
                     '%s/Cards/pythia_card.dat' % self.run_dir)
-        shutil.copy('%s/Cards/plot_card_default.dat' % self.run_dir,
-                    '%s/Cards/plot_card.dat' % self.run_dir)        
         try:
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_parton_card.dat'))
             os.remove(pjoin(self.run_dir, 'Cards',  'madanalysis5_hadron_card.dat'))
@@ -647,10 +636,6 @@ class TestMECmdShell(unittest.TestCase):
             pass
         self.do('generate_events -f')     
 
-
-        f1 = self.check_matched_plot(tag='fermi')         
-        start = time.time()
-        
         #modify the run_card
         run_card = self.cmd_line.run_card
         run_card['nevents'] = 44
@@ -661,7 +646,6 @@ class TestMECmdShell(unittest.TestCase):
         self.assertEqual(cmd, os.getcwd())        
         self.do('generate_events -f')
         self.assertEqual(int(self.cmd_line.run_card['nevents']), 44)
-        self.assertTrue(os.path.exists(pjoin(self.run_dir, 'Cards', 'plot_card.dat')))
         self.do('pythia run_01 -f')
         self.do('quit')
         
@@ -670,11 +654,6 @@ class TestMECmdShell(unittest.TestCase):
         self.check_parton_output(syst=False)
         self.check_parton_output('run_02', target_event=44, syst=False)
         self.check_pythia_output(syst=False)        
-        f2 = self.check_matched_plot(mintime=start, tag='tag_1')        
-        
-        self.assertNotEqual(f1.split('\n'), f2.split('\n'))
-        
-        
         self.assertEqual(cmd, os.getcwd())
 
         
@@ -1978,7 +1957,7 @@ class TestMECmdShell(unittest.TestCase):
         self.assertLess(
             abs(val1 - target) / (err1+1.7),
             2.,
-            'large diference between %s and %s +- %s'%
+            'large difference between %s and %s +- %s'%
                         (target, val1, err1)
         )
 
@@ -2071,7 +2050,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.01118182
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
 
     def test_eva_oldrelease_collision(self):
@@ -2117,7 +2096,7 @@ class TestMECmdShell(unittest.TestCase):
         err1 = self.cmd_line.results.current['error']
         
         target = 0.02187245
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))    
 
         
@@ -2165,8 +2144,78 @@ class TestMECmdShell(unittest.TestCase):
         
         #target = 0.003795
         target =0.003837 # value from v3.7.2 for 250k events
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large diference between %s and %s +- %s (%s sigma)'%
+        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
                         (target, val1, err1, abs(val1 - target) / err1))
+
+
+    def test_quarkonium_production(self):
+        """check that e e > etab(3S) etab(3S) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia')
+        mg_cmd.exec_cmd(' generate e+ e- > etab(3s) etab(3S)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_quarkonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_quarkonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 10k value is 6.227e-17 +- 2e-20
+        target = 6.227e-17
+        self.assertLess(
+            abs(val1 - target) / (err1+1.4e-20),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
+
+
+    def test_leptonium_production(self):
+        """check that p p > j mumu(1|3S1) gives the correct result"""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-lepton_masses')
+        mg_cmd.exec_cmd(' define p = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' define j = g u d s u~ d~ s~')
+        mg_cmd.exec_cmd(' generate p p > j mumu(1|3S1)')
+        mg_cmd.exec_cmd('output madevent %s/'% self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+
+        #check validity of the default run_card
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards','run_card.dat'))
+        self.assertIn('mom_resh_type', run_card.user_set)
+
+        shutil.copy(os.path.join(_file_path, 'input_files', 'run_card_leptonium.dat'),
+                    '%s/Cards/run_card.dat' % self.run_dir)
+        shutil.copy(os.path.join(_file_path, 'input_files', 'onia_card_leptonium.dat'),
+                    '%s/Cards/onia_card.dat' % self.run_dir)
+
+        self.do('generate_events -f')
+        val1 = self.cmd_line.results.current['cross']
+        err1 = self.cmd_line.results.current['error']
+        # 1M value is 0.01668020 +- 7.24e-6
+        target = 0.01668020
+        self.assertLess(
+            abs(val1 - target) / (err1+3e-6),
+            2.,
+            'large difference between %s and %s +- %s'%
+                        (target, val1, err1)
+        )
 
 
     def test_customised_madevent_via_run_card(self):
@@ -2260,7 +2309,7 @@ C
 
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
         target = 289.50 #+- 0.52 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -2361,7 +2410,7 @@ C
 
         # previously PDF was nn23lo1 (lhaid 230000) with this reference value 361.7
         target = 289.50 #+- 0.52 pb
-        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / (2*err1) < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         self.assertIn('MY_PARAM', open(pjoin(self.run_dir,'Source','run.inc')).read())
@@ -2412,7 +2461,7 @@ C
         # so unlike the old number this one is NOT a 100k measurement and the
         # 1-sigma tolerance below is correspondingly tight.
         target = 124.45
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
         
@@ -2428,7 +2477,7 @@ C
         # 165.71 (a 100k run, +- 0.06)
         # NNPDF40_lo_as_01180: 124.3625 +- 0.1355 from a single 10k CI run
         target = 124.36
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
+        self.assertTrue(abs(val1 - target) / err1 < 1., 'large difference between %s and %s +- %s'%
                         (target, val1, err1))
 
 
@@ -2703,17 +2752,6 @@ C
 #            # check that the html has the information
 #            self.assertTrue('rwt' in data[0].pythia)
 
-    def check_matched_plot(self, run_name='run_01', mintime=None, tag='fermi'):
-        """ """
-        path = '%(path)s/HTML/%(run)s/plots_pythia_%(tag)s/DJR1.ps' % \
-                                {'path':self.run_dir,'run': run_name, 'tag': tag}
-
-        self.assertTrue(os.path.exists(path))
-        
-        if mintime:
-            self.assertGreater(os.path.getctime(path), mintime)
-        
-        return open(path).read()
 #===============================================================================
 # TestCmd
 #===============================================================================
