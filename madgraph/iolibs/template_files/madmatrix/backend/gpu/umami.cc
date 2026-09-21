@@ -127,15 +127,20 @@ namespace
     std::size_t stride,
     std::size_t offset )
   {
+    // One thread per event of the rounded (padded) batch: sigmaKin runs on all
+    // n_blocks * n_threads events, not only on the first count. The padding events
+    // are copies of the first event. Left uninitialized, their flavor index is
+    // whatever the fresh allocation holds, and cFlavors[iflavor] in the matrix
+    // element then reads far out of bounds (illegal memory access on AMD GPUs).
     std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
-    if( i_event >= count ) return;
+    std::size_t i_in = i_event < count ? i_event : 0;
 
-    transpose_momenta( &momenta_in[offset], momenta, i_event, i_event, stride );
-    diagram_random[i_event] = diagram_random_in ? diagram_random_in[i_event + offset] : 0.5;
-    helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_event + offset] : 0.5;
-    color_random[i_event] = color_random_in ? color_random_in[i_event + offset] : 0.5;
-    g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-    flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
+    transpose_momenta( &momenta_in[offset], momenta, i_in, i_event, stride );
+    diagram_random[i_event] = diagram_random_in ? diagram_random_in[i_in + offset] : 0.5;
+    helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_in + offset] : 0.5;
+    color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
+    g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
+    flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
   }
 
   __global__ void copy_outputs(

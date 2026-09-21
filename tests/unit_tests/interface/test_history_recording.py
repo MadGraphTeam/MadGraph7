@@ -150,3 +150,81 @@ class TestQuestionAnswersAreRecorded(unittest.TestCase):
     def test_no_mother_is_tolerated(self):
         question = extended_cmd.SmartQuestion('pick one', mother_interface=None)
         self.assertEqual(question.precmd('done'), 'done')
+
+
+class TestQuestionAnswersStayOutOfTheProcCard(unittest.TestCase):
+    """An answer typed at a question is replayed by `history` but is not a
+    command of the prompt whose history holds it.
+
+    The failure this pins: `set width 6 auto` typed at the card question of a
+    first `launch` was recorded into the MG5 history, the next `output` wrote
+    it into proc_card_mg5.dat, and MadSpin -- which replays every `set` line of
+    a proc card on a bare MG5 prompt -- died on it, since MG5 has no `set
+    width`.
+    """
+
+    def setUp(self):
+        import madgraph.various.banner as banner
+
+        self.dir = tempfile.mkdtemp()
+        self.card = banner.ProcCard()
+        self.card.append('import model sm')
+        self.card.append('generate p p > t t~, t > w+ b, t~ > w- b~')
+        self.card.append('output TT_DECAY')
+        self.card.append('launch TT_DECAY')
+
+        class _Asker(object):
+            mother = None
+
+        asker = _Asker()
+        asker.history = self.card
+        for answer in ('set width 6 auto', 'done'):
+            extended_cmd.record_answer_in_history(asker, answer)
+        self.card.append('generate p p > t t~')
+        self.card.append('output TT_MADSPIN')
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def written(self):
+        path = os.path.join(self.dir, 'proc_card_mg5.dat')
+        self.card.write(path)
+        with open(path) as handle:
+            return [l for l in handle.read().split('\n')
+                    if l and not l.startswith('#')]
+
+    def test_the_proc_card_leaves_the_answers_out(self):
+        written = self.written()
+        self.assertNotIn('set width 6 auto', written)
+        self.assertNotIn('done', written)
+        self.assertIn('generate p p > t t~', written)
+
+    def test_the_history_still_replays_them(self):
+        """`history` writes the list itself, answers included -- otherwise the
+        file reruns the launch with the defaults."""
+
+        replay = '\n'.join(self.card)
+        self.assertIn('set width 6 auto', replay)
+        self.assertIn('done', replay)
+
+    def test_they_stay_marked_through_the_proc_card_cleaning(self):
+        """ProcCard.append rebuilds each line as it strips it; the marker has
+        to survive that, and the popping a later `generate` does."""
+
+        answers = [l for l in self.card if extended_cmd.is_question_answer(l)]
+        self.assertEqual(answers, ['set width 6 auto', 'done'])
+
+    def test_a_typed_command_is_not_an_answer(self):
+        self.assertFalse(extended_cmd.is_question_answer('set nb_core 4'))
+        self.assertTrue(extended_cmd.is_question_answer(
+            extended_cmd.QuestionAnswer('set nb_core 4')))
+
+    def test_the_set_lines_a_launch_copies_skip_them(self):
+        """What launch_ext_program and the aMC@NLO hand-off pass on to the run
+        they start: the MG5 settings, not an earlier run's card edits."""
+
+        self.card.append('set nb_core 4')
+        copied = [l for l in self.card if l.strip().startswith('set')
+                  and not extended_cmd.is_question_answer(l)]
+        self.assertIn('set nb_core 4', copied)
+        self.assertNotIn('set width 6 auto', copied)

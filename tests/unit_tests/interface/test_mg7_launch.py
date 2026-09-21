@@ -29,6 +29,7 @@ madspace is not installed.
 from __future__ import absolute_import
 
 import logging
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -87,6 +88,11 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.cmd = mgcmd.MasterCmd()
         self.cmd.use_rawinput = False
+        # MasterCmd reads the checkout's input/mg7_configuration.txt, and
+        # crash_on_error decides whether an error inside the run stops MG5:
+        # pin the shipped default so a developer's own setting cannot change
+        # what these tests see. The tests that need it set it themselves.
+        self.cmd.options['crash_on_error'] = False
 
         # MG5's error handling writes a 'debug' file into the working
         # directory; keep that (and anything else a test provokes) inside the
@@ -117,9 +123,14 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         # Never run the real madspace bootstrap from a unit test.
         self.bootstrap_calls = []
+        self.bootstrap_jobs = []
         self._saved_ensure = mg7_bootstrap.ensure_madspace
-        mg7_bootstrap.ensure_madspace = \
-            lambda interactive=None: self.bootstrap_calls.append(interactive)
+
+        def fake_ensure(interactive=None, jobs=None):
+            self.bootstrap_calls.append(interactive)
+            self.bootstrap_jobs.append(jobs)
+
+        mg7_bootstrap.ensure_madspace = fake_ensure
 
     def tearDown(self):
         mg7_bootstrap.ensure_madspace = self._saved_ensure
@@ -205,14 +216,9 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.assertEqual(child.commands, [])
 
     # -- interrupts ---------------------------------------------------------
-    def test_keyboard_interrupt_reaches_the_error_handling(self):
-        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
-
-        Going through the child's run_cmd means it now reaches the standard
-        cmd error handling: stop_on_keyboard_stop runs and the interrupt then
-        stops MG5, like every other interface, rather than being dropped so the
-        rest of the script runs on as if nothing happened.
-        """
+    def interrupted_launch(self):
+        """Stub a child whose run is interrupted by Ctrl-C; return the list
+        that records its stop_on_keyboard_stop calls."""
         stopped = []
 
         def MG7Cmd(me_dir='.', options=None):
@@ -224,6 +230,29 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.stub.MG7Cmd = MG7Cmd
         self.cmd.inputfile = iter([])
+        return stopped
+
+    def test_keyboard_interrupt_reaches_the_error_handling(self):
+        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
+
+        Going through the child's run_cmd means it now reaches the standard
+        cmd error handling, exactly as a madevent run does: the child's
+        stop_on_keyboard_stop runs (that is where a run cleans up its jobs)
+        and the child is still closed. With the default crash_on_error the
+        interrupt stops the run, not MG5 -- the same as for madevent.
+        """
+        stopped = self.interrupted_launch()
+        self.cmd.do_launch(self.me_dir)
+        self.assertEqual(stopped, [True])
+        self.assertEqual(self.built[-1].commands, ['', 'quit'])
+
+    @unittest.skipUnless(__debug__, 'error_handling only consults '
+                         'crash_on_error for Ctrl-C in debug mode')
+    def test_keyboard_interrupt_with_crash_on_error_stops_mg5(self):
+        """With crash_on_error = True the interrupt ends MG5, after the run
+        has had its stop_on_keyboard_stop."""
+        self.cmd.options['crash_on_error'] = True
+        stopped = self.interrupted_launch()
         self.assertRaises(SystemExit, self.cmd.do_launch, self.me_dir)
         self.assertEqual(stopped, [True])
 
@@ -260,6 +289,20 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.cmd.inputfile = iter([])
         self.cmd.do_launch(self.me_dir)
         self.assertEqual(self.bootstrap_calls, [True])
+
+    def test_bootstrap_gets_nb_core_for_the_madspace_build(self):
+        """A source build of madspace is only parallel when it is told how many
+        jobs it may use, so the launch path must pass MG5's nb_core on."""
+        self.cmd.do_set('nb_core 3 --no_save')
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs, [3])
+
+        # `set nb_core None` resolves to the machine's core count
+        self.bootstrap_jobs[:] = []
+        self.cmd.do_set('nb_core None --no_save')
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs,
+                         [multiprocessing.cpu_count()])
 
 
 class MG7BootstrapTest(unittest.TestCase):
@@ -323,6 +366,25 @@ class MG7BootstrapTest(unittest.TestCase):
         # must not eat the caller's stdin, which carries the run's script
         self.assertEqual(opts['stdin'], subprocess.DEVNULL)
 
+    def test_jobs_is_forwarded_to_the_installer(self):
+        """Without a job count the installer's cmake build falls back to a
+        serial make whenever ninja is missing."""
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False, jobs=4)
+        cmd, _ = calls[0]
+        self.assertIn('-j', cmd)
+        self.assertEqual(cmd[cmd.index('-j') + 1], '4')
+
+    def test_no_jobs_leaves_the_installer_default(self):
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False)
+        cmd, _ = calls[0]
+        self.assertNotIn('-j', cmd)
+
     def test_interactive_install_keeps_the_terminal(self):
         self.point_at_empty_install()
         calls = self.record_runs()
@@ -370,6 +432,40 @@ class MG7BootstrapTest(unittest.TestCase):
         with self.quiet():
             self.assertRaises(RuntimeError,
                               mg7_bootstrap.ensure_madspace, interactive=False)
+
+
+class MadspaceInstallCommandTest(unittest.TestCase):
+    """`install madspace` at the MG5 prompt: it runs madspace/install.py."""
+
+    def setUp(self):
+        self.cmd = mgcmd.MasterCmd()
+
+    def installer_args(self, line):
+        with mock.patch('subprocess.run') as run:
+            self.cmd.do_install(line)
+        return [str(a) for a in run.call_args[0][0]]
+
+    def test_nb_core_is_forwarded_as_the_job_count(self):
+        """Without it the installer's cmake build is serial whenever ninja is
+        missing, whatever nb_core says."""
+        self.cmd.do_set('nb_core 5 --no_save')
+        args = self.installer_args('madspace --source -y')
+        self.assertIn('install.py', args[1])
+        self.assertEqual(args[-2:], ['-j', '5'])
+
+    def test_unset_nb_core_uses_every_core(self):
+        self.cmd.do_set('nb_core None --no_save')
+        args = self.installer_args('madspace --source -y')
+        self.assertEqual(args[-2:], ['-j', str(multiprocessing.cpu_count())])
+
+    def test_an_explicit_job_count_is_left_alone(self):
+        self.cmd.do_set('nb_core 5 --no_save')
+        for line in ('madspace --source -j 2', 'madspace --source -j2',
+                     'madspace --source --jobs=2'):
+            args = self.installer_args(line)
+            self.assertEqual(len([a for a in args if a.startswith('-j')
+                                  or a.startswith('--jobs')]), 1, args)
+            self.assertNotIn('5', args)
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
