@@ -124,6 +124,81 @@ class TestBornDirCollision(unittest.TestCase):
 class TestGroupedFKSMetadata(unittest.TestCase):
     """Physical FKS classes exported through configuration-indexed tables."""
 
+    def test_openmp_amplitude_loop_is_explicitly_opt_in(self):
+        """The paper loop must be active in OpenMP builds but serial by
+        default, rather than hidden behind the invalid historical ``!omp``
+        comment sentinel.
+        """
+
+        template_root = os.path.join(
+            root_path, os.path.pardir, os.path.pardir, 'Template', 'NLO')
+        with open(os.path.join(
+                template_root, 'SubProcesses', 'driver_mintMC.f')) as stream:
+            driver = stream.read().upper()
+        self.assertIn(
+            '!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(IVEC)', driver)
+        self.assertIn('!$OMP END PARALLEL DO', driver)
+        self.assertNotIn('!OMP PARALLEL DO', driver)
+        self.assertIn('WALL TIME IN VECTOR_AMPLITUDE', driver)
+
+        with open(os.path.join(
+                template_root, 'Source', 'make_opts.inc')) as stream:
+            make_opts = stream.read()
+        self.assertIn('ifeq ($(openmp),true)', make_opts)
+        self.assertIn('FFLAGS += -fopenmp', make_opts)
+        self.assertIn('LDFLAGS += -fopenmp', make_opts)
+        self.assertIn('OMP_RECURSIVE_FFLAGS', make_opts)
+        self.assertIn('filter-out -fno-automatic', make_opts)
+
+        with open(os.path.join(
+                template_root, 'SubProcesses', 'makefile_fks_dir')) as stream:
+            makefile = stream.read()
+        self.assertIn('OPENMP_RECURSIVE_OBJS', makefile)
+        self.assertIn('driver_vec.o real_me_chooser.o born.o', makefile)
+        self.assertIn('$(OMP_RECURSIVE_FFLAGS)', makefile)
+
+        aloha_root = os.path.join(
+            root_path, os.path.pardir, os.path.pardir, 'aloha',
+            'template_files')
+        for filename in ('Makefile_F', 'Makefile_F_dual'):
+            with open(os.path.join(aloha_root, filename)) as stream:
+                aloha_makefile = stream.read()
+            self.assertIn('ifeq ($(openmp),true)', aloha_makefile)
+            self.assertIn('$(OMP_RECURSIVE_FFLAGS)', aloha_makefile)
+
+        build_script = os.path.join(
+            template_root, 'Utilities', 'build_openmp_benchmark.sh')
+        with open(build_script) as stream:
+            script = stream.read()
+        self.assertIn('Source/DHELAS', script)
+        self.assertIn('openmp=true', script)
+        self.assertIn('driver_mintMC.o', script)
+
+    def test_standalone_exporters_follow_loop_optimization(self):
+        self.assertTrue(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA,
+            export_fks.ProcessOptimizedExporterFortranFKS))
+        self.assertTrue(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA_Default,
+            export_fks.ProcessExporterFortranFKS))
+        self.assertFalse(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA_Default,
+            export_fks.ProcessOptimizedExporterFortranFKS))
+
+    def test_openmp_amplitude_locals_are_not_saved_by_data(self):
+        """Grouped runtime flavor selection must remain lane-local."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        for filename in ('realmatrix_splitorders_fks.inc',
+                         'bornmatrix_splitorders_fks.inc',
+                         'born_cnt_splitorders_fks.inc'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = stream.read().upper()
+            self.assertNotIn('DATA FLAVOR', content)
+            self.assertIn('FLAVOR(:) = 1', content)
+
     def test_sudakov_virtual_calls_use_fks_flavor(self):
         """Sudakov diagnostics must not fall back to virtual row one."""
 
@@ -152,12 +227,12 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             with open(os.path.join(template_dir, filename)) as stream:
                 content = ' '.join(stream.read().upper().split())
             self.assertIn(
-                'I.EQ.0.OR.MAX_VIRTUAL_FLAVOR_INDEX.GT.1', content)
+                'I.EQ.0.OR.N_VIRTUAL_FLAVOR_CONFIGS.GT.1', content)
 
         with open(os.path.join(template_dir, 'BinothLHA.f')) as stream:
             content = ' '.join(stream.read().upper().split())
         self.assertIn(
-            'IF (MAX_VIRTUAL_FLAVOR_INDEX.GT.1) MC_HEL=0', content)
+            'IF (N_VIRTUAL_FLAVOR_CONFIGS.GT.1) MC_HEL=0', content)
 
     def test_fixed_order_stratifies_physical_flavors_by_topology(self):
         """Grouped FO sampling sums flavours inside one sampled topology."""
@@ -169,21 +244,28 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             content = ' '.join(
                 stream.read().upper().replace('$', '').split())
 
-        self.assertIn('CALL SETUP_PHYSICAL_FKS_MAP(PHYSICAL_FKS_MAP)',
-                      content)
         self.assertIn(
-            'FKS_TOPOLOGY_D(EXISTING_FKS).EQ. FKS_TOPOLOGY_D(IFKS)',
-            content)
+            'CALL SETUP_PHYSICAL_FKS_MAP(PHYSICAL_FKS_GROUP_COUNT, '
+            'PHYSICAL_FKS_GROUP_SIZE,PHYSICAL_FKS_GROUP_OFFSET, '
+            'PHYSICAL_FKS_MEMBERS)', content)
+        self.assertIn(
+            'IGROUP=TOPOLOGY_GROUP(FKS_TOPOLOGY_D(IFKS))', content)
         self.assertIn('DO IFLAV_CONFIG=1,NBORN_FLAVOR_CONFIGS', content)
         self.assertIn(
             'NFKS_BORN=BORN_FKS_CONFIG_D(IFLAV_CONFIG)', content)
+        self.assertIn('IF (SUM) THEN NFKS_MIN=1 NFKS_MAX=', content)
+        self.assertIn('DO IGROUP=NFKS_MIN,NFKS_MAX', content)
         self.assertIn(
-            'DO J=1,PHYSICAL_FKS_MAP(IRAN_PICKED,0,NFKS_SECTOR)',
+            'DO J=1,PHYSICAL_FKS_GROUP_SIZE(IGROUP,NFKS_SECTOR)',
             content)
+        self.assertIn(
+            'IFKS=PHYSICAL_FKS_MEMBERS(I,NFKS_SECTOR)', content)
+        self.assertNotIn('PHYSICAL_FKS_MAP(0:FKS_CONFIGS,', content)
         self.assertIn(
             'IF (BORN_FLAVOR_INDEX_D(IFKS).NE.BORN_CLASS) CYCLE',
             content)
-        self.assertIn('JAC=1D0/VOL', content)
+        self.assertIn('MC_INT_WGT=1D0/VOL', content)
+        self.assertIn('JAC=MC_INT_WGT', content)
         self.assertIn('SIG_NO_NBODY=SIG_NO_NBODY+SIG', content)
         self.assertIn('ABS(SIG_NO_NBODY)*VOL)', content)
         self.assertNotIn('GET_MC_INTEGER_GROUP_VOLUME', content)
@@ -274,6 +356,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)
         self.assertIn('INTEGER VIRTUAL_FLAVOR_INDEX_D(16)', content)
         self.assertIn('PARAMETER (MAX_VIRTUAL_FLAVOR_INDEX=16)', content)
+        self.assertIn('PARAMETER (N_VIRTUAL_FLAVOR_CONFIGS=4)', content)
         self.assertIn('PARAMETER (HAS_PHYSICAL_FKS_CLASSES=.TRUE.)',
                       content)
         compact_content = ' '.join(content.lower().replace('$', '').split())
@@ -309,6 +392,14 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn('PDG_TYPE_D(NFKSPROCESS,2)', pdf_lines)
         self.assertIn('PD(IPROC)=FKS_PDF1*FKS_PDF2', pdf_lines)
         self.assertNotIn('_QUARK', pdf_vars + pdf_data + pdf_lines + ee_vars)
+
+        _, _, mirrored_pdf_lines, _ = exporter.get_grouped_pdf_lines_mir(
+            mirror=True)
+        self.assertIn(
+            'FKS_PDF_PDG1=PDG_TYPE_D(NFKSPROCESS,1)',
+            mirrored_pdf_lines)
+        self.assertIn('FKS_PDF1=PDG2PDF(LPP(2),', mirrored_pdf_lines)
+        self.assertIn('FKS_PDF2=PDG2PDF(LPP(1),', mirrored_pdf_lines)
 
         handle, path = tempfile.mkstemp(
             prefix='leshouche_info_', suffix='.dat')

@@ -58,9 +58,17 @@ def make_unique_couplings(couplings):
     by HELAS calls must remain available to model export.
     """
     unique = []
+    seen = set()
     for coupling in couplings:
-        if coupling not in unique:
-            unique.append(coupling)
+        if isinstance(coupling, MG.FLV_Coupling):
+            key = ('flavor', coupling.get('name'),
+                   coupling.get_canonical_key())
+        else:
+            key = ('ordinary', coupling)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(coupling)
     return unique
 
 
@@ -712,6 +720,7 @@ class FKSHelasProcess(object):
         sets reals and color links. Real_me_list and real_amp_list are the lists of pre-genrated
         matrix elements in 1-1 correspondence with the amplitudes"""
         
+        self._fks_flavor_map_cache = {}
         if fksproc != None:
             self.born_me = helas_objects.HelasMatrixElement(fksproc.born_amp, **opts)
 
@@ -847,6 +856,10 @@ class FKSHelasProcess(object):
         they cannot map to a valid underlying Born row.  A configuration with
         no physical rows is an error.
         """
+        cache_key = bool(resolve_virtual)
+        if cache_key in self._fks_flavor_map_cache:
+            return self._fks_flavor_map_cache[cache_key]
+
         flavor_map = []
         config_index = 0
         initial_born_color_basis = self.born_me.get('color_basis')
@@ -886,7 +899,7 @@ class FKSHelasProcess(object):
                     try:
                         born_pdgs = fks_common.map_real_to_born_pdgs(
                             real_pdgs, info, model)
-                    except fks_common.FKSProcessError:
+                    except fks_common.FKSFlavorNotInTopology:
                         # This physical real row is outside the union member
                         # represented by this grouped FKS topology.
                         continue
@@ -977,7 +990,18 @@ class FKSHelasProcess(object):
         # them; stale link bases still refer to the pre-trim diagram positions.
         if self.born_me.get('color_basis') is not initial_born_color_basis:
             self.set_color_links(force=True)
+        self._fks_flavor_map_cache[cache_key] = flavor_map
         return flavor_map
+
+    def clear_fks_flavor_map_cache(self):
+        """Invalidate cached physical-row mappings after metadata mutation.
+
+        Normal generation finishes constructing Born, real, virtual, and
+        extra-counterterm metadata before requesting this map.  The explicit
+        hook is for low-level callers and tests that intentionally alter those
+        public objects afterwards.
+        """
+        self._fks_flavor_map_cache.clear()
 
     def get_fks_flavor_signature(self):
         """Return an immutable identity for grouped physical FKS mappings.
@@ -1169,6 +1193,7 @@ class FKSHelasProcess(object):
                 if oth_pdgs not in this_pdgs:
                     this_real.matrix_element['processes'].append(oth_proc)
                     this_pdgs.append(oth_pdgs)
+        self.clear_fks_flavor_map_cache()
 
             
     
@@ -1262,7 +1287,7 @@ class FKSHelasRealProcess(object): #test written
                 try:
                     born_pdgs = fks_common.map_real_to_born_pdgs(
                         real_pdgs, info, model)
-                except fks_common.FKSProcessError:
+                except fks_common.FKSFlavorNotInTopology:
                     continue
                 extra_pdgs = ()
                 if info['extra_cnt_index'] != -1:

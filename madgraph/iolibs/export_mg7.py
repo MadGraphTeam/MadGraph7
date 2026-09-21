@@ -479,6 +479,10 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
         return (
             {
                 "incoming": self.incoming,
+                "merged_incoming": [
+                    abs(pdg) in self.model.get("merged_particles")
+                    for pdg in self.incoming
+                ],
                 "outgoing": self.outgoing,
                 "channels": self.channels,
                 "me_path": lib_me_path,

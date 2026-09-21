@@ -28,6 +28,9 @@ C     counterterm icnt
       PARAMETER (NCNT=1)
       INTEGER CNT_COLOR(NCNT,NEXTERNALB)
       DATA (CNT_COLOR(1,I), I=1,NEXTERNALB) / NEXTERNALB * 1 /
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
 
       IF (ICNT.GT.NCNT.OR.ICNT.LE.0) THEN
         WRITE(*,*) 'ERROR#1 in get_extra_cnt_color', ICNT
@@ -38,7 +41,7 @@ C     counterterm icnt
         STOP
       ENDIF
 
-      GET_EXTRA_CNT_COLOR=CNT_COLOR(ICNT,IPART)
+      GET_EXTRA_CNT_COLOR=EXTRA_CNT_COLOR_D(NFKSPROCESS,IPART)
 
       RETURN
       END
@@ -55,6 +58,9 @@ C     counterterm icnt
       PARAMETER (NCNT=1)
       INTEGER CNT_PDG(NCNT,NEXTERNALB)
       DATA (CNT_PDG(1,I), I=1,NEXTERNALB) / NEXTERNALB * 0 /
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
 
       IF (ICNT.GT.NCNT.OR.ICNT.LE.0) THEN
         WRITE(*,*) 'ERROR#1 in get_extra_cnt_pdg', ICNT
@@ -65,7 +71,7 @@ C     counterterm icnt
         STOP
       ENDIF
 
-      GET_EXTRA_CNT_PDG=CNT_PDG(ICNT,IPART)
+      GET_EXTRA_CNT_PDG=EXTRA_CNT_PDG_D(NFKSPROCESS,IPART)
 
       RETURN
       END
@@ -82,6 +88,9 @@ C     counterterm icnt
       PARAMETER (NCNT=1)
       DOUBLE PRECISION CNT_CHARGE(NCNT,NEXTERNALB)
       DATA (CNT_CHARGE(1,I), I=1,NEXTERNALB) / NEXTERNALB * 0D0 /
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
 
       IF (ICNT.GT.NCNT.OR.ICNT.LE.0) THEN
         WRITE(*,*) 'ERROR#1 in get_extra_cnt_charge', ICNT
@@ -92,7 +101,7 @@ C     counterterm icnt
         STOP
       ENDIF
 
-      GET_EXTRA_CNT_CHARGE=CNT_CHARGE(ICNT,IPART)
+      GET_EXTRA_CNT_CHARGE=EXTRA_CNT_CHARGE_D(NFKSPROCESS,IPART)
 
       RETURN
       END

@@ -11337,9 +11337,21 @@ C
         self.allCTparameters=list(\
                             set(itertools.chain.from_iterable(allCTparameters)))
 
-        # All used CT couplings
-        w_coupls = [coupl.lower() for coupl in wanted_couplings if isinstance(coupl,str)]
-        logger.debug('wanted_couplings: CTparan not supporting merging -> will be problematic for NLO')
+        # All used CT couplings. Flavor-indexed couplings carry concrete UFO
+        # coupling names for each physical row; expand those names before
+        # applying the ordinary CT-parameter filter.
+        w_coupls = []
+        for coupl in wanted_couplings:
+            if isinstance(coupl, str):
+                w_coupls.append(coupl.lower())
+            elif hasattr(coupl, 'get_all_couplings'):
+                w_coupls.extend(
+                    name.lower() for name in coupl.get_all_couplings()
+                    if isinstance(name, str))
+            else:
+                logger.warning(
+                    'Cannot identify counterterm parameters for coupling %r; '
+                    'ignoring that coupling in the CT filter.', coupl)
         allUsedCTCouplings = [coupl for coupl in 
               self.model.map_CTcoup_CTparam.keys() if coupl.lower() in w_coupls]
         
@@ -14129,8 +14141,13 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
         amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
         logger.info("Writing out the FKS Born building blocks in a standalone format")
-        amcatnlo_options['export_format']='FKS5_optimized'
-        return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)
+        if cmd.options['loop_optimized_output']:
+            ExporterClass = export_fks.ProcessExporterFortranFKS_SA
+            amcatnlo_options['export_format'] = 'FKS5_optimized'
+        else:
+            ExporterClass = export_fks.ProcessExporterFortranFKS_SA_Default
+            amcatnlo_options['export_format'] = 'FKS5_default'
+        return ExporterClass(cmd._export_dir, amcatnlo_options)
 
     # Then treat the EW sudakov Standalone output
     elif output_type=='ewsudsa':

@@ -813,7 +813,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_multi_point test_fks_standalone_invalid_options test_nonconverging_limit_sequence_fails_safely test_fks_standalone_limits -pA -t0 -l INFO
+            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_multi_point test_fks_standalone_grouped_physical_flavors test_fks_standalone_grouped_real_vs_pre_grouping test_fks_standalone_grouped_mixed_wj_tree_values test_fks_standalone_invalid_options test_nonconverging_limit_sequence_fails_safely test_fks_standalone_limits -pA -t0 -l INFO
+
+      - name: "FKS standalone: grouped virtual physical rows"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_nlo_virtual_values_all_physical_rows -pA -t0 -l INFO
 
       - name: "FKS standalone: all p p > t t~ Born-channel limits"
         if: ${{ !cancelled() }}

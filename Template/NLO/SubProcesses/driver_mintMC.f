@@ -83,6 +83,8 @@ c statistics for MadLoop
 c timing statistics
       include "timing_variables.inc"
       real*4 tOther, tTot
+      double precision tWallTot
+      integer(kind=8) wallClockBefore,wallClockAfter,wallClockRate
 c general MadFKS parameters
       integer ifold_picked
       double precision x_save(ndimmax,max_fold)
@@ -106,6 +108,7 @@ c Write the process PID in the log.txt files (i.e., to the screen)
       write (*,*) getpid()
 
       call cpu_time(tBefore)
+      call system_clock(wallClockBefore,wallClockRate)
       fixed_order=.false.
       nlo_ps=.true.
       if (nincoming.ne.2) then
@@ -384,10 +387,17 @@ c Randomly pick the contribution that will be written in the event file
       endif
       write (*,*) 'counter for the diverging MC subtraction',n_MC_subt_diverge
       call cpu_time(tAfter)
+      call system_clock(wallClockAfter)
       tTot = tAfter-tBefore
+      if (wallClockRate.gt.0) then
+         tWallTot=dble(wallClockAfter-wallClockBefore)/
+     $        dble(wallClockRate)
+      else
+         tWallTot=0d0
+      endif
       tOther = tTot - (tBorn+tGenPS+tReal+tCount+tIS+tFxFx+tf_nb+tf_all
      $     +t_as+tr_s+tr_pdf+t_plot+t_cuts+t_MC_subt+t_isum+t_p_unw
-     $     +t_write+t_coupl+t_vecamp)
+     $     +t_write+t_coupl)
       write(*,*) 'Time spent in Born : ',tBorn
       write(*,*) 'Time spent in PS_Generation : ',tGenPS
       write(*,*) 'Time spent in Reals_evaluation: ',tReal
@@ -407,9 +417,12 @@ c Randomly pick the contribution that will be written in the event file
       write(*,*) 'Time spent in Pick_unwgt : ',t_p_unw
       write(*,*) 'Time spent in Write_events : ',t_write
       write(*,*) 'Time spent in AlphaS_dependencies : ',t_coupl
-      write(*,*) 'Time spent in Vector_amplitude : ',t_vecamp
+      write(*,*) 'Wall time in Vector_amplitude : ',t_vecamp
+      write(*,*) 'Wall time in Sequential_overhead : ',
+     $     tWallTot-t_vecamp
       write(*,*) 'Time spent in Other_tasks : ',tOther
       write(*,*) 'Time spent in Total : ',tTot
+      write(*,*) 'Wall time in Total : ',tWallTot
 
       open (unit=12, file='res.dat',status='unknown')
       if (imode.eq.0) then
@@ -601,7 +614,7 @@ c These should be ignored (but kept for 'historical reasons')
          write (*,*) 'Sum over helicities in the virtuals'/
      $        /' for decay process'
          mc_hel=0
-      elseif (i.eq.0.or.MAX_VIRTUAL_FLAVOR_INDEX.gt.1) then
+      elseif (i.eq.0.or.N_VIRTUAL_FLAVOR_CONFIGS.gt.1) then
          mc_hel=0
          write (*,*) 'Explicitly summing over helicities'/
      $        /' for the virtuals'
@@ -902,6 +915,8 @@ C Real deg amplitudes
       common /to_use_evpr/use_evpr
 
       integer vector_size, ivec, icontr_bfr
+      integer(kind=8) ampClockBefore,ampClockAfter,ampClockRate
+      include "timing_variables.inc"
 
 c
       if (new_point .and. ifl.ne.2) then
@@ -984,12 +999,10 @@ c "npNLO".
          enddo
          if (ifl.eq.0) then
             call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
-            if (HAS_PHYSICAL_FKS_CLASSES) then
-               call get_MC_integer_group_volume(1,proc_map(0,0),
+             if (HAS_PHYSICAL_FKS_CLASSES) then
+                call get_MC_integer_group_volume(1,proc_map(0,0),
      $              born_class_map,proc_map(0,1),born_vol1)
-            else
-               born_vol1=1d0/dble(proc_map(0,0))
-            endif
+             endif
          endif
 
      
@@ -1016,12 +1029,18 @@ c The nbody contributions
             nFKS_picked_nbody=nFKS_out
          endif
 
-!omp parallel do
+         call system_clock(ampClockBefore,ampClockRate)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(IVEC)
          do ivec=1,vector_size
             call amplitudes_ivec(proc_map,rwgt,vector_size
      $            ,nFKS_picked_nbody,ivec)
          enddo
-!omp end parallel do
+!$OMP END PARALLEL DO
+         call system_clock(ampClockAfter)
+         if (ampClockRate.gt.0) then
+            t_vecamp=t_vecamp+real(ampClockAfter-ampClockBefore)/
+     $           real(ampClockRate)
+         endif
 
          
       do ivec=1,vector_size

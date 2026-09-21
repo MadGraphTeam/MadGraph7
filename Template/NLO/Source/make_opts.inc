@@ -70,6 +70,21 @@ UNAME := $(shell uname -s)
 ifeq ($(origin LDFLAGS), undefined)
      LDFLAGS=$(STDLIB) $(MACFLAG)
 endif
+
+# Zenny NLO multi-event OpenMP proof of principle.  This is deliberately
+# opt-in: ordinary generated output remains serial, while
+# `Utilities/build_openmp_benchmark.sh` activates the lane-parallel
+# tree-amplitude loop for benchmark reconstruction and race/correctness
+# testing. This mode is not a claim that the complete production call graph
+# is thread-safe.
+ifeq ($(openmp),true)
+  FFLAGS += -fopenmp
+  LDFLAGS += -fopenmp
+  # Selected amplitude objects use this instead of the legacy
+  # -fno-automatic storage mode.  Applying -frecursive globally breaks serial
+  # routines that rely on historical SAVE-like local storage.
+  OMP_RECURSIVE_FFLAGS = $(filter-out -fno-automatic,$(FFLAGS)) -frecursive
+endif
 # Options: dynamic, lhapdf
 
 UNAME := $(shell uname)

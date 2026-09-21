@@ -988,7 +988,7 @@ c MadLoop initialization PS points.
 c A single MadLoop HelFilter.dat cannot describe several physical
 c virtual flavours.  MadLoop therefore keeps all helicities active for
 c grouped virtual output; use the matching explicit helicity sum here.
-               if (MAX_VIRTUAL_FLAVOR_INDEX.gt.1) mc_hel=0
+               if (N_VIRTUAL_FLAVOR_CONFIGS.gt.1) mc_hel=0
                if (mc_hel.ne.0) then
  198              continue
 c Set-up the MC over helicities. This assumes that the 'HelFilter.dat'

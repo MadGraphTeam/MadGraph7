@@ -345,9 +345,9 @@ c timing statistics
       include 'genps.inc'
       include 'born_nhel.inc'
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
-     $     ,nexternal),rwgt,vol,born_vol,sig,x(99),MC_int_wgt
+     $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt
      $     ,f_class(nintegrals),sig_no_nbody
-      integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp
+      integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp,igroup
      $     ,nFKS_max,izero,ione,itwo,mohdr,i,j,iran_picked,nFKS_sector
      $     ,iflav_config,born_class
       parameter (izero=0,ione=1,itwo=2,mohdr=-100)
@@ -384,8 +384,13 @@ c PineAPPL
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
-      integer physical_fks_map(0:fks_configs,0:fks_configs,0:2)
-      save ini_fin_fks_map,physical_fks_map
+      integer physical_fks_group_count(0:2)
+      integer physical_fks_group_size(fks_configs,0:2)
+      integer physical_fks_group_offset(fks_configs,0:2)
+      integer physical_fks_members(fks_configs,0:2)
+      save ini_fin_fks_map,physical_fks_group_count
+      save physical_fks_group_size,physical_fks_group_offset
+      save physical_fks_members
       include 'has_ewsudakov.inc'
 
 C Born variables
@@ -455,7 +460,9 @@ C Real deg amplitudes
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
          if (HAS_PHYSICAL_FKS_CLASSES) then
-            call setup_physical_fks_map(physical_fks_map)
+            call setup_physical_fks_map(physical_fks_group_count,
+     $           physical_fks_group_size,physical_fks_group_offset,
+     $           physical_fks_members)
          endif
          write (*,*) 'initial-final FKS maps:'
          write (*,*) 0 ,':',ini_fin_fks_map(0,:)
@@ -492,7 +499,16 @@ c physical Born flavours there at the same phase-space point, so
 c that flavour is stratified rather than Monte Carlo sampled.
       if (HAS_PHYSICAL_FKS_CLASSES) then
          call get_MC_integer(max(nFKS_sector,1),
-     $        physical_fks_map(0,0,nFKS_sector),iran_picked,vol)
+     $        physical_fks_group_count(nFKS_sector),iran_picked,vol)
+         if (sum) then
+            nFKS_min=1
+            nFKS_max=physical_fks_group_count(nFKS_sector)
+            MC_int_wgt=1d0
+         else
+            nFKS_min=iran_picked
+            nFKS_max=iran_picked
+            MC_int_wgt=1d0/vol
+         endif
          f(1:nintegrals)=0d0
          sig_no_nbody=0d0
 
@@ -566,25 +582,28 @@ c Evaluate each physical Born class once without a topology correction.
                endif
             endif
 
-c The n+1-body contribution belongs to the sampled topology and receives
-c inverse topology probability through the phase-space Jacobian.
-            do j=1,physical_fks_map(iran_picked,0,nFKS_sector)
-               iFKS=physical_fks_map(iran_picked,j,nFKS_sector)
-               if (BORN_FLAVOR_INDEX_D(iFKS).ne.born_class) cycle
-               if (abrv(1:4).eq.'born' .or.
+c Sum mode visits every topology exactly. Otherwise the n+1-body contribution
+c belongs to the sampled topology and receives inverse topology probability
+c through the phase-space Jacobian.
+            do igroup=nFKS_min,nFKS_max
+               do j=1,physical_fks_group_size(igroup,nFKS_sector)
+                  i=physical_fks_group_offset(igroup,nFKS_sector)+j
+                  iFKS=physical_fks_members(i,nFKS_sector)
+                  if (BORN_FLAVOR_INDEX_D(iFKS).ne.born_class) cycle
+                  if (abrv(1:4).eq.'born' .or.
      $             abrv(1:4).eq.'bovi' .or.
      $             abrv(1:4).eq.'bosk' .or.
-     $             abrv(1:2).eq.'vi') cycle
-               nbody=.false.
-               calculatedBorn=.false.
+     $               abrv(1:2).eq.'vi') cycle
+                  nbody=.false.
+                  calculatedBorn=.false.
 c MZ this is a temporary fix for processes without soft singularities
 c associated to the initial state. Do not extend this to event generation.
-               wgt_me_born=0d0
-               wgt_me_real=0d0
-               jac=1d0/vol
-               call update_fks_dir_FO(iFKS)
-               call generate_momenta(nndim,iconfig,jac,x,p)
-               if (p_born(0,1).ge.0d0) then
+                  wgt_me_born=0d0
+                  wgt_me_real=0d0
+                  jac=MC_int_wgt
+                  call update_fks_dir_FO(iFKS)
+                  call generate_momenta(nndim,iconfig,jac,x,p)
+                  if (p_born(0,1).ge.0d0) then
                   call compute_prefactors_n1body(vegas_wgt,jac)
                   call set_cms_stuff(izero)
                   if (ickkw.eq.3)
@@ -754,7 +773,8 @@ c associated to the initial state. Do not extend this to event generation.
                       call compute_real_emission(p,1d0,
      $                     real_amp_split,fx_ev)
                   endif
-               endif
+                  endif
+               enddo
             enddo
 
             call finalize_fixed_order_born_class(vegas_wgt,f_class,sig)
@@ -766,16 +786,19 @@ c associated to the initial state. Do not extend this to event generation.
 
          f(1)=abs(f(2))
          f(5)=abs(f(3))
-         call fill_MC_integer(max(nFKS_sector,1),iran_picked,
-     $        abs(sig_no_nbody)*vol)
+         if (sum) then
+            call fill_MC_integer(max(nFKS_sector,1),iran_picked,
+     $           abs(sig_no_nbody))
+         else
+            call fill_MC_integer(max(nFKS_sector,1),iran_picked,
+     $           abs(sig_no_nbody)*vol)
+         endif
          return
       endif
 
       call get_MC_integer(max(nFKS_sector,1)
      $     ,ini_fin_fks_map(nFKS_sector,0),iran_picked,vol)
       nFKS_picked=ini_fin_fks_map(nFKS_sector,iran_picked)
-      born_vol=1d0
-      
 c The nbody contributions
       if (abrv.eq.'real') goto 11
       nbody=.true.
@@ -787,7 +810,6 @@ c The nbody contributions
       else
          jac=0.5d0
       endif
-      jac=jac/born_vol
       call generate_momenta(nndim,iconfig,jac,x,p)
       if (p_born(0,1).lt.0d0) goto 12
       call compute_prefactors_nbody(vegas_wgt)
@@ -1091,64 +1113,95 @@ c called with .false. here.
       return
       end
 
-      subroutine setup_physical_fks_map(physical_fks_map)
-c Collapse physical FKS rows onto the topology that generated them. The map
-c layout is (topology group, member, initial/final sector), with member
-c zero holding each group size and (0,0,sector) holding the group count.
+      subroutine setup_physical_fks_map(group_count,group_size,
+     $     group_offset,members)
+c Collapse physical FKS rows onto the topology that generated them. Keep a
+c linear compressed list per initial/final sector: each group's offset and
+c size select its contiguous range in members. This avoids storage quadratic
+c in the number of physical FKS rows.
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       include 'fks_info.inc'
-      integer physical_fks_map(0:fks_configs,0:fks_configs,0:2)
+      integer group_count(0:2),group_size(fks_configs,0:2)
+      integer group_offset(fks_configs,0:2),members(fks_configs,0:2)
       integer sector,iFKS,igroup,imember,existing_fks,born_class,iborn
-      logical belongs,found,class_found
+      integer topology,topology_group(fks_configs)
+      integer group_fill(fks_configs)
+      logical belongs,born_class_exists(fks_configs)
 
-      physical_fks_map=0
+      group_count=0
+      group_size=0
+      group_offset=0
+      members=0
+      born_class_exists=.false.
+      do iborn=1,NBORN_FLAVOR_CONFIGS
+         existing_fks=BORN_FKS_CONFIG_D(iborn)
+         born_class=BORN_FLAVOR_INDEX_D(existing_fks)
+         if (born_class.lt.1.or.born_class.gt.fks_configs) then
+            write (*,*) 'Invalid Born flavor class',born_class,
+     $           existing_fks
+            stop 1
+         endif
+         born_class_exists(born_class)=.true.
+      enddo
       do sector=0,2
+         topology_group=0
          do iFKS=1,fks_configs
             belongs=sector.eq.0 .or.
      $           (sector.eq.1.and.FKS_J_D(iFKS).gt.nincoming) .or.
      $           (sector.eq.2.and.FKS_J_D(iFKS).le.nincoming)
             if (.not.belongs) cycle
 
-            found=.false.
-            do igroup=1,physical_fks_map(0,0,sector)
-               existing_fks=physical_fks_map(igroup,1,sector)
-               if (FKS_TOPOLOGY_D(existing_fks).eq.
-     $             FKS_TOPOLOGY_D(iFKS)) then
-                  found=.true.
-                  exit
-               endif
-            enddo
-            if (.not.found) then
-               physical_fks_map(0,0,sector)=
-     $              physical_fks_map(0,0,sector)+1
-               igroup=physical_fks_map(0,0,sector)
+            topology=FKS_TOPOLOGY_D(iFKS)
+            if (topology.lt.1.or.topology.gt.fks_configs) then
+               write (*,*) 'Invalid FKS topology',topology,iFKS
+               stop 1
+            endif
+            igroup=topology_group(topology)
+            if (igroup.eq.0) then
+               group_count(sector)=group_count(sector)+1
+               igroup=group_count(sector)
+               topology_group(topology)=igroup
             endif
 
             born_class=BORN_FLAVOR_INDEX_D(iFKS)
-            class_found=.false.
-            do iborn=1,NBORN_FLAVOR_CONFIGS
-               existing_fks=BORN_FKS_CONFIG_D(iborn)
-               if (BORN_FLAVOR_INDEX_D(existing_fks).eq.born_class)
-     $              class_found=.true.
-            enddo
-            if (.not.class_found) then
+            if (born_class.lt.1.or.born_class.gt.fks_configs) then
+               write (*,*) 'Invalid Born flavor class for FKS row',
+     $              iFKS,born_class
+               stop 1
+            endif
+            if (.not.born_class_exists(born_class)) then
                write (*,*) 'No Born representative for FKS row',
      $              iFKS,born_class
                stop 1
             endif
-            imember=physical_fks_map(igroup,0,sector)+1
-            physical_fks_map(igroup,0,sector)=imember
-            physical_fks_map(igroup,imember,sector)=iFKS
+            group_size(igroup,sector)=group_size(igroup,sector)+1
          enddo
 
-         if (physical_fks_map(0,0,sector).eq.0) cycle
+         if (group_count(sector).eq.0) cycle
+         do igroup=2,group_count(sector)
+            group_offset(igroup,sector)=
+     $           group_offset(igroup-1,sector)+
+     $           group_size(igroup-1,sector)
+         enddo
+         group_fill=0
+         do iFKS=1,fks_configs
+            belongs=sector.eq.0 .or.
+     $           (sector.eq.1.and.FKS_J_D(iFKS).gt.nincoming) .or.
+     $           (sector.eq.2.and.FKS_J_D(iFKS).le.nincoming)
+            if (.not.belongs) cycle
+            igroup=topology_group(FKS_TOPOLOGY_D(iFKS))
+            group_fill(igroup)=group_fill(igroup)+1
+            imember=group_offset(igroup,sector)+group_fill(igroup)
+            members(imember,sector)=iFKS
+         enddo
+
          write (*,*) 'Physical FKS topology map for sector',sector
-         do igroup=1,physical_fks_map(0,0,sector)
+         do igroup=1,group_count(sector)
             write (*,*) igroup,'-->',
-     $           (physical_fks_map(igroup,imember,sector),
-     $            imember=1,physical_fks_map(igroup,0,sector))
+     $           (members(group_offset(igroup,sector)+imember,sector),
+     $            imember=1,group_size(igroup,sector))
          enddo
       enddo
       return
@@ -1299,7 +1352,7 @@ c-----
                write (*,*) 'Sum over helicities in the virtuals'/
      $              /' for decay process'
                mc_hel=0
-            elseif (i.eq.0.or.MAX_VIRTUAL_FLAVOR_INDEX.gt.1) then
+            elseif (i.eq.0.or.N_VIRTUAL_FLAVOR_CONFIGS.gt.1) then
                mc_hel=0
                write (*,*) 'Explicitly summing over helicities'/
      $              /' for the virtuals'

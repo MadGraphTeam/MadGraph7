@@ -2181,6 +2181,17 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         for k,v in start_dict.items():
             replace_dict[k] = v
 
+        # Grouped matrix elements need independent helicity-discovery state for
+        # each physical FKS class.  Ordinary output historically shared that
+        # state between configurations represented by the same matrix element;
+        # keep that cheaper behavior instead of unconditionally multiplying the
+        # tables and first-point scan by FKS_CONFIGS.
+        grouped = bool(matrix_element.get('processes')[0].get('model').get(
+            'merged_particles'))
+        replace_dict['hel_configs'] = 'FKS_CONFIGS' if grouped else '1'
+        replace_dict['hel_index_setup'] = (
+            'HEL_INDEX=NFKSPROCESS' if grouped else 'HEL_INDEX=1')
+
         # Reuse the standalone flavor-table and per-call mask machinery.  The
         # NLO templates keep their historical public entry points and obtain
         # the local row from the physical NFKSPROCESS class instead.
@@ -2251,8 +2262,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 'model').get('merged_particles'):
             den_factors = self.get_flavor_denominator_factors(
                 matrix_element)
-            den_factor_line += (
-                '\nINTEGER IDEN_FLAVOR(%d)\nDATA IDEN_FLAVOR / %s /' %
+            # IDEN is selected at run time for grouped physical rows.  Do not
+            # retain the ordinary DATA initialization: DATA implies SAVE and
+            # would turn this otherwise-local value into shared writable state
+            # in the OpenMP amplitude loop.
+            den_factor_line = (
+                'INTEGER IDEN_FLAVOR(%d)\nDATA IDEN_FLAVOR / %s /' %
                 (len(den_factors),
                  ', '.join('%d' % factor for factor in den_factors)))
             replace_dict['flavor_den_factor_setup'] = (
@@ -3907,6 +3922,8 @@ Parameters              %(params)s\n\
                 '%d' % index for index in virtual_flavor_indices)
             replace_dict['max_virtual_flavor_index'] = max(
                 [1] + virtual_flavor_indices)
+            replace_dict['n_virtual_flavor_configs'] = len(set(
+                index for index in virtual_flavor_indices if index > 0))
             has_physical_fks_classes = all(
                 info.get('flavor_class') for info in fks_info_list)
             replace_dict['has_physical_fks_classes'] = (
@@ -4094,6 +4111,7 @@ Parameters              %(params)s\n\
             replace_dict['extra_cnt_flavor_index_values'] = '0'
             replace_dict['virtual_flavor_index_values'] = '0'
             replace_dict['max_virtual_flavor_index'] = 1
+            replace_dict['n_virtual_flavor_configs'] = 0
             replace_dict['has_physical_fks_classes'] = '.false.'
             replace_dict['fks_flavor_class_values'] = '0'
             replace_dict['fks_topology_values'] = '1'
@@ -4795,7 +4813,7 @@ Parameters              %(params)s\n\
 
         if ninitial == 2 and model.get('merged_particles') and \
                 not subproc_group:
-            return self.get_grouped_pdf_lines_mir()
+            return self.get_grouped_pdf_lines_mir(mirror=mirror)
 
         pdf_definition_lines = ""
         ee_pdf_definition_lines = ""
@@ -4955,7 +4973,7 @@ Parameters              %(params)s\n\
         # Remove last line break from pdf_lines
         return pdf_definition_lines[:-1], pdf_data_lines[:-1], pdf_lines[:-1], ee_pdf_definition_lines
 
-    def get_grouped_pdf_lines_mir(self):
+    def get_grouped_pdf_lines_mir(self, mirror=False):
         """Return NLO luminosity code selected by the physical FKS class.
 
         A grouped topology carries pseudo-PDGs whose names are neither valid
@@ -4975,6 +4993,7 @@ Parameters              %(params)s\n\
       DOUBLE PRECISION FKS_PDF2_COMPONENTS(N_EE)"""
 
         def beam_lines(beam):
+            pdf_beam = 3 - beam if mirror else beam
             return """FKS_PDF_PDG%(beam)d=PDG_TYPE_D(NFKSPROCESS,%(beam)d)
       IF (FKS_PDF_PDG%(beam)d.EQ.21) THEN
         FKS_PDF_PDG%(beam)d=0
@@ -4995,17 +5014,19 @@ Parameters              %(params)s\n\
       ENDIF
       FKS_PDF%(beam)d=1D0
       FKS_PDF%(beam)d_COMPONENTS(1:N_EE)=0D0
-      IF (ABS(LPP(%(beam)d)).GE.1) THEN
+      IF (ABS(LPP(%(pdf_beam)d)).GE.1) THEN
         IF (ABS(FKS_PDF_PDG%(beam)d).LE.10) THEN
-          FKS_PDF%(beam)d=PDG2PDF(LPP(%(beam)d),FKS_PDF_PDG%(beam)d,%(beam)d,
-     $      XBK(%(beam)d),DSQRT(Q2FACT(%(beam)d)))
-          IF ((ABS(LPP(%(beam)d)).EQ.4.OR.ABS(LPP(%(beam)d)).EQ.3)
+          FKS_PDF%(beam)d=PDG2PDF(LPP(%(pdf_beam)d),
+     $      FKS_PDF_PDG%(beam)d,%(pdf_beam)d,
+     $      XBK(%(pdf_beam)d),DSQRT(Q2FACT(%(pdf_beam)d)))
+          IF ((ABS(LPP(%(pdf_beam)d)).EQ.4.OR.
+     $         ABS(LPP(%(pdf_beam)d)).EQ.3)
      $        .AND.PDLABEL.NE.'none')
      $      FKS_PDF%(beam)d_COMPONENTS(1:N_EE)=EE_COMPONENTS(1:N_EE)
         ELSE
           FKS_PDF%(beam)d=0D0
         ENDIF
-      ENDIF""" % {'beam': beam}
+      ENDIF""" % {'beam': beam, 'pdf_beam': pdf_beam}
 
         pdf_lines = """IF (PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.
      $    PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.
@@ -5807,7 +5828,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         return calls, amp_split_orders
 
 
-class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
+class _ProcessExporterFortranFKSSAMixin(object):
     """FKS Born building-block standalone output.
 
     Selected by ``output standalone_fortran --fks``.
@@ -5825,7 +5846,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
                                  me_ntot, path=os.getcwd(), OLP='MadLoop'):
         """Run the regular FKS generation, then drop in the standalone
         Born driver and its data files."""
-        result = super(ProcessExporterFortranFKS_SA, self).\
+        result = super(_ProcessExporterFortranFKSSAMixin, self).\
             generate_directories_fks(matrix_element, fortran_model, me_number,
                                      me_ntot, path, OLP)
 
@@ -5957,7 +5978,8 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         model = matrix_element.born_me.get('base_amplitude').\
             get('process').get('model')
         born_legs = matrix_element.born_me.get('processes')[0].get('legs')
-        fks_info_entry = matrix_element.get_fks_info_list()[0]
+        fks_info_entry = matrix_element.get_fks_info_list(
+            resolve_virtual=False)[0]
         flavor_class = fks_info_entry.get('flavor_class')
         if flavor_class:
             # Link positions are topology-level, but charge-link discovery must
@@ -6018,7 +6040,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         """Regular FKS finalize, plus a marker file so that 'launch' routes
         to the lightweight Born 'check_fks' build/run instead of the full
         aMC@NLO integration."""
-        result = super(ProcessExporterFortranFKS_SA, self).\
+        result = super(_ProcessExporterFortranFKSSAMixin, self).\
             finalize(matrix_elements, history, mg5options, flaglist)
         subproc = os.path.join(self.dir_path, 'SubProcesses')
         open(os.path.join(subproc, 'check_sa_fks_mode'), 'w').write('1\n')
@@ -6048,11 +6070,23 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         momentum fraction must vary), and setrun then initialises a PDF for
         alpha_s(MZ). Use the built-in set for both paths to keep LHAPDF out of
         these self-contained checks."""
-        super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
-                                                                  history)
+        super(_ProcessExporterFortranFKSSAMixin, self).create_run_card(
+            processes, history)
         for name in ('run_card_default.dat', 'run_card.dat'):
             path = pjoin(self.dir_path, 'Cards', name)
             run_card = banner_mod.RunCardNLO(path)
             run_card['pdlabel'] = 'nn23nlo'
             run_card['reweight_pdf'] = [False]
             run_card.write(path)
+
+
+class ProcessExporterFortranFKS_SA(
+        _ProcessExporterFortranFKSSAMixin,
+        ProcessOptimizedExporterFortranFKS):
+    """Optimized-loop FKS standalone exporter."""
+
+
+class ProcessExporterFortranFKS_SA_Default(
+        _ProcessExporterFortranFKSSAMixin,
+        ProcessExporterFortranFKS):
+    """Default-loop FKS standalone exporter."""

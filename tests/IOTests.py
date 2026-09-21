@@ -404,8 +404,27 @@ class IOTestManager(unittest.TestCase):
     
     def assertFileContains(self, source, solution):
         """ Check the content of a file """
-        list_cur=source.read().split('\n')
-        list_sol=solution.split('\n')
+        def canonicalize_flv_identifiers(text):
+            """Normalize ALOHA's process-global flavour-helper suffixes.
+
+            The numeric part of ``FLV_<number>`` depends on which models were
+            imported earlier in the Python process.  It is not part of the
+            generated-code ABI, but the identity and reuse pattern of each
+            helper is.  Canonicalize each file independently in first-use
+            order so IO tests still detect a wrong helper reference.
+            """
+            identifiers = {}
+
+            def replace(match):
+                identifier = match.group(0)
+                if identifier not in identifiers:
+                    identifiers[identifier] = len(identifiers) + 1
+                return 'FLV_CANONICAL_%d' % identifiers[identifier]
+
+            return re.sub(r'\bFLV_[0-9]+\b', replace, text)
+
+        list_cur=canonicalize_flv_identifiers(source.read()).split('\n')
+        list_sol=canonicalize_flv_identifiers(solution).split('\n')
         while 1:
             if '' in list_sol:
                 list_sol.remove('')

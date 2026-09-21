@@ -72,7 +72,7 @@ class TestNLOFlavorGrouping(unittest.TestCase):
             sorted([[1, 2, 3, 4, 5], [11, 13, 15], [12, 14, 16]]))
         interaction = [interaction for interaction in loop_ew['interactions']
                        if [particle.get_pdg_code()
-                           for particle in interaction['particles']] ==
+                           for particle in interaction['particles'][:2]] ==
                        [-81, 81] and
                        (0, 2) in interaction.get('couplings')][0]
         self.assertIn((0, 2), interaction.get('couplings'))
@@ -88,6 +88,31 @@ class TestNLOFlavorGrouping(unittest.TestCase):
         self.assertIn(
             'more than two fermions',
             unsupported.get_flavor_grouping_unsupported_reason())
+
+    def test_merged_pseudo_pdg_collision_labels(self):
+        """Fallback pseudo-PDGs keep semantic process/directory labels."""
+        grouped = import_ufo.import_model(
+            'loop_sm', options={'apply_flavor_grouping': True})
+        self.assertEqual(grouped.get('merged_particles')[92], [11, 13])
+        self.assertEqual(grouped.get_merged_particle_kind(92), 'lepton')
+        self.assertEqual(grouped.get_merged_particle_label(92), 'L')
+        self.assertEqual(grouped.get_merged_particle_label(-92), 'Lx')
+
+        # loop_sm's ghost occupies 82, moving the merged lepton to 92.  The
+        # fallback number must not leak into user-visible P*/V* names.
+        process = base_objects.Process({
+            'legs': base_objects.LegList([
+                base_objects.Leg({'id': 92, 'number': 1, 'state': False,
+                                  'flavor': [11, 13]}),
+                base_objects.Leg({'id': -92, 'number': 2, 'state': False,
+                                  'flavor': [-11, -13]}),
+                base_objects.Leg({'id': 24, 'number': 3, 'state': True}),
+                base_objects.Leg({'id': -24, 'number': 4, 'state': True}),
+            ]),
+            'model': grouped,
+        })
+        self.assertEqual(process.base_string(), 'L Lx > w+ w-')
+        self.assertEqual(process.shell_string(), '0_LLx_wpwm')
 
 
 #===============================================================================

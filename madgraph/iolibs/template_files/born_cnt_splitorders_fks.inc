@@ -133,8 +133,10 @@ C
       PARAMETER ( NCOMB=  %(ncomb)d )
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER HEL_CONFIGS
+      PARAMETER (HEL_CONFIGS=%(hel_configs)s)
       INTEGER    THEL
-      PARAMETER (THEL=NCOMB*FKS_CONFIGS)
+      PARAMETER (THEL=NCOMB*HEL_CONFIGS)
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   %(ngraphs)d)
 C  
@@ -145,10 +147,10 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,glu_ij,FLAV_IDX
+      INTEGER IHEL,IDEN,i,glu_ij,FLAV_IDX,HEL_INDEX
       REAL*8 borns(2,NSQAMPSO)
-      INTEGER NTRY(FKS_CONFIGS)
-      DATA NTRY / FKS_CONFIGS*0 /
+      INTEGER NTRY(HEL_CONFIGS)
+      DATA NTRY / HEL_CONFIGS*0 /
       COMPLEX*16 T(2,NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
 %(helicity_lines)s
@@ -163,7 +165,7 @@ C      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:NAMPSO)
 C      common/to_amps/  amp2,       jamp2
 C
 C MZ      DATA jamp2(0,0) /   %(ncolor)d/          
-      LOGICAL GOODHEL(NCOMB,FKS_CONFIGS)
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS)
       DATA GOODHEL / THEL*.FALSE. /
       save goodhel
       double precision hel_fac
@@ -176,9 +178,10 @@ C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
       FLAV_IDX=EXTRA_CNT_FLAVOR_INDEX_D(NFKSPROCESS)
+      %(hel_index_setup)s
       glu_ij = ij_values(nfksprocess)
-      NTRY(NFKSPROCESS)=NTRY(NFKSPROCESS)+1
-      if (NTRY(NFKSPROCESS).lt.2) then
+      NTRY(HEL_INDEX)=NTRY(HEL_INDEX)+1
+      if (NTRY(HEL_INDEX).lt.2) then
          skip=1			 
          do while(nhel(glu_ij ,skip).ne.1)
             skip=skip+1
@@ -200,9 +203,9 @@ c MZ      ENDDO
       hel_fac=1d0
       DO IHEL=1,NCOMB
         if (nhel(glu_ij,ihel).le.0) then
-          IF ((GOODHEL(IHEL,NFKSPROCESS) .OR.
-     $         GOODHEL(IHEL+SKIP,NFKSPROCESS) .OR.
-     $         NTRY(NFKSPROCESS) .LT. 2) ) THEN
+          IF ((GOODHEL(IHEL,HEL_INDEX) .OR.
+     $         GOODHEL(IHEL+SKIP,HEL_INDEX) .OR.
+     $         NTRY(HEL_INDEX) .LT. 2) ) THEN
             
             CALL BORN_CNT%(proc_prefix)s(P1,NHEL(1,IHEL),IHEL,
      $           FLAV_IDX,T,borns)
@@ -211,12 +214,12 @@ c MZ      ENDDO
                 ANS(2,I)=ANS(2,I)+T(2,I)
             ENDDO
             if ( borns(1,1).ne.0d0 .AND.
-     $           .NOT. GOODHEL(IHEL,NFKSPROCESS) ) then
-              GOODHEL(IHEL,NFKSPROCESS)=.TRUE.
+     $           .NOT. GOODHEL(IHEL,HEL_INDEX) ) then
+              GOODHEL(IHEL,HEL_INDEX)=.TRUE.
             endif
             if ( borns(2,1).ne.0d0 .AND.
-     $           .NOT. GOODHEL(IHEL+SKIP,NFKSPROCESS) ) then
-              GOODHEL(IHEL+SKIP,NFKSPROCESS)=.TRUE.
+     $           .NOT. GOODHEL(IHEL+SKIP,HEL_INDEX) ) then
+              GOODHEL(IHEL+SKIP,HEL_INDEX)=.TRUE.
             endif
 	  ENDIF
         ENDIF
@@ -270,7 +273,6 @@ C
       parameter (nmo=nexternal-1)
       data ic /nmo*1/
       INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
       INTEGER  CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER CF_INDEX, DENOM
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
@@ -309,6 +311,7 @@ C ----------
 
 C don't chache for extra counterterms
       calculatedBorn=.false.
+      FLAVOR(:) = 1
       glu_ij = ij_values(nfksprocess)
       jamp(:,:) = (0d0,0d0)
       DO I = 1, NSQAMPSO
@@ -511,5 +514,3 @@ C
 	  NSQSO=NSQAMPSO
 
       END
-
-

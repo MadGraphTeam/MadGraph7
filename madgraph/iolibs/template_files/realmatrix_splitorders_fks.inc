@@ -267,9 +267,11 @@ C
       include 'nexternal.inc'
       INCLUDE 'nFKSconfigs.inc'
       INTEGER     NCOMB         
-      PARAMETER ( NCOMB=%(ncomb)d)
+       PARAMETER ( NCOMB=%(ncomb)d)
+      INTEGER HEL_CONFIGS
+      PARAMETER (HEL_CONFIGS=%(hel_configs)s)
       INTEGER THEL
-      PARAMETER (THEL=NCOMB*FKS_CONFIGS)
+      PARAMETER (THEL=NCOMB*HEL_CONFIGS)
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
 C  
@@ -280,17 +282,17 @@ C
 C LOCAL VARIABLES 
 C  
       INCLUDE 'fks_info.inc'
-      INTEGER IHEL,IDEN,I,J,FLAV_IDX
-      INTEGER T_IDENT(NCOMB,FKS_CONFIGS)
+      INTEGER IHEL,IDEN,I,J,FLAV_IDX,HEL_INDEX
+      INTEGER T_IDENT(NCOMB,HEL_CONFIGS)
       REAL*8 T(0:NSQAMPSO)
-      REAL*8 T_SAVE(NCOMB,0:NSQAMPSO,FKS_CONFIGS)
+      REAL*8 T_SAVE(NCOMB,0:NSQAMPSO,HEL_CONFIGS)
       SAVE T_SAVE,T_IDENT
       INTEGER NHEL(NEXTERNAL,NCOMB)
 %(helicity_lines)s
-      LOGICAL GOODHEL(NCOMB,FKS_CONFIGS)
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS)
       DATA GOODHEL/THEL*.FALSE./
-      INTEGER NTRY(FKS_CONFIGS)
-      DATA NTRY/FKS_CONFIGS*0/
+      INTEGER NTRY(HEL_CONFIGS)
+      DATA NTRY/HEL_CONFIGS*0/
       INTEGER NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
 %(den_factor_line)s
@@ -298,43 +300,44 @@ C ----------
 C BEGIN CODE
 C ----------
       FLAV_IDX=REAL_FLAVOR_INDEX_D(NFKSPROCESS)
+      %(hel_index_setup)s
 %(flavor_den_factor_setup)s
-      NTRY(NFKSPROCESS)=NTRY(NFKSPROCESS)+1
+      NTRY(HEL_INDEX)=NTRY(HEL_INDEX)+1
       DO I=0,NSQAMPSO
       	ANS(I) = 0D0	  
       ENDDO
       DO IHEL=1,NCOMB
-        IF (GOODHEL(IHEL,NFKSPROCESS) .OR.
-     $      NTRY(NFKSPROCESS) .LT. 2) THEN
-          IF (NTRY(NFKSPROCESS).LT.2) THEN
+        IF (GOODHEL(IHEL,HEL_INDEX) .OR.
+     $      NTRY(HEL_INDEX) .LT. 2) THEN
+          IF (NTRY(HEL_INDEX).LT.2) THEN
 C for the first ps-point, check for helicities that give
 C identical matrix elements
             call MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
             DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
+                T_SAVE(IHEL,I,HEL_INDEX)=T(I)
             ENDDO
-            T_IDENT(IHEL,NFKSPROCESS)=-1
+            T_IDENT(IHEL,HEL_INDEX)=-1
             DO I=1,IHEL-1
                IF (T(0).EQ.0D0) EXIT
-               IF (T_SAVE(I,0,NFKSPROCESS).EQ.0D0) CYCLE
+               IF (T_SAVE(I,0,HEL_INDEX).EQ.0D0) CYCLE
                 do j = 0, nsqampso
-                  IF (ABS(T(j)/T_SAVE(I,j,NFKSPROCESS)-1D0)
+                  IF (ABS(T(j)/T_SAVE(I,j,HEL_INDEX)-1D0)
      $                .GT. 1D-12) goto 444
                 enddo
-                T_IDENT(IHEL,NFKSPROCESS) = I
+                T_IDENT(IHEL,HEL_INDEX) = I
  444            continue
             ENDDO
           ELSE
-            IF (T_IDENT(IHEL,NFKSPROCESS).GT.0) THEN
+            IF (T_IDENT(IHEL,HEL_INDEX).GT.0) THEN
 C if two helicity states are identical, dont recompute
             DO I=0,NSQAMPSO
-              T(I)=T_SAVE(T_IDENT(IHEL,NFKSPROCESS),I,NFKSPROCESS)
-              T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
+              T(I)=T_SAVE(T_IDENT(IHEL,HEL_INDEX),I,HEL_INDEX)
+              T_SAVE(IHEL,I,HEL_INDEX)=T(I)
             ENDDO
             ELSE
               CALL MATRIX_%(proc_prefix)s(P,NHEL(1,IHEL),FLAV_IDX,T)
               DO I=0,NSQAMPSO
-                T_SAVE(IHEL,I,NFKSPROCESS)=T(I)
+                T_SAVE(IHEL,I,HEL_INDEX)=T(I)
               ENDDO
             ENDIF
           ENDIF
@@ -343,8 +346,8 @@ C add to the sum of helicities
              ANS(I)=ANS(I)+T(I)
 	  ENDDO
           IF (T(0) .NE. 0D0 .AND.
-     $        .NOT. GOODHEL(IHEL,NFKSPROCESS)) THEN
-            GOODHEL(IHEL,NFKSPROCESS)=.TRUE.
+     $        .NOT. GOODHEL(IHEL,HEL_INDEX)) THEN
+            GOODHEL(IHEL,HEL_INDEX)=.TRUE.
           ENDIF
         ENDIF
       ENDDO
@@ -637,7 +640,6 @@ C
       INTEGER IC(NEXTERNAL)
       data ic /nexternal*1/
       INTEGER FLAVOR(NEXTERNAL)
-      DATA FLAVOR /NEXTERNAL*1/
       INTEGER CF(NCOLOR*(NCOLOR+1))
       INTEGER CF_INDEX, DENOM
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
@@ -656,6 +658,7 @@ C ----------
 C BEGIN CODE
 C ----------
       jamp(:,:) = (0d0,0d0)
+      FLAVOR(:) = 1
 %(flavor_mask_setup)s
 %(helas_calls)s
 %(jamp_lines)s
@@ -725,7 +728,6 @@ C
       INTEGER IC(NEXTERNAL)
       data ic /nexternal*1/
       INTEGER FLAVOR(NEXTERNAL)
-      DATA FLAVOR /NEXTERNAL*1/
       INTEGER CF(NCOLOR*(NCOLOR+1))
       INTEGER CF_INDEX, DENOM
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
@@ -744,6 +746,7 @@ C ----------
 C BEGIN CODE
 C ----------
       jamp(:,:) = (0d0,0d0)
+      FLAVOR(:) = 1
 %(flavor_mask_setup)s
 %(helas_calls_vec)s
 %(jamp_lines)s

@@ -42,6 +42,17 @@ from madgraph import MG5DIR
 class testFKSHelasObjects(unittest.TestCase):
     """a class to test the module FKSHelasObjects"""
 
+    def test_make_unique_couplings_handles_flavor_tables_linearly(self):
+        first = MG.FLV_Coupling(
+            'FLV_A', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        duplicate = copy.deepcopy(first)
+        renamed = MG.FLV_Coupling(
+            'FLV_B', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        couplings = ['GC_0', first, 'GC_0', duplicate, renamed]
+        self.assertEqual(
+            fks_helas.make_unique_couplings(couplings),
+            ['GC_0', first, renamed])
+
     def _prepare_rs_model(self):
         cache_root = os.path.join(os.path.expanduser('~'), '.cache', 'UFOMODEL')
         cached_model = os.path.join(cache_root, 'RS')
@@ -827,6 +838,7 @@ class testFKSHelasObjects(unittest.TestCase):
         helas_process = fks_helas.FKSHelasProcess(fks_process, [], [])
 
         flavor_map = helas_process.get_fks_flavor_map()
+        self.assertIs(flavor_map, helas_process.get_fks_flavor_map())
         self.assertEqual(len(flavor_map), 16)
         self.assertEqual(
             set(entry['fks_config_index'] for entry in flavor_map),
@@ -871,6 +883,7 @@ class testFKSHelasObjects(unittest.TestCase):
         incompatible = copy.deepcopy(helas_process)
         incompatible.real_processes[0].fks_infos[0][
             'underlying_born'][0][0] = 82
+        incompatible.clear_fks_flavor_map_cache()
         self.assertNotEqual(incompatible, helas_process)
         self.assertRaises(fks_common.FKSProcessError,
                           helas_process.add_process, incompatible)
@@ -885,6 +898,7 @@ class testFKSHelasObjects(unittest.TestCase):
             reversed(virtual['allowed_flavors_pdgs']))
         virtual._external_flavor_index_maps = {}
         helas_process.virt_matrix_element = virtual
+        helas_process.clear_fks_flavor_map_cache()
         virtual_map = helas_process.get_fks_flavor_map()
         first_physical = [entry for entry in virtual_map
                           if entry['fks_config_index'] == 1 and
@@ -906,6 +920,7 @@ class testFKSHelasObjects(unittest.TestCase):
         first_info['underlying_born'].append(
             list(first_info['underlying_born'][0]))
         first_info['extra_cnt_index'] = 0
+        helas_process.clear_fks_flavor_map_cache()
         extra_map = helas_process.get_fks_flavor_map()
         first_physical = [entry for entry in extra_map
                           if entry['fks_config_index'] == 1 and

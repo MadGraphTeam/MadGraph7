@@ -1595,6 +1595,39 @@ class Model(PhysicsObject):
                     return self.name2part[id]
                 except:
                     return None
+
+    def get_merged_particle_kind(self, pdg):
+        """Return the conventional kind represented by a merged pseudo-PDG.
+
+        The preferred pseudo-PDGs 81--83 are not always available in loop
+        models.  Classification must therefore follow ``merged_particles``
+        rather than the numeric fallback selected by
+        :meth:`define_merge_particle_for`.
+        """
+        members = self.get('merged_particles').get(abs(pdg))
+        if not members:
+            return None
+        particles = [self.get_particle(abs(member)) for member in members]
+        if not particles or any(particle is None for particle in particles):
+            return 'generic'
+        if all(particle.is_fermion() and particle.get_color() != 1
+               for particle in particles):
+            return 'quark'
+        if all(particle.is_fermion() and particle.get_color() == 1
+               for particle in particles):
+            if all(particle.get_charge() == 0 for particle in particles):
+                return 'neutrino'
+            return 'lepton'
+        return 'generic'
+
+    def get_merged_particle_label(self, pdg):
+        """Return the stable process-string label for a merged pseudo-PDG."""
+        kind = self.get_merged_particle_kind(pdg)
+        labels = {'quark': 'Q', 'lepton': 'L', 'neutrino': 'N'}
+        if kind is None:
+            return None
+        label = labels.get(kind, 'm%s' % abs(pdg))
+        return label + ('x' if pdg < 0 else '')
     
 
     def define_merge_particle_for(self, ids):
@@ -4345,12 +4378,9 @@ class Process(PhysicsObject):
                     pdg = abs(leg['flavor'][0]) * leg.get('id')/abs(leg.get('id'))
                     onepart = self['model'].get_particle(pdg)
                     mystr += onepart.get_name()
-                elif leg.get('id') in [81,82,83, -81, -82, -83]:
-                    mystr += {81:'Q', -81:'Qx', 82:'L', -82:'Lx', 83:'N', -83:'Nx'}[leg.get('id')]    
-                elif leg.get('id')>0:
-                    mystr += 'm%s'% leg.get('id')
                 else:
-                    mystr += 'm%sx'% abs(leg.get('id'))
+                    mystr += self['model'].get_merged_particle_label(
+                        leg.get('id'))
             else:
                 mystr = mystr + mypart.get_name() 
                 
@@ -4416,12 +4446,9 @@ class Process(PhysicsObject):
                     single_pdg = abs(leg['flavor'][0]) * leg.get('id')/abs(leg.get('id'))
                     onepart = self['model'].get_particle(single_pdg)
                     mystr += onepart.get_name()
-                elif leg.get('id') in [81,82,83, -81, -82, -83]:
-                    mystr += {81:'Q', -81:'Qx', 82:'L', -82:'Lx', 83:'N', -83:'Nx'}[leg.get('id')]    
-                elif leg.get('id')>0:
-                    mystr += 'm%s'% leg.get('id')
                 else:
-                    mystr += 'm%sx'% abs(leg.get('id'))
+                    mystr += self['model'].get_merged_particle_label(
+                        leg.get('id'))
             elif mypart['is_part']:
                 mystr = mystr + mypart['name']
             else:

@@ -2513,9 +2513,31 @@ class TestFKSCommon(unittest.TestCase):
             [2, -2, 24, 22])
 
         self.assertRaises(
-            fks_common.FKSProcessError,
+            fks_common.FKSFlavorNotInTopology,
             fks_common.map_real_to_born_pdgs,
             [21, -5, 24, -24, -5], initial_info, model)
+
+        # Ordinary topology non-membership is distinguishable from malformed
+        # metadata so grouped-map construction cannot silently drop channels
+        # when its FKS indices or underlying-Born data are corrupt.
+        wrong_topology_info = copy.deepcopy(initial_info)
+        wrong_topology_info['underlying_born'] = [
+            [81, 81, 24, -24]]
+        self.assertRaises(
+            fks_common.FKSFlavorNotInTopology,
+            fks_common.map_real_to_born_pdgs,
+            [21, -2, 24, -24, -2], wrong_topology_info, model)
+
+        malformed_info = copy.deepcopy(initial_info)
+        del malformed_info['ij']
+        try:
+            fks_common.map_real_to_born_pdgs(
+                [21, -2, 24, -24, -2], malformed_info, model)
+        except fks_common.FKSProcessError as error:
+            self.assertNotIsInstance(
+                error, fks_common.FKSFlavorNotInTopology)
+        else:
+            self.fail('Malformed FKS metadata did not raise FKSProcessError')
 
     def test_find_color_links(self): 
         """tests if all the correct color links are found for a given born process"""

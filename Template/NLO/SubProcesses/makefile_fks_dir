@@ -129,6 +129,16 @@ RWGFILES=reweight_xsec_events.o handling_lhe_events.o recmom.o 		\
 	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $<
 %.o: $(ANADIR)/%.for
 	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $<
+
+# Only the routines reachable from the OpenMP amplitude loop may switch away
+# from MadGraph's legacy -fno-automatic storage semantics.  The rest of the
+# event-generation executable must keep the ordinary flags.
+ifeq ($(openmp),true)
+OPENMP_RECURSIVE_OBJS = driver_vec.o real_me_chooser.o born.o \
+	$(patsubst %.f,%.o,$(wildcard matrix_*.f))
+$(OPENMP_RECURSIVE_OBJS): %.o: %.f
+	$(FC) $(OMP_RECURSIVE_FFLAGS) -c -I. -I$(LIBDIR) $<
+endif
 %.o: %.c
 	$(CXX) $(CFLAGS) -c -I. $^
 %.o: $(ANADIR)/%.c

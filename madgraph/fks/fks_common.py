@@ -37,6 +37,17 @@ class FKSProcessError(Exception):
     pass
 
 
+class FKSFlavorNotInTopology(FKSProcessError):
+    """A physical flavour row is not a member of a grouped FKS topology.
+
+    This is the one mapping failure callers may intentionally skip while
+    constructing the union of physical flavour classes.  Malformed FKS
+    metadata continues to raise :class:`FKSProcessError` and must not be
+    mistaken for ordinary non-membership.
+    """
+    pass
+
+
 class FKSDiagramTag(diagram_generation.DiagramTag): #test written
     """Modified diagram tags to be used to link born and real configurations.
     """
@@ -641,7 +652,7 @@ def map_real_to_born_pdgs(real_pdgs, fks_info, model,
             for position in (i_fks, j_fks)
             if abs(real_pdgs[position - 1]) in abs_members)
         if len(daughter_flavors) != 1:
-            raise FKSProcessError(
+            raise FKSFlavorNotInTopology(
                 'Cannot resolve merged mother %s from physical daughters %s and %s'
                 % (mother_id, real_pdgs[i_fks - 1], real_pdgs[j_fks - 1]))
         physical_member = daughter_flavors.pop()
@@ -666,11 +677,11 @@ def map_real_to_born_pdgs(real_pdgs, fks_info, model,
             same_orientation = ((topology_pdg > 0 and physical_pdg > 0) or
                                 (topology_pdg < 0 and physical_pdg < 0))
             if not valid_member or not same_orientation:
-                raise FKSProcessError(
+                raise FKSFlavorNotInTopology(
                     'Physical underlying Born row %s does not match topology %s'
                     % (born_pdgs, underlying))
         elif physical_pdg != topology_pdg:
-            raise FKSProcessError(
+            raise FKSFlavorNotInTopology(
                 'Physical underlying Born row %s does not match topology %s'
                 % (born_pdgs, underlying))
 

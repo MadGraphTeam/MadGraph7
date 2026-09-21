@@ -1148,7 +1148,6 @@ C
       parameter (nmo=nexternal-1)
       data ic /nmo*1/
       INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
       INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER CF_INDEX, DENOM   
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
@@ -1168,7 +1167,6 @@ C      common/to_amps_born/  amp2,       jamp2
       common/ccalculatedBorn/calculatedBorn
       INTEGER CALCULATED_BORN_FLAVOR
       COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
-      DATA CALCULATED_BORN_FLAVOR /0/
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       integer step_hel
@@ -1190,6 +1188,7 @@ C ----------
       jamp(:,:) = (0d0,0d0)
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)
+      FLAVOR(:) = 1
 
 C     A saved Born amplitude is valid only for the selected physical row.
       IF (CALCULATEDBORN .AND.
@@ -1352,7 +1351,6 @@ C
       parameter (nmo=nexternal-1)
       data ic /nmo*1/
       INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
       INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER CF_INDEX, DENOM   
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO),
@@ -1385,6 +1383,7 @@ C ----------
       jamp(:,:) = (0d0,0d0)
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)
+      FLAVOR(:) = 1
 
       glu_ij = ij_values(ifks)
       if (force_ijglu_zero) glu_ij = 0
@@ -1500,7 +1499,10 @@ C        endif
       PARAMETER (THEL=NCOMB*%(nconfs)d)
       LOGICAL GOODHEL(NCOMB,%(nconfs)d)
       common /c_goodhel/goodhel
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
       DATA GOODHEL/THEL*.FALSE./
+      DATA CALCULATED_BORN_FLAVOR /0/
       end
 
 

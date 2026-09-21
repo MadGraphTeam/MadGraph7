@@ -24,6 +24,11 @@ FFLAGS += -fPIC
 
 include ./aloha_file.inc
 
+ifeq ($(openmp),true)
+%.o: %.f
+	$(FC) $(OMP_RECURSIVE_FFLAGS) -c $<
+endif
+
 all: $(LIBDIR)$(LIBRARY)
 
 # Dependencies
