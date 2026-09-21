@@ -10,6 +10,11 @@
 #include <sstream>
 #include <string>
 
+// This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
+// shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
+// whether some mgOnGpuVectors.h happens to be reachable on the include path.
+#define MGONGPU_HAS_VECTORS_H 1
+
 // simd backend: always built with a plain host compiler, never nvcc/hipcc, so the
 // GPU-backend selection macro (see gpu/mgOnGpuConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.

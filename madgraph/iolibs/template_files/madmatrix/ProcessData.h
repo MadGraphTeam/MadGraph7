@@ -20,11 +20,19 @@ namespace ProcessData
   constexpr int ncomb = %(nbhel)d; // #helicity combinations
   constexpr int ndiagrams = %(ndiagrams)d;
   constexpr int ncolor = %(ncolor)d;
+  // Squared split orders: the amplitudes fall into nampso amplitude orders, the jamps
+  // carry one vector per order (njampso long in total) and the color sum pairs them into
+  // nsqampso squared orders. 1, ncolor and 1 unless a '^2' constraint splits the amplitudes.
+  constexpr int nampso = %(nampso)d;
+  constexpr int njampso = ncolor * nampso;
+  constexpr int nsqampso = %(nsqampso)d;
   constexpr int nmaxflavor = %(nmaxflavor)d;
   constexpr int nwf = %(nwf)d; // #wavefunctions = #external (npar) + #internal (see #644)
   constexpr int nproc = %(nproc)d; // 2 if this process has a mirror process, else 1
   constexpr int proc_id = %(proc_id)d;
-  constexpr int helcolDenominators[1] = { %(den_factors)s }; // spin/color/identical-particle denominators
+  // spin/color/identical-particle denominators. NB: assumes nprocesses == 1 (#272 and #343),
+  // although den_factors has one entry per matrix element: see MadGraph7 issue #168
+  constexpr int helcolDenominators[1] = { %(den_factors)s };
 
   // SM independent parameters/couplings/flavor-couplings used by this process
   // (see #823: nIPC/nIPD/nIPF may vary per P1, unlike nicoup which is model-wide)

@@ -13,7 +13,7 @@ SHELL := /bin/bash
 
 #=== Configure common compiler flags for CUDA and C++
 # BACKENDDIR has been exported from the subprocess Makefile
-INCFLAGS = -I. -I../backend/$(BACKENDDIR)
+INCFLAGS = -I. -I../backend/$(BACKENDDIR) -I../backend/common
 
 #-------------------------------------------------------------------------------
 

@@ -23,6 +23,14 @@ namespace ColorMatrixData
   constexpr bool shouldUseBlas = %(should_use_blas)s;
 
 %(color_matrix_lines)s
+
+  // Squared split orders (see ProcessData.h): the squared order each ordered pair of
+  // amplitude orders lands in, and the squared orders the process asked for. The
+  // trivial 1x1 tables for a process whose amplitudes are not split.
+  using ProcessData::nampso;
+  using ProcessData::njampso;
+  using ProcessData::nsqampso;
+%(sqso_tables)s
 }
 
 namespace mgOnGpu

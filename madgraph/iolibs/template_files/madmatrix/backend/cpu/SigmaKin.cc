@@ -177,7 +177,7 @@ namespace madmatrix
                    const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,     // input: indices of the flavor combinations
-                   cxtype_amp_sv* allJamp_sv,          // output: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for this helicity
+                   cxtype_amp_sv* allJamp_sv,          // output: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for this helicity
                    bool storeChannelWeights,
                    fptype_amp* allNumerators,          // input/output: multichannel numerators[nevt], add helicity ihel
                    fptype_amp* allDenominators,        // input/output: multichannel denominators[nevt], add helicity ihel
@@ -216,7 +216,8 @@ namespace madmatrix
     // jamp: sum (for one event or event page) of the invariant amplitudes for all Feynman
     // diagrams in a given color combination (NB: vector cxtype_v IS initialized to 0, but
     // scalar cxtype is NOT, if "= {}" is missing!)
-    cxtype_amp_sv jamp_sv[ncolor] = {};
+    // (njampso = ncolor * nampso: one vector per amplitude split order, just ncolor without them)
+    cxtype_amp_sv jamp_sv[njampso] = {};
     // jampTmp: partial sums of amplitudes that several color flows share, so that they are
     // computed only once (see MadMatrixUFOHelasCallWriter.build_jamp_plan); no "= {}", each
     // one is assigned before it is ever read.
@@ -270,7 +271,7 @@ namespace madmatrix
       FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
-      for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
+      for( int i = 0; i < njampso; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
 
       // Numerators for the current event page (C++); denominators are no longer
       // accumulated here: they are derived as the sum of numerators later.
@@ -280,19 +281,20 @@ namespace madmatrix
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
       const unsigned int iflavor = reinterpret_cast<const unsigned int*>( &iflavor_sv )[0];
 #include "EvaluateDiagrams.inc"
+#include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
       // *** COLOR CHOICE BELOW ***
       // Store the leading color flows for choice of color
       if( jamp2_sv ) // disable color choice if nullptr
       {
-        for( int icol = 0; icol < ncolor; icol++ )
-          jamp2_sv[ncolor * iParity + icol] += cxabs2( jamp_sv[icol] ); // may underflow #831
+        for( int icol = 0; icol < ncolor_flow; icol++ )
+          jamp2_sv[ncolor_flow * iParity + icol] += cxabs2( jampflow_sv[icol] ); // may underflow #831
       }
 
       // *** PREPARE OUTPUT JAMPS ***
       // In C++, copy the local jamp to the output array passed as function argument
-      for( int icol = 0; icol < ncolor; icol++ )
-        allJamp_sv[iParity * ncolor + icol] = jamp_sv[icol];
+      for( int icol = 0; icol < njampso; icol++ )
+        allJamp_sv[iParity * njampso + icol] = jamp_sv[icol];
     }
     // END LOOP ON IPARITY
 
@@ -361,9 +363,9 @@ namespace madmatrix
         }
         constexpr fptype_amp_sv* jamp2_sv = nullptr; // no need for color selection during helicity filtering
 #if defined MGONGPU_CPPSIMD and !( defined MGONGPU_FPTYPE_AMP_FLOAT ) and defined MGONGPU_FPTYPE2_FLOAT
-        cxtype_amp_sv jamp_sv[2 * ncolor] = {}; // all zeros
+        cxtype_amp_sv jamp_sv[2 * njampso] = {}; // all zeros
 #else
-        cxtype_amp_sv jamp_sv[ncolor] = {}; // all zeros
+        cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
 #endif
         calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
@@ -545,6 +547,8 @@ namespace madmatrix
       // (ColorMatrixData::shouldUseBlas) it pays to keep the jamps of every good helicity and
       // hand them all to BLAS in one call after the loop instead of the per-helicity color sum.
 #ifdef MGONGPU_CPP_HAS_BLAS
+      // The BLAS buffers below hold one ncolor jamp vector per helicity (cpp_blas_wanted is false once split)
+      static_assert( !ColorMatrixData::shouldUseBlas || nampso == 1, "the BLAS color sum does not pair split amplitude orders" );
       if( ColorMatrixData::shouldUseBlas )
       {
         static thread_local std::vector<cxtype_sv> ghelJamp_sv( (size_t)ncomb * nParity * ncolor );
@@ -569,7 +573,7 @@ namespace madmatrix
         for( int ighel = 0; ighel < cNGoodHel; ighel++ )
         {
           const int ihel = cGoodHel[ighel];
-          cxtype_amp_sv jamp_sv[nParity * ncolor] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
+          cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
           calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );

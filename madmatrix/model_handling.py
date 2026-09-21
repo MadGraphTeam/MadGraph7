@@ -1869,10 +1869,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     process_class_template = pjoin('madmatrix', 'process_class.inc')
     process_definition_template = pjoin('madmatrix', 'process_function_definitions.inc')
     process_wavefunction_template = pjoin('madmatrix', 'cpp_process_wavefunctions.inc')
-    process_sigmaKin_function_template = pjoin('madmatrix', 'process_sigmaKin_function.inc')
-    single_process_template = pjoin('madmatrix', 'process_matrix.inc')
-    blas_color_sum_template = pjoin('madmatrix', 'color_sum_blas.inc')
-    blas_helicity_loop_template = pjoin('madmatrix', 'color_sum_blas_loop.inc')
     # Below this many colors the SYMM call is not worth setting up and the
     # scalar sum wins (see cpp_blas_wanted_for)
     blas_min_ncolor = 100
@@ -1913,15 +1909,12 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
         # Only written when the jamps are actually split, so that a process
         # without squared split orders keeps the header it always had
-        so = self.split_orders_info()
         replace_dict['split_order_constants'] = '' if not self.split_orders_active() else (
-            '\n    // Squared split orders: the amplitudes fall into nampso amplitude'
-            '\n    // orders, the jamps carry one vector per order (njampso long in total)'
-            '\n    // and the color sum pairs them into nsqampso squared orders'
-            '\n    // (see color_sum.cc, written from color_sum_splitorders.cc).'
-            '\n    static constexpr int nampso = %d;'
-            '\n    static constexpr int njampso = ncolor * nampso; // the jamps of every amplitude order, end to end'
-            '\n    static constexpr int nsqampso = %d;' % (so['nampso'], so['nsqampso']))
+            '\n    // Squared split orders (see ProcessData.h, and color_sum_cpu_splitorders'
+            '\n    // in backend/<variant>/color_sum.cc for how the jamps are paired)'
+            '\n    static constexpr int nampso = ProcessData::nampso;'
+            '\n    static constexpr int njampso = ProcessData::njampso; // the jamps of every amplitude order, end to end'
+            '\n    static constexpr int nsqampso = ProcessData::nsqampso;')
         replace_dict['nwave'] = 4
         if (fd_gauge): replace_dict['nwave'] += 1
 
@@ -1953,9 +1946,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # Cached for edit_processtables(): calculate_jamps' jampTmp_sv shared
         # sub-expression scratch is backend-owned storage now, sized from this
         # process-specific count (ProcessTables::nb_tmp_jamp) rather than
-        # hardcoded per-process like the rest of calculate_jamps. A process
-        # with split orders (jamp_ncolor() == 'njampso') gets a process-specific
-        # override of calculate_jamps entirely, same as color_sum.cc.
+        # hardcoded per-process like the rest of calculate_jamps.
         self._nb_tmp_jamp = getattr(self.helas_call_writer, 'nb_tmp_jamp', 0)
         replace_dict['nparams'] = len(self.params2order)
         replace_dict['coupling_list'] = ' '
@@ -2057,10 +2048,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
-        # ncolor_flow/color-flow lines are set on replace_dict by
-        # get_matrix_single_process (process_class.inc); the broken-symmetry
-        # data broken_symmetry_factor now reads moved to ProcessTables.h, see
-        # edit_processtables().
+        # ncolor_flow is set by set_color_flow_lines_cpp in
+        # get_process_class_definitions (process_class.inc), and the color flow
+        # lines go to ColorFlows.inc (edit_colorflows); the broken-symmetry data
+        # broken_symmetry_factor reads is in ProcessTables.h (edit_processtables).
 
         file = self.read_template_file(self.process_definition_template) % replace_dict # HACK! ignore write=False case
         if len(params) == 0: # remove cIPD from OpenMP pragma (issue #349)
@@ -2070,55 +2061,25 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_function_definitions.inc (copyright)
         return file
 
-    # AV - modify export_cpp.OneProcessExporterCPP method (add debug printouts for multichannel #342)
+    # backend_separation: sigmaKin and everything it calls are backend-owned
+    # (backend/<variant>/SigmaKin.cc), so there is no sigmaKin text to render
+    # into CPPProcess.cc any more; export_cpp still asks for it.
     def get_sigmaKin_lines(self, color_amplitudes, write=True):
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.get_sigmaKin_lines')
-        replace_dict = super().get_sigmaKin_lines(color_amplitudes, write=False)
-        replace_dict['proc_id'] = self.proc_id if self.proc_id>0 else 1
-        replace_dict['proc_id_source'] = 'MadMatrix exporter'
-        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
-
-        # Extract denominator (avoid to extend size for mirroring)
-        den_factors = [str(me.get_denominator_factor()) for me in \
-                            self.matrix_elements]
-        replace_dict['den_factors'] = ",".join(den_factors)
-
-        replace_dict['madE_var_reset'] = """
-        fptype multi_chanel_num = 0.;
-        fptype multi_chanel_denom = 0.;
-        """
-        replace_dict['madE_caclwfcts_call'] = '&multi_chanel_num, &multi_chanel_denom'
-        replace_dict['madE_update_answer'] = '   allMEs[iproc*nprocesses + ievt] *= multi_chanel_num/multi_chanel_denom;'
-
-        replace_dict['nb_channel'] = len(self.multi_channel_map)
-        # same meaning as in edit_colordata: the number of color flows, which
-        # is not the size of the color basis when the color sum runs on the DDM one
-        replace_dict['nb_color'] = max(1, len(self.color_flow_basis))
-
-        replace_dict['cpp_blas_helicity_loop'] = ''
-        replace_dict['cpp_blas_helicity_loop_end'] = ''
-        if self.cpp_blas_wanted():
-            replace_dict['cpp_blas_helicity_loop'] = \
-                self.read_template_file(self.blas_helicity_loop_template)
-            replace_dict['cpp_blas_helicity_loop_end'] = \
-                '\n#endif // MGONGPU_CPP_HAS_BLAS'
-
-        if write:
-            file = self.read_template_file(self.process_sigmaKin_function_template) % replace_dict
-            file = strip_banner(file, banner_mark = "!") # skip first 8 lines in process_sigmaKin_function.inc (copyright)
-            return file, replace_dict
-        else:
-            return replace_dict
+        """Nothing process-specific left to write for sigmaKin (see above)."""
+        if self.include_multi_channel and not self.support_multichannel:
+            raise Exception("This standalone format does not support madevent interface")
+        return ('', {}) if write else {}
 
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
     # backend_separation: calculate_jamps' prologue (signature, memory-access
-    # typedefs) and epilogue (color-choice bookkeeping, jamp output copy - was
-    # process_matrix.inc) are backend-conditional but process-independent, so
-    # they now live as real files in backend/{cpu,simd,gpu}/CalculateJamps.cc.
-    # Only the diagram/vertex-call sequence (helas_calls) is process-specific;
-    # it is written here to EvaluateDiagrams.inc, which that file #includes.
+    # typedefs) and epilogue (color-choice bookkeeping, jamp output copy) are
+    # backend-conditional but process-independent, so they live in
+    # backend/{cpu,simd,gpu}/SigmaKin.cc. Only the diagram/vertex-call sequence
+    # (helas_calls) is process-specific; it is written here to
+    # EvaluateDiagrams.inc, which SigmaKin.cc #includes (as it does the color
+    # flows of ColorFlows.inc, see edit_colorflows).
     def get_all_sigmaKin_lines(self, color_amplitudes, class_name):
-        """Write EvaluateDiagrams.inc for CPPProcess.cc"""
+        """Write EvaluateDiagrams.inc, the diagram calls backend/<variant>/SigmaKin.cc #includes"""
         if self.single_helicities:
             helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                     self.matrix_elements[0],
@@ -2153,6 +2114,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
+        self.edit_colorflows()
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
@@ -2162,6 +2124,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
+
+    def edit_colorflows(self):
+        """Generate ColorFlows.inc: the process-specific amplitudes the color
+        choice in calculate_jamps picks a color flow among.
+
+        These are not always jamp_sv. When the color sum runs on the (n-2)! DDM
+        basis the ncolor_flow trace flows are rebuilt from it (Kleiss-Kuijf),
+        and when the jamps are split by amplitude order the flow is taken from
+        their sum (see set_color_flow_lines_cpp). backend/<variant>/SigmaKin.cc
+        #includes this right after EvaluateDiagrams.inc, in the same scope, and
+        reads the result through jampflow_sv[0..ncolor_flow)."""
+        replace_dict = {'ncolor': len(self.matrix_elements[0].get_color_amplitudes())}
+        self.set_color_flow_lines_cpp(self.matrix_elements[0], replace_dict)
+        lines = ['// Color flows for the color choice in calculate_jamps (generated).',
+                 '// #included by backend/<variant>/SigmaKin.cc right after EvaluateDiagrams.inc.',
+                 replace_dict['jampflow_lines'],
+                 '      const auto* jampflow_sv = %s; // the ncolor_flow color flow amplitudes'
+                 % replace_dict['jamp_flow'],
+                 '']
+        ff = open(pjoin(self.path, 'ColorFlows.inc'), 'w')
+        ff.write('\n'.join(lines))
+        ff.close()
 
     # seperate process constants to one truth file
     def edit_processdata(self):
@@ -2177,6 +2161,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
         replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
         replace_dict['ncolor'] = len(me.get_color_amplitudes())
+        so = self.split_orders_info() if self.split_orders_active() else None
+        replace_dict['nampso'] = so['nampso'] if so else 1
+        replace_dict['nsqampso'] = so['nsqampso'] if so else 1
         replace_dict['nwf'] = me.get_number_of_wavefunctions()
         replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
         replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
@@ -2326,29 +2313,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return ''
         return cls._blas_flags
 
-    # AV - new method (add the split-order holes to process_matrix.inc)
-    def get_matrix_single_process(self, i, matrix_element, color_amplitudes,
-                                  class_name, write=True):
-        replace_dict = super().get_matrix_single_process(
-            i, matrix_element, color_amplitudes, class_name, write=False)
-        replace_dict['jamp_ncolor'] = self.jamp_ncolor()
-        # set_color_flow_lines_cpp fills jamp_flow / jamp_flow_col; it runs from
-        # get_process_class_definitions, before this, but be explicit rather
-        # than rely on the ordering of two independent methods.
-        if 'jamp_flow_col' not in replace_dict:
-            self.set_color_flow_lines_cpp(matrix_element, replace_dict)
-        if write:
-            return self.read_template_file(self.single_process_template) % replace_dict
-        return replace_dict
-
-    # AV - new method
-    def jamp_ncolor(self):
-        """The length of a jamp array: 'ncolor', or 'njampso' (= ncolor*nampso)
-        once the jamps carry an amplitude-order index. Templates spell the size
-        through this hole so that a process without split orders gets exactly
-        the text it got before they existed."""
-        return 'njampso' if self.split_orders_active() else 'ncolor'
-
     # AV - new method
     def split_orders_info(self):
         """The squared split-order tables for this process, or None.
@@ -2417,36 +2381,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                  for k in so['chosen']))
         return '\n'.join(lines)
 
-    # generate process specific color matrix data - algo is backend owned
     # generate process specific color matrix + channel/config maps - algo is backend owned
     def edit_colordata(self):
         """Generate ColorData.h"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colordata')
         template = open(pjoin(self.template_path,'madmatrix','ColorData.h'),'r').read()
         replace_dict = {}
-        # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
+        # Extract the color matrix
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
         # backend/{cpu,simd}/color_sum.cc always compiles the BLAS path (it is
         # only ever built, never process-specific); this constexpr, not this
         # file's %-substitution, is what picks it at compile time per process.
         replace_dict['should_use_blas'] = 'true' if self.cpp_blas_wanted() else 'false'
         # A process whose '^2' constraint leaves more than one amplitude split
-        # order needs the dedicated pair-loop color sum (different jamp layout:
-        # njampso = ncolor*nampso, not ncolor). backend/{cpu,simd}/color_sum.cc
-        # is now a single file shared by every P* in this output (compiled once,
-        # found via the Makefile's vpath into the top-level backend/ dir - see
-        # "Redundant template file delete"), so it can no longer hold a
-        # process-specific algorithm variant. Fail loudly here rather than
-        # silently emitting the non-split color sum for a split-order process.
+        # order pairs its jamps in the color sum instead (color_sum_cpu_splitorders
+        # in backend/{cpu,simd}/color_sum.cc, selected at compile time from
+        # ProcessData::nampso: those files are compiled once per P* directory).
         if self.split_orders_active():
-            raise Exception(
-                "Split amplitude orders ('^2' constraints with more than one "
-                "amplitude order) are not yet supported by the backend-separated "
-                "color sum: backend/{cpu,simd}/color_sum.cc is shared across every "
-                "P* directory in this output, so it cannot carry a process-specific "
-                "pair-loop variant. See color_sum_splitorders.cc for the algorithm "
-                "that still needs folding into the shared file behind a compile-time "
-                "flag (the same pattern as ColorMatrixData::shouldUseBlas).")
+            replace_dict['sqso_tables'] = self.get_sqso_table_lines()
+        else:
+            replace_dict['sqso_tables'] = '\n'.join([
+                '  static constexpr int sqSoIndex[nampso][nampso] = { { 0 } };',
+                '  static constexpr bool chosenSqso[nsqampso] = { true };'])
 
         # we don't sort self.multi_channel_map, and we rely on MadSpace sorting
         # so, diagrams there may be unsorted

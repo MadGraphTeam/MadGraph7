@@ -43,6 +43,13 @@ namespace madmatrix
   // a CPPProcess-generated constant (see process_class.inc/set_color_flow_lines_cpp).
   constexpr int ncolor_flow = CPPProcess::ncolor_flow;
 
+  // Squared split orders are implemented for the CPU backends only: the device jamp
+  // buffers hold a single jamp vector per helicity (ncolor, not njampso), so a GPU build
+  // of such a process would silently sum the wrong thing. Refuse it at compile time.
+  static_assert( nampso == 1,
+                 "The squared split-order color sum is implemented for the CPU backends only: use a CPU "
+                 "backend, or generate the process with a constraint that leaves a single amplitude split order." );
+
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
   __device__ __constant__ short cHel[ncomb][npar];
@@ -266,23 +273,27 @@ namespace madmatrix
     // Scalar iflavor for the current event
     const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
 #include "EvaluateDiagrams.inc"
+#include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
     // *** COLOR CHOICE BELOW ***
     // Store the leading color flows for choice of color
     if( colAllJamp2s ) // disable color choice if nullptr
     {
       using J2_ACCESS = DeviceAccessJamp2;
-      for( int icol = 0; icol < ncolor; icol++ )
-        J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ) += cxabs2( jamp_sv[icol] ); // may underflow #831
+      for( int icol = 0; icol < ncolor_flow; icol++ )
+        // NB: atomicAdd is needed after moving to cuda streams with one helicity per stream!
+        atomicAdd( &J2_ACCESS::kernelAccessIcol( colAllJamp2s, icol ), cxabs2( jampflow_sv[icol] ) ); // may underflow #831
     }
 
     // *** PREPARE OUTPUT JAMPS ***
-    // allJamps already points at this helicity's slot in the dcNGoodHel super-buffer
-    // (see processAllHelicities above), so this is nhel=1 from that slot's own view.
+    // allJamps already points at this helicity's slot (ighel * nevt) in the
+    // [2][ncolor][dcNGoodHel][nevt] super-buffer, hence ihel0 = 0; nhel stays
+    // dcNGoodHel because it is the color stride, and color_sum reads with it.
     {
+      constexpr int ihel0 = 0;
       using J_ACCESS = DeviceAccessJamp;
       for( int icol = 0; icol < ncolor; icol++ )
-        J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, 0, 1 ) = jamp_sv[icol];
+        J_ACCESS::kernelAccessIcolIhelNhel( allJamps, icol, ihel0, dcNGoodHel ) = jamp_sv[icol];
     }
 
     mgDebug( 1, __FUNCTION__ );

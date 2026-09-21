@@ -30,6 +30,7 @@
 #include "MemoryAccessDenominators.h"
 #include "MemoryAccessNumerators.h"
 #include "ColorData.h"
+#include "fpe.h"           // for fpeEnable (constructor, MGONGPUCPP_DEBUG builds)
 
 #include <algorithm>
 #include <array>

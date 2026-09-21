@@ -15,6 +15,7 @@
 #include "GpuRuntime.h"
 #include "Parameters.h"
 
+#include <cstring> // for memcpy
 #include <sstream>
 
 namespace madmatrix
