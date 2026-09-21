@@ -18,6 +18,7 @@ from __future__ import absolute_import
 import copy
 import fractions
 import os 
+import re
 import sys
 import tempfile
 import glob
@@ -269,6 +270,35 @@ class TestGroupedFKSMetadata(unittest.TestCase):
         self.assertIn('SIG_NO_NBODY=SIG_NO_NBODY+SIG', content)
         self.assertIn('ABS(SIG_NO_NBODY)*VOL)', content)
         self.assertNotIn('GET_MC_INTEGER_GROUP_VOLUME', content)
+
+    def test_fixed_order_sreal_store_uses_current_interface(self):
+        """FO calls must keep the stored and returned amplitudes distinct.
+
+        ``sreal_store`` gained a ``real_amp_split`` input after its returned
+        amplitude.  A missing argument is not diagnosed without an explicit
+        Fortran interface and shifts every subsequent array argument.
+        """
+
+        template_path = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses', 'driver_mintFO.f')
+        with open(template_path) as stream:
+            content = ''.join(
+                stream.read().upper().replace('$', '').split())
+
+        self.assertEqual(content.count('CALLSREAL_STORE('), 8)
+        self.assertEqual(
+            content.count('RET_AMP_SPLIT,REAL_AMP_SPLIT'), 8)
+        for routine in (
+                'COMPUTE_SOFT_COUNTER_TERM',
+                'COMPUTE_SOFT_COLLINEAR_COUNTER_TERM',
+                'COMPUTE_COLLINEAR_COUNTER_TERM',
+                'COMPUTE_REAL_EMISSION'):
+            calls = re.findall(
+                r'CALL%s\(([^)]*)\)' % routine, content)
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(all(
+                'RET_AMP_SPLIT' in call for call in calls))
 
     def test_grouped_poles_use_physical_born_classes(self):
         """Pole checks select links and virtuals from each physical class."""

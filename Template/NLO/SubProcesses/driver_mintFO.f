@@ -422,7 +422,8 @@ C Virtual variables
 C Real variables
       double precision zero, one
       parameter (zero=0d0,one=1d0)
-      double precision real_amp_split(amp_split_size)
+      double precision real_amp_split(amp_split_size),
+     $                 ret_amp_split(amp_split_size)
       double precision fx_ev, fx_s, fx_c, fx_sc
       double precision deg_xi_c, deg_lxi_c, deg_xi_sc, deg_lxi_sc
       double precision    xi_i_fks_ev,y_ij_fks_ev,p_i_fks_ev(0:3)
@@ -628,13 +629,13 @@ c associated to the initial state. Do not extend this to event generation.
                       call include_multichannel_enhance(3,born_amp2,
      $                     ev_amp2,norad_amp2)
                       call sreal_store(p1_cnt(0,1,0),0d0,
-     $                     y_ij_fks_ev,fx_s,real_amp_split,
-     $                     born_amp_split,born_ans_cnt,
+     $                     y_ij_fks_ev,fx_s,ret_amp_split,
+     $                     real_amp_split,born_amp_split,born_ans_cnt,
      $                     born_amp_split_cnt,born_saveamp,
      $                     coll_amp_split,coll_ans_cnt,
      $                     coll_amp_split_cnt,coll_saveamp)
                       call compute_soft_counter_term(0d0,
-     $                     real_amp_split,fx_s)
+     $                     ret_amp_split,fx_s)
                       call set_cms_stuff(itwo)
                       calculatedBorn=.false.
                       call sborn_amp_frame(p_born,born_amp2,
@@ -668,12 +669,12 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
                       call sreal_store(p1_cnt(0,1,2),zero,one,
-     $                     fx_sc,real_amp_split,born_amp_split,
-     $                     born_ans_cnt,born_amp_split_cnt,
+     $                     fx_sc,ret_amp_split,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
      $                     born_saveamp,coll_amp_split,coll_ans_cnt,
      $                     coll_amp_split_cnt,coll_saveamp)
                       call compute_soft_collinear_counter_term(0d0,
-     $                     real_amp_split,fx_sc,
+     $                     ret_amp_split,fx_sc,
      $                     amp_split_wgtdegrem_xi,
      $                     amp_split_wgtdegrem_lxi,
      $                     amp_split_wgtdegrem_muF,
@@ -717,13 +718,13 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
                       call sreal_store(p1_cnt(0,1,1),
-     $                     xi_i_fks_cnt(1),one,fx_c,real_amp_split,
-     $                     born_amp_split,born_ans_cnt,
+     $                     xi_i_fks_cnt(1),one,fx_c,ret_amp_split,
+     $                     real_amp_split,born_amp_split,born_ans_cnt,
      $                     born_amp_split_cnt,born_saveamp,
      $                     coll_amp_split,coll_ans_cnt,
      $                     coll_amp_split_cnt,coll_saveamp)
                       call compute_collinear_counter_term(0d0,
-     $                     real_amp_split,fx_c,
+     $                     ret_amp_split,fx_c,
      $                     amp_split_wgtdegrem_xi,
      $                     amp_split_wgtdegrem_lxi,
      $                     amp_split_wgtdegrem_muF,
@@ -766,12 +767,12 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
                       call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,
-     $                     fx_ev,real_amp_split,born_amp_split,
-     $                     born_ans_cnt,born_amp_split_cnt,
+     $                     fx_ev,ret_amp_split,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
      $                     born_saveamp,coll_amp_split,coll_ans_cnt,
      $                     coll_amp_split_cnt,coll_saveamp)
                       call compute_real_emission(p,1d0,
-     $                     real_amp_split,fx_ev)
+     $                     ret_amp_split,fx_ev)
                   endif
                   endif
                enddo
@@ -890,10 +891,11 @@ c         wgt_me_real=0d0
      $           norad_amp2)
             call sborn_amp_frame(p_born,born_amp2,born_jamp2,real_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-            call sreal_store(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,real_amp_split
-     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+            call sreal_store(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
      $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
-            call compute_soft_counter_term(0d0,real_amp_split,fx_s)
+            call compute_soft_counter_term(0d0,ret_amp_split,fx_s)
             call set_cms_stuff(itwo)
             calculatedBorn=.false.
             call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
@@ -912,10 +914,11 @@ c         wgt_me_real=0d0
                calculatedBorn=.false.
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
-               call sreal_store(p1_cnt(0,1,2),zero,one,fx_sc,real_amp_split
-     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+               call sreal_store(p1_cnt(0,1,2),zero,one,fx_sc,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
      $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
-            call compute_soft_collinear_counter_term(0d0,real_amp_split,fx_sc,
+            call compute_soft_collinear_counter_term(0d0,ret_amp_split,fx_sc,
      &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
      &    amp_split_wgtdegrem_muF,
      &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
@@ -942,10 +945,11 @@ c         wgt_me_real=0d0
                calculatedBorn=.false.
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
-               call sreal_store(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,real_amp_split
-     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+               call sreal_store(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
      $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
-           call compute_collinear_counter_term(0d0,real_amp_split,fx_c,
+            call compute_collinear_counter_term(0d0,ret_amp_split,fx_c,
      &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
      &    amp_split_wgtdegrem_muF,
      &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
@@ -989,10 +993,11 @@ c         wgt_me_real=0d0
                calculatedBorn=.false.
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-               call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,real_amp_split
-     $              ,born_amp_split,born_ans_cnt,born_amp_split_cnt,born_saveamp
+               call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
      $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
-            call compute_real_emission(p,1d0,real_amp_split,fx_ev)
+            call compute_real_emission(p,1d0,ret_amp_split,fx_ev)
          endif
       enddo
       
