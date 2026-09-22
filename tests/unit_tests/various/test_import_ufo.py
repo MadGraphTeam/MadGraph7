@@ -462,22 +462,21 @@ class TestImportUFO(unittest.TestCase):
         """The chiral decomposition the goldstone phase is read from has to cope
         with however a model chose to write its two-fermion structures."""
 
-        fct = import_ufo.UFOMG5Converter.parse_fermion_structure
-        converter = import_ufo.UFOMG5Converter.__new__(import_ufo.UFOMG5Converter)
+        fct = import_ufo.parse_fermion_structure
 
-        self.assertEqual(fct(converter, 'Gamma(3,2,-1)*ProjM(-1,1)'), {'L': 1})
-        self.assertEqual(fct(converter, 'Gamma(3,2,1)'), {'L': 1, 'R': 1})
-        self.assertEqual(fct(converter, 'ProjM(2,1) - ProjP(2,1)'), {'M': 1, 'P': -1})
+        self.assertEqual(fct('Gamma(3,2,-1)*ProjM(-1,1)'), {'L': 1})
+        self.assertEqual(fct('Gamma(3,2,1)'), {'L': 1, 'R': 1})
+        self.assertEqual(fct('ProjM(2,1) - ProjP(2,1)'), {'M': 1, 'P': -1})
         # a model may write the neutral current as a single structure
         self.assertEqual(
-            fct(converter, 'Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1)'),
+            fct('Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1)'),
             {'L': 1, 'R': 4})
         # ... and the pseudoscalar coupling as a gamma5
-        self.assertEqual(fct(converter, 'Gamma5(2,1)'), {'P': 1, 'M': -1})
+        self.assertEqual(fct('Gamma5(2,1)'), {'P': 1, 'M': -1})
         # anything else is refused rather than guessed at
-        self.assertIsNone(fct(converter, 'P(3,1)*Gamma(-1,2,1)'))
-        self.assertIsNone(fct(converter, 'Gamma(3,2,1) + Sigma(1,2,3,4)'))
-        self.assertIsNone(fct(converter, 'Metric(1,2)'))
+        self.assertIsNone(fct('P(3,1)*Gamma(-1,2,1)'))
+        self.assertIsNone(fct('Gamma(3,2,1) + Sigma(1,2,3,4)'))
+        self.assertIsNone(fct('Metric(1,2)'))
 
     @staticmethod
     def feynman_gauge_sm():
@@ -572,6 +571,70 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(expr[rotated], '(complex(0,1))*(%s)' % base['GC_1'])
         # a different rotation is a different coupling
         self.assertNotEqual(converter.rotate_coupling('GC_1', -1), rotated)
+
+
+    def test_goldstone_mass_mismatches(self):
+        """A goldstone coupling carries a mass, and it has to be the one the
+        particle propagates with.  heft ships ymb=4.2 against MB=4.7 and
+        EWdim6NLO leaks a dim-6 shift into lam; neither is visible in unitary
+        gauge, and both cost a few per mil in Feynman and FD."""
+
+        def particle(name, pdg, spin, mass, charge=0., is_part=True):
+            return base_objects.Particle({
+                'name': name, 'antiname': name, 'pdg_code': abs(pdg),
+                'spin': spin, 'mass': mass, 'is_part': is_part,
+                'charge': charge, 'self_antipart': False})
+
+        class Lorentz(object):
+            def __init__(self, structure, spins):
+                self._d = {'structure': structure, 'spins': spins}
+            def get(self, key):
+                return self._d[key]
+
+        lorentz = {'FFV': Lorentz('Gamma(3,2,-1)*ProjM(-1,1)', [2, 2, 3]),
+                   'FFVR': Lorentz('Gamma(3,2,-1)*ProjP(-1,1)', [2, 2, 3]),
+                   'FFS': Lorentz('ProjM(2,1) - ProjP(2,1)', [2, 2, 1])}
+
+        z = particle('z', 23, 3, 'MZ', charge=0.)
+        b = particle('b', 5, 2, 'MB', charge=-1. / 3)
+        bbar = particle('b~', 5, 2, 'MB', charge=1. / 3, is_part=False)
+
+        # the merged vertex FD builds: the current and the goldstone coupling
+        # of the same fermion pair, side by side
+        inter = base_objects.Interaction({
+            'id': 1, 'particles': base_objects.ParticleList([bbar, b, z]),
+            'lorentz': ['FFV', 'FFVR', 'FFS'], 'color': [color.ColorString()],
+            'couplings': {(0, 0): 'CL', (0, 1): 'CR', (0, 2): 'CS'},
+            'orders': {'QED': 1}})
+
+        class Model(object):
+            def __init__(self, couplings):
+                self.couplings = couplings
+            def get(self, key):
+                return {'coupling_dict': self.couplings,
+                        'parameter_dict': {'MZ': 91.188, 'MB': 4.7},
+                        'particles': [z, b, bbar],
+                        'interactions': [inter]}[key]
+            def get_lorentz(self, name):
+                return lorentz[name]
+
+        # gauge invariance puts -i m/M (cL - cR) on ProjM - ProjP
+        axial = 0.37035403723587573
+        couplings = {'CL': -0.31548078172104344j, 'CR': 0.054873255514832284j}
+
+        couplings['CS'] = -axial * 4.7 / 91.188
+        self.assertEqual(import_ufo.goldstone_mass_mismatches(Model(couplings)), [],
+                         'a consistent model must be left alone')
+
+        # now build the coupling with 4.2, the way heft does
+        couplings['CS'] = -axial * 4.2 / 91.188
+        found = import_ufo.goldstone_mass_mismatches(Model(couplings))
+        self.assertEqual(len(found), 1)
+        name, implied, actual, parameter, source = found[0]
+        self.assertAlmostEqual(implied, 4.2, places=6)
+        self.assertAlmostEqual(actual, 4.7, places=6)
+        self.assertEqual(parameter, 'MB')
+        self.assertEqual(source, 'z')
 
 
 class TestImportUFO_fromcmd(unittest.TestCase):

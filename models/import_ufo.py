@@ -342,6 +342,237 @@ def stop_model_log(started=True):
     _model_log_handler.close()
     _model_log_handler = None
 
+# -------------------------------------------------------------------------
+# the two-fermion structures the phase can be read off, as weights on the
+# chiral basis: L/R for a current, P/M for a scalar
+_fermion_terms = {
+    'Gamma(3,2,-1)*ProjM(-1,1)': {'L': 1},
+    'Gamma(3,2,-1)*ProjP(-1,1)': {'R': 1},
+    'Gamma(3,2,1)': {'L': 1, 'R': 1},
+    'ProjP(2,1)': {'P': 1},
+    'ProjM(2,1)': {'M': 1},
+    'Gamma5(2,1)': {'P': 1, 'M': -1},
+    }
+
+_fermion_term_pattern = re.compile(r'([+-]?)(?:(\d+(?:\.\d*)?)\*)?(%s)' % '|'.join(
+    re.escape(term) for term in
+    sorted(_fermion_terms, key=len, reverse=True)))
+
+def parse_fermion_structure(structure):
+    """A two-fermion lorentz structure as weights on the chiral basis, or
+    None when it is not a plain combination of the terms above -- a model
+    writes the neutral current as one structure as often as two
+    (Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1))."""
+
+    text = structure.replace(' ', '')
+    out, at = {}, 0
+    for match in _fermion_term_pattern.finditer(text):
+        if match.start() != at:
+            return None        # something between the terms we do not know
+        at = match.end()
+        factor = float(match.group(2)) if match.group(2) else 1.
+        if match.group(1) == '-':
+            factor = -factor
+        for key, weight in _fermion_terms[match.group(3)].items():
+            out[key] = out.get(key, 0) + factor * weight
+    if at != len(text) or not out:
+        return None
+    return out
+
+
+# ---------------------------------------------------------------------------
+# What only Feynman and FD gauge can see about a model
+# ---------------------------------------------------------------------------
+# Both gauges use the goldstone couplings, and gauge invariance ties those to
+# the masses the model uses everywhere else.  Unitary gauge never touches them,
+# so a model can carry the mismatch unnoticed for years: a fermion whose Yukawa
+# mass is not the mass it propagates with (heft ships ymb=4.2 against MB=4.7),
+# or a scalar whose coupling to the goldstones does not match its own mass
+# (EWdim6NLO leaks a dim-6 shift into lam).  Either comes out as a `check gauge`
+# disagreement of a few per mil, which reads like a numerical accident.
+#
+# The check runs on the finished model, so it works in both gauges: in Feynman
+# gauge the goldstone sits in its own vertex, in FD gauge the merge has already
+# folded it into the vector's, and either way the two couplings to compare are
+# there.
+
+def goldstone_mass_mismatches(model):
+    """The masses a model's goldstone couplings were built with, wherever they
+    disagree with the mass the particle propagates with.
+
+    Returns a list of (particle name, implied mass, actual mass, mass parameter,
+    what the coupling belongs to); empty when the model is consistent or when
+    nothing could be compared.
+    """
+
+    try:
+        couplings = model.get('coupling_dict')
+        parameters = model.get('parameter_dict')
+    except Exception:
+        return []
+    if not couplings or not parameters:
+        return []
+
+    def value(name):
+        if name.startswith('-'):
+            got = value(name[1:])
+            return None if got is None else -got
+        try:
+            return complex(couplings[name])
+        except Exception:
+            return None
+
+    def mass_of(particle):
+        name = particle.get('mass')
+        if name.lower() == 'zero':
+            return 0.
+        try:
+            return abs(complex(parameters[name]))
+        except Exception:
+            return None
+
+    def structure_of(name):
+        try:
+            lorentz = model.get_lorentz(name)
+        except Exception:
+            return None, None
+        return lorentz.get('structure'), lorentz.get('spins')
+
+    # A vertex can be split over several interactions -- by coupling order, and
+    # by whatever the FFV reshaping left behind -- so the couplings have to be
+    # added up per (particles, orders) before the relation means anything.  Only
+    # the lowest order is checked: an operator may modify the current at higher
+    # order without touching the goldstone, and that is not a mismatch.
+    # In Feynman gauge the goldstone keeps a vertex of its own, so the two
+    # couplings to compare sit apart; in FD gauge the merge has already put them
+    # in one.  Booking a goldstone leg under the vector it belongs to makes the
+    # two gauges look the same from here on.
+    partners = {}
+    for particle in model.get('particles'):
+        if particle.get('type') != 'goldstone':
+            continue
+        vectors = [p for p in model.get('particles')
+                   if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+        if len(vectors) == 1:
+            partners[abs(particle.get_pdg_code())] = vectors[0]
+
+    def under_vector(particle):
+        vector = partners.get(abs(particle.get_pdg_code()))
+        if vector is None:
+            return particle.get_pdg_code(), particle
+        code = abs(vector.get_pdg_code())
+        return (code if particle.get_pdg_code() > 0 else -code), vector
+
+    groups = {}
+    for inter in model.get('interactions'):
+        legs = inter.get('particles')
+        if len(legs) != 3:
+            continue
+        booked = [under_vector(p) for p in legs]
+        particles = tuple(code for code, _ in booked)
+        orders = tuple(sorted(inter.get('orders').items()))
+        entry = groups.setdefault((particles, orders),
+                                  {'legs': [p for _, p in booked],
+                                   'chiral': {}, 'plain': {}})
+        for (colour, index), name in inter.get('couplings').items():
+            structure, spins = structure_of(inter.get('lorentz')[index])
+            if structure is None:
+                continue
+            coupling = value(name)
+            if coupling is None:
+                continue
+            weights = parse_fermion_structure(structure)
+            if weights is not None:
+                for key, weight in weights.items():
+                    entry['chiral'][key] = entry['chiral'].get(key, 0) \
+                                                        + weight * coupling
+            elif structure in ('1', 'Metric(1,2)'):
+                key = (structure, tuple(spins or ()))
+                entry['plain'][key] = entry['plain'].get(key, 0) + coupling
+
+    lowest = {}
+    for (particles, orders), entry in groups.items():
+        weight = sum(abs(v) for _, v in orders)
+        if particles not in lowest or weight < lowest[particles][0]:
+            lowest[particles] = (weight, entry)
+
+    out = []
+    seen = set()
+
+    def report(particle, implied, actual, source):
+        # one line per particle: the same mass shows up once per goldstone it
+        # couples to, and saying it twice helps nobody
+        key = particle.get('name')
+        if key in seen or actual is None or implied is None:
+            return
+        if actual < 1e-9 and implied < 1e-9:
+            return
+        if abs(implied - actual) <= 1e-6 * max(abs(actual), abs(implied), 1e-30):
+            return
+        seen.add(key)
+        out.append((particle.get('name'), implied, actual,
+                    particle.get('mass'), source))
+
+    for _, (_, entry) in sorted(lowest.items()):
+        legs, chiral, plain = entry['legs'], entry['chiral'], entry['plain']
+
+        # a two-fermion vertex: the goldstone coupling carries the fermion mass,
+        # c(ProjP) = i m1/M cL and c(ProjM) = -i m2/M cL
+        if legs[0].is_fermion() and legs[1].is_fermion() and \
+                            set(chiral) & set('PM') and set(chiral) & set('LR'):
+            vector = legs[2]
+            mass = mass_of(vector)
+            if mass:
+                if vector.get('charge'):
+                    current = abs(chiral.get('L', 0))
+                    pairs = [('P', legs[0]), ('M', legs[1])]
+                else:
+                    current = abs(chiral.get('L', 0) - chiral.get('R', 0))
+                    pairs = [('M', legs[0])]
+                for chirality, fermion in pairs:
+                    if current and abs(chiral.get(chirality, 0)):
+                        report(fermion,
+                               abs(chiral[chirality]) * mass / current,
+                               mass_of(fermion), vector.get('name'))
+
+        # a vector pair and a scalar: the scalar's coupling to the goldstones
+        # carries its own mass.  Any mixing angle sits in both couplings and
+        # cancels in the ratio, so this holds beyond the standard model too.
+        to_goldstones = plain.get(('1', (1, 1, 1)))
+        to_vectors = plain.get(('Metric(1,2)', (3, 3, 1)))
+        if to_goldstones and to_vectors and legs[2].get('spin') == 1 and \
+                    legs[0].get_pdg_code() == legs[1].get_pdg_code():
+            mass = mass_of(legs[0])
+            if mass:
+                report(legs[2],
+                       math.sqrt(abs(to_goldstones) * 2 * mass ** 2
+                                 / abs(to_vectors)),
+                       mass_of(legs[2]), legs[0].get('name'))
+
+    return out
+
+
+def check_goldstone_masses(model):
+    """Warn about every goldstone coupling of the model built with the wrong
+    mass.  Only worth saying in the gauges that use those couplings."""
+
+    for name, implied, actual, parameter, source in \
+                                            goldstone_mass_mismatches(model):
+        gauge = 'FD' if aloha.unitary_gauge == 3 else 'Feynman'
+        if actual < 1e-9:
+            carries = 'but it propagates massless (%s)' % parameter
+            size = 'entirely'
+        else:
+            carries = 'but it propagates with %.6g GeV (%s)' % (actual, parameter)
+            size = 'by about %.1g' % abs(implied / actual - 1)
+        logger.warning(
+            '%s: its goldstone coupling was built with a mass of %.6g GeV, %s. '
+            '%s gauge uses that coupling for the longitudinal %s, so gauge '
+            'invariance is broken %s here -- unitary gauge does not see it, and '
+            '`check gauge` will disagree for any process that has one.',
+            name, implied, carries, gauge, source, size)
+
+
 def import_model(model_name, decay=False, restrict=True, prefix='mdl_',
                                                     complex_mass_scheme = None,
                                                     options={}):
@@ -1291,42 +1522,6 @@ class UFOMG5Converter(object):
     # real one is restricted to +-1), and it can be read off the fermion sector,
     # where gauge invariance ties the goldstone coupling to the vector one.
 
-    # the two-fermion structures the phase can be read off, as weights on the
-    # chiral basis: L/R for a current, P/M for a scalar
-    _fermion_terms = {
-        'Gamma(3,2,-1)*ProjM(-1,1)': {'L': 1},
-        'Gamma(3,2,-1)*ProjP(-1,1)': {'R': 1},
-        'Gamma(3,2,1)': {'L': 1, 'R': 1},
-        'ProjP(2,1)': {'P': 1},
-        'ProjM(2,1)': {'M': 1},
-        'Gamma5(2,1)': {'P': 1, 'M': -1},
-        }
-
-    _fermion_term_pattern = re.compile(r'([+-]?)(?:(\d+(?:\.\d*)?)\*)?(%s)' % '|'.join(
-        re.escape(term) for term in
-        sorted(_fermion_terms, key=len, reverse=True)))
-
-    def parse_fermion_structure(self, structure):
-        """A two-fermion lorentz structure as weights on the chiral basis, or
-        None when it is not a plain combination of the terms above -- a model
-        writes the neutral current as one structure as often as two
-        (Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1))."""
-
-        text = structure.replace(' ', '')
-        out, at = {}, 0
-        for match in self._fermion_term_pattern.finditer(text):
-            if match.start() != at:
-                return None        # something between the terms we do not know
-            at = match.end()
-            factor = float(match.group(2)) if match.group(2) else 1.
-            if match.group(1) == '-':
-                factor = -factor
-            for key, weight in self._fermion_terms[match.group(3)].items():
-                out[key] = out.get(key, 0) + factor * weight
-        if at != len(text) or not out:
-            return None
-        return out
-
     def get_parameter_values(self):
         """Numerical value of the UFO parameters, for the checks that need a
         number and not an expression.  Best effort: what does not evaluate is
@@ -1404,7 +1599,7 @@ class UFOMG5Converter(object):
             info = self.get_lorentz_info(interaction.get('lorentz')[lor])
             if info is None:
                 return None
-            weights = self.parse_fermion_structure(info.get('structure'))
+            weights = parse_fermion_structure(info.get('structure'))
             if weights is None:
                 return None
             value = self.get_coupling_value(name)
@@ -1432,21 +1627,38 @@ class UFOMG5Converter(object):
                            []).append(inter)
         return out
 
-    def measure_goldstone_phase(self, goldstone, vector):
-        """The phase relating this model's goldstone to the one FD gauge assumes.
+    def get_mass_value(self, particle):
+        """Numerical mass of a particle of the model, or None if unknown."""
 
-        Gauge invariance ties the goldstone coupling of a fermion pair to the
-        vector one: for a left-handed current of coupling cL, the goldstone
-        carries i/M * (m1 ProjP - m2 ProjM) * cL, and a neutral goldstone
-        carries -i*m/M * (cL - cR) on ProjM - ProjP.  Whatever the model has
-        instead of that is the phase we are after -- only its direction, since
-        the masses in a Yukawa and in a propagator are two different parameters
-        in most models and their ratio is none of our business.
+        name = particle.get('mass')
+        if name.lower() == 'zero':
+            return 0.
+        values = self.get_parameter_values()
+        for candidate in (name, name[4:] if name.startswith('mdl_') else name):
+            if candidate in values:
+                try:
+                    return abs(complex(values[candidate]))
+                except Exception:
+                    return None
+        return None
 
-        None when the model gives us nothing to read it off -- the caller then
-        leaves the couplings alone rather than guessing.
+    def iter_goldstone_fermion_relations(self, goldstone, vector):
+        """Walk the fermion pairs that couple to both the goldstone and its
+        vector, and read the relation gauge invariance imposes between the two.
+
+        For a left-handed current of coupling cL the goldstone carries
+        i/M * (m1 ProjP - m2 ProjM) * cL, and a neutral goldstone carries
+        -i*m/M * (cL - cR) on ProjM - ProjP.  Each match yields the phase the
+        model uses for the goldstone field (the direction of the ratio) and the
+        fermion mass its coupling implies (the modulus), which are two
+        independent things to check.
+
+        Yields (weight, phase, fermion, implied_mass).
         """
 
+        mass = self.get_mass_value(vector)
+        if not mass:
+            return
         charged = bool(vector.get('charge'))
 
         def by_orders(vertices):
@@ -1457,7 +1669,6 @@ class UFOMG5Converter(object):
             return out
 
         vector_vertices = self.get_fermion_vertices(vector)
-        measured = []
         for pair, vertices in self.get_fermion_vertices(goldstone).items():
             golds = by_orders(vertices)
             currents = by_orders(vector_vertices.get(pair, []))
@@ -1477,30 +1688,42 @@ class UFOMG5Converter(object):
             if set(scalar) - set('PM') or set(current) - set('LR'):
                 continue   # a scalar vertex holding a current, or the reverse:
                            # not the pair of vertices the relation is about
+            legs = gold_vertex.get('particles')
             if charged:
                 # a right-handed charged current would need the general relation
                 if abs(current.get('R', 0)) > 1e-10 * (1 + abs(current.get('L', 0))):
                     continue
                 cL = current.get('L', 0)
-                candidates = [('P', 1j * cL), ('M', -1j * cL)]
+                candidates = [('P', 1j * cL, legs[0]), ('M', -1j * cL, legs[1])]
             else:
-                candidates = [('M', -1j * (current.get('L', 0) - current.get('R', 0)))]
+                candidates = [('M', -1j * (current.get('L', 0) - current.get('R', 0)),
+                               legs[0])]
 
             # the model holds both orientations of a charged pair, and the
             # vertex carrying the antiparticle measures the conjugate phase
-            conjugated = gold_vertex.get('particles')[2].get_pdg_code() < 0
+            conjugated = legs[2].get_pdg_code() < 0
 
-            for chirality, expected in candidates:
+            for chirality, expected, fermion in candidates:
                 model = scalar.get(chirality, 0)
                 if abs(expected) < 1e-12 or abs(model) < 1e-12:
                     continue
-                # only the direction carries the convention: the modulus is the
-                # ratio of the mass in the Yukawa to the one in the propagator,
-                # and those are two different parameters in most models
+                # the direction is the phase convention of the goldstone field;
+                # the modulus is the fermion mass the coupling was built with
                 phase = (expected / abs(expected)) * (abs(model) / model)
-                measured.append((abs(model), phase.conjugate() if conjugated
-                                             else phase))
+                yield (abs(model),
+                       phase.conjugate() if conjugated else phase,
+                       fermion,
+                       abs(model) * mass / abs(expected))
 
+    def measure_goldstone_phase(self, goldstone, vector):
+        """The phase relating this model's goldstone to the one FD gauge assumes.
+
+        None when the model gives us nothing to read it off -- the caller then
+        leaves the couplings alone rather than guessing.
+        """
+
+        measured = [(weight, phase) for weight, phase, _, _ in
+                    self.iter_goldstone_fermion_relations(goldstone, vector)]
         if not measured:
             return None
 
@@ -1511,9 +1734,24 @@ class UFOMG5Converter(object):
         if any(abs(other - phase) > 1e-6 for _, other in measured):
             return None
         # a real goldstone can only be flipped, never rotated
-        if not charged and abs(phase.imag) > 1e-6:
+        if not bool(vector.get('charge')) and abs(phase.imag) > 1e-6:
             return None
         return phase
+
+    def get_goldstone_pairs(self):
+        """(goldstone, the vector it belongs to) for every goldstone of the
+        model.  Only usable before merge_all_goldstone_with_vector, which is
+        what consumes the goldstones."""
+
+        out = []
+        for particle in self.particles:
+            if particle.get('type') != 'goldstone':
+                continue
+            vector = [p for p in self.particles
+                      if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+            if len(vector) == 1:
+                out.append((particle, vector[0]))
+        return out
 
     def get_goldstone_phases(self):
         """Phase of every goldstone of the model, keyed by the pdg code of the
@@ -1522,13 +1760,8 @@ class UFOMG5Converter(object):
 
         phases = {}
         unknown = []
-        for particle in self.particles:
-            if particle.get('type') != 'goldstone':
-                continue
-            vector = [p for p in self.particles if p.get('mass') == particle.get('mass')
-                                                and p.get('spin') == 3]
-            if len(vector) != 1:
-                continue
+        for particle, vector_particle in self.get_goldstone_pairs():
+            vector = [vector_particle]
             phase = self.measure_goldstone_phase(particle, vector[0])
             if phase is None:
                 unknown.append(particle.get('name'))
@@ -3393,7 +3626,13 @@ class RestrictModel(model_reader.ModelReader):
         model_definitions = self.set_parameters_and_couplings(param_card, 
                                         complex_mass_scheme=complex_mass_scheme,
                                         auto_width=self.modify_autowidth)
-        
+
+        # the couplings now have numbers on them, and the restriction has been
+        # folded in, so this is the first point where the goldstone sector can
+        # be held against the masses.  Only the gauges that use it care.
+        if aloha.unitary_gauge in [0, 3]:
+            check_goldstone_masses(self)
+
         # Simplify conditional statements
         logger_details.log(self.log_level, 'Simplifying conditional expressions')
         modified_params, modified_couplings = \
