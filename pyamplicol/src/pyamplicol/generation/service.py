@@ -6877,7 +6877,7 @@ class GenerationBackend:
 
         run = self._run_config
         if run is None:
-            return SymbolicaEvaluatorSettings()
+            return SymbolicaEvaluatorSettings(jit_compress=True)
         optimization = run.evaluator.optimization
         if optimization.horner_iterations < 1:
             raise GenerationError(
@@ -6904,7 +6904,7 @@ class GenerationBackend:
             n_cores=cores,
             jit_direct_translation=False,
             jit_optimization_level=run.evaluator.jit.optimization_level,
-            jit_compress=run.evaluator.jit.compress,
+            jit_compress=run.evaluator.resolved_jit_compress,
             max_horner_scheme_variables=optimization.max_horner_variables,
             max_common_pair_cache_entries=(optimization.max_common_pair_cache_entries),
             max_common_pair_distance=optimization.max_common_pair_distance,

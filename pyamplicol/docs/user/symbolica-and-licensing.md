@@ -17,34 +17,60 @@ where to read the authoritative license terms.
 > [`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md)
 > and the repository's `licenses/` directory.
 
-## Lazy import boundary
+## Package license at startup
 
-Importing pyAmpliCol does not import Symbolica:
+Importing pyAmpliCol imports Symbolica and calls `symbolica.set_library_key()`
+with the key issued for the `pyamplicol` package, before any symbolic work.
+When that key is accepted and valid, users do not need a personal Symbolica
+license for calls made by pyAmpliCol, including parallel generation and
+evaluator optimization. Registration is also attempted when a spawned Python
+worker imports pyAmpliCol.
 
 ```python
 import sys
 import pyamplicol
 
-print("symbolica" in sys.modules)  # False
+print("symbolica" in sys.modules)  # True
 
-from pyamplicol import Runtime
-print("symbolica" in sys.modules)  # False
+from pyamplicol.licensing import detect_symbolica_license
+print(detect_symbolica_license(suggest=False).licensed)  # Actual license state
 ```
 
-The public package, configuration types, and runtime class remain lightweight.
-Symbolica is loaded only when a requested operation needs symbolic model
-compilation, process generation, or retained exact evaluator state.
+If Symbolica is not installed, lightweight configuration and source tooling
+remain available; operations requiring Symbolica still report the missing
+dependency. Broken native extensions or other unexpected import errors are
+not suppressed.
+
+The key licenses calls within `pyamplicol`; it does not license unrelated
+Symbolica code in the user's program. Personal license environment variables
+are left unchanged. Model compilation and generation tooling remain lazy.
+
+If registration raises `ValueError` or `PermissionError`, or an older
+Symbolica lacks `set_library_key()`, import continues. Symbolica's public
+`is_licensed()` check then decides whether a valid personal license permits
+normal operation or restricted resources are needed; a nonempty
+`SYMBOLICA_LICENSE` alone is not proof of validity. Personal-license
+configuration and the existing license-request helpers remain available.
+
+This fallback covers synchronous registration failures, not all later
+revocations. Symbolica may terminate the process during asynchronous license
+verification; pyAmpliCol cannot catch that upstream termination and switch
+licenses in the same process.
+
+The startup import and registration temporarily suppress Symbolica's banner
+before CLI output policy is known, then restore the caller's banner setting.
+Normal reminder suppression and JSON output behavior remain unchanged.
 
 ## Which operations need Symbolica?
 
 | Operation | Uses Symbolica? | Notes |
 | --- | --- | --- |
-| Import `pyamplicol` | No | Public exports are lazy. |
-| Inspect an artifact | No | Reads metadata and indexes only. |
-| Ordinary Python f64 evaluation (`precision=16`) | No | Runs through Rusticol and the artifact's native evaluator. |
+| Import `pyamplicol` | Yes | Registers the package key; public exports remain lazy. |
+| Inspect an artifact | Startup only | Reads metadata and indexes only. |
+| Ordinary Python f64 evaluation (`precision=16`) | Startup only | Runs through Rusticol and the artifact's native evaluator. |
 | C11/C++17/Fortran 2008/Rust 2021 runtime | No | Ordinary and opt-in correlated APIs are f64-only. |
-| Direct JIT f64 load | No | Uses the separate MIT-licensed SymJIT runtime. |
-| Compatible C++/ASM evaluator load | No | Uses the artifact's target-native library. |
+| Direct JIT f64 load | Startup only in Python | Uses the separate MIT-licensed SymJIT runtime. |
+| Compatible C++/ASM evaluator load | Startup only in Python | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
@@ -58,7 +84,7 @@ change the terms governing Symbolica use during generation.
 The default JIT backend embeds a direct SymJIT application in the schema-v3
 artifact. Rusticol loads and lowers that application to native code without:
 
-- importing the Symbolica Python package;
+- performing Symbolica computations (Python package startup registers the key);
 - reading `SYMBOLICA_LICENSE`;
 - applying Symbolica's generation-time worker clamp;
 - linking the arbitrary-precision Symbolica/Rug/Malachite closure into the
@@ -82,9 +108,11 @@ See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-a
 
 ## Generation with a valid license
 
-At the first operation that needs Symbolica, pyAmpliCol calls
-`symbolica.is_licensed()`. Merely defining a `SYMBOLICA_LICENSE` environment
-variable is not treated as proof that it is valid.
+pyAmpliCol calls `symbolica.is_licensed()` from inside the package to select
+its generation resources. This detects a valid registered package key even
+when `SYMBOLICA_LICENSE` is absent, or a valid personal license. A call from
+unrelated user code can still return `False`, because the package key is scoped
+to pyAmpliCol.
 
 With a valid license, automatic resource settings share one affinity-aware CPU
 budget:
@@ -103,11 +131,11 @@ requested/effective difference is recorded in generation provenance.
 
 ## Restricted generation
 
-Without a valid license, pyAmpliCol offers a license-request reminder. Users
-whose work is eligible under Symbolica's current terms can continue in
-restricted mode. Symbolica describes that mode as non-commercial, one instance,
-and one core per device; commercial work requires the applicable professional
-license path.
+Without a valid package or personal license, pyAmpliCol offers a
+license-request reminder. Users whose work is eligible under Symbolica's
+current terms can continue in restricted mode. Symbolica describes that mode
+as non-commercial, one instance, and one core per device; commercial work
+requires the applicable professional license path.
 
 pyAmpliCol enforces a technical clamp of one process worker and one Symbolica
 core and records why the requested configuration changed. That clamp does not
@@ -130,10 +158,11 @@ suggest_license = false
 JSON CLI output suppresses the banner automatically so stdout remains valid
 machine-readable JSON.
 
-## Requesting a license
+## Requesting a personal license
 
-Interactive helpers collect the fields, show a confirmation, and submit
-through Symbolica's Python API:
+Personal licenses remain useful if the package key is unavailable or for
+Symbolica work outside pyAmpliCol. Interactive helpers collect the fields,
+show a confirmation, and submit through Symbolica's Python API:
 
 ```console
 pyamplicol request-symbolica-trial-license
@@ -206,11 +235,15 @@ license. Release dependency metadata pins the official
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) source and an
 immutable revision.
 
-SymJIT compression is opt-in. It shares repeated arithmetic sequences to
-reduce generated code size. The extra calls can increase evaluation time, but
-the smaller instruction footprint can make larger evaluators faster.
-Neither setting is universally faster; use `profile` to compare them for your
-workload. The default is `compress = false`. To enable it explicitly:
+SymJIT compression shares repeated arithmetic sequences to reduce generated
+code size. The extra calls can increase evaluation time, but the smaller
+instruction footprint can make larger evaluators faster. Neither setting is
+universally faster; use `profile` to compare them for your workload.
+
+The default is `compress = "auto"`: compression is enabled for compiled JIT
+evaluators at optimization level O2 and disabled for other execution modes or
+optimization levels. Explicit `true` or `false` settings override that policy.
+To enable it explicitly:
 
 ```toml
 [evaluator.jit]
@@ -242,7 +275,9 @@ model with `--jit-compress` or `--no-jit-compress`.
 The pyAmpliCol project has express authorization from the Symbolica licensor to
 redistribute the Symbolica components required by pyAmpliCol's binary runtime.
 That project-specific permission is not a general grant to redistribute
-Symbolica separately. Users remain responsible for an appropriate use license.
+Symbolica separately. While valid, the embedded library key covers Symbolica
+calls within pyAmpliCol; other Symbolica use requires its own applicable
+authorization.
 
 Exact dependency versions and notices are included in release metadata and
 [`THIRD_PARTY_NOTICES.md`](https://github.com/mg5amcnlo/pyamplicol/blob/main/THIRD_PARTY_NOTICES.md).

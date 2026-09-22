@@ -526,6 +526,10 @@ def _candidate_sources(
             str(release["symjit"]["repository"]),
             str(release["symjit"]["revision"]),
         ),
+        "ufo-model-loader": (
+            str(contributor["ufo_model_loader"]["source_url"]),
+            str(contributor["ufo_model_loader"]["candidate_revision"]),
+        ),
     }
 
 

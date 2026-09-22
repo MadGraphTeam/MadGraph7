@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError, is_dataclass
+from dataclasses import FrozenInstanceError, is_dataclass, replace
 
 import pytest
 
@@ -49,8 +49,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         2,
         3,
     )
-    assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "bool"
-    assert FIELD_REGISTRY["evaluator.jit.compress"].default is False
+    assert FIELD_REGISTRY["evaluator.jit.compress"].kind == "auto_bool"
+    assert FIELD_REGISTRY["evaluator.jit.compress"].default == "auto"
     assert FIELD_REGISTRY["evaluator.execution_mode"].choices == (
         EvaluatorExecutionMode.COMPILED,
         EvaluatorExecutionMode.EAGER,
@@ -185,7 +185,8 @@ def test_contract_defaults_are_typed() -> None:
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
-    assert config.evaluator.jit.compress is False
+    assert config.evaluator.jit.compress == "auto"
+    assert config.evaluator.resolved_jit_compress is False
     assert config.evaluator.eager == EagerEvaluatorConfig()
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1
@@ -205,6 +206,22 @@ def test_contract_defaults_are_typed() -> None:
     assert config.benchmark.target_runtime == 10.0
     assert config.benchmark.precision == 16
     assert config.output == OutputConfig()
+
+
+def test_jit_compression_auto_tracks_python_configuration_overrides() -> None:
+    recurrence = EvaluatorConfig()
+    compiled = replace(recurrence, execution_mode="compiled")
+
+    assert recurrence.jit.compress == compiled.jit.compress == "auto"
+    assert recurrence.resolved_jit_compress is False
+    assert compiled.resolved_jit_compress is True
+    assert (
+        replace(compiled, jit=JITConfig(optimization_level=3)).resolved_jit_compress
+        is False
+    )
+    assert (
+        replace(compiled, jit=JITConfig(compress=False)).resolved_jit_compress is False
+    )
 
 
 def test_relation_discovery_defaults_on_and_validates_certification_policy() -> None:

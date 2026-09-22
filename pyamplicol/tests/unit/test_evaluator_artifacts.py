@@ -222,6 +222,51 @@ def test_jit_artifact_persists_direct_application_and_precision_fallback(
     assert evaluator_runtime_capabilities(manifest) == (SYMJIT_F64_RUNTIME_CAPABILITY,)
 
 
+@pytest.mark.parametrize(
+    "compress, expected", (("auto", True), (False, False), (True, True))
+)
+def test_compiled_o2_compression_matches_symbolica_native_lowering_and_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    compress: bool | str,
+    expected: bool,
+) -> None:
+    from pyamplicol.config import resolve_config
+    from pyamplicol.evaluators.symbolica_compile import _symbolica_evaluator_kwargs
+    from pyamplicol.generation.service import GenerationBackend
+
+    resolution = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {"execution_mode": "compiled", "jit": {"compress": compress}},
+        }
+    )
+    settings = GenerationBackend(resolution, None)._symbolica_settings()
+    calls: list[tuple[object, ...]] = []
+
+    def compile_plane(*args: object) -> bytes:
+        calls.append(args)
+        return b"compressed-plane"
+
+    monkeypatch.setattr(
+        _FakeRusticol,
+        "_compile_symjit_plane_application_v2",
+        staticmethod(compile_plane),
+    )
+    manifest = _JITSymbolicaEvaluatorAdapter(
+        _FakeJITEvaluator(), settings, "compiled-o2", input_len=3, output_len=2
+    ).artifact_manifest(tmp_path)
+
+    assert resolution.effective.evaluator.jit.compress is expected
+    assert settings.jit_compress is expected
+    assert _symbolica_evaluator_kwargs(settings, verbose=False)["jit_options"] == {
+        "compress": str(expected).lower()
+    }
+    assert calls[0][3:] == (2, expected)
+    assert manifest["settings"]["jit_compress"] is expected
+    assert manifest["plane_application"]["compression"] is expected
+
+
 def test_jit_artifact_rejects_non_self_contained_export(tmp_path: Path) -> None:
     adapter = _jit_adapter(
         _FakeJITEvaluator(export_error=ValueError("external defuns present"))

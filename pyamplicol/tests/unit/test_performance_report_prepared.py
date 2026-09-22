@@ -120,14 +120,19 @@ def test_prepared_bundle_digest_or_identity_mismatch_fails_closed(
         validate_prepared_record(bundle, expected_identity=_identity())
 
 
+@pytest.mark.parametrize("mode", ("recurrence", "compiled"))
+@pytest.mark.parametrize("compress", ("auto", False, True))
 def test_report_model_compiler_uses_public_parse_resolve_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    compress: str | bool,
 ) -> None:
+    from dataclasses import replace
+
     from pyamplicol.config import (
         EvaluatorBackend,
         EvaluatorConfig,
-        EvaluatorExecutionMode,
         EvaluatorOptimizationConfig,
         JITConfig,
     )
@@ -135,9 +140,9 @@ def test_report_model_compiler_uses_public_parse_resolve_dispatch(
     output = tmp_path / "prepared.pyamplicol-model"
     evaluator = EvaluatorConfig(
         backend=EvaluatorBackend.JIT,
-        execution_mode=EvaluatorExecutionMode.RECURRENCE,
+        execution_mode=mode,
         optimization=EvaluatorOptimizationConfig(cores=3),
-        jit=JITConfig(optimization_level=2),
+        jit=JITConfig(optimization_level=2, compress=compress),
     )
     observed: dict[str, object] = {}
 
@@ -165,6 +170,10 @@ def test_report_model_compiler_uses_public_parse_resolve_dispatch(
     assert config.action == "model-compile"
     assert config.model.source == "built-in-sm"
     assert config.model.cache_dir == tmp_path / "cache"
-    assert config.evaluator == evaluator
+    expected_compression = mode == "compiled" if compress == "auto" else compress
+    assert config.evaluator == replace(
+        evaluator, jit=replace(evaluator.jit, compress=expected_compression)
+    )
+    assert config.evaluator.jit.compress is expected_compression
     assert observed["dry_run"] is False
     assert compiler.command_path == PUBLIC_MODEL_COMPILE_COMMAND_PATH

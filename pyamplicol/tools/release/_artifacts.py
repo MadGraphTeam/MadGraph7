@@ -594,7 +594,10 @@ def _candidate_dependency_overrides() -> dict[str, str]:
             "candidate dependency provenance is not bound to the pinned Symbolica "
             "source"
         )
-    return {name: normalized_candidate}
+    return {
+        name: normalized_candidate,
+        "ufo-model-loader": dependencies["ufo-model-loader"],
+    }
 
 
 def _validate_runtime_requirements(

@@ -707,7 +707,7 @@ class JITConfig:
     optimization_level: Literal[0, 1, 2, 3] = field(
         default=2, metadata=_setting("int", choices=(0, 1, 2, 3))
     )
-    compress: bool = field(default=False, metadata=_setting("bool"))
+    compress: AutoBool = field(default="auto", metadata=_setting("auto_bool"))
 
     def __post_init__(self) -> None:
         if isinstance(self.optimization_level, bool) or not isinstance(
@@ -721,8 +721,11 @@ class JITConfig:
             (0, 1, 2, 3),
             "evaluator.jit.optimization_level",
         )
-        if not isinstance(self.compress, bool):
-            raise ConfigurationError("evaluator.jit.compress must be a boolean")
+        object.__setattr__(
+            self,
+            "compress",
+            _auto_bool(self.compress, "evaluator.jit.compress"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -835,6 +838,18 @@ class EvaluatorConfig:
     recurrence: RecurrenceEvaluatorConfig = field(
         default_factory=RecurrenceEvaluatorConfig, metadata=_section()
     )
+
+    @property
+    def resolved_jit_compress(self) -> bool:
+        """Use compressed code for compiled O2, preserving explicit choices."""
+
+        if self.jit.compress != "auto":
+            return self.jit.compress
+        return (
+            self.backend is EvaluatorBackend.JIT
+            and self.execution_mode is EvaluatorExecutionMode.COMPILED
+            and self.jit.optimization_level == 2
+        )
 
     def __post_init__(self) -> None:
         object.__setattr__(

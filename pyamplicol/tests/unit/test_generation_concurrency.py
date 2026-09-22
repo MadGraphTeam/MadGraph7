@@ -143,6 +143,17 @@ def test_symbolica_resources_do_not_nest_generation_worker_fanout() -> None:
     assert settings.compiled_chunk_compile_workers == 1
 
 
+@pytest.mark.parametrize("mode", ("compiled", "recurrence", "on-the-fly", "eager"))
+def test_generation_symbolica_settings_resolve_python_compression_defaults(
+    mode: str,
+) -> None:
+    backend = service_module.GenerationBackend(
+        RunConfig(action="generate", evaluator=EvaluatorConfig(execution_mode=mode)),
+        None,
+    )
+    assert backend._symbolica_settings().jit_compress is (mode == "compiled")
+
+
 def test_symbolica_materialization_is_process_wide_serialized(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

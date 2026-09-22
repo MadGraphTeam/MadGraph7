@@ -190,16 +190,18 @@ the prepared kernel pack remains authoritative for code-shaping optimization.
 ### JIT
 
 - `optimization_level: 0 | 1 | 2 | 3 = 2`
-- `compress: bool = false`
+- `compress: AutoBool = "auto"` (compiled JIT O2 resolves to `true`; all other
+  modes/levels resolve to `false`; explicit booleans override the default)
 
 JIT artifacts embed direct SymJIT applications. The defaults above apply to
 process-local compiled DAG evaluators. Prepared JIT kernel packs used by eager,
 recurrence, and on-the-fly execution force optimization level 2 to preserve
 their cross-architecture storage contract.
 
-Compression is opt-in: it can reduce generated code size but add runtime
-overhead. Explicit settings remain authoritative for newly compiled kernels;
-existing prepared packs retain their recorded setting.
+Compression can reduce generated code size but add runtime overhead. Auto
+selection remains in requested configuration; effective configuration records
+the resolved boolean. Explicit settings remain authoritative for newly
+compiled kernels; existing prepared packs retain their recorded setting.
 
 ### C++
 

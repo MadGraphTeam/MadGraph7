@@ -1186,7 +1186,8 @@ def test_candidate_dependency_provenance_uses_compact_source_map(
     candidate_dependency_provenance: None,
 ) -> None:
     assert artifacts._candidate_dependency_overrides() == {
-        "symbolica": _CONTRIBUTOR_LOCK["symbolica"]["candidate_version"]
+        "symbolica": _CONTRIBUTOR_LOCK["symbolica"]["candidate_version"],
+        "ufo-model-loader": _LOCK["ufo_model_loader"]["required_version"],
     }
 
 
@@ -1736,14 +1737,18 @@ def test_runtime_requirements_must_agree_with_release_contract(tmp_path: Path) -
         audit_wheel(ordinary_range, mode="release", native_scan=False)
 
     ordinary_range.unlink()
+    symbolica_version = _LOCK["symbolica"]["python_version"]
     non_exact = _wheel(
         tmp_path,
         requirements=[
-            "symbolica>=2.2.0,<3" if item.startswith("symbolica") else item
+            f"symbolica>={symbolica_version}" if item.startswith("symbolica") else item
             for item in _DEFAULT_REQUIREMENTS
         ],
     )
-    with pytest.raises(ArtifactError, match=r"pin symbolica==2\.2\.0 exactly"):
+    with pytest.raises(
+        ArtifactError,
+        match=rf"pin symbolica=={re.escape(symbolica_version)} exactly",
+    ):
         audit_wheel(non_exact, mode="release", native_scan=False)
 
     non_exact.unlink()

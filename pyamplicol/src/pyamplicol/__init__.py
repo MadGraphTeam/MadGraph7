@@ -1,16 +1,50 @@
 # SPDX-License-Identifier: 0BSD
 """Public Python interface for pyAmpliCol.
 
-Importing this module intentionally does not import Symbolica or model tooling. Heavy
-dependencies are loaded only when generation or runtime services are first used.
+The package's Symbolica library key is tried before any symbolic work.
+Personal licenses and restricted mode remain available if registration fails.
+Model tooling is loaded only when generation or runtime services are first used.
 """
 
 from __future__ import annotations
 
+import os as _os
+from contextlib import suppress as _suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from ._internal.versions import package_version
+
+# Registration precedes symbolic work, including in spawned Python workers.
+# Keep startup quiet before CLI output/banner policy can be resolved, without
+# changing the caller's banner or personal-license environment.
+_previous_banner = _os.environ.get("SYMBOLICA_HIDE_BANNER")
+_os.environ["SYMBOLICA_HIDE_BANNER"] = "1"
+try:
+    try:
+        import symbolica as _symbolica
+    except ModuleNotFoundError as _error:
+        if _error.name != "symbolica":
+            raise
+        # Keep configuration/source-only tooling usable without native deps.
+        _symbolica = None
+
+    _set_library_key = getattr(_symbolica, "set_library_key", None)
+    if callable(_set_library_key):
+        # Symbolica's public is_licensed() remains the authority: a personal
+        # key can still license this process, otherwise use restricted mode.
+        with _suppress(ValueError, PermissionError):
+            _set_library_key(
+                "SU-419-pyamplicol-2028.01.01-"
+                "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX"
+                "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ"
+            )
+finally:
+    if _previous_banner is None:
+        _os.environ.pop("SYMBOLICA_HIDE_BANNER", None)
+    else:
+        _os.environ["SYMBOLICA_HIDE_BANNER"] = _previous_banner
+del _os, _suppress, _previous_banner, _symbolica, _set_library_key
 
 if TYPE_CHECKING:
     from .api import (

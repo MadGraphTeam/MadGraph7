@@ -164,6 +164,58 @@ def test_jit_compression_card_and_dotted_override_round_trip() -> None:
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
+@pytest.mark.parametrize("mode", ("compiled", "recurrence", "on-the-fly", "eager"))
+@pytest.mark.parametrize("level", (0, 1, 2, 3))
+def test_jit_compression_auto_resolves_only_for_compiled_o2(
+    mode: str, level: int
+) -> None:
+    resolution = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {"execution_mode": mode, "jit": {"optimization_level": level}},
+        }
+    )
+
+    assert resolution.requested.evaluator.jit.compress == "auto"
+    assert resolution.effective.evaluator.jit.compress is (
+        mode == "compiled" and level == 2
+    )
+    assert config_to_dict(resolution.effective)["evaluator"]["jit"]["compress"] is (  # type: ignore[index]
+        mode == "compiled" and level == 2
+    )
+    # A mode override must resolve the original auto intent, not the old default.
+    compiled = resolve_config(
+        config_to_dict(resolution.requested),
+        overrides=('evaluator.execution_mode="compiled"',),
+    )
+    assert compiled.effective.evaluator.jit.compress is (level == 2)
+
+
+@pytest.mark.parametrize("compress", (True, False))
+def test_compiled_o2_compression_explicit_card_and_override_win(compress: bool) -> None:
+    card = {
+        "action": "generate",
+        "evaluator": {"execution_mode": "compiled", "jit": {"compress": compress}},
+    }
+    assert resolve_config(card).effective.evaluator.jit.compress is compress
+    override = f"evaluator.jit.compress={str(not compress).lower()}"
+    assert (
+        resolve_config(card, overrides=(override,)).effective.evaluator.jit.compress
+        is not compress
+    )
+
+
+@pytest.mark.parametrize("backend", ("cpp", "asm"))
+def test_non_jit_backends_do_not_enable_compression(backend: str) -> None:
+    config = resolve_config(
+        {
+            "action": "generate",
+            "evaluator": {"execution_mode": "compiled", "backend": backend},
+        }
+    ).effective
+    assert config.evaluator.jit.compress is False
+
+
 def test_recurrence_evaluator_card_and_dotted_overrides_round_trip() -> None:
     pytest.importorskip("tomli_w")
     config = resolve_config(

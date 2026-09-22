@@ -151,10 +151,13 @@ project in editable mode.
 
 Generation and Python arbitrary-precision execution use Symbolica. The native
 binary64 runtime embedded in generated artifacts does not import Symbolica.
-Restricted Symbolica mode may clamp generation resources; pyAmpliCol records
-the requested and effective settings separately.
+pyAmpliCol attempts to register its package key at startup, including in
+spawned workers. A valid package key covers its Symbolica operations without a
+personal license. If registration fails synchronously, the existing personal
+license and restricted-mode paths remain available; restricted mode clamps
+generation to one worker and one Symbolica core.
 
-For licensing details and the built-in license-request helpers, see
+For details and the built-in personal license-request helpers, see
 [Symbolica and Licensing](symbolica-and-licensing.md).
 
 ## Common installation issues

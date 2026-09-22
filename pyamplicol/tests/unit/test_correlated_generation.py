@@ -39,6 +39,7 @@ def test_correlated_settings_are_explicit_and_do_not_change_default_factory() ->
     assert settings.effective.color.accuracy == "lc"
     assert settings.effective.color.contraction == "direct"
     assert settings.effective.evaluator.execution_mode == "compiled"
+    assert settings.effective.evaluator.jit.compress is True
     assert settings.effective.generation.relation_discovery.mode == "off"
     assert "color.accuracy" not in {change.path for change in settings.clamps}
     assert "evaluator.execution_mode" in {change.path for change in settings.clamps}
@@ -98,6 +99,33 @@ def test_correlated_configuration_preserves_resources_and_existing_clamps() -> N
     assert resolution.effective.evaluator.backend is effective.evaluator.backend
     assert resolution.effective.color.contraction == "direct"
     assert correlated.correlated_configuration(resolution).clamps == resolution.clamps
+
+
+@pytest.mark.parametrize(
+    "compress, expected", (("auto", True), (False, False), (True, True))
+)
+def test_correlated_configuration_reselects_compiled_compression_default(
+    compress, expected
+) -> None:
+    from pyamplicol.config import resolve_config
+
+    recurrence = resolve_config(
+        {"action": "generate", "evaluator": {"jit": {"compress": compress}}}
+    )
+    assert recurrence.effective.evaluator.jit.compress is (compress is True)
+    compiled = correlated.correlated_configuration(recurrence)
+    assert compiled.effective.evaluator.jit.compress is expected
+
+
+def test_correlated_configuration_preserves_compression_clamp() -> None:
+    from pyamplicol.config import ClampRequest, resolve_config
+
+    recurrence = resolve_config(
+        {"action": "generate"},
+        clamps=(ClampRequest("evaluator.jit.compress", False, "explicit pack policy"),),
+    )
+    compiled = correlated.correlated_configuration(recurrence)
+    assert compiled.effective.evaluator.jit.compress is False
 
 
 def test_automatic_catalogues_expand_for_each_generated_process() -> None:

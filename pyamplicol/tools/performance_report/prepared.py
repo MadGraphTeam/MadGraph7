@@ -83,6 +83,7 @@ class _PublicCliModelCompiler:
         cores = getattr(optimization, "cores", None)
         jit = getattr(evaluator, "jit", None)
         optimization_level = getattr(jit, "optimization_level", None)
+        compression = getattr(jit, "compress", None)
         if (
             backend != "jit"
             or execution_mode not in {"compiled", "eager", "recurrence"}
@@ -91,6 +92,7 @@ class _PublicCliModelCompiler:
             or cores < 1
             or isinstance(optimization_level, bool)
             or not isinstance(optimization_level, int)
+            or (compression != "auto" and not isinstance(compression, bool))
         ):
             raise PreparedModelError(
                 "report prepared-model CLI requires a concrete JIT evaluator"
@@ -108,6 +110,8 @@ class _PublicCliModelCompiler:
             str(optimization_level),
             "--set",
             f"evaluator.execution_mode={execution_mode}",
+            "--set",
+            f"evaluator.jit.compress={str(compression).lower()}",
             "--model-cache" if use_cache else "--no-model-cache",
         ]
         if cache_dir is not None:
@@ -118,7 +122,7 @@ class _PublicCliModelCompiler:
                 "public model compile parser returned a non-command invocation"
             )
         resolution = invocation.resolve()
-        if resolution.effective.evaluator != evaluator:
+        if resolution.requested.evaluator != evaluator:
             raise PreparedModelError(
                 "public model compile arguments changed the report evaluator settings"
             )

@@ -9,22 +9,22 @@ symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
-candidate_version = "2.2.0"
-candidate_revision = "ba3737137c2a2ccd7bb39f0441837d38ec867e78"
+candidate_version = "3.0.0"
+candidate_revision = "7b31114c7a77571aabacf96a311f27ef0f44d007"
 community_url = "https://github.com/symbolica-dev/symbolica-community.git"
-community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
+community_revision = "98740d198fb6667c63c0de7cffd4328b5dca57b0"
 release_status = "merged-main-candidate"
 
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"
-branch = "simplify-spenso-api"
-revision = "436f9ff52587582686db6aefd4ecd715b5693f90"
+branch = "main"
+revision = "312cf6aaf4cd1414f6742ad87ce39922c497a0b6"
 release_status = "developer-build-input-only"
 
 [symbolica_integrate]
 source_url = "https://github.com/symbolica-dev/symbolica-integrate.git"
-# Unmodified upstream dev branch; includes the Symbolica-main matcher update.
-revision = "9220f57f3c744c3ee83c4df5efdd6233788222ce"
+# Unmodified upstream main with Symbolica 3.0 support.
+revision = "716354a07f2660b38390c95702aa617d1f9472c7"
 
 [ratatui]
 distribution = "ratatui"
@@ -37,6 +37,8 @@ release_status = "developer-build-input-only"
 license = "MIT"
 
 [ufo_model_loader]
+source_url = "https://github.com/alphal00p/ufo_model_loader.git"
+candidate_revision = "70ddee6b416f8c8b340e0d087646d77095c5d24b"
 latest_verified_published_version = "0.1.7"
 published_revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
 wheel_sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"

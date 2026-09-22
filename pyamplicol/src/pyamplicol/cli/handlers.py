@@ -407,7 +407,17 @@ class DefaultCliServices:
             raise ConfigurationError("model compile requires generation.output")
         requested_output = config.generation.output
         prepared_output = requested_output.name.lower().endswith(".pyamplicol-model")
-        if not prepared_output and config.evaluator != EvaluatorConfig():
+        default_evaluator = EvaluatorConfig()
+        resolved_default_evaluator = replace(
+            default_evaluator,
+            jit=replace(
+                default_evaluator.jit, compress=default_evaluator.resolved_jit_compress
+            ),
+        )
+        if not prepared_output and config.evaluator not in (
+            default_evaluator,
+            resolved_default_evaluator,
+        ):
             raise ConfigurationError(
                 "model compile evaluator settings require an output ending "
                 "with '.pyamplicol-model'; IR-only outputs do not compile kernels"

@@ -572,7 +572,7 @@ def prepared_symbolica_settings(
             if backend == "jit"
             else evaluator.jit.optimization_level
         ),
-        jit_compress=evaluator.jit.compress,
+        jit_compress=evaluator.resolved_jit_compress,
         max_horner_scheme_variables=optimization.max_horner_variables,
         max_common_pair_cache_entries=optimization.max_common_pair_cache_entries,
         max_common_pair_distance=optimization.max_common_pair_distance,

@@ -1,124 +1,74 @@
 # Dependency Modes
 
-pyAmpliCol has two deliberately separate dependency modes.
-
-This experimental branch now uses unmodified upstream SymJIT **2.25.6**
-(`3fc04010f69db954463f9666fffb652b244ccc52`). All 15 reported-bug regression
-checks pass against the published crate; `TMP_FIXED_SYMJIT` is no longer used.
-Symbolica, Numerica and Graphica follow upstream `main`, with the tested
-revision recorded in `Cargo.lock` and `contributor-lock.toml`.
-
-The community Python build now uses unmodified managed upstream checkouts;
-neither `TMP_FIXED_SPENSO` nor any dependency source patch is required.
-`just dev-install` clones GammaLoop's `simplify-spenso-api` revision
-`436f9ff52587582686db6aefd4ecd715b5693f90` into
-`dependencies/checkouts/gammaloop`. This includes the remaining fix that keeps
-optional Python stub generation out of ordinary ABI3 builds, as well as the
-earlier Spenso/Idenso/Vakint API adaptations. The installer also clones
-symbolica-integrate from the `dev` branch at
-`9220f57f3c744c3ee83c4df5efdd6233788222ce` into
-`dependencies/checkouts/symbolica-integrate`.
-It also installs the separate `FUTURE_ufo_model_loader` checkout at version
-0.1.8 when present. The loader's own upstream `main` contains these changes;
-the checkout is not part of this repository, and 0.1.8 is not yet on PyPI.
-The symbolica-integrate matcher adaptation is included in its pinned upstream
-revision. Both the native pyAmpliCol workspace and the community extension
-pass release compile checks with this upstream-only setup. Publication still
-requires the corresponding dependency releases and release assets.
-
-The future Python release requirements are Symbolica 3.0.0 and
-ufo-model-loader 0.1.8. Their release-wheel entries remain empty until publication.
-The pinned Symbolica development source still declares 2.2.0; the existing
-candidate build projects that actual version into its wheel without relabelling
-the CAS. Local checkout installations therefore use `--no-deps` until Symbolica
-publishes 3.0. The loader itself retains its genuine `symbolica>=3.0` requirement.
+pyAmpliCol separates publishable release dependencies from pinned upstream
+sources used for candidate development. Both modes target Symbolica **3.0.0**
+and SymJIT **2.26.0**; candidate builds do not relabel dependency versions or
+modify upstream source files.
 
 ## Release Mode
 
-Release-equivalent builds use exact versions published on PyPI and crates.io,
-except for SymJIT, which Cargo resolves from one immutable commit of the
-official `siravan/symjit-crate` repository. `release-lock.toml`
-records its version, repository, and full revision; `Cargo.lock` records the
-normal Git resolution. There is no downloaded source archive, local patch
-application, source-tree fingerprint, or release-only Cargo path projection.
-The ordinary locked Cargo build is the dependency check. The generic
-plane-descriptor change is already upstream in `siravan/symjit-crate#1`.
+Release-equivalent builds use exact published versions. Canonical Cargo
+resolution uses the published Symbolica 3.0.0 crate; its only
+`[patch.crates-io]` entry is SymJIT, pinned to one immutable commit of the
+official `siravan/symjit-crate` repository. `release-lock.toml` records that
+version and revision, and `Cargo.lock` records normal Cargo resolution. The
+ordinary locked Cargo build is the dependency check; no local dependency
+patches or release-only source projections are needed.
 
-The package-owned prepared models under
-`src/pyamplicol/assets/prepared_models` remain candidate inputs in a source
-checkout. Release prepared-model pairs are held separately under the
-source-only `release_assets/prepared_models` store and are regenerated only
-through the manual `release-prepared-models.yml` workflow. Its temporary
-bootstrap wheel is explicitly non-publishable and omits both prepared-model
-stores and the portable self-test fixture; the resulting architecture pairs
-derive their dependency identity from
-`release-lock.toml` and canonical `Cargo.lock`, never from contributor state.
-A release overlay projects the complete release pair set over the canonical
-package paths, deletes the auxiliary store, and validates the result. The
-retained sdist therefore contains only canonical release payloads;
-contributor and bootstrap builds continue to use or omit the candidate
-payloads exactly as before. Prepared-pack compatibility remains bound to its
-model/compiler identities, project-owned storage and plane ABIs, target, and
-payload hashes—not to a redundant dependency checkout fingerprint.
+Python Symbolica 3.0.0 and ufo-model-loader 0.1.8 remain publication blockers:
+their release-wheel entries stay empty until the required releases are
+available. Successful candidate builds do not establish release availability
+or make candidate artifacts publishable.
+
+Prepared models in `src/pyamplicol/assets/prepared_models` are candidate inputs.
+Release pairs live separately in the source-only `release_assets/prepared_models`
+store and are regenerated through the manual `release-prepared-models.yml`
+workflow using `release-lock.toml` and canonical `Cargo.lock`. Its temporary
+bootstrap wheel is non-publishable and omits prepared models and the portable
+self-test fixture. The release overlay installs the release pairs at canonical
+package paths and removes the auxiliary store, so the retained sdist contains
+only release payloads. Prepared-pack compatibility uses model/compiler
+identities, storage and plane ABIs, target, and payload hashes—not a separate
+dependency checkout fingerprint.
 
 ## Candidate Development Mode
 
-`just dev-install` clones the pinned development dependencies into
-`dependencies/checkouts`, using the Symbolica revision in
-`contributor-lock.toml`. Explicit root Cargo path overrides remain available
-for local experiments but are not used by the default configuration.
-Community Cargo manifests resolve the same source paths as pyAmpliCol; the
-installer does not rewrite Symbolica, Spenso, or SymJIT source files or their
-manifests. The SymJIT checkout must expose the matching `rlib` library.
-The official base revision carries the generic raw
-plane-descriptor API; pyAmpliCol contains no local SymJIT patch machinery.
-The change does not alter generated kernel bodies or contain pyAmpliCol
-scheduling policy.
-The callable is explicitly unsafe: callers must validate descriptor lifetime,
-length, alignment, alias synchronization, and mutability before invocation.
-Its accessor returns no callable for ordinary non-arena kernels, preventing a
-B-kernel from being recast accidentally as a plane-oriented P-kernel.
-Candidate mode exists for development and physics validation only. Ordinary
-`just dev-install` builds a
-complete candidate wheel from the tracked prepared-model packs and portable
-self-test fixture. If those generated assets must be replaced after a native
-ABI change, an explicitly requested prepared-model bootstrap produces a
-non-publishable recovery wheel that omits both asset families; this exceptional
-mode is never enabled by the installer itself.
-If a managed checkout belongs to a superseded revision, `--update` moves it to
-the pinned revision; `--reset` archives managed state in the workspace-local
-`.trash` store and recreates it.
-The dedicated `FUTURE_ufo_model_loader` checkout replaces the older published
-loader in the contributor installation, including the current-CAS compatibility
-adaptations. Artifacts produced in this mode record
-the candidate revisions and are not eligible for PyPI publication.
+`just dev-install` uses unmodified managed checkouts under
+`dependencies/checkouts`, pinned by `contributor-lock.toml` and the SymJIT
+release entry:
 
-The managed SymJIT checkout uses the unmodified source of published 2.25.6 at
-upstream revision `3fc04010f69db954463f9666fffb652b244ccc52`.
-Rusticol builds its plane-oriented
-arena adapter from SymJIT's standard P-kernel interface and owns all
-pyAmpliCol-specific scheduling, factor, overwrite/accumulate, fanout, and
-artifact-binding policies. The pinned upstream P2 contract interprets scalar
-and SIMD indices as actual row numbers and can optionally scale outputs by
-`params`; pyAmpliCol uses row indices and keeps identity output enabled.
+| Dependency | Upstream source | Revision |
+| --- | --- | --- |
+| Symbolica 3.0.0, including Numerica and Graphica | `symbolica-dev/symbolica`, `main` | `7b31114c7a77571aabacf96a311f27ef0f44d007` |
+| SymJIT 2.26.0 | `siravan/symjit-crate` | `530304a07d1be6d5abc80291aa5e92cf28ac5546` |
+| GammaLoop, including Spenso/Idenso/Vakint | `alphal00p/gammaloop`, `main` | `312cf6aaf4cd1414f6742ad87ce39922c497a0b6` |
+| symbolica-integrate 2.0.1 | `symbolica-dev/symbolica-integrate`, `main` | `716354a07f2660b38390c95702aa617d1f9472c7` |
+| ufo-model-loader 0.1.8 | `alphal00p/ufo_model_loader`, `main` | `70ddee6b416f8c8b340e0d087646d77095c5d24b` |
 
-The build uses Symbolica development revision
-`ba3737137c2a2ccd7bb39f0441837d38ec867e78` from upstream `main`, with
-`wide >= 1.7` and the pinned symbolica-community source. No Symbolica source
-patch is needed. Rusticol explicitly enables the `native_code_generation`
-feature required for Symbolica's JIT evaluator API. The unmodified managed
-GammaLoop checkout uses `simplify-spenso-api` revision
-`436f9ff52587582686db6aefd4ecd715b5693f90`. Symbolica-integrate likewise uses
-its unmodified managed checkout; the independent UFO loader is in
-`FUTURE_ufo_model_loader`. Spynso3 initializes
-its cached symbolic-parallelism policy in `Auto`
-mode, checking the license once and keeping symbolic tensor reductions serial
-for restricted users or parallel for licensed users.
+The pinned Symbolica source declares 3.0.0, matching the loader's genuine
+`symbolica>=3.0` requirement. The loader lives at
+`dependencies/checkouts/ufo-model-loader`; no separate future-loader checkout
+is needed. The symbolica-community revision is recorded in
+`contributor-lock.toml`.
 
-The workspace's ordinary `[patch.crates-io]` entries keep the selected CAS
-revision and unmodified upstream SymJIT implementation consistent. Contributor
-builds use the matching managed CAS paths through the generated Cargo
-configuration.
+The generated candidate Cargo overlay selects these upstream sources for both
+pyAmpliCol and the community extension without changing canonical release
+resolution. The installer configures the community build manifest with the
+managed source paths and Symbolica's matching allocator; upstream Rust source
+files remain unchanged. Rusticol enables Symbolica's
+`native_code_generation` feature. SymJIT supplies the standard P-kernel
+interface; Rusticol owns scheduling, factors, accumulation, fanout, and artifact
+binding. Its plane adapter uses actual row indices and identity output, with
+descriptor lifetime, alignment, aliasing, and mutability checked by the caller.
+
+Candidate mode is for development and physics validation, not PyPI publication.
+Ordinary `just dev-install` builds a complete candidate wheel using the tracked
+prepared-model packs and portable self-test fixture. If a native ABI change
+requires replacing those assets, an explicitly requested bootstrap produces a
+non-publishable recovery wheel that omits both; the installer never selects this
+mode automatically. `--update` moves superseded managed checkouts to their
+pinned revisions; `--reset` archives managed state in the workspace-local
+`.trash` store before recreating it.
 
 The original Fortran AmpliCol checkout is optional, developer-only, and used
 only as an independent validation and benchmarking reference. Enable it with

@@ -23,10 +23,9 @@ def _module():
     return module
 
 
-def test_release_gate_rejects_local_development_overrides() -> None:
+def test_release_gate_accepts_canonical_published_cargo_inputs() -> None:
     module = _module()
-    codes = {issue.code for issue in module.check(candidate=False)}
-    assert {"release-cargo-patch", "release-cargo-pin"} <= codes
+    assert module.check(candidate=False) == []
 
 
 @pytest.fixture
@@ -88,9 +87,9 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "repository",
         "revision",
     }
-    assert lock["symjit"]["version"] == "2.25.6"
+    assert lock["symjit"]["version"] == "2.26.0"
     assert lock["symjit"]["repository"] == "https://github.com/siravan/symjit-crate.git"
-    assert lock["symjit"]["revision"] == "3fc04010f69db954463f9666fffb652b244ccc52"
+    assert lock["symjit"]["revision"] == "530304a07d1be6d5abc80291aa5e92cf28ac5546"
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
@@ -120,7 +119,7 @@ def test_release_cargo_lock_rejects_candidate_path_resolution(
     text = module.CARGO_LOCK_PATH.read_text(encoding="utf-8")
     marker = (
         'name = "symbolica"\n'
-        'version = "2.2.0"\n'
+        f'version = "{module._load_lock()["symbolica"]["rust_version"]}"\n'
         'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
     )
     assert marker in text

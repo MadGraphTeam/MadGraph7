@@ -164,7 +164,7 @@ pyAmpliCol supports:
   calculations;
 - recurrence, compiled-DAG, eager, and on-the-fly execution modes;
 - JIT, C++, and assembly evaluator backends where supported;
-- binary64 execution without importing Symbolica, plus precision-controlled
+- native binary64 execution without Symbolica computations, plus precision-controlled
   Python evaluation when exact expressions are retained. On-the-fly execution
   currently supports native binary64 only.
 

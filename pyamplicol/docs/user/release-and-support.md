@@ -33,13 +33,12 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 APIs. It also runs a CPython
 3.14 abi3 smoke test, source preflight, and independent Fortran physics oracle.
 Publication uploads these already validated files without rebuilding them.
 
-The development checkpoint uses Symbolica 2.2.0 development sources and
-GammaLoop's `simplify-spenso-api` branch, with exact source revisions recorded
-in `dependencies/contributor-lock.toml`. The local, untracked
-`TMP_FIXED_SYMJIT` checkout contains two upstream fixes; `TMP_FIXED_SPENSO`
-contains the extension API adaptations for this Symbolica version. These
-directories are not distributed with this branch. Replace the temporary path
-dependencies with fixed upstream revisions before building a release.
+The development checkpoint uses upstream Symbolica 3.0 sources, SymJIT 2.26.0,
+and GammaLoop's `main` branch, with exact source revisions recorded in
+`dependencies/contributor-lock.toml` and `dependencies/release-lock.toml`.
+No local dependency source patches are needed. Publication requires the
+Symbolica 3.0.0 and ufo-model-loader 0.1.8 Python releases and validated release
+assets.
 
 ## 0.2.1 (unreleased)
 
@@ -54,6 +53,9 @@ workspace, avoiding unnecessarily small batches at higher multiplicities.
 Completed on-the-fly caches can be saved and restored through Python and every
 native SDK, without reconstructing the retained currents. See
 [saving an OTF warm cache](runtime-and-selectors.md#saving-an-otf-warm-cache).
+Symbolica's package license removes the need for a personal key for pyAmpliCol
+use; personal-license and restricted-mode fallbacks remain available.
+Compiled JIT O2 generation selects compressed code by default.
 
 ## 0.2.0 release
 

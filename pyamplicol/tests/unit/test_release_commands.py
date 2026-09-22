@@ -161,16 +161,20 @@ def test_deployment_path_guard_allows_only_the_isolated_sandbox(
     assert guarded_path(source).returncode != 0
 
 
-def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
+def test_candidate_deployment_installs_source_dependencies_by_exact_local_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     candidate_dependency_provenance: None,
 ) -> None:
     wheelhouse = tmp_path / "wheelhouse"
+    contributor = tomllib.loads(
+        (ROOT / "dependencies/contributor-lock.toml").read_text(encoding="utf-8")
+    )
+    symbolica_version = contributor["symbolica"]["candidate_version"]
     symbolica = _dependency_wheel(
         wheelhouse / "symbolica",
         "symbolica",
-        "2.2.0",
+        symbolica_version,
         "cp311-abi3-test_platform",
     )
     release_symbolica = _dependency_wheel(
@@ -178,6 +182,12 @@ def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
         "symbolica",
         "2.1.0",
         "cp311-abi3-test_platform",
+    )
+    loader = _dependency_wheel(
+        wheelhouse / "ufo-model-loader",
+        "ufo-model-loader",
+        "0.1.8",
+        "py3-none-any",
     )
     commands: list[list[str]] = []
 
@@ -197,8 +207,9 @@ def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
 
     assert installation.local_wheels == {
         "symbolica": symbolica.resolve(),
+        "ufo-model-loader": loader.resolve(),
     }
-    assert installation.versions["symbolica"] == "2.2.0"
+    assert installation.versions["symbolica"] == symbolica_version
     assert len(commands) == 1
     command = commands[0]
     assert "--require-hashes" not in command
@@ -206,7 +217,8 @@ def test_candidate_deployment_installs_only_symbolica_by_exact_local_path(
     assert "--index-url" in command
     assert str(symbolica.resolve()) in command
     assert str(release_symbolica.resolve()) not in command
-    assert "ufo-model-loader==0.1.7" in command
+    assert str(loader.resolve()) in command
+    assert not any(item.startswith("ufo-model-loader==") for item in command)
     assert "numpy==2.4.2" in command
     assert not any(item.startswith("python-utils==") for item in command)
     assert not any(item.startswith("typing-extensions==") for item in command)

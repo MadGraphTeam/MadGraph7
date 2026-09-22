@@ -121,6 +121,21 @@ def correlated_configuration(
         for path in paths
         if field(effective, path) != field(result, path)
     )
+    # The source configuration may already have resolved recurrence's auto
+    # compression to false. Re-select the default for this compiled lane, but
+    # retain explicit user or prepared-pack choices.
+    evaluator = result.evaluator
+    if requested.evaluator.jit.compress == "auto" and not any(
+        clamp.path == "evaluator.jit.compress" for clamp in clamps
+    ):
+        evaluator = replace(evaluator, jit=replace(evaluator.jit, compress="auto"))
+    result = replace(
+        result,
+        evaluator=replace(
+            evaluator,
+            jit=replace(evaluator.jit, compress=evaluator.resolved_jit_compress),
+        ),
+    )
     return ConfigResolution(requested, result, (*clamps, *adjustments))
 
 

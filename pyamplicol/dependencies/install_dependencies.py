@@ -154,6 +154,7 @@ def _sources(
     symjit = payload["symjit"]
     gammaloop = payload["gammaloop_candidate"]
     integrate = payload["symbolica_integrate"]
+    loader = payload["ufo_model_loader"]
     overrides = _root_path_patches()
     sources = [
         Source(
@@ -170,6 +171,11 @@ def _sources(
             "ratatui-ffi",
             str(payload["ratatui"]["ffi_repository"]),
             str(payload["ratatui"]["ffi_revision"]),
+        ),
+        Source(
+            "ufo-model-loader",
+            str(loader["source_url"]),
+            str(loader["candidate_revision"]),
         ),
     ]
     if "symjit" not in overrides:
@@ -375,13 +381,6 @@ def _managed_symjit_checkout() -> Path:
     return _root_path_patches().get("symjit") or _managed_checkout("symjit")
 
 
-def _local_ufo_loader() -> Path | None:
-    """Use the dedicated next-version UFO loader checkout, if present."""
-
-    source = ROOT / "FUTURE_ufo_model_loader"
-    return source if (source / "pyproject.toml").is_file() else None
-
-
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
     destination = _managed_checkout(source.key)
     if destination.exists() and not (destination / ".git").exists():
@@ -511,24 +510,27 @@ def _configure_source_manifests(runner: Runner) -> None:
     paths.update(overrides)
     quoted = {name: json.dumps(str(path.resolve())) for name, path in paths.items()}
     dependencies = (
-        f"""
-example_extension = {{ path = "example_extension" }}
-idenso = {{ path = {quoted["idenso"]}, features = ["bincode", "python"] }}
-spynso3 = {{ path = {quoted["spynso3"]} }}
-symbolica = {{ path = {quoted["symbolica"]}, features = ["python_export"] }}
-symbolica-integrate = {{ path = {quoted["symbolica-integrate"]}, features = ["steps"] }}
-pyo3 = {{ version = "0.28", features = ["abi3"] }}
-wide = "1.7"
-"""
+        'example_extension = { path = "example_extension", default-features = false }\n'
+        f"idenso = {{ path = {quoted['idenso']}, default-features = false, "
+        'features = ["bincode", "python"] }\n'
+        f"spynso3 = {{ path = {quoted['spynso3']}, default-features = false }}\n"
+        f"symbolica = {{ path = {quoted['symbolica']}, default-features = false, "
+        'features = ["python_export"] }\n'
+        f"symbolica-integrate = {{ path = {quoted['symbolica-integrate']}, "
+        'default-features = false, features = ["compressed-step-metadata"] }\n'
+        'pyo3 = { version = "0.28" }\n'
         'pyo3-stub-gen = { version = "0.17", optional = true, '
         'default-features = false, features = ["numpy"] }\n'
-        f"""
-mimalloc = {{ version = "0.1", features = ["local_dynamic_tls"] }}
+    )
+    native_dependencies = f"""
 vakint = {{ path = {quoted["vakint"]}, features = [
     "symbolica_community_module",
 ] }}
+# Follow Symbolica's allocator to avoid duplicate native mimalloc links.
+mimalloc = {{ package = "rustfs-mimalloc", version = "0.5.4", features = [
+    "local_dynamic_tls",
+] }}
 """
-    )
     patches = "\n".join(
         f"{name} = {{ path = {path} }}" for name, path in quoted.items()
     )
@@ -540,6 +542,11 @@ vakint = {{ path = {quoted["vakint"]}, features = [
         # from adopting this package into the nearest ancestor workspace.
         text = "[workspace]\n\n" + text
     text = _replace_section(text, "dependencies", dependencies)
+    text = _replace_section(
+        text,
+        "target.'cfg(not(target_arch = \"wasm32\"))'.dependencies",
+        native_dependencies,
+    )
     text = _replace_section(text, "patch.crates-io", patches)
     text = _replace_section(
         text,
@@ -549,20 +556,14 @@ vakint = {{ path = {quoted["vakint"]}, features = [
             for name in ("symbolica", "numerica", "graphica")
         ),
     )
-    text = _replace_section(
-        text,
-        "build-dependencies",
-        'pyo3-build-config = "*"\n'
-        f"numerica = {{ path = {quoted['numerica']}, default-features = false, "
-        'features = ["integer-gmp", "float-mpfr"] }',
-    )
     community_cargo.write_text(text.rstrip() + "\n", encoding="utf-8")
 
     example = community / "example_extension" / "Cargo.toml"
     text = example.read_text(encoding="utf-8")
     text = re.sub(
         r"(?m)^symbolica\s*=\s*\{[^\n]*\}\s*$",
-        f'symbolica = {{ path = {quoted["symbolica"]}, features = ["python_export"] }}',
+        f"symbolica = {{ path = {quoted['symbolica']}, default-features = false, "
+        'features = ["python_export"] }',
         text,
         count=1,
     )
@@ -581,8 +582,7 @@ def _configure_sources(runner: Runner) -> None:
             capture=True,
         ).stdout
         (community / "Cargo.lock").write_text(upstream_lock, encoding="utf-8")
-    # Resolve source substitutions and the wide >= 1.7 constraint needed by
-    # current Numerica, retaining other compatible upstream lock entries.
+    # Resolve source substitutions, retaining compatible upstream lock entries.
     runner.run(
         ["cargo", "metadata", "--format-version", "1"],
         cwd=community,
@@ -763,9 +763,7 @@ def _rewrite_candidate_requirements(root: Path) -> None:
 
 def _runtime_requirements_text() -> str:
     runtime_lock = load_python_runtime_lock(PYTHON_LOCK)
-    excluded = {"symbolica"}
-    if _local_ufo_loader() is not None:
-        excluded.add("ufo-model-loader")
+    excluded = {"symbolica", "ufo-model-loader"}
     lines: list[str] = []
     for package in runtime_lock.packages:
         if package.name in excluded:
@@ -1106,6 +1104,7 @@ def _build_candidate_dependency_wheels(
     symbolica_wheels = WHEELHOUSE / "symbolica"
     if not runner.dry_run:
         symbolica_wheels.mkdir(parents=True, exist_ok=True)
+        _archive_candidate_wheels(symbolica_wheels, "symbolica")
 
     runner.run(
         [
@@ -1136,19 +1135,36 @@ def _build_candidate_dependency_wheels(
             ],
             env=environment,
         )
-        if (loader := _local_ufo_loader()) is not None:
-            runner.run(
-                [
-                    python,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--force-reinstall",
-                    "--no-deps",
-                    loader,
-                ],
-                env=environment,
-            )
+    loader_wheels = WHEELHOUSE / "ufo-model-loader"
+    if not runner.dry_run:
+        loader_wheels.mkdir(parents=True, exist_ok=True)
+        _archive_candidate_wheels(loader_wheels, "ufo_model_loader")
+    runner.run(
+        [
+            python,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--wheel-dir",
+            loader_wheels,
+            _managed_checkout("ufo-model-loader"),
+        ],
+        env=environment,
+    )
+    if not runner.dry_run:
+        runner.run(
+            [
+                python,
+                "-m",
+                "pip",
+                "install",
+                "--force-reinstall",
+                "--no-deps",
+                _single_wheel(loader_wheels, "ufo_model_loader"),
+            ],
+            env=environment,
+        )
         _verify_candidate_python_dependencies(runner, payload)
     _build_ratatui_wheel(runner, payload)
 

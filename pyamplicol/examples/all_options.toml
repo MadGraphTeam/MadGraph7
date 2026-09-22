@@ -178,8 +178,8 @@ collect_factors = "auto"
 # evaluator.jit.optimization_level: Integer 0 through 3. Default 2.
 optimization_level = 2
 # evaluator.jit.compress: Smaller generated code, potentially slower evaluation.
-# Default false; opt in explicitly when code size matters more than speed.
-compress = false
+# "auto" enables compiled JIT O2 only; true/false explicitly override the default.
+compress = "auto"
 
 [evaluator.cpp]
 # evaluator.cpp.optimization: Compiler optimization token. Default "O3".

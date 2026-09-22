@@ -46,6 +46,7 @@ def test_source_inventory_is_exact_and_profiling_references_are_optional() -> No
         "symbolica-integrate",
         "gammaloop",
         "ratatui-ffi",
+        "ufo-model-loader",
     }
     assert {item.key for item in with_references} == {
         *(item.key for item in without_references),
@@ -168,6 +169,8 @@ def test_ufo_loader_distinguishes_required_and_latest_published_versions() -> No
         "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
     )
     assert loader["release_status"] == "verified"
+    assert loader["source_url"] == "https://github.com/alphal00p/ufo_model_loader.git"
+    assert loader["candidate_revision"] == "70ddee6b416f8c8b340e0d087646d77095c5d24b"
     assert "patches" not in payload
 
 
@@ -206,11 +209,7 @@ def test_local_source_overrides_replace_managed_dependency_clones(
     payload = module._lock()
     symjit = payload["symjit"]
 
-    assert symjit == {
-        "version": "2.25.6",
-        "repository": "https://github.com/siravan/symjit-crate.git",
-        "revision": "3fc04010f69db954463f9666fffb652b244ccc52",
-    }
+    assert symjit == module._release_lock()["symjit"]
     sources = {
         item.key
         for item in module._sources(
@@ -242,12 +241,19 @@ def test_managed_sources_remain_available_without_explicit_path_overrides(
             module._lock(), with_legacy=False, with_reference_fft=False
         )
     }
-    assert sources["symjit"].revision == "3fc04010f69db954463f9666fffb652b244ccc52"
-    assert sources["gammaloop"].branch == "simplify-spenso-api"
-    assert sources["gammaloop"].revision == "436f9ff52587582686db6aefd4ecd715b5693f90"
+    assert sources["symjit"].revision == module._release_lock()["symjit"]["revision"]
+    assert (
+        sources["ufo-model-loader"].revision
+        == (module._contributor_lock()["ufo_model_loader"]["candidate_revision"])
+    )
+    contributor = module._contributor_lock()
+    assert sources["gammaloop"].branch == contributor["gammaloop_candidate"]["branch"]
+    assert (
+        sources["gammaloop"].revision == contributor["gammaloop_candidate"]["revision"]
+    )
     assert (
         sources["symbolica-integrate"].revision
-        == "9220f57f3c744c3ee83c4df5efdd6233788222ce"
+        == contributor["symbolica_integrate"]["revision"]
     )
 
 
@@ -261,18 +267,25 @@ def test_community_wiring_preserves_dependency_sources(
     community = checkouts / "symbolica-community"
     (community / "example_extension").mkdir(parents=True)
     (community / "Cargo.toml").write_text(
-        '[package]\nname = "symbolica_community"\nversion = "2.2.0"\n'
-        '[dependencies]\nsymbolica = "2.2"\n'
-        '[build-dependencies]\npyo3-build-config = "*"\n',
+        '[package]\nname = "symbolica_community"\nversion = "3.0.0"\n'
+        '[features]\ndefault = ["module", "native"]\n'
+        'module = ["pyo3/abi3", "symbolica/python_abi3"]\n'
+        'native = ["symbolica/default", "idenso/native", "spynso3/native"]\n'
+        '[dependencies]\nsymbolica = "3.0"\n'
+        "[target.'cfg(not(target_arch = \"wasm32\"))'.dependencies]\n"
+        'vakint = { git = "https://github.com/alphal00p/gammaloop", '
+        'branch = "main" }\n',
         encoding="utf-8",
     )
     (community / "example_extension/Cargo.toml").write_text(
-        '[dependencies]\nsymbolica = { version = "2.2" }\n', encoding="utf-8"
+        '[dependencies]\nsymbolica = { version = "3.0", default-features = false }\n',
+        encoding="utf-8",
     )
     symjit = project / "TMP_FIXED_SYMJIT"
     symjit.mkdir()
     (symjit / "Cargo.toml").write_text(
-        '[package]\nname = "symjit"\nversion = "2.25.6"\n'
+        '[package]\nname = "symjit"\n'
+        f'version = "{module._release_lock()["symjit"]["version"]}"\n'
         '[lib]\ncrate-type = ["rlib"]\n',
         encoding="utf-8",
     )
@@ -296,10 +309,30 @@ def test_community_wiring_preserves_dependency_sources(
     assert manifest["patch"]["crates-io"]["spenso"]["path"] == str(spenso)
     git_patch = manifest["patch"]["https://github.com/symbolica-dev/symbolica"]
     assert git_patch["symbolica"]["path"] == str(symbolica)
-    assert manifest["build-dependencies"]["numerica"]["features"] == [
-        "integer-gmp",
-        "float-mpfr",
+    assert "build-dependencies" not in manifest
+    assert manifest["features"]["default"] == ["module", "native"]
+    dependencies = manifest["dependencies"]
+    for dependency in (
+        "symbolica",
+        "idenso",
+        "spynso3",
+        "symbolica-integrate",
+        "example_extension",
+    ):
+        assert dependencies[dependency]["default-features"] is False
+    assert dependencies["symbolica-integrate"]["features"] == [
+        "compressed-step-metadata"
     ]
+    assert "vakint" not in dependencies
+    assert "mimalloc" not in dependencies
+    native = manifest["target"]['cfg(not(target_arch = "wasm32"))']["dependencies"]
+    assert native["vakint"]["path"] == str(checkouts / "gammaloop/crates/vakint")
+    assert native["vakint"]["features"] == ["symbolica_community_module"]
+    assert native["mimalloc"]["package"] == "rustfs-mimalloc"
+    assert native["mimalloc"]["version"] == "0.5.4"
+    assert native["mimalloc"]["features"] == ["local_dynamic_tls"]
+    example = tomllib.loads((community / "example_extension/Cargo.toml").read_text())
+    assert example["dependencies"]["symbolica"]["default-features"] is False
     for source in (symbolica, spenso):
         assert (source / "Cargo.toml").read_bytes() == original
         assert (source / "source.rs").read_bytes() == original
@@ -432,7 +465,10 @@ def test_install_state_includes_selected_local_git_sources(
     assert set(state["sources"]) == {"symjit", "gammaloop", "symbolica-integrate"}
     assert observed == list(paths.values())
     assert all(item["revision"] == "a" * 40 for item in state["sources"].values())
-    assert state["sources"]["gammaloop"]["branch"] == "simplify-spenso-api"
+    assert (
+        state["sources"]["gammaloop"]["branch"]
+        == (module._contributor_lock()["gammaloop_candidate"]["branch"])
+    )
     assert state["publishable"] is False
 
 
@@ -570,15 +606,11 @@ def test_checkout_update_migrates_origin_before_fetching(
     ]
 
 
-def test_contributor_runtime_requirements_use_the_full_hash_locked_closure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> None:
     module = _module()
-    monkeypatch.setattr(
-        module, "_local_ufo_loader", lambda: ROOT / "FUTURE_ufo_model_loader"
-    )
     requirements = module._runtime_requirements_text()
     assert "symbolica==" not in requirements
+    assert "ufo-model-loader==" not in requirements
     for requirement in (
         "colorama==0.4.6",
         "numpy==2.4.2",
@@ -592,42 +624,27 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure(
     assert requirements.count("--hash=sha256:") > 20
 
 
-def test_unpublished_ufo_loader_requires_the_local_checkout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    module = _module()
-    monkeypatch.setattr(module, "_local_ufo_loader", lambda: None)
-    with pytest.raises(
-        module.SetupError,
-        match="locked runtime package ufo-model-loader has no wheel artifacts",
-    ):
-        module._runtime_requirements_text()
-
-
-def test_local_ufo_loader_replaces_only_its_published_wheel(
+def test_unpublished_ufo_loader_uses_managed_source_without_ignored_checkout(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     module = _module()
-    source = tmp_path / "FUTURE_ufo_model_loader"
-    source.mkdir()
-    (source / "pyproject.toml").write_text(
-        '[project]\nname="ufo_model_loader"\nversion="0.1.8"\n', encoding="utf-8"
-    )
+    payload = module._lock()
     monkeypatch.setattr(module, "ROOT", tmp_path)
-    assert module._local_ufo_loader() == source
+    monkeypatch.setattr(module, "CHECKOUTS", tmp_path / "dependencies/checkouts")
+    monkeypatch.setattr(module, "_root_path_patches", dict)
+    source = next(
+        source
+        for source in module._sources(
+            payload, with_legacy=False, with_reference_fft=False
+        )
+        if source.key == "ufo-model-loader"
+    )
+    assert source.path == tmp_path / "dependencies/checkouts/ufo-model-loader"
+    assert source.revision == payload["ufo_model_loader"]["candidate_revision"]
     requirements = module._runtime_requirements_text()
     assert "ufo-model-loader==" not in requirements
     assert "numpy==2.4.2" in requirements
-
-
-def test_local_ufo_loader_requires_the_dedicated_checkout(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    monkeypatch.setattr(module, "ROOT", tmp_path)
-    assert module._local_ufo_loader() is None
 
 
 def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> None:
@@ -662,11 +679,9 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
     assert "reportlab==4.4.4" in profiling_requirements
 
 
-@pytest.mark.parametrize("with_local_loader", (False, True))
-def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
+def test_candidate_dependency_only_build_installs_symbolica_and_managed_ufo_loader(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    with_local_loader: bool,
 ) -> None:
     module = _module()
     venv = tmp_path / ".venv"
@@ -674,8 +689,14 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     wheelhouse = tmp_path / "wheelhouse"
     symbolica_wheels = wheelhouse / "symbolica"
     symbolica_wheels.mkdir(parents=True)
-    wheel = symbolica_wheels / "symbolica-2.2.0-test.whl"
-    wheel.touch()
+    previous_symbolica = symbolica_wheels / "symbolica-2.2.0-test.whl"
+    previous_symbolica.write_text("previous Symbolica wheel", encoding="utf-8")
+    wheel = symbolica_wheels / "symbolica-3.0.0-test.whl"
+    loader_wheels = wheelhouse / "ufo-model-loader"
+    loader_wheels.mkdir()
+    previous_loader = loader_wheels / "ufo_model_loader-0.1.7-py3-none-any.whl"
+    previous_loader.write_text("previous UFO loader wheel", encoding="utf-8")
+    loader_wheel = loader_wheels / "ufo_model_loader-0.1.8-py3-none-any.whl"
     calls: list[tuple[list[str], Path | None, dict[str, str] | None]] = []
 
     class FakeRunner:
@@ -684,13 +705,19 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
         def run(self, command, *, cwd=None, env=None, **_kwargs):
             rendered = [str(item) for item in command]
             calls.append((rendered, cwd, env))
+            if rendered[1:4] == ["-m", "maturin", "build"]:
+                assert not list(symbolica_wheels.glob("*.whl"))
+                wheel.touch()
+            elif rendered[1:4] == ["-m", "pip", "wheel"]:
+                assert not list(loader_wheels.glob("*.whl"))
+                loader_wheel.touch()
             return subprocess.CompletedProcess(rendered, 0, "", "")
 
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "TRASH", tmp_path / ".trash")
     monkeypatch.setattr(module, "VENV", venv)
     monkeypatch.setattr(module, "CHECKOUTS", checkouts)
     monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
-    loader = tmp_path / "local-loader" if with_local_loader else None
-    monkeypatch.setattr(module, "_local_ufo_loader", lambda: loader)
     ratatui_payloads: list[dict[str, object]] = []
     monkeypatch.setattr(
         module,
@@ -698,7 +725,7 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
         lambda _runner, payload: ratatui_payloads.append(payload),
     )
 
-    payload: dict[str, object] = {"symbolica": {"candidate_version": "2.2.0"}}
+    payload: dict[str, object] = {"symbolica": {"candidate_version": "3.0.0"}}
     module._build_candidate_dependency_wheels(
         FakeRunner(),
         payload,
@@ -716,26 +743,41 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
         "--no-deps",
         str(wheel),
     ]
-    probe_index = 2
-    if with_local_loader:
-        assert calls[2][0] == [
-            python,
-            "-m",
-            "pip",
-            "install",
-            "--force-reinstall",
-            "--no-deps",
-            str(loader),
-        ]
-        probe_index = 3
-    probe, _, environment = calls[probe_index]
+    assert calls[2][0] == [
+        python,
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "--wheel-dir",
+        str(loader_wheels),
+        str(checkouts / "ufo-model-loader"),
+    ]
+    assert calls[3][0] == [
+        python,
+        "-m",
+        "pip",
+        "install",
+        "--force-reinstall",
+        "--no-deps",
+        str(loader_wheel),
+    ]
+    probe, _, environment = calls[4]
     assert probe[:3] == [python, "-I", "-c"]
-    assert probe[-1] == "2.2.0"
+    assert probe[-1] == "3.0.0"
     assert "from symbolica import Expression" in probe[3]
     assert "from symbolica.community.idenso import simplify_color" in probe[3]
     assert "from symbolica.community.spenso import TensorNetwork" in probe[3]
     assert environment["SYMBOLICA_HIDE_BANNER"] == "1"
     assert ratatui_payloads == [payload]
+    archived = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in (tmp_path / ".trash").rglob("*.whl")
+    }
+    assert archived == {
+        previous_symbolica.name: "previous Symbolica wheel",
+        previous_loader.name: "previous UFO loader wheel",
+    }
 
 
 def test_ratatui_build_uses_verified_sdist_and_pinned_local_ffi(
@@ -1018,10 +1060,16 @@ def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
     assert lock.read_text(encoding="utf-8") == "path-resolved lock\n"
 
 
-def test_development_symbolica_lock_is_not_publication_resolved() -> None:
+def test_development_symbolica_lock_is_not_publication_resolved(tmp_path: Path) -> None:
     module = _module()
+    lock = tmp_path / "Cargo.lock"
+    lock.write_text(
+        'version = 4\n\n[[package]]\nname = "symbolica"\nversion = "3.0.0"\n'
+        'source = "git+https://github.com/symbolica-dev/symbolica#' + "a" * 40 + '"\n',
+        encoding="utf-8",
+    )
     with pytest.raises(module.SetupError, match="symbolica has an unexpected source"):
-        module._validate_release_cargo_lock(ROOT / "Cargo.lock")
+        module._validate_release_cargo_lock(lock)
 
 
 def test_candidate_lock_is_seeded_without_mutating_canonical_lock(

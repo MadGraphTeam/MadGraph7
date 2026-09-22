@@ -98,9 +98,7 @@ def test_generate_validation_samples_default_and_override() -> None:
 
 def test_generate_post_build_validation_is_opt_in() -> None:
     default = parse_cli(("generate",)).resolve().effective
-    explicit = parse_cli(
-        ("generate", "--post-build-validation")
-    ).resolve().effective
+    explicit = parse_cli(("generate", "--post-build-validation")).resolve().effective
 
     assert not default.generation.validation.post_build_validation
     assert explicit.generation.validation.post_build_validation
@@ -165,18 +163,20 @@ def test_direct_numerical_current_reuse_flag_overrides_card(
     ("flag", "expected"),
     (("--jit-compress", True), ("--no-jit-compress", False)),
 )
+@pytest.mark.parametrize("mode", ("recurrence", "compiled", "eager", "on-the-fly"))
 def test_generate_accepts_jit_compression_override(
     flag: str,
     expected: bool,
+    mode: str,
 ) -> None:
-    config = parse_cli(("generate", flag)).resolve().effective
+    config = parse_cli(("generate", "--execution-mode", mode, flag)).resolve().effective
     assert config.evaluator.jit.compress is expected
 
 
 @pytest.mark.parametrize("mode", ("recurrence", "compiled", "eager", "on-the-fly"))
-def test_generation_modes_default_to_uncompressed_jit(mode: str) -> None:
+def test_generation_modes_select_jit_compression_default(mode: str) -> None:
     config = parse_cli(("generate", "--execution-mode", mode)).resolve().effective
-    assert config.evaluator.jit.compress is False
+    assert config.evaluator.jit.compress is (mode == "compiled")
 
 
 def test_generate_accepts_recurrence_execution_mode_override() -> None:

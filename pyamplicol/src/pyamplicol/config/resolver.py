@@ -5,7 +5,7 @@ import difflib
 import os
 import tomllib
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
@@ -513,9 +513,21 @@ def resolve_config(
             _extend_errors(clamp_errors, exc)
     _raise_errors(clamp_errors)
 
+    effective = _make_run_config(effective_values)
+    if effective.evaluator.jit.compress == "auto":
+        effective = replace(
+            effective,
+            evaluator=replace(
+                effective.evaluator,
+                jit=replace(
+                    effective.evaluator.jit,
+                    compress=effective.evaluator.resolved_jit_compress,
+                ),
+            ),
+        )
     return ConfigResolution(
         requested=requested,
-        effective=_make_run_config(effective_values),
+        effective=effective,
         clamps=tuple(records),
     )
 

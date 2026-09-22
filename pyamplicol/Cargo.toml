@@ -37,25 +37,12 @@ rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }
 sha2 = "0.10"
-symbolica = { version = "=2.2.0", default-features = true, features = ["bincode"] }
+symbolica = { version = "=3.0.0", default-features = true, features = ["bincode"] }
 thiserror = "2.0"
 wide = "1.7"
 
 [patch.crates-io]
-symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
-numerica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
-graphica = { git = "https://github.com/symbolica-dev/symbolica.git", branch = "main" }
-symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "3fc04010f69db954463f9666fffb652b244ccc52" }
-spenso = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-spenso-hep-lib = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-spenso-macros = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-spynso3 = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-idenso = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-linnet = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-symbolica-utils = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-vakint = { git = "https://github.com/alphal00p/gammaloop.git", rev = "436f9ff52587582686db6aefd4ecd715b5693f90" }
-# Unmodified upstream dev branch, pinned to its Symbolica-main adaptation.
-symbolica-integrate = { git = "https://github.com/symbolica-dev/symbolica-integrate.git", rev = "9220f57f3c744c3ee83c4df5efdd6233788222ce" }
+symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "530304a07d1be6d5abc80291aa5e92cf28ac5546" }
 
 [profile.release]
 codegen-units = 1

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Lazy Symbolica licensing and generation-resource policy."""
+"""Symbolica licensing and generation-resource policy."""
 
 from __future__ import annotations
 
@@ -56,7 +56,10 @@ def detect_symbolica_license(
     stream: TextIO | None = None,
     loader: Callable[[], ModuleType] = _load_symbolica,
 ) -> SymbolicaLicenseState:
-    """Import Symbolica on first use and query its actual license manager."""
+    """Query Symbolica's actual package-or-personal license state.
+
+    This call must stay within pyamplicol: OEM licenses are package-scoped.
+    """
 
     prepare_symbolica_environment(suppress_banner=not suggest or json_mode)
     module = loader()
