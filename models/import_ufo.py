@@ -915,6 +915,35 @@ class UFOMG5Converter(object):
 
         self.optimise_iden_coup(interaction)
 
+    def refresh_lorentz_info(self):
+        """(Re)sync the lorentz name -> object cache with self.model['lorentz'].
+
+        The cache used to be built once and never updated, but the model keeps
+        growing lorentz structures after the first build: in FD gauge
+        load_model runs a first optimisation pass *before*
+        merge_all_goldstone_with_vector, which then invents structures like
+        SVS5, and add_merge_lorentz/add_lorentz add more as we go.  Looking a
+        name up in a stale snapshot raised KeyError (SMEFTatNLO in FD gauge).
+        """
+
+        if not hasattr(self, 'defined_lorentz_expr'):
+            self.defined_lorentz_expr = {}
+            self.lorentz_info = {}
+            self.lorentz_combine = {}
+        for lor in self.model['lorentz']:
+            name = lor.get('name')
+            if self.lorentz_info.get(name) is not lor:
+                self.lorentz_info[name] = lor
+                self.defined_lorentz_expr[lor.get('structure')] = name
+
+    def get_lorentz_info(self, name):
+        """Return the lorentz object called `name`, or None if the model has no
+        such structure. Refresh the cache before giving up."""
+
+        if not hasattr(self, 'lorentz_info') or self.lorentz_info.get(name) is None:
+            self.refresh_lorentz_info()
+        return self.lorentz_info.get(name)
+
     def optimise_iden_coup(self, interaction):
         #  Check if two couplings have exactly the same definition. 
         #  If so replace one by the other
@@ -958,27 +987,29 @@ class UFOMG5Converter(object):
         if not optimize:
             return
         
-        if not hasattr(self, 'defined_lorentz_expr'):
-            self.defined_lorentz_expr = {}
-            self.lorentz_info = {}
-            self.lorentz_combine = {}
-            for lor in self.model['lorentz']:
-                self.defined_lorentz_expr[lor.get('structure')] = lor.get('name')
-                self.lorentz_info[lor.get('name')] = lor #(lor.get('structure'), lor.get('spins'))
-        
+        self.refresh_lorentz_info()
+
         for key in to_lor:
             if len(to_lor[key]) == 1:
                 continue
             def get_spin(l):
-                return self.lorentz_info[interaction['lorentz'][l]].get('spins')
-                
-            if any(get_spin(l1) != get_spin(to_lor[key][0]) for l1 in to_lor[key]):
+                info = self.get_lorentz_info(interaction['lorentz'][l])
+                return info.get('spins') if info is not None else None
+
+            spins = [get_spin(l1) for l1 in to_lor[key]]
+            if any(s is None for s in spins):
+                unknown = sorted(set(interaction['lorentz'][l]
+                                     for l, s in zip(to_lor[key], spins) if s is None))
+                logger.warning('unknown lorentz structure(s) %s: skipping the merging of the identical couplings',
+                               ', '.join(unknown))
+                continue
+            if any(s != spins[0] for s in spins):
                 logger.warning('not all same spins for a given interactions')
                 continue 
 
             names = [interaction['lorentz'][i] for i in to_lor[key]]
             names.sort()
-            if self.lorentz_info[names[0]].get('structure') == 'external':
+            if self.get_lorentz_info(names[0]).get('structure') == 'external':
                 continue
             # get name of the new lorentz
             if tuple(names) in self.lorentz_combine:
@@ -1663,6 +1694,9 @@ class UFOMG5Converter(object):
     def add_merge_lorentz(self, names):
         """add a lorentz structure which is the sume of the list given above"""
         
+        # the cache can lag behind the model (see refresh_lorentz_info), and a
+        # name picked from a stale cache would collide with an existing one
+        self.refresh_lorentz_info()
         
         #create new_name
         ii = len(names[0])
@@ -3670,24 +3704,24 @@ class RestrictModel(model_reader.ModelReader):
         if not optimize:
             return
         
-        if not hasattr(self, 'defined_lorentz_expr'):
-            self.defined_lorentz_expr = {}
-            self.lorentz_info = {}
-            self.lorentz_combine = {}
-            for lor in self.get('lorentz'):
-                self.defined_lorentz_expr[lor.get('structure')] = lor.get('name')
-                self.lorentz_info[lor.get('name')] = lor #(lor.get('structure'), lor.get('spins'))
-            
-
+        self.refresh_lorentz_info()
 
         for key in to_lor:
             if len(to_lor[key]) == 1:
                 continue
 
             def get_spin(l):
-                return self.lorentz_info[interaction['lorentz'][l]].get('spins')
+                info = self.get_lorentz_info(interaction['lorentz'][l])
+                return info.get('spins') if info is not None else None
 
-            if any(get_spin(l1[0]) != get_spin(to_lor[key][0][0]) for l1 in to_lor[key]):
+            spins = [get_spin(l1[0]) for l1 in to_lor[key]]
+            if any(s is None for s in spins):
+                unknown = sorted(set(interaction['lorentz'][l[0]]
+                                     for l, s in zip(to_lor[key], spins) if s is None))
+                logger.warning('unknown lorentz structure(s) %s: skipping the merging of the identical couplings',
+                               ', '.join(unknown))
+                continue
+            if any(s != spins[0] for s in spins):
                 logger.warning('not all same spins for a given interactions')
                 continue 
 
@@ -3720,8 +3754,37 @@ class RestrictModel(model_reader.ModelReader):
 
 
 
+    def refresh_lorentz_info(self):
+        """(Re)sync the lorentz name -> object cache with self['lorentz'].
+
+        add_merge_lorentz keeps appending structures to the model, so a cache
+        built once and never updated goes stale (see the twin helper on
+        UFOMG5Converter)."""
+
+        if not hasattr(self, 'defined_lorentz_expr'):
+            self.defined_lorentz_expr = {}
+            self.lorentz_info = {}
+            self.lorentz_combine = {}
+        for lor in self.get('lorentz'):
+            name = lor.get('name')
+            if self.lorentz_info.get(name) is not lor:
+                self.lorentz_info[name] = lor
+                self.defined_lorentz_expr[lor.get('structure')] = name
+
+    def get_lorentz_info(self, name):
+        """Return the lorentz object called `name`, or None if the model has no
+        such structure. Refresh the cache before giving up."""
+
+        if not hasattr(self, 'lorentz_info') or self.lorentz_info.get(name) is None:
+            self.refresh_lorentz_info()
+        return self.lorentz_info.get(name)
+
     def add_merge_lorentz(self, names):
         """add a lorentz structure which is the sume of the list given above"""
+        
+        # the cache can lag behind the model (see refresh_lorentz_info), and a
+        # name picked from a stale cache would collide with an existing one
+        self.refresh_lorentz_info()
         
         #create new_name
         ii = len(names[0])
@@ -3754,8 +3817,9 @@ class RestrictModel(model_reader.ModelReader):
 
 
  
-        new_lor = self.add_lorentz(new_name, spins, new_struct, formfact)
-        self.lorentz_info[new_name] = new_lor
+        # Model.add_lorentz returns None; pick the object back up from the model
+        self.add_lorentz(new_name, spins, new_struct, formfact)
+        self.refresh_lorentz_info()
         
         return new_name
     

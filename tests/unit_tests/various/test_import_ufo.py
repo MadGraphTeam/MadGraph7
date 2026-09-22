@@ -258,6 +258,83 @@ class TestImportUFO(unittest.TestCase):
 
 
 
+    def test_lorentz_info_cache_refresh(self):
+        """the name -> lorentz cache used by the coupling merging must follow the
+        model when new structures are added to it after the cache was built.
+        In FD gauge load_model optimises once, then merge_all_goldstone_with_vector
+        invents structures (SVS5, VSV2, ...) and optimises again: a frozen cache
+        made that second pass raise KeyError (SMEFTatNLO, 2HDMtII_NLO, IDM_NLO)."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        converter.refresh_lorentz_info()
+        self.assertIn('VSS1', converter.lorentz_info)
+
+        # a structure created after the cache was built
+        name = 'SVSTESTREFRESH'
+        new_lor = converter.add_lorentz(name, [1, 3, 1], 'P(2,1) - P(2,3)')
+        self.assertNotIn(name, converter.lorentz_info)
+        self.assertIs(converter.get_lorentz_info(name), new_lor)
+        self.assertEqual(converter.get_lorentz_info(name).get('spins'), [1, 3, 1])
+
+        # a name the model really does not know about is reported as such
+        self.assertIsNone(converter.get_lorentz_info('NOSUCHLORENTZ'))
+
+    def test_optimise_iden_coup_lorentz_added_after_cache(self):
+        """optimise_iden_coup merges two structures sharing a coupling even when
+        one of them was added to the model after the cache was built."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        converter.add_lorentz('SVSTESTEARLY', [1, 3, 1], 'P(2,3)')
+        converter.refresh_lorentz_info()
+        converter.add_lorentz('SVSTESTLATE', [1, 3, 1], 'P(2,1)')
+        # the cache is now stale exactly as FD gauge leaves it
+        self.assertNotIn('SVSTESTLATE', converter.lorentz_info)
+
+        inter = base_objects.Interaction({
+            'id': 1,
+            'lorentz': ['SVSTESTEARLY', 'SVSTESTLATE'],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_1'},
+            'orders': {'QED': 1},
+            'color': [],
+            'particles': base_objects.ParticleList(),
+            })
+        converter.optimise_iden_coup(inter)
+
+        # the two structures are replaced by their sum
+        self.assertEqual(len(inter.get('couplings')), 1)
+        merged = inter.get('lorentz')[list(inter.get('couplings'))[0][1]]
+        self.assertEqual(converter.get_lorentz_info(merged).get('structure'),
+                         'P(2,3) + P(2,1)')
+        self.assertEqual(converter.get_lorentz_info(merged).get('spins'), [1, 3, 1])
+
+    def test_optimise_iden_coup_unknown_lorentz_is_skipped(self):
+        """a lorentz name the model does not define at all must leave the
+        interaction untouched instead of raising."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        inter = base_objects.Interaction({
+            'id': 1,
+            'lorentz': ['VSS1', 'NOSUCHLORENTZ'],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_1'},
+            'orders': {'QED': 1},
+            'color': [],
+            'particles': base_objects.ParticleList(),
+            })
+        converter.optimise_iden_coup(inter)
+
+        self.assertEqual(inter.get('lorentz'), ['VSS1', 'NOSUCHLORENTZ'])
+        self.assertEqual(inter.get('couplings'), {(0, 0): 'GC_1', (0, 1): 'GC_1'})
+
+
 class TestImportUFO_fromcmd(unittest.TestCase):
 
     def test_import_from_cmd(self):
@@ -300,7 +377,6 @@ class TestImportUFO_fromcmd(unittest.TestCase):
 
         self.assertEqual(nb_lor, [1,1,0,0,1])
 
-        
 
 
 class TestNFlav(unittest.TestCase):
