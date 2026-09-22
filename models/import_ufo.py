@@ -680,6 +680,7 @@ class UFOMG5Converter(object):
             
         self.particles = base_objects.ParticleList()
         self.interactions = base_objects.InteractionList()
+        self.last_interaction_id = 0 # see get_new_interaction_id
         self.non_qcd_gluon_emission = 0 # vertex where a gluon is emitted withou QCD interaction
                                   # only trigger if all particles are of QCD type (not h>gg)
         self.colored_scalar = False # in presence of color scalar particle the running of a_s is modified
@@ -2286,6 +2287,22 @@ class UFOMG5Converter(object):
                         self.incoming.append(pdg[i])
                         self.outcoming.append(pdg[i+1])
                      
+    def get_new_interaction_id(self):
+        """Return an interaction id that is not in use yet.
+
+        The id used to be len(self.interactions)+1, which is only unique while
+        nothing is ever removed from that list.  In FD gauge
+        merge_all_goldstone_with_vector removes the goldstone interactions, so
+        the counterterm interactions added afterwards (NLO models) got ids that
+        were still in use; model.get_interaction() then returned the wrong
+        vertex for a diagram (a g g h interaction for an e+ e- Z one, say).
+        """
+
+        if not hasattr(self, 'last_interaction_id'):
+            self.last_interaction_id = max([i.get('id') for i in self.interactions] + [0])
+        self.last_interaction_id += 1
+        return self.last_interaction_id
+
     def add_interaction(self, interaction_info, color_info, type='base', loop_particles=None):            
         """add an interaction in the MG5 model. interaction_info is the 
         UFO vertices information."""
@@ -2362,7 +2379,7 @@ class UFOMG5Converter(object):
                                                (coupling_sign,coupling.name)
                 else:
                     # Initialize a new interaction with a new id tag
-                    interaction = base_objects.Interaction({'id':len(self.interactions)+1})                
+                    interaction = base_objects.Interaction({'id':self.get_new_interaction_id()})                
                     interaction.set('particles', particles)              
                     interaction.set('lorentz', lorentz)
                     interaction.set('couplings', {key: 

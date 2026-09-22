@@ -377,6 +377,26 @@ class TestImportUFO_fromcmd(unittest.TestCase):
 
         self.assertEqual(nb_lor, [1,1,0,0,1])
 
+    def test_fd_gauge_interaction_ids_stay_unique(self):
+        """interaction ids are the key model.get_interaction() is looked up by,
+        so they must stay unique.  In FD gauge merge_all_goldstone_with_vector
+        shrinks the interaction list, and ids derived from its length were then
+        handed out twice to the counterterm interactions of an NLO model --
+        diagram generation ended up on the wrong vertex."""
+
+        self.cmd = Cmd.MasterCmd()
+        self.cmd.exec_cmd("set gauge FD")
+        self.cmd.exec_cmd("import model loop_sm")
+
+        interactions = self.cmd._curr_model.get('interactions')
+        ids = [inter.get('id') for inter in interactions]
+        self.assertEqual(len(ids), len(set(ids)),
+                         'duplicated interaction ids in FD gauge')
+        for inter in interactions:
+            self.assertIs(self.cmd._curr_model.get_interaction(inter.get('id')),
+                          inter)
+
+        
 
 
 class TestNFlav(unittest.TestCase):
