@@ -847,3 +847,47 @@ class RequiredSChannelErrorTest(unittest.TestCase):
 
     def test_a_good_one_is_accepted(self):
         self.cmd.extract_process('p p > z | a > e+ e-')   # must not raise
+
+
+class DisplayInertCouplingOrderTest(unittest.TestCase):
+    """A coupling order the model declares but which no interaction carries
+    is inert: it can not be used to constrain a process. That happens as soon
+    as a restriction card removes every vertex of that order -- SMEFTatNLO
+    keeps NP in its hierarchy while its default restriction drops all the NP
+    vertices, so 'generate p p > t t~ NP<=2' is rejected while 'display
+    coupling_order' used to advertise NP like any other order.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def setUp(self):
+        self.hierarchy = self.cmd._curr_model['order_hierarchy']
+
+    def tearDown(self):
+        self.cmd._curr_model['order_hierarchy'] = self.hierarchy
+
+    def display(self):
+        import contextlib, io
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.cmd.do_display('coupling_order')
+        return output.getvalue()
+
+    def test_an_order_carried_by_no_interaction_is_flagged(self):
+        self.cmd._curr_model['order_hierarchy'] = \
+                                      {'NP': 1, 'QCD': 2, 'QED': 4}
+        text = self.display()
+        self.assertIn('NP : weight = 1 [inert]', text)
+        self.assertIn('QCD : weight = 2\n', text)
+        self.assertIn('QED : weight = 4\n', text)
+        # and the flag is explained
+        self.assertIn('no interaction of this model carries that order', text)
+
+    def test_a_model_with_no_inert_order_is_left_alone(self):
+        text = self.display()
+        self.assertNotIn('inert', text)
+        self.assertIn('QCD : weight = 1\n', text)
+        self.assertIn('QED : weight = 2\n', text)
