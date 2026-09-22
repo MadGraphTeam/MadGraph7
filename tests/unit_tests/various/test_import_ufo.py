@@ -458,6 +458,122 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(clean.get('couplings'), {(0, 0): 'GC_1'})
 
 
+    def test_parse_fermion_structure(self):
+        """The chiral decomposition the goldstone phase is read from has to cope
+        with however a model chose to write its two-fermion structures."""
+
+        fct = import_ufo.UFOMG5Converter.parse_fermion_structure
+        converter = import_ufo.UFOMG5Converter.__new__(import_ufo.UFOMG5Converter)
+
+        self.assertEqual(fct(converter, 'Gamma(3,2,-1)*ProjM(-1,1)'), {'L': 1})
+        self.assertEqual(fct(converter, 'Gamma(3,2,1)'), {'L': 1, 'R': 1})
+        self.assertEqual(fct(converter, 'ProjM(2,1) - ProjP(2,1)'), {'M': 1, 'P': -1})
+        # a model may write the neutral current as a single structure
+        self.assertEqual(
+            fct(converter, 'Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1)'),
+            {'L': 1, 'R': 4})
+        # ... and the pseudoscalar coupling as a gamma5
+        self.assertEqual(fct(converter, 'Gamma5(2,1)'), {'P': 1, 'M': -1})
+        # anything else is refused rather than guessed at
+        self.assertIsNone(fct(converter, 'P(3,1)*Gamma(-1,2,1)'))
+        self.assertIsNone(fct(converter, 'Gamma(3,2,1) + Sigma(1,2,3,4)'))
+        self.assertIsNone(fct(converter, 'Metric(1,2)'))
+
+    @staticmethod
+    def feynman_gauge_sm():
+        """The sm converted with its goldstones still in place, which is what
+        the phase is read off."""
+
+        import aloha
+        keep = aloha.unitary_gauge
+        aloha.unitary_gauge = 0      # Feynman: the goldstones survive
+        try:
+            ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'),
+                                             decay=False)
+            converter = import_ufo.UFOMG5Converter(ufo_model)
+            converter.load_model()
+        finally:
+            aloha.unitary_gauge = keep
+        return converter
+
+    def goldstone_pairs(self, converter):
+        out = []
+        for particle in converter.particles:
+            if particle.get('type') != 'goldstone':
+                continue
+            vector = [p for p in converter.particles
+                      if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+            self.assertEqual(len(vector), 1)
+            out.append((particle, vector[0]))
+        return out
+
+    def test_goldstone_phase_of_the_sm_is_trivial(self):
+        """The SM UFO *is* the convention FD gauge assumes, so both of its
+        goldstones must measure exactly one -- anything else would mean the
+        measurement rotates a model that is already right."""
+
+        converter = self.feynman_gauge_sm()
+        pairs = self.goldstone_pairs(converter)
+        self.assertEqual(sorted(g.get('name') for g, v in pairs), ['g+', 'g0'])
+        for goldstone, vector in pairs:
+            phase = converter.measure_goldstone_phase(goldstone, vector)
+            self.assertIsNotNone(phase, 'no phase read for %s' % goldstone.get('name'))
+            self.assertAlmostEqual(abs(phase - 1), 0, places=9,
+                                   msg='%s measured %s' % (goldstone.get('name'), phase))
+
+    def test_goldstone_phase_detects_a_rotated_convention(self):
+        """Give the SM's charged goldstone another phase convention and the
+        measurement has to find it.  This is what 2HDMtII_NLO (i) and
+        SMEFTatNLO (-1 on the neutral one) look like."""
+
+        converter = self.feynman_gauge_sm()
+        charged = [(g, v) for g, v in self.goldstone_pairs(converter) if v.get('charge')]
+        self.assertEqual(len(charged), 1)
+        goldstone, vector = charged[0]
+
+        # rotate every vertex holding the goldstone, the antiparticle one by the
+        # conjugate so that the model stays hermitian
+        for inter in converter.interactions:
+            legs = [p.get_pdg_code() for p in inter.get('particles')
+                    if abs(p.get_pdg_code()) == abs(goldstone.get_pdg_code())]
+            if len(legs) != 1:
+                continue
+            factor = 1j if legs[0] > 0 else -1j
+            inter.set('couplings', dict(
+                (key, converter.rotate_coupling(name, factor))
+                for key, name in inter.get('couplings').items()))
+        for cache in ('_coupling_expr', '_coupling_values'):
+            if hasattr(converter, cache):
+                delattr(converter, cache)
+
+        phase = converter.measure_goldstone_phase(goldstone, vector)
+        self.assertIsNotNone(phase)
+        self.assertAlmostEqual(abs(phase - (-1j)), 0, places=9,
+                               msg='measured %s, expected -1j' % phase)
+
+    def test_rotate_coupling(self):
+        """A rotated coupling is a new coupling of the model, reused between
+        the vertices that need the same rotation, and the identity is a no-op."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        self.assertEqual(converter.rotate_coupling('GC_1', 1), 'GC_1')
+        self.assertEqual(converter.rotate_coupling('-GC_1', 1.0000000001), '-GC_1')
+
+        rotated = converter.rotate_coupling('GC_1', 1j)
+        self.assertNotEqual(rotated, 'GC_1')
+        self.assertEqual(converter.rotate_coupling('GC_1', 1j), rotated)
+        self.assertEqual(converter.rotate_coupling('-GC_1', 1j), '-' + rotated)
+
+        expr = dict((c.name, c.value) for c in converter.additional_couplings)
+        base = dict((c.name, c.value) for c in ufo_model.all_couplings)
+        self.assertEqual(expr[rotated], '(complex(0,1))*(%s)' % base['GC_1'])
+        # a different rotation is a different coupling
+        self.assertNotEqual(converter.rotate_coupling('GC_1', -1), rotated)
+
+
 class TestImportUFO_fromcmd(unittest.TestCase):
 
     def test_import_from_cmd(self):

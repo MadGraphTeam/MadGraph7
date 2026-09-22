@@ -18,6 +18,7 @@ from __future__ import absolute_import
 import collections
 import fractions
 import inspect
+import cmath
 import logging
 import math
 import os
@@ -826,7 +827,9 @@ class UFOMG5Converter(object):
                 self.optimise_interaction(interaction)
                 if not interaction['couplings']:
                     self.interactions.remove(interaction)
+            goldstone_phases = self.get_goldstone_phases()
             self.merge_all_goldstone_with_vector()
+            self.apply_goldstone_phases(goldstone_phases)
 
     
         if self.non_qcd_gluon_emission:
@@ -1274,6 +1277,327 @@ class UFOMG5Converter(object):
 
 
 
+
+    # ------------------------------------------------------------------
+    # FD gauge: the phase convention of the goldstone fields
+    # ------------------------------------------------------------------
+    # FD gauge carries the goldstone as the 5th component of its vector, with
+    # the 5-momentum q^A = (q^mu, -i*M) (aloha_writers.get_fd_gauge_txt).  That
+    # fixes the phase of the goldstone field, and a UFO written with another
+    # one is not rejected, it just comes out wrong: 2HDMtII_NLO is off by a
+    # factor i on G+, SMEFTatNLO by a sign on G0.
+    #
+    # Canonical normalisation leaves exactly one phase free per goldstone (a
+    # real one is restricted to +-1), and it can be read off the fermion sector,
+    # where gauge invariance ties the goldstone coupling to the vector one.
+
+    # the two-fermion structures the phase can be read off, as weights on the
+    # chiral basis: L/R for a current, P/M for a scalar
+    _fermion_terms = {
+        'Gamma(3,2,-1)*ProjM(-1,1)': {'L': 1},
+        'Gamma(3,2,-1)*ProjP(-1,1)': {'R': 1},
+        'Gamma(3,2,1)': {'L': 1, 'R': 1},
+        'ProjP(2,1)': {'P': 1},
+        'ProjM(2,1)': {'M': 1},
+        'Gamma5(2,1)': {'P': 1, 'M': -1},
+        }
+
+    _fermion_term_pattern = re.compile(r'([+-]?)(?:(\d+(?:\.\d*)?)\*)?(%s)' % '|'.join(
+        re.escape(term) for term in
+        sorted(_fermion_terms, key=len, reverse=True)))
+
+    def parse_fermion_structure(self, structure):
+        """A two-fermion lorentz structure as weights on the chiral basis, or
+        None when it is not a plain combination of the terms above -- a model
+        writes the neutral current as one structure as often as two
+        (Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1))."""
+
+        text = structure.replace(' ', '')
+        out, at = {}, 0
+        for match in self._fermion_term_pattern.finditer(text):
+            if match.start() != at:
+                return None        # something between the terms we do not know
+            at = match.end()
+            factor = float(match.group(2)) if match.group(2) else 1.
+            if match.group(1) == '-':
+                factor = -factor
+            for key, weight in self._fermion_terms[match.group(3)].items():
+                out[key] = out.get(key, 0) + factor * weight
+        if at != len(text) or not out:
+            return None
+        return out
+
+    def get_parameter_values(self):
+        """Numerical value of the UFO parameters, for the checks that need a
+        number and not an expression.  Best effort: what does not evaluate is
+        left out and the caller gives up rather than guessing."""
+
+        if hasattr(self, '_parameter_values'):
+            return self._parameter_values
+
+        values = {'cmath': cmath, 'complex': complex, 'pi': cmath.pi}
+        library = getattr(self.ufomodel, 'function_library', None)
+        for name in dir(library):
+            if not name.startswith('_'):
+                entry = getattr(library, name)
+                if callable(entry):
+                    values[name] = entry
+        # ours win: a UFO Function evaluates its body through a bare exec, which
+        # stopped writing to the enclosing locals in python 3.13 (PEP 667), so
+        # the model's own complexconjugate raises NameError on its argument
+        values.update({
+            'complexconjugate': lambda z: complex(z).conjugate(),
+            'conjugate': lambda z: complex(z).conjugate(),
+            're': lambda z: complex(z).real,
+            'im': lambda z: complex(z).imag,
+            'sec': lambda z: 1. / cmath.cos(z),
+            'csc': lambda z: 1. / cmath.sin(z),
+            'cot': lambda z: 1. / cmath.tan(z),
+            'asec': lambda z: cmath.acos(1. / z),
+            'acsc': lambda z: cmath.asin(1. / z),
+            })
+
+        pending = list(self.ufomodel.all_parameters)
+        while pending:
+            left = []
+            for param in pending:
+                try:
+                    if param.nature == 'external':
+                        values[param.name] = complex(param.value)
+                    else:
+                        values[param.name] = complex(eval(param.value, values))
+                except Exception:
+                    left.append(param)
+            if len(left) == len(pending):
+                break   # nothing resolved this round, the rest never will
+            pending = left
+
+        self._parameter_values = values
+        return values
+
+    def get_coupling_value(self, name):
+        """Numerical value of one coupling of the model, or None."""
+
+        if name.startswith('-'):
+            value = self.get_coupling_value(name[1:])
+            return None if value is None else -value
+        if not hasattr(self, '_coupling_values'):
+            self._coupling_values = {}
+            self._coupling_expr = dict(
+                (c.name, c.value) for c in
+                list(self.ufomodel.all_couplings) + self.additional_couplings)
+        if name not in self._coupling_values:
+            try:
+                self._coupling_values[name] = complex(eval(
+                    self._coupling_expr[name], self.get_parameter_values()))
+            except Exception:
+                self._coupling_values[name] = None
+        return self._coupling_values[name]
+
+    def project_fermion_couplings(self, interaction):
+        """Sum the couplings of a two-fermion vertex onto
+        the chiral basis.  None as soon as it uses a structure we do not
+        recognise: the phase is only read off a vertex we fully understand."""
+
+        out = {}
+        for (colour, lor), name in interaction.get('couplings').items():
+            info = self.get_lorentz_info(interaction.get('lorentz')[lor])
+            if info is None:
+                return None
+            weights = self.parse_fermion_structure(info.get('structure'))
+            if weights is None:
+                return None
+            value = self.get_coupling_value(name)
+            if value is None:
+                return None
+            for key, weight in weights.items():
+                out[key] = out.get(key, 0) + weight * value
+        return out
+
+    def get_fermion_vertices(self, boson):
+        """The vertices of the model that are two fermions and this boson, keyed
+        by the fermion pair.  The projectors of a FFS structure name legs 1 and
+        2, so only a vertex whose first two legs are the fermions is usable."""
+
+        out = {}
+        for inter in self.interactions:
+            if inter.get('type') != 'base':
+                continue
+            parts = inter.get('particles')
+            if len(parts) != 3 or not (parts[0].is_fermion() and parts[1].is_fermion()):
+                continue
+            if abs(parts[2].get_pdg_code()) != abs(boson.get_pdg_code()):
+                continue
+            out.setdefault((parts[0].get_pdg_code(), parts[1].get_pdg_code()),
+                           []).append(inter)
+        return out
+
+    def measure_goldstone_phase(self, goldstone, vector):
+        """The phase relating this model's goldstone to the one FD gauge assumes.
+
+        Gauge invariance ties the goldstone coupling of a fermion pair to the
+        vector one: for a left-handed current of coupling cL, the goldstone
+        carries i/M * (m1 ProjP - m2 ProjM) * cL, and a neutral goldstone
+        carries -i*m/M * (cL - cR) on ProjM - ProjP.  Whatever the model has
+        instead of that is the phase we are after -- only its direction, since
+        the masses in a Yukawa and in a propagator are two different parameters
+        in most models and their ratio is none of our business.
+
+        None when the model gives us nothing to read it off -- the caller then
+        leaves the couplings alone rather than guessing.
+        """
+
+        charged = bool(vector.get('charge'))
+
+        def by_orders(vertices):
+            out = {}
+            for inter in vertices:
+                out.setdefault(tuple(sorted(inter.get('orders').items())),
+                               []).append(inter)
+            return out
+
+        vector_vertices = self.get_fermion_vertices(vector)
+        measured = []
+        for pair, vertices in self.get_fermion_vertices(goldstone).items():
+            golds = by_orders(vertices)
+            currents = by_orders(vector_vertices.get(pair, []))
+            shared = [key for key in golds if key in currents and
+                      len(golds[key]) == 1 and len(currents[key]) == 1]
+            if not shared:
+                continue
+            # the lowest order is the gauge piece the relation is about; a model
+            # can modify the current at higher order without touching the
+            # goldstone, so those vertices say nothing about the convention
+            lowest = min(shared, key=lambda orders: sum(abs(v) for _, v in orders))
+            gold_vertex = golds[lowest][0]
+            scalar = self.project_fermion_couplings(gold_vertex)
+            current = self.project_fermion_couplings(currents[lowest][0])
+            if not scalar or not current:
+                continue
+            if set(scalar) - set('PM') or set(current) - set('LR'):
+                continue   # a scalar vertex holding a current, or the reverse:
+                           # not the pair of vertices the relation is about
+            if charged:
+                # a right-handed charged current would need the general relation
+                if abs(current.get('R', 0)) > 1e-10 * (1 + abs(current.get('L', 0))):
+                    continue
+                cL = current.get('L', 0)
+                candidates = [('P', 1j * cL), ('M', -1j * cL)]
+            else:
+                candidates = [('M', -1j * (current.get('L', 0) - current.get('R', 0)))]
+
+            # the model holds both orientations of a charged pair, and the
+            # vertex carrying the antiparticle measures the conjugate phase
+            conjugated = gold_vertex.get('particles')[2].get_pdg_code() < 0
+
+            for chirality, expected in candidates:
+                model = scalar.get(chirality, 0)
+                if abs(expected) < 1e-12 or abs(model) < 1e-12:
+                    continue
+                # only the direction carries the convention: the modulus is the
+                # ratio of the mass in the Yukawa to the one in the propagator,
+                # and those are two different parameters in most models
+                phase = (expected / abs(expected)) * (abs(model) / model)
+                measured.append((abs(model), phase.conjugate() if conjugated
+                                             else phase))
+
+        if not measured:
+            return None
+
+        # every fermion pair of the model must agree: that consistency is what
+        # says we read a convention rather than a coincidence
+        measured.sort(key=lambda entry: entry[0])
+        phase = measured[-1][1]
+        if any(abs(other - phase) > 1e-6 for _, other in measured):
+            return None
+        # a real goldstone can only be flipped, never rotated
+        if not charged and abs(phase.imag) > 1e-6:
+            return None
+        return phase
+
+    def get_goldstone_phases(self):
+        """Phase of every goldstone of the model, keyed by the pdg code of the
+        vector it belongs to.  Must run before merge_all_goldstone_with_vector,
+        which is what consumes the goldstones."""
+
+        phases = {}
+        unknown = []
+        for particle in self.particles:
+            if particle.get('type') != 'goldstone':
+                continue
+            vector = [p for p in self.particles if p.get('mass') == particle.get('mass')
+                                                and p.get('spin') == 3]
+            if len(vector) != 1:
+                continue
+            phase = self.measure_goldstone_phase(particle, vector[0])
+            if phase is None:
+                unknown.append(particle.get('name'))
+            elif abs(phase - 1) > 1e-6:
+                logger.info('%s is defined with the phase %s relative to the '
+                            'convention FD gauge assumes; rotating its couplings.',
+                            particle.get('name'), phase)
+                phases[abs(vector[0].get_pdg_code())] = (phase, bool(vector[0].get('charge')))
+        if unknown:
+            logger.warning('Could not check the phase convention of the goldstone(s) %s '
+                           'against FD gauge: no fermion vertex to read it off. Results '
+                           'in FD gauge are only correct if they follow the convention of '
+                           'the SM UFO.', ', '.join(unknown))
+        return phases
+
+    def apply_goldstone_phases(self, phases):
+        """Rotate the merged couplings into the goldstone convention FD gauge
+        assumes.  A structure picks up one factor per goldstone slot, conjugated
+        on the leg carrying the antiparticle, so anything with no net goldstone
+        charge is left untouched."""
+
+        if not phases:
+            return
+        for inter in self.interactions:
+            parts = inter.get('particles')
+            couplings = {}
+            for key, name in inter.get('couplings').items():
+                info = self.get_lorentz_info(inter.get('lorentz')[key[1]])
+                spins = info.get('spins') if info is not None else None
+                factor = 1
+                for i, part in enumerate(parts):
+                    if not spins or i >= len(spins):
+                        break
+                    if spins[i] != 1 or part.get('spin') != 3:
+                        continue
+                    entry = phases.get(abs(part.get_pdg_code()))
+                    if entry is None:
+                        continue
+                    phase, charged = entry
+                    factor *= phase.conjugate() if charged and \
+                                        part.get_pdg_code() < 0 else phase
+                couplings[key] = self.rotate_coupling(name, factor)
+            inter.set('couplings', couplings)
+
+    def rotate_coupling(self, name, factor):
+        """`name` scaled by `factor`, as a coupling of the model."""
+
+        if abs(factor - 1) < 1e-9:
+            return name
+        for exact, text in ((1j, 'complex(0,1)'), (-1j, 'complex(0,-1)'),
+                            (-1, '(-1.)')):
+            if abs(factor - exact) < 1e-9:
+                literal = text
+                break
+        else:
+            literal = 'complex(%.17g,%.17g)' % (factor.real, factor.imag)
+
+        sign, base = ('-', name[1:]) if name.startswith('-') else ('', name)
+        if not hasattr(self, '_rotated_couplings'):
+            self._rotated_couplings = {}
+        if (base, literal) not in self._rotated_couplings:
+            expr = dict((c.name, c.value) for c in
+                        list(self.ufomodel.all_couplings) + self.additional_couplings)
+            order = dict((c.name, c.order) for c in self.ufomodel.all_couplings)
+            new_name = 'GC_FDPH_%d' % (len(self._rotated_couplings) + 1)
+            self.additional_couplings.append(self.add_coupling(
+                '(%s)*(%s)' % (literal, expr[base]), order.get(base, {}), new_name))
+            self._rotated_couplings[(base, literal)] = new_name
+        return sign + self._rotated_couplings[(base, literal)]
 
     def merge_all_goldstone_with_vector(self):
         """For Feynman Diagram gauge need to merge interaction of scalar/boson"""
