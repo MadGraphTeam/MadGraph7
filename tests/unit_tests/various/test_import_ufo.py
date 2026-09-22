@@ -385,6 +385,79 @@ class TestImportUFO(unittest.TestCase):
         self.assertEqual(host_ok.get('couplings'), {(0, 0): 'GC_6'})
 
 
+    def test_goldstone_merge_is_atomic(self):
+        """A goldstone vertex that cannot be absorbed whole must leave the host
+        exactly as it found it.  Copying part of the couplings and *then*
+        telling the caller to build a standalone vertex counted what had
+        already been copied twice."""
+
+        def particle(pdg, name, is_part=True):
+            return base_objects.Particle({'name': name, 'antiname': name,
+                                          'pdg_code': abs(pdg), 'spin': 3,
+                                          'is_part': is_part,
+                                          'self_antipart': pdg == 22})
+
+        a, wp = particle(22, 'a'), particle(24, 'w+')
+        wm, gm = particle(24, 'w-', False), particle(251, 'g-', False)
+
+        def interaction(iid, parts, lorentz, couplings):
+            return base_objects.Interaction({
+                'id': iid, 'particles': base_objects.ParticleList(parts),
+                'lorentz': lorentz, 'color': [color.ColorString()],
+                'couplings': couplings, 'orders': {'QED': 2}})
+
+        # the host already uses the slot the second structure would land in
+        gold = interaction(1, [a, a, wp, gm], ['VVSS1', 'VVSS2'],
+                           {(0, 0): 'GC_1', (0, 1): 'GC_2'})
+        host = interaction(2, [a, a, wp, wm], ['VVSS1', 'VVSS2'],
+                           {(0, 1): 'GC_9'})
+
+        fct = import_ufo.UFOMG5Converter.update_vertex_for_goldstone
+        self.assertTrue(fct(None, [host], gold, gm, wm),
+                        'the caller must build a standalone vertex instead')
+        self.assertEqual(host.get('couplings'), {(0, 1): 'GC_9'},
+                         'the host was mutated even though the merge was refused')
+        self.assertEqual(host.get('lorentz'), ['VVSS1', 'VVSS2'])
+
+    def test_collapse_duplicate_lorentz(self):
+        """Permuting the legs of a vertex with identical particles can send two
+        of its structures onto the same one.  Two entries for one structure is
+        not something the goldstone merge can use: collapse them and add the
+        couplings up."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        inter = base_objects.Interaction({
+            'id': 1, 'particles': base_objects.ParticleList(),
+            'lorentz': ['VVSS1', 'VVSS2', 'VVSS1'],
+            'color': [color.ColorString()],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_2', (0, 2): 'GC_3'},
+            'orders': {'QED': 2}})
+        converter.collapse_duplicate_lorentz(inter)
+
+        self.assertEqual(inter.get('lorentz'), ['VVSS1', 'VVSS2'])
+        self.assertEqual(sorted(inter.get('couplings')), [(0, 0), (0, 1)])
+        self.assertEqual(inter.get('couplings')[(0, 1)], 'GC_2')
+        # the two entries for VVSS1 became one carrying their sum
+        summed = inter.get('couplings')[(0, 0)]
+        self.assertNotIn(summed, ('GC_1', 'GC_3'))
+        value = [c.value for c in converter.additional_couplings
+                 if c.name == summed][0]
+        expr = {c.name: c.value for c in ufo_model.all_couplings}
+        self.assertEqual(value, '(%s)+(%s)' % (expr['GC_1'], expr['GC_3']))
+
+        # a vertex with no repeat is left alone
+        clean = base_objects.Interaction({
+            'id': 2, 'particles': base_objects.ParticleList(),
+            'lorentz': ['VVSS1', 'VVSS2'], 'color': [color.ColorString()],
+            'couplings': {(0, 0): 'GC_1'}, 'orders': {'QED': 2}})
+        converter.collapse_duplicate_lorentz(clean)
+        self.assertEqual(clean.get('lorentz'), ['VVSS1', 'VVSS2'])
+        self.assertEqual(clean.get('couplings'), {(0, 0): 'GC_1'})
+
+
 class TestImportUFO_fromcmd(unittest.TestCase):
 
     def test_import_from_cmd(self):

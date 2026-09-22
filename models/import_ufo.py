@@ -1372,11 +1372,20 @@ class UFOMG5Converter(object):
             mappings = self.get_identical_goldstone_mapping(gold_vertex,vertex,goldstone, vector)
             for lorentz in list(vertex.get('lorentz')):
                 for mapping in  mappings:
-                    new_lorentz = self.get_symmetric_lorentz(str(lorentz), mapping)
-                    new_lorentz_index = len(vertex.get('lorentz'))
-                    vertex.get('lorentz').append(str(new_lorentz))
+                    new_lorentz = str(self.get_symmetric_lorentz(str(lorentz), mapping))
+                    # two mappings can send different structures onto the same
+                    # image; appending it twice makes the vertex carry that
+                    # contribution twice over (SMEFTatNLO's W+ W+ W- W- held
+                    # one structure three times)
+                    if new_lorentz in vertex.get('lorentz'):
+                        new_lorentz_index = vertex.get('lorentz').index(new_lorentz)
+                    else:
+                        new_lorentz_index = len(vertex.get('lorentz'))
+                        vertex.get('lorentz').append(new_lorentz)
                     for (color, lorentz2), value in list(vertex.get('couplings').items()):
                         if vertex.get('lorentz')[lorentz2] != lorentz:
+                            continue
+                        if (color, new_lorentz_index) in vertex.get('couplings'):
                             continue
                         vertex.get('couplings')[color, new_lorentz_index] = value            
             return vertex
@@ -1437,7 +1446,66 @@ class UFOMG5Converter(object):
                 from madgraph.core.color_algebra import T,f,d,Epsilon,EpsilonBar,K6,K6Bar,T6,Tr
                 all_color[i]= color.ColorString([eval(nc) \
                                     for nc in new_color.split() if nc !='1'])
-        return new_vertex
+        return self.collapse_duplicate_lorentz(new_vertex)
+
+    def sum_couplings(self, first, second):
+        """Name of a coupling worth the sum of the two given ones."""
+
+        expr = {}
+        for c in list(self.ufomodel.all_couplings) + self.additional_couplings:
+            expr[c.name] = c.value
+        order = dict((c.name, c.order) for c in self.ufomodel.all_couplings)
+
+        def term(name):
+            if name.startswith('-'):
+                return '-(%s)' % expr[name[1:]], name[1:]
+            return '(%s)' % expr[name], name
+
+        left, lname = term(first)
+        right, rname = term(second)
+        value = '%s+%s' % (left, right)
+        for c in self.additional_couplings:
+            if c.value == value:
+                return c.name
+        name = 'GC_SUM_%d' % (len(self.additional_couplings) + 1)
+        self.additional_couplings.append(
+            self.add_coupling(value, order.get(lname, order.get(rname, {})), name))
+        return name
+
+    def collapse_duplicate_lorentz(self, vertex):
+        """Collapse repeated lorentz structures of a reordered vertex.
+
+        Permuting the legs of a vertex with identical particles can send two of
+        its structures onto the same one.  Two entries for one structure is not
+        something the goldstone merge can do anything with: it either copies the
+        structure in twice (counting it twice over) or gives up on the whole
+        vertex.  One entry carrying the sum of the couplings says the same
+        thing, and is what the rest of the code expects.
+        """
+
+        all_lor = vertex.get('lorentz')
+        if len(all_lor) == len(set(all_lor)):
+            return vertex
+
+        remap, kept = {}, []
+        for i, lor in enumerate(all_lor):
+            if lor in kept:
+                remap[i] = kept.index(lor)
+            else:
+                remap[i] = len(kept)
+                kept.append(lor)
+
+        couplings = {}
+        for (col, lorentz), value in vertex.get('couplings').items():
+            key = (col, remap[lorentz])
+            if key in couplings:
+                couplings[key] = self.sum_couplings(couplings[key], value)
+            else:
+                couplings[key] = value
+
+        vertex.set('lorentz', kept)
+        vertex.set('couplings', couplings)
+        return vertex
 
 
     @staticmethod
@@ -1614,22 +1682,35 @@ class UFOMG5Converter(object):
         
         # check now the lorentz structure. Some strategy as for the color
         # But lorentz structure should not repeat in principle...
+        # Work the translation out first and touch `vertex` only once the whole
+        # goldstone vertex is known to fit.  Giving up half way used to leave
+        # the host already carrying part of the couplings *and* tell the caller
+        # to build a standalone vertex with all of them, so what had been
+        # copied was counted twice -- and the lorentz names appended on the way
+        # stayed behind even when nothing used them.
+        new_lorentz = []
         translate_lorentz = {}
+        host_lorentz = vertex.get('lorentz')
         for i, lor in enumerate(gold_vertex.get('lorentz')):
-            if lor in vertex.get('lorentz'):
+            if lor in host_lorentz:
                 #raise Exception("lorentz should not repeat. Please report for investigation.")
-                translate_lorentz[i] = vertex.get('lorentz').index(lor)
+                translate_lorentz[i] = host_lorentz.index(lor)
+            elif lor in new_lorentz:
+                translate_lorentz[i] = len(host_lorentz) + new_lorentz.index(lor)
             else:
-                translate_lorentz[i] = len(vertex.get('lorentz'))
-                vertex.get('lorentz').append(lor)
+                translate_lorentz[i] = len(host_lorentz) + len(new_lorentz)
+                new_lorentz.append(lor)
 
         # now we can add the coupling to the original vertex
+        to_add = {}
         for (color, lorentz), value in gold_vertex.get('couplings').items():
             key = (translate_color[color], translate_lorentz[lorentz])
-            if key in vertex.get('couplings'):
+            if key in vertex.get('couplings') or key in to_add:
                 return True # will include it in a new vertex
-            assert key not in vertex.get('couplings')
-            vertex.get('couplings')[key] = value
+            to_add[key] = value
+
+        host_lorentz.extend(new_lorentz)
+        vertex.get('couplings').update(to_add)
 
 
 
