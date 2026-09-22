@@ -1776,9 +1776,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # cannot be read from the Parameters class inside a routine)
         self.aloha_writer.dependent_params = frozenset(p.name for p in self.params_dep)
         if(fd_gauge):
-            aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'), explicit_combine=False)
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model, explicit_combine=False)
         else:
-            aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'), explicit_combine=True)
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model, explicit_combine=True)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         if self.wanted_lorentz:
             aloha_model.compute_subset(self.wanted_lorentz)

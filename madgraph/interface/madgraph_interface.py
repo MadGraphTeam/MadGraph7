@@ -583,9 +583,10 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("    available for future import with the command 'import model XXXX-NAME'")
         logger.info("    Changing the formula of a parameter/coupling is also possible but")
         logger.info("    requires to write a new UFO model (and is not compatible with --save)")
-        logger.info("    --explain=life (or --explain) reports what each command you")
+        logger.info("    --explain=life (the default) reports what each command you")
         logger.info("    enter changes in the model, --explain=final reports which of your")
-        logger.info("    choices is responsible for each coupling removed from it.")
+        logger.info("    choices is responsible for each coupling removed from it,")
+        logger.info("    --explain=off asks for no report at all.")
         logger.info("    --all lists every coupling instead of the first few of them.")
 
     def help_output(self):
@@ -1113,9 +1114,12 @@ class HelpToCmd(cmd.HelpCmd):
 # customize_model --explain
 #===============================================================================
 # 'life' reports what each command does while the question is answered,
-# 'final' reports which choice is responsible for what once it is closed.
-CUSTOMIZE_EXPLAIN_MODES = ['life', 'final']
-CUSTOMIZE_EXPLAIN_ALIAS = {'live': 'life'} # 'live' is the spelling one expects
+# 'final' reports which choice is responsible for what once it is closed,
+# 'off' asks for no report at all. 'life' is what one gets without asking.
+CUSTOMIZE_EXPLAIN_MODES = ['life', 'final', 'off']
+CUSTOMIZE_EXPLAIN_DEFAULT = 'life'
+CUSTOMIZE_EXPLAIN_ALIAS = {'live': 'life', # 'live' is the spelling one expects
+                           'none': 'off', 'false': 'off', 'no': 'off'}
 
 
 def natural_key(name):
@@ -1134,6 +1138,16 @@ def parse_explain_mode(arg):
         return None
     mode = arg.split('=', 1)[1].lower()
     return CUSTOMIZE_EXPLAIN_ALIAS.get(mode, mode)
+
+
+def resolve_explain_mode(args):
+    """the --explain mode a customize_model command line asks for: the last
+    --explain wins, the live report is what one gets without the option, and
+    None (no report at all) is what --explain=off asks for."""
+
+    mode = ([CUSTOMIZE_EXPLAIN_DEFAULT] + [parse_explain_mode(a) for a in args
+                                           if parse_explain_mode(a)])[-1]
+    return None if mode == 'off' else mode
 
 
 class CheckValidForCmd(cmd.CheckCmd):
@@ -1883,8 +1897,11 @@ This will take effect only in a NEW terminal
                 mode = parse_explain_mode(arg)
                 if mode not in CUSTOMIZE_EXPLAIN_MODES:
                     raise self.InvalidCmd('Valid values for --explain are: %s '
-                        '(--explain alone means --explain=life).'
-                        % ', '.join(CUSTOMIZE_EXPLAIN_MODES))
+                        '(--explain alone means --explain=%s, which is also '
+                        'what you get without the option; --explain=off turns '
+                        'the report off).'
+                        % (', '.join(CUSTOMIZE_EXPLAIN_MODES),
+                           CUSTOMIZE_EXPLAIN_DEFAULT))
                 continue
             if arg.startswith('--save='):
                 if '-' in arg.split('=', 1)[1]:
@@ -2729,7 +2746,8 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         # Format
         return self.list_completion(text, ['--save=', '--explain',
-                    '--explain=life', '--explain=final', '--all'])
+                    '--explain=life', '--explain=final', '--explain=off',
+                    '--all'])
 
 
     def complete_check(self, text, line, begidx, endidx, formatting=True):
@@ -4347,8 +4365,21 @@ This implies that with decay chains:
         elif args[0] == 'coupling_order':
             hierarchy = list(self._curr_model['order_hierarchy'].items())
             hierarchy.sort(key=operator.itemgetter(1))
-            for order in hierarchy:
-                print(' %s : weight = %s' % order)
+            # an order declared by the model can have no interaction left
+            # carrying it -- a restriction card typically removes all of them.
+            # Such an order is inert: it can not constrain a process.
+            active = self._curr_model.get('coupling_orders')
+            inert = []
+            for order, weight in hierarchy:
+                if order in active:
+                    print(' %s : weight = %s' % (order, weight))
+                else:
+                    print(' %s : weight = %s [inert]' % (order, weight))
+                    inert.append(order)
+            if inert:
+                print(' [inert]: no interaction of this model carries that'
+                      ' order (the restriction card likely removed them all),')
+                print('          so it can not be used to constrain a process.')
 
         elif args[0] == 'couplings' and len(args) == 1:
             if self._model_v4_path:
@@ -10002,9 +10033,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         name = ([a.split('=', 1)[1] for a in args if a.startswith('--save=')]
                                                                       + [None])[0]
-        # the last --explain given wins, None if there is none
-        explain = ([None] + [parse_explain_mode(a) for a in args
-                             if parse_explain_mode(a)])[-1]
+        explain = resolve_explain_mode(args)
         full = '--all' in args
         model_path = self._curr_model.get('modelpath')
         # the model as currently loaded: only used to know which of the generic
@@ -11815,7 +11844,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # catch output dir
             output = [d for d in args if d.startswith('--output=')]
             if not output:
-                output = import_ufo.find_ufo_path(self._curr_model['name'])
+                # the model name can carry a restriction suffix and says
+                # nothing about where the model lives, so ask the model
+                # itself for the directory it was imported from.
+                try:
+                    output = self._curr_model.get('modelpath')
+                except Exception:
+                    output = import_ufo.find_ufo_path(self._curr_model['name'])
                 output = pjoin(output, format)
                 if not os.path.isdir(output):
                     os.mkdir(output)
@@ -11828,7 +11863,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             names = [d for d in args if not d.startswith('-')]
             wanted_lorentz = aloha_fct.guess_routine_from_name(names)
             # Create and write ALOHA Routine
-            aloha_model = create_aloha.AbstractALOHAModel(self._curr_model.get('name'))
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(self._curr_model)
             aloha_model.add_Lorentz_object(self._curr_model.get('lorentz'))
             if wanted_lorentz:
                 aloha_model.compute_subset(wanted_lorentz)
