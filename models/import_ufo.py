@@ -1557,6 +1557,17 @@ class UFOMG5Converter(object):
                 
         vertex = vertex[0]
 
+        # Only a vertex with the very same coupling orders may absorb this
+        # goldstone vertex.  A merged coupling inherits the orders of its host,
+        # so merging e.g. the QED=2 'a a G- G+' coupling into the NP=2 'a a W+ G-'
+        # vertex hides it from any process generated with NP=0 (SMEFTatNLO lost
+        # 4% on 'a a > w+ w- NP=0' that way).  Returning True tells the caller to
+        # build a standalone vertex instead, which keeps the original orders.
+        # The multi-candidate branch above already filtered on this; the check
+        # matters when a single candidate was found and never looked at.
+        if vertex.get('orders') != gold_vertex.get('orders'):
+            return True
+
         nb_vector = 0
         nb_gold = 0
         for p in gold_vertex.get('particles'):

@@ -25,6 +25,7 @@ import tests.unit_tests as unittest
 
 import madgraph.interface.master_interface as Cmd
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_algebra as color
 import models.import_ufo as import_ufo
 import models.model_reader as model_reader
 import madgraph.iolibs.export_v4 as export_v4
@@ -333,6 +334,55 @@ class TestImportUFO(unittest.TestCase):
 
         self.assertEqual(inter.get('lorentz'), ['VSS1', 'NOSUCHLORENTZ'])
         self.assertEqual(inter.get('couplings'), {(0, 0): 'GC_1', (0, 1): 'GC_1'})
+
+
+    def test_goldstone_merge_keeps_coupling_orders_apart(self):
+        """A goldstone vertex must not be absorbed by a vector vertex that has
+        different coupling orders: the merged coupling silently inherits the
+        host's orders.  SMEFTatNLO lost its QED=2 'a a G- G+' coupling into an
+        NP=2 'a a W+ G-' vertex that way, so 'a a > w+ w- NP=0' came out 4% off
+        in FD gauge.  The orders were only checked when several candidate
+        vertices existed."""
+
+        def particle(pdg, name, is_part=True):
+            return base_objects.Particle({'name': name, 'antiname': name,
+                                          'pdg_code': abs(pdg), 'spin': 3,
+                                          'is_part': is_part,
+                                          'self_antipart': pdg == 22})
+
+        a = particle(22, 'a')
+        wp = particle(24, 'w+')
+        wm = particle(24, 'w-', is_part=False)
+        gm = particle(251, 'g-', is_part=False)
+
+        def interaction(iid, parts, orders, couplings):
+            return base_objects.Interaction({
+                'id': iid,
+                'particles': base_objects.ParticleList(parts),
+                'lorentz': ['VVSS1'],
+                'color': [color.ColorString()],
+                'couplings': couplings,
+                'orders': orders,
+                })
+
+        # the goldstone vertex is pure QED, the only candidate host is NP=2
+        gold = interaction(1, [a, a, wp, gm], {'QED': 2}, {(0, 0): 'GC_6'})
+        host = interaction(2, [a, a, wp, wm], {'NP': 2, 'QED': 2}, {})
+
+        fct = import_ufo.UFOMG5Converter.update_vertex_for_goldstone
+        # the guard returns before `self` is ever needed
+        to_be_done = fct(None, [host], gold, gm, wm)
+
+        self.assertTrue(to_be_done,
+                        'the caller must build a standalone vertex instead')
+        self.assertEqual(host.get('couplings'), {},
+                         'the QED=2 coupling leaked into the NP=2 vertex')
+        self.assertEqual(host.get('lorentz'), ['VVSS1'])
+
+        # same orders: the merge does go ahead
+        host_ok = interaction(3, [a, a, wp, wm], {'QED': 2}, {})
+        self.assertFalse(fct(None, [host_ok], gold, gm, wm))
+        self.assertEqual(host_ok.get('couplings'), {(0, 0): 'GC_6'})
 
 
 class TestImportUFO_fromcmd(unittest.TestCase):
