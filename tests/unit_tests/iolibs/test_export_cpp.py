@@ -19,6 +19,8 @@ import copy
 import fractions
 import os
 import re
+import shutil
+import tempfile
 import tests.IOTests as IOTests
 from tests import test_manager
 
@@ -984,3 +986,67 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+
+#===============================================================================
+# AlohaModelPathTest
+#===============================================================================
+class AlohaModelPathTest(unittest.TestCase):
+    """The ALOHA model has to be located from the directory the model was
+    imported from, never from its name: the name can carry a restriction
+    suffix ('SMEFTatNLO-NLO') and it says nothing at all about a model
+    living outside of MG5DIR/models."""
+
+    def get_model(self, name, modeldir):
+        model = base_objects.Model()
+        model.set('name', name)
+        model.set('version_tag', '%s##1' % modeldir)
+        return model
+
+    def get_aloha_model(self, model):
+        """Build the aloha model, recording which name reaches load_model
+        (and faking the UFO module, so that nothing is imported here)."""
+
+        recorded = []
+        class FakeUFO(object):
+            pass
+        def fake_load_model(name, decay=False):
+            recorded.append(name)
+            ufo = FakeUFO()
+            ufo.__file__ = os.path.join(name, '__init__.py')
+            return ufo
+
+        real_load_model = create_aloha.models.load_model
+        create_aloha.models.load_model = fake_load_model
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(model)
+        finally:
+            create_aloha.models.load_model = real_load_model
+        return aloha_model, recorded
+
+    def test_aloha_model_of_a_model_outside_of_mg5dir(self):
+        """A restricted model outside of MG5DIR/models used to be looked for
+        by name ('SMEFTatNLO-NLO'), which is neither a directory we know of
+        nor an importable module."""
+
+        modeldir = tempfile.mkdtemp(prefix='aloha_model_path')
+        try:
+            model = self.get_model('SMEFTatNLO-NLO',
+                                   os.path.join(modeldir, 'SMEFTatNLO'))
+            os.mkdir(os.path.join(modeldir, 'SMEFTatNLO'))
+            aloha_model, recorded = self.get_aloha_model(model)
+        finally:
+            shutil.rmtree(modeldir)
+
+        self.assertEqual(recorded, [os.path.join(modeldir, 'SMEFTatNLO')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(modeldir, 'SMEFTatNLO'))
+
+    def test_aloha_model_of_a_restricted_model_of_mg5dir(self):
+        """The restriction is dropped for a model of MG5DIR/models as well."""
+
+        model = self.get_model('sm-no_b_mass', os.path.join(MG5DIR, 'models', 'sm'))
+        aloha_model, recorded = self.get_aloha_model(model)
+        self.assertEqual(recorded, [os.path.join(MG5DIR, 'models', 'sm')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(MG5DIR, 'models', 'sm'))
