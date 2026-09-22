@@ -421,10 +421,10 @@ def _two_gluon_to_tensor_data() -> list[complex]:
     data = [0j] * (6 * 4 * 4)
     metric = (1.0, -1.0, -1.0, -1.0)
     for tensor_index, (i, j) in enumerate(_ANTISYM_PAIRS):
-        data[_flat_index((tensor_index, i, j), (6, 4, 4))] = (
+        data[_flat_index((i, j, tensor_index), (4, 4, 6))] = (
             1.0 / (metric[i] * metric[j])
         ) + 0j
-        data[_flat_index((tensor_index, j, i), (6, 4, 4))] = (
+        data[_flat_index((j, i, tensor_index), (4, 4, 6))] = (
             -1.0 / (metric[j] * metric[i])
         ) + 0j
     return data
@@ -460,7 +460,7 @@ def _gluon_tensor_to_gluon_data() -> list[complex]:
     }
     for out, entries in rows.items():
         for gluon_index, tensor_index, sign in entries:
-            data[_flat_index((tensor_index, gluon_index, out), (6, 4, 4))] = (
+            data[_flat_index((gluon_index, tensor_index, out), (4, 6, 4))] = (
                 sign * prefactor / metric[gluon_index]
             )
     return data
@@ -472,10 +472,8 @@ def _quark_vector_weyl_data(*, chirality: int) -> list[Any]:
     metric = (1.0, -1.0, -1.0, -1.0)
 
     def add(q_in: int, vector: int, q_out: int, coefficient: Any) -> None:
-        # spenso canonicalizes T(weyl, mink, weyl) storage as
-        # (weyl_in, weyl_out, mink), while expression calls keep the original
-        # slot order.
-        data[_flat_index((q_in, q_out, vector), (2, 2, 4))] = (
+        # Tensor.dense accepts logical interface order, not canonical storage order.
+        data[_flat_index((q_in, vector, q_out), (2, 4, 2))] = (
             coefficient / metric[vector]
         )
 

@@ -15,11 +15,15 @@ from typing import TYPE_CHECKING, Any
 
 from ._internal.versions import package_version
 
+if TYPE_CHECKING:
+    from types import ModuleType as _ModuleType
+
 # Registration precedes symbolic work, including in spawned Python workers.
 # Keep startup quiet before CLI output/banner policy can be resolved, without
 # changing the caller's banner or personal-license environment.
 _previous_banner = _os.environ.get("SYMBOLICA_HIDE_BANNER")
 _os.environ["SYMBOLICA_HIDE_BANNER"] = "1"
+_symbolica: _ModuleType | None
 try:
     try:
         import symbolica as _symbolica

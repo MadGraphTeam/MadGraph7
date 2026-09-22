@@ -107,8 +107,8 @@ class DoubleDoubleArithmetic:
             expression = expressions[operation](*parameters)
             evaluator = expression.evaluator(parameters, iterations=0, n_cores=1)
             self._evaluators[operation] = evaluator
-        # 32 selects Symbolica DoubleFloat, whose decimal output carries 31
-        # significant digits. Padding inputs does not invent input information.
+        # 32 selects Symbolica DoubleFloat, transported through a 106-bit float
+        # (about 31 significant digits). Padding inputs adds no information.
         result = evaluator.evaluate_with_prec(
             [_upcast_decimal(Decimal(value), 80) for value in values], 32
         )[0].to_decimal()

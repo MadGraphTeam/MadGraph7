@@ -4,7 +4,7 @@ schema_version = 1
 [model]
 source = "built-in-sm"
 simplify = true
-cache = false
+cache = true
 
 [process]
 entries = [{ expression = "d d~ > z" }]
@@ -55,7 +55,7 @@ output_chunk_size = 512
 
 [evaluator.optimization]
 horner_iterations = 10
-cores = 1
+cores = "auto"
 max_horner_variables = 1000
 max_common_pair_cache_entries = 5000000
 max_common_pair_distance = 1000
@@ -63,7 +63,7 @@ collect_factors = "auto"
 
 [evaluator.jit]
 optimization_level = 2
-compress = true
+compress = "auto"
 
 [evaluator.cpp]
 optimization = "O3"
@@ -95,8 +95,8 @@ color_flow_ids = []
 
 [output]
 format = "json"
-color = "never"
-progress = "log"
+color = "auto"
+progress = "off"
 log_level = "info"
 
 [symbolica]

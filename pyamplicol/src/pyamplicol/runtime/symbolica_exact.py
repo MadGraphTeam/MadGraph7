@@ -196,7 +196,7 @@ def _upcast_complex_inputs(
 
 
 def _working_precision(requested_precision: int) -> int:
-    # Symbolica uses a binary64 shortcut at 32 decimal digits. Stay above that
+    # Symbolica uses a double-double shortcut at 32 decimal digits. Stay above that
     # threshold for every request routed through the arbitrary-precision path.
     return max(
         requested_precision + _ARITHMETIC_GUARD_DIGITS,

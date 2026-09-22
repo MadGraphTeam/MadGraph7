@@ -29,9 +29,12 @@ def test_double_double_retains_half_ulp_without_decimal_context_leak():
         observed = scalar(1) + scalar(half_ulp)
         assert observed > 1  # Binary64 would round the midpoint to one.
         assert abs(Decimal(observed - scalar(1)) / half_ulp - 1) < Decimal("1e-14")
-        assert abs(
-            Decimal((scalar(1) + scalar("1e-25")) - scalar(1)) / Decimal("1e-25") - 1
-        ) < Decimal("1e-14")
+        perturbation = Decimal("1e-25")
+        recovered = Decimal((scalar(1) + scalar(perturbation)) - scalar(1))
+        # Symbolica transports DoubleFloat results at 106 binary bits. After
+        # cancellation, bound the absolute rounding error near the original
+        # value one; a relative 1e-14 bound here would demand 39 digits.
+        assert abs(recovered - perturbation) <= Decimal(2) ** -105
         # Double-double cannot retain this difference; arbitrary Decimal can.
         assert scalar(1) + scalar("1e-40") == 1
         assert Decimal(1) + Decimal("1e-40") > 1

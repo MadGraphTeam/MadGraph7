@@ -3,7 +3,7 @@
   "schema_version": 1,
   "model": {
     "kind": "ufo-sm-json-default-restriction",
-    "source_sha256": "f13311b6c66af04dde17484ce5b3b57f4e57a55f8a3729f00352105eea5a80bf",
+    "source_sha256": "6bec8e6fcd935aa1f56ae99f7ee7a58a947dc5dd3cf5a14b653632f4a3bd6d63",
     "restriction_sha256": "8fdd48a3624620c1a15bab602f43a41519038cf69d8fef6aeaaaf13a3f1846c1",
     "external_parameters_sha256": "d6b5072d4bfc1d6e9660a3c6349f069fb3c4a4aaafea9a8633b948ab7aafff01"
   },

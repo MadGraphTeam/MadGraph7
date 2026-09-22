@@ -133,7 +133,7 @@ def _release_bundle(
         backend="jit",
         dependency_abis={
             "symbolica_serialization": symbolica_abi,
-            "symbolica_version": "2.2.0",
+            "symbolica_version": "3.0.0",
             "symjit_application": symjit_abi,
             "symjit_plane_application": symjit_plane_abi,
         },
@@ -233,8 +233,8 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert metadata["build_contract"] == {"mode": "release"}
     assert "native_build_inputs_sha256" not in metadata["producer"]
     assert metadata["producer"]["package_version"] == RELEASE_VERSION
-    assert metadata["dependencies"]["symbolica_version"] == "2.2.0"
-    assert metadata["dependencies"]["symjit_version"] == "2.25.6"
+    assert metadata["dependencies"]["symbolica_version"] == "3.0.0"
+    assert metadata["dependencies"]["symjit_version"] == "2.26.0"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 

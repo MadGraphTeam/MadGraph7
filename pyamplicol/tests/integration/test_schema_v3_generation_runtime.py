@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import shutil
+import tomllib
 import warnings
 from collections.abc import Iterator
 from decimal import Decimal, localcontext
@@ -366,6 +367,18 @@ def test_eager_and_compiled_exact_z3g_contracted_color_match(
     )
 
 
+def _symjit_application_leaves(value: object) -> Iterator[dict[str, Any]]:
+    if isinstance(value, dict):
+        if value.get("kind") == "symjit-application-evaluator":
+            yield value
+        else:
+            for child in value.values():
+                yield from _symjit_application_leaves(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _symjit_application_leaves(child)
+
+
 @pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
 def test_current_source_generates_and_evaluates_schema_v3(
     tmp_path: Path,
@@ -392,6 +405,18 @@ def test_current_source_generates_and_evaluates_schema_v3(
     execution = json.loads(
         (process_root / "execution.json").read_text(encoding="utf-8")
     )
+    requested = tomllib.loads((artifact / "config/requested.toml").read_text())
+    effective = tomllib.loads((artifact / "config/effective.toml").read_text())
+    assert requested["evaluator"]["jit"]["compress"] == "auto"
+    assert effective["evaluator"]["jit"]["compress"] is True
+    leaves = tuple(_symjit_application_leaves(execution))
+    assert leaves
+    for leaf in leaves:
+        assert leaf["optimization_level"] == 2
+        assert leaf["plane_application"]["optimization_level"] == 2
+        assert leaf["plane_application"]["compression"] is True
+    # Runtime.load below checks each flag against the real stored application;
+    # the f64 oracle evaluations then execute those compressed O2 kernels.
     physics = json.loads((process_root / "physics.json").read_text(encoding="utf-8"))
     assert execution["schema_version"] == 3
     assert execution["kind"] == "pyamplicol-runtime-execution"

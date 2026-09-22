@@ -78,3 +78,78 @@ def test_builtin_auxiliary_tensor_probe_executes() -> None:
     assert probe.nonzero_entries == 4
     assert probe.max_abs_entry == pytest.approx(1.5)
     assert probe.weighted_checksum == pytest.approx((0.0, 48.0))
+
+
+@pytest.mark.parametrize(
+    ("vertex", "left_kind", "right_kind", "output_kind", "chirality"),
+    (
+        ("two_gluon_to_tensor", "vector", "vector", "tensor", 0),
+        ("tensor_gluon_to_gluon", "tensor", "vector", "vector", 0),
+        ("gluon_tensor_to_gluon", "vector", "tensor", "vector", 0),
+        ("quark_vector_weyl_plus", "weyl", "vector", "weyl", 1),
+        ("quark_vector_weyl_minus", "weyl", "vector", "weyl", -1),
+    ),
+)
+def test_builtin_tensor_interface_order_matches_numeric_vertices(
+    vertex: str,
+    left_kind: str,
+    right_kind: str,
+    output_kind: str,
+    chirality: int,
+) -> None:
+    from symbolica import Expression
+    from symbolica.community.spenso import (
+        Representation,
+        Tensor,
+        TensorName,
+        TensorNetwork,
+        as_tensor,
+    )
+
+    from pyamplicol.models import BuiltinSMModel
+    from pyamplicol.models.builtin import expressions
+    from pyamplicol.models.builtin.symbols import symbols
+
+    representations = {
+        "vector": Representation.mink(4),
+        "tensor": Representation(symbols.antisymmetric_lorentz_pair_name, 6),
+        "weyl": Representation(symbols.weyl_spinor_name, 2),
+    }
+    dimensions = {"vector": 4, "tensor": 6, "weyl": 2}
+    left = tuple(complex(index + 1, 0.25) for index in range(dimensions[left_kind]))
+    right = tuple(
+        complex(2 * index - 1, -0.5) for index in range(dimensions[right_kind])
+    )
+    library = BuiltinSMModel().build_tensor_library()
+    left_name = TensorName("pyamplicol::tensor_layout_probe_left")
+    right_name = TensorName("pyamplicol::tensor_layout_probe_right")
+    left_rep, right_rep = representations[left_kind], representations[right_kind]
+    output_rep = representations[output_kind]
+    library.register(Tensor.dense(left_name(left_rep), left))
+    library.register(Tensor.dense(right_name(right_rep), right))
+    expression = (
+        TensorName(symbols.qualified_name(vertex))(
+            left_rep("left"), right_rep("right"), output_rep("output")
+        ).to_expression()
+        * left_name(left_rep("left")).to_expression()
+        * right_name(right_rep("right")).to_expression()
+    )
+    network = TensorNetwork(as_tensor(expression), library)
+    network.execute(library=library)
+    result = network.result_tensor(library)
+    actual = tuple(
+        complex(value.evaluate({}) if isinstance(value, Expression) else value)
+        for value in (result[index] for index in range(len(result)))
+    )
+    if chirality:
+        expected = expressions._expr_fermion_vector_weyl(
+            left, right, chirality, antifermion=False, coupling=None
+        )
+    else:
+        numeric_vertex = {
+            "two_gluon_to_tensor": expressions._expr_two_vector_to_tensor,
+            "tensor_gluon_to_gluon": expressions._expr_tensor_vector_to_vector,
+            "gluon_tensor_to_gluon": expressions._expr_vector_tensor_to_vector,
+        }[vertex]
+        expected = numeric_vertex(left, right)
+    assert actual == pytest.approx(expected)

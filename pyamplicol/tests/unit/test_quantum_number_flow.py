@@ -94,7 +94,8 @@ def test_loader_charge_uses_the_exact_float_ratio() -> None:
         ((("symbolic", "x"),), "symbol-free"),
         ((("symbolic-function", "unknown(1)"),), "symbol-free"),
         ((("complex", "sqrt(-1)"),), "must be real"),
-        ((("infinite", "log(0)"),), "finite real constant"),
+        # Symbolica identifies infinity as non-real before numeric evaluation.
+        ((("infinite", "log(0)"),), "must be real"),
     ],
 )
 def test_quantum_number_metadata_rejects_noncanonical_constants(
