@@ -5,6 +5,7 @@
 
 #include <dlfcn.h>
 
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <new>
@@ -33,6 +34,7 @@ namespace
     int squared_order_count = 0;
     int particle_count = 0;
     int flavour_count = 0;
+    std::string error;
   };
 
   struct BridgeContext
@@ -61,6 +63,18 @@ namespace
     std::string path = directory;
     if( !path.empty() && path.back() != '/' ) path += '/';
     return path + "libmadmatrix_" + process + "_" + backend + ".so";
+  }
+
+  std::string relative_to_bridge( const char* relative )
+  {
+    Dl_info info{};
+    if( dladdr( reinterpret_cast<const void*>( &mg7_nlo_real_initialize ),
+                &info ) == 0 || !info.dli_fname )
+      throw std::runtime_error( "cannot resolve NLO real bridge location" );
+    std::string path = info.dli_fname;
+    const std::string::size_type slash = path.find_last_of( '/' );
+    path = slash == std::string::npos ? "." : path.substr( 0, slash );
+    return path + "/" + relative;
   }
 
   void close_context( BridgeContext* context )
@@ -97,45 +111,70 @@ extern "C"
       context->reals.resize( MG7_NLO_REAL_COUNT );
       const std::string selected = std::string( backend ) == "auto"
                                      ? "scalar" : backend;
+      const std::string selected_param_card = std::string( param_card ) == "auto"
+        ? relative_to_bridge( "../../Cards/param_card.dat" ) : param_card;
+      const std::string selected_library_dir = std::string( library_dir ) == "auto"
+        ? relative_to_bridge( "../../lib" ) : library_dir;
+      int loaded = 0;
       for( int index = 0; index < MG7_NLO_REAL_COUNT; ++index )
       {
         const MG7NLORealConfig& config = MG7_NLO_REAL_CONFIGS[index];
         RealLibrary& real = context->reals[index];
-        const std::string path = library_path(
-          library_dir, config.library_process_id, selected.c_str() );
-        real.library = dlopen( path.c_str(), RTLD_NOW | RTLD_LOCAL );
-        if( !real.library )
-          throw std::runtime_error( "cannot load " + path + ": " + dlerror() );
-        real.get_meta = resolve<GetMeta>( real.library, "umami_get_meta" );
-        Initialize initialize = resolve<Initialize>(
-          real.library, "umami_initialize" );
-        real.evaluate = resolve<Evaluate>( real.library,
-                                          "umami_matrix_element" );
-        real.free_handle = resolve<Free>( real.library, "umami_free" );
+        try
+        {
+          const std::string path = library_path(
+            selected_library_dir.c_str(), config.library_process_id,
+            selected.c_str() );
+          real.library = dlopen( path.c_str(), RTLD_NOW | RTLD_LOCAL );
+          if( !real.library )
+            throw std::runtime_error( "cannot load " + path + ": " + dlerror() );
+          real.get_meta = resolve<GetMeta>( real.library, "umami_get_meta" );
+          Initialize initialize = resolve<Initialize>(
+            real.library, "umami_initialize" );
+          real.evaluate = resolve<Evaluate>( real.library,
+                                             "umami_matrix_element" );
+          real.free_handle = resolve<Free>( real.library, "umami_free" );
 
-        int major = 0;
-        int minor = 0;
-        const char* fingerprint = nullptr;
-        if( real.get_meta( UMAMI_META_ABI_MAJOR_VERSION, &major ) != UMAMI_SUCCESS ||
-            real.get_meta( UMAMI_META_ABI_MINOR_VERSION, &minor ) != UMAMI_SUCCESS ||
-            real.get_meta( UMAMI_META_PROCESS_FINGERPRINT, &fingerprint ) != UMAMI_SUCCESS ||
-            real.get_meta( UMAMI_META_SQUARED_ORDER_COUNT,
-                           &real.squared_order_count ) != UMAMI_SUCCESS ||
-            real.get_meta( UMAMI_META_PARTICLE_COUNT,
-                           &real.particle_count ) != UMAMI_SUCCESS )
-          throw std::runtime_error( "incomplete UMAMI metadata in " + path );
-        if( major != UMAMI_MAJOR_VERSION || minor < 1 )
-          throw std::runtime_error( "incompatible UMAMI ABI in " + path );
-        if( !fingerprint || std::string( fingerprint ) != config.fingerprint )
-          throw std::runtime_error( "process fingerprint mismatch in " + path );
-        if( real.squared_order_count != config.squared_order_count ||
-            real.particle_count != MG7_NLO_PARTICLE_COUNT )
-          throw std::runtime_error( "process dimension mismatch in " + path );
-        real.flavour_count = config.flavour_count;
-        if( initialize( &real.handle, param_card ) != UMAMI_SUCCESS ||
-            !real.handle )
-          throw std::runtime_error( "UMAMI initialization failed for " + path );
+          int major = 0;
+          int minor = 0;
+          const char* fingerprint = nullptr;
+          if( real.get_meta( UMAMI_META_ABI_MAJOR_VERSION, &major ) != UMAMI_SUCCESS ||
+              real.get_meta( UMAMI_META_ABI_MINOR_VERSION, &minor ) != UMAMI_SUCCESS ||
+              real.get_meta( UMAMI_META_PROCESS_FINGERPRINT, &fingerprint ) != UMAMI_SUCCESS ||
+              real.get_meta( UMAMI_META_SQUARED_ORDER_COUNT,
+                             &real.squared_order_count ) != UMAMI_SUCCESS ||
+              real.get_meta( UMAMI_META_PARTICLE_COUNT,
+                             &real.particle_count ) != UMAMI_SUCCESS )
+            throw std::runtime_error( "incomplete UMAMI metadata in " + path );
+          if( major != UMAMI_MAJOR_VERSION || minor < 1 )
+            throw std::runtime_error( "incompatible UMAMI ABI in " + path );
+          if( !fingerprint || std::string( fingerprint ) != config.fingerprint )
+            throw std::runtime_error( "process fingerprint mismatch in " + path );
+          if( real.squared_order_count != config.squared_order_count ||
+              real.particle_count != MG7_NLO_PARTICLE_COUNT )
+            throw std::runtime_error( "process dimension mismatch in " + path );
+          real.flavour_count = config.flavour_count;
+          if( initialize( &real.handle, selected_param_card.c_str() ) != UMAMI_SUCCESS ||
+              !real.handle )
+            throw std::runtime_error( "UMAMI initialization failed for " + path );
+          ++loaded;
+        }
+        catch( const std::exception& error )
+        {
+          real.error = error.what();
+          if( real.handle && real.free_handle ) real.free_handle( real.handle );
+          real.handle = nullptr;
+          if( real.library ) dlclose( real.library );
+          real.library = nullptr;
+          real.get_meta = nullptr;
+          real.evaluate = nullptr;
+          real.free_handle = nullptr;
+          real.flavour_count = config.flavour_count;
+        }
       }
+      if( loaded == 0 )
+        throw std::runtime_error(
+          "no NLO real libraries are available for backend " + selected );
       *opaque = context;
       return 0;
     }
@@ -169,6 +208,10 @@ extern "C"
       if( !momenta || !g_strong || !flavour || !squared_orders )
         return fail( context, "null NLO real evaluation buffer" );
       RealLibrary& real = context->reals[real_me_id - 1];
+      if( !real.handle || !real.evaluate )
+        return fail( context, "real ME " + std::to_string( real_me_id ) +
+          " is unavailable: " + ( real.error.empty() ?
+          std::string( "unknown loader error" ) : real.error ) );
       std::vector<unsigned int> local_flavour( event_count );
       for( size_t event = 0; event < event_count; ++event )
       {
@@ -193,6 +236,12 @@ extern "C"
                 << " with status " << static_cast<int>( status );
         return fail( context, message.str() );
       }
+      const size_t result_count = event_count *
+        static_cast<size_t>( real.squared_order_count );
+      for( size_t index = 0; index < result_count; ++index )
+        if( !std::isfinite( squared_orders[index] ) )
+          return fail( context, "non-finite UMAMI result for real ME " +
+                                std::to_string( real_me_id ) );
       context->error.clear();
       return 0;
     }

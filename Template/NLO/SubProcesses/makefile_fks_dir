@@ -100,6 +100,10 @@ FKSSA = check_sa_fks.o born.o sborn_sf.o				\
 	$(patsubst %.f,%.o,$(wildcard b_sf_???.f))			\
 	splitorders_stuff.o orderstags_glob.o driver.o
 
+# Optional per-subprocess MadMatrix NLO-real routing. Ordinary output does not
+# generate this fragment, so the include is a no-op outside the opt-in path.
+-include nlo_real_offload.mk
+
 # Files for check_sudakov_angle2
 EWSUD2= $(RUN) check_sudakov_angle2.o BinothLHA.o pythia8_fortran_dummy.o \
 	write_event.o handling_lhe_events.o

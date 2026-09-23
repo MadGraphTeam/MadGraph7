@@ -143,7 +143,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
             local_counts[real_me] = int(match.group(1))
         return row_to_me, local_counts
 
-    def _driver_source(self, row_to_me, local_counts):
+    def _driver_source(self, row_to_me, local_counts, vector=False):
         """Build a fixed-form driver without modifying production wrappers."""
 
         real_mes = sorted(local_counts)
@@ -187,11 +187,16 @@ class TestNLORealFortranOracle(unittest.TestCase):
             lines.append(
                 '          IF (NME.EQ.%d) NLOCAL=%d' %
                 (real_me, count))
+        real_call = ['          CALL SMATRIX_REAL(P,GLOBAL,WGT)']
+        if vector:
+            real_call = [
+                '          CALL SMATRIX_REAL_VEC(P,GLOBAL,WGT,1,',
+                '     $      NFKSPROCESS,',
+                '     $      REAL_FLAVOR_INDEX_D(NFKSPROCESS))']
         lines.extend([
             '          GLOBAL(:)=0D0',
             '          LOCAL(:)=0D0',
-            '          CALL SMATRIX_REAL(P,GLOBAL,WGT)',
-        ])
+        ] + real_call)
         for real_me in real_mes:
             lines.extend([
                 '          IF (NME.EQ.%d) THEN' % real_me,
@@ -284,6 +289,99 @@ class TestNLORealFortranOracle(unittest.TestCase):
         return self._parse_driver_output(
             output.decode(errors='replace'),
             len(case['split_order_names']))
+
+    def _compile_routed_driver(self, output_path, case, vector=False):
+        """Build a frozen-oracle driver through the production wrapper."""
+        subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
+        row_to_me, local_counts = self._real_me_contract(subproc)
+        suffix = '_vec' if vector else ''
+        source_name = 'check_real_oracle%s.f' % suffix
+        object_name = 'check_real_oracle%s.o' % suffix
+        executable = pjoin(subproc, 'check_real_oracle%s' % suffix)
+        with open(pjoin(subproc, source_name), 'w') as stream:
+            stream.write(self._driver_source(
+                row_to_me, local_counts, vector=vector))
+
+        misc.compile(cwd=pjoin(output_path, 'Source'))
+        subprocess.check_call(
+            ['make', 'nlo_real_offload.o', '-j2'], cwd=subproc)
+        matrix_objects = [
+            os.path.basename(path)[:-2] + '.o' for path in
+            sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
+        objects = matrix_objects + [
+            'real_me_chooser.o', 'splitorders_stuff.o', object_name,
+            'nlo_real_offload.o']
+        misc.compile(objects, cwd=subproc)
+        subprocess.check_call(
+            ['gfortran', '-o', executable] + objects + [
+                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
+                '-L%s' % subproc, '-lnlo_real_bridge',
+                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl'],
+            cwd=subproc)
+        return executable
+
+    def _run_routed_driver(self, executable, case, environment=None):
+        env = os.environ.copy()
+        if environment:
+            env.update(environment)
+        output = subprocess.check_output(
+            [executable], input=self._driver_input(case['points']),
+            cwd=self.tmpdir, env=env, stderr=subprocess.STDOUT)
+        text = output.decode(errors='replace')
+        records = self._parse_driver_output(
+            text, len(case['split_order_names']))
+        self._assert_case(case, records)
+        return text
+
+    def _run_production_case(self, name, test_fallback=False):
+        case = self.oracle['cases'][name]
+        output_path = self._generate_case(name, madmatrix=True)
+        scalar = self._compile_routed_driver(output_path, case)
+        scalar_output = self._run_routed_driver(scalar, case)
+        self.assertIn('MG7 NLO real offload initialized: backend=scalar',
+                      scalar_output)
+
+        vector = self._compile_routed_driver(output_path, case, vector=True)
+        vector_output = self._run_routed_driver(vector, case)
+        self.assertIn('MG7 NLO real offload initialized: backend=scalar',
+                      vector_output)
+
+        if test_fallback:
+            fallback = self._run_routed_driver(
+                scalar, case, {'MG7_NLO_REAL_BACKEND': 'fortran'})
+            self.assertIn('using Fortran fallback', fallback)
+
+            process_path = pjoin(
+                output_path, 'SubProcesses', case['subprocess'])
+            with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
+                manifest = json.load(stream)
+            real = manifest['real_matrix_elements'][1]
+            library = pjoin(
+                output_path, 'lib',
+                'libmadmatrix_%s_scalar.so' % real['library_process_id'])
+            missing = library + '.missing'
+            os.rename(library, missing)
+            try:
+                partial = self._run_routed_driver(scalar, case)
+            finally:
+                os.rename(missing, library)
+            self.assertIn('real ME %d is unavailable' % real['id'], partial)
+            self.assertNotIn('real ME 1 is unavailable', partial)
+
+            launch = self._new_cmd()
+            self._run(launch, 'launch %s -f' % output_path)
+            born_logs = []
+            for manifest_path in glob.glob(pjoin(
+                    output_path, 'SubProcesses', 'P*',
+                    'nlo_real_manifest.json')):
+                log_path = pjoin(os.path.dirname(manifest_path), 'test_ME.log')
+                self.assertTrue(os.path.isfile(log_path), log_path)
+                with open(log_path) as stream:
+                    log = stream.read()
+                self.assertIn(
+                    'MG7 NLO real offload initialized: backend=scalar', log)
+                born_logs.append(log_path)
+            self.assertTrue(born_logs)
 
     @staticmethod
     def _fortran_float(value):
@@ -646,6 +744,18 @@ class TestNLORealFortranOracle(unittest.TestCase):
                     bridge.mg7_nlo_real_finalize(
                         ctypes.byref(second_context)), 0)
                 self.assertFalse(second_context.value)
+
+            invalid_context = ctypes.c_void_p()
+            self.assertNotEqual(
+                bridge.mg7_nlo_real_initialize(
+                    ctypes.byref(invalid_context),
+                    pjoin(output_path, 'Cards', 'param_card.dat').encode(),
+                    pjoin(output_path, 'lib').encode(),
+                    b'unsupported-backend'), 0)
+            self.assertFalse(invalid_context.value)
+            self.assertIn(
+                b'no NLO real libraries are available',
+                bridge.mg7_nlo_real_last_error(None))
         finally:
             self.assertEqual(
                 bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
@@ -666,6 +776,12 @@ class TestNLORealFortranOracle(unittest.TestCase):
 
     def test_grouped_qcd_ttx_madmatrix_low_memory(self):
         self._run_madmatrix_case('grouped_qcd_ttx', low_memory=True)
+
+    def test_grouped_qcd_ttx_production_scalar_and_fallback(self):
+        self._run_production_case('grouped_qcd_ttx', test_fallback=True)
+
+    def test_grouped_mixed_wj_production_scalar_components(self):
+        self._run_production_case('grouped_mixed_wj')
 
 
 if __name__ == '__main__':

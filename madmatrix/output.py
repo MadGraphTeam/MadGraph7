@@ -10,6 +10,7 @@ import sys
 import subprocess
 import json
 import copy
+import re
 
 PLUGIN_NAME = __name__.rsplit('.',1)[0]
 PLUGINDIR = os.path.dirname( __file__ )
@@ -515,6 +516,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             json.dump(manifest, stream, sort_keys=True, indent=2)
             stream.write('\n')
         self._write_bridge_config(manifest, os.path.dirname(manifest_path))
+        self._write_fortran_routing(manifest, os.path.dirname(manifest_path))
         return manifest
 
     def _write_bridge_config(self, manifest, process_path):
@@ -581,6 +583,277 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         ]
         with open(pjoin(process_path, 'nlo_real.mk'), 'w') as stream:
             stream.write('\n'.join(makefile) + '\n')
+
+    def _write_fortran_routing(self, manifest, process_path):
+        """Route scalar Fortran real calls through the bridge with fallback."""
+        real_by_id = {
+            real['id']: real for real in manifest['real_matrix_elements']}
+        max_local = max(
+            len(real['local_squared_orders'])
+            for real in manifest['real_matrix_elements'])
+        real_count = len(manifest['real_matrix_elements'])
+
+        cases = []
+        for row in manifest['fks_rows']:
+            nlocal = len(real_by_id[row['real_me_id']][
+                'local_squared_orders'])
+            mapping = ', '.join(str(index)
+                                for index in row['local_to_global'])
+            cases.extend([
+                '  case (%d)' % row['fks_row'],
+                '    real_me_id = %d' % row['real_me_id'],
+                '    nlocal = %d' % nlocal,
+                '    local_to_global(1:nlocal) = (/ %s /)' % mapping,
+            ])
+
+        source = [
+            'module mg7_nlo_real_offload_state',
+            '  use, intrinsic :: iso_c_binding',
+            '  implicit none',
+            '  type(c_ptr), save :: context = c_null_ptr',
+            '  logical, save :: initialization_attempted = .false.',
+            '  logical, save :: bridge_available = .false.',
+            '  logical, save :: real_unavailable(%d) = .false.' % real_count,
+            '',
+            '  interface',
+            '    integer(c_int) function mg7_nlo_real_initialize(handle, &',
+            '        param_card, library_dir, backend) bind(C)',
+            '      import :: c_int, c_ptr, c_char',
+            '      type(c_ptr) :: handle',
+            '      character(c_char), intent(in) :: param_card(*)',
+            '      character(c_char), intent(in) :: library_dir(*)',
+            '      character(c_char), intent(in) :: backend(*)',
+            '    end function',
+            '    integer(c_int) function mg7_nlo_real_evaluate(handle, &',
+            '        real_me_id, event_count, momenta, g_strong, flavour, &',
+            '        squared_orders) bind(C)',
+            '      import :: c_int, c_int32_t, c_size_t, c_ptr, c_double',
+            '      type(c_ptr), value :: handle',
+            '      integer(c_int), value :: real_me_id',
+            '      integer(c_size_t), value :: event_count',
+            '      real(c_double), intent(in) :: momenta(*)',
+            '      real(c_double), intent(in) :: g_strong(*)',
+            '      integer(c_int32_t), intent(in) :: flavour(*)',
+            '      real(c_double), intent(out) :: squared_orders(*)',
+            '    end function',
+            '    type(c_ptr) function mg7_nlo_real_last_error(handle) bind(C)',
+            '      import :: c_ptr',
+            '      type(c_ptr), value :: handle',
+            '    end function',
+            '  end interface',
+            '',
+            'contains',
+            '',
+            '  subroutine print_bridge_error(prefix)',
+            '    character(len=*), intent(in) :: prefix',
+            '    character(kind=c_char), pointer :: chars(:)',
+            '    character(len=1024) :: message',
+            '    type(c_ptr) :: pointer',
+            '    integer :: index',
+            '    message = ""',
+            '    pointer = mg7_nlo_real_last_error(context)',
+            '    if (c_associated(pointer)) then',
+            '      call c_f_pointer(pointer, chars, (/ 1024 /))',
+            '      do index = 1, 1024',
+            '        if (chars(index) == c_null_char) exit',
+            '        message(index:index) = chars(index)',
+            '      end do',
+            '    end if',
+            '    write(*,\'(A,A,A)\') trim(prefix), ": ", trim(message)',
+            '  end subroutine',
+            '',
+            '  subroutine initialize_bridge()',
+            '    character(kind=c_char, len=1024) :: param_card, library_dir',
+            '    character(kind=c_char, len=64) :: backend',
+            '    character(len=1024) :: env_value',
+            '    integer(c_int) :: status',
+            '    integer :: length, env_status',
+            '    if (initialization_attempted) return',
+            '    initialization_attempted = .true.',
+            '    param_card = "auto"',
+            '    library_dir = "auto"',
+            '    backend = "scalar"',
+            '    env_value = ""',
+            '    call get_environment_variable("MG7_NLO_REAL_PARAM_CARD", &',
+            '      env_value, length=length, status=env_status)',
+            '    if (env_status == 0 .and. length > 0) &',
+            '      param_card = env_value(1:length)',
+            '    env_value = ""',
+            '    call get_environment_variable("MG7_NLO_REAL_LIBRARY_DIR", &',
+            '      env_value, length=length, status=env_status)',
+            '    if (env_status == 0 .and. length > 0) &',
+            '      library_dir = env_value(1:length)',
+            '    env_value = ""',
+            '    call get_environment_variable("MG7_NLO_REAL_BACKEND", &',
+            '      env_value, length=length, status=env_status)',
+            '    if (env_status == 0 .and. length > 0) &',
+            '      backend = env_value(1:length)',
+            '    if (trim(backend) == "fortran" .or. &',
+            '        trim(backend) == "off" .or. trim(backend) == "none") then',
+            '      write(*,\'(A)\') &',
+            '        "MG7 NLO real offload disabled; using Fortran fallback"',
+            '      return',
+            '    end if',
+            '    status = mg7_nlo_real_initialize(context, &',
+            '      trim(param_card)//c_null_char, &',
+            '      trim(library_dir)//c_null_char, trim(backend)//c_null_char)',
+            '    if (status /= 0_c_int) then',
+            '      call print_bridge_error("MG7 NLO real bridge unavailable")',
+            '      return',
+            '    end if',
+            '    bridge_available = .true.',
+            '    write(*,\'(A,A,A,I0)\') &',
+            '      "MG7 NLO real offload initialized: backend=", &',
+            '      trim(backend), ", real_libraries=", %d' % real_count,
+            '  end subroutine',
+            '',
+            'end module',
+            '',
+            'subroutine mg7_nlo_real_try(p, ret_amp_split, wgt, &',
+            '    nfksprocess, real_flav_idx, success)',
+            '  use, intrinsic :: iso_c_binding',
+            '  use mg7_nlo_real_offload_state',
+            '  implicit none',
+            "  include 'nexternal.inc'",
+            "  include 'orders.inc'",
+            '  real(c_double), intent(in) :: p(0:3,nexternal)',
+            '  real(c_double), intent(out) :: ret_amp_split(amp_split_size)',
+            '  real(c_double), intent(out) :: wgt',
+            '  integer, intent(in) :: nfksprocess, real_flav_idx',
+            '  logical, intent(out) :: success',
+            '  real(c_double) :: momenta(4*nexternal), g_strong(1)',
+            '  real(c_double) :: local(%d), ans_max' % max_local,
+            '  integer(c_int32_t) :: flavour(1)',
+            '  integer :: local_to_global(%d)' % max_local,
+            '  integer :: real_me_id, nlocal, ipart, imu, index',
+            '  integer(c_int) :: status',
+            '  double precision g, all_g',
+            "  common /strong/ g, all_g",
+            '  success = .false.',
+            '  ret_amp_split(:) = 0d0',
+            '  wgt = 0d0',
+            '  real_me_id = 0',
+            '  nlocal = 0',
+            '  local_to_global(:) = 0',
+            '  select case (nfksprocess)',
+        ]
+        source.extend(cases)
+        source.extend([
+            '  case default',
+            '    return',
+            '  end select',
+            '  call initialize_bridge()',
+            '  if (.not. bridge_available) return',
+            '  if (real_unavailable(real_me_id)) return',
+            '  do imu = 0, 3',
+            '    do ipart = 1, nexternal',
+            '      momenta(imu*nexternal + ipart) = p(imu,ipart)',
+            '    end do',
+            '  end do',
+            '  g_strong(1) = g',
+            '  flavour(1) = int(real_flav_idx - 1, c_int32_t)',
+            '  local(:) = 0d0',
+            '  status = mg7_nlo_real_evaluate(context, &',
+            '    int(real_me_id,c_int), 1_c_size_t, momenta, g_strong, &',
+            '    flavour, local)',
+            '  if (status /= 0_c_int) then',
+            '    real_unavailable(real_me_id) = .true.',
+            '    call print_bridge_error(&',
+            '      "MG7 NLO real ME disabled; using Fortran fallback")',
+            '    return',
+            '  end if',
+            '  ans_max = maxval(abs(local(1:nlocal)))',
+            '  do index = 1, nlocal',
+            '    wgt = wgt + local(index)',
+            '    if (abs(local(index)) > ans_max*1d-12) &',
+            '      ret_amp_split(local_to_global(index)) = local(index)',
+            '  end do',
+            '  if (abs(wgt) < ans_max*1d-12) wgt = 0d0',
+            '  success = .true.',
+            'end subroutine',
+        ])
+        with open(pjoin(process_path, 'nlo_real_offload.f90'), 'w') as stream:
+            stream.write('\n'.join(source) + '\n')
+
+        chooser_path = pjoin(process_path, 'real_me_chooser.f')
+        with open(chooser_path) as stream:
+            chooser = stream.read()
+        scalar = re.compile(r'(SUBROUTINE\s+SMATRIX_REAL)\s*\(', re.I)
+        vector = re.compile(
+            r'(RECURSIVE\s+SUBROUTINE\s+SMATRIX_REAL_VEC)\s*\(', re.I)
+        chooser, scalar_count = scalar.subn(
+            r'\1_FORTRAN(', chooser, count=1)
+        chooser, vector_count = vector.subn(
+            r'\1_FORTRAN(', chooser, count=1)
+        if scalar_count != 1 or vector_count != 1:
+            raise RuntimeError('cannot install NLO real Fortran routing in %s' %
+                               chooser_path)
+        wrappers = """
+
+      SUBROUTINE SMATRIX_REAL(P,RET_AMP_SPLIT,WGT)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'fks_info.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL),RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE PRECISION WGT
+      INTEGER NFKSPROCESS
+      LOGICAL SUCCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      CALL MG7_NLO_REAL_TRY(P,RET_AMP_SPLIT,WGT,NFKSPROCESS,
+     $ REAL_FLAVOR_INDEX_D(NFKSPROCESS),SUCCESS)
+      IF (.NOT.SUCCESS) CALL SMATRIX_REAL_FORTRAN(P,RET_AMP_SPLIT,WGT)
+      RETURN
+      END
+
+      RECURSIVE SUBROUTINE SMATRIX_REAL_VEC(P,RET_AMP_SPLIT,WGT,
+     $ IVEC,NFKSPROCESS,REAL_FLAV_IDX)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL),RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE PRECISION WGT
+      INTEGER IVEC,NFKSPROCESS,REAL_FLAV_IDX
+      LOGICAL SUCCESS
+      CALL MG7_NLO_REAL_TRY(P,RET_AMP_SPLIT,WGT,NFKSPROCESS,
+     $ REAL_FLAV_IDX,SUCCESS)
+      IF (.NOT.SUCCESS) CALL SMATRIX_REAL_VEC_FORTRAN(P,RET_AMP_SPLIT,
+     $ WGT,IVEC,NFKSPROCESS,REAL_FLAV_IDX)
+      RETURN
+      END
+"""
+        with open(chooser_path, 'w') as stream:
+            stream.write(chooser.rstrip() + wrappers)
+
+        directories = ' '.join(
+            real['library_process_id']
+            for real in manifest['real_matrix_elements'])
+        fragment = [
+            '# Generated scalar NLO-real production routing.',
+            'NLO_REAL_BACKEND ?= scalar',
+            'NLO_REAL_FPTYPE ?= d',
+            'NLO_REAL_DIRS := %s' % directories,
+            'NLO_REAL_STAMP := .nlo_real_$(NLO_REAL_BACKEND)_$(NLO_REAL_FPTYPE).stamp',
+            'NLO_REAL_INPUTS := nlo_real.mk nlo_real_bridge.cc '
+            'nlo_real_bridge.h nlo_real_bridge_config.h umami.h '
+            '$(foreach directory,$(NLO_REAL_DIRS),$(wildcard ../$(directory)/*))',
+            'FILES += nlo_real_offload.o',
+            'FKSSA += nlo_real_offload.o',
+            'NLO_REAL_LINKLIBS := -L$(HERE) -lnlo_real_bridge '
+            "-Wl,-rpath,'$$ORIGIN' -lstdc++ -ldl",
+            'LINKLIBS += $(NLO_REAL_LINKLIBS)',
+            'LINKLIBSSUD += $(NLO_REAL_LINKLIBS)',
+            '',
+            '$(NLO_REAL_STAMP): $(NLO_REAL_INPUTS)',
+            '\t$(MAKE) -f nlo_real.mk BACKEND=$(NLO_REAL_BACKEND) '
+            'FPTYPE=$(NLO_REAL_FPTYPE) all',
+            '\ttouch $@',
+            '',
+            'nlo_real_offload.o: nlo_real_offload.f90 $(NLO_REAL_STAMP)',
+            '\t$(FC) $(FFLAGS) -ffree-line-length-none -c $< -o $@',
+        ]
+        with open(pjoin(process_path, 'nlo_real_offload.mk'), 'w') as stream:
+            stream.write('\n'.join(fragment) + '\n')
 
     def finalize_nlo_model(self, model):
         """Run the one shared tree-level model/common conversion pass."""
