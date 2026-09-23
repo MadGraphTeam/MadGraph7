@@ -47,7 +47,11 @@ class Step(object):
               callable(interface) -> str for a lesson whose wording depends on
               the machine it runs on (whether madspace is already installed,
               say).
-    hint      printed by the `hint` command; falls back to nothing.
+    hint      printed by the `hint` command; falls back to nothing.  May be a
+              callable(interface) -> str, for a hint which has to name what
+              the reader actually did -- the process they generated, which
+              depends on whether they took a detour; resolve it with
+              get_hint().
     solution  the command line this step is waiting for.  Printed by `next` and
               `solution` -- never executed, the user always types it.  May be a
               callable(interface) -> str, for a step whose command depends on
@@ -62,6 +66,12 @@ class Step(object):
               `launch` step leads to is the case that matters: it is asked by
               the run interface in the middle of the command, so this is the
               only way a step can say anything there.
+    question_progress
+              callable(interface, line) -> str or None, called with each answer
+              given to such a question and printed under it when it returns
+              something.  For a lesson which has more to say than fits at the
+              top of a question: the rest is said as the reader gets to it,
+              once the answer it follows from has been typed.
     on_failure
               printed when a command which would have triggered this step
               *raised* instead of running, before the generic "that command did
@@ -85,11 +95,21 @@ class Step(object):
               words -- `generate ... $ a` against `generate ... / a` -- give it
               a callable key; step_for tries sticky callables first, so it
               still shields the steps behind it.
+    gate      callable(interface, line) -> True to let the step fire, or a
+              string saying why it may not.  For a lesson which only makes
+              sense against the state its command was supposed to leave -- the
+              bsm tutorial's second lesson reads the model's coupling orders
+              and every line of it is false unless what got loaded is an EFT.
+              The command has already run: a refused gate prints the string and
+              leaves the session where it is, so the reader can load the right
+              thing and take the same step again.  Checked by the mixin, not by
+              step_for, which has to answer the same way with no interface at
+              all (`tutorial index`, `skip N`).
     """
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
                  setup=None, title=None, question_hint=None, on_failure=None,
-                 sticky=False, entry=None):
+                 sticky=False, entry=None, gate=None, question_progress=None):
         self.key = key
         self.entry = entry
         self.text = text
@@ -99,8 +119,32 @@ class Step(object):
         self.setup = setup
         self.title = title
         self.question_hint = question_hint
+        self.question_progress = question_progress
         self.on_failure = on_failure
         self.sticky = sticky
+        self.gate = gate
+
+    def refusal(self, interface=None, line=None):
+        """Why this step may not fire yet, or None when it may.
+
+        A gate that raises lets the step through: a lesson is not worth
+        withholding over a broken check.
+        """
+
+        if self.gate is None:
+            return None
+        try:
+            verdict = self.gate(interface, line)
+        except Exception:
+            return None
+        if verdict is True:
+            return None
+        if isinstance(verdict, str) and verdict:
+            return verdict
+        if verdict:
+            return None
+        return ('This lesson needs what that command was meant to leave '
+                'behind, so the tutorial stays where it is.')
 
     def get_failure_advice(self, interface=None):
         """What to say when a command meant for this step did not run."""
@@ -129,6 +173,16 @@ class Step(object):
         if nb_args > 1:
             return self.text(interface, line)
         return self.text(interface)
+
+    def get_hint(self, interface=None):
+        """The hint for this step, resolved against the session."""
+
+        if callable(self.hint):
+            try:
+                return self.hint(interface)
+            except Exception:
+                return None
+        return self.hint
 
     def get_solution(self, interface=None):
         """The command this step is waiting for, resolved against the session.
@@ -952,6 +1006,23 @@ class TutorialSession(object):
             except Exception:
                 return None
         return hint
+
+    def question_progress(self, line, interface=None):
+        """What the current step has to say about `line`, answered to a
+        question it is watching, or None.
+
+        The step that asked for the command is the current one while that
+        command runs, exactly as for question_hint.
+        """
+
+        step = self.current
+        hook = step.question_progress if step is not None else None
+        if not callable(hook):
+            return None
+        try:
+            return hook(interface, line)
+        except Exception:
+            return None
 
     def progress(self):
         """(done, total) for the prompt and `status`."""

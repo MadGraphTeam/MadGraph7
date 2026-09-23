@@ -161,6 +161,12 @@ class TutorialMixin(object):
             return stop
 
         index, step = found
+        # a lesson built on state the command was meant to leave: it did not,
+        # so say what is missing and stay where we are (Step.gate)
+        refusal = step.refusal(self, line)
+        if refusal is not None:
+            emit(refusal)
+            return stop
         if step.setup:
             step.setup(self)
 
@@ -214,8 +220,9 @@ class TutorialMixin(object):
         if step is None:
             return
         solution = step.get_solution(self)
-        if step.hint:
-            emit(step.hint)
+        hint = step.get_hint(self)
+        if hint:
+            emit(hint)
         elif solution:
             emit("Try:\n%s%s" % (self._tutorial_prompt_text(), solution))
         else:
@@ -466,11 +473,14 @@ def _arm_question_hooks(session, interface=None):
     """
 
     extended_cmd.question_hint = lambda: _question_hint(session, interface)
+    extended_cmd.question_progress = \
+        lambda line: _question_progress(session, line, interface)
     extended_cmd.suppress_timeout = True
 
 
 def _disarm_question_hooks():
     extended_cmd.question_hint = None
+    extended_cmd.question_progress = None
     extended_cmd.suppress_timeout = False
 
 
@@ -479,3 +489,10 @@ def _question_hint(session, interface=None):
 
     hint = session.question_hint(interface)
     return to_terminal(hint) if hint else None
+
+
+def _question_progress(session, line, interface=None):
+    """What the current step says about an answer just given, styled."""
+
+    text = session.question_progress(line, interface)
+    return to_terminal(text) if text else None

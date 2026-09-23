@@ -32,6 +32,7 @@ import unittest
 import madgraph
 import madgraph.interface.madgraph_interface as mg_interface
 import madgraph.interface.tutorials as tutorials
+import madgraph.interface.tutorials.bsm as bsm
 import madgraph.interface.tutorials.mixin as tutorial_mixin
 import madgraph.interface.tutorial_text_nlo as legacy_nlo
 import madgraph.interface.tutorial_text_madloop as legacy_madloop
@@ -2518,6 +2519,401 @@ class TutorialWaitingForTest(unittest.TestCase):
         self.assertTrue(captured)
         self.assertIn(steps[0].get_solution(), captured[-1])
         self.assertNotIn(steps[1].get_solution(), captured[-1])
+
+
+class TutorialGateTest(unittest.TestCase):
+    """A lesson which needs the state its command was meant to leave.
+
+    The bsm tutorial is the case: everything after its intro is about the
+    EFT's `NP` order, so `import model sm` must not take the reader into it.
+    """
+
+    class _Model(object):
+
+        def __init__(self, name):
+            self.name = name
+
+        def get(self, key):
+            return {'name': self.name,
+                    'particles': ['p'] * 10,
+                    'interactions': ['v'] * 20}[key]
+
+    def _run(self, model_name, line):
+        """The bsm intro, then `line` with `model_name` loaded."""
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            interface = _Recording()
+            interface._curr_model = None
+            tutorial_mixin.attach(interface, tutorials.start('bsm'))
+            interface.postcmd(None, 'tutorial bsm')
+            if model_name:
+                interface._curr_model = self._Model(model_name)
+            interface.postcmd(None, line)
+            return interface._tutorial_session.index, captured[-1]
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+
+    def test_the_standard_model_does_not_open_lesson_two(self):
+        index, text = self._run('sm', 'import model sm')
+        self.assertEqual(index, 0)
+        self.assertIn('sm', text)
+        self.assertIn('import model %s' % bsm.MODEL, text)
+        # not the lesson itself
+        self.assertNotIn('display coupling_order', text)
+
+    def test_no_model_at_all_is_told_so(self):
+        index, text = self._run(None, 'import model nowhere')
+        self.assertEqual(index, 0)
+        self.assertIn('No model is loaded', text)
+
+    def test_an_eft_does_open_it(self):
+        index, text = self._run(bsm.MODEL, 'import model %s' % bsm.MODEL)
+        self.assertEqual(index, 1)
+        self.assertIn('display coupling_order', text)
+
+    def test_the_readers_own_restriction_is_an_eft_too(self):
+        """`customize_model --save=top` reloads as SMEFTatNLO-top, and the
+        gate has to let that through -- the tutorial ends on it."""
+
+        self.assertIs(bsm._is_smeft(_ModelHolder(bsm.RELOAD.split()[-1])), True)
+
+    def test_a_gate_which_raises_lets_the_step_through(self):
+        """A broken check is not a reason to withhold a lesson."""
+
+        def _boom(interface, line):
+            raise RuntimeError('no')
+
+        step = Step('generate', 'TEXT', gate=_boom)
+        self.assertIsNone(step.refusal(None, 'generate p p > t t~'))
+
+    def test_a_gate_that_says_nothing_still_refuses(self):
+        step = Step('generate', 'TEXT', gate=lambda i, l: False)
+        self.assertIn('stays where it is', step.refusal(None, 'generate'))
+
+    def test_the_index_of_a_gated_step_needs_no_interface(self):
+        """step_for answers the same with no interface at all: `tutorial
+        index` and `skip N` walk the tutorial without one."""
+
+        session = TutorialSession(tutorials.get('bsm'))
+        session.index = 0
+        found = session.step_for('import model %s' % bsm.MODEL)
+        self.assertEqual(found[0], 1)
+
+
+class BsmInterferenceDetourTest(_TutorialTestCase):
+    """The pure-interference lesson is a side quest, not a step of the line.
+
+    The main line goes from `linear and quadratic` straight to the output; a
+    reader who asks for `NP^2==2` gets the lesson and is put back on it.
+    """
+
+    name = 'bsm'
+
+    def session_at(self, title):
+        session = tutorials.start('bsm')
+        session.index = [i for i, step in enumerate(session.tutorial.steps)
+                         if step.title == title][0]
+        return session
+
+    def test_the_main_line_steps_over_it(self):
+        session = self.session_at('linear and quadratic')
+        found = session.step_for(bsm.OUTPUT_BEFORE)
+        self.assertEqual(found[1].title, 'the parameters, on paper')
+
+    def test_the_process_line_takes_the_detour(self):
+        session = self.session_at('linear and quadratic')
+        found = session.step_for(bsm.LINEAR)
+        self.assertEqual(found[1].title, 'the interference on its own (detour)')
+
+    def test_the_detour_leads_back_to_the_main_line(self):
+        session = self.session_at('the interference on its own (detour)')
+        found = session.step_for(bsm.OUTPUT_BEFORE)
+        self.assertEqual(found[1].title, 'the parameters, on paper')
+
+    def test_both_routes_reach_the_end(self):
+        """path_to walks the main line; the detour is reached by its entry."""
+
+        steps = tutorials.get('bsm').steps
+        detour = [i for i, s in enumerate(steps)
+                  if s.title == 'the interference on its own (detour)'][0]
+        route = TutorialSession(tutorials.get('bsm')).path_to(detour)
+        self.assertIsNotNone(route)
+        self.assertEqual(route[-1], bsm.LINEAR)
+
+    def test_the_regeneration_asks_for_the_readers_own_process(self):
+        """After the detour the process in memory is not the main-line one,
+        and the lesson which asks for it again has to ask for theirs."""
+
+        class _History(object):
+            def __init__(self, *lines):
+                self.history = list(lines)
+
+        main = _History('import model %s' % bsm.MODEL, bsm.ONE_INSERTION,
+                        bsm.OUTPUT_BEFORE)
+        detoured = _History('import model %s' % bsm.MODEL, bsm.ONE_INSERTION,
+                            bsm.LINEAR, bsm.OUTPUT_BEFORE)
+
+        step = [s for s in tutorials.get('bsm').steps
+                if s.title == 'a restriction of your own'][0]
+        self.assertEqual(step.get_solution(main), bsm.ONE_INSERTION)
+        self.assertEqual(step.get_solution(detoured), bsm.LINEAR)
+        self.assertIn(bsm.LINEAR, step.get_hint(detoured))
+        # and with nothing to read, the main line's process
+        self.assertEqual(step.get_solution(None), bsm.ONE_INSERTION)
+
+
+class CallableHintTest(unittest.TestCase):
+    """`hint` resolves a callable the way `solution` does."""
+
+    def test_a_callable_hint_is_called(self):
+        step = Step('generate', 'TEXT', hint=lambda interface: 'HINT')
+        self.assertEqual(step.get_hint(None), 'HINT')
+
+    def test_a_hint_which_raises_is_no_hint(self):
+        def _boom(interface):
+            raise RuntimeError('no')
+
+        self.assertIsNone(Step('generate', 'TEXT', hint=_boom).get_hint(None))
+
+    def test_a_plain_string_is_returned_as_is(self):
+        self.assertEqual(Step('generate', 'TEXT', hint='HINT').get_hint(None),
+                         'HINT')
+
+
+class QuestionProgressTest(unittest.TestCase):
+    """A step that says the next thing once the reader has done the previous.
+
+    The hint at the top of a question is read once, when none of it applies
+    yet; what follows an answer has to be printed when that answer is given.
+    """
+
+    def capture_tutorial(self, call):
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                # MG7 logs the style as a second argument ('$MG:BOLD'), which
+                # getMessage() would try to interpolate into the text
+                captured.append(record.msg)
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            call()
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return captured
+
+    def test_a_question_prints_what_the_hook_returns(self):
+        """The plumbing: extended_cmd calls it with the answer just given."""
+
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        question = extended_cmd.SmartQuestion('A question?',
+                                              allow_arg=['done'],
+                                              default='done')
+        question.lastcmd = 'set DIM64F2L all 0'
+        extended_cmd.question_progress = lambda line: 'SAW [%s]' % line
+        try:
+            captured = self.capture_tutorial(question.reask)
+        finally:
+            extended_cmd.question_progress = None
+        self.assertTrue(any('SAW [set DIM64F2L all 0]' in text
+                            for text in captured), captured)
+
+    def test_no_hook_prints_nothing(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        self.assertIsNone(extended_cmd.get_question_progress('set x 0'))
+
+    def test_a_hook_which_raises_prints_nothing(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        def _boom(line):
+            raise RuntimeError('no')
+
+        extended_cmd.question_progress = _boom
+        try:
+            self.assertIsNone(extended_cmd.get_question_progress('set x 0'))
+        finally:
+            extended_cmd.question_progress = None
+
+    def test_attach_arms_it_and_detach_clears_it(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        interface = _Recording()
+        tutorial_mixin.attach(interface, tutorials.start('bsm'))
+        try:
+            self.assertTrue(callable(extended_cmd.question_progress))
+        finally:
+            tutorial_mixin.detach(interface)
+        self.assertIsNone(extended_cmd.question_progress)
+
+    def test_the_session_asks_the_current_step(self):
+        tutorial = Tutorial('t', 'title', order='sequence', steps=[
+            Step('generate', 'ONE', title='one', solution='output X'),
+            Step('output', 'TWO', title='two',
+                 question_progress=lambda interface, line: 'GOT %s' % line)])
+        session = TutorialSession(tutorial)
+        session.advance(1)
+        self.assertEqual(session.question_progress('set a 0'), 'GOT set a 0')
+
+    def test_a_step_without_one_says_nothing(self):
+        session = TutorialSession(Tutorial('t', 'title', order='sequence',
+                                  steps=[Step('generate', 'ONE', title='one')]))
+        session.advance(0)
+        self.assertIsNone(session.question_progress('set a 0'))
+
+
+class BsmCustomizeProgressTest(unittest.TestCase):
+    """What the bsm lesson adds while customize_model is being answered."""
+
+    class _Interface(object):
+        _curr_model = None
+
+    def progress(self, interface, *lines):
+        return [bsm._customize_question_progress(interface, line)
+                for line in lines]
+
+    def test_the_first_set_earns_the_display_lines(self):
+        interface = self._Interface()
+        first, second = self.progress(interface, 'set DIM64F2L all 0',
+                                      'set DIM64F4L all 0')
+        self.assertIn('display parameters DIM64F2L', first)
+        self.assertIn('display couplings', first)
+        # said once: the reader is answering a question, not reading a page
+        self.assertIsNone(second)
+
+    def test_the_first_display_earns_how_to_read_it(self):
+        interface = self._Interface()
+        self.progress(interface, 'set DIM64F2L all 0')
+        first, second = self.progress(interface, 'display parameters DIM64F2L',
+                                      'display couplings GC_73')
+        self.assertIn('unfolds it down to the', first)
+        self.assertIn('before `done` commits it', first)
+        self.assertIsNone(second)
+
+    def test_nothing_else_is_commented_on(self):
+        interface = self._Interface()
+        for line in ('done', '', 'set_zero cQe1', 'help'):
+            self.assertIsNone(
+                bsm._customize_question_progress(interface, line), line)
+
+    def test_the_opening_hint_stays_short(self):
+        """The two blocks that follow an answer are not in it, and neither is
+        the `-NLO` paragraph that used to close it."""
+
+        hint = bsm._customize_question_hint(self._Interface())
+        self.assertIn('set DIM64F2L all 0', hint)
+        self.assertNotIn('display', hint)
+        self.assertNotIn('set NAME free', hint)
+        self.assertLess(len(hint.split('\n')), 15, hint)
+
+
+class CustomizeQuestionHintTest(unittest.TestCase):
+    """The bsm hint shown while customize_model asks its question.
+
+    It invites a `display` of what the first `set` did, and the coupling it
+    names has to be one of the reader's own model: `display couplings` matches
+    on the coupling name, so a name out of thin air would send them nowhere.
+    """
+
+    class _Parameter(object):
+        def __init__(self, name, lhablock):
+            self.name = name
+            self.lhablock = lhablock
+
+    class _Coupling(object):
+        def __init__(self, name, expr):
+            self.name = name
+            self.expr = expr
+
+    def model(self, couplings):
+        """A model whose DIM64F2L block holds cQe1, with those couplings."""
+
+        parameters = {('external',): [
+            self._Parameter('mdl_cQe1', 'DIM64F2L'),
+            self._Parameter('mdl_Lambda', 'DIM6')]}
+
+        class _Model(object):
+            def get(inner, key):
+                return {'parameters': parameters, 'couplings': couplings}[key]
+
+        class _Interface(object):
+            _curr_model = _Model()
+
+        return _Interface()
+
+    def test_it_names_a_coupling_the_restriction_kills(self):
+        interface = self.model({('QED',): [
+            self._Coupling('GC_1', '-(mdl_ee*mdl_complexi)/3.'),
+            self._Coupling('GC_73', '(mdl_cQe1*mdl_complexi)/mdl_Lambda__exp__2')]})
+        self.assertEqual(bsm._coupling_using(interface), 'GC_73')
+        self.assertIn('display couplings GC_73',
+                      bsm._customize_question_progress(interface,
+                                                       'set DIM64F2L all 0'))
+
+    def test_the_shortest_expression_wins(self):
+        """One coefficient over Lambda^2 shows the point; a sum of four does
+        not."""
+
+        interface = self.model({('QED',): [
+            self._Coupling('GC_9', '(2*mdl_cQe1*mdl_complexi)/mdl_Lambda__exp__2'
+                                   ' + (mdl_cQe1*mdl_complexi)/mdl_Lambda__exp__2'),
+            self._Coupling('GC_73', '(mdl_cQe1*mdl_complexi)/mdl_Lambda__exp__2')]})
+        self.assertEqual(bsm._coupling_using(interface), 'GC_73')
+
+    def test_a_model_with_no_such_coupling_still_invites_display(self):
+        interface = self.model({('QED',): [
+            self._Coupling('GC_1', '-(mdl_ee*mdl_complexi)/3.')]})
+        self.assertIsNone(bsm._coupling_using(interface))
+        said = bsm._customize_question_progress(interface, 'set DIM64F2L all 0')
+        self.assertIn('display couplings NAME', said)
+        self.assertIn('display parameters DIM64F2L', said)
+
+    def test_it_survives_an_interface_with_no_model(self):
+        class _Empty(object):
+            _curr_model = None
+
+        self.assertIsNone(bsm._coupling_using(_Empty()))
+        self.assertIn('display parameters DIM64F2L',
+                      bsm._customize_question_progress(_Empty(),
+                                                       'set DIM64F2L all 0'))
+
+    def test_the_step_uses_it(self):
+        """The hint reaches the question through the step that asks for
+        customize_model."""
+
+        session = tutorials.start('bsm')
+        step = [s for s in session.tutorial.steps
+                if s.get_solution() == bsm.CUSTOMIZE][0]
+        session.index = session.tutorial.steps.index(step)
+
+        class _Empty(object):
+            _curr_model = None
+
+        self.assertIn('set DIM64F2L all 0', session.question_hint(_Empty()))
+
+
+class _ModelHolder(object):
+    """An interface holding one model, for the gate check above."""
+
+    def __init__(self, name):
+        self._curr_model = TutorialGateTest._Model(name)
 
 
 class DisplayModellistTest(unittest.TestCase):

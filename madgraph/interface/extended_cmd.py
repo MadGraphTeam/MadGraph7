@@ -48,11 +48,18 @@ logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 #
 #   question_hint      str, or callable() -> str, shown under a question in
 #                      place of the generic "type 'help'" line
+#   question_progress  callable(line) -> str or None, called after each answer
+#                      inside a question, with what was just typed. Whatever it
+#                      returns is printed under the question as it is asked
+#                      again. This is how a lesson says the next thing once the
+#                      reader has done the previous one, instead of printing
+#                      everything it has at the top and hoping it is read.
 #   suppress_timeout   answer a question in your own time. Everywhere else MG7
 #                      times a question out so an unattended script cannot hang;
 #                      a tutorial is the opposite case, since there is someone
 #                      reading by definition.
 question_hint = None
+question_progress = None
 suppress_timeout = False
 
 
@@ -146,6 +153,19 @@ def get_question_hint():
         except Exception:
             hint = None
     return hint or "Need help here? type 'help'"
+
+
+def get_question_progress(line):
+    """What to add under a question after `line` was answered to it, if
+    anything. None -- the usual answer -- prints nothing."""
+
+    hook = question_progress
+    if not callable(hook):
+        return None
+    try:
+        return hook(line)
+    except Exception:
+        return None
 
 try:
     import madgraph.various.misc as misc
@@ -2589,6 +2609,10 @@ class SmartQuestion(BasicCmd):
             if not prev_timer:
                 self.question = pat.sub('',self.question)
             self.display_question()
+            # a lesson which has something to say about the answer just given
+            progress = get_question_progress(self.lastcmd)
+            if progress:
+                logger_tuto.info(progress, '$MG:BOLD')
 
         if self.mother_interface:
             answer = self.mother_interface.check_answer_in_input_file(self, 'EOF', 
