@@ -32,6 +32,15 @@ from . import launch_plugin
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
 
+def template_sources(dirpath, extensions=('.h', '.cc')):
+    """The C++ sources of a template directory, sorted. Only regular files with
+    a source extension: whatever else lies there (.DS_Store, editor backups
+    such as foo.cc~ or .#foo.cc, merge leftovers) must not be copied into every
+    generated output."""
+    return sorted(f for f in os.listdir(dirpath)
+                  if f.endswith(extensions) and not f.startswith('.')
+                  and os.path.isfile(pjoin(dirpath, f)))
+
 # AV - define the plugin's process exporter
 # (NB: this is the plugin's main class, enabled in the new_output dictionary in __init__.py)
 class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
@@ -95,21 +104,16 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     from_template = {'.': relative_path_list(home_path, ['COPYRIGHT', 'COPYING', 'COPYING.LESSER']),
                      'src': relative_path_list(madmatrix_templates, [
-                         'mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h',
-                         'constexpr_math.h', 'read_slha.h', 'read_slha.cc'
+                         'read_slha.h', 'read_slha.cc'
                      ]),
-                     'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h', 'color_sum.cc',
-                                      'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                                      'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
-                                      'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
-                                      'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
-                                      'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',
-                                      'MemoryAccessNumerators.h', 'MemoryAccessDenominators.h',
-                                      'MemoryAccessChannelIds.h', 'MemoryAccessIflavorVec.h',
-                                      'CrossSectionKernels.cc', 'CrossSectionKernels.h',
-                                      'MatrixElementKernels.cc', 'MatrixElementKernels.h',
-                                      'EventStatistics.h',
-                                      'umami.h', 'umami.cc', 'rambo.h']),
+                     # Backend-owned skeleton files live only under backend/<variant>/ now
+                     # (see backend_variants below); only genuinely backend-agnostic files
+                     # (no backend/ counterpart) are copied flat into SubProcesses/. umami.h
+                     # is the only one needed outside standalone mode too (it's the header
+                     # for backend/<variant>/umami.cc's UMAMI API); nvtx.h is
+                     # standalone-driver-only (see _standalone_extra_files below). The
+                     # rambo/random-number sources live once in src/rambo/
+                     'SubProcesses': relative_path_list(madmatrix_templates, ['umami.h']),
                      # run_card.toml is generated in finalize() (ProcessExporterMG7.create_run_card)
                      # from the template, not copied verbatim.
                      # Default cards for the optional post-processing tools
@@ -125,20 +129,35 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                    'madanalysis5_hadron_card_default.dat',
                                    'rivet_card_default.dat'])}
 
-    to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
-                    'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                    'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
-                    'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
-                    'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
-                    'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',
-                    'MemoryAccessNumerators.h', 'MemoryAccessDenominators.h',
-                    'MemoryAccessChannelIds.h', 'MemoryAccessIflavorVec.h',
-                    'CrossSectionKernels.cc', 'CrossSectionKernels.h',
-                    'MatrixElementKernels.cc', 'MatrixElementKernels.h',
-                    'EventStatistics.h',
-                    'MemoryBuffers.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'MemoryAccessCouplings.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'umami.h', 'umami.cc', 'rambo.h']
+    # Backend split: mirror template_files/madmatrix/backend/{common,cpu,simd,gpu}/
+    # as a top-level backend/ dir, sibling of SubProcesses/src/lib; madmatrix.mk
+    # picks the variant (BACKENDDIR) at make time.
+    # backend/common/ holds the files that are identical for every variant; it
+    # is searched after backend/<variant>/ and no file name is in both, since a
+    # quoted #include resolves in the including file's own directory first.
+    backend_variants = ('cpu', 'simd', 'gpu')
+    backend_template_dir = pjoin(madmatrix_templates, 'backend')
+    for _backend_variant in ('common',) + backend_variants:  # plain loop: comprehension wouldn't see the locals above
+        from_template[pjoin('backend', _backend_variant)] = relative_path_list(
+            pjoin(backend_template_dir, _backend_variant),
+            template_sources(pjoin(backend_template_dir, _backend_variant)))
+    del _backend_variant
+
+    # Rambo/random-number files copy in src/rambo/
+    rambo_template_dir = pjoin(madmatrix_templates, 'src', 'rambo')
+    from_template['src/rambo'] = relative_path_list(
+        rambo_template_dir, template_sources(rambo_template_dir))
+
+    # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
+    # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
+    # etc.) are NOT linked into P* at all: they are read straight from the
+    # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
+    # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
+    # once per P* directory, into its own build.<BACKEND>/, and have to be:
+    # they include that directory's generated ProcessData.h, ColorData.h and
+    # ProcessTables.h. Only files with no backend/ counterpart - genuinely
+    # backend-agnostic - stay here.
+    to_link_in_P = ['umami.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     # SubProcesses/makefile is only a dispatcher over the P* directories: it is
@@ -151,7 +170,12 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # 'makefile'.
     p_makefiles = ['madmatrix.mk']
 
-    dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
+    dirs_to_create = ['bin', 'src', 'src/rambo', 'lib', 'Cards', 'SubProcesses',
+                      'backend',
+                      'backend/common',
+                      'backend/cpu',
+                      'backend/simd',
+                      'backend/gpu']
 
     # AV - use a custom UFOModelConverter (model/aloha exporter)
     create_model_class = model_handling.MadMatrixUFOModelConverter
@@ -225,7 +249,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         """Report what a squared-order constraint will produce here.
 
         Supported: the jamps carry an amplitude-order index and the color sum
-        pairs them (color_sum_splitorders.cc, the Fortran GET_MATRIX contract),
+        pairs them (color_sum_cpu_splitorders in backend/{cpu,simd}/color_sum.cc,
+        the Fortran GET_MATRIX contract),
         so a '^2' constraint that keeps only some squared orders gets the
         contribution it asked for rather than the total. That is what makes the
         interference case work -- `u u~ > t t~ QED^2==2` keeps all three
@@ -235,8 +260,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         Not supported: a GPU build of such a process. The device jamp buffers
         are sized for one jamp vector per helicity (ncolor, not njampso), and
         the backend is a make-time choice rather than an output-time one, so
-        the refusal cannot live here: color_sum_splitorders.cc #errors under
-        MGONGPUCPP_GPUIMPL instead. Say so now rather than let a GPU build be
+        the refusal cannot live here: backend/gpu/SigmaKin.cc static_asserts
+        nampso == 1 instead. Say so now rather than let a GPU build be
         the first the user hears of it.
         """
 
@@ -267,8 +292,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
             cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
-        out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
-        return out
+        return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[], **opts):
@@ -302,11 +326,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     p_makefiles = ProcessExporterMadMatrix.p_makefiles + ['madmatrix_standalone.mk']
 
     # Standalone-only template files needed to build check_sa.exe
-    _standalone_extra_files = ['check_sa.cc',
-                               'RamboSamplingKernels.cc', 'RamboSamplingKernels.h',
-                               'CommonRandomNumberKernel.cc', 'CommonRandomNumbers.h',
-                               'RandomNumberKernels.h',
-                               'massless_rambo.h', 'timer.h', 'timermap.h']
+    _standalone_extra_files = ['check_sa.cc', 'nvtx.h', 'timer.h', 'timermap.h']
 
     from_template = dict(ProcessExporterMadMatrix.from_template)
     from_template['SubProcesses'] = (ProcessExporterMadMatrix.from_template['SubProcesses']

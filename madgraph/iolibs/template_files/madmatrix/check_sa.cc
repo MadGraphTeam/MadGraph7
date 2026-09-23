@@ -26,13 +26,15 @@
 #include "mgOnGpuConfig.h"
 
 #include "CPPProcess.h"
+#ifdef MGONGPUCPP_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
+#endif
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
 #include "RandomNumberKernels.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 #include "read_slha.h"
 #include "timermap.h"
 #include "umami.h"
@@ -56,11 +58,7 @@
 
 namespace
 {
-#ifdef MGONGPUCPP_GPUIMPL
-  using namespace mg5amcGpu;
-#else
-  using namespace mg5amcCpu;
-#endif
+  using namespace madmatrix;
 
   // Fixed physics inputs
   fptype kEnergy = 1500.;                  // Ecms = 1.5 TeV and changed for the matrix mode to 1TeV

@@ -1062,7 +1062,8 @@
   //--------------------------------------------------------------------------
   // Compute the direction n[5] of the gauge q[5]
   // TODO: Utilise pvec instead of the whole q
-  __host__ __device__ INLINE void
+  // Genuinely inline (unlike INLINE elsewhere): defined here, not in helas.cu.
+  __host__ __device__ inline void
   define_gauge_dir( const cxtype_amp_sv q[5], // input: gauge
                     fptype_amp_sv n[5] )      // output: direction
  {
@@ -1106,7 +1107,8 @@
 
 //--------------------------------------------------------------------------
 // Compute propagator factor d  from the gauge q[5] and mass
-  __host__ __device__ INLINE void
+// Genuinely inline (unlike INLINE elsewhere): defined here, not in helas.cu.
+  __host__ __device__ inline void
   calculate_propagator_factor( const cxtype_amp_sv q[5], // input: gauge
                                const fptype_amp_sv mass,    // input: mass
                                fptype_sv *d )        // output: propagator factor
