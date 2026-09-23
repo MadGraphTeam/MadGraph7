@@ -329,6 +329,7 @@ c
 c Sets the value of the renormalization scale, returned as muR.
 c For backward compatibility, computes the value of alpha_S, and sets 
 c the value of variable scale in common block /to_scale/
+      use couplings, only: G_vec
       implicit none
       include 'genps.inc'
       include 'nexternal.inc'
@@ -365,6 +366,7 @@ c
 c The following is for backward compatibility. DO NOT REMOVE
       scale=muR
       g=sqrt(4d0*pi*alphas(scale))
+      G_vec(vecid)=g
       call update_as_param_vec(vecid)
 c Reset calculatedBorn, because the couplings might have been changed.
 c This is needed in particular for the MC events, because there the

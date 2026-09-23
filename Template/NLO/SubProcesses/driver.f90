@@ -71,6 +71,7 @@ module driver_vec
 ! Real amplitudes and weights
     double precision, allocatable, public :: sreal_amp_split(:,:,:)
     double precision, allocatable, public :: sfx_ev(:,:)
+    logical, allocatable, public :: real_active(:,:)
 
     ! Momenta
 
@@ -162,6 +163,7 @@ module driver_vec
     ! Reals
     allocate(sreal_amp_split(amp_split_size,FKS_configs,vector_size))
     allocate(sfx_ev(FKS_configs,vector_size))
+    allocate(real_active(FKS_configs,vector_size))
     ! Momenta
     allocate(spb(0:3,nexternal-1,0:FKS_configs,vector_size))
     allocate(spb_rot(0:3,nexternal-1,FKS_configs,vector_size))
@@ -233,6 +235,7 @@ subroutine reset_storage()
 ! Real amplitudes and weights
     sreal_amp_split(:,:,:) = 0d0
     sfx_ev(:,:) = 0d0
+    real_active(:,:) = .false.
     ! Momenta
     spb(:,:,:,:) = 0d0
     spb_rot(:,:,:,:) = 0d0
@@ -316,6 +319,7 @@ subroutine deallocate_storage()
 ! Real amplitudes and weights
     if (allocated(sreal_amp_split)) deallocate(sreal_amp_split)
     if (allocated(sfx_ev)) deallocate(sfx_ev)
+    if (allocated(real_active)) deallocate(real_active)
     ! Momenta
     if (allocated(spb)) deallocate(spb)
     if (allocated(spb_rot)) deallocate(spb_rot)

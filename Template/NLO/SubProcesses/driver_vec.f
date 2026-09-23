@@ -501,12 +501,7 @@ C            call update_fks_dir(iFKS)
                sn1_saveamp(:,:,iFKS,ivec)=n1_saveamp(:,:)
             ! endif
 51          continue
-            ! if (passcuts_n1body_vec(iFKS,ivec)) then
-               call smatrix_real_vec(p,real_amp_split,fx_ev,icoup+3,iFKS,
-     $              REAL_FLAVOR_INDEX_D(iFKS))
-               sreal_amp_split(:,iFKS,ivec)=real_amp_split(:)
-               sfx_ev(iFKS,ivec)=fx_ev
-            ! endif
+             real_active(iFKS,ivec)=.true.
          enddo
 
 
@@ -531,6 +526,7 @@ c Pick the first one because that's the one with the soft singularity
          swgt_born(ivec)=wgt_born
 52       continue
       enddo
+      call amplitudes_real_vec(proc_map,vector_size)
       return
       end
 
@@ -709,12 +705,7 @@ C Local parameters
                sn1_saveamp(:,:,iFKS,ivec)=n1_saveamp(:,:)
             ! endif
 51          continue
-            ! if (passcuts_n1body_vec(iFKS,ivec)) then
-               call smatrix_real_vec(p,real_amp_split,fx_ev,icoup+3,iFKS,
-     $              REAL_FLAVOR_INDEX_D(iFKS))
-               sreal_amp_split(:,iFKS,ivec)=real_amp_split(:)
-               sfx_ev(iFKS,ivec)=fx_ev
-            ! endif
+             real_active(iFKS,ivec)=.true.
          enddo
 
 
@@ -738,6 +729,36 @@ c Pick the first one because that's the one with the soft singularity
          sborn_saveamp(:,:,ivec)=born_saveamp(:,:)
          swgt_born(ivec)=wgt_born
 52       continue
+      return
+      end
+
+
+      subroutine amplitudes_real_vec(proc_map,vector_size)
+      use driver_vec
+      use couplings, only: G_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'orders.inc'
+      include 'fks_info.inc'
+      integer proc_map(0:fks_configs,0:fks_configs)
+      integer vector_size,i,iFKS,ivec,coup_step
+      integer coup_index(vector_size)
+      double precision g_strong(vector_size)
+
+      coup_step=4*fks_configs+1
+      do i=1,proc_map(proc_map(0,1),0)
+         iFKS=proc_map(proc_map(0,1),i)
+         do ivec=1,vector_size
+            coup_index(ivec)=(ivec-1)*coup_step+4*(iFKS-1)+4
+            g_strong(ivec)=G_vec(coup_index(ivec))
+         enddo
+         call smatrix_real_vec_batch(sp1(:,:,iFKS,1:vector_size),
+     $        g_strong,sreal_amp_split(:,iFKS,1:vector_size),
+     $        sfx_ev(iFKS,1:vector_size),
+     $        real_active(iFKS,1:vector_size),coup_index,vector_size,
+     $        iFKS,REAL_FLAVOR_INDEX_D(iFKS))
+      enddo
       return
       end
 

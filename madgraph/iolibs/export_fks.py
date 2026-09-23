@@ -1996,9 +1996,37 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 end
                 """
 
+        text_vec_batch = """
+             recursive subroutine smatrix_real_vec_batch(p,g_strong,
+     $            ret_amp_split,wgt,active,coup_index,vector_size,
+     $            nfksprocess,real_flav_idx)
+              implicit none
+              include 'nexternal.inc'
+              include 'orders.inc'
+              integer vector_size,nfksprocess,real_flav_idx,ivec
+              integer coup_index(vector_size)
+              logical active(vector_size)
+              double precision p(0:3,nexternal,vector_size)
+              double precision g_strong(vector_size)
+              double precision ret_amp_split(amp_split_size,vector_size)
+              double precision wgt(vector_size)
+              ret_amp_split(:,:) = 0d0
+              wgt(:) = 0d0
+              do ivec = 1,vector_size
+                 if (active(ivec)) then
+                    call smatrix_real_vec(p(:,:,ivec),
+     $                   ret_amp_split(:,ivec),wgt(ivec),
+     $                   coup_index(ivec),nfksprocess,real_flav_idx)
+                 endif
+              enddo
+              return
+              end
+              """
+
         # Write the file
         writer_me.writelines(text)
         writer_me.writelines(text_vec)
+        writer_me.writelines(text_vec_batch)
         writer_lum.writelines(text1)
         writer_lum.writelines(text1_vec)
         return 0

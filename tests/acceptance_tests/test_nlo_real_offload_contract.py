@@ -560,6 +560,222 @@ class TestNLORealFortranOracle(unittest.TestCase):
         bridge.mg7_nlo_real_last_error.restype = ctypes.c_char_p
         return bridge
 
+    @staticmethod
+    def _host_simd_backend():
+        """Return a host SIMD backend supported by current MadMatrix rules."""
+        flags = ''
+        try:
+            with open('/proc/cpuinfo') as stream:
+                flags = stream.read()
+        except IOError:
+            pass
+        if 'avx512vl' in flags:
+            return 'avx512y', 4
+        if 'avx2' in flags:
+            return 'simd_256', 4
+        if 'sse4_2' in flags:
+            return 'simd_128', 2
+        raise unittest.SkipTest('no supported host SIMD backend')
+
+    def _compile_batch_wrapper_driver(self, output_path, case, backend,
+                                      row, records, active):
+        """Compile a compacting generated-Fortran batch-wrapper probe."""
+        subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
+        vector_size = len(records)
+        source = """
+      PROGRAM CHECK_REAL_BATCH
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INTEGER VECTOR_SIZE
+      PARAMETER (VECTOR_SIZE=%(vector_size)d)
+      DOUBLE PRECISION P(0:3,NEXTERNAL,VECTOR_SIZE)
+      DOUBLE PRECISION G_STRONG(VECTOR_SIZE)
+      DOUBLE PRECISION RET(AMP_SPLIT_SIZE,VECTOR_SIZE),WGT(VECTOR_SIZE)
+      LOGICAL ACTIVE(VECTOR_SIZE)
+      INTEGER COUP_INDEX(VECTOR_SIZE),I,J,K
+      DATA ACTIVE / %(active)s /
+      DO I=1,VECTOR_SIZE
+        READ(*,*) G_STRONG(I)
+        DO J=1,NEXTERNAL
+          READ(*,*) (P(K,J,I),K=0,3)
+        ENDDO
+        COUP_INDEX(I)=I
+      ENDDO
+      CALL SMATRIX_REAL_VEC_BATCH(P,G_STRONG,RET,WGT,ACTIVE,
+     $ COUP_INDEX,VECTOR_SIZE,%(fks_row)d,%(flavour)d)
+      DO I=1,VECTOR_SIZE
+        WRITE(*,*) 'BATCH_LANE',I,WGT(I)
+        DO J=1,AMP_SPLIT_SIZE
+          WRITE(*,*) 'BATCH_GLOBAL',I,J,RET(J,I)
+        ENDDO
+      ENDDO
+      END
+""" % {
+            'vector_size': vector_size,
+            'active': ','.join('.TRUE.' if value else '.FALSE.'
+                               for value in active),
+            'fks_row': row['fks_row'],
+            'flavour': row['fortran_flavour_index'],
+        }
+        source_path = pjoin(subproc, 'check_real_batch.f')
+        with open(source_path, 'w') as stream:
+            stream.write(source)
+
+        misc.compile(cwd=pjoin(output_path, 'Source'))
+        misc.compile(['couplmod'], cwd=subproc)
+        subprocess.check_call([
+            'make', '-f', 'nlo_real.mk', 'BACKEND=%s' % backend,
+            'FPTYPE=d', '-j2'], cwd=subproc)
+        subprocess.check_call([
+            'make', 'nlo_real_offload.o',
+            'NLO_REAL_BACKEND=%s' % backend, '-j2'], cwd=subproc)
+        matrix_objects = [
+            os.path.basename(path)[:-2] + '.o' for path in
+            sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
+        objects = matrix_objects + [
+            'real_me_chooser.o', 'splitorders_stuff.o',
+            'check_real_batch.o', 'nlo_real_offload.o']
+        misc.compile(objects[:-1], cwd=subproc)
+        executable = pjoin(subproc, 'check_real_batch')
+        subprocess.check_call(
+            ['gfortran', '-o', executable] + objects + [
+                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
+                '-L%s' % subproc, '-lnlo_real_bridge',
+                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl'], cwd=subproc)
+
+        points = {point['id']: point for point in case['points']}
+        values = []
+        for record in records:
+            point = points[record['point']]
+            values.append('%.17e' % point['g_strong'])
+            values.extend(' '.join('%.17e' % component
+                                   for component in momentum)
+                          for momentum in point['momenta'])
+        environment = os.environ.copy()
+        environment.update({
+            'MG7_NLO_REAL_BACKEND': backend,
+            'MG7_NLO_REAL_TRACE': '1',
+        })
+        output = subprocess.check_output(
+            [executable], input=('\n'.join(values) + '\n').encode(),
+            cwd=self.tmpdir, env=environment, stderr=subprocess.STDOUT)
+        return output.decode(errors='replace')
+
+    def _run_simd_case(self, name, check_compaction=False):
+        case = self.oracle['cases'][name]
+        output_path = self._generate_case(name, madmatrix=True)
+        process_path = pjoin(
+            output_path, 'SubProcesses', case['subprocess'])
+        with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
+            manifest = json.load(stream)
+        rows = {row['fks_row']: row for row in manifest['fks_rows']}
+        backend, width = self._host_simd_backend()
+        subprocess.check_call([
+            'make', '-f', 'nlo_real.mk', 'BACKEND=%s' % backend,
+            'FPTYPE=d', '-j2'], cwd=process_path)
+        bridge = self._bridge(process_path)
+        context = ctypes.c_void_p()
+        self.assertEqual(
+            bridge.mg7_nlo_real_initialize(
+                ctypes.byref(context),
+                pjoin(output_path, 'Cards', 'param_card.dat').encode(),
+                pjoin(output_path, 'lib').encode(), backend.encode()), 0,
+            bridge.mg7_nlo_real_last_error(context).decode())
+        points = {point['id']: point for point in case['points']}
+        try:
+            # Alternate physical rows sharing a real ME to catch stale SIMD
+            # flavour pages, then cover short/full/nonmultiple page counts.
+            selected_rows = [manifest['fks_rows'][0]]
+            first_real = selected_rows[0]['real_me_id']
+            for candidate in manifest['fks_rows'][1:]:
+                if (candidate['real_me_id'] == first_real and
+                        candidate['madmatrix_flavour_index'] !=
+                        selected_rows[0]['madmatrix_flavour_index']):
+                    selected_rows.append(candidate)
+                    break
+            counts = sorted(set((1, max(1, width - 1), width,
+                                 width + 1, 2 * width - 1)))
+            for row in selected_rows:
+                row_records = [record for record in case['records']
+                               if record['fks_row'] == row['fks_row']]
+                for count in counts:
+                    records = row_records[:count]
+                    flat_momenta = []
+                    for component in range(4):
+                        for particle in range(manifest['nexternal']):
+                            for record in records:
+                                flat_momenta.append(points[record['point']][
+                                    'momenta'][particle][component])
+                    momenta = (ctypes.c_double * len(flat_momenta))(
+                        *flat_momenta)
+                    g_strong = (ctypes.c_double * count)(*[
+                        points[record['point']]['g_strong']
+                        for record in records])
+                    flavour = (ctypes.c_int32 * count)(*[
+                        row['madmatrix_flavour_index']] * count)
+                    nlocal = len(records[0]['local_squared_orders'])
+                    output = (ctypes.c_double * (count * nlocal))()
+                    self.assertEqual(
+                        bridge.mg7_nlo_real_evaluate(
+                            context, row['real_me_id'], count, momenta,
+                            g_strong, flavour, output), 0,
+                        bridge.mg7_nlo_real_last_error(context).decode())
+                    for order in range(nlocal):
+                        for event, record in enumerate(records):
+                            expected = record['local_squared_orders'][order][
+                                'value']
+                            scale = max(abs(component['value']) for component
+                                        in record['local_squared_orders'])
+                            self._assert_close(
+                                output[count * order + event], expected,
+                                scale=scale,
+                                label='%s SIMD count %d event %d order %d' %
+                                (backend, count, event, order))
+        finally:
+            self.assertEqual(
+                bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
+
+        row = manifest['fks_rows'][0]
+        records = [record for record in case['records']
+                   if record['fks_row'] == row['fks_row']][:width + 1]
+        active = [True] * len(records)
+        if check_compaction and len(active) >= 3:
+            active[1] = False
+            active[-1] = False
+        output = self._compile_batch_wrapper_driver(
+            output_path, case, backend, row, records, active)
+        self.assertIn('backend=%s' % backend, output)
+        self.assertIn('event_count=%d' % sum(active), output)
+        weights = {}
+        globals_by_lane = {}
+        for line in output.splitlines():
+            fields = line.split()
+            if 'BATCH_LANE' in fields:
+                at = fields.index('BATCH_LANE')
+                weights[int(fields[at + 1])] = float(fields[at + 2])
+            elif 'BATCH_GLOBAL' in fields:
+                at = fields.index('BATCH_GLOBAL')
+                globals_by_lane.setdefault(int(fields[at + 1]), []).append(
+                    float(fields[at + 3]))
+        self.assertEqual(sorted(weights), list(range(1, len(records) + 1)))
+        for lane, (record, enabled) in enumerate(
+                zip(records, active), start=1):
+            expected_weight = record['summed'] if enabled else 0.
+            scale = max([abs(component['value']) for component in
+                         record['local_squared_orders']] or [0.])
+            self._assert_close(weights[lane], expected_weight, scale=scale,
+                               label='packed wrapper weight lane %d' % lane)
+            expected_global = ([component['value'] for component in
+                                record['global_squared_orders']]
+                               if enabled else
+                               [0.] * len(record['global_squared_orders']))
+            for position, expected in enumerate(expected_global):
+                self._assert_close(
+                    globals_by_lane[lane][position], expected, scale=scale,
+                    label='packed wrapper lane %d global %d' %
+                    (lane, position + 1))
+
     def _run_madmatrix_case(self, name, low_memory=False):
         """Generate, build, relocate, and replay every scalar bridge row."""
 
@@ -782,6 +998,12 @@ class TestNLORealFortranOracle(unittest.TestCase):
 
     def test_grouped_mixed_wj_production_scalar_components(self):
         self._run_production_case('grouped_mixed_wj')
+
+    def test_grouped_qcd_ttx_madmatrix_cpu_simd_batches(self):
+        self._run_simd_case('grouped_qcd_ttx', check_compaction=True)
+
+    def test_grouped_mixed_wj_madmatrix_cpu_simd_components(self):
+        self._run_simd_case('grouped_mixed_wj')
 
 
 if __name__ == '__main__':

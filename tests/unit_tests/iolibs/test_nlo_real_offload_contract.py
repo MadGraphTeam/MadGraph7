@@ -23,9 +23,12 @@ import json
 import math
 import os
 import re
+import shutil
+import tempfile
 import unittest
 
 from madgraph import MG5DIR
+from madgraph.interface import amcatnlo_run_interface
 from madmatrix import output as madmatrix_output
 
 
@@ -206,6 +209,34 @@ class TestNLORealOffloadContract(unittest.TestCase):
         )
         for prototype in prototypes:
             self.assertRegex(header, prototype)
+
+    def test_nlo_event_jobs_honor_run_card_vector_size(self):
+        """The run layer must not force event-generation jobs to one lane."""
+
+        root = tempfile.mkdtemp(prefix='nlo-vector-size-')
+        try:
+            channels_path = os.path.join(
+                root, 'SubProcesses', 'P0_test', 'channels.txt')
+            os.makedirs(os.path.dirname(channels_path))
+            with open(channels_path, 'w') as stream:
+                stream.write('1\n')
+            command = amcatnlo_run_interface.aMCatNLOCmd.__new__(
+                amcatnlo_run_interface.aMCatNLOCmd)
+            command.me_dir = root
+            command.stop_for_runweb = True
+            command.force_run = False
+            command.run_card = {
+                'npoints_FO_grid': 8,
+                'niters_FO_grid': 1,
+                'vector_size': 7,
+            }
+            jobs, _, _ = command.create_jobs_to_run(
+                {'only_generation': False}, ['P0_test'], -1, 'all', 1,
+                'aMC@NLO', fixed_order=False)
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0]['vecsize'], 7)
+        finally:
+            shutil.rmtree(root)
 
 
 if __name__ == '__main__':

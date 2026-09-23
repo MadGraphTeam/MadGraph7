@@ -1036,6 +1036,7 @@ c The nbody contributions
      $            ,nFKS_picked_nbody,ivec)
          enddo
 !$OMP END PARALLEL DO
+         call amplitudes_real_vec(proc_map,vector_size)
          call system_clock(ampClockAfter)
          if (ampClockRate.gt.0) then
             t_vecamp=t_vecamp+real(ampClockAfter-ampClockBefore)/
