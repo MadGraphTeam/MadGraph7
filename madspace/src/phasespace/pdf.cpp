@@ -418,6 +418,92 @@ NamedVector<Value> PartonDensity::build_function_impl(
     }
 }
 
+EEPartonDensity::EEPartonDensity(
+    const PdfGrid& grid,
+    const std::vector<int>& pids,
+    const std::vector<double>& exponent_offsets,
+    double alpha_em,
+    double lepton_mass,
+    const std::string& prefix
+) :
+    FunctionGenerator(
+        "EEPartonDensity",
+        {{"x", batch_float},
+         {"omx", batch_float},
+         {"q", batch_float},
+         {"component_index", batch_int}},
+        {{"pdf", batch_float}}
+    ),
+    _density(grid, pids, true, prefix),
+    _offsets(exponent_offsets),
+    _alpha_em(alpha_em),
+    _lepton_mass(lepton_mass),
+    _prefix(prefix) {
+    if (exponent_offsets.size() != pids.size()) {
+        throw std::invalid_argument(std::format(
+            "EEPartonDensity: {} exponent offsets for {} pids",
+            exponent_offsets.size(),
+            pids.size()
+        ));
+    }
+    if (lepton_mass <= 0.) {
+        throw std::invalid_argument("EEPartonDensity: lepton mass must be positive");
+    }
+}
+
+// beta(Q) = (alpha/pi) (log(Q^2/m^2) - 1) is affine in log(Q), so the exponent
+// of (1-x) splits into a per-event part and a per-component constant:
+//
+//   -kappa + p = beta + (p - kappa0) = 2A log Q + (offset - 2A log m - A)
+//
+// with A = alpha/pi. Everything that does not depend on the event is folded
+// into the constant here, host side.
+namespace {
+double exponent_constant(double offset, double alpha_em, double lepton_mass) {
+    double a = alpha_em / M_PI;
+    return offset - 2. * a * std::log(lepton_mass) - a;
+}
+} // namespace
+
+void EEPartonDensity::initialize_globals(ContextPtr context) const {
+    std::vector<std::size_t> shape{_offsets.size()};
+    auto global = context->define_global(
+        prefixed_name(_prefix, "eepdf_exponent"), DataType::dt_float, shape
+    );
+    bool is_cpu = context->device() == cpu_device();
+    Tensor tensor = is_cpu ? global : Tensor(DataType::dt_float, {1, _offsets.size()});
+    auto view = tensor.view<double, 2>()[0];
+    for (std::size_t i = 0; i < _offsets.size(); ++i) {
+        view[i] = exponent_constant(_offsets[i], _alpha_em, _lepton_mass);
+    }
+    if (!is_cpu) {
+        global.copy_from(tensor);
+    }
+}
+
+NamedVector<Value> EEPartonDensity::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto x = args.at(0);
+    auto omx = args.at(1);
+    auto q = args.at(2);
+    auto index = args.at(3);
+
+    auto reduced = _density.build_function(fb, ValueVec{x, q, index}).at(0);
+
+    auto exponents = fb.global(
+        prefixed_name(_prefix, "eepdf_exponent"),
+        DataType::dt_float,
+        {static_cast<int>(_offsets.size())}
+    );
+    auto constant = fb.gather(index, exponents);
+    auto two_a = fb.full(
+        {2. * _alpha_em / M_PI, fb.batch_size({q})}
+    );
+    auto exponent = fb.add(fb.mul(two_a, fb.log(q)), constant);
+    return {{"pdf", fb.mul(reduced, fb.pow(omx, exponent))}};
+}
+
 AlphaSGrid::AlphaSGrid(const std::string& file) {
     std::ifstream grid_file(file);
     if (!grid_file) {

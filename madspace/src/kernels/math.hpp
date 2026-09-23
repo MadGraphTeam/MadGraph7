@@ -153,6 +153,40 @@ backward_kernel_square(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
 }
 
 template <typename T>
+KERNELSPEC void kernel_log(FIn<T, 0> in, FOut<T, 0> out) {
+    out = log(where(in > 0., in, 1.));
+}
+
+template <typename T>
+KERNELSPEC void
+backward_kernel_log(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
+    in_grad += where(in > 0., out_grad / in, 0.);
+}
+
+template <typename T>
+KERNELSPEC void kernel_pow(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
+    // A non-positive base is clamped away rather than handed to pow(): with a
+    // fractional exponent that is a NaN, and one NaN in a SIMD lane is enough
+    // to spoil the whole batch. Same convention as kernel_sqrt above.
+    out = where(in1 > 0., pow(where(in1 > 0., in1, 1.), in2), 0.);
+}
+
+template <typename T>
+KERNELSPEC void backward_kernel_pow(
+    FIn<T, 0> in1,
+    FIn<T, 0> in2,
+    FIn<T, 0> out_grad,
+    FOut<T, 0> in1_grad,
+    FOut<T, 0> in2_grad
+) {
+    auto positive = in1 > 0.;
+    auto base = where(positive, in1, 1.);
+    auto value = pow(base, in2);
+    in1_grad += where(positive, out_grad * in2 * value / base, 0.);
+    in2_grad += where(positive, out_grad * value * log(base), 0.);
+}
+
+template <typename T>
 KERNELSPEC void kernel_min(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
     out = min(in1, in2);
 }

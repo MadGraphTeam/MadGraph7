@@ -107,6 +107,83 @@ private:
 };
 
 /**
+ * Dressed-lepton density: an interpolated grid times its analytic reduction.
+ *
+ * A dressed-lepton density is singular as @f$x \to 1@f$, so it is tabulated in
+ * reduced form and the endpoint is restored analytically:
+ *
+ * @f[
+ *   f_n(x, Q) = \bar\phi_n(x, Q) \, (1-x)^{-\kappa_n(Q) + p},
+ *   \qquad
+ *   \kappa_n(Q) = -\beta(Q) + \kappa^{(0)}_n,
+ *   \qquad
+ *   \beta(Q) = \frac{\alpha}{\pi}\Big(\log\frac{Q^2}{m^2} - 1\Big),
+ * @f]
+ *
+ * with @f$p@f$ the exponent the phase-space mapping already absorbs. Only
+ * @f$\bar\phi_n@f$ is in the grid; baking the @f$(1-x)^{-\kappa}@f$ factor in
+ * would destroy exactly the endpoint resolution the reduction exists to keep.
+ *
+ * @f$1-x@f$ is taken as its own argument rather than recomputed from @p x:
+ * near the endpoint the density lives in @f$1-x@f$, and a caller that sampled
+ * it there must be able to pass it through at full precision.
+ *
+ * The component is chosen per event, which is what lets the caller sample the
+ * four components discretely instead of evaluating all of them.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x` – `float`, shape `(batch,)` – momentum fraction.
+ * - `omx` – `float`, shape `(batch,)` – @f$1-x@f$.
+ * - `q` – `float`, shape `(batch,)` – factorization scale.
+ * - `component_index` – `int`, shape `(batch,)` – which component to return,
+ *   indexing the `pids` given to the constructor.
+ *
+ * **Returns**
+ * - `pdf` – `float`, shape `(batch,)` – the unreduced density.
+ */
+class EEPartonDensity : public FunctionGenerator {
+public:
+    /**
+     * @param grid              Grid of the reduced density, one flavour per
+     *                          component (see
+     *                          `vendor/eepdfgrid/gen_eepdf_lhagrid.py`).
+     * @param pids              Component ids to select between.
+     * @param exponent_offsets  Per component, @f$p - \kappa^{(0)}_n@f$; the
+     *                          @f$Q@f$-dependent part of @f$\kappa@f$ is
+     *                          applied here. One entry per entry of @p pids.
+     * @param alpha_em          @f$\alpha@f$ in the scheme the grid was fitted
+     *                          in.
+     * @param lepton_mass       @f$m@f$ of the beam lepton, in GeV.
+     * @param prefix            Prefix for the grid global names.
+     */
+    EEPartonDensity(
+        const PdfGrid& grid,
+        const std::vector<int>& pids,
+        const std::vector<double>& exponent_offsets,
+        double alpha_em = 0.007562397,
+        double lepton_mass = 0.511e-3,
+        const std::string& prefix = ""
+    );
+
+    /// Upload the per-component exponents to @p context. The grid's own
+    /// globals are uploaded by @ref PdfGrid::initialize_globals.
+    void initialize_globals(ContextPtr context) const;
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density;
+    std::vector<double> _offsets;
+    double _alpha_em;
+    double _lepton_mass;
+    std::string _prefix;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;

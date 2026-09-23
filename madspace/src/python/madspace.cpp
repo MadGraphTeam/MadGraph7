@@ -1771,6 +1771,32 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PartonDensity::PartonDensity")
         );
 
+    py::classh<EEPartonDensity, FunctionGenerator>(
+        m, "EEPartonDensity", pydoc::doc("EEPartonDensity")
+    )
+        .def(
+            py::init<
+                const PdfGrid&,
+                const std::vector<int>&,
+                const std::vector<double>&,
+                double,
+                double,
+                const std::string&>(),
+            py::arg("grid"),
+            py::arg("pids"),
+            py::arg("exponent_offsets"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("prefix") = "",
+            pydoc::doc("EEPartonDensity::EEPartonDensity")
+        )
+        .def(
+            "initialize_globals",
+            &EEPartonDensity::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("EEPartonDensity::initialize_globals")
+        );
+
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
         .def(
             py::init<const std::string&>(),

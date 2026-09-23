@@ -185,3 +185,84 @@ class TestEEPdfLhaGrid(unittest.TestCase):
             self.assertLess(rel.max(), 1e-2)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_madspace_applies_the_reduction(self):
+        """EEPartonDensity restores the endpoint the grid has factored out.
+
+        The grid holds the reduced density; the generator-side quantity is
+
+            compute_eepdf = eepdf_tilde * (1-x)**(-kappa + ps_expo)
+
+        with kappa analytic in Q. This checks the whole product, which is what
+        a cross section would use, against the same reduction applied in numpy
+        from the companion metadata -- so a wrong kappa table, a wrong sign or
+        a wrong scale convention all show up here.
+        """
+        ms = _madspace()
+        if ms is None:
+            self.skipTest('madspace build required')
+        if not hasattr(ms, 'EEPartonDensity'):
+            self.skipTest('madspace build predates EEPartonDensity')
+
+        ps_expo = 0.96  # get_ee_expo() of Template/LO/Source/PDF/pdg2pdf.f
+        tmp = tempfile.mkdtemp()
+        try:
+            shutil.copy(os.path.join(SET_DIR, 'eepdf.f'), tmp)
+            dat, meta_path, _, _ = gen.generate(tmp, SET)
+            import json
+            with open(meta_path) as fsock:
+                meta = json.load(fsock)
+            pids = meta['pids']
+            xlo, xhi = meta['usable_x_range']
+            qlo, qhi = meta['usable_q_range']
+
+            def beam_of(pid):
+                return 11 if pid % 10 == 2 else -11
+
+            # kappa = c_beta*beta + c_b*b + c_1; the Q-dependent c_beta*beta
+            # part is what EEPartonDensity applies internally, so only the
+            # constant remainder is handed to it.
+            offsets, kappa_const = [], []
+            for pid in pids:
+                k = meta['kappa']['%d_%d' % (pid // 1000, beam_of(pid))]
+                self.assertEqual(k['c_beta'], -1.)
+                const = k['c_b'] * meta['b_exp'] + k['c_1']
+                kappa_const.append(const)
+                offsets.append(ps_expo - const)
+
+            ctx = ms.default_context()
+            grid = ms.PdfGrid(dat)
+            prefix = 'test_eepdf_red_'
+            grid.initialize_globals(ctx, prefix)
+            dens = ms.EEPartonDensity(grid, pids, offsets, prefix=prefix)
+            dens.initialize_globals(ctx)
+
+            rng = np.random.default_rng(17)
+            n = 2000
+            x = np.clip(1 - 10 ** rng.uniform(-8, 0, n), xlo, min(xhi, 1 - 1e-8))
+            q = 10 ** rng.uniform(np.log10(qlo) * (1 - 1e-9),
+                                  np.log10(qhi) * (1 - 1e-9), n)
+            omx = 1.0 - x
+
+            yv, zv = np.asarray(self.yv), np.asarray(self.zv)
+            z = np.log(q / gen.ME)
+            beta = meta['alphaem'] / np.pi * (2 * z - 1)
+            keys = gen.physical_keys(self.grids)
+
+            for j, (pid, key) in enumerate(zip(pids, keys)):
+                self.assertEqual(gen.pid_of(*key), pid)
+                reduced = gen.dfint2d(yv, zv, np.asarray(self.grids[key]), x, z)
+                ref = reduced * omx ** (beta - kappa_const[j] + ps_expo)
+                # me_int_t is 32-bit; an int64 index is rejected, and the
+                # binding reports that as a shape error
+                got = np.asarray(dens(x, omx, q, np.full(n, j, dtype=np.int32)))
+                mask = np.abs(ref) > 1e-6 * np.abs(ref).max()
+                rel = np.abs(got[mask] - ref[mask]) / np.abs(ref[mask])
+                # measured against the compiled Fortran compute_eepdf:
+                # p99 2.3e-4, max 2.5e-3, the same tail the grid alone has,
+                # so the reduction itself contributes nothing visible
+                self.assertLess(np.median(rel), 1e-5, 'pid %d' % pid)
+                self.assertLess(np.percentile(rel, 99), 1e-3, 'pid %d' % pid)
+                self.assertLess(rel.max(), 1e-2, 'pid %d' % pid)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
