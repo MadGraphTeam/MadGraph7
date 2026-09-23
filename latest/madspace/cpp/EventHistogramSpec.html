@@ -604,7 +604,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace18EventHistogramSpec4nameE">
 <span id="_CPPv3N8madspace18EventHistogramSpec4nameE"></span><span id="_CPPv2N8madspace18EventHistogramSpec4nameE"></span><span id="madspace::EventHistogramSpec::name__ss"></span><span class="target" id="structmadspace_1_1EventHistogramSpec_1ade879b1d6e819d0439226eaa7f06fff0"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">string</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">name</span></span></span><a class="headerlink" href="#_CPPv4N8madspace18EventHistogramSpec4nameE" title="Link to this definition">¶</a><br /></dt>
-<dd><p><a class="reference internal" href="Observable.html#classmadspace_1_1Observable"><span class="std std-ref">Observable</span></a> name; must match a key of every subprocess’s <a class="reference internal" href="SubprocessObservables.html#structmadspace_1_1SubprocessObservables_1ad46f5a5ed413f69f0357181a6de820f0"><span class="std std-ref">SubprocessObservables::values</span></a>. </p>
+<dd><p><a class="reference internal" href="Observable.html#classmadspace_1_1Observable"><span class="std std-ref">Observable</span></a> name; must match a key of every subprocess’s <a class="reference internal" href="SubprocessObservables.html#structmadspace_1_1SubprocessObservables_1ad46f5a5ed413f69f0357181a6de820f0"><span class="std std-ref">SubprocessObservables::values</span></a>, unless <a class="reference internal" href="#structmadspace_1_1EventHistogramSpec_1a4f6cdb668f0103f2b5b1068e5dd2e8ab"><span class="std std-ref">from_weight</span></a> is set. </p>
 </dd></dl>
 
 <dl class="cpp var">
@@ -623,6 +623,13 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace18EventHistogramSpec9bin_countE">
 <span id="_CPPv3N8madspace18EventHistogramSpec9bin_countE"></span><span id="_CPPv2N8madspace18EventHistogramSpec9bin_countE"></span><span id="madspace::EventHistogramSpec::bin_count__std::s"></span><span class="target" id="structmadspace_1_1EventHistogramSpec_1ac4da0a6c5ed50c590f047dcfa8e779f2"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">bin_count</span></span></span><a class="headerlink" href="#_CPPv4N8madspace18EventHistogramSpec9bin_countE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Number of bins between <a class="reference internal" href="#structmadspace_1_1EventHistogramSpec_1a08a1a493ff062e42cae0cba81112d84b"><span class="std std-ref">min</span></a> and <a class="reference internal" href="#structmadspace_1_1EventHistogramSpec_1a87b358b4fe1c7a44b8be83106a7550c5"><span class="std std-ref">max</span></a> (excluding under/overflow). </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace18EventHistogramSpec11from_weightE">
+<span id="_CPPv3N8madspace18EventHistogramSpec11from_weightE"></span><span id="_CPPv2N8madspace18EventHistogramSpec11from_weightE"></span><span id="madspace::EventHistogramSpec::from_weight__b"></span><span class="target" id="structmadspace_1_1EventHistogramSpec_1a4f6cdb668f0103f2b5b1068e5dd2e8ab"></span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">from_weight</span></span></span><a class="headerlink" href="#_CPPv4N8madspace18EventHistogramSpec11from_weightE" title="Link to this definition">¶</a><br /></dt>
+<dd><p><a class="reference internal" href="Histogram.html#structmadspace_1_1Histogram"><span class="std std-ref">Histogram</span></a> the event weight itself, divided by the reference weight given to <a class="reference internal" href="EventHistograms.html#classmadspace_1_1EventHistograms"><span class="std std-ref">EventHistograms</span></a>, instead of an observable of the momenta. </p>
+<p>Such a spec has no entry in <a class="reference internal" href="SubprocessObservables.html#structmadspace_1_1SubprocessObservables"><span class="std std-ref">SubprocessObservables</span></a>. </p>
 </dd></dl>
 
 </div>
@@ -691,6 +698,7 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace18EventHistogramSpec3minE"><code class="docutils literal notranslate"><span class="pre">min</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace18EventHistogramSpec3maxE"><code class="docutils literal notranslate"><span class="pre">max</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace18EventHistogramSpec9bin_countE"><code class="docutils literal notranslate"><span class="pre">bin_count</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace18EventHistogramSpec11from_weightE"><code class="docutils literal notranslate"><span class="pre">from_weight</span></code></a></li>
 </ul>
 </li>
 </ul>

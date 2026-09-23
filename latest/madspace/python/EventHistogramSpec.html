@@ -597,13 +597,20 @@
 <h1>EventHistogramSpec<a class="headerlink" href="#eventhistogramspec" title="Link to this heading">¶</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="madspace.EventHistogramSpec">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">EventHistogramSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventHistogramSpec" title="madspace._madspace_py.EventHistogramSpec"><span class="pre">madspace._madspace_py.EventHistogramSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bin_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.EventHistogramSpec" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">EventHistogramSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.EventHistogramSpec" title="madspace._madspace_py.EventHistogramSpec"><span class="pre">madspace._madspace_py.EventHistogramSpec</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bin_count</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsInt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_weight</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.EventHistogramSpec" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>One EventHistograms histogram: an observable name and its binning.</p>
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.EventHistogramSpec.bin_count">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">bin_count</span></span><a class="headerlink" href="#madspace.EventHistogramSpec.bin_count" title="Link to this definition">¶</a></dt>
 <dd><p>Number of bins between min and max (excluding under/overflow).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.EventHistogramSpec.from_weight">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_weight</span></span><a class="headerlink" href="#madspace.EventHistogramSpec.from_weight" title="Link to this definition">¶</a></dt>
+<dd><p>Histogram the event weight itself, divided by the reference weight given to EventHistograms, instead of an observable of the momenta.</p>
+<p>Such a spec has no entry in SubprocessObservables.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -621,7 +628,7 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.EventHistogramSpec.name">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#madspace.EventHistogramSpec.name" title="Link to this definition">¶</a></dt>
-<dd><p>Observable name; must match a key of every subprocess’s SubprocessObservables::values.</p>
+<dd><p>Observable name; must match a key of every subprocess’s SubprocessObservables::values, unless from_weight is set.</p>
 </dd></dl>
 
 </dd></dl>
@@ -686,6 +693,7 @@
 <li><a class="reference internal" href="#">EventHistogramSpec</a><ul>
 <li><a class="reference internal" href="#madspace.EventHistogramSpec"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec</span></code></a><ul>
 <li><a class="reference internal" href="#madspace.EventHistogramSpec.bin_count"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec.bin_count</span></code></a></li>
+<li><a class="reference internal" href="#madspace.EventHistogramSpec.from_weight"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec.from_weight</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventHistogramSpec.max"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec.max</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventHistogramSpec.min"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec.min</span></code></a></li>
 <li><a class="reference internal" href="#madspace.EventHistogramSpec.name"><code class="docutils literal notranslate"><span class="pre">EventHistogramSpec.name</span></code></a></li>
