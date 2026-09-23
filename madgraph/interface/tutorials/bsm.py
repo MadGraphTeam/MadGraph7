@@ -428,6 +428,8 @@ tutorial = Tutorial(
     title='beyond the Standard Model',
     description='an EFT model: its coupling order, its conventions, a restriction of your own, and the widths it moves',
     order='sequence',
+    section='advanced',
+    ai_generated=False,
     see_also=('model', 'syntax', 'decays', 'checks'),
     steps=[
 
