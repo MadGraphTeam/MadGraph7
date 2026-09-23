@@ -290,7 +290,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
             output.decode(errors='replace'),
             len(case['split_order_names']))
 
-    def _compile_routed_driver(self, output_path, case, vector=False):
+    def _compile_routed_driver(self, output_path, case, vector=False,
+                               backend=None):
         """Build a frozen-oracle driver through the production wrapper."""
         subproc = pjoin(output_path, 'SubProcesses', case['subprocess'])
         row_to_me, local_counts = self._real_me_contract(subproc)
@@ -303,15 +304,20 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 row_to_me, local_counts, vector=vector))
 
         misc.compile(cwd=pjoin(output_path, 'Source'))
-        subprocess.check_call(
-            ['make', 'nlo_real_offload.o', '-j2'], cwd=subproc)
+        make_command = ['make', 'nlo_real_offload.o', '-j2']
+        if backend:
+            make_command.append('NLO_REAL_BACKEND=%s' % backend)
+        subprocess.check_call(make_command, cwd=subproc)
         matrix_objects = [
             os.path.basename(path)[:-2] + '.o' for path in
             sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
         objects = matrix_objects + [
             'real_me_chooser.o', 'splitorders_stuff.o', object_name,
             'nlo_real_offload.o']
-        misc.compile(objects, cwd=subproc)
+        compile_env = os.environ.copy()
+        if backend:
+            compile_env['NLO_REAL_BACKEND'] = backend
+        misc.compile(objects, cwd=subproc, env=compile_env)
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
                 '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
@@ -776,6 +782,135 @@ class TestNLORealFortranOracle(unittest.TestCase):
                     label='packed wrapper lane %d global %d' %
                     (lane, position + 1))
 
+    @staticmethod
+    def _require_cuda():
+        if not shutil.which('nvcc') or not shutil.which('nvidia-smi'):
+            raise unittest.SkipTest('CUDA compiler or NVIDIA tooling absent')
+        try:
+            subprocess.check_call(
+                ['nvidia-smi', '-L'], stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.CalledProcessError):
+            raise unittest.SkipTest('no usable NVIDIA device')
+
+    def _run_cuda_qcd_case(self):
+        """Execute every QCD flavour row and CUDA rounding boundaries."""
+        self._require_cuda()
+        case = self.oracle['cases']['grouped_qcd_ttx']
+        output_path = self._generate_case('grouped_qcd_ttx', madmatrix=True)
+        process_path = pjoin(
+            output_path, 'SubProcesses', case['subprocess'])
+        with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
+            manifest = json.load(stream)
+        subprocess.check_call([
+            'make', '-f', 'nlo_real.mk', 'BACKEND=cuda', 'FPTYPE=d',
+            '-j2'], cwd=process_path)
+        bridge = self._bridge(process_path)
+        context = ctypes.c_void_p()
+        self.assertEqual(
+            bridge.mg7_nlo_real_initialize(
+                ctypes.byref(context),
+                pjoin(output_path, 'Cards', 'param_card.dat').encode(),
+                pjoin(output_path, 'lib').encode(), b'cuda'), 0,
+            bridge.mg7_nlo_real_last_error(context).decode())
+        points = {point['id']: point for point in case['points']}
+
+        def evaluate(row, records, label):
+            count = len(records)
+            flat = [
+                points[record['point']]['momenta'][particle][component]
+                for component in range(4)
+                for particle in range(manifest['nexternal'])
+                for record in records]
+            momenta = (ctypes.c_double * len(flat))(*flat)
+            g_strong = (ctypes.c_double * count)(*[
+                points[record['point']]['g_strong'] for record in records])
+            flavour = (ctypes.c_int32 * count)(*[
+                row['madmatrix_flavour_index']] * count)
+            output = (ctypes.c_double * count)()
+            self.assertEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], count, momenta, g_strong,
+                    flavour, output), 0,
+                bridge.mg7_nlo_real_last_error(context).decode())
+            for event, record in enumerate(records):
+                expected = record['local_squared_orders'][0]['value']
+                self._assert_close(
+                    output[event], expected, scale=abs(expected),
+                    label='%s event %d' % (label, event))
+
+        try:
+            for row in manifest['fks_rows']:
+                records = [record for record in case['records']
+                           if record['fks_row'] == row['fks_row']]
+                evaluate(row, records, 'CUDA row %d' % row['fks_row'])
+            row = manifest['fks_rows'][0]
+            base = [record for record in case['records']
+                    if record['fks_row'] == row['fks_row']]
+            for count in (255, 256, 257, 513):
+                records = [base[index % len(base)]
+                           for index in range(count)]
+                evaluate(row, records, 'CUDA boundary %d' % count)
+        finally:
+            self.assertEqual(
+                bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
+
+        row = manifest['fks_rows'][0]
+        records = [record for record in case['records']
+                   if record['fks_row'] == row['fks_row']][:5]
+        packed = self._compile_batch_wrapper_driver(
+            output_path, case, 'cuda', row, records,
+            [True, False, True, True, False])
+        self.assertIn('backend=cuda', packed)
+        self.assertIn('event_count=3', packed)
+        weights = {}
+        for line in packed.splitlines():
+            fields = line.split()
+            if 'BATCH_LANE' in fields:
+                at = fields.index('BATCH_LANE')
+                weights[int(fields[at + 1])] = float(fields[at + 2])
+        active = [True, False, True, True, False]
+        for lane, (record, enabled) in enumerate(
+                zip(records, active), start=1):
+            expected = record['summed'] if enabled else 0.
+            self._assert_close(
+                weights[lane], expected, scale=abs(record['summed']),
+                label='CUDA compacted lane %d' % lane)
+
+    def _run_cuda_mixed_case(self):
+        """Use CUDA only for one-order reals and log all split-order fallback."""
+        self._require_cuda()
+        case = self.oracle['cases']['grouped_mixed_wj']
+        output_path = self._generate_case('grouped_mixed_wj', madmatrix=True)
+        process_path = pjoin(
+            output_path, 'SubProcesses', case['subprocess'])
+        with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
+            manifest = json.load(stream)
+        supported = [real for real in manifest['real_matrix_elements']
+                     if real['backend_capabilities']['cuda']]
+        unsupported = [real for real in manifest['real_matrix_elements']
+                       if not real['backend_capabilities']['cuda']]
+        self.assertTrue(supported)
+        self.assertTrue(unsupported)
+        executable = self._compile_routed_driver(
+            output_path, case, backend='cuda')
+        text = self._run_routed_driver(
+            executable, case, {'MG7_NLO_REAL_BACKEND': 'cuda'})
+        self.assertIn('MG7 NLO real offload initialized: backend=cuda', text)
+        for real in unsupported:
+            self.assertIn(
+                'MG7 NLO real GPU fallback: real_me_id=%d' % real['id'],
+                text)
+            library = pjoin(
+                output_path, 'lib', 'libmadmatrix_%s_cuda.so' %
+                real['library_process_id'])
+            self.assertFalse(os.path.exists(library), library)
+        for real in supported:
+            library = pjoin(
+                output_path, 'lib', 'libmadmatrix_%s_cuda.so' %
+                real['library_process_id'])
+            self.assertTrue(os.path.isfile(library), library)
+
     def _run_madmatrix_case(self, name, low_memory=False):
         """Generate, build, relocate, and replay every scalar bridge row."""
 
@@ -1004,6 +1139,12 @@ class TestNLORealFortranOracle(unittest.TestCase):
 
     def test_grouped_mixed_wj_madmatrix_cpu_simd_components(self):
         self._run_simd_case('grouped_mixed_wj')
+
+    def test_grouped_qcd_ttx_madmatrix_cuda_batches(self):
+        self._run_cuda_qcd_case()
+
+    def test_grouped_mixed_wj_madmatrix_cuda_fallback(self):
+        self._run_cuda_mixed_case()
 
 
 if __name__ == '__main__':

@@ -549,6 +549,10 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         directories = ' '.join(
             real['library_process_id']
             for real in manifest['real_matrix_elements'])
+        gpu_directories = ' '.join(
+            real['library_process_id']
+            for real in manifest['real_matrix_elements']
+            if real['backend_capabilities']['cuda'])
         makefile = [
             '# Generated MadMatrix NLO-real build dispatcher.',
             'CXX ?= g++',
@@ -557,13 +561,18 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             'HELINL ?= 0',
             'HRDCOD ?= 0',
             'NLO_REAL_DIRS := %s' % directories,
+            'NLO_REAL_GPU_DIRS := %s' % gpu_directories,
+            'NLO_REAL_BUILD_DIRS := $(NLO_REAL_DIRS)',
+            'ifneq (,$(filter $(BACKEND),cuda hip))',
+            'NLO_REAL_BUILD_DIRS := $(NLO_REAL_GPU_DIRS)',
+            'endif',
             'NLO_REAL_BRIDGE := libnlo_real_bridge.so',
             '',
             '.PHONY: all libraries bridge clean',
             'all: libraries bridge',
             '',
             'libraries:',
-            '\t@set -e; for directory in $(NLO_REAL_DIRS); do \\',
+            '\t@set -e; for directory in $(NLO_REAL_BUILD_DIRS); do \\',
             '\t  $(MAKE) -C ../$$directory BACKEND=$(BACKEND) '
             'FPTYPE=$(FPTYPE) HELINL=$(HELINL) HRDCOD=$(HRDCOD); \\',
             '\tdone',
@@ -592,6 +601,25 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             len(real['local_squared_orders'])
             for real in manifest['real_matrix_elements'])
         real_count = len(manifest['real_matrix_elements'])
+
+        capability_lines = []
+        for backend in ('cuda', 'hip'):
+            capability_lines.append(
+                '    if (trim(backend) == "%s") then' % backend)
+            for real in manifest['real_matrix_elements']:
+                if real['backend_capabilities'][backend]:
+                    continue
+                rows = [str(row['fks_row']) for row in manifest['fks_rows']
+                        if row['real_me_id'] == real['id']]
+                capability_lines.extend([
+                    '      real_unavailable(%d) = .true.' % real['id'],
+                    '      write(*,\'(A,I0,A)\') &',
+                    '        "MG7 NLO real GPU fallback: real_me_id=", %d, &' %
+                    real['id'],
+                    '        ", fks_rows=%s, reason=multiple squared orders"' %
+                    ','.join(rows),
+                ])
+            capability_lines.append('    end if')
 
         cases = []
         for row in manifest['fks_rows']:
@@ -703,6 +731,15 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '        "MG7 NLO real offload disabled; using Fortran fallback"',
             '      return',
             '    end if',
+        ]
+        source.extend(capability_lines)
+        source.extend([
+            '    if (all(real_unavailable)) then',
+            '      write(*,\'(A,A,A)\') &',
+            '        "MG7 NLO real backend ", trim(backend), &',
+            '        " has no supported real libraries; using Fortran fallback"',
+            '      return',
+            '    end if',
             '    status = mg7_nlo_real_initialize(context, &',
             '      trim(param_card)//c_null_char, &',
             '      trim(library_dir)//c_null_char, trim(backend)//c_null_char)',
@@ -713,7 +750,8 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    bridge_available = .true.',
             '    write(*,\'(A,A,A,I0)\') &',
             '      "MG7 NLO real offload initialized: backend=", &',
-            '      trim(backend), ", real_libraries=", %d' % real_count,
+            '      trim(backend), ", real_libraries=", &',
+            '      count(.not. real_unavailable)',
             '  end subroutine',
             '',
             'end module',
@@ -744,7 +782,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  nlocal = 0',
             '  local_to_global(:) = 0',
             '  select case (nfksprocess)',
-        ]
+        ])
         source.extend(cases)
         source.extend([
             '  case default',
