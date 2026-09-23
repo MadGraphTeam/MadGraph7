@@ -60,6 +60,10 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
 #ifndef MGONGPUCPP_GPUIMPL
+  void color_sum_set_squared_orders( fptype*, std::size_t ) {}
+  void color_sum_clear_squared_orders() {}
+  void color_sum_normalise_squared_orders( int, fptype ) {}
+
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
                  const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity

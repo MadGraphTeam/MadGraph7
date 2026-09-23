@@ -509,7 +509,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                    me_ntot, path=os.getcwd(),OLP='MadLoop'):
+                                    me_ntot, path=os.getcwd(),OLP='MadLoop',
+                                    second_exporter=None, second_helas=None):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         including the necessary matrix.f and various helper files"""
         proc = matrix_element.born_me['processes'][0]
@@ -693,6 +694,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         self.write_amp_split_orders_file(
                             writers.FortranWriter(filename),
                             amp_split_orders)
+        if second_exporter is not None:
+            second_exporter.generate_real_processes(
+                matrix_element, second_helas, me_number, borndir,
+                amp_split_orders)
         self.proc_characteristic['ninitial'] = ninitial
         self.proc_characteristic['nexternal'] = max(self.proc_characteristic['nexternal'], nexternal)
         
@@ -5672,7 +5677,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                    me_ntot, path=os.getcwd(),OLP='MadLoop'):
+                                    me_ntot, path=os.getcwd(),OLP='MadLoop',
+                                    second_exporter=None, second_helas=None):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         only generating the relevant files for the EW Sudakov"""
         proc = matrix_element.born_me['processes'][0]
@@ -5762,6 +5768,10 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         self.write_amp_split_orders_file(
                             writers.FortranWriter(filename),
                             amp_split_orders)
+        if second_exporter is not None:
+            second_exporter.generate_real_processes(
+                matrix_element, second_helas, me_number, borndir,
+                amp_split_orders)
         self.proc_characteristic['ninitial'] = ninitial
         self.proc_characteristic['nexternal'] = max(self.proc_characteristic['nexternal'], nexternal)
         
@@ -5843,12 +5853,15 @@ class _ProcessExporterFortranFKSSAMixin(object):
     """
 
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                 me_ntot, path=os.getcwd(), OLP='MadLoop'):
+                                 me_ntot, path=os.getcwd(), OLP='MadLoop',
+                                 second_exporter=None, second_helas=None):
         """Run the regular FKS generation, then drop in the standalone
         Born driver and its data files."""
         result = super(_ProcessExporterFortranFKSSAMixin, self).\
             generate_directories_fks(matrix_element, fortran_model, me_number,
-                                     me_ntot, path, OLP)
+                                     me_ntot, path, OLP,
+                                     second_exporter=second_exporter,
+                                     second_helas=second_helas)
 
         borndir = "P%s" % \
             matrix_element.born_me.get('processes')[0].shell_string()

@@ -42,6 +42,36 @@ namespace mg5amcCpu
   constexpr int njampso = CPPProcess::njampso;   // ncolor * nampso: the jamps of every order, end to end
   constexpr int nsqampso = CPPProcess::nsqampso; // the squared orders their pairs produce
 
+  // UMAMI calls are sequential. Keep the optional destination local to the
+  // calling thread so independent process handles cannot overwrite each
+  // other's component capture even in diagnostic multi-context tests.
+  thread_local fptype* squaredOrderMEs = nullptr;
+  thread_local std::size_t squaredOrderStride = 0;
+
+  void color_sum_set_squared_orders( fptype* components, std::size_t stride )
+  {
+    squaredOrderMEs = components;
+    squaredOrderStride = stride;
+  }
+
+  void color_sum_clear_squared_orders()
+  {
+    squaredOrderMEs = nullptr;
+    squaredOrderStride = 0;
+  }
+
+  void color_sum_normalise_squared_orders( int ievt0, fptype factor )
+  {
+    if( !squaredOrderMEs ) return;
+    using E_ACCESS = HostAccessMatrixElements;
+    for( int iso = 0; iso < nsqampso; ++iso )
+    {
+      fptype* values = E_ACCESS::ieventAccessRecord(
+        squaredOrderMEs + iso * squaredOrderStride, ievt0 );
+      E_ACCESS::kernelAccess( values ) *= factor;
+    }
+  }
+
   //--------------------------------------------------------------------------
 
   // *** COLOR MATRIX BELOW ***
@@ -79,8 +109,10 @@ namespace mg5amcCpu
     };
     static constexpr auto cf2 = TriangularNormalizedColorMatrix();
     fptype_sv deltaMEs = { 0 };
+    fptype_sv deltaSquaredOrders[nsqampso] = {};
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype_sv deltaMEs_next = { 0 };
+    fptype_sv deltaSquaredOrders_next[nsqampso] = {};
 #endif
     // Gather the color flows the sum runs over, for each amplitude split order.
     // The order index strides by ncolor, exactly as calculate_jamps wrote them.
@@ -108,9 +140,11 @@ namespace mg5amcCpu
     {
       for( int jao = 0; jao < nampso; jao++ )
       {
-        // The squared order this pair contributes to, dropped if the process
-        // asked for a contribution that does not include it
-        if( !chosenSqso[sqSoIndex[iao][jao]] ) continue;
+        const int iso = sqSoIndex[iao][jao];
+        fptype_sv deltaPair = { 0 };
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+        fptype_sv deltaPair_next = { 0 };
+#endif
         // Loop over icol
         for( int icol = 0; icol < ncolor; icol++ )
         {
@@ -128,12 +162,18 @@ namespace mg5amcCpu
           // of order jao (Fortran: ZTEMP from JAMP(:,M), times DCONJG(JAMP(I,N)))
           fptype2_sv deltaMEs2 = ( jampR_sv[jao][icol] * ztempR_sv + jampI_sv[jao][icol] * ztempI_sv ); // may underflow #831
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-          deltaMEs += fpvsplit0( deltaMEs2 );
-          deltaMEs_next += fpvsplit1( deltaMEs2 );
+          deltaPair += fpvsplit0( deltaMEs2 );
+          deltaPair_next += fpvsplit1( deltaMEs2 );
 #else
-          deltaMEs += deltaMEs2;
+          deltaPair += deltaMEs2;
 #endif
         }
+        deltaSquaredOrders[iso] += deltaPair;
+        if( chosenSqso[iso] ) deltaMEs += deltaPair;
+#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+        deltaSquaredOrders_next[iso] += deltaPair_next;
+        if( chosenSqso[iso] ) deltaMEs_next += deltaPair_next;
+#endif
       }
     }
     // *** STORE THE RESULTS ***
@@ -142,10 +182,20 @@ namespace mg5amcCpu
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
     MEs_sv += deltaMEs; // fix #435
+    if( squaredOrderMEs )
+      for( int iso = 0; iso < nsqampso; ++iso )
+        E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord(
+          squaredOrderMEs + iso * squaredOrderStride, ievt0 ) ) +=
+          deltaSquaredOrders[iso];
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype* MEs_next = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + neppV );
     fptype_sv& MEs_sv_next = E_ACCESS::kernelAccess( MEs_next );
     MEs_sv_next += deltaMEs_next;
+    if( squaredOrderMEs )
+      for( int iso = 0; iso < nsqampso; ++iso )
+        E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord(
+          squaredOrderMEs + iso * squaredOrderStride, ievt0 + neppV ) ) +=
+          deltaSquaredOrders_next[iso];
 #endif
   }
 

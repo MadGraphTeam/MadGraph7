@@ -126,7 +126,6 @@ class TestNLORealOffloadContract(unittest.TestCase):
             public_text = stream.read()
         self.assertEqual(generated_text, public_text)
 
-    @unittest.expectedFailure
     def test_lo_and_nlo_real_exporters_are_factory_selected(self):
         """LO and NLO own distinct lifecycles without duplicating selection."""
 
@@ -146,7 +145,6 @@ class TestNLORealOffloadContract(unittest.TestCase):
                 'nlo_real'),
             nlo_exporter)
 
-    @unittest.expectedFailure
     def test_nlo_real_manifest_schema_is_versioned(self):
         """The generated row/ME/order map has a stable first-version schema."""
 
@@ -161,7 +159,6 @@ class TestNLORealOffloadContract(unittest.TestCase):
             set(madmatrix_output.NLO_REAL_MANIFEST_FKS_ROW_KEYS),
             MANIFEST_FKS_ROW_KEYS)
 
-    @unittest.expectedFailure
     def test_umami_declares_direct_g_and_squared_order_output(self):
         """The ABI extension appends all keys required by the NLO adapter."""
 
@@ -181,7 +178,6 @@ class TestNLORealOffloadContract(unittest.TestCase):
             for symbol in required:
                 self.assertIn(symbol, header)
 
-    @unittest.expectedFailure
     def test_generated_nlo_bridge_has_the_frozen_c_abi(self):
         """Fortran calls one exception-safe, dynamically loaded C adapter."""
 

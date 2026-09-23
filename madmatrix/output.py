@@ -8,6 +8,8 @@ import shutil
 import os
 import sys
 import subprocess
+import json
+import copy
 
 PLUGIN_NAME = __name__.rsplit('.',1)[0]
 PLUGINDIR = os.path.dirname( __file__ )
@@ -28,6 +30,18 @@ import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.various.misc as misc
 
 from . import launch_plugin
+
+
+NLO_REAL_MANIFEST_VERSION = 1
+NLO_REAL_MANIFEST_TOP_LEVEL_KEYS = (
+    'version', 'process_id', 'nexternal', 'split_order_names',
+    'global_squared_orders', 'real_matrix_elements', 'fks_rows')
+NLO_REAL_MANIFEST_REAL_ME_KEYS = (
+    'id', 'library_process_id', 'local_flavours',
+    'local_squared_orders', 'backend_capabilities', 'process_fingerprint')
+NLO_REAL_MANIFEST_FKS_ROW_KEYS = (
+    'fks_row', 'topology', 'real_me_id', 'fortran_flavour_index',
+    'madmatrix_flavour_index', 'pdgs', 'local_to_global')
 
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
@@ -288,6 +302,333 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # Irrelevant here since group_mode=False so this function is never called
         misc.sprint('Entering ProcessExporterMadMatrix.modify_grouping')
         return False, matrix_element
+
+
+class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
+    """MadMatrix's tree-only companion to the ordinary FKS exporter.
+
+    This class deliberately does not own, copy or finalize an LO output tree.
+    It writes one uniquely named process directory for every distinct real
+    ``N_ME`` while reusing the same OneProcess exporter and model converter as
+    the LO exporter.
+    """
+
+    format_name = 'mg7 NLO real'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._nlo_model_prepared = False
+        self._wanted_lorentz = []
+        self._wanted_couplings = []
+
+    @staticmethod
+    def _append_unique(destination, values):
+        for value in values:
+            if value not in destination:
+                destination.append(value)
+
+    def prepare_nlo_tree(self, model):
+        """Install only the common files required by generated real MEs."""
+        if self._nlo_model_prepared:
+            return
+        self._nlo_tree_model = model
+        for directory in ('src', 'lib', 'SubProcesses'):
+            os.makedirs(pjoin(self.dir_path, directory), exist_ok=True)
+        for destination in ('src', 'SubProcesses'):
+            for source in self.from_template.get(destination, []):
+                files.cp(source, pjoin(self.dir_path, destination,
+                                       os.path.basename(source)))
+        src_make = self.read_template_file(self.template_src_make) % \
+            self.get_makefile_replace_dict(model)
+        with open(pjoin(self.dir_path, 'src', 'makefile'), 'w') as stream:
+            stream.write(src_make)
+        self.write_p_makefiles(model)
+        arithmetics_src = pjoin(self.madmatrix_templates, 'Arithmetics')
+        arithmetics_dst = pjoin(self.dir_path, 'src', 'Arithmetics')
+        if os.path.isdir(arithmetics_src):
+            os.makedirs(arithmetics_dst, exist_ok=True)
+            for name in ('Double.h', 'basicOPs.h', 'errorFreeOPs.h'):
+                files.cp(pjoin(arithmetics_src, name),
+                         pjoin(arithmetics_dst, name))
+        self._nlo_model_prepared = True
+
+    def nlo_tree_dependencies(self):
+        """Return worker-local tree dependencies for low-memory generation."""
+        return {
+            'lorentz': self._wanted_lorentz,
+            'couplings': self._wanted_couplings,
+        }
+
+    def merge_nlo_tree_dependencies(self, dependencies):
+        """Merge dependencies returned by an isolated low-memory worker."""
+        if not dependencies:
+            return
+        self._append_unique(self._wanted_lorentz,
+                            dependencies.get('lorentz', []))
+        self._append_unique(self._wanted_couplings,
+                            dependencies.get('couplings', []))
+
+    def _configure_nlo_process_exporter(self, matrix_element,
+                                        cpp_helas_call_writer):
+        """Create an NLO-real process writer with the production settings."""
+        self.check_split_orders(matrix_element)
+        cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
+        cpp_helas_call_writer.physical_flavor_indices = True
+        process = matrix_element.get('processes')[0]
+        model = process.get('model')
+        cpp_helas_call_writer.zero_width_parameters = set(
+            model.get_particle(leg.get('id')).get('width')
+            for leg in process.get('legs_with_decays')) - {'ZERO'}
+        cpp_helas_call_writer.cmd_options = self.opt.get('output_options', {})
+        return self.oneprocessclass(
+            matrix_element, cpp_helas_call_writer,
+            merge_same_topologies=self.opt.get('merge_same_topologies', True),
+            physical_flavor_indices=True)
+
+    def prime_nlo_tree_dependencies(self, fks_matrix_element,
+                                    cpp_helas_call_writer):
+        """Preseed global coupling indices before low-memory workers fork.
+
+        Every low-memory worker owns a copy of the HELAS writer. Without this
+        ordered, one-matrix-element-at-a-time pass each copy would number its
+        first coupling from zero while the shared model library retains one
+        global coupling table. Building the C++ replacement dictionary is
+        sufficient to discover the exact production order and does not write a
+        second process tree.
+        """
+        for fksreal in fks_matrix_element.real_processes:
+            matrix_element = fksreal.matrix_element
+            self._append_unique(self._wanted_lorentz,
+                                matrix_element.get_used_lorentz())
+            process_exporter = self._configure_nlo_process_exporter(
+                matrix_element, cpp_helas_call_writer)
+            try:
+                process_exporter.write_process_cc_file(False)
+            finally:
+                process_exporter.restore_original_numbering()
+            for attribute in ('wanted_ordered_dep_couplings',
+                              'wanted_ordered_indep_couplings',
+                              'wanted_ordered_flv_couplings'):
+                self._append_unique(
+                    self._wanted_couplings,
+                    getattr(cpp_helas_call_writer, attribute, []))
+
+    def _generate_real_directory(self, matrix_element, cpp_helas_call_writer,
+                                 born_number, real_number):
+        process_exporter = self._configure_nlo_process_exporter(
+            matrix_element, cpp_helas_call_writer)
+        directory = 'PMM_B%d_R%d' % (born_number + 1, real_number)
+        dirpath = pjoin(self.dir_path, 'SubProcesses', directory)
+        if os.path.exists(dirpath):
+            raise RuntimeError('duplicate MadMatrix NLO real directory %s' %
+                               dirpath)
+        os.mkdir(dirpath)
+        with misc.chdir(dirpath):
+            logger.info('Creating NLO real files in directory %s', dirpath)
+            process_exporter.path = dirpath
+            process_exporter.generate_process_files()
+            for name in self.to_link_in_P:
+                files.ln(pjoin(self.dir_path, 'SubProcesses', name), '.',
+                         name=name)
+        return directory, process_exporter
+
+    def generate_real_processes(self, fks_matrix_element,
+                                cpp_helas_call_writer, born_number,
+                                process_id, global_squared_orders):
+        """Write all distinct real MEs and the exact physical-row manifest."""
+        reals = []
+        local_orders = {}
+        for real_number, fksreal in enumerate(
+                fks_matrix_element.real_processes, start=1):
+            matrix_element = fksreal.matrix_element
+            # Capture tree dependencies before OneProcess generation: HELAS
+            # writers are allowed to annotate the shared model for their own
+            # later conversion pass.
+            self._append_unique(self._wanted_lorentz,
+                                matrix_element.get_used_lorentz())
+            directory, process_exporter = self._generate_real_directory(
+                matrix_element, cpp_helas_call_writer, born_number,
+                real_number)
+            for attribute in ('wanted_ordered_dep_couplings',
+                              'wanted_ordered_indep_couplings',
+                              'wanted_ordered_flv_couplings'):
+                self._append_unique(
+                    self._wanted_couplings,
+                    getattr(cpp_helas_call_writer, attribute, []))
+            squared_orders = [list(order) for order in
+                              matrix_element.get_split_orders_mapping()[0]]
+            if not squared_orders:
+                squared_orders = [[]]
+            local_orders[real_number] = squared_orders
+            split = export_v4.split_order_tables(matrix_element)
+            reals.append({
+                'id': real_number,
+                'library_process_id': directory,
+                'local_flavours': process_exporter.physical_flavor_rows(),
+                'local_squared_orders': squared_orders,
+                'backend_capabilities': {
+                    'scalar': True,
+                    'simd': True,
+                    'cuda': not split or split['nampso'] <= 1,
+                    'hip': not split or split['nampso'] <= 1,
+                },
+                'process_fingerprint': process_exporter.process_fingerprint(),
+            })
+
+        global_orders = [list(order) for order in global_squared_orders]
+        rows = []
+        flavor_map = fks_matrix_element.get_fks_flavor_map(
+            resolve_virtual=False)
+        for row_number, entry in enumerate(flavor_map, start=1):
+            real_number = entry['n_me']
+            mapping = []
+            for order in local_orders[real_number]:
+                try:
+                    mapping.append(global_orders.index(order) + 1)
+                except ValueError:
+                    raise RuntimeError(
+                        'local real squared order %s is absent from global '
+                        'AMP_SPLIT for %s' % (order, process_id))
+            rows.append({
+                'fks_row': row_number,
+                'topology': entry['fks_config_index'],
+                'real_me_id': real_number,
+                'fortran_flavour_index': entry['real_flavor_index'],
+                'madmatrix_flavour_index': entry['real_flavor_index'] - 1,
+                'pdgs': list(entry['real_pdgs']),
+                'local_to_global': mapping,
+            })
+
+        process = fks_matrix_element.born_me.get('processes')[0]
+        manifest = {
+            'version': NLO_REAL_MANIFEST_VERSION,
+            'process_id': process_id,
+            'nexternal': fks_matrix_element.get_nexternal_ninitial()[0],
+            'split_order_names': list(process.get('split_orders') or []),
+            'global_squared_orders': global_orders,
+            'real_matrix_elements': reals,
+            'fks_rows': rows,
+        }
+        manifest_path = pjoin(self.dir_path, 'SubProcesses', process_id,
+                              'nlo_real_manifest.json')
+        with open(manifest_path, 'w') as stream:
+            json.dump(manifest, stream, sort_keys=True, indent=2)
+            stream.write('\n')
+        self._write_bridge_config(manifest, os.path.dirname(manifest_path))
+        return manifest
+
+    def _write_bridge_config(self, manifest, process_path):
+        """Materialize checked compile-time identities for the generic bridge."""
+        lines = [
+            '#ifndef MG7_NLO_REAL_BRIDGE_CONFIG_H',
+            '#define MG7_NLO_REAL_BRIDGE_CONFIG_H 1',
+            'struct MG7NLORealConfig {',
+            '  const char* library_process_id;',
+            '  const char* fingerprint;',
+            '  int squared_order_count;',
+            '  int flavour_count;',
+            '};',
+            'static const int MG7_NLO_PARTICLE_COUNT = %d;' %
+            manifest['nexternal'],
+            'static const int MG7_NLO_REAL_COUNT = %d;' %
+            len(manifest['real_matrix_elements']),
+            'static const MG7NLORealConfig MG7_NLO_REAL_CONFIGS[] = {']
+        for real in manifest['real_matrix_elements']:
+            lines.append('  {"%s", "%s", %d, %d},' % (
+                real['library_process_id'], real['process_fingerprint'],
+                len(real['local_squared_orders']),
+                len(real['local_flavours'])))
+        lines.extend(['};', '#endif'])
+        with open(pjoin(process_path, 'nlo_real_bridge_config.h'), 'w') as stream:
+            stream.write('\n'.join(lines) + '\n')
+        for name in ('nlo_real_bridge.h', 'nlo_real_bridge.cc', 'umami.h'):
+            files.ln(pjoin(self.madmatrix_templates, name), process_path,
+                     name=name)
+        directories = ' '.join(
+            real['library_process_id']
+            for real in manifest['real_matrix_elements'])
+        makefile = [
+            '# Generated MadMatrix NLO-real build dispatcher.',
+            'CXX ?= g++',
+            'BACKEND ?= scalar',
+            'FPTYPE ?= d',
+            'HELINL ?= 0',
+            'HRDCOD ?= 0',
+            'NLO_REAL_DIRS := %s' % directories,
+            'NLO_REAL_BRIDGE := libnlo_real_bridge.so',
+            '',
+            '.PHONY: all libraries bridge clean',
+            'all: libraries bridge',
+            '',
+            'libraries:',
+            '\t@set -e; for directory in $(NLO_REAL_DIRS); do \\',
+            '\t  $(MAKE) -C ../$$directory BACKEND=$(BACKEND) '
+            'FPTYPE=$(FPTYPE) HELINL=$(HELINL) HRDCOD=$(HRDCOD); \\',
+            '\tdone',
+            '',
+            'bridge: $(NLO_REAL_BRIDGE)',
+            '',
+            '$(NLO_REAL_BRIDGE): nlo_real_bridge.cc nlo_real_bridge.h '
+            'nlo_real_bridge_config.h umami.h',
+            '\t$(CXX) -O2 -std=c++17 -Wall -Wextra -fPIC -shared -I. '
+            'nlo_real_bridge.cc -ldl -o $@',
+            '',
+            'clean:',
+            '\trm -f $(NLO_REAL_BRIDGE)',
+            '\t@set -e; for directory in $(NLO_REAL_DIRS); do \\',
+            '\t  $(MAKE) -C ../$$directory clean; \\',
+            '\tdone',
+        ]
+        with open(pjoin(process_path, 'nlo_real.mk'), 'w') as stream:
+            stream.write('\n'.join(makefile) + '\n')
+
+    def finalize_nlo_model(self, model):
+        """Run the one shared tree-level model/common conversion pass."""
+        # MadLoop's preceding virtual generation leaves loop-specific ALOHA
+        # variables in the process-global symbolic kernel. A tree-only second
+        # exporter must start from a clean kernel, just as a fresh LO output
+        # does, or names such as P1 can retain an incompatible loop type.
+        import aloha.aloha_lib as aloha_lib
+        aloha_lib.KERNEL.clean()
+        # The primary MadLoop exporter may cache its ordered loop/UV coupling
+        # set on the shared UFO model. ProcessExporterMadMatrix honors that
+        # cache for an ordinary dual export, but this lifecycle is deliberately
+        # tree-only: use only dependencies collected from the real MEs above.
+        # Snapshot only after the real HELAS writers have registered generated
+        # FLV_Coupling objects on the grouped model. Exact coupling filtering
+        # below excludes all loop/UV cache content from this copy.
+        tree_model = copy.deepcopy(model)
+        if hasattr(tree_model, 'cudacpp_wanted_ordered_couplings'):
+            del tree_model.cudacpp_wanted_ordered_couplings
+        tree_couplings = []
+        for coupling in self._wanted_couplings:
+            if isinstance(coupling, str):
+                tree_couplings.append(coupling)
+            else:
+                # Generated FLV_Coupling objects are not registered in the
+                # UFO model's ordinary coupling dictionary. Give the isolated
+                # conversion pass its own copy of the exact generated object.
+                tree_couplings.append(copy.deepcopy(coupling))
+        self.convert_model(tree_model, self._wanted_lorentz,
+                           tree_couplings)
+
+
+MADMATRIX_EXPORTER_REGISTRY = {
+    'lo': ProcessExporterMadMatrix,
+    'nlo_real': ProcessExporterMadMatrixNLOReal,
+}
+
+
+class MadMatrixExporterFactory(object):
+    """Explicit lifecycle selection; exporter construction remains ordinary."""
+
+    @classmethod
+    def get_exporter_class(cls, lifecycle):
+        try:
+            return MADMATRIX_EXPORTER_REGISTRY[lifecycle]
+        except KeyError:
+            raise ValueError('unknown MadMatrix exporter lifecycle %r' %
+                             lifecycle)
 
 
 # Standalone mode: in addition to the normal madmatrix exports, this writes

@@ -9,6 +9,8 @@ import sys
 
 import math
 import re
+import hashlib
+import json
 
 # AV - create a plugin-specific logger
 import logging
@@ -1837,6 +1839,32 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         ordered_dict = [(k, self.coups_dep[k]) for k in running_wanted_couplings]
         self.coups_dep = dict((x, y) for x, y in ordered_dict)
 
+        # Loop-capable UFO models place every alpha_s-dependent UV/R2 helper in
+        # the same dependency bucket as ordinary tree couplings. The generic
+        # converter historically emitted every parameter in that bucket even
+        # when ``wanted_couplings`` selected only (say) GC_5 = i*G. Apart from
+        # bloating a tree library, loop-only helpers use functions such as COND
+        # and reglog which are intentionally absent from MadMatrix device code.
+        # Retain the transitive parameter closure of the selected couplings.
+        if wanted_couplings:
+            expressions = [coupling.expr
+                           for coupling in self.coups_dep.values()]
+            selected = set()
+            changed = True
+            while changed:
+                changed = False
+                text = '\n'.join(expressions)
+                for parameter in self.params_dep:
+                    if parameter.name in selected:
+                        continue
+                    if re.search(r'(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])' %
+                                 re.escape(parameter.name), text):
+                        selected.add(parameter.name)
+                        expressions.append(parameter.expr)
+                        changed = True
+            self.params_dep = [parameter for parameter in self.params_dep
+                               if parameter.name in selected]
+
     def get_mg5_info_lines(self):
         return super().get_mg5_info_lines().replace('# ', '//')
 
@@ -1886,8 +1914,23 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
+        physical_flavor_indices = kwargs.pop('physical_flavor_indices', False)
         for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
         super().__init__(*args, **kwargs)
+        self.physical_flavor_indices = physical_flavor_indices
+        if physical_flavor_indices:
+            # Ordinary MG7 groups physically distinct rows which have the same
+            # generated coupling class behind one runtime flavour index. FKS
+            # already owns a one-based physical local index and its adapter ABI
+            # requires the exact 1 -> 0 conversion, so expose every physical row
+            # as one singleton runtime group for NLO real libraries.
+            physical_flavors, physical_pdgs = \
+                self.matrix_element.get_external_flavors(return_pdgs=True)
+            self.all_flavors = [[flavor] for flavor in physical_flavors]
+            self.all_flavors_pdgs = [[pdgs] for pdgs in physical_pdgs]
+            self.set_flavor_indices()
+            self.set_active_flavors()
+            self.set_channels_colors_map()
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
         if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+cudacpp (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
@@ -1910,18 +1953,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['noutcoming'] = nexternal - nincoming
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams')) # AV FIXME #910: elsewhere matrix_element.get('diagrams') and max(config[0]...
-        replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
-        # Only written when the jamps are actually split, so that a process
-        # without squared split orders keeps the header it always had
+        replace_dict['nmaxflavor'] = len(self.runtime_flavor_groups()) # number of flavor combinations
+        # The local squared-order count is part of the UMAMI runtime contract,
+        # including for the one implicit component of an unsplit process.
         so = self.split_orders_info()
+        replace_dict['nampso'] = so['nampso'] if so else 1
+        replace_dict['nsqampso'] = so['nsqampso'] if so else 1
+        replace_dict['has_split_orders'] = ('true' if self.split_orders_active()
+                                            else 'false')
         replace_dict['split_order_constants'] = '' if not self.split_orders_active() else (
             '\n    // Squared split orders: the amplitudes fall into nampso amplitude'
             '\n    // orders, the jamps carry one vector per order (njampso long in total)'
             '\n    // and the color sum pairs them into nsqampso squared orders'
-            '\n    // (see color_sum.cc, written from color_sum_splitorders.cc).'
-            '\n    static constexpr int nampso = %d;'
-            '\n    static constexpr int njampso = ncolor * nampso; // the jamps of every amplitude order, end to end'
-            '\n    static constexpr int nsqampso = %d;' % (so['nampso'], so['nsqampso']))
+            '\n    // (see color_sum.cc, written from color_sum_splitorders.cc).')
         replace_dict['nwave'] = 4
         if (fd_gauge): replace_dict['nwave'] += 1
 
@@ -2398,6 +2442,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_mgonGPU()
         self.edit_processidfile() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
+        self.edit_process_fingerprint()
         self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
         self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_coloramps()
@@ -2437,6 +2482,33 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff = open(pjoin(self.path, 'epoch_process_id.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
+
+    def process_fingerprint(self):
+        """Stable identity of the generated numerical process contract."""
+        me = self.matrix_elements[0]
+        process = me.get('processes')[0]
+        squared_orders, unused = me.get_split_orders_mapping()
+        payload = {
+            'process': process.nice_string().strip(),
+            'nexternal': me.get_nexternal_ninitial()[0],
+            'flavours': [[list(row) for row in group]
+                         for group in me.get_external_flavors_with_iden()],
+            'split_orders': list(process.get('split_orders') or []),
+            'squared_orders': [list(order) for order in squared_orders],
+        }
+        encoded = json.dumps(payload, sort_keys=True,
+                             separators=(',', ':')).encode('utf-8')
+        return hashlib.sha256(encoded).hexdigest()
+
+    def edit_process_fingerprint(self):
+        """Write the identity queried through UMAMI metadata."""
+        path = pjoin(self.path, 'process_fingerprint.h')
+        with open(path, 'w') as stream:
+            stream.write(
+                '#ifndef MADMATRIX_PROCESS_FINGERPRINT_H\n'
+                '#define MADMATRIX_PROCESS_FINGERPRINT_H 1\n'
+                '#define MADMATRIX_PROCESS_FINGERPRINT "%s"\n'
+                '#endif\n' % self.process_fingerprint())
 
     _blas_available = None
     _blas_flags = ''
@@ -2868,7 +2940,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
         flavor_line = '  static constexpr short flavors[nmaxflavor][npar] = {\n    '; # (this is tFlavors)
         flavor_line_list = []
-        for flavors in matrix_element.get_external_flavors_with_iden():
+        for flavors in self.runtime_flavor_groups(matrix_element):
             # get only the index 0 one because the other ones have same matrix element.
             # These values are used at runtime as 0-based indices into the per-flavor
             # FLV_COUPLING arrays (partner1/partner2/value, size max_flavor).  A
@@ -2889,19 +2961,42 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # Companion table with the true signed PDG ids of each flavor
         # combination (same convention as the PDG lines printed by the
         # Fortran/C++ standalone 'check' drivers); used by CPPProcess::flavorPDG.
-        pdg_line_list = []
-        for flavors in matrix_element.get_external_flavors_with_iden():
-            row = []
-            for j, flv in enumerate(flavors[0]):
-                raw = all_pdgs[j]
-                if abs(raw) in merged:
-                    row.append(flv if raw >= 0 else -flv)
-                else:
-                    row.append(raw)
-            pdg_line_list.append( '{ ' + ', '.join('%d' % v for v in row) + ' }' )
+        pdg_line_list = [
+            '{ ' + ', '.join('%d' % value for value in row) + ' }'
+            for row in self.physical_flavor_rows()]
         out += ('\n  static constexpr int flavorPDGs[nmaxflavor][npar] = {\n    ' +
                 ',\n    '.join(pdg_line_list) + ' };')
         return out
+
+    def physical_flavor_rows(self):
+        """Signed PDG rows in exactly the order of UMAMI flavour indices."""
+        matrix_element = self.matrix_elements[0]
+        model = matrix_element.get('processes')[0].get('model')
+        merged = model.get('merged_particles') or {}
+        all_pdgs = [leg.get('id') for leg in
+                    matrix_element.get('processes')[0].get(
+                        'legs_with_decays')]
+        rows = []
+        for flavors in self.runtime_flavor_groups(matrix_element):
+            row = []
+            for index, flavor in enumerate(flavors[0]):
+                raw = all_pdgs[index]
+                if abs(raw) in merged:
+                    row.append(flavor if raw >= 0 else -flavor)
+                else:
+                    row.append(raw)
+            rows.append(row)
+        return rows
+
+    def runtime_flavor_groups(self, matrix_element=None):
+        """Flavour groups represented by generated zero-based ABI indices."""
+        matrix_element = matrix_element or self.matrix_elements[0]
+        if getattr(self, 'physical_flavor_indices', False):
+            return [[flavor] for flavor in
+                    matrix_element.get_external_flavors()]
+        groups = [list(group) for group in
+                  matrix_element.get_external_flavors_with_iden()]
+        return groups
 
     def get_reset_jamp_lines(self, color_amplitudes):
         """Get lines to reset jamps"""
@@ -2970,6 +3065,27 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 self.flv_couplings_map[coupling.name] = coupling
 
         super().__init__(*args,**opts)
+
+    def get_wavefunction_call(self, wavefunction):
+        """Apply FKS's stable-external-particle width convention when asked.
+
+        NLO output materialises external-particle widths as zero in its
+        generated ``param_card.inc``. Internal propagators of the same species
+        therefore also use zero (for example a radiating top in ``tt~g``).
+        MadMatrix normally reads the physical width from the user card; the
+        NLO-real lifecycle sets ``zero_width_parameters`` so its generated
+        HELAS calls reproduce the authoritative FKS convention without
+        changing ordinary LO output.
+        """
+        width = wavefunction.get('width')
+        if width not in getattr(self, 'zero_width_parameters', set()):
+            return super().get_wavefunction_call(wavefunction)
+        particle = wavefunction.get('particle')
+        particle.set('width', 'ZERO')
+        try:
+            return super().get_wavefunction_call(wavefunction)
+        finally:
+            particle.set('width', width)
 
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting of CPPProcess.cc)
@@ -3559,7 +3675,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return {}, {}
         if not allowed or matrix_element.flavor_mask_is_trivial():
             return {}, {}
-        groups = [list(g) for g in matrix_element.get_external_flavors_with_iden()]
+        if getattr(self, 'physical_flavor_indices', False):
+            groups = [[flavor] for flavor in
+                      matrix_element.get_external_flavors()]
+        else:
+            groups = [list(g) for g in
+                      matrix_element.get_external_flavors_with_iden()]
         n_groups = len(groups)
         if n_groups == 0 or n_groups > 64:
             return {}, {}

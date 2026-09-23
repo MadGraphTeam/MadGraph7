@@ -78,12 +78,16 @@ def generate_directories_fks_async(i):
     nme = arglist[4]
     path = arglist[5]
     olpopts = arglist[6]
+    second_exporter = arglist[7] if len(arglist) > 7 else None
+    second_helas = arglist[8] if len(arglist) > 8 else None
     
     infile = open(mefile,'rb')
     me = pickle.load(infile)
     infile.close()      
     
-    calls, splitorders = curr_exporter.generate_directories_fks(me, curr_fortran_model, ime, nme, path, olpopts)
+    calls, splitorders = curr_exporter.generate_directories_fks(
+        me, curr_fortran_model, ime, nme, path, olpopts,
+        second_exporter=second_exporter, second_helas=second_helas)
 
     nexternal = curr_exporter.proc_characteristic['nexternal']
     ninitial = curr_exporter.proc_characteristic['ninitial']
@@ -96,7 +100,11 @@ def generate_directories_fks_async(i):
     max_loop_vertex_rank = -99
     if me.virt_matrix_element:
         max_loop_vertex_rank = me.virt_matrix_element.get_max_loop_vertex_rank()  
-    return [calls, curr_exporter.fksdirs, max_loop_vertex_rank, ninitial, nexternal, None,max_n_matched_jets, splitting_types, splitorders]
+    second_dependencies = (second_exporter.nlo_tree_dependencies()
+                           if second_exporter is not None else None)
+    return [calls, curr_exporter.fksdirs, max_loop_vertex_rank, ninitial,
+            nexternal, None, max_n_matched_jets, splitting_types, splitorders,
+            second_dependencies]
 
 class CheckFKS(mg_interface.CheckValidForCmd):
 
@@ -801,6 +809,15 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         """Main commands: Initialize a new Template or reinitialize one"""
         
         args = self.split_arg(line)
+        me_exporters = [arg.split('=', 1)[1] for arg in args
+                        if arg.startswith('--me_exporter=')]
+        if len(me_exporters) > 1:
+            raise self.InvalidCmd('Only one --me_exporter option is allowed')
+        me_exporter = me_exporters[0] if me_exporters else None
+        if me_exporter and me_exporter != 'mg7':
+            raise self.InvalidCmd(
+                'NLO real offloading supports only the built-in '
+                '--me_exporter=mg7')
         # Check Argument validity
         self.check_output(args)
         
@@ -825,6 +842,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
             self._curr_exporter.pass_information_from_cmd(self)
 
+        self._me_curr_exporter = None
+
         # check if a dir with the same name already exists
         if not force and not noclean and os.path.isdir(self._export_dir)\
                and self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
@@ -844,6 +863,22 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # Make a Template Copy
         if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             self._curr_exporter.copy_fkstemplate(self._curr_model)
+            if me_exporter:
+                from madmatrix import output as madmatrix_output
+                exporter_class = madmatrix_output.MadMatrixExporterFactory.\
+                    get_exporter_class('nlo_real')
+                exporter_options = dict(self.options)
+                exporter_options['output_options'] = dict(
+                    arg[2:].split('=', 1) if '=' in arg else (arg[2:], True)
+                    for arg in args if arg.startswith('--'))
+                self._me_curr_exporter = exporter_class(
+                    self._export_dir, exporter_options)
+                self._me_curr_exporter.pass_information_from_cmd(self)
+                # The primary FKS/MadLoop exporter mutates model-level coupling
+                # dependency caches while writing virtuals. Preserve a pristine
+                # tree model for the one shared MadMatrix conversion pass.
+                self._me_curr_exporter.prepare_nlo_tree(
+                    copy.deepcopy(self._curr_model))
 
         # Reset _done_export, since we have new directory
         self._done_export = False
@@ -855,7 +890,16 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         self._curr_exporter.pass_information_from_cmd(self)
 
         # Automatically run finalize
-        self.finalize(nojpeg)
+        # The NLO-real exporter has already converted its deliberately
+        # tree-only dependency set. The generic dual-export finalizer would
+        # feed it the full FKS/MadLoop dependency set a second time, including
+        # UV and loop ALOHA content, and overwrite that isolated model pass.
+        nlo_real_exporter = self._me_curr_exporter
+        self._me_curr_exporter = None
+        try:
+            self.finalize(nojpeg)
+        finally:
+            self._me_curr_exporter = nlo_real_exporter
             
         # Generate the virtuals if from OLP
         if self.options['OLP']!='MadLoop':
@@ -873,6 +917,12 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         """Export a generated amplitude to file"""
 
         self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
+        if self._me_curr_exporter:
+            self._me_curr_helas_model = \
+                self._me_curr_exporter.helas_exporter(
+                    self._curr_model, options=self.options)
+        else:
+            self._me_curr_helas_model = None
         def generate_matrix_elements(self, group=False):
             """Helper function to generate the matrix elements before
             exporting"""
@@ -974,7 +1024,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                             self._curr_exporter.generate_directories_fks(me, 
                             self._curr_helas_model, 
                             ime, len(self._curr_matrix_elements.get('matrix_elements')), 
-                            path,self.options['OLP'])
+                            path, self.options['OLP'],
+                            second_exporter=self._me_curr_exporter,
+                            second_helas=self._me_curr_helas_model)
                     calls += calls_dir
                     splitorders += [so for so in splitorders_dir if so not in splitorders]
                     self._fks_directories.extend(self._curr_exporter.fksdirs)
@@ -984,9 +1036,23 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     glob_directories_map.append(\
                             [self._curr_exporter, me, self._curr_helas_model, 
                              ime, len(self._curr_matrix_elements.get('matrix_elements')), 
-                             path, self.options['OLP']])
+                             path, self.options['OLP'],
+                             self._me_curr_exporter,
+                             self._me_curr_helas_model])
 
             if self.options['low_mem_multicore_nlo_generation']:
+                if self._me_curr_exporter:
+                    # Worker-local HELAS writers must inherit one global
+                    # coupling-index table because every real library links to
+                    # the same tree-only model library. Prime that table while
+                    # loading only one pickled Born process at a time.
+                    for mefile in self._curr_matrix_elements.get(
+                            'matrix_elements'):
+                        with open(mefile, 'rb') as stream:
+                            me = pickle.load(stream)
+                        self._me_curr_exporter.prime_nlo_tree_dependencies(
+                            me, self._me_curr_helas_model)
+                        del me
                 # start the pool instance with a signal instance to catch ctr+c
                 logger.info('Writing directories...')
                 ctx = multiprocessing.get_context('fork') # spawn is default for 3.8 and does not work
@@ -1039,6 +1105,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                     splitorders += [so for so in diroutput[8] if so not in splitorders]
                     self._fks_directories.extend(diroutput[1])
                     max_loop_vertex_ranks.append(diroutput[2])
+                    if self._me_curr_exporter:
+                        self._me_curr_exporter.merge_nlo_tree_dependencies(
+                            diroutput[9])
 
                 # transform proc_charac['splitting_types'] back to a list
                 proc_charac['splitting_types'] = list(splitting_types)
@@ -1070,6 +1139,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                                 os.path.join(path, os.path.pardir, 'SubProcesses'))
 
             self._curr_exporter.write_orderstag_file(splitorders, self._export_dir)
+            if self._me_curr_exporter:
+                self._me_curr_exporter.finalize_nlo_model(self._curr_model)
 
         cpu_time1 = time.time()
 
@@ -1152,4 +1223,3 @@ _launch_parser.add_option("-R", "--reweight", default=False, action='store_true'
                             help="Run the reweight module (reweighting by different model parameter")
 _launch_parser.add_option("-M", "--madspin", default=False, action='store_true',
                             help="Run the madspin package")
-

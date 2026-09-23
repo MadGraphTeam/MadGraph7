@@ -58,7 +58,13 @@
     static constexpr int ncolor = %(ncolor)s; // the number of leading colors: e.g. 1 for e+ e- -> mu+ mu-
     // The color structures the color flow is picked among. Same as ncolor,
     // unless the color sum runs on a smaller basis (see set_color_flow_lines_cpp).
-    static constexpr int ncolor_flow = %(ncolor_flow)s;%(split_order_constants)s
+    static constexpr int ncolor_flow = %(ncolor_flow)s;
+    // Local squared-order metadata is always available through UMAMI. Processes
+    // with one implicit amplitude order keep the original single-jamp kernels.
+    static constexpr int nampso = %(nampso)d;
+    static constexpr int njampso = ncolor * nampso;
+    static constexpr int nsqampso = %(nsqampso)d;
+    static constexpr bool has_split_orders = %(has_split_orders)s;%(split_order_constants)s
     static constexpr int nmaxflavor = %(nmaxflavor)d; // the maximum number of flavor combinations
 
     // Hardcoded parameters for this process (constant class variables)

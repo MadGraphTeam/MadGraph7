@@ -7,12 +7,15 @@
 #include "umami.h"
 
 #include "CPPProcess.h"
+#include "color_sum.h"
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
+#include "process_fingerprint.h"
 
 #include <cfloat>
 #include <cmath>
+#include <algorithm>
 #include <vector>
 #include <array>
 #include <utility>
@@ -129,6 +132,7 @@ namespace
     const double* color_random_in,
     const double* diagram_random_in,
     const double* alpha_s_in,
+    const double* g_strong_in,
     const unsigned int* flavor_indices_in,
     fptype_momenta* momenta,
     fptype* helicity_random,
@@ -152,7 +156,8 @@ namespace
     diagram_random[i_event] = diagram_random_in ? diagram_random_in[i_in + offset] : 0.5;
     helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_in + offset] : 0.5;
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
-    g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
+    g_s[i_event] = g_strong_in ? g_strong_in[i_in + offset] :
+      ( alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195 );
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
   }
 
@@ -239,6 +244,18 @@ extern "C"
           static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
         break;
       }
+      case UMAMI_META_ABI_MAJOR_VERSION:
+        *static_cast<int*>( result ) = UMAMI_MAJOR_VERSION;
+        break;
+      case UMAMI_META_ABI_MINOR_VERSION:
+        *static_cast<int*>( result ) = UMAMI_MINOR_VERSION;
+        break;
+      case UMAMI_META_PROCESS_FINGERPRINT:
+        *static_cast<char const**>( result ) = MADMATRIX_PROCESS_FINGERPRINT;
+        break;
+      case UMAMI_META_SQUARED_ORDER_COUNT:
+        *static_cast<int*>( result ) = CPPProcess::nsqampso;
+        break;
       default:
         return UMAMI_ERROR_UNSUPPORTED_META;
     }
@@ -247,9 +264,9 @@ extern "C"
 
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
-    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    // All historical keys retain their positions. Direct G is appended in ABI 1.1.
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = {
+      true, true, true, true, true, true, false, true, false, true };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -265,11 +282,14 @@ extern "C"
 
   UmamiStatus umami_supported_outputs( bool const** supported, int* count )
   {
-    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
+    // Squared-order component output is currently a CPU capability. GPU
+    // libraries advertise it only for the equivalent single-component case.
 #ifdef MGONGPUCPP_GPUIMPL
-    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true };
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = {
+      true, true, true, true, true, true, CPPProcess::nsqampso == 1 };
 #else
-    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
+    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = {
+      true, true, true, true, true, false, true };
 #endif
     *supported = data;
     *count = UMAMI_OUTPUT_KEY_COUNT;
@@ -321,6 +341,7 @@ extern "C"
   {
     const double* momenta_in = nullptr;
     const double* alpha_s_in = nullptr;
+    const double* g_strong_in = nullptr;
     const unsigned int* flavor_indices_in = nullptr;
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
@@ -355,16 +376,29 @@ extern "C"
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
           break;
+        case UMAMI_IN_CHANNEL_INDEX:
+          return UMAMI_ERROR_UNSUPPORTED_INPUT;
+        case UMAMI_IN_G_STRONG:
+          g_strong_in = static_cast<const double*>( input );
+          break;
         default:
           return UMAMI_ERROR_UNSUPPORTED_INPUT;
       }
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
+    if( alpha_s_in && g_strong_in ) return UMAMI_ERROR;
+    if( count == 0 ) return UMAMI_SUCCESS;
+
+    if( flavor_indices_in )
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+        if( flavor_indices_in[i_event + offset] >= CPPProcess::nmaxflavor )
+          return UMAMI_ERROR;
 
 #ifdef MGONGPUCPP_GPUIMPL
     gpuStream_t gpu_stream = nullptr;
 #endif
     double* m2_out = nullptr;
+    double* squared_orders_out = nullptr;
     double* amp2_out = nullptr;
     int* diagram_out = nullptr;
     int* color_out = nullptr;
@@ -388,6 +422,9 @@ extern "C"
           break;
         case UMAMI_OUT_DIAGRAM_INDEX:
           diagram_out = static_cast<int*>( output );
+          break;
+        case UMAMI_OUT_SQUARED_ORDERS:
+          squared_orders_out = static_cast<double*>( output );
           break;
 #ifdef MGONGPUCPP_GPUIMPL
         case UMAMI_OUT_GPU_STREAM:
@@ -458,6 +495,7 @@ extern "C"
       random_color_in,
       random_diagram_in,
       alpha_s_in,
+      g_strong_in,
       flavor_indices_in,
       momenta,
       helicity_random,
@@ -521,7 +559,25 @@ extern "C"
       offset );
     checkGpu( gpuPeekAtLastError() );
 
+    if( squared_orders_out )
+    {
+      if( CPPProcess::nsqampso != 1 ) return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+      // UMAMI GPU calls are asynchronous only when the caller explicitly asks
+      // for the stream. The single component equals the ordinary matrix element.
+      if( !gpu_stream ) checkGpu( gpuDeviceSynchronize() );
+      // copy_outputs already wrote the same physical values to m2_out only. A
+      // direct component destination needs its own device-to-host copy kernel.
+      if( squared_orders_out != m2_out )
+      {
+        copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
+          denominators, numerators, matrix_elements, diagram_index, color_index,
+          helicity_index, squared_orders_out, nullptr, nullptr, nullptr, nullptr,
+          count, stride, offset );
+        checkGpu( gpuPeekAtLastError() );
+      }
+    }
     gpuFreeAsync( buffer, gpu_stream );
+    if( !gpu_stream ) checkGpu( gpuDeviceSynchronize() );
 #else  // MGONGPUCPP_GPUIMPL
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
     // need to round to round to double page size for some reason
@@ -530,33 +586,23 @@ extern "C"
     std::size_t rounded_count;
 
     constexpr std::size_t flavor_count = CPPProcess::nmaxflavor;
-    HostBufferBase<unsigned int, false> flavor_indices( ((count + page_size2 - 1) / page_size2 + flavor_count) * page_size2 );
+    HostBufferBase<unsigned int, false> flavor_indices(
+      ( ( count + page_size2 - 1 ) / page_size2 + flavor_count ) * page_size2 );
     bool sort_flavors = vector_size > 1 && flavor_count > 1 && flavor_indices_in;
+    std::vector<std::vector<std::size_t>> flavor_events;
     if ( sort_flavors ) 
     {
       permutation.resize(count);
-      std::size_t voffset = 0;
-      std::size_t vector_indices[flavor_count] = {};
-      std::size_t vector_counts[flavor_count] = {};
-      // determine permutation of inputs such that all entries in a SIMD vector
-      // have the same flavor index
+      flavor_events.resize( flavor_count );
       for( std::size_t i_event = 0; i_event < count; ++i_event )
       {
-        unsigned int flav = flavor_indices_in[i_event + offset];
-        auto& vcount = vector_counts[flav];
-        auto& vindex = vector_indices[flav];
-        if ( vcount == 0 )
-        {
-          vindex = voffset * page_size2;
-          for ( std::size_t i = 0; i < page_size2; ++i) {
-            flavor_indices[voffset * page_size2 + i] = flav;
-          }
-          voffset += 1;
-        }
-        permutation[i_event] = vindex + vcount;
-        vcount = (vcount + 1) % page_size2;
+        const unsigned int flav = flavor_indices_in[i_event + offset];
+        if( flav >= flavor_count ) return UMAMI_ERROR;
+        flavor_events[flav].push_back( i_event );
       }
-      rounded_count = voffset * page_size2;
+      rounded_count = 0;
+      for( const auto& events : flavor_events )
+        rounded_count += ( ( events.size() + page_size2 - 1 ) / page_size2 ) * page_size2;
     } else {
       rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
     }
@@ -568,33 +614,48 @@ extern "C"
     HostBufferBase<fptype, false> color_random( rounded_count );
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
+    HostBufferBase<fptype, false> squared_order_elements(
+      squared_orders_out && CPPProcess::has_split_orders
+        ? rounded_count * CPPProcess::nsqampso : 0 );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
     HostBufferBase<fptype_amp, false> numerators( rounded_count * CPPProcess::ndiagrams );
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
     if ( sort_flavors ) {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      std::size_t i_sorted = 0;
+      for( std::size_t flav = 0; flav < flavor_events.size(); ++flav )
       {
-        std::size_t i_sorted = permutation[i_event];
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
-        helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_sorted] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+        const auto& events = flavor_events[flav];
+        for( std::size_t begin = 0; begin < events.size(); begin += page_size2 )
+        {
+          const std::size_t in_page = std::min( page_size2, events.size() - begin );
+          for( std::size_t lane = 0; lane < page_size2; ++lane, ++i_sorted )
+          {
+            const std::size_t i_event = events[begin + ( lane < in_page ? lane : 0 )];
+            if( lane < in_page ) permutation[i_event] = i_sorted;
+            transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_sorted, stride );
+            helicity_random[i_sorted] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
+            color_random[i_sorted] = random_color_in ? random_color_in[i_event + offset] : 0.5;
+            diagram_random[i_sorted] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
+            g_s[i_sorted] = g_strong_in ? g_strong_in[i_event + offset] :
+              ( alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195 );
+            flavor_indices[i_sorted] = flav;
+          }
+        }
       }
     } else {
-      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      for( std::size_t i_event = 0; i_event < rounded_count; ++i_event )
       {
-        transpose_momenta( &momenta_in[offset], momenta.data(), i_event, i_event, stride );
-        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_event + offset] : 0.5;
-        color_random[i_event] = random_color_in ? random_color_in[i_event + offset] : 0.5;
-        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
-        g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-      }
-      for ( std::size_t i_event = count; i_event < rounded_count; ++i_event ) {
-        flavor_indices[i_event] = 0;
+        const std::size_t i_input = i_event < count ? i_event : 0;
+        transpose_momenta( &momenta_in[offset], momenta.data(), i_input, i_event, stride );
+        helicity_random[i_event] = random_helicity_in ? random_helicity_in[i_input + offset] : 0.5;
+        color_random[i_event] = random_color_in ? random_color_in[i_input + offset] : 0.5;
+        diagram_random[i_event] = random_diagram_in ? random_diagram_in[i_input + offset] : 0.5;
+        g_s[i_event] = g_strong_in ? g_strong_in[i_input + offset] :
+          ( alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_input + offset] ) : 1.2177157847767195 );
+        flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_input + offset] : 0;
+        if( flavor_indices[i_event] >= flavor_count ) return UMAMI_ERROR;
       }
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
@@ -613,6 +674,18 @@ extern "C"
       instance->initialized = true;
     }
 
+    // Lazy initialization scans every flavour/helicity through sigmaKin to
+    // construct the good-helicity union. Do not expose the caller's component
+    // destination until that scan is complete, or its contributions pollute
+    // the first split-order result returned by a handle.
+    if( squared_orders_out && CPPProcess::has_split_orders )
+    {
+      std::fill( squared_order_elements.data(),
+                 squared_order_elements.data() + rounded_count * CPPProcess::nsqampso,
+                 static_cast<fptype>( 0 ) );
+      color_sum_set_squared_orders( squared_order_elements.data(), rounded_count );
+    }
+
     sigmaKin(
       momenta.data(),
       couplings.data(),
@@ -629,6 +702,7 @@ extern "C"
       diagram_index.data(),
       false,
       rounded_count );
+    color_sum_clear_squared_orders();
 
     if ( sort_flavors )
     {
@@ -643,6 +717,14 @@ extern "C"
         if( m2_out != nullptr )
         {
           m2_out[i_event + offset] = matrix_elements[i_sorted];
+        }
+        if( squared_orders_out != nullptr )
+        {
+          for( int iso = 0; iso < CPPProcess::nsqampso; ++iso )
+            squared_orders_out[stride * iso + i_event + offset] =
+              CPPProcess::has_split_orders
+                ? squared_order_elements[iso * rounded_count + i_sorted]
+                : matrix_elements[i_sorted];
         }
         if( amp2_out != nullptr )
         {
@@ -675,6 +757,14 @@ extern "C"
         if( m2_out != nullptr )
         {
           m2_out[i_event + offset] = matrix_elements[i_event];
+        }
+        if( squared_orders_out != nullptr )
+        {
+          for( int iso = 0; iso < CPPProcess::nsqampso; ++iso )
+            squared_orders_out[stride * iso + i_event + offset] =
+              CPPProcess::has_split_orders
+                ? squared_order_elements[iso * rounded_count + i_event]
+                : matrix_elements[i_event];
         }
         if( amp2_out != nullptr )
         {

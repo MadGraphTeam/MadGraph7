@@ -30,7 +30,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 0
+#define UMAMI_MINOR_VERSION 1
 
 typedef enum {
     /** operation was executed successfully */
@@ -72,6 +72,14 @@ typedef enum {
     UMAMI_META_COLOR_COUNT,
     /** `double` array of length particle count: the external-leg masses (GeV) */
     UMAMI_META_MASSES,
+    /** `int` containing the ABI major version implemented by the library */
+    UMAMI_META_ABI_MAJOR_VERSION,
+    /** `int` containing the ABI minor version implemented by the library */
+    UMAMI_META_ABI_MINOR_VERSION,
+    /** implementation-owned null-terminated process fingerprint (`char const*`) */
+    UMAMI_META_PROCESS_FINGERPRINT,
+    /** `int` specifying the number of local squared-order components */
+    UMAMI_META_SQUARED_ORDER_COUNT,
 } UmamiMetaKey;
 
 typedef enum {
@@ -93,10 +101,12 @@ typedef enum {
     UMAMI_IN_DIAGRAM_INDEX,
     /** externally selected channel index, type: `unsigned int`, shape: `()` */
     UMAMI_IN_CHANNEL_INDEX,
+    /** direct value of the strong coupling G, type: `double`, shape: `()` */
+    UMAMI_IN_G_STRONG,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_CHANNEL_INDEX + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_G_STRONG + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */
@@ -112,10 +122,13 @@ typedef enum {
     /** CUDA or HIP stream for asynchronous execution. Listed as an output as it is a
      * mutable pointer */
     UMAMI_OUT_GPU_STREAM,
+    /** all local squared-order components, type: `double`, shape:
+     * `(squared-order count)`. The order index is the outer (strided) dimension. */
+    UMAMI_OUT_SQUARED_ORDERS,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_GPU_STREAM + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_SQUARED_ORDERS + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;

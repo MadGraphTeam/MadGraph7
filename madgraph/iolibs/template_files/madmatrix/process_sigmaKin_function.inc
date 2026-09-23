@@ -295,7 +295,11 @@
       const int ievt0 = ipagV * neppV;
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
-      MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) ) / static_cast<fptype>( helcolDenominators[0] );
+      const fptype outputNormalisation =
+        static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] ) ) /
+        static_cast<fptype>( helcolDenominators[0] );
+      MEs_sv = MEs_sv * outputNormalisation;
+      color_sum_normalise_squared_orders( ievt0, outputNormalisation );
       if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
       {
         // The numerators have already been accumulated over all good helicities in place (running sum

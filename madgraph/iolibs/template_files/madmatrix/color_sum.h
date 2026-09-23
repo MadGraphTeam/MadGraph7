@@ -96,6 +96,13 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
 #ifndef MGONGPUCPP_GPUIMPL
+  // Optional local squared-order capture used by the NLO real adapter. The
+  // pointer is call-local state configured by UMAMI; ordinary callers leave it
+  // null and retain their historical scalar output.
+  void color_sum_set_squared_orders( fptype* components, std::size_t stride );
+  void color_sum_clear_squared_orders();
+  void color_sum_normalise_squared_orders( int ievt0, fptype factor );
+
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
                  const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity

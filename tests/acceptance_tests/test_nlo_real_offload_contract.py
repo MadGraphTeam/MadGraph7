@@ -22,6 +22,7 @@ squared orders, mapped global split orders and summed result.
 from __future__ import absolute_import
 
 import glob
+import ctypes
 import hashlib
 import json
 import math
@@ -85,11 +86,16 @@ class TestNLORealFortranOracle(unittest.TestCase):
         cmd.exec_cmd(line, errorhandling=False, printcmd=False,
                      precmd=True, postcmd=True)
 
-    def _generate_case(self, name):
+    def _generate_case(self, name, madmatrix=False, low_memory=False):
         case = self.oracle['cases'][name]
         output_path = pjoin(self.tmpdir, name)
         cmd = self._new_cmd()
         self._run(cmd, 'set apply_flavor_grouping True --no_save')
+        self._run(
+            cmd, 'set low_mem_multicore_nlo_generation %s --no_save' %
+            ('True' if low_memory else 'False'))
+        if low_memory:
+            self._run(cmd, 'set nb_core 2 --no_save')
         if name == 'grouped_mixed_wj':
             self._run(cmd, 'set nlo_mixed_expansion True --no_save')
 
@@ -98,9 +104,11 @@ class TestNLORealFortranOracle(unittest.TestCase):
             model = pjoin(MG5DIR, model)
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % case['process'])
-        self._run(
-            cmd, 'output standalone_fortran --fks --limits %s -f' %
-            output_path)
+        output = 'output standalone_fortran --fks --limits %s -f' % \
+            output_path
+        if madmatrix:
+            output += ' --me_exporter=mg7'
+        self._run(cmd, output)
         param_card = pjoin(output_path, 'Cards', 'param_card.dat')
         with open(param_card, 'rb') as stream:
             digest = hashlib.sha256(stream.read()).hexdigest()
@@ -433,11 +441,231 @@ class TestNLORealFortranOracle(unittest.TestCase):
         actual = self._compile_and_run(output_path, case)
         self._assert_case(case, actual)
 
+    @staticmethod
+    def _bridge(process_path):
+        bridge = ctypes.CDLL(pjoin(process_path, 'libnlo_real_bridge.so'))
+        handle = ctypes.c_void_p
+        bridge.mg7_nlo_real_initialize.argtypes = [
+            ctypes.POINTER(handle), ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_char_p]
+        bridge.mg7_nlo_real_initialize.restype = ctypes.c_int
+        bridge.mg7_nlo_real_evaluate.argtypes = [
+            handle, ctypes.c_int, ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.POINTER(ctypes.c_double)]
+        bridge.mg7_nlo_real_evaluate.restype = ctypes.c_int
+        bridge.mg7_nlo_real_finalize.argtypes = [ctypes.POINTER(handle)]
+        bridge.mg7_nlo_real_finalize.restype = ctypes.c_int
+        bridge.mg7_nlo_real_last_error.argtypes = [handle]
+        bridge.mg7_nlo_real_last_error.restype = ctypes.c_char_p
+        return bridge
+
+    def _run_madmatrix_case(self, name, low_memory=False):
+        """Generate, build, relocate, and replay every scalar bridge row."""
+
+        case = self.oracle['cases'][name]
+        output_path = self._generate_case(
+            name, madmatrix=True, low_memory=low_memory)
+        process_path = pjoin(
+            output_path, 'SubProcesses', case['subprocess'])
+        manifest_path = pjoin(process_path, 'nlo_real_manifest.json')
+        with open(manifest_path) as stream:
+            manifest = json.load(stream)
+
+        self.assertEqual(manifest['version'], 1)
+        self.assertEqual(manifest['nexternal'], len(case['points'][0]['momenta']))
+        self.assertEqual(manifest['split_order_names'],
+                         case['split_order_names'])
+        rows = {row['fks_row']: row for row in manifest['fks_rows']}
+        self.assertEqual(sorted(rows), case['selected_rows'])
+        reals = {real['id']: real for real in
+                 manifest['real_matrix_elements']}
+        for row in rows.values():
+            self.assertEqual(
+                row['madmatrix_flavour_index'],
+                row['fortran_flavour_index'] - 1)
+            self.assertEqual(
+                reals[row['real_me_id']]['local_flavours'][
+                    row['madmatrix_flavour_index']], row['pdgs'])
+
+        subprocess.check_call(
+            ['make', '-f', 'nlo_real.mk', 'BACKEND=scalar', 'FPTYPE=d',
+             '-j2'], cwd=process_path)
+
+        # Runtime paths must survive moving the complete generated process tree.
+        generated_path = output_path
+        relocated = output_path + '-relocated'
+        os.rename(output_path, relocated)
+        output_path = relocated
+        process_path = pjoin(
+            output_path, 'SubProcesses', case['subprocess'])
+        bridge = self._bridge(process_path)
+        context = ctypes.c_void_p()
+        status = bridge.mg7_nlo_real_initialize(
+            ctypes.byref(context),
+            pjoin(output_path, 'Cards', 'param_card.dat').encode(),
+            pjoin(output_path, 'lib').encode(), b'scalar')
+        self.assertEqual(
+            status, 0,
+            bridge.mg7_nlo_real_last_error(context).decode())
+
+        points = {point['id']: point for point in case['points']}
+        first_values = {}
+        try:
+            for expected in sorted(
+                    case['records'],
+                    key=lambda record: (record['point'], record['fks_row'])):
+                row = rows[expected['fks_row']]
+                real = reals[row['real_me_id']]
+                local_orders = expected['local_squared_orders']
+                self.assertEqual(
+                    real['local_squared_orders'],
+                    [component['orders'] for component in local_orders])
+                self.assertEqual(
+                    row['local_to_global'],
+                    [manifest['global_squared_orders'].index(
+                        component['orders']) + 1
+                     for component in local_orders])
+
+                point = points[expected['point']]
+                flat_momenta = [
+                    point['momenta'][particle][component]
+                    for component in range(4)
+                    for particle in range(manifest['nexternal'])]
+                momenta = (ctypes.c_double * len(flat_momenta))(
+                    *flat_momenta)
+                g_strong = (ctypes.c_double * 1)(point['g_strong'])
+                flavour = (ctypes.c_int32 * 1)(
+                    row['madmatrix_flavour_index'])
+                values = (ctypes.c_double * len(local_orders))()
+                status = bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], 1, momenta, g_strong,
+                    flavour, values)
+                self.assertEqual(
+                    status, 0,
+                    bridge.mg7_nlo_real_last_error(context).decode())
+                scale = max(
+                    [abs(component['value']) for component in local_orders]
+                    or [0.])
+                for index, component in enumerate(local_orders):
+                    self._assert_close(
+                        values[index], component['value'], scale=scale,
+                        label='MadMatrix point %d FKS row %d order %s' % (
+                            expected['point'], expected['fks_row'],
+                            component['orders']))
+
+                # Point one naturally alternates among real libraries. Retain
+                # the first value for each real and prove repeated calls agree.
+                key = (expected['point'], row['real_me_id'],
+                       row['madmatrix_flavour_index'])
+                result = tuple(values)
+                if key in first_values:
+                    for got, reference in zip(result, first_values[key]):
+                        self._assert_close(got, reference, scale=scale,
+                                           label='repeated real-library call')
+                else:
+                    first_values[key] = result
+
+            first = case['records'][0]
+            row = rows[first['fks_row']]
+            point = points[first['point']]
+            flat_momenta = [
+                point['momenta'][particle][component]
+                for component in range(4)
+                for particle in range(manifest['nexternal'])]
+            momenta = (ctypes.c_double * len(flat_momenta))(*flat_momenta)
+            g_strong = (ctypes.c_double * 1)(point['g_strong'])
+            output = (ctypes.c_double * len(first['local_squared_orders']))()
+            good_flavour = (ctypes.c_int32 * 1)(
+                row['madmatrix_flavour_index'])
+            bad_flavour = (ctypes.c_int32 * 1)(
+                len(reals[row['real_me_id']]['local_flavours']))
+            self.assertNotEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, 0, 1, momenta, g_strong, good_flavour, output),
+                0)
+            self.assertNotEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], 1, momenta, g_strong,
+                    bad_flavour, output), 0)
+            # A contained bad call must not poison the context.
+            self.assertEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], 1, momenta, g_strong,
+                    good_flavour, output), 0)
+
+            probes = []
+            seen_reals = set()
+            for record in case['records']:
+                probe_row = rows[record['fks_row']]
+                if probe_row['real_me_id'] not in seen_reals:
+                    probes.append(record)
+                    seen_reals.add(probe_row['real_me_id'])
+                if len(probes) == 2:
+                    break
+            self.assertEqual(len(probes), 2)
+
+            def probe(handle, record):
+                probe_row = rows[record['fks_row']]
+                probe_point = points[record['point']]
+                flat = [
+                    probe_point['momenta'][particle][component]
+                    for component in range(4)
+                    for particle in range(manifest['nexternal'])]
+                probe_momenta = (ctypes.c_double * len(flat))(*flat)
+                probe_g = (ctypes.c_double * 1)(probe_point['g_strong'])
+                probe_flavour = (ctypes.c_int32 * 1)(
+                    probe_row['madmatrix_flavour_index'])
+                probe_output = (ctypes.c_double * len(
+                    record['local_squared_orders']))()
+                self.assertEqual(
+                    bridge.mg7_nlo_real_evaluate(
+                        handle, probe_row['real_me_id'], 1, probe_momenta,
+                        probe_g, probe_flavour, probe_output), 0,
+                    bridge.mg7_nlo_real_last_error(handle).decode())
+                return tuple(probe_output)
+
+            first_before = probe(context, probes[0])
+            probe(context, probes[1])
+            first_after = probe(context, probes[0])
+            self.assertEqual(first_after, first_before)
+
+            second_context = ctypes.c_void_p()
+            self.assertEqual(
+                bridge.mg7_nlo_real_initialize(
+                    ctypes.byref(second_context),
+                    pjoin(output_path, 'Cards', 'param_card.dat').encode(),
+                    pjoin(output_path, 'lib').encode(), b'scalar'), 0)
+            try:
+                self.assertEqual(probe(second_context, probes[0]),
+                                 first_before)
+            finally:
+                self.assertEqual(
+                    bridge.mg7_nlo_real_finalize(
+                        ctypes.byref(second_context)), 0)
+                self.assertFalse(second_context.value)
+        finally:
+            self.assertEqual(
+                bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
+            self.assertFalse(context.value)
+            os.rename(relocated, generated_path)
+
     def test_grouped_qcd_ttx_real_components(self):
         self._run_case('grouped_qcd_ttx')
 
     def test_grouped_mixed_wj_real_components(self):
         self._run_case('grouped_mixed_wj')
+
+    def test_grouped_qcd_ttx_madmatrix_scalar_components(self):
+        self._run_madmatrix_case('grouped_qcd_ttx')
+
+    def test_grouped_mixed_wj_madmatrix_scalar_components(self):
+        self._run_madmatrix_case('grouped_mixed_wj')
+
+    def test_grouped_qcd_ttx_madmatrix_low_memory(self):
+        self._run_madmatrix_case('grouped_qcd_ttx', low_memory=True)
 
 
 if __name__ == '__main__':
