@@ -845,14 +845,14 @@ class TestForceLHEOutput(unittest.TestCase):
             f.write(text.replace(old, new, 1))
 
     def test_default_is_npy(self):
-        self.assertEqual(self.output_format(), 'compact_npy')
+        self.assertEqual(self.output_format(), 'lhe_npy')
 
     def test_nothing_to_do_keeps_npy(self):
         self.launch.force_lhe_output_if_needed({})
         self.launch.force_lhe_output_if_needed(
             {'shower': 'OFF', 'detector': 'Not Avail.', 'analysis': 'ExRoot',
              'madspin': 'OFF', 'reweight': 'OFF'})
-        self.assertEqual(self.output_format(), 'compact_npy')
+        self.assertEqual(self.output_format(), 'lhe_npy')
 
     def test_tool_forces_lhe(self):
         self.launch.force_lhe_output_if_needed({'shower': 'Pythia8'})
@@ -867,7 +867,7 @@ class TestForceLHEOutput(unittest.TestCase):
         self.edit('\nsystematics = false', '\nsystematics = true')
         self.launch.force_lhe_output_if_needed({})
         # madspace computes the weights itself: systematics.py never runs
-        self.assertEqual(self.output_format(), 'compact_npy')
+        self.assertEqual(self.output_format(), 'lhe_npy')
         with open(self.card) as f:
             text = f.read()
         start = text.index('[systematics]')

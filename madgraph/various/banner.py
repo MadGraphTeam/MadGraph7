@@ -6678,7 +6678,7 @@ class RunCardMG7(RunCard):
             comment="-1 sets count automatically based on number of CPUs")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True)
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
-        self.add_toml_param('run', 'output_format', "compact_npy", gridpack=True,
+        self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'])
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
