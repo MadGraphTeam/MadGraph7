@@ -7543,12 +7543,21 @@ class RunCardMG7(RunCard):
     }
 
     @classmethod
-    def _resolve_pdf(cls, lo, dropped):
+    def _resolve_pdf(cls, lo, dropped, dressed=False):
         """Map the LO pdlabel/lhaid to an LHAPDF set name (or None to keep the
-        MG7 default, recording the reason in ``dropped``)."""
+        MG7 default, recording the reason in ``dropped``).
+
+        ``dressed`` says the beams select a dressed-lepton density, in which
+        case the label is one of Source/PDF/lep_densities and there is nothing
+        to map: the beam report has already said the density is gone, and mg7
+        uses no PDF at all for such a run."""
         pdlabel = str(lo['pdlabel']).lower() if 'pdlabel' in lo else ''
         if str(lo['pdlabel1']).lower() != str(lo['pdlabel2']).lower():
             dropped.append('pdlabel1/pdlabel2 differ (mg7 uses a single pdf)')
+        if dressed:
+            # not "unknown label, keeping the mg7 default": the label is known,
+            # and no default is kept
+            return None
         if pdlabel in ('none', '', 'no'):
             return None
         if pdlabel == 'lhapdf':
@@ -7589,16 +7598,36 @@ class RunCardMG7(RunCard):
         mg7.set('beam.e_cm', float(lo['ebeam1']) + float(lo['ebeam2']))
         lpps = [lo['lpp1'], lo['lpp2']]
         is_lep = lambda l: isinstance(l, int) and abs(l) in (3, 4)
+        is_had = lambda l: isinstance(l, int) and abs(l) == 1
+        dressed = [i for i, l in ((1, lpps[0]), (2, lpps[1])) if is_lep(l)]
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
         for i, lpp in ((1, lpps[0]), (2, lpps[1])):
             if isinstance(lpp, int) and abs(lpp) not in (0, 1, 3, 4):
                 dropped.append('lpp%d=%s (beam type not representable in mg7)' % (i, lpp))
+            elif is_lep(lpp):
+                # Tested before the sign check below, which would otherwise
+                # call lpp=-3 an antiparticle-PDF question. It is not: mg7 has
+                # no dressed-lepton density at all, and beam.leptonic means
+                # "no parton luminosity", so the ISR -- and the beamstrahlung
+                # that the collider-specific sets fold in -- is simply absent
+                # from the generated events. Saying nothing here (the previous
+                # behaviour for lpp=+3) reports a clean conversion for a run
+                # whose physics has changed.
+                dropped.append(
+                    'lpp%d=%s (dressed-lepton beam: mg7 has no ISR/beamstrahlung '
+                    'density, the beam becomes monochromatic)' % (i, lpp))
             elif isinstance(lpp, int) and lpp < 0:
                 dropped.append('lpp%d=%s (antiparticle beam: mg7 keeps the particle PDF)' % (i, lpp))
             elif lpp == 0:
                 dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf)' % i)
+        if dressed and any(is_had(l) for l in lpps):
+            # beam.leptonic is a single flag for both beams, so one dressed
+            # lepton beam also switches off the other beam's PDF.
+            dropped.append(
+                'lpp1=%s, lpp2=%s (lepton-hadron beams: beam.leptonic is a '
+                'single flag, so the hadron PDF is dropped too)' % tuple(lpps))
 
         # --- scales ---
         if 'fixed_fac_scale' in lo:
@@ -7619,7 +7648,7 @@ class RunCardMG7(RunCard):
                 'denominators' if int(sde) == 2 else 'diagrams')
 
         # --- PDF ---
-        pdf_name = cls._resolve_pdf(lo, dropped)
+        pdf_name = cls._resolve_pdf(lo, dropped, dressed=bool(dressed))
         if pdf_name:
             mg7.set('beam.pdf', pdf_name)
 
