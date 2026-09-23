@@ -16,10 +16,11 @@ the LHE file from what the npy run left behind.
   among equivalent ones, resonance assignment), so the result is statistically
   but not byte-identical to an ``output_format = "lhe"`` run with the same seed.
 
-In both cases the LHE header and ``<init>`` block come from ``lhe_meta.json``
-and the systematics ``<initrwgt>`` from ``events.weights.json``; the ``rwgt_<id>``
-columns become the per-event ``<rwgt>`` block. The ``<mgrwt>`` reweighting-input
-block (``[systematics] write_inputs``) is not reconstructed.
+In both cases the LHE header and ``<init>`` block (with the systematics
+``<initrwgt>``) are taken verbatim from the ``header.lhe`` file the run writes
+next to its npy events; the ``rwgt_<id>`` columns become the per-event
+``<rwgt>`` block. The ``<mgrwt>`` reweighting-input block (``[systematics]
+write_inputs``) is not reconstructed.
 
 Usage::
 
@@ -27,15 +28,15 @@ Usage::
 """
 
 import argparse
-import json
 import logging
 import os
+import re
 import sys
 
 logger = logging.getLogger("madevent")
 
 COMPLETER_FILE = "lhe_completer.json"
-META_FILE = "lhe_meta.json"
+HEADER_FILE = "header.lhe"
 EVENT_FILE = "events.npy"
 
 # events converted per LHEFileWriter.write_string call
@@ -49,70 +50,20 @@ def _madspace():
     return madspace
 
 
-# ----------------------------------------------------------------------------
-# written by the run
-# ----------------------------------------------------------------------------
-def save_lhe_inputs(run_path, meta, completer=None) -> None:
-    """Store what a later conversion needs next to the npy events: the LHE
-    header/<init> metadata and (compact_npy only) the LHE completer."""
-    data = {
-        key: getattr(meta, key) for key in (
-            "beam1_pdg_id", "beam2_pdg_id", "beam1_energy", "beam2_energy",
-            "beam1_pdf_authors", "beam2_pdf_authors", "beam1_pdf_id",
-            "beam2_pdf_id", "weight_mode")
-    }
-    data["processes"] = [
-        {"cross_section": p.cross_section,
-         "cross_section_error": p.cross_section_error,
-         "max_weight": p.max_weight, "process_id": p.process_id}
-        for p in meta.processes]
-    data["headers"] = [
-        {"name": h.name, "content": h.content,
-         "escape_content": h.escape_content}
-        for h in meta.headers]
-    with open(os.path.join(run_path, META_FILE), "w") as f:
-        json.dump(data, f)
-    if completer is not None:
-        completer.save(os.path.join(run_path, COMPLETER_FILE))
+def _read_header(run_path):
+    """The header.lhe text without its closing tag, ready to be followed by
+    the events."""
+    with open(os.path.join(run_path, HEADER_FILE)) as f:
+        text = f.read()
+    end = text.rfind("</LesHouchesEvents>")
+    return text if end < 0 else text[:end]
 
 
-def _load_meta(ms, run_path):
-    """The LHEMeta saved by the run, completed with the systematics <initrwgt>
-    block the direct LHE output adds; returns it with the systematics weight
-    columns (in the order of their ids)."""
-    with open(os.path.join(run_path, META_FILE)) as f:
-        data = json.load(f)
-    processes = [ms.LHEProcess(p["cross_section"], p["cross_section_error"],
-                               p["max_weight"], p["process_id"])
-                 for p in data.pop("processes")]
-    headers = [ms.LHEHeader(name=h["name"], content=h["content"],
-                            escape_content=h["escape_content"])
-               for h in data.pop("headers")]
-    columns = []
-    weights_path = os.path.join(run_path, "events.weights.json")
-    if os.path.exists(weights_path):
-        with open(weights_path) as f:
-            weights = json.load(f)
-        columns = weights.get("columns", [])
-        if columns and weights.get("initrwgt") \
-                and not any(h.name == "initrwgt" for h in headers):
-            headers.append(ms.LHEHeader(name="initrwgt",
-                                        content=weights["initrwgt"],
-                                        escape_content=False))
-    meta = ms.LHEMeta(processes=processes, headers=headers, **data)
-    return meta, headers, columns
-
-
-def _seed(headers, seed):
+def _seed(header, seed):
     if seed is not None:
         return int(seed)
-    for header in headers:
-        if header.name == "MG7Seed":
-            try:
-                return int(header.content)
-            except ValueError:
-                pass
-    return 0
+    match = re.search(r"<MG7Seed>\s*(-?\d+)\s*</MG7Seed>", header)
+    return int(match.group(1)) if match else 0
 
 
 # ----------------------------------------------------------------------------
@@ -133,7 +84,7 @@ def resolve_event_file(path, me_dir=None) -> str:
 def can_convert(run_path) -> bool:
     """True when ``run_path`` holds npy events this module can turn into LHE."""
     return (os.path.isfile(os.path.join(run_path, EVENT_FILE))
-            and os.path.isfile(os.path.join(run_path, META_FILE)))
+            and os.path.isfile(os.path.join(run_path, HEADER_FILE)))
 
 
 def _particle_count(names):
@@ -206,44 +157,45 @@ def convert(path, output=None, seed=None, compress=True, me_dir=None) -> str:
     ms = _madspace()
     npy_path = resolve_event_file(path, me_dir)
     run_path = os.path.dirname(npy_path)
-    if not os.path.isfile(os.path.join(run_path, META_FILE)):
+    if not os.path.isfile(os.path.join(run_path, HEADER_FILE)):
         raise FileNotFoundError(
             "%s is missing: the run predates the npy->LHE conversion support "
-            "and cannot be converted." % os.path.join(run_path, META_FILE))
-    meta, headers, columns = _load_meta(ms, run_path)
+            "and cannot be converted." % os.path.join(run_path, HEADER_FILE))
+    header = _read_header(run_path)
 
     events = np.load(npy_path, mmap_mode="r")
     names = events.dtype.names
+    columns = [n for n in names if re.fullmatch(r"rwgt_\d+", n)]
+    ids = [int(c.split("_", 1)[1]) for c in columns]
     if "diagram_index" in names:
         completer_path = os.path.join(run_path, COMPLETER_FILE)
         if not os.path.isfile(completer_path):
             raise FileNotFoundError("%s is missing" % completer_path)
         completer = ms.LHECompleter.load(completer_path)
-        rng = ms.MixMaxRandom(_seed(headers, seed))
+        rng = ms.MixMaxRandom(_seed(header, seed))
         stream = lambda chunk: _compact_events(ms, chunk, completer, columns, rng)
     elif "part1_pdg_id" in names:
         stream = lambda chunk: _lhe_npy_events(ms, chunk, columns)
     else:
         raise ValueError("%s is not an mg7 event file" % npy_path)
-    columns = [c for c in columns if c in names]
-    ids = [int(c.split("_", 1)[1]) for c in columns]
 
     if output is None:
         output = os.path.join(run_path, "events.lhe")
     if output.endswith(".gz"):
         output, compress = output[:-3], True
     logger.info("converting %s (%d events) to LHE", npy_path, len(events))
-    writer = ms.LHEFileWriter(output, meta)
-    for start in range(0, len(events), _CHUNK):
-        chunk = np.asarray(events[start:start + _CHUNK])
-        text = []
-        for event, weights in stream(chunk):
-            if ids:
-                event.rwgt_ids = ids
-                event.rwgt = weights
-            text.append(event.format())
-        writer.write_string("".join(text))
-    del writer  # closes the file: writes </LesHouchesEvents>
+    with open(output, "w") as out:
+        out.write(header)
+        for start in range(0, len(events), _CHUNK):
+            chunk = np.asarray(events[start:start + _CHUNK])
+            text = []
+            for event, weights in stream(chunk):
+                if ids:
+                    event.rwgt_ids = ids
+                    event.rwgt = weights
+                text.append(event.format())
+            out.write("".join(text))
+        out.write("</LesHouchesEvents>\n")
     if compress:
         misc.gzip(output)
         output += ".gz"

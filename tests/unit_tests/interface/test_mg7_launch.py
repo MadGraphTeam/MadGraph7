@@ -897,8 +897,8 @@ class TestForceLHEOutput(unittest.TestCase):
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
 class TestNpyToLHE(unittest.TestCase):
-    """npy_to_lhe rebuilds the LHE file of an npy run from the header saved
-    next to the events (the compact_npy completion is covered by comparing a
+    """npy_to_lhe rebuilds the LHE file of an npy run from the header.lhe
+    written next to the events (the compact_npy completion is covered by comparing a
     real run against its output_format = "lhe" twin, which needs a process)."""
 
     def setUp(self):
@@ -942,17 +942,17 @@ class TestNpyToLHE(unittest.TestCase):
         self.np.save(os.path.join(self.run, 'events.npy'), events)
 
     def save_meta(self):
+        """The header.lhe an npy run writes next to its events."""
         ms = self.ms
         meta = ms.LHEMeta(
             beam1_pdg_id=-11, beam2_pdg_id=11, beam1_energy=500.,
             beam2_energy=500., beam1_pdf_id=-1, beam2_pdf_id=-1,
             weight_mode=3, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
-            headers=[ms.LHEHeader(name="MG7Seed", content="7")])
-        self.npy_to_lhe.save_lhe_inputs(self.run, meta)
-        import json
-        with open(os.path.join(self.run, 'events.weights.json'), 'w') as f:
-            json.dump({'columns': ['rwgt_1', 'rwgt_2'],
-                       'initrwgt': '<weight id="1">a</weight>'}, f)
+            headers=[ms.LHEHeader(name="MG7Seed", content="7"),
+                     ms.LHEHeader(name="initrwgt",
+                                  content='<weight id="1">a</weight>')])
+        writer = ms.LHEFileWriter(os.path.join(self.run, 'header.lhe'), meta)
+        del writer
 
     def test_lhe_npy_round_trip(self):
         from madgraph.various import lhe_parser

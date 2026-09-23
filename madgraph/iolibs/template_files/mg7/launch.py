@@ -1,4 +1,5 @@
 import argparse
+import gc
 import os
 import sys
 import time
@@ -1428,14 +1429,15 @@ class MadgraphProcess:
             self.event_generator.combine_to_compact_npy(
                 os.path.join(self.run_path, "events.npy"), systematics, histograms
             )
-            self.save_lhe_inputs(with_completer=True)
+            self.write_lhe_header(systematics)
+            self.save_lhe_completer()
         elif output_format == "lhe_npy":
             self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe_npy(
                 os.path.join(self.run_path, "events.npy"), self.lhe_completer,
                 systematics, histograms
             )
-            self.save_lhe_inputs()
+            self.write_lhe_header(systematics)
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
             lhe_path = os.path.join(self.run_path, "events.lhe")
@@ -1457,18 +1459,16 @@ class MadgraphProcess:
             self.log_systematics_summary()
         self.save_gridpack()
 
-    def save_lhe_inputs(self, with_completer=False) -> None:
-        """Keep what npy_to_lhe needs to turn the npy events into an LHE file
-        later (a shower or MadSpin requested after the run): the LHE header and,
-        for compact_npy, the LHE completer. Never fatal to the run."""
+    def save_lhe_completer(self) -> None:
+        """Keep the LHE completer next to compact_npy events, so npy_to_lhe
+        can complete them into an LHE file later (a shower or MadSpin requested
+        after the run). Never fatal to the run."""
         try:
-            completer = self.build_lhe_completer() if with_completer else None
-            npy_to_lhe.save_lhe_inputs(self.run_path, self.build_lhe_meta(),
-                                       completer)
+            self.build_lhe_completer().save(
+                os.path.join(self.run_path, npy_to_lhe.COMPLETER_FILE))
         except Exception as err:
-            logger.warning("could not save the npy->LHE conversion inputs; "
-                           "these events cannot be converted to LHE later: %s",
-                           err)
+            logger.warning("could not save the LHE completer; these events "
+                           "cannot be converted to LHE later: %s", err)
 
     def write_systematics_sidecar(self) -> None:
         """Describe the variation weights next to the event file
@@ -1563,10 +1563,15 @@ class MadgraphProcess:
             logger.warning("could not read LHAPDF id from %s: %s", info, err)
         return -1
 
-    def build_lhe_meta(self):
+    def build_lhe_meta(self, systematics=None):
         """Build the LHE header/<init> metadata: the param_card (<slha>) and the
         run_card.toml (<MG7RunCard>) headers plus the beam/PDF/cross-section info
-        needed by downstream tools (systematics, MadSpin, ...)."""
+        needed by downstream tools (systematics, MadSpin, ...).
+
+        `combine_to_lhe` injects the <initrwgt> header itself, so callers that
+        go through it should leave `systematics` unset; pass it only when
+        building meta for a writer that bypasses that injection (e.g.
+        write_lhe_header)."""
         beam_pdgs, energies = self._beam_info()
         lhaid = self._lhapdf_id()
         pdf_group = -1 if self.leptonic else 0
@@ -1587,6 +1592,10 @@ class MadgraphProcess:
         # The resolved seed (even when the run_card requested a random one via
         # seed = -1), so the run can be reproduced from the LHE file alone.
         headers.append(ms.LHEHeader(name="MG7Seed", content=str(self.run_seed)))
+        if systematics is not None and systematics.weight_ids:
+            headers.append(ms.LHEHeader(
+                name="initrwgt", content=systematics.initrwgt(), escape_content=False
+            ))
         return ms.LHEMeta(
             beam1_pdg_id=beam_pdgs[0], beam2_pdg_id=beam_pdgs[1],
             beam1_energy=energies[0], beam2_energy=energies[1],
@@ -1597,6 +1606,14 @@ class MadgraphProcess:
             processes=[ms.LHEProcess(xsec, err, xsec, 1)],
             headers=headers,
         )
+
+    def write_lhe_header(self, systematics) -> None:
+        """Write header.lhe next to events.npy: the <header>/<init> blocks
+        (run card, param card, beam/PDF, cross section) that the npy formats
+        otherwise drop, with no events."""
+        header_path = os.path.join(self.run_path, "header.lhe")
+        writer = ms.LHEFileWriter(header_path, self.build_lhe_meta(systematics))
+        del writer  # closes the file (writes the closing tag)
 
     def build_lhe_completer(self):
         all_mcdata = (
@@ -3670,6 +3687,18 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             pass
 
 
+def _release_channel_generators(process) -> None:
+    """Drop the per-channel event/weight generators so their intermediate
+    .npy files are deleted right away. madspace only frees them when the
+    owning Python objects are collected, and process.event_generator /
+    process.phasespaces sit in a reference cycle that plain refcounting
+    never breaks -- only an explicit gc.collect() does, promptly, instead of
+    leaving it to whenever the cyclic GC next runs on its own."""
+    process.event_generator = None
+    process.phasespaces = None
+    gc.collect()
+
+
 def run_single(switch=None) -> "MadgraphProcess":
     """Run a single generation and return the process (for its result)."""
     compute_auto_widths()
@@ -3742,6 +3771,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
                                      param_card_path=card_path)
             else:
                 iterator.store_entry(name, process.get_result())
+            _release_channel_generators(process)
         os.makedirs("Events", exist_ok=True)
         summary = os.path.join("Events", "scan_%s.txt" % run_name)
         iterator.write_summary(summary)
@@ -3766,7 +3796,7 @@ def run_generation(switch=None) -> None:
     elif param_iter:
         run_scan(param_iter, param_card_path, switch)
     else:
-        run_single(switch)
+        _release_channel_generators(run_single(switch))
 
 
 def _lhe_needed_by(switch, card) -> "str | None":

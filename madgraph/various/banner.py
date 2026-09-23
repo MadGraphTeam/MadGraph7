@@ -6679,7 +6679,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True)
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
         self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
-            allowed=['compact_npy', 'lhe_npy', 'lhe'])
+            allowed=['compact_npy', 'lhe_npy', 'lhe'],
+            comment="compact_npy/lhe_npy also write header.lhe next to events.npy, "
+                    "with the run/param card, beam and cross-section info that the "
+                    ".npy file itself does not carry")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)
