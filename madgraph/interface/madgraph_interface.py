@@ -2991,12 +2991,15 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         if mode and mode.startswith('standalone') and mode != 'standalone':
             # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
-            # `standalone` (madmatrix) output, which is launched through its own
-            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # `standalone` (madmatrix) output, which is launched through
+            # MadMatrixLauncher, not through SALauncher.  It is not a typo:
             # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
             # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
+            out['Options'] = self.list_completion(text, opt, line)
+        elif mode == 'standalone':
+            opt = ['-f', '--force']
             out['Options'] = self.list_completion(text, opt, line)
         elif line[0:begidx].endswith('--laststep='):
             opt = ['parton', 'pythia', 'pgs','delphes','auto']
@@ -9063,14 +9066,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # args is now MODE PATH
 
         if args[0] == 'standalone':
-            class ext_program:
-                @staticmethod
-                def run():
-                    os.chdir(args[1])
-                    try:
-                        subprocess.run(os.path.join("bin", "generate_events"))
-                    except KeyboardInterrupt:
-                        pass
+            ext_program = launch_ext.MadMatrixLauncher(self, args[1],
+                                                options=self.options, **options)
 
         elif args[0].startswith('standalone'):
             if os.path.isfile(os.path.join(os.getcwd(),args[1],'Cards',\
@@ -12730,6 +12727,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 last_action_2 = 'none'
 
 
+
+    def get_model(self):
+        """the model of the current session. The card question of `launch` on
+        a standalone output calls this (via update_dependent) on its mother
+        interface, as it calls MadEventCmd.get_model for madevent."""
+        return self._curr_model
 
     # Calculate decay width
     def do_compute_widths(self, line, model=None, do2body=True, decaymodel=None):

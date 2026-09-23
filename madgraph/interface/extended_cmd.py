@@ -3241,11 +3241,13 @@ class ControlSwitch(SmartQuestion):
     def postcmd(self, stop, line):
         
         # for diamond class arch where both branch defines the postcmd
-        # set it up to be in coop mode
-        try:
-            out = super(ControlSwitch,self).postcmd(stop, line)
-        except AttributeError:
-            pass
+        # set it up to be in coop mode. (Do not catch AttributeError around the
+        # call: it hid any error raised inside the other branch's postcmd --
+        # e.g. the auto-width computation -- behind an UnboundLocalError.)
+        out = None
+        parent = super(ControlSwitch, self)
+        if hasattr(parent, 'postcmd'):
+            out = parent.postcmd(stop, line)
         if out:
             return out
 

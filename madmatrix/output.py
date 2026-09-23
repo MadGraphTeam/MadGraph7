@@ -355,6 +355,10 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                  gen_events)
         os.chmod(gen_events, 0o755)
 
+        # no run_card here (so no create_run_card), but `launch` still needs
+        # the model, e.g. for the widths set to 'auto' in the param_card
+        self.write_model_reference(model)
+
     def finalize(self, *args, **kwargs):
         # We disable this since we don't need subprocesses.json either
         pass
