@@ -6678,7 +6678,7 @@ class RunCardMG7(RunCard):
             comment="-1 sets count automatically based on number of CPUs")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True)
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True)
-        self.add_toml_param('run', 'output_format', "lhe", gridpack=True,
+        self.add_toml_param('run', 'output_format', "compact_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'])
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
@@ -6752,7 +6752,7 @@ class RunCardMG7(RunCard):
 
         # ------------------------- [postprocessing] -------------------
         # LHE-level post-processing of the generated event file (only applied
-        # when output_format = "lhe"); mirrors what madevent drives from the
+        # when output_format = "lhe", which enabling any of them forces); mirrors what madevent drives from the
         # legacy run_card (add_time_of_flight and systematics.py).
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
             comment="threshold (in mm) below which the invariant livetime is not written (-1 means not written)")

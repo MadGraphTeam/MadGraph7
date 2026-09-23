@@ -3279,6 +3279,18 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(madnis_bin, 0o755)
 
+            npy_bin = os.path.join("bin", "npy_to_lhe")
+            with open(npy_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys, os\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.npy_to_lhe import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
+                )
+            os.chmod(npy_bin, 0o755)
+
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
     # driven from a shell that never sourced anything MadGraph-related.

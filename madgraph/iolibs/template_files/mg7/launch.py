@@ -34,6 +34,7 @@ import madspace as ms
 _drop_install_path()
 from models.check_param_card import ParamCard
 from madgraph.iolibs.template_files.mg7 import systematics_summary
+from madgraph.iolibs.template_files.mg7 import npy_to_lhe
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -1427,12 +1428,14 @@ class MadgraphProcess:
             self.event_generator.combine_to_compact_npy(
                 os.path.join(self.run_path, "events.npy"), systematics, histograms
             )
+            self.save_lhe_inputs(with_completer=True)
         elif output_format == "lhe_npy":
             self.lhe_completer = self.build_lhe_completer()
             self.event_generator.combine_to_lhe_npy(
                 os.path.join(self.run_path, "events.npy"), self.lhe_completer,
                 systematics, histograms
             )
+            self.save_lhe_inputs()
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
             lhe_path = os.path.join(self.run_path, "events.lhe")
@@ -1453,6 +1456,19 @@ class MadgraphProcess:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
+
+    def save_lhe_inputs(self, with_completer=False) -> None:
+        """Keep what npy_to_lhe needs to turn the npy events into an LHE file
+        later (a shower or MadSpin requested after the run): the LHE header and,
+        for compact_npy, the LHE completer. Never fatal to the run."""
+        try:
+            completer = self.build_lhe_completer() if with_completer else None
+            npy_to_lhe.save_lhe_inputs(self.run_path, self.build_lhe_meta(),
+                                       completer)
+        except Exception as err:
+            logger.warning("could not save the npy->LHE conversion inputs; "
+                           "these events cannot be converted to LHE later: %s",
+                           err)
 
     def write_systematics_sidecar(self) -> None:
         """Describe the variation weights next to the event file
@@ -2849,6 +2865,19 @@ class MG7Cmd(Cmd):
     # ``launch`` is the name MG5 users type; keep it working here too.
     do_launch = do_generate_events
 
+    def do_npy_to_lhe(self, line):
+        """npy_to_lhe [RUN_NAME] [-o OUTPUT] [--seed N] [--no-gzip]
+
+        Write the LHE file (events.lhe.gz) of a run that produced npy events,
+        e.g. to shower it. Without a run name, the most recent such run."""
+        import shlex
+        me_dir = self.me_dir if self.me_dir != '.' else os.getcwd()
+        try:
+            npy_to_lhe.main(shlex.split(line), me_dir=me_dir)
+        except SystemExit as error:
+            if error.code not in (None, 0):
+                logger.error(str(error.code))
+
     def do_quit(self, line):
         """Leave the mg7 run interface."""
         return super().do_quit(line)
@@ -3128,6 +3157,19 @@ def _find_event_file(run_path):
     return None
 
 
+def _find_or_convert_event_file(run_path, log):
+    """The run's LHE event file, converting its npy events when that is all
+    the run wrote (see npy_to_lhe)."""
+    lhe_path = _find_event_file(run_path)
+    if lhe_path is None and npy_to_lhe.can_convert(run_path):
+        log.info("No LHE event file in %s: converting the npy events.", run_path)
+        try:
+            lhe_path = npy_to_lhe.convert(run_path)
+        except Exception as error:
+            _report_failure(log, "npy->LHE conversion", error, run_path)
+    return lhe_path
+
+
 def _report_failure(log, what, error, directory=None):
     """Log a post-processing failure and write the full traceback to a file
     (whose path is printed) so the problem can be investigated."""
@@ -3201,6 +3243,24 @@ def _setup_logging():
     _TOOL_LOGGING_READY = True
 
 
+def selected_tools(switch) -> list:
+    """The post-processing drivers run_selected_tools runs for this switch."""
+    # MadAnalysis5 hadron level analyses the shower/detector output, so it only
+    # makes sense when a shower ran (mirrors madevent's card gating:
+    # analysis == 'MadAnalysis5' and shower != 'OFF').
+    ma5 = switch.get("analysis") == "MadAnalysis5"
+    showered = not _off(switch.get("shower"))
+    return [t for t, on in (
+        ("reweighting", not _off(switch.get("reweight"))),
+        ("MadSpin", not _off(switch.get("madspin"))),
+        ("MadAnalysis5 (parton level)", ma5),
+        ("Pythia8 shower", switch.get("shower") == "Pythia8"),
+        ("Delphes", switch.get("detector") == "Delphes"),
+        ("MadAnalysis5 (hadron level)", ma5 and showered),
+        ("Rivet", switch.get("analysis") == "Rivet"),
+    ) if on]
+
+
 def run_selected_tools(switch, process) -> None:
     """Run the optional post-processing programs selected in the merged
     question on the generated events.
@@ -3216,41 +3276,27 @@ def run_selected_tools(switch, process) -> None:
     """
     log = logging.getLogger("madevent")
 
-    active = {k: v for k, v in switch.items() if not _off(v)}
-    if not active:
+    tools = selected_tools(switch)
+    if not tools:
+        # A switch that is not off does not necessarily select a driver here:
+        # "Not Avail." is not off, analysis = ExRoot has no mg7 driver, and a
+        # shower switch set to something other than Pythia8 selects nothing
+        # either. Without this a plain generate/output/launch announced a
+        # post-processing step with nothing after the colon, and paid for
+        # building the run interface (or an npy->LHE conversion) to do nothing.
         return
 
-    lhe_path = _find_event_file(process.run_path)
+    lhe_path = _find_or_convert_event_file(process.run_path, log)
     if lhe_path is None:
         log.warning("No LHE event file in %s; cannot run %s.",
-                    process.run_path, ", ".join(sorted(active)))
+                    process.run_path, ", ".join(tools))
         return
 
     run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
     run_dir = os.path.dirname(os.path.abspath(lhe_path))
 
-    # MadAnalysis5 hadron level analyses the shower/detector output, so it only
-    # makes sense when a shower ran (mirrors madevent's card gating:
-    # analysis == 'MadAnalysis5' and shower != 'OFF').
     ma5 = switch.get("analysis") == "MadAnalysis5"
     showered = not _off(switch.get("shower"))
-    tools = [t for t, on in (
-        ("reweighting", not _off(switch.get("reweight"))),
-        ("MadSpin", not _off(switch.get("madspin"))),
-        ("MadAnalysis5 (parton level)", ma5),
-        ("Pythia8 shower", switch.get("shower") == "Pythia8"),
-        ("Delphes", switch.get("detector") == "Delphes"),
-        ("MadAnalysis5 (hadron level)", ma5 and showered),
-        ("Rivet", switch.get("analysis") == "Rivet"),
-    ) if on]
-    if not tools:
-        # `active` above counts any switch that is not off, which is not the
-        # same question: "Not Avail." is not off, and a shower switch set to
-        # something other than Pythia8 selects no driver here either. Without
-        # this a plain generate/output/launch announced a post-processing step
-        # with nothing after the colon, and paid for building the run
-        # interface to do nothing.
-        return
 
     log.info("")
     log.info("Post-processing the generated events with: %s", ", ".join(tools))
@@ -3717,23 +3763,61 @@ def run_generation(switch=None) -> None:
         run_single(switch)
 
 
+def _lhe_needed_by(switch, card) -> "str | None":
+    """Why the run needs an LHE event file, or None when it does not: every
+    post-processing tool run_selected_tools drives and the run_card
+    [postprocessing] steps read the LHE file. ``card`` is the raw TOML content
+    of the run_card."""
+    tools = selected_tools(switch) if switch else []
+    if tools:
+        return tools[0]
+    cfg = card.get("postprocessing", {})
+    try:
+        if float(cfg.get("time_of_flight", -1.0)) >= 0:
+            return "time_of_flight"
+    except (TypeError, ValueError):
+        pass
+    # the legacy systematics.py path only runs when madspace did not compute
+    # the weights itself (see run_lhe_postprocessing)
+    if cfg.get("systematics") \
+            and not card.get("systematics", {}).get("enable", True):
+        return "systematics"
+    return None
+
+
 def force_lhe_output_if_needed(switch) -> None:
-    """Any post-processing tool (shower/detector/madspin/reweight/analysis)
-    operates on an LHE file, so make sure the events are written in that format
-    when one of them is enabled."""
-    if not switch:
-        return
-    if not any(switch.get(k, "OFF") not in ("OFF", "Not Avail.")
-               for k in ("shower", "detector", "madspin", "reweight", "analysis")):
-        return
-    from madgraph.various.banner import RunCardMG7
+    """The events are written as npy by default; switch the run_card to the
+    LHE format when a selected post-processing needs an LHE file.
+
+    The card is read as raw TOML and only its output_format line is edited: a
+    run_card scan ("scan:[...]" values) is not a valid RunCardMG7 and must
+    survive untouched for run_scan."""
+    import tomllib
     path = os.path.join("Cards", "run_card.toml")
-    run_card = RunCardMG7(path, consistency=False)
-    if run_card["run"]["output_format"] != "lhe":
-        run_card["run"]["output_format"] = "lhe"
-        run_card.write(path)
-        logging.getLogger("madevent").info(
-            "output_format set to 'lhe' (required by the selected post-processing).")
+    if not os.path.exists(path):
+        return
+    with open(path, "rb") as f:
+        card = tomllib.load(f)
+    output_format = card.get("run", {}).get(
+        "output_format", RunCardMG7()["run"]["output_format"])
+    if output_format == "lhe":
+        return
+    reason = _lhe_needed_by(switch, card)
+    if reason is None:
+        return
+    with open(path) as f:
+        text = f.read()
+    text, count = re.subn(r'(?m)^(\s*output_format\s*=\s*)("[^"]*"|\'[^\']*\'|\S+)',
+                          r'\g<1>"lhe"', text, count=1)
+    if not count:
+        text, count = re.subn(r'(?m)^\[run\][^\n]*\n', '\\g<0>output_format = "lhe"\n',
+                              text, count=1)
+    if not count:
+        text += '\n[run]\noutput_format = "lhe"\n'
+    with open(path, "w") as f:
+        f.write(text)
+    logging.getLogger("madevent").info(
+        "output_format set to 'lhe' (required by %s).", reason)
 
 
 def _raise_open_file_limit() -> None:

@@ -763,19 +763,7 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         """The tool list run_selected_tools builds, without running it."""
 
         from madgraph.iolibs.template_files.mg7 import launch
-
-        off = launch._off
-        ma5 = switch.get('analysis') == 'MadAnalysis5'
-        showered = not off(switch.get('shower'))
-        return [t for t, on in (
-            ("reweighting", not off(switch.get("reweight"))),
-            ("MadSpin", not off(switch.get("madspin"))),
-            ("MadAnalysis5 (parton level)", ma5),
-            ("Pythia8 shower", switch.get("shower") == "Pythia8"),
-            ("Delphes", switch.get("detector") == "Delphes"),
-            ("MadAnalysis5 (hadron level)", ma5 and showered),
-            ("Rivet", switch.get("analysis") == "Rivet"),
-        ) if on]
+        return launch.selected_tools(switch)
 
     def test_a_not_available_switch_selects_no_tool(self):
         """The case from a real run: Delphes is not installed, so the detector
@@ -787,6 +775,15 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
 
     def test_everything_off_selects_no_tool(self):
         switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'OFF',
+                  'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_exroot_selects_no_tool(self):
+        """analysis = ExRoot is the default when ExRootAnalysis is installed,
+        but mg7 has no driver for it: it must neither run anything nor force
+        the LHE output."""
+
+        switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'ExRoot',
                   'madspin': 'OFF', 'reweight': 'OFF'}
         self.assertEqual(self.tools_for(switch), [])
 
@@ -809,3 +806,182 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestForceLHEOutput(unittest.TestCase):
+    """The events are written as npy by default; the run_card is switched to
+    the LHE format only when something that reads LHE will run."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        self.launch = launch
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.cwd = os.getcwd()
+        os.chdir(self.tmpdir.name)
+        os.mkdir('Cards')
+        template = os.path.join(os.path.dirname(launch.__file__),
+                                'run_card.toml')
+        RunCardMG7().write(self.card, template=template)
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmpdir.cleanup()
+
+    card = os.path.join('Cards', 'run_card.toml')
+
+    def output_format(self):
+        import tomllib
+        with open(self.card, 'rb') as f:
+            return tomllib.load(f)['run']['output_format']
+
+    def edit(self, old, new):
+        with open(self.card) as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(self.card, 'w') as f:
+            f.write(text.replace(old, new, 1))
+
+    def test_default_is_npy(self):
+        self.assertEqual(self.output_format(), 'compact_npy')
+
+    def test_nothing_to_do_keeps_npy(self):
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed(
+            {'shower': 'OFF', 'detector': 'Not Avail.', 'analysis': 'ExRoot',
+             'madspin': 'OFF', 'reweight': 'OFF'})
+        self.assertEqual(self.output_format(), 'compact_npy')
+
+    def test_tool_forces_lhe(self):
+        self.launch.force_lhe_output_if_needed({'shower': 'Pythia8'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_time_of_flight_forces_lhe(self):
+        self.edit('time_of_flight = -1.0', 'time_of_flight = 0.5')
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_legacy_systematics_forces_lhe_only_without_native(self):
+        self.edit('\nsystematics = false', '\nsystematics = true')
+        self.launch.force_lhe_output_if_needed({})
+        # madspace computes the weights itself: systematics.py never runs
+        self.assertEqual(self.output_format(), 'compact_npy')
+        with open(self.card) as f:
+            text = f.read()
+        start = text.index('[systematics]')
+        end = text.index('enable = true', start)
+        with open(self.card, 'w') as f:
+            f.write(text[:end] + 'enable = false' + text[end + 13:])
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_scan_card_survives(self):
+        """A scan value is not a valid RunCardMG7 entry: the card is edited
+        as text, and only on its output_format line."""
+        self.edit('e_cm = 13000.0', 'e_cm = "scan:[13000, 14000]"')
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+        with open(self.card) as f:
+            self.assertIn('e_cm = "scan:[13000, 14000]"', f.read())
+
+    def test_missing_output_format_line(self):
+        with open(self.card, 'w') as f:
+            f.write('[run]\nseed = 3\n')
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestNpyToLHE(unittest.TestCase):
+    """npy_to_lhe rebuilds the LHE file of an npy run from the header saved
+    next to the events (the compact_npy completion is covered by comparing a
+    real run against its output_format = "lhe" twin, which needs a process)."""
+
+    def setUp(self):
+        import numpy as np
+        from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+        self.np = np
+        self.npy_to_lhe = npy_to_lhe
+        self.ms = npy_to_lhe._madspace()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.run = os.path.join(self.tmpdir.name, 'Events', 'run_01')
+        os.makedirs(self.run)
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def write_lhe_npy(self):
+        """Two e+ e- > mu+ mu- events in the lhe_npy layout, the second one
+        padded with an empty particle slot."""
+        fields = [('process_id', '<i4'), ('weight', '<f8'), ('scale', '<f8'),
+                  ('alpha_qed', '<f8'), ('alpha_qcd', '<f8'),
+                  ('rwgt_1', '<f8'), ('rwgt_2', '<f8')]
+        names = ('pdg_id', 'status_code', 'mother1', 'mother2', 'color',
+                 'anti_color', 'px', 'py', 'pz', 'energy', 'mass', 'lifetime',
+                 'spin')
+        for i in range(5):
+            fields += [('part%d_%s' % (i + 1, n), '<i4' if j < 6 else '<f8')
+                       for j, n in enumerate(names)]
+        events = self.np.zeros(2, dtype=fields)
+        rows = [(-11, -1, 0, 0, 0, 0, 0., 0., 500., 500.),
+                (11, -1, 0, 0, 0, 0, 0., 0., -500., 500.),
+                (-13, 1, 1, 2, 0, 0, 100., 0., 489.9, 500.),
+                (13, 1, 1, 2, 0, 0, -100., 0., -489.9, 500.)]
+        for n in range(2):
+            events['weight'][n] = 0.5
+            events['scale'][n] = 1000.
+            events['rwgt_1'][n] = 0.4 + n
+            events['rwgt_2'][n] = 0.6
+            for i, row in enumerate(rows):
+                for name, value in zip(names, row):
+                    events['part%d_%s' % (i + 1, name)][n] = value
+        self.np.save(os.path.join(self.run, 'events.npy'), events)
+
+    def save_meta(self):
+        ms = self.ms
+        meta = ms.LHEMeta(
+            beam1_pdg_id=-11, beam2_pdg_id=11, beam1_energy=500.,
+            beam2_energy=500., beam1_pdf_id=-1, beam2_pdf_id=-1,
+            weight_mode=3, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
+            headers=[ms.LHEHeader(name="MG7Seed", content="7")])
+        self.npy_to_lhe.save_lhe_inputs(self.run, meta)
+        import json
+        with open(os.path.join(self.run, 'events.weights.json'), 'w') as f:
+            json.dump({'columns': ['rwgt_1', 'rwgt_2'],
+                       'initrwgt': '<weight id="1">a</weight>'}, f)
+
+    def test_lhe_npy_round_trip(self):
+        from madgraph.various import lhe_parser
+        self.write_lhe_npy()
+        self.save_meta()
+        output = self.npy_to_lhe.convert('run_01', me_dir=self.tmpdir.name)
+        self.assertEqual(output, os.path.join(self.run, 'events.lhe.gz'))
+        lhe = lhe_parser.EventFile(output)
+        self.assertIn('<MG7Seed>', lhe.banner)
+        self.assertIn('<initrwgt>', lhe.banner)
+        events = list(lhe)
+        self.assertEqual(len(events), 2)
+        self.assertEqual([p.pid for p in events[0]], [-11, 11, -13, 13])
+        self.assertEqual([p.status for p in events[1]], [-1, -1, 1, 1])
+        self.assertAlmostEqual(events[0][2].px, 100.)
+        self.assertAlmostEqual(events[1].wgt, 0.5)
+        self.assertEqual(events[1].parse_reweight(), {'1': 1.4, '2': 0.6})
+
+    def test_default_picks_unconverted_run(self):
+        self.write_lhe_npy()
+        self.save_meta()
+        self.npy_to_lhe.main(['--no-gzip'], me_dir=self.tmpdir.name)
+        self.assertTrue(os.path.exists(os.path.join(self.run, 'events.lhe')))
+        with self.assertRaises(SystemExit):
+            # nothing left to convert
+            self.npy_to_lhe.main([], me_dir=self.tmpdir.name)
+
+    def test_run_without_saved_header(self):
+        self.write_lhe_npy()
+        self.assertFalse(self.npy_to_lhe.can_convert(self.run))
+        with self.assertRaises(FileNotFoundError):
+            self.npy_to_lhe.convert(self.run)

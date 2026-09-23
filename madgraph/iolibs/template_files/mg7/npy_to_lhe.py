@@ -1,0 +1,293 @@
+"""Convert an mg7 numpy event file (``events.npy``) into an LHE file.
+
+The mg7 output writes its events as npy by default. Anything that needs an LHE
+file -- a shower, MadSpin, reweighting, an analysis -- normally switches the run
+to the LHE format before the generation (``force_lhe_output_if_needed``). This
+module covers the case where that request comes *after* the run: it rebuilds
+the LHE file from what the npy run left behind.
+
+* ``output_format = "lhe_npy"``: the file already holds complete LHE events
+  (pdg ids, status, mothers, colour, helicity); they are only reformatted.
+* ``output_format = "compact_npy"``: the file holds the momenta plus the
+  subprocess/diagram/colour/flavour/helicity indices the generation picked.
+  Those are completed exactly as the direct LHE output does it, with the
+  :class:`madspace.LHECompleter` the run saved next to the events
+  (``lhe_completer.json``). The completion draws random numbers (colour flow
+  among equivalent ones, resonance assignment), so the result is statistically
+  but not byte-identical to an ``output_format = "lhe"`` run with the same seed.
+
+In both cases the LHE header and ``<init>`` block come from ``lhe_meta.json``
+and the systematics ``<initrwgt>`` from ``events.weights.json``; the ``rwgt_<id>``
+columns become the per-event ``<rwgt>`` block. The ``<mgrwt>`` reweighting-input
+block (``[systematics] write_inputs``) is not reconstructed.
+
+Usage::
+
+    bin/npy_to_lhe [RUN_NAME | RUN_DIR | path/to/events.npy] [-o OUTPUT] [--seed N]
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+
+logger = logging.getLogger("madevent")
+
+COMPLETER_FILE = "lhe_completer.json"
+META_FILE = "lhe_meta.json"
+EVENT_FILE = "events.npy"
+
+# events converted per LHEFileWriter.write_string call
+_CHUNK = 10000
+
+
+def _madspace():
+    from madgraph.iolibs.template_files.mg7.bootstrap import ensure_madspace
+    ensure_madspace(interactive=False)
+    import madspace
+    return madspace
+
+
+# ----------------------------------------------------------------------------
+# written by the run
+# ----------------------------------------------------------------------------
+def save_lhe_inputs(run_path, meta, completer=None) -> None:
+    """Store what a later conversion needs next to the npy events: the LHE
+    header/<init> metadata and (compact_npy only) the LHE completer."""
+    data = {
+        key: getattr(meta, key) for key in (
+            "beam1_pdg_id", "beam2_pdg_id", "beam1_energy", "beam2_energy",
+            "beam1_pdf_authors", "beam2_pdf_authors", "beam1_pdf_id",
+            "beam2_pdf_id", "weight_mode")
+    }
+    data["processes"] = [
+        {"cross_section": p.cross_section,
+         "cross_section_error": p.cross_section_error,
+         "max_weight": p.max_weight, "process_id": p.process_id}
+        for p in meta.processes]
+    data["headers"] = [
+        {"name": h.name, "content": h.content,
+         "escape_content": h.escape_content}
+        for h in meta.headers]
+    with open(os.path.join(run_path, META_FILE), "w") as f:
+        json.dump(data, f)
+    if completer is not None:
+        completer.save(os.path.join(run_path, COMPLETER_FILE))
+
+
+def _load_meta(ms, run_path):
+    """The LHEMeta saved by the run, completed with the systematics <initrwgt>
+    block the direct LHE output adds; returns it with the systematics weight
+    columns (in the order of their ids)."""
+    with open(os.path.join(run_path, META_FILE)) as f:
+        data = json.load(f)
+    processes = [ms.LHEProcess(p["cross_section"], p["cross_section_error"],
+                               p["max_weight"], p["process_id"])
+                 for p in data.pop("processes")]
+    headers = [ms.LHEHeader(name=h["name"], content=h["content"],
+                            escape_content=h["escape_content"])
+               for h in data.pop("headers")]
+    columns = []
+    weights_path = os.path.join(run_path, "events.weights.json")
+    if os.path.exists(weights_path):
+        with open(weights_path) as f:
+            weights = json.load(f)
+        columns = weights.get("columns", [])
+        if columns and weights.get("initrwgt") \
+                and not any(h.name == "initrwgt" for h in headers):
+            headers.append(ms.LHEHeader(name="initrwgt",
+                                        content=weights["initrwgt"],
+                                        escape_content=False))
+    meta = ms.LHEMeta(processes=processes, headers=headers, **data)
+    return meta, headers, columns
+
+
+def _seed(headers, seed):
+    if seed is not None:
+        return int(seed)
+    for header in headers:
+        if header.name == "MG7Seed":
+            try:
+                return int(header.content)
+            except ValueError:
+                pass
+    return 0
+
+
+# ----------------------------------------------------------------------------
+# conversion
+# ----------------------------------------------------------------------------
+def resolve_event_file(path, me_dir=None) -> str:
+    """``path`` may be an npy file, a run directory or a run name (looked up
+    under ``<me_dir>/Events``)."""
+    candidates = [path, os.path.join(path, EVENT_FILE)]
+    if me_dir is not None:
+        candidates.append(os.path.join(me_dir, "Events", path, EVENT_FILE))
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+    raise FileNotFoundError("no %s found for '%s'" % (EVENT_FILE, path))
+
+
+def can_convert(run_path) -> bool:
+    """True when ``run_path`` holds npy events this module can turn into LHE."""
+    return (os.path.isfile(os.path.join(run_path, EVENT_FILE))
+            and os.path.isfile(os.path.join(run_path, META_FILE)))
+
+
+def _particle_count(names):
+    count = 0
+    while "part%d_energy" % (count + 1) in names:
+        count += 1
+    return count
+
+
+def _compact_events(ms, events, completer, columns, rng):
+    names = events.dtype.names
+    nparticles = _particle_count(names)
+    momenta = [tuple(events["part%d_%s" % (i + 1, c)]
+                     for c in ("energy", "px", "py", "pz"))
+               for i in range(nparticles)]
+    rwgt = [events[c] for c in columns]
+    for n in range(len(events)):
+        particles = []
+        for energy, px, py, pz in momenta:
+            if energy[n] == 0.:
+                break
+            particles.append(ms.LHEParticle(px=px[n], py=py[n], pz=pz[n],
+                                            energy=energy[n]))
+        event = ms.LHEEvent(weight=events["weight"][n],
+                            scale=events["ren_scale"][n],
+                            alpha_qcd=events["alpha_qcd"][n],
+                            particles=particles)
+        completer.complete_event_data(
+            event, int(events["subprocess_index"][n]),
+            int(events["diagram_index"][n]), int(events["color_index"][n]),
+            int(events["flavor_index"][n]), int(events["helicity_index"][n]),
+            rng)
+        yield event, [float(w[n]) for w in rwgt]
+
+
+_LHE_PARTICLE_FIELDS = ("pdg_id", "status_code", "mother1", "mother2", "color",
+                        "anti_color", "px", "py", "pz", "energy", "mass",
+                        "lifetime", "spin")
+
+
+def _lhe_npy_events(ms, events, columns):
+    names = events.dtype.names
+    count = 0
+    while "part%d_pdg_id" % (count + 1) in names:
+        count += 1
+    fields = [[events["part%d_%s" % (i + 1, f)] for f in _LHE_PARTICLE_FIELDS]
+              for i in range(count)]
+    rwgt = [events[c] for c in columns]
+    for n in range(len(events)):
+        particles = []
+        for values in fields:
+            if values[0][n] == 0:
+                break
+            particles.append(ms.LHEParticle(
+                *[v[n].item() for v in values]))
+        event = ms.LHEEvent(int(events["process_id"][n]),
+                            events["weight"][n], events["scale"][n],
+                            events["alpha_qed"][n], events["alpha_qcd"][n],
+                            particles)
+        yield event, [float(w[n]) for w in rwgt]
+
+
+def convert(path, output=None, seed=None, compress=True, me_dir=None) -> str:
+    """Write the LHE file for the npy events at ``path`` (npy file, run
+    directory or run name) and return its path. By default it is written as
+    ``events.lhe.gz`` next to the npy file."""
+    import numpy as np
+    from madgraph.various import misc
+
+    ms = _madspace()
+    npy_path = resolve_event_file(path, me_dir)
+    run_path = os.path.dirname(npy_path)
+    if not os.path.isfile(os.path.join(run_path, META_FILE)):
+        raise FileNotFoundError(
+            "%s is missing: the run predates the npy->LHE conversion support "
+            "and cannot be converted." % os.path.join(run_path, META_FILE))
+    meta, headers, columns = _load_meta(ms, run_path)
+
+    events = np.load(npy_path, mmap_mode="r")
+    names = events.dtype.names
+    if "diagram_index" in names:
+        completer_path = os.path.join(run_path, COMPLETER_FILE)
+        if not os.path.isfile(completer_path):
+            raise FileNotFoundError("%s is missing" % completer_path)
+        completer = ms.LHECompleter.load(completer_path)
+        rng = ms.MixMaxRandom(_seed(headers, seed))
+        stream = lambda chunk: _compact_events(ms, chunk, completer, columns, rng)
+    elif "part1_pdg_id" in names:
+        stream = lambda chunk: _lhe_npy_events(ms, chunk, columns)
+    else:
+        raise ValueError("%s is not an mg7 event file" % npy_path)
+    columns = [c for c in columns if c in names]
+    ids = [int(c.split("_", 1)[1]) for c in columns]
+
+    if output is None:
+        output = os.path.join(run_path, "events.lhe")
+    if output.endswith(".gz"):
+        output, compress = output[:-3], True
+    logger.info("converting %s (%d events) to LHE", npy_path, len(events))
+    writer = ms.LHEFileWriter(output, meta)
+    for start in range(0, len(events), _CHUNK):
+        chunk = np.asarray(events[start:start + _CHUNK])
+        text = []
+        for event, weights in stream(chunk):
+            if ids:
+                event.rwgt_ids = ids
+                event.rwgt = weights
+            text.append(event.format())
+        writer.write_string("".join(text))
+    del writer  # closes the file: writes </LesHouchesEvents>
+    if compress:
+        misc.gzip(output)
+        output += ".gz"
+    logger.info("LHE events written to %s", output)
+    return output
+
+
+def main(argv=None, me_dir=None) -> None:
+    """Command-line entry point; run names are looked up under
+    ``<me_dir>/Events`` (default: the working directory)."""
+    parser = argparse.ArgumentParser(
+        description="Convert an mg7 events.npy file into an LHE file.")
+    parser.add_argument("path", nargs="?", default=None,
+                        help="run name, run directory or events.npy file "
+                             "(default: the most recent run with npy events "
+                             "and no LHE file)")
+    parser.add_argument("-o", "--output", default=None,
+                        help="output file (default: events.lhe.gz next to the "
+                             "npy file)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="seed of the LHE completion (default: the run seed)")
+    parser.add_argument("--no-gzip", action="store_false", dest="compress",
+                        help="do not compress the output")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    me_dir = me_dir or os.getcwd()
+    path = args.path
+    if path is None:
+        events_dir = os.path.join(me_dir, "Events")
+        runs = [os.path.join(events_dir, d) for d in
+                (os.listdir(events_dir) if os.path.isdir(events_dir) else [])]
+        runs = [d for d in runs if can_convert(d) and not any(
+            os.path.exists(os.path.join(d, n))
+            for n in ("events.lhe", "events.lhe.gz"))]
+        if not runs:
+            sys.exit("no run with unconverted npy events in %s" % events_dir)
+        path = max(runs, key=lambda d: os.path.getmtime(
+            os.path.join(d, EVENT_FILE)))
+    try:
+        convert(path, args.output, args.seed, args.compress, me_dir)
+    except (FileNotFoundError, ValueError) as error:
+        sys.exit(str(error))
+
+
+if __name__ == "__main__":
+    main()
