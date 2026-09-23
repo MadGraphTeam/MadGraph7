@@ -678,7 +678,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
     )
         .def(
-            py::init<double, double, double, double, double, double, bool>(),
+            py::init<double, double, double, double, double, double, bool, bool>(),
             py::arg("t_invariant_power") = 0.,
             py::arg("t_mass") = 0.,
             py::arg("t_width") = 0.,
@@ -686,6 +686,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_mass") = 0.,
             py::arg("s_width") = 0.,
             py::arg("has_cut") = false,
+            py::arg("arcsine_s23") = true,
             pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
         )
         .def(
@@ -741,13 +742,15 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 std::vector<double>,
                 std::vector<std::vector<double>>,
-                std::vector<std::vector<double>>>(),
+                std::vector<std::vector<double>>,
+                bool>(),
             py::arg("color_order"),
             py::arg("t_invariant_power") = 0.8,
             py::arg("s_invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
+            py::arg("arcsine_s23") = true,
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
         .def(
@@ -1854,6 +1857,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
@@ -1862,6 +1866,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("ren_scale"),
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
+            py::arg("scale_factor") = 1.,
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
@@ -3092,6 +3097,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("SystematicsConfig::dyn_scales")
         )
         .def_readwrite(
+            "scale_factor",
+            &SystematicsConfig::scale_factor,
+            pydoc::doc("SystematicsConfig::scale_factor")
+        )
+        .def_readwrite(
             "pdf_members",
             &SystematicsConfig::pdf_members,
             pydoc::doc("SystematicsConfig::pdf_members")
@@ -3363,13 +3373,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init([](const std::string& name,
                         double min,
                         double max,
-                        std::size_t bin_count) {
-                return EventHistogramSpec{name, min, max, bin_count};
+                        std::size_t bin_count,
+                        bool from_weight) {
+                return EventHistogramSpec{name, min, max, bin_count, from_weight};
             }),
             py::arg("name"),
             py::arg("min"),
             py::arg("max"),
-            py::arg("bin_count")
+            py::arg("bin_count"),
+            py::arg("from_weight") = false
         )
         .def_readwrite(
             "name", &EventHistogramSpec::name, pydoc::doc("EventHistogramSpec::name")
@@ -3384,6 +3396,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "bin_count",
             &EventHistogramSpec::bin_count,
             pydoc::doc("EventHistogramSpec::bin_count")
+        )
+        .def_readwrite(
+            "from_weight",
+            &EventHistogramSpec::from_weight,
+            pydoc::doc("EventHistogramSpec::from_weight")
         );
     py::classh<SubprocessObservables>(
         m, "SubprocessObservables", pydoc::doc("SubprocessObservables")
@@ -3400,10 +3417,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 ContextPtr,
                 const std::vector<EventHistogramSpec>&,
-                const std::vector<std::optional<SubprocessObservables>>&>(),
+                const std::vector<std::optional<SubprocessObservables>>&,
+                double>(),
             py::arg("context"),
             py::arg("specs"),
             py::arg("observables"),
+            py::arg("reference_weight") = 0.,
             pydoc::doc("EventHistograms::EventHistograms")
         )
         .def_property_readonly(

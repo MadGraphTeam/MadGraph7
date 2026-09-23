@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import json
 from collections import defaultdict
 
@@ -475,8 +476,8 @@ class UFOModelConverterCPP(object):
             template_h_files = self.read_aloha_template_files(ext = 'h')
             template_cc_files = self.read_aloha_template_files(ext = 'cc')
 
-        aloha_model = create_aloha.AbstractALOHAModel(self.model.get('name'),
-                                                      explicit_combine=True)
+        aloha_model = create_aloha.AbstractALOHAModel.from_model(self.model,
+                                                        explicit_combine=True)
         aloha_model.add_Lorentz_object(self.model.get('lorentz'))
         
         if self.wanted_lorentz:
@@ -3188,6 +3189,46 @@ class UFOModelConverterPythia8(UFOModelConverterCPP):
         return OneProcessExporterPythia8.read_template_file(*args, **opts)
 
 
+def mg7_launcher_source(interpreter, mg5_dir):
+    """The text of bin/generate_events for an mg7 output.
+
+    `interpreter` is the python MadGraph7 itself is running: a run needs the
+    packages of *that* environment (matplotlib for the plots, the LHAPDF
+    bindings, madspace), which the "python3" of the PATH may well not have.
+    It is written as the shebang and, because a shebang is only a default --
+    it is bypassed by "python3 bin/generate_events" and ignored by the kernel
+    when the path is too long -- the script also re-executes itself through it
+    when it finds it is running somewhere else.
+
+    The path is deliberately NOT resolved through its symlinks: in a virtual
+    environment sys.executable points at the environment, and the base
+    interpreter it links to does not see the environment's site-packages.
+
+    Pinning it costs no portability that this directory had: it already holds
+    an absolute MG5DIR. The gridpack is the portable artefact, and keeps its
+    "/usr/bin/env python3".
+    """
+
+    interpreter = os.path.normpath(interpreter) if interpreter else ''
+    return (
+        "#! %s\n" % (interpreter or "/usr/bin/env python3")
+        + "import sys, os\n"
+        + "_INTERPRETER = %r\n" % interpreter
+        + "if _INTERPRETER and os.path.exists(_INTERPRETER) \\\n"
+          "        and os.path.normpath(sys.executable or '') != _INTERPRETER:\n"
+          "    os.execv(_INTERPRETER, [_INTERPRETER,\n"
+          "                            os.path.abspath(__file__)] + sys.argv[1:])\n"
+        + "sys.path.append(%r)\n" % mg5_dir
+        + "from madgraph.iolibs.template_files.mg7.launch import main\n"
+          "if __name__ == '__main__':\n"
+          "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
+          "    try:\n"
+          "        main()\n"
+          "    except KeyboardInterrupt:\n"
+          "        pass\n"
+    )
+
+
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
@@ -3265,19 +3306,20 @@ class ProcessExporterMG7(ProcessExporterCPP):
         with misc.chdir(self.dir_path):
             madnis_bin = os.path.join("bin", "generate_events")
             with open(madnis_bin, "w") as f:
+                f.write(mg7_launcher_source(sys.executable, MG5DIR))
+            os.chmod(madnis_bin, 0o755)
+
+            npy_bin = os.path.join("bin", "npy_to_lhe")
+            with open(npy_bin, "w") as f:
                 f.write(
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.launch import main\n"
+                    "from madgraph.iolibs.template_files.mg7.npy_to_lhe import main\n"
                     "if __name__ == '__main__':\n"
-                    "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
-                    "    try:\n"
-                    "        main()\n"
-                    "    except KeyboardInterrupt:\n"
-                    "        pass\n"
+                    "    main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                 )
-            os.chmod(madnis_bin, 0o755)
+            os.chmod(npy_bin, 0o755)
 
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be

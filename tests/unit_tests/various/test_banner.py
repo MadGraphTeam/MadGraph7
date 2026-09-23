@@ -1592,6 +1592,7 @@ class TestRunCardMG7(unittest.TestCase):
         lo['ptj'] = 30
         lo['etaj'] = 4.5
         lo['dynamical_scale_choice'] = 3
+        lo['scalefact'] = 0.5
         lo['SDE_strategy'] = 2
         lo['maxjetflavor'] = 5
         lo['xqcut'] = 20          # merging -> not supported
@@ -1601,6 +1602,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(mg7['beam']['e_cm'], 13000.0)
         self.assertEqual(mg7['generation']['events'], 25000)
         self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'half_transverse_mass')
+        self.assertEqual(mg7['beam']['scale_factor'], 0.5)
         self.assertEqual(mg7['phasespace']['sde_strategy'], 'denominators')
         self.assertIn(5, mg7['multiparticles']['jet'])
         self.assertEqual(mg7['cuts']['jet-pt'], {'min': 30.0})
@@ -1614,6 +1616,37 @@ class TestRunCardMG7(unittest.TestCase):
         buf = io.StringIO()
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
+
+    def test_int_with_operator_is_not_silently_zero(self):
+        """'ht/4' used to parse as 0, i.e. dynamical_scale_choice = user hook"""
+        fmt = bannermod.ConfigFile.format_variable
+        self.assertEqual(fmt('10/2', int), 5)
+        self.assertEqual(fmt('2*3', int), 6)
+        for bad in ('ht/4', 'foo*2', '4/0'):
+            self.assertRaises(bannermod.InvalidCmd, fmt, bad, int)
+        lo = bannermod.RunCardLO()
+        self.assertRaises(bannermod.InvalidCmd, lo.__setitem__, 'dynamical_scale_choice', 'ht/4')
+        self.assertEqual(lo['dynamical_scale_choice'], -1)
+
+    def test_scale_factor(self):
+        """[beam] scale_factor: default, legacy view, and the fixed-scale warning"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['scale_factor'], 1.0)
+        # legacy 'scalefact' view: the factor, or 1.0 when both scales are fixed
+        rc['beam']['scale_factor'] = 0.25
+        self.assertEqual(rc['scalefact'], 0.25)
+        rc['beam']['fixed_ren_scale'] = True
+        rc['beam']['fixed_fact_scale'] = True
+        self.assertEqual(rc['scalefact'], 1.0)
+        # ... and that combination warns rather than silently doing nothing
+        with self.assertLogs('madevent.cards', level='WARNING') as cm:
+            rc.check_validity()
+        self.assertIn('scale_factor', ' '.join(cm.output))
+        # a non-positive factor is refused
+        rc['beam']['fixed_ren_scale'] = False
+        rc['beam']['fixed_fact_scale'] = False
+        rc['beam']['scale_factor'] = 0.0
+        self.assertRaises(bannermod.InvalidRunCard, rc.check_validity)
 
     def test_defaults_and_section_access(self):
         """default values are accessible through nested-section views"""
@@ -1642,7 +1675,7 @@ class TestRunCardMG7(unittest.TestCase):
         out = io.StringIO()
         rc.write(out, template=self.template)
         data = tomllib.loads(out.getvalue())
-        self.assertEqual(data['run']['output_format'], 'lhe')
+        self.assertEqual(data['run']['output_format'], 'lhe_npy')
         self.assertEqual(data['beam']['e_cm'], 13000.0)
         self.assertIs(data['vegas']['enable'], True)
         self.assertEqual(data['multiparticles']['photon'], [22])
@@ -1686,6 +1719,173 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertIs(rc['beam']['leptonic'], True)
         self.assertEqual(rc['beam']['e_cm'], 1000.0)
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+
+
+class FakeParticle(dict):
+    def get(self, key, default=None):
+        return dict.get(self, key, default)
+
+
+class FakeModel(dict):
+    """The little of a model the [histograms] defaults look at."""
+
+    NAMES = {1: 'd', 2: 'u', 5: 'b', 6: 't', 11: 'e-', 13: 'mu-', 21: 'g',
+             22: 'a', 23: 'z', 24: 'w+', 25: 'h'}
+
+    def __init__(self, masses=None):
+        super().__init__(parameter_dict=masses or {'MT': 173.0})
+
+    def get(self, key, default=None):
+        return dict.get(self, key, default)
+
+    def get_particle(self, pdg):
+        pdg = abs(pdg)
+        return FakeParticle(name=self.NAMES.get(pdg, 'x%d' % pdg),
+                            self_antipart=pdg in (21, 22, 23, 25),
+                            mass='MT' if pdg == 6 else 'ZERO')
+
+
+def mg7_proc(initial, final, model=None):
+    """One process, in the shape create_default_for_process is handed."""
+    legs = [{'state': False, 'id': i} for i in initial]
+    legs += [{'state': True, 'id': i} for i in final]
+    return {'legs': legs, 'legs_with_decays': [], 'model': model or FakeModel()}
+
+
+class TestRunCardMG7Histograms(unittest.TestCase):
+    """[histograms]: the default plots written at output time."""
+
+    class PC(dict):
+        def __init__(self, ninitial=2):
+            super().__init__(ninitial=ninitial, loop_induced=False,
+                             colored_pdgs=[])
+
+    def build(self, processes, ninitial=2):
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(ninitial), '', processes)
+        return rc
+
+    def test_one_group_per_particle(self):
+        """p p > t t~: the tops get a [multiparticles] group of their own"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertEqual(rc['multiparticles']['t'], [6, -6])
+        keys = list(rc['histograms'])
+        self.assertEqual(keys, ['t_1-pt', 't_2-pt', 't_1-eta', 't_2-eta',
+                                't_1-t_2-pair_mass', 'sqrt_s', 'weight'])
+        self.assertEqual(rc['histograms']['t_1-pt']['min'], 0.)
+        self.assertGreater(rc['histograms']['t_1-pt']['max'], 0.)
+        self.assertEqual(rc['histograms']['t_1-eta']['min'],
+                         -rc['histograms']['t_1-eta']['max'])
+
+    def test_predefined_group_when_flavours_are_merged(self):
+        """a merged-flavour leg (81/82/83) is histogrammed as its group
+
+        The run time only ever sees the representative of a merged group, so
+        asking for "e" in a `p p > l+ l-` run would select nothing.
+        """
+        rc = self.build([[mg7_proc([81, -81], [82, -82])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['lepton_1-pt', 'lepton_2-pt'])
+        self.assertNotIn('e', rc['multiparticles'])
+
+    def test_predefined_group_when_several_members(self):
+        """p p > j j is one 'jet' group, not one group per flavour"""
+        rc = self.build([[mg7_proc([21, 21], [21, 21]),
+                          mg7_proc([21, 21], [1, -1])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['jet_1-pt', 'jet_2-pt'])
+
+    def test_group_that_is_a_single_particle(self):
+        """b and a have a group of their own already (bottom, photon)"""
+        rc = self.build([[mg7_proc([21, 21], [5, -5])]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['bottom_1-pt', 'bottom_2-pt'])
+
+    def test_multiplicity_is_the_smallest_over_processes(self):
+        """an index has to exist in every subprocess, or it is an error there"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6, 21]),
+                          mg7_proc([21, 1], [6, -6, 1])]])
+        keys = [k for k in rc['histograms'] if k.endswith('-pt')]
+        # two tops always, one jet always (never two)
+        self.assertEqual(keys, ['t_1-pt', 't_2-pt', 'jet-pt'])
+
+    def test_decays_are_resolved(self):
+        """p p > z, z > e+ e- plots the leptons, not the z"""
+        proc = mg7_proc([81, -81], [23])
+        proc['legs_with_decays'] = [{'state': False, 'id': 81},
+                                    {'state': False, 'id': -81},
+                                    {'state': True, 'id': 82},
+                                    {'state': True, 'id': -82}]
+        rc = self.build([[proc]])
+        self.assertEqual([k for k in rc['histograms'] if k.endswith('-pt')],
+                         ['lepton_1-pt', 'lepton_2-pt'])
+
+    def test_decay_process_uses_the_decaying_mass(self):
+        """a 1 -> N width has no collider energy to scale the ranges with"""
+        rc = self.build([[mg7_proc([6], [5, 24])]], ninitial=1)
+        self.assertEqual(rc['histograms']['sqrt_s']['max'], 200.)
+        self.assertEqual(rc['histograms']['bottom-pt']['max'], 100.)
+
+    def test_every_pair_gets_an_invariant_mass(self):
+        rc = self.build([[mg7_proc([21, 21], [6, -6, 25])]])
+        pairs = [k for k in rc['histograms'] if k.endswith('-pair_mass')]
+        self.assertEqual(pairs, ['t_1-t_2-pair_mass', 't_1-h-pair_mass',
+                                 't_2-h-pair_mass'])
+
+    def test_hwu_output_is_off_by_default(self):
+        """the HwU file is a second copy of what info.json already has"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        self.assertIs(rc['run']['write_hwu'], False)
+        out = io.StringIO()
+        rc['run']['write_hwu'] = True
+        rc.write(out)
+        self.assertIn('write_hwu = true', out.getvalue())
+        self.assertIs(bannermod.RunCardMG7(out.getvalue())['run']['write_hwu'],
+                      True)
+
+    def test_weight_distribution(self):
+        """'weight' is the reserved key for the event weight itself
+
+        It is binned in units of the cross section, so the range does not
+        depend on the process (an unweighted sample is a spike at 1).
+        """
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        weight = rc['histograms']['weight']
+        self.assertEqual(weight['min'], 0.)
+        self.assertGreater(weight['max'], 1.)
+
+    def test_round_trip(self):
+        """the generated section survives write() + read()"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        out = io.StringIO()
+        rc.write(out)
+        back = bannermod.RunCardMG7(out.getvalue())
+        self.assertEqual(dict(back['histograms']), dict(rc['histograms']))
+        self.assertEqual(back['multiparticles']['t'], [6, -6])
+
+    def test_remove_and_restore(self):
+        """set histograms OFF / default"""
+        rc = self.build([[mg7_proc([21, 21], [6, -6])]])
+        default = io.StringIO()
+        rc.write(default)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml',
+                                         delete=False) as tmp:
+            tmp.write(default.getvalue())
+            path = tmp.name
+        try:
+            rc.remove_all_histograms()
+            self.assertEqual(dict(rc['histograms']), {})
+            self.assertTrue(rc.restore_default_histograms(path))
+            self.assertIn('t_1-pt', rc['histograms'])
+            self.assertFalse(rc.restore_default_histograms(path + '.missing'))
+        finally:
+            os.remove(path)
+
+    def test_no_process_no_histograms(self):
+        """no crash (and nothing written) without usable process information"""
+        rc = bannermod.RunCardMG7()
+        rc.create_default_for_process(self.PC(), '', [])
+        self.assertEqual(dict(rc['histograms']), {})
 
 
 MadLoopParam = bannermod.MadLoopParam

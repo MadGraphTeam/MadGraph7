@@ -36,7 +36,9 @@ import madgraph.interface.master_interface as MGCmd
 
 import madgraph.fks.fks_common as fks_common
 import madgraph.core.base_objects as base_objects
+import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.export_fks as export_fks
+import madgraph.iolibs.export_v4 as export_v4
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -489,3 +491,128 @@ class TestFKSOutput(unittest.TestCase):
 
 
 
+
+
+class TestColorMatrixEncodingGate(unittest.TestCase):
+    """The color matrix may be written in the compressed form -- one line per
+    orbit of the color basis symmetry, the entries rebuilt on the first call by
+    INIT_CF -- only by the templates that declare CF in the common block
+    INIT_CF fills and call it.
+
+    The FKS templates do none of that: CF is a plain local array whose only
+    filling is the DATA statements of get_color_data_lines. Writing the
+    compressed form there left CF at zero, so every real emission matrix
+    element with a large enough color basis came out zero -- for
+    g g > t t~ g g g (120 color structures) that is every soft and collinear
+    check of test_soft_col_limits, which refuses to let the run start.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # g g > g g: six color structures with a non-trivial symmetry, so the
+        # compressed form is available whenever the exporter allows it
+        interface = MGCmd.MasterCmd()
+        interface.exec_cmd('import model sm', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd('generate g g > g g', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        cls.matrix_element = helas_objects.HelasMatrixElement(
+                                                        interface._curr_amps[0])
+
+    @staticmethod
+    def entry_lines(lines):
+        """The DATA statements holding the color matrix entries themselves."""
+        return [line for line in lines if 'CF(i)' in line or 'CF(i,' in line]
+
+    def exporter(self, cls):
+        """An exporter of that class with the compression always worth taking,
+        so that only color_matrix_encoding_allowed decides."""
+        instance = cls.__new__(cls)
+        instance.color_encoding_margin = 0
+        return instance
+
+    def test_standalone_compresses(self):
+        """The plain standalone output does rebuild CF at run time, so it only
+        writes the denominator out. Without this the tests below would pass on
+        a matrix element that is never compressed in the first place."""
+
+        exporter = self.exporter(export_v4.ProcessExporterFortranSA)
+        exporter.opt = {'export_format': 'standalone'}
+        self.assertTrue(exporter.color_matrix_encoding_allowed(
+                                                          self.matrix_element))
+        lines = exporter.get_color_data_lines(self.matrix_element)
+        self.assertEqual([], self.entry_lines(lines))
+        self.assertTrue(any('Denom' in line for line in lines))
+
+    def test_fks_writes_the_entries_out(self):
+        """The FKS exporter has no INIT_CF, so the entries must be written."""
+
+        exporter = self.exporter(export_fks.ProcessExporterFortranFKS)
+        self.assertFalse(exporter.color_matrix_encoding_allowed(
+                                                          self.matrix_element))
+        lines = exporter.get_color_data_lines(self.matrix_element)
+        self.assertNotEqual([], self.entry_lines(lines))
+
+    def test_split_orders_and_madspin_write_the_entries_out(self):
+        """The standalone variants select a template of their own -- split
+        orders, MadSpin's msP/msF, matchbox -- and none of them rebuilds CF."""
+
+        for export_format in ('standalone_msP', 'standalone_msF', 'matchbox',
+                              'madloop_matchbox'):
+            exporter = self.exporter(export_v4.ProcessExporterFortranSA)
+            exporter.opt = {'export_format': export_format}
+            self.assertFalse(exporter.color_matrix_encoding_allowed(
+                                                           self.matrix_element),
+                             'encoding allowed for %s' % export_format)
+
+        # split orders send the plain standalone output to
+        # matrix_standalone_splitOrders_v4.inc, which has no INIT_CF either
+        split = copy.deepcopy(self.matrix_element)
+        split.get('processes')[0].set('split_orders', ['QCD'])
+        exporter = self.exporter(export_v4.ProcessExporterFortranSA)
+        exporter.opt = {'export_format': 'standalone'}
+        self.assertFalse(exporter.color_matrix_encoding_allowed(split))
+        self.assertNotEqual([], self.entry_lines(
+                                        exporter.get_color_data_lines(split)))
+
+    def test_madevent_compresses_and_madweight_does_not(self):
+        """madevent calls INIT_CF from every one of its templates; MadWeight
+        writes a template of its own that does not."""
+
+        exporter = self.exporter(export_v4.ProcessExporterFortranME)
+        self.assertTrue(exporter.color_matrix_encoding_allowed(
+                                                          self.matrix_element))
+
+        exporter = self.exporter(export_v4.ProcessExporterFortranMW)
+        self.assertFalse(exporter.color_matrix_encoding_allowed(
+                                                          self.matrix_element))
+
+    def test_whitelist_matches_the_templates(self):
+        """COLOR_MATRIX_ENCODING_TEMPLATES is the list of templates that call
+        INIT_CF. A template added or changed on either side has to move on the
+        other, or an exporter is again free to drop the entries of a CF that
+        nothing fills."""
+
+        directory = os.path.join(os.path.dirname(export_v4.__file__),
+                                 'template_files')
+        seen = set()
+        for name in os.listdir(directory):
+            if not name.endswith('.inc'):
+                continue
+            text = open(os.path.join(directory, name)).read()
+            if '%(color_data_lines)s' not in text:
+                self.assertNotIn('%(color_init_routine)s', text,
+                                 '%s rebuilds a color matrix it never writes'
+                                 % name)
+                continue
+            rebuilds = 'INIT_CF' in text
+            self.assertEqual(rebuilds,
+                             name in export_v4.COLOR_MATRIX_ENCODING_TEMPLATES,
+                             '%s: INIT_CF=%s but whitelisted=%s' % \
+                             (name, rebuilds,
+                              name in export_v4.COLOR_MATRIX_ENCODING_TEMPLATES))
+            if rebuilds:
+                self.assertIn('%(color_init_routine)s', text,
+                              '%s calls INIT_CF but never defines it' % name)
+                seen.add(name)
+        self.assertEqual(seen, set(export_v4.COLOR_MATRIX_ENCODING_TEMPLATES))

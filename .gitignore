@@ -6,6 +6,8 @@ __pycache__
 *.mod
 *.a
 PROC*
+!madgraph/iolibs/template_files/madmatrix/ProcessData.h
+!madgraph/iolibs/template_files/madmatrix/ProcessTables.h
 cmd*
 ptest*
 *.pkl
@@ -16,6 +18,7 @@ tests/status
 input/default_run_card_lo.dat
 input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
+input/default_switch.txt
 input/mg7_configuration.txt
 TEST_MW_*
 .vscode/
@@ -64,6 +67,7 @@ input/mg7_configuration.txt
 input/default_run_card_lo.dat
 input/default_run_card_nlo.dat
 input/default_run_card_mg7.toml
+input/default_switch.txt
 models/*/*.pkl
 py.py
 vendor/CutTools/includects/

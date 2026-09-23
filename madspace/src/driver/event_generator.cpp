@@ -113,8 +113,8 @@ void EventGenerator::generate() {
 
     // update_max_weight() scales its truncation budget with count_target, but
     // set_target_count() only runs once a round has committed. Seed a generous target
-    // so round one truncates at all; _max_weight only rises, so later rounds tighten
-    // it.
+    // so round one truncates at all; _max_weight only rises, and set_target_count()
+    // tightens it when the real (smaller) target arrives.
     for (auto& channel : _channels) {
         if (channel->status().count_opt == 0) {
             channel->set_target_count(_config.target_count);
@@ -993,6 +993,10 @@ std::vector<GeneratorStatus> EventGenerator::channel_status() const {
 
 std::vector<Histogram> EventGenerator::histograms() const {
     std::vector<Histogram> hists = _channels.at(0)->histograms();
+    for (auto& hist : hists) {
+        std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
+        std::fill(hist.bin_errors.begin(), hist.bin_errors.end(), 0.);
+    }
     for (auto& channel : _channels) {
         for (auto [chan_hist, out_hist] : zip(channel->histograms(), hists)) {
             for (auto [chan_w, chan_w2, val, err] :

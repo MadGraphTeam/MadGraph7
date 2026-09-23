@@ -18,7 +18,7 @@ namespace madspace {
 /// One @ref EventHistograms histogram: an observable name and its binning.
 struct EventHistogramSpec {
     /// Observable name; must match a key of every subprocess's @ref
-    /// SubprocessObservables::values.
+    /// SubprocessObservables::values, unless @ref from_weight is set.
     std::string name;
     /// Lower edge of the first bin.
     double min;
@@ -26,6 +26,10 @@ struct EventHistogramSpec {
     double max;
     /// Number of bins between @ref min and @ref max (excluding under/overflow).
     std::size_t bin_count;
+    /// Histogram the event weight itself, divided by the reference weight
+    /// given to @ref EventHistograms, instead of an observable of the
+    /// momenta. Such a spec has no entry in @ref SubprocessObservables.
+    bool from_weight = false;
 };
 
 /// The observables of one subprocess, evaluated on its external momenta.
@@ -50,14 +54,22 @@ public:
      *                     built on.
      * @param specs        The histograms to fill.
      * @param observables  `observables[subprocess]` evaluates the
-     *                     histogrammed observables, in the order of `specs`,
+     *                     histogrammed observables, in the order of the specs
+     *                     that are not @ref EventHistogramSpec::from_weight,
      *                     for that (unmerged) subprocess's events; a
      *                     `nullopt` entry skips the subprocess.
+     * @param reference_weight  What a @ref EventHistogramSpec::from_weight
+     *                     histogram divides the event weight by, so that its
+     *                     axis does not depend on the size of the cross
+     *                     section: pass the cross section (the mean event
+     *                     weight) and a fully unweighted sample is a spike at
+     *                     1. Zero or non-finite means the raw weight.
      */
     EventHistograms(
         ContextPtr context,
         const std::vector<EventHistogramSpec>& specs,
-        const std::vector<std::optional<SubprocessObservables>>& observables
+        const std::vector<std::optional<SubprocessObservables>>& observables,
+        double reference_weight = 0.
     );
 
     /// The histogram definitions passed to the constructor.
@@ -91,6 +103,10 @@ private:
     };
 
     std::vector<EventHistogramSpec> _specs;
+    // spec index -> its position in the observable runtime's outputs; unset
+    // for a from_weight spec, which has no observable
+    std::vector<std::optional<std::size_t>> _observable_index;
+    double _reference_weight = 1.;
     std::vector<std::optional<RuntimeData>> _runtimes;
     std::size_t _weight_count = 0;
     // sums[observable][weight column][bin], bins: underflow, bin_count, overflow

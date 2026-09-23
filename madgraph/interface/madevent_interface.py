@@ -819,9 +819,10 @@ class AskRun(cmd.ControlSwitch):
              (os.path.exists(pjoin(self.me_dir,'Cards','madanalysis5_parton_card.dat'))\
              or os.path.exists(pjoin(self.me_dir,'Cards', 'madanalysis5_hadron_card.dat'))):
             self.switch['analysis'] = 'MadAnalysis5'
-        elif 'ExRoot' in self.available_module:
-            self.switch['analysis'] = 'ExRoot'   
-        elif self.get_allowed_analysis(): 
+        elif self.get_allowed_analysis():
+            # ExRoot used to default to ON just because exrootanalysis_path is
+            # configured (its default value even when not installed); analysis
+            # now always needs to be explicitly activated, like the other switches.
             self.switch['analysis'] = 'OFF'
         else:
             self.switch['analysis'] = 'Not Avail.'
@@ -905,13 +906,14 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
-            return
+            return self.allowed_reweight
         self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
         opts = misc.from_plugin_import(plugin_path, 'new_reweight', warning=False)
         self.allowed_reweight += opts
+        return self.allowed_reweight
         
     def set_default_reweight(self):
         """initialise the switch for reweight"""
