@@ -2688,9 +2688,13 @@ class ProcessExporterCPP(VirtualExporter):
                 except os.error as error:
                     logger.warning(error.strerror + " " + self.dir_path)
     
-            # Write param_card
-            open(os.path.join("Cards","param_card.dat"), 'w').write(\
-                                                       model.write_param_card())
+            # Write param_card, and keep a pristine copy of it beside the
+            # one the user edits: that is what `set param_card default` at the
+            # launch question restores, and what says which values a run was
+            # not the model's own. The Fortran standalone has always done it.
+            card = model.write_param_card()
+            for name in ("param_card.dat", "param_card_default.dat"):
+                open(os.path.join("Cards", name), 'w').write(card)
 
     
             # Copy the needed src files
@@ -3538,6 +3542,31 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (Exception, SystemExit) as error:
             logger.warning('MadAnalysis5 default card generation failed: %s', error)
 
+    def write_model_reference(self, model):
+        """Write SubProcesses/model.txt: the reference `import model`
+        understands (line 1) and a hash of the model's python source (line 2),
+        so that the runtime can reload the model and detect one that changed
+        since output."""
+
+        try:
+            try:
+                model_path = model.get('modelpath')
+                model_hash = misc.hash_model_files(model_path)
+            except Exception:
+                model_path, model_hash = None, None
+            # the restriction is part of the model the process was
+            # generated with ('sm-no_b_mass' is not 'sm'), so store the
+            # reference that reproduces it, not the bare UFO directory.
+            try:
+                model_ref = model.get('modelpath+restriction')
+            except Exception:
+                model_ref = model_path or model.get('name')
+            if model_ref:
+                with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
+                    f.write(model_ref + '\n' + (model_hash or '') + '\n')
+        except Exception as error:
+            logger.debug('could not record the model: %s', error)
+
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
         banner.RunCardMG7, applying process-dependent defaults."""
@@ -3564,25 +3593,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             # from the free ones (launch.MG7Cmd.get_model). A hash of the
             # model's python source is stored on the second line so the runtime
             # can detect a model that changed since output.
-            try:
-                model = processes[0][0].get('model')
-                try:
-                    model_path = model.get('modelpath')
-                    model_hash = misc.hash_model_files(model_path)
-                except Exception:
-                    model_path, model_hash = None, None
-                # the restriction is part of the model the process was
-                # generated with ('sm-no_b_mass' is not 'sm'), so store the
-                # reference that reproduces it, not the bare UFO directory.
-                try:
-                    model_ref = model.get('modelpath+restriction')
-                except Exception:
-                    model_ref = model_path or model.get('name')
-                if model_ref:
-                    with open(pjoin(self.dir_path, 'SubProcesses', 'model.txt'), 'w') as f:
-                        f.write(model_ref + '\n' + (model_hash or '') + '\n')
-            except Exception as error:
-                logger.debug('could not record the model: %s', error)
+            self.write_model_reference(processes[0][0].get('model'))
 
         template = pjoin(_file_path, 'iolibs', 'template_files',
                          'mg7', 'run_card.toml')

@@ -48,11 +48,18 @@ logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 #
 #   question_hint      str, or callable() -> str, shown under a question in
 #                      place of the generic "type 'help'" line
+#   question_progress  callable(line) -> str or None, called after each answer
+#                      inside a question, with what was just typed. Whatever it
+#                      returns is printed under the question as it is asked
+#                      again. This is how a lesson says the next thing once the
+#                      reader has done the previous one, instead of printing
+#                      everything it has at the top and hoping it is read.
 #   suppress_timeout   answer a question in your own time. Everywhere else MG7
 #                      times a question out so an unattended script cannot hang;
 #                      a tutorial is the opposite case, since there is someone
 #                      reading by definition.
 question_hint = None
+question_progress = None
 suppress_timeout = False
 
 
@@ -146,6 +153,19 @@ def get_question_hint():
         except Exception:
             hint = None
     return hint or "Need help here? type 'help'"
+
+
+def get_question_progress(line):
+    """What to add under a question after `line` was answered to it, if
+    anything. None -- the usual answer -- prints nothing."""
+
+    hook = question_progress
+    if not callable(hook):
+        return None
+    try:
+        return hook(line)
+    except Exception:
+        return None
 
 try:
     import madgraph.various.misc as misc
@@ -590,8 +610,30 @@ class OriginalCmd(object):
 #===============================================================================
 # CmdExtended
 #===============================================================================
+# `help vi`: when a card opens in vi, these are the keys that get someone in and
+# out of it.  Answered at every prompt, the card question included.
+VI_BASICS = """vi, in the keys you need to edit a card:
+
+  i            start typing          (the bottom line says -- INSERT --)
+  Esc          stop typing, back to moving around
+  :wq  Enter   save the card and quit
+  :q!  Enter   quit without saving
+  /word Enter  search for "word"; n jumps to the next match
+  x    dd      delete a character / the whole line
+  u            undo
+
+Lost? Press Esc twice and type  :q!  Enter -- nothing is saved.
+Rather have another editor? `set text_editor nano` (or emacs, code, ...)."""
+
+
 class BasicCmd(OriginalCmd):
     """Simple extension for the readline"""
+
+    def help_vi(self, *args):
+        """`help vi`: the few keys needed to edit a card in vi"""
+        # *args: the launch switch question calls help_X with an argument
+        # (SmartQuestion.print_help_for_switch), the MG7 prompt without
+        logger.info(VI_BASICS)
 
     # set by complete() and read back by print_suggestions, which readline
     # calls on the object owning the completer. A question which is answered
@@ -2555,7 +2597,15 @@ class SmartQuestion(BasicCmd):
             if __debug__:
                 raise
             
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
+        """Ask the question again after `line` was answered to it.
+
+        `line` is what the caller has just handled.  It is not self.lastcmd:
+        onecmd() only sets that one for a line parseline() recognises, and an
+        answer coming from a command file is handed to default() without
+        going through onecmd() at all.
+        """
+
         pat = re.compile(r'\[(\d*)s to answer\]')
         prev_timer = signal.alarm(0) # avoid timer if any
         
@@ -2567,6 +2617,10 @@ class SmartQuestion(BasicCmd):
             if not prev_timer:
                 self.question = pat.sub('',self.question)
             self.display_question()
+            # a lesson which has something to say about the answer just given
+            progress = get_question_progress(line)
+            if progress:
+                logger_tuto.info(progress, '$MG:BOLD')
 
         if self.mother_interface:
             answer = self.mother_interface.check_answer_in_input_file(self, 'EOF', 
@@ -2630,9 +2684,9 @@ class SmartQuestion(BasicCmd):
                 self.value = self.default_value
                 return True
             elif line and hasattr(self, 'do_%s' % line.split()[0]):
-                return self.reask()
+                return self.reask(line=line)
             elif self.value in ['repeat', 'reask']:
-                return self.reask()
+                return self.reask(line=line)
             elif len(self.allow_arg)==0:
                 return True
             elif ' ' in line.strip() and '=' in self.value:
@@ -2754,7 +2808,7 @@ class OneLinePathCompletion(SmartQuestion):
             reprint_opt = False 
 
         if line != 'EOF':
-            return self.reask(reprint_opt)
+            return self.reask(reprint_opt, line=line)
 
             
 # a function helper
@@ -3195,11 +3249,13 @@ class ControlSwitch(SmartQuestion):
     def postcmd(self, stop, line):
         
         # for diamond class arch where both branch defines the postcmd
-        # set it up to be in coop mode
-        try:
-            out = super(ControlSwitch,self).postcmd(stop, line)
-        except AttributeError:
-            pass
+        # set it up to be in coop mode. (Do not catch AttributeError around the
+        # call: it hid any error raised inside the other branch's postcmd --
+        # e.g. the auto-width computation -- behind an UnboundLocalError.)
+        out = None
+        parent = super(ControlSwitch, self)
+        if hasattr(parent, 'postcmd'):
+            out = parent.postcmd(stop, line)
         if out:
             return out
 
@@ -3210,7 +3266,7 @@ class ControlSwitch(SmartQuestion):
             return True
         if self.value != 'reask':
             self.create_question()
-            return self.reask(True)
+            return self.reask(True, line=line)
         return
 
     def set_switch(self, key, value, user=True):

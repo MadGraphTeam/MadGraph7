@@ -1214,7 +1214,10 @@ class CheckValidForCmd(cmd.CheckCmd):
             self.help_display()
             raise self.InvalidCmd('Invalid arguments for display command: %s' % args[0])
 
-        if not self._curr_model:
+        # the model list is what you read *before* importing one -- the banner
+        # suggests it at startup -- and it lists model directories and the
+        # online database, never the loaded model
+        if not self._curr_model and args[0] not in ('modellist', 'model_list'):
             raise self.InvalidCmd("No model currently active, please import a model!")
 
         # check that either _curr_amps or _fks_multi_proc exists.
@@ -1585,7 +1588,12 @@ class CheckValidForCmd(cmd.CheckCmd):
             # a bare 'tutorial' opens the menu -- or, with no terminal to ask
             # on, keeps its historical meaning of "start the first tutorial"
             args.append(self.ask_tutorial())
-        if len(args) != 1:
+        if len(args) == 2 and args[0] == 'skip':
+            # `tutorial skip N` goes to step N
+            if not args[1].isdigit():
+                raise self.InvalidCmd('tutorial skip takes a step number -- '
+                                      '`tutorial index` lists them')
+        elif len(args) != 1:
             self.help_tutorial()
             raise self.InvalidCmd('Too many arguments for tutorial')
         if args[0] not in self._tutorial_opts:
@@ -2983,12 +2991,15 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         if mode and mode.startswith('standalone') and mode != 'standalone':
             # NB: `mode != 'standalone'` deliberately EXCLUDES the plain
-            # `standalone` (madmatrix) output, which is launched through its own
-            # bin/generate_events, not through SALauncher.  It is not a typo:
+            # `standalone` (madmatrix) output, which is launched through
+            # MadMatrixLauncher, not through SALauncher.  It is not a typo:
             # every *other* standalone_* mode (standalone_fortran, _cpp, _msP,
             # _msF, _rw) is run through SALauncher/MadLoopLauncher, for which
             # only force + the timing analysis options are relevant.
             opt = ['-f', '--force', '--timings=', '--nb_run=']
+            out['Options'] = self.list_completion(text, opt, line)
+        elif mode == 'standalone':
+            opt = ['-f', '--force']
             out['Options'] = self.list_completion(text, opt, line)
         elif line[0:begidx].endswith('--laststep='):
             opt = ['parton', 'pythia', 'pgs','delphes','auto']
@@ -3515,7 +3526,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         """Names 'tutorial' accepts: every tutorial, its aliases, and the
         housekeeping sub-commands."""
         return (tutorials.names(include_aliases=True) +
-                ['stop', 'list', 'status', 'help'] +
+                ['stop', 'list', 'status', 'index', 'help'] +
                 list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
@@ -4663,9 +4674,9 @@ This implies that with decay chains:
                             "one, or 'tutorial help'.")
                 return
             session.suppress_next = True
-            return getattr(self, 'do_%s' % name)('')
+            return getattr(self, 'do_%s' % name)(' '.join(args[1:]))
 
-        if name in ('list', 'status', 'help'):
+        if name in ('list', 'status', 'index', 'help'):
             # informational: never (re)start anything, and never let the
             # postcmd hook mistake this for the tutorial's intro step
             session = getattr(self, '_tutorial_session', None)
@@ -4675,6 +4686,8 @@ This implies that with decay chains:
                 self.print_tutorial_list()
             elif name == 'status':
                 self.print_tutorial_status()
+            elif name == 'index':
+                self.print_tutorial_index()
             else:
                 self.print_tutorial_help()
             return
@@ -4719,12 +4732,16 @@ This implies that with decay chains:
         logger.info("   repeat      print the current step again")
         logger.info("   back        go back one step")
         logger.info("   skip        move on without doing this step")
+        logger.info("   skip N      go to step N, running the commands that "
+                    "lead there")
         logger.info("Anytime:", '$MG:BOLD')
         logger.info("   tutorial            choose a tutorial from the menu")
         logger.info("   tutorial NAME       start that one (switches if one is "
                     "already running)")
         logger.info("   tutorial list       show the tutorials on offer")
         logger.info("   tutorial status     how far you have got")
+        logger.info("   tutorial index      the steps of the running tutorial, "
+                    "numbered")
         logger.info("   tutorial help       this message")
         logger.info("   tutorial stop       leave tutorial mode")
         logger.info("A tutorial never blocks a command: anything you type runs "
@@ -4779,7 +4796,17 @@ This implies that with decay chains:
                     (session.tutorial.name, done, total), '$MG:BOLD')
         for i, step in enumerate(session.tutorial.steps):
             mark = '>' if i == session.index else ('x' if i in session.seen else ' ')
-            logger.info("  %s %2d. %s" % (mark, i + 1, step.title or step.key))
+            note = '   (answers a command in place)' if step.sticky else ''
+            logger.info("  %s %2d. %s%s"
+                        % (mark, i + 1, step.title or step.key, note))
+
+    def print_tutorial_index(self):
+        """`tutorial index`: the numbered steps, and how to go to one."""
+
+        self.print_tutorial_status()
+        if getattr(self, '_tutorial_session', None) is not None:
+            logger.info("'>' is where you are, 'x' what you have seen. "
+                        "'tutorial skip N' goes to step N.")
 
     def ask_tutorial(self, default=None):
         """Menu shown by a bare 'tutorial'.  Returns a name.
@@ -7166,6 +7193,7 @@ This implies that with decay chains:
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
+            self.advise_neglected_masses()
 
         elif args[0] == 'command':
 
@@ -9038,14 +9066,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # args is now MODE PATH
 
         if args[0] == 'standalone':
-            class ext_program:
-                @staticmethod
-                def run():
-                    os.chdir(args[1])
-                    try:
-                        subprocess.run(os.path.join("bin", "generate_events"))
-                    except KeyboardInterrupt:
-                        pass
+            ext_program = launch_ext.MadMatrixLauncher(self, args[1],
+                                                options=self.options, **options)
 
         elif args[0].startswith('standalone'):
             if os.path.isfile(os.path.join(os.getcwd(),args[1],'Cards',\
@@ -9243,6 +9265,77 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def post_install_RunningCoupling(self):
 
         shutil.move(pjoin(MG5DIR,'RunningCoupling'), pjoin(MG5DIR,'Template', 'Running'))
+
+    # Masses that a generation almost never wants. The light quarks are
+    # massless in every flavour scheme customize_model offers, and an electron
+    # or a muon mass buys nothing at collider energies. c, b and tau are left
+    # out on purpose: a massive b (the 4F scheme) or tau is a deliberate and
+    # very common choice, and this must not nag about it.
+    NEGLECTED_MASSES = [1, 2, 3, 11, 13]
+    # the model the advice below has already been given for.  MG7 re-imports
+    # the model behind the user's back -- 'set gauge', 'set
+    # complex_mass_scheme', and 'check gauge' four times over -- and each one
+    # comes through do_import, so without this the same paragraph is printed
+    # five times for one command.
+    _advised_masses_for = None
+
+    def advise_neglected_masses(self):
+        """Point at customize_model when the model keeps a light fermion mass.
+
+        A non-zero mass for u, d, s, e or mu costs something in every process
+        those particles appear in: the Yukawa vertices they enable bring extra
+        diagrams, and the helicity configurations which vanish for a massless
+        fermion stop vanishing. At collider energies the mass itself is
+        negligible, so that is a price paid for nothing, and no restriction has
+        to ship with the model for the user to drop it: the flavour and lepton
+        mass schemes are generic options of customize_model.
+
+        Said once per model: every re-import of the same one is MG7 rebuilding
+        it for a gauge or a scheme, and repeating the paragraph there is noise.
+
+        Informative only. A model may well mean those masses -- a low-energy
+        process, a Yukawa-sensitive one -- so this says what is there and what
+        can be done about it, and decides nothing.
+        """
+
+        model = self._curr_model
+        if not model:
+            return
+        try:
+            # said once per model: a re-import of the one in front of the user
+            # is MG7 rebuilding it, not a new model to comment on
+            identity = (model.get('name'), model.get('modelpath'))
+        except Exception:
+            identity = None
+        if identity is not None and identity == self._advised_masses_for:
+            return
+        self._advised_masses_for = identity
+
+        try:
+            massive = [pdg for pdg in self.NEGLECTED_MASSES
+                       if build_restrict_lib.is_massive(model, pdg)
+                       and build_restrict_lib.can_be_massive(model, pdg)]
+        except Exception:
+            # an informative message is never a reason to fail an import
+            return
+        if not massive:
+            return
+
+        names = ', '.join(build_restrict_lib.PARTICLE_NAME[pdg]
+                          for pdg in massive)
+        options = []
+        if any(pdg in build_restrict_lib.LIGHT_QUARKS for pdg in massive):
+            options.append("'flavour scheme'")
+        if any(pdg in build_restrict_lib.LEPTONS for pdg in massive):
+            options.append("'nb of massive leptons'")
+        logger.info("This model keeps a non-zero mass for %s. Such a mass is "
+            "negligible at collider energies but not free: it brings in the "
+            "Yukawa vertices of those particles and the helicity "
+            "configurations which would otherwise vanish, in every process "
+            "they appear in.\n  'customize_model' sets them to zero (option%s "
+            "%s), and 'customize_model --save=NAME' keeps the result as a "
+            "restriction you can import later.",
+            names, '' if len(options) == 1 else 's', ' and '.join(options))
 
     def get_customize_categories(self, model, reference_model):
         """the list of the options proposed by customize_model for a given
@@ -12654,6 +12747,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
 
+    def get_model(self):
+        """the model of the current session. The card question of `launch` on
+        a standalone output calls this (via update_dependent) on its mother
+        interface, as it calls MadEventCmd.get_model for madevent."""
+        return self._curr_model
+
     # Calculate decay width
     def do_compute_widths(self, line, model=None, do2body=True, decaymodel=None):
         """Documented commands:Generate amplitudes for decay width calculation, with fixed
@@ -13408,10 +13507,10 @@ class AskforCustomize(cmd.SmartQuestion):
 
         return self.all_categories
 
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
         """ """
         reprint_opt = True
-        cmd.SmartQuestion.reask(self, reprint_opt)
+        cmd.SmartQuestion.reask(self, reprint_opt, line=line)
 
     def do_set(self, line):
         """set one of the options of the question, or -when the first argument

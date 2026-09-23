@@ -786,6 +786,155 @@ class TestModel_interface(unittest.TestCase):
         self.assertTrue(self.cmd._curr_model.get('startfromalpha0'))
 
 
+class _MassOnlyModel(dict):
+    """The little of a model that the mass advice reads.
+
+    is_massive() wants the particles and the value of each mass parameter,
+    and reads 'parameter_dict' off the model as a dict (Model is one), so
+    this is a dict too.
+    """
+
+    def __init__(self, masses, name='fake'):
+        """masses: {pdg: (mass parameter name, value)}"""
+
+        dict.__init__(self)
+        self['parameter_dict'] = dict(masses.values())
+        self['name'] = name
+        self['modelpath'] = '/models/%s' % name
+        self._particles = dict((pdg, {'mass': name})
+                               for pdg, (name, _) in masses.items())
+
+    def get(self, key):
+        if key == 'particle_dict':
+            return self._particles
+        return dict.get(self, key)
+
+
+class NeglectedMassAdviceTest(unittest.TestCase):
+    """What `import model` says about a light fermion mass the model kept.
+
+    A massive u, d, s, e or mu costs diagrams and helicity configurations for
+    a mass which is negligible anyway, and customize_model removes it. A
+    massive b or tau is the 4F scheme and a deliberate choice, so the same
+    message there would be noise on the most common import there is.
+    """
+
+    B_AND_TAU = {5: ('MB', 4.7), 15: ('MTA', 1.777)}
+
+    def advice_for(self, masses):
+        """What advise_neglected_masses logs for a model with those masses."""
+
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Interface(object):
+            NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
+
+        interface = _Interface()
+        interface._advised_masses_for = None
+        interface._curr_model = (_MassOnlyModel(masses)
+                                if masses is not None else None)
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        # the interface logs to 'cmdprint', which is what the user sees
+        logger = logging.getLogger('cmdprint')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        return captured
+
+    def test_a_massive_up_quark_is_reported(self):
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('MU', 2.55e-3)
+        message = self.advice_for(masses)
+        self.assertEqual(len(message), 1)
+        self.assertIn('for u.', message[0])
+        self.assertIn('customize_model', message[0])
+        self.assertIn("'flavour scheme'", message[0])
+        self.assertNotIn('massive leptons', message[0])
+
+    def test_massive_light_leptons_are_reported(self):
+        masses = dict(self.B_AND_TAU)
+        masses[11] = ('MEL', 5.11e-4)
+        masses[13] = ('MMU', 0.106)
+        message = self.advice_for(masses)
+        self.assertEqual(len(message), 1)
+        self.assertIn('for e, mu.', message[0])
+        self.assertIn("'nb of massive leptons'", message[0])
+        self.assertNotIn('flavour scheme', message[0])
+
+    def test_both_kinds_name_both_options(self):
+        masses = dict(self.B_AND_TAU)
+        masses[3] = ('MS', 0.101)
+        masses[13] = ('MMU', 0.106)
+        message = self.advice_for(masses)
+        self.assertIn('for s, mu.', message[0])
+        self.assertIn("options 'flavour scheme' and 'nb of massive leptons'",
+                      message[0])
+
+    def test_the_4f_scheme_says_nothing(self):
+        """b and tau massive, everything else massless: that is `sm`."""
+
+        self.assertEqual(self.advice_for(self.B_AND_TAU), [])
+
+    def test_a_mass_hardcoded_to_zero_says_nothing(self):
+        """A UFO whose u mass is ZERO cannot be restricted, and is already
+        what the advice would ask for."""
+
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('ZERO', 0.0)
+        self.assertEqual(self.advice_for(masses), [])
+
+    def test_no_model_at_all_is_harmless(self):
+        self.assertEqual(self.advice_for(None), [])
+
+    def test_it_is_said_once_per_model(self):
+        """MG7 re-imports the model behind the user's back -- `set gauge`,
+        `set complex_mass_scheme`, and `check gauge` four times over -- and
+        each one comes through do_import."""
+
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Interface(object):
+            NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
+            _advised_masses_for = None
+
+        interface = _Interface()
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('MU', 2.55e-3)
+        interface._curr_model = _MassOnlyModel(masses)
+
+        said = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                said.append(record.msg)
+
+        logger = logging.getLogger('cmdprint')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            for _ in range(5):
+                mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+            # ... and a different model is a new thing to say
+            interface._curr_model = _MassOnlyModel(masses, name='other')
+            mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        self.assertEqual(len(said), 2, said)
+
+
 class CheckDisplayWithoutProcessTest(unittest.TestCase):
     """'display processes' before anything is generated has to say so, not die.
 
