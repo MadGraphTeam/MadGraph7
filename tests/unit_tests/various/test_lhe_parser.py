@@ -47,6 +47,40 @@ class TestEvent(unittest.TestCase):
 </mgrwt>
 </event>"""
 
+    # an e+ e- > mu+ mu- event written with a dressed-lepton density, so it
+    # carries the beamstrahlung fractions of the two beams alongside the
+    # usual blocks.
+    bstrahl_event = """<event>
+ 4 1 +1.3649000e+06 0.2333376E+02  0.7546771E-02  0.1686156E+00
+        -11   -1    0    0    0    0  0.00000000000E+00  0.00000000000E+00  0.24608470417E+03  0.24608470417E+03  0.00000000000E+00 0. -1.
+         11   -1    0    0    0    0 -0.00000000000E+00 -0.00000000000E+00 -0.23876093631E+03  0.23876093631E+03  0.00000000000E+00 0. -1.
+        -13    1    1    2    0    0 -0.14853818370E+02 -0.17995227830E+02  0.18062444552E+03  0.18209310050E+03  0.00000000000E+00 0. -1.
+         13    1    1    2    0    0  0.14853818370E+02  0.17995227830E+02 -0.17330067716E+03  0.17475253998E+03  0.00000000000E+00 0. -1.
+<clustering>
+</clustering>
+<beamstrahlung>  0.9814200E+00  0.9993100E+00 </beamstrahlung>
+</event>"""
+
+    def test_parse_beamstrahlung(self):
+        """the beamstrahlung fractions can be read back, and survive a
+        parse/write round trip: the shower interface reads them from the
+        file after MadSpin/reweight have passed the events along."""
+
+        event = lhe_parser.Event(self.bstrahl_event)
+        self.assertEqual(event.parse_beamstrahlung(),
+                         [0.98142, 0.99931])
+        # reading them must not consume the block
+        self.assertIn('<beamstrahlung>', str(event))
+        self.assertEqual(lhe_parser.Event(str(event)).parse_beamstrahlung(),
+                         [0.98142, 0.99931])
+
+    def test_parse_beamstrahlung_absent(self):
+        """an event without the block reads back as None rather than
+        raising: every non-leptonic run writes events like this."""
+
+        event = lhe_parser.Event(self.mgrwt_event)
+        self.assertIsNone(event.parse_beamstrahlung())
+
     def test_reconstruct_lo_weight(self):
         """The LO reweighting info (<mgrwt>) can be reconstructed from the event
         for a single-alpha_s process, matching what MadEvent writes."""

@@ -6796,7 +6796,11 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')         
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')         
 
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
@@ -7643,7 +7647,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         #madevent file
         cp(_file_path+'/__init__.py', self.dir_path+'/bin/internal/__init__.py')
         cp(_file_path+'/various/lhe_parser.py', 
-                                self.dir_path+'/bin/internal/lhe_parser.py')                        
+                                self.dir_path+'/bin/internal/lhe_parser.py')
+        # needed to pick the beamstrahlung-aware Pythia8 main when the event
+        # file carries the beamstrahlung fractions
+        cp(_file_path+'/various/py8_bstrahl.py',
+                                self.dir_path+'/bin/internal/py8_bstrahl.py')                        
         cp(_file_path+'/various/banner.py', 
                                    self.dir_path+'/bin/internal/banner.py')
         cp(_file_path+'/various/histograms.py', 

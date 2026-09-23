@@ -71,6 +71,7 @@ except ImportError as error:
     import internal.sum_html as sum_html
     import internal.combine_runs as combine_runs
     import internal.lhe_parser as lhe_parser
+    import internal.py8_bstrahl as py8_bstrahl
 #    import internal.histograms as histograms # imported later to not slow down the loading of the code
     from internal.files import ln
 else:
@@ -88,6 +89,7 @@ else:
     import madgraph.various.misc as misc
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
+    import madgraph.various.py8_bstrahl as py8_bstrahl
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
     import models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
@@ -4879,6 +4881,40 @@ already exists and is not a fifo file."""%fifo_path)
         # Edit the card and run environment according to the run specification
         HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type, use_mg5amc_py8_interface=use_mg5amc_py8_interface)
 
+        # An event file from a dressed-lepton density that includes
+        # beamstrahlung carries the split of x into its beamstrahlung and ISR
+        # parts, and only a main that consumes it can shower the file
+        # correctly. Every other main leaves the beams at full energy and
+        # gives the whole of 1-x to the ISR shower, so falling back to one is
+        # not an option: this has to be an error rather than a warning.
+        # The file to inspect is the one Pythia8 will actually read, which is
+        # not necessarily unweighted_events.lhe.gz: setup_Pythia8RunAndCard
+        # sets Beams:LHEF with systemSet, so a value the user put in
+        # pythia8_card.dat survives. Asking the card rather than guessing is
+        # what keeps this check from silently passing on the wrong file.
+        lhe_path = pjoin(self.me_dir, 'Events', self.run_name,
+                         PY8_Card.subruns[0]['Beams:LHEF'])
+        if py8_bstrahl.event_file_needs_bstrahl(lhe_path):
+            # A standalone process directory has no MadGraph tree to build
+            # from, so there the main must already have been built, normally
+            # when Pythia8 was installed.
+            bstrahl_main = py8_bstrahl.get_main(self.options['pythia8_path'],
+                                                None if MADEVENT else MG5DIR)
+            if not bstrahl_main:
+                raise self.InvalidCmd(
+"""This event file was generated with a lepton density that includes
+beamstrahlung, so it carries the per-event beamstrahlung fractions and needs
+the dedicated Pythia8 main to be showered correctly. That main could not be
+built against the Pythia8 installation in:
+    %s
+Showering with any other main would leave the beams at their nominal energy
+and attribute the beamstrahlung energy loss to initial-state radiation, so
+MadEvent will not do it. See vendor/py8main/README.""" %
+                    self.options['pythia8_path'])
+            if pythia_main != bstrahl_main:
+                logger.info('Event file carries beamstrahlung fractions: '
+                            'showering with %s.' % os.path.basename(bstrahl_main))
+            pythia_main = bstrahl_main
 
         if not use_mg5amc_py8_interface and self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
             PY8_Card['Main:numberOfEvents']= self.run_card['nevents']

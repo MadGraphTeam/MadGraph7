@@ -68,6 +68,7 @@ except ImportError:
     import internal.save_load_object as save_load_object
     import internal.gen_crossxhtml as gen_crossxhtml
     import internal.lhe_parser as lhe_parser
+    import internal.py8_bstrahl as py8_bstrahl
     import internal.FO_analyse_card as FO_analyse_card 
     import internal.sum_html as sum_html
     from internal import InvalidCmd, MadGraph5Error
@@ -86,6 +87,7 @@ else:
     import madgraph.iolibs.files as files
     import madgraph.various.cluster as cluster
     import madgraph.various.lhe_parser as lhe_parser
+    import madgraph.various.py8_bstrahl as py8_bstrahl
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
@@ -2714,9 +2716,30 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'The corresponding directory cannot be found in \n' + \
                     'Source/PDF/lep_densities')
 
-        # now copy the files
-        for filename in ['eepdf.f', 'gridpdfaux.f']:
-            files.cp(os.path.join(lep_d_path, filename), pdf_path)
+        # now copy the files. bstrahl.f carries the beamstrahlung/ISR
+        # splitting of this density, and replaces the no-beamstrahlung
+        # stub shipped in Template/Common/Source/PDF.
+        #
+        # Check each source first. allowed_lep_densities is built by listing
+        # this directory, so a set added by hand is selectable without
+        # necessarily carrying all three files, and files.cp only logs a
+        # warning when the source is missing. For bstrahl.f that would leave
+        # the stub in place, i.e. a run that quietly writes no beamstrahlung
+        # fractions and is then showered with undegraded beams -- the exact
+        # failure the fractions exist to prevent.
+        for filename in ['eepdf.f', 'gridpdfaux.f', 'bstrahl.f']:
+            source = os.path.join(lep_d_path, filename)
+            if not os.path.exists(source):
+                raise madgraph.aMCatNLOError(
+                    ('The dressed-lepton density %s is incomplete: %s is '
+                     'missing.\n' % (name, source)) +
+                    'Every density directory must provide eepdf.f, '
+                    'gridpdfaux.f and bstrahl.f;\nbstrahl.f declares whether '
+                    'the density folds beamstrahlung into its\ngrid and, if '
+                    'it does, how to split x into its beamstrahlung and ISR\n'
+                    'parts. See vendor/eepdfgrid/readme for how to generate '
+                    'it.')
+            files.cp(source, pdf_path)
 
     ############################################################################
     # Start of MadAnalysis5 related function
@@ -7304,7 +7327,16 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         logger.info('Remember that Parton-Shower are not yet ready for such proton component definition (HW implementation in progress).', '$MG:BOLD' )
                 elif (abs(self.run_card['lpp1'])==3 and abs(self.run_card['lpp2'])==3):
                     if 'pythia8_card.dat' in self.cards:
-                        if self.run_card['pdlabel'] == 'isronlyll':
+                        # A density that folds beamstrahlung into the PDF can be
+                        # showered too: the beamstrahlung part of x is written
+                        # per event and consumed by the dedicated Pythia8 main,
+                        # which degrades the beams so that only the ISR part is
+                        # backward-evolved. Either way the QED shower has to be
+                        # on, since that is what reconstructs the ISR.
+                        has_bstrahl = py8_bstrahl.density_has_bstrahl(
+                            self.run_card['pdlabel'],
+                            pjoin(self.me_dir, 'Source'))
+                        if self.run_card['pdlabel'] == 'isronlyll' or has_bstrahl:
                            if 'partonshower' not in self.run_card['bypass_check']:
                                 # force that QED shower is on?
                                 for param in ['TimeShower:QEDshowerByQ', 'TimeShower:QEDshowerByL', 'TimeShower:QEDshowerByGamma', 'SpaceShower:QEDshowerByQ', 'SpaceShower:QEDshowerByL']:
