@@ -2801,11 +2801,21 @@ class ControlSwitch(SmartQuestion):
            if (user) value not in that list.
               -> try to find the first entry matching up to the case
        for ans_XXX, set the value to lower case, but if case_XXX is set to True 
+
+       Note on user defaults:
+       ----------------------
+       whatever the set_default_XXXX() compute can be overwritten, once and for
+       all, by the user via input/default_switch.txt (see default_switch_file).
        """
        
     case_sensitive = False
     quit_on = ['0','done', 'EOF','','auto']
     overwrite_display = True
+    # user/site defaults for the switches: "key = value" lines in
+    # input/<default_switch_file> of the MG5 installation (template:
+    # input/.default_switch.txt). Shared by the LO, NLO and mg7 questions --
+    # each simply ignores the keys it does not have. Set to None to opt out.
+    default_switch_file = 'default_switch.txt'
 
     def __init__(self, to_control, motherinstance, *args, **opts):
         """to_control is a list of ('KEY': 'Choose the shower/hadronization program')
@@ -2879,9 +2889,39 @@ class ControlSwitch(SmartQuestion):
 
 
     def set_default_switch(self):
-        
+
+        self.compute_default_switch()
+        path, user_default = self.read_user_default_switch()
+        if not user_default:
+            return
+        applied = self.apply_user_default_switch(path, user_default)
+        if not applied:
+            return
+        # The automatic defaults of the switches the user file does NOT fix are
+        # recomputed on top of it, since they are allowed to depend on one
+        # another: an NLO "fixed_order = ON" has to drag the shower default OFF.
+        # Re-applying the file afterwards protects its own entries from a
+        # set_default_XXXX that writes into a switch other than its own (the LO
+        # detector default calls set_default_shower). The values are already
+        # validated at that point, so this second pass warns about nothing.
+        self.compute_default_switch(skip=applied)
+        self.remove_inconsistency()
+        self.apply_user_default_switch(path, applied)
+        # A conflict between two entries of the file, or between one of them and
+        # a switch it leaves alone, is resolved here and now: these are defaults,
+        # not a half-finished edit, so the question opens on a consistent set
+        # instead of reporting a conflict the user never created in front of it.
+        for key, value in self.inconsistent_keys.items():
+            self.switch[key] = value
+        self.remove_inconsistency()
+
+    def compute_default_switch(self, skip=()):
+        """Set the automatic default of every switch but those in `skip`."""
+
         for key,_ in self.to_control:
             key = key.lower()
+            if key in skip:
+                continue
             if hasattr(self, 'default_switch') and key in self.default_switch:
                 self.switch[key] = self.default_switch[key]
                 continue
@@ -2889,7 +2929,87 @@ class ControlSwitch(SmartQuestion):
                 getattr(self, 'set_default_%s' % key)()
             else:
                 self.default_switch_for(key)
-        
+
+    def get_user_default_switch_path(self):
+        """Path of the user/site switch default file, or None if there is
+        none. It lives in the input/ directory of the MG5 installation, next
+        to default_run_card_lo.dat -- both are "defaults I want for every
+        process I generate". A standalone process directory has no input/ of
+        its own, so it reaches back to the installation it was written by
+        (mg5_path in its me5/mg7_configuration.txt)."""
+
+        if not self.default_switch_file:
+            return None
+        roots = []
+        try:
+            from madgraph import MG5DIR
+        except ImportError:
+            pass  # standalone (MADEVENT/aMCatNLO) directory: mg5_path only
+        else:
+            if MG5DIR:
+                roots.append(MG5DIR)
+        options = getattr(self.mother_interface, 'options', None) or {}
+        if options.get('mg5_path'):
+            roots.append(options['mg5_path'])
+        for root in roots:
+            path = os.path.join(root, 'input', self.default_switch_file)
+            if os.path.exists(path):
+                return path
+        return None
+
+    def read_user_default_switch(self):
+        """Parse the user/site switch defaults ("key = value" lines, # for
+        comments). Returns (path, {key: value}), or (None, {}) when there is
+        no such file."""
+
+        path = self.get_user_default_switch_path()
+        if not path:
+            return None, {}
+        out = {}
+        try:
+            with open(path) as fsock:
+                for line in fsock:
+                    line = line.split('#', 1)[0].strip()
+                    if not line:
+                        continue
+                    if '=' not in line:
+                        logger.warning('%s: ignoring line without "=": %s',
+                                       path, line)
+                        continue
+                    key, value = line.split('=', 1)
+                    out[key.strip().lower()] = value.strip()
+        except IOError as error:
+            logger.warning('could not read %s: %s', path, error)
+            return None, {}
+        return path, out
+
+    def apply_user_default_switch(self, path, defaults):
+        """Apply the user/site defaults on top of the computed ones. Returns
+        the {key: value} that could actually be applied -- the entries that
+        name another question's switch, or a value this run cannot provide,
+        are dropped (with a warning for the latter)."""
+
+        applied = {}
+        for key, value in defaults.items():
+            if key not in self.switch:
+                # the file is shared by the LO/NLO/mg7 questions, which do not
+                # have the same switches (analysis vs madanalysis, ...)
+                logger.debug('%s: "%s" is not a switch of this question, ignored',
+                             path, key)
+                continue
+            if not hasattr(self, 'ans_%s' % key):
+                value = self.match_switch_case(key, value)
+                if not self.check_value(key, value):
+                    logger.warning('%s: "%s = %s" is not available here, keeping "%s".',
+                                   path, key, value, self.switch[key])
+                    continue
+            # user=True: an entry of the file is a user choice, so it goes
+            # through the same consistency resolution as one typed at the
+            # prompt (an NLO 'fixed_order = ON' switches the shower off).
+            self.set_switch(key, value, user=True)
+            applied[key] = value
+        return applied
+
     def default_switch_for(self, key):
         """use this if they are no dedicated function for such key"""
         
@@ -3028,6 +3148,21 @@ class ControlSwitch(SmartQuestion):
         else:
             logger.warning('Not valid command: %s' % line)
    
+    def match_switch_case(self, key, value):
+        """Return value with the case of the matching entry of
+        get_allowed(key), for a switch that is not case sensitive."""
+
+        allowed = self.get_allowed(key) or []
+        if not self.is_case_sensitive(key) and value not in allowed:
+            lower = [t.lower() for t in allowed]
+            try:
+                ind = lower.index(value.lower())
+            except ValueError:
+                pass # keep the current case, in case check_value accepts it anyway.
+            else:
+                value = allowed[ind]
+        return value
+
     def is_case_sensitive(self, key):
         """check if a key is case sensitive"""
         
@@ -3088,14 +3223,7 @@ class ControlSwitch(SmartQuestion):
                 value = value.lower()
             return getattr(self, 'ans_%s' % key)(value)
         
-        if not self.is_case_sensitive(key) and value not in self.get_allowed(key):
-            lower = [t.lower() for t in self.get_allowed(key)]
-            try:
-                ind = lower.index(value.lower())
-            except ValueError:
-                pass # keep the current case, in case check_value accepts it anyway.
-            else:
-                value = self.get_allowed(key)[ind]
+        value = self.match_switch_case(key, value)
         
         check = self.check_value(key, value) 
         if not check:

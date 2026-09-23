@@ -183,7 +183,7 @@ def materialize_config(filepath):
     shutil.copy(pjoin(input_dir, '.mg7_configuration_default.txt'),
                 pjoin(input_dir, 'mg7_configuration.txt'))
     for card in ('default_run_card_lo.dat', 'default_run_card_nlo.dat',
-                 'default_run_card_mg7.toml'):
+                 'default_run_card_mg7.toml', 'default_switch.txt'):
         src = pjoin(input_dir, f'.{card}')
         if path.exists(src):
             shutil.copy(src, pjoin(input_dir, card))
