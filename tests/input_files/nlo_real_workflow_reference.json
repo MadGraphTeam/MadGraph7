@@ -1,0 +1,100 @@
+{
+  "fixed_order": {
+    "executable": "madevent_mintFO",
+    "input": {
+      "accuracy": 0,
+      "adapt_grid": 2,
+      "channel": 1,
+      "multichannel": 1,
+      "nchannels": 1,
+      "niterations": 1,
+      "npoints": 64,
+      "restart": 0,
+      "run_mode": "novi",
+      "split": 0,
+      "sum_helicity": 0,
+      "weight_multiplier": 1
+    },
+    "result": {
+      "absolute": 40378.26598850211,
+      "absolute_uncertainty": 18235.553155746806,
+      "cross_section": 40203.19279918005,
+      "uncertainty": 18241.59617396567,
+      "units": "pb"
+    }
+  },
+  "metadata": {
+    "backend": "fortran",
+    "compiler": "GNU Fortran 14.2.1 20250110 (Red Hat 14.2.1-13)",
+    "description": "Scalar workflow characterization before MadMatrix routing",
+    "lhapdf": {
+      "id": 334700,
+      "member": 0,
+      "name": "NNPDF40_nlo_as_01180_nf_4",
+      "version": "6.5.5"
+    },
+    "model": "loop_sm",
+    "output": "aMC@NLO",
+    "phase": "04.00",
+    "process": "p p > t t~ [QCD]",
+    "source_commit": "bd512c29939ca0fd6f92e73453ba965b5745d005",
+    "subprocess": "P0_QQx_ttx"
+  },
+  "mint_event_path": {
+    "executable": "madevent_mintMC",
+    "input": {
+      "accuracy": 0,
+      "configuration": 1,
+      "folding": [
+        1,
+        1,
+        1
+      ],
+      "g_azimuthal": [
+        -1,
+        -0.1
+      ],
+      "g_soft": [
+        1,
+        -0.1
+      ],
+      "mint_mode": 0,
+      "niterations": 1,
+      "npoints": 64,
+      "run_mode": "novi",
+      "sum_helicity": 0,
+      "suppress_amplitude": 1,
+      "vector_size": 1
+    },
+    "result": {
+      "absolute": 63.20326614336389,
+      "absolute_uncertainty": 19.052964996624642,
+      "cross_section": 47.072683898520296,
+      "stage": "MINT grid setup for the event-generation path",
+      "uncertainty": 16.595582499949195,
+      "units": "pb"
+    }
+  },
+  "retained_artifacts": {
+    "build_log": {
+      "path": "/scratch/m4_phase00_ttx_driver_build_final.log",
+      "sha256": "835ab417fa13b1a55f37aa65969253d6b573410835921985ec83d7932713eb3f"
+    },
+    "fixed_order_input": {
+      "path": "/scratch/m4_phase00_ttx_fo_input.txt",
+      "sha256": "38eaf9f024f50e91da53b284a0778a71e80167a181c554527f445a2f918ac5f0"
+    },
+    "fixed_order_log": {
+      "path": "/scratch/m4_phase00_ttx_fo_run.log",
+      "sha256": "f0c656fc394b8aa7fad882ad3569514708a3de780a9dd4c947ccbda027fa35cc"
+    },
+    "mint_input": {
+      "path": "/scratch/m4_phase00_ttx_mint_input.txt",
+      "sha256": "ba44db1ccd01fce57387e5a9b3893145fc1ee77c92c5bd97fbf63ec2d19135f1"
+    },
+    "mint_log": {
+      "path": "/scratch/m4_phase00_ttx_mint_run.log",
+      "sha256": "f6457c53996af0d1c3f6053c2dfa3a35b34bf9f388257f6ce6451d675dd12840"
+    }
+  }
+}

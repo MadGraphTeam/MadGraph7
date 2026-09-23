@@ -59,6 +59,12 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py -v2 -t0 testIO_modification_to_cuts -e .github/workflows/IOtest.yml
 
+      - name: "Phase-04 NLO real offload contracts"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestNLORealOffloadContract
+
       # ---- unittest_0 ----
       - name: "unittest_0"
         if: ${{ !cancelled() }}
