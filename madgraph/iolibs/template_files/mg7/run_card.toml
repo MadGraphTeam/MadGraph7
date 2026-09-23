@@ -24,6 +24,12 @@ cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe (switched to lhe when a post-processing step needs it)
+# fill the [histograms] with the weighted events during the integration
+# (info.json "histograms"); costs an observable evaluation per phase-space point
+weighted_histograms = %(run.weighted_histograms)s
+# fill the [histograms] with the final events and all their scale/PDF weights
+# (info.json "event_histograms"); the plots and the HwU file are drawn from these
+postprocessing_histograms = %(run.postprocessing_histograms)s
 # draw the [histograms] distributions, bands included, into Events/<run>/plots
 # (one PDF per observable). Needs matplotlib: without it the run says so once
 # and carries on, the numbers being in Events/<run>/info.json either way.

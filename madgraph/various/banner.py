@@ -6687,6 +6687,14 @@ class RunCardMG7(RunCard):
             comment="compact_npy/lhe_npy also write header.lhe next to events.npy, "
                     "with the run/param card, beam and cross-section info that the "
                     ".npy file itself does not carry")
+        self.add_toml_param('run', 'weighted_histograms', False,
+            comment="fill the [histograms] with the weighted events during the "
+                    "integration (info.json \"histograms\"); costs an observable "
+                    "evaluation per phase-space point")
+        self.add_toml_param('run', 'postprocessing_histograms', True,
+            comment="fill the [histograms] with the final events and all their "
+                    "scale/PDF weights (info.json \"event_histograms\"); the "
+                    "plots and the HwU file are drawn from these")
         self.add_toml_param('run', 'make_plots', True,
             comment="draw the [histograms] distributions, with their scale and "
                     "PDF bands, into Events/<run>/plots. Needs matplotlib; a "

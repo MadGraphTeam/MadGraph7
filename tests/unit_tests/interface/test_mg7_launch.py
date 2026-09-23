@@ -1153,3 +1153,34 @@ class TestNpyToLHE(unittest.TestCase):
         self.assertFalse(self.npy_to_lhe.can_convert(self.run))
         with self.assertRaises(FileNotFoundError):
             self.npy_to_lhe.convert(self.run)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestHistogramSwitches(unittest.TestCase):
+    """[run] weighted_histograms / postprocessing_histograms."""
+
+    def test_defaults(self):
+        from madgraph.various.banner import RunCardMG7
+        card = RunCardMG7()
+        self.assertIs(card['run']['weighted_histograms'], False)
+        self.assertIs(card['run']['postprocessing_histograms'], True)
+
+    def test_mean_ignores_under_and_overflow(self):
+        """Both histogram kinds carry the under/overflow bins first and last;
+        they have no position and must not shift the in-range bins."""
+        from madgraph.iolibs.template_files.mg7 import launch
+        mean = launch.MadgraphProcess._histogram_mean
+        # bins [0,10) and [10,20) with weights 1 and 3, plus 100 in overflow
+        self.assertAlmostEqual(mean(0., 20., [5., 1., 3., 100.]), 12.5)
+        self.assertIsNone(mean(0., 20., [5., 0., 0., 100.]))
+
+    def test_postprocessing_off_builds_no_event_histograms(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['postprocessing_histograms'] = False
+        process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
+        self.assertIsNone(process.build_event_histograms())
+        self.assertIsNone(process.event_histograms)

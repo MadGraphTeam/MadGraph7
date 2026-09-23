@@ -891,7 +891,8 @@ class MadgraphProcess:
         """ms.EventHistograms for the [histograms] observables, filled with the
         written events and all their variation weights (info.json
         "event_histograms"); None without histograms."""
-        if not self.hist_data:
+        if not self.hist_data \
+                or not self.run_card["run"]["postprocessing_histograms"]:
             self.event_histograms = None
             return None
         context = ms.Context(device=ms.cpu_device(), thread_count=1)
@@ -1573,16 +1574,36 @@ class MadgraphProcess:
             json.dump(data, f, indent=1)
 
     @staticmethod
-    def _histogram_mean(hist):
-        """Cross-section-weighted mean of a histogrammed observable."""
-        values = list(hist.bin_values)
-        n = len(values)
+    def _histogram_mean(hist_min, hist_max, bin_values):
+        """Cross-section-weighted mean of a histogrammed observable over its
+        range. ``bin_values`` carries the underflow and overflow bins first and
+        last, as both madspace histogram kinds do; they have no position and
+        are left out."""
+        values = list(bin_values)[1:-1]
         total = sum(values)
-        if n == 0 or total == 0:
+        if not values or total == 0:
             return None
-        width = (hist.max - hist.min) / n
-        return sum(v * (hist.min + (i + 0.5) * width)
+        width = (hist_max - hist_min) / len(values)
+        return sum(v * (hist_min + (i + 0.5) * width)
                    for i, v in enumerate(values)) / total
+
+    def _histogram_means(self) -> dict:
+        """name -> mean of every [histograms] entry, from the post-processing
+        histograms (the final event sample) when they were filled, otherwise
+        from the weighted integration histograms."""
+        if self.event_histograms is not None:
+            data = json.loads(self.event_histograms.to_json(self.systematics))
+            hists = [(h["name"], h["min"], h["max"], h["bin_values"])
+                     for h in data]
+        else:
+            hists = [(h.name, h.min, h.max, h.bin_values)
+                     for h in self.event_generator.histograms()]
+        means = {}
+        for name, hist_min, hist_max, values in hists:
+            mean = self._histogram_mean(hist_min, hist_max, values)
+            if mean is not None:
+                means[name] = mean
+        return means
 
     def get_result(self) -> dict:
         """Return the run result: cross-section (pb) with MC error, the number
@@ -1605,10 +1626,8 @@ class MadgraphProcess:
         except Exception as err:
             logger.warning("could not extract the systematics summary: %s", err)
         try:
-            for hist in self.event_generator.histograms():
-                mean = self._histogram_mean(hist)
-                if mean is not None:
-                    result['<%s>' % hist.name] = mean
+            for name, mean in self._histogram_means().items():
+                result['<%s>' % name] = mean
         except Exception as err:
             logger.warning("could not extract observable means: %s", err)
         return result
@@ -1841,6 +1860,7 @@ class MadgraphProcess:
         if self.lhe_completer is None:
             self.lhe_completer = self.build_lhe_completer()
         self.lhe_completer.save(os.path.join(data_path, "lhe.json"))
+        self.save_gridpack_lhe_meta(os.path.join(data_path, "lhe_meta.json"))
         if self.systematics_data is not None:
             systematics_data = dict(self.systematics_data)
             # A decay takes alpha_s from a constant grid written into the run
@@ -1853,6 +1873,22 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
+
+    def save_gridpack_lhe_meta(self, path) -> None:
+        """The run-independent part of the LHE header (cards, beams, PDF), for
+        the gridpack to write complete LHE headers: it adds the cross section
+        and seed of its own run, which is why those two are left out here."""
+        meta = self.build_lhe_meta()
+        data = {key: getattr(meta, key) for key in (
+            "beam1_pdg_id", "beam2_pdg_id", "beam1_energy", "beam2_energy",
+            "beam1_pdf_authors", "beam2_pdf_authors", "beam1_pdf_id",
+            "beam2_pdf_id", "weight_mode")}
+        data["headers"] = [
+            {"name": h.name, "content": h.content,
+             "escape_content": h.escape_content}
+            for h in meta.headers if h.name != "MG7Seed"]
+        with open(path, "w") as f:
+            json.dump(data, f)
 
     def get_mass(self, pid: int) -> float:
         return self.param_card.get_value("mass", pid)
@@ -2107,8 +2143,12 @@ class MadgraphSubprocess:
         # the integration histograms are functions of the momenta; the weight
         # distribution is a property of the final event sample, so it is only
         # filled by MadgraphProcess.build_event_histograms at combine time
+        # They cost an observable evaluation per integration point, and the
+        # plots/HwU are drawn from the post-processing ones instead, so they
+        # are only filled on request ([run] weighted_histograms).
         momentum_hists = [item for item in self.process.hist_data
-                          if not item.from_weight]
+                          if not item.from_weight] \
+            if self.process.run_card["run"]["weighted_histograms"] else []
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(

@@ -50,20 +50,39 @@ def resolve_seed(seed: int) -> int:
     return seed
 
 
-def write_lhe_header(run_path: str, systematics) -> None:
-    """Write header.lhe next to events.npy: the <header>/<init> blocks the
-    npy formats otherwise drop, with no events. A gridpack has no run/param
-    card text or beam info at hand here, so, like the "lhe" format's own
-    <init> block, this is limited to the <initrwgt> weight-variation header
-    when systematics are configured."""
+def build_lhe_meta(event_generator, seed: int, systematics=None):
+    """The LHE header/<init> metadata of this gridpack run: the cards, beams
+    and PDF the gridpack was made with (data/lhe_meta.json), with the cross
+    section and seed of this run. ``systematics`` adds the <initrwgt> block,
+    for the writers that do not inject it themselves (header.lhe); leave it
+    unset for combine_to_lhe, which does."""
     headers = []
+    data = {}
+    meta_path = os.path.join("data", "lhe_meta.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            data = json.load(f)
+        headers = [ms.LHEHeader(name=h["name"], content=h["content"],
+                                escape_content=h["escape_content"])
+                   for h in data.pop("headers")]
+    headers.append(ms.LHEHeader(name="MG7Seed", content=str(seed)))
     if systematics is not None and systematics.weight_ids:
         headers.append(ms.LHEHeader(
             name="initrwgt", content=systematics.initrwgt(), escape_content=False
         ))
-    writer = ms.LHEFileWriter(
-        os.path.join(run_path, "header.lhe"), ms.LHEMeta(headers=headers)
+    status = event_generator.status()
+    return ms.LHEMeta(
+        # positional: the pybind arg name for max_weight is non-kwarg-safe
+        processes=[ms.LHEProcess(status.mean, status.error, status.mean, 1)],
+        headers=headers,
+        **data,
     )
+
+
+def write_lhe_header(run_path: str, meta) -> None:
+    """Write header.lhe next to events.npy: the <header>/<init> blocks the
+    npy formats otherwise drop, with no events."""
+    writer = ms.LHEFileWriter(os.path.join(run_path, "header.lhe"), meta)
     del writer  # closes the file (writes the closing tag)
 
 
@@ -222,18 +241,26 @@ def main() -> None:
         event_generator.combine_to_compact_npy(
             os.path.join(run_path, "events.npy"), systematics
         )
-        write_lhe_header(run_path, systematics)
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
+        # what npy_to_lhe needs to complete these events into LHE later
+        shutil.copy(os.path.join("data", "lhe.json"),
+                    os.path.join(run_path, "lhe_completer.json"))
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
             os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
-        write_lhe_header(run_path, systematics)
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         lhe_path = os.path.join(run_path, "events.lhe")
+        # the cross section is known once generate() has converged, which is
+        # before combine_to_lhe writes the <init> block
         event_generator.combine_to_lhe(
-            lhe_path, lhe_completer, ms.LHEMeta(), systematics
+            lhe_path, lhe_completer, build_lhe_meta(event_generator, seed),
+            systematics
         )
         # Ship the LHE compressed, as the launcher that produced this gridpack
         # does: the file is large and very compressible, and the consumers of
