@@ -2597,7 +2597,15 @@ class SmartQuestion(BasicCmd):
             if __debug__:
                 raise
             
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
+        """Ask the question again after `line` was answered to it.
+
+        `line` is what the caller has just handled.  It is not self.lastcmd:
+        onecmd() only sets that one for a line parseline() recognises, and an
+        answer coming from a command file is handed to default() without
+        going through onecmd() at all.
+        """
+
         pat = re.compile(r'\[(\d*)s to answer\]')
         prev_timer = signal.alarm(0) # avoid timer if any
         
@@ -2610,7 +2618,7 @@ class SmartQuestion(BasicCmd):
                 self.question = pat.sub('',self.question)
             self.display_question()
             # a lesson which has something to say about the answer just given
-            progress = get_question_progress(self.lastcmd)
+            progress = get_question_progress(line)
             if progress:
                 logger_tuto.info(progress, '$MG:BOLD')
 
@@ -2676,9 +2684,9 @@ class SmartQuestion(BasicCmd):
                 self.value = self.default_value
                 return True
             elif line and hasattr(self, 'do_%s' % line.split()[0]):
-                return self.reask()
+                return self.reask(line=line)
             elif self.value in ['repeat', 'reask']:
-                return self.reask()
+                return self.reask(line=line)
             elif len(self.allow_arg)==0:
                 return True
             elif ' ' in line.strip() and '=' in self.value:
@@ -2800,7 +2808,7 @@ class OneLinePathCompletion(SmartQuestion):
             reprint_opt = False 
 
         if line != 'EOF':
-            return self.reask(reprint_opt)
+            return self.reask(reprint_opt, line=line)
 
             
 # a function helper
@@ -3258,7 +3266,7 @@ class ControlSwitch(SmartQuestion):
             return True
         if self.value != 'reask':
             self.create_question()
-            return self.reask(True)
+            return self.reask(True, line=line)
         return
 
     def set_switch(self, key, value, user=True):

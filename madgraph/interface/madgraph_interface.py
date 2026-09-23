@@ -9272,6 +9272,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     # out on purpose: a massive b (the 4F scheme) or tau is a deliberate and
     # very common choice, and this must not nag about it.
     NEGLECTED_MASSES = [1, 2, 3, 11, 13]
+    # the model the advice below has already been given for.  MG7 re-imports
+    # the model behind the user's back -- 'set gauge', 'set
+    # complex_mass_scheme', and 'check gauge' four times over -- and each one
+    # comes through do_import, so without this the same paragraph is printed
+    # five times for one command.
+    _advised_masses_for = None
 
     def advise_neglected_masses(self):
         """Point at customize_model when the model keeps a light fermion mass.
@@ -9284,6 +9290,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         to ship with the model for the user to drop it: the flavour and lepton
         mass schemes are generic options of customize_model.
 
+        Said once per model: every re-import of the same one is MG7 rebuilding
+        it for a gauge or a scheme, and repeating the paragraph there is noise.
+
         Informative only. A model may well mean those masses -- a low-energy
         process, a Yukawa-sensitive one -- so this says what is there and what
         can be done about it, and decides nothing.
@@ -9292,6 +9301,16 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         model = self._curr_model
         if not model:
             return
+        try:
+            # said once per model: a re-import of the one in front of the user
+            # is MG7 rebuilding it, not a new model to comment on
+            identity = (model.get('name'), model.get('modelpath'))
+        except Exception:
+            identity = None
+        if identity is not None and identity == self._advised_masses_for:
+            return
+        self._advised_masses_for = identity
+
         try:
             massive = [pdg for pdg in self.NEGLECTED_MASSES
                        if build_restrict_lib.is_massive(model, pdg)
@@ -13488,10 +13507,10 @@ class AskforCustomize(cmd.SmartQuestion):
 
         return self.all_categories
 
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
         """ """
         reprint_opt = True
-        cmd.SmartQuestion.reask(self, reprint_opt)
+        cmd.SmartQuestion.reask(self, reprint_opt, line=line)
 
     def do_set(self, line):
         """set one of the options of the question, or -when the first argument

@@ -95,8 +95,10 @@ class Step(object):
               words -- `generate ... $ a` against `generate ... / a` -- give it
               a callable key; step_for tries sticky callables first, so it
               still shields the steps behind it.
-    gate      callable(interface, line) -> True to let the step fire, or a
-              string saying why it may not.  For a lesson which only makes
+    gate      callable(interface, line) -> a string saying why the step may
+              not fire, or False to refuse it without a word.  Anything else,
+              None included, lets it fire, so a check written as `if wrong:
+              return "why"` behaves.  For a lesson which only makes
               sense against the state its command was supposed to leave -- the
               bsm tutorial's second lesson reads the model's coupling orders
               and every line of it is false unless what got loaded is an EFT.
@@ -127,8 +129,12 @@ class Step(object):
     def refusal(self, interface=None, line=None):
         """Why this step may not fire yet, or None when it may.
 
-        A gate that raises lets the step through: a lesson is not worth
-        withholding over a broken check.
+        Only an explicit refusal keeps a lesson back: a string (what the
+        reader is told), or False.  A gate which returns nothing lets the step
+        through, since the shape a check is naturally written in --
+        `if wrong: return "why"` -- returns None when it is happy.  So does a
+        gate that raises: a lesson is not worth withholding over a broken
+        check.
         """
 
         if self.gate is None:
@@ -137,14 +143,12 @@ class Step(object):
             verdict = self.gate(interface, line)
         except Exception:
             return None
-        if verdict is True:
-            return None
-        if isinstance(verdict, str) and verdict:
-            return verdict
-        if verdict:
-            return None
-        return ('This lesson needs what that command was meant to leave '
-                'behind, so the tutorial stays where it is.')
+        if isinstance(verdict, str):
+            return verdict or None
+        if verdict is False:
+            return ('This lesson needs what that command was meant to leave '
+                    'behind, so the tutorial stays where it is.')
+        return None
 
     def get_failure_advice(self, interface=None):
         """What to say when a command meant for this step did not run."""

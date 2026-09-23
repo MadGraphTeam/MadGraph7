@@ -2597,9 +2597,26 @@ class TutorialGateTest(unittest.TestCase):
         step = Step('generate', 'TEXT', gate=_boom)
         self.assertIsNone(step.refusal(None, 'generate p p > t t~'))
 
-    def test_a_gate_that_says_nothing_still_refuses(self):
+    def test_an_explicit_false_refuses_without_a_word(self):
         step = Step('generate', 'TEXT', gate=lambda i, l: False)
         self.assertIn('stays where it is', step.refusal(None, 'generate'))
+
+    def test_a_gate_which_returns_nothing_lets_the_step_fire(self):
+        """The shape a check is naturally written in returns None when it is
+        happy; taking that for a refusal would strand the reader behind a
+        message that names nothing."""
+
+        def _gate(interface, line):
+            if line == 'wrong':
+                return 'that is not it'
+
+        step = Step('generate', 'TEXT', gate=_gate)
+        self.assertIsNone(step.refusal(None, 'right'))
+        self.assertEqual(step.refusal(None, 'wrong'), 'that is not it')
+
+    def test_an_empty_string_is_not_a_refusal_either(self):
+        step = Step('generate', 'TEXT', gate=lambda i, l: '')
+        self.assertIsNone(step.refusal(None, 'generate'))
 
     def test_the_index_of_a_gated_step_needs_no_interface(self):
         """step_for answers the same with no interface at all: `tutorial
@@ -2726,14 +2743,52 @@ class QuestionProgressTest(unittest.TestCase):
         question = extended_cmd.SmartQuestion('A question?',
                                               allow_arg=['done'],
                                               default='done')
-        question.lastcmd = 'set DIM64F2L all 0'
         extended_cmd.question_progress = lambda line: 'SAW [%s]' % line
         try:
-            captured = self.capture_tutorial(question.reask)
+            captured = self.capture_tutorial(
+                lambda: question.reask(line='set DIM64F2L all 0'))
         finally:
             extended_cmd.question_progress = None
         self.assertTrue(any('SAW [set DIM64F2L all 0]' in text
                             for text in captured), captured)
+
+    def test_the_answer_comes_from_the_caller_not_from_lastcmd(self):
+        """An answer read from a command file never reaches lastcmd, so the
+        hook has to be given the line rather than read it back."""
+
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        question = extended_cmd.SmartQuestion('A question?',
+                                              allow_arg=['done'],
+                                              default='done')
+        question.lastcmd = 'an older answer'
+        seen = []
+        extended_cmd.question_progress = lambda line: seen.append(line) or None
+        try:
+            self.capture_tutorial(lambda: question.reask(line='set a 0'))
+        finally:
+            extended_cmd.question_progress = None
+        self.assertEqual(seen, ['set a 0'])
+
+    def test_postcmd_reports_the_line_it_handled(self):
+        """The path a `set` at a real question takes: postcmd -> reask."""
+
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        class _Question(extended_cmd.SmartQuestion):
+            def do_set(self, line):
+                self.value = 'repeat'
+
+        question = _Question('A question?', allow_arg=['done'], default='done')
+        question.value = 'repeat'
+        seen = []
+        extended_cmd.question_progress = lambda line: seen.append(line) or None
+        try:
+            self.capture_tutorial(
+                lambda: question.postcmd(False, 'set DIM64F2L all 0'))
+        finally:
+            extended_cmd.question_progress = None
+        self.assertEqual(seen, ['set DIM64F2L all 0'])
 
     def test_no_hook_prints_nothing(self):
         import madgraph.interface.extended_cmd as extended_cmd

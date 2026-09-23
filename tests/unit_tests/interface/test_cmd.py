@@ -794,11 +794,13 @@ class _MassOnlyModel(dict):
     this is a dict too.
     """
 
-    def __init__(self, masses):
+    def __init__(self, masses, name='fake'):
         """masses: {pdg: (mass parameter name, value)}"""
 
         dict.__init__(self)
         self['parameter_dict'] = dict(masses.values())
+        self['name'] = name
+        self['modelpath'] = '/models/%s' % name
         self._particles = dict((pdg, {'mass': name})
                                for pdg, (name, _) in masses.items())
 
@@ -828,6 +830,7 @@ class NeglectedMassAdviceTest(unittest.TestCase):
             NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
 
         interface = _Interface()
+        interface._advised_masses_for = None
         interface._curr_model = (_MassOnlyModel(masses)
                                 if masses is not None else None)
 
@@ -893,6 +896,43 @@ class NeglectedMassAdviceTest(unittest.TestCase):
 
     def test_no_model_at_all_is_harmless(self):
         self.assertEqual(self.advice_for(None), [])
+
+    def test_it_is_said_once_per_model(self):
+        """MG7 re-imports the model behind the user's back -- `set gauge`,
+        `set complex_mass_scheme`, and `check gauge` four times over -- and
+        each one comes through do_import."""
+
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Interface(object):
+            NEGLECTED_MASSES = mg_interface.MadGraphCmd.NEGLECTED_MASSES
+            _advised_masses_for = None
+
+        interface = _Interface()
+        masses = dict(self.B_AND_TAU)
+        masses[2] = ('MU', 2.55e-3)
+        interface._curr_model = _MassOnlyModel(masses)
+
+        said = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                said.append(record.msg)
+
+        logger = logging.getLogger('cmdprint')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            for _ in range(5):
+                mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+            # ... and a different model is a new thing to say
+            interface._curr_model = _MassOnlyModel(masses, name='other')
+            mg_interface.MadGraphCmd.advise_neglected_masses(interface)
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+        self.assertEqual(len(said), 2, said)
 
 
 class CheckDisplayWithoutProcessTest(unittest.TestCase):
