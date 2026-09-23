@@ -2688,9 +2688,13 @@ class ProcessExporterCPP(VirtualExporter):
                 except os.error as error:
                     logger.warning(error.strerror + " " + self.dir_path)
     
-            # Write param_card
-            open(os.path.join("Cards","param_card.dat"), 'w').write(\
-                                                       model.write_param_card())
+            # Write param_card, and keep a pristine copy of it beside the
+            # one the user edits: that is what `set param_card default` at the
+            # launch question restores, and what says which values a run was
+            # not the model's own. The Fortran standalone has always done it.
+            card = model.write_param_card()
+            for name in ("param_card.dat", "param_card_default.dat"):
+                open(os.path.join("Cards", name), 'w').write(card)
 
     
             # Copy the needed src files
