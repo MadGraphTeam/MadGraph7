@@ -1237,10 +1237,13 @@ class TestMECmdShell(unittest.TestCase):
             switch_lines=None,
             toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
                         # one histogram, to get the event-sample histograms
-                        # with their variation bands in info.json
-                        (r'\[histograms\]\n',
+                        # with their variation bands in info.json. The whole
+                        # section is replaced, not appended to: the output
+                        # writes process-specific defaults there (sqrt_s among
+                        # them), and a second sqrt_s.min is a TOML error.
+                        (r'\[histograms\]\n(?:(?!\[).*\n)*',
                          '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
-                         'sqrt_s.bin_count = 10\n')],
+                         'sqrt_s.bin_count = 10\n\n')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')

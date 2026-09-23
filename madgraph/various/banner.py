@@ -4438,7 +4438,9 @@ class RunCardLO(RunCard):
     retro_compatible_modes = ['vector.inc']
 
     if MG5DIR:
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_lo.dat")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_lo.dat")
+    else:
+        default_run_card = None
     
     def default_setup(self):
         """default value for the run_card.dat"""
@@ -5376,7 +5378,7 @@ class RunCardLO(RunCard):
 
         # Read file input/default_run_card_lo.dat
         # This has to be LAST !!
-        if os.path.exists(self.default_run_card):
+        if self.default_run_card and os.path.exists(self.default_run_card):
             self.read(self.default_run_card, consistency=False)
             
     def write(self, output_file, template=None, python_template=False,
@@ -5876,7 +5878,9 @@ class RunCardNLO(RunCard):
                       }
 
     if MG5DIR:
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_nlo.dat")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_nlo.dat")
+    else:
+        default_run_card = None
                       
         
     def default_setup(self):
@@ -6500,7 +6504,7 @@ class RunCardNLO(RunCard):
             
         # Read file input/default_run_card_nlo.dat
         # This has to be LAST !!
-        if os.path.exists(self.default_run_card):
+        if self.default_run_card and os.path.exists(self.default_run_card):
             self.read(self.default_run_card, consistency=False)
 
 
@@ -6596,7 +6600,7 @@ class RunCardMG7(RunCard):
     if MG5DIR:
         template_run_card = pjoin(MG5DIR, 'madgraph', 'iolibs',
                                   'template_files', 'mg7', 'run_card.toml')
-        default_run_card = pjoin(MG5DIR, "internal", "default_run_card_mg7.toml")
+        default_run_card = pjoin(MG5DIR, "input", "default_run_card_mg7.toml")
     else:
         template_run_card = None
         default_run_card = None
@@ -6683,6 +6687,17 @@ class RunCardMG7(RunCard):
             comment="compact_npy/lhe_npy also write header.lhe next to events.npy, "
                     "with the run/param card, beam and cross-section info that the "
                     ".npy file itself does not carry")
+        self.add_toml_param('run', 'make_plots', True,
+            comment="draw the [histograms] distributions, with their scale and "
+                    "PDF bands, into Events/<run>/plots. Needs matplotlib; a "
+                    "run without it writes the numbers to info.json as usual "
+                    "and draws nothing.")
+        self.add_toml_param('run', 'write_hwu', False,
+            comment="also write the [histograms] distributions as MADatLO.HwU "
+                    "next to the events, in the format aMC@NLO writes as "
+                    "MADatNLO.HwU (madgraph/various/histograms.py plots and "
+                    "compares those). The same numbers are in info.json either "
+                    "way.")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'])
         self.add_toml_param('run', 'dummy_matrix_element', False)
@@ -7443,9 +7458,308 @@ class RunCardMG7(RunCard):
         if proc_characteristic and proc_characteristic['ninitial'] == 1:
             self.remove_all_cut()
 
+        # the histograms are a list of observables of *this* final state, so
+        # they can only be written once the process is known
+        self.set_default_histograms(proc_characteristic, proc_def)
+
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):
             self.read(self.default_run_card, consistency=False)
+
+    # ------------------------------------------------------------------
+    # [histograms]: a default set of plots for this final state
+    # ------------------------------------------------------------------
+    # number of slots (leading, sub-leading, ...) histogrammed per group, and
+    # the largest number of invariant masses written: a high-multiplicity final
+    # state would otherwise fill the card with hundreds of observables.
+    max_histogram_slots = 4
+    max_histogram_pairs = 10
+    histogram_bin_count = 50
+    histogram_eta_max = 5.0
+    # the event weight is histogrammed in units of the cross section (the mean
+    # weight), so this range does not depend on the process: a fully unweighted
+    # sample is a spike at 1, and a partially unweighted one spreads around it.
+    histogram_weight_max = 5.0
+
+    @staticmethod
+    def _round_scale(value, up):
+        """Round `value` to the nearest 1/2/5 x 10^k, upwards or downwards.
+
+        The histogram ranges are order-of-magnitude guesses; showing the user
+        "0 to 500" rather than "0 to 682.4" says as much and reads better.
+        """
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return 0.
+        if not value > 0 or math.isinf(value):
+            return 0.
+        exponent = math.floor(math.log10(value))
+        mantissa = value / 10 ** exponent
+        steps = [1., 2., 5., 10.]
+        if up:
+            nice = next(s for s in steps if s >= mantissa - 1e-9)
+        else:
+            nice = [s for s in steps if s <= mantissa + 1e-9][-1]
+        return nice * 10 ** exponent
+
+    def _histogram_scale(self, proc_characteristic, proc_def):
+        """The energy the histogram ranges are built from: the collider energy,
+        or the mass of the decaying particle for a 1 -> N width."""
+
+        if proc_characteristic and proc_characteristic['ninitial'] == 1:
+            mass = self._decaying_mass(proc_def)
+            if mass:
+                return mass, True
+            return 0., True
+        try:
+            return float(self['beam']['e_cm']), False
+        except (KeyError, TypeError, ValueError):
+            return 0., False
+
+    @staticmethod
+    def _decaying_mass(proc_def):
+        """Numerical mass of the decaying particle of a 1 -> N process."""
+
+        for plist in proc_def or []:
+            for proc in plist:
+                try:
+                    model = proc.get('model')
+                    initial = [l for l in proc.get('legs') if not l.get('state')]
+                    particle = model.get_particle(initial[0].get('id'))
+                    name = particle.get('mass')
+                    if str(name).lower() == 'zero':
+                        return 0.
+                    return abs(float(model.get('parameter_dict')[name]))
+                except (AttributeError, KeyError, IndexError, TypeError, ValueError):
+                    continue
+        return 0.
+
+    # MadGraph gives a leg whose flavours were merged one of these codes; the
+    # mg7 runtime resolves them to the same representatives (clean_pids /
+    # _MERGED_PID_REPRESENTATIVE in template_files/mg7/launch.py), so the
+    # observables have to be written in terms of those.
+    merged_pid_representative = {81: 1, 82: 11, 83: 12}
+
+    @classmethod
+    def _final_states(cls, proc_def):
+        """([[|pdg|, ...], ...], {|pdg| that stands for merged flavours}): the
+        final state of every process, decays resolved (`p p > t t~, t > b w+`
+        is histogrammed as b w+ b~ w-)."""
+
+        out = []
+        merged = set()
+        for plist in proc_def or []:
+            for proc in plist:
+                try:
+                    legs = proc.get('legs_with_decays') or proc.get('legs')
+                    state = []
+                    for leg in legs:
+                        if not leg.get('state'):
+                            continue
+                        pdg = abs(leg.get('id'))
+                        if pdg in cls.merged_pid_representative:
+                            pdg = cls.merged_pid_representative[pdg]
+                            merged.add(pdg)
+                        state.append(pdg)
+                except (AttributeError, KeyError, TypeError):
+                    continue
+                if state:
+                    out.append(state)
+        return out, merged
+
+    @staticmethod
+    def _particle_group_name(model, pdg, taken):
+        """A [multiparticles] name for one particle: its name without the
+        charge/antiparticle marker, since the observables are evaluated on
+        |pdg| and cannot tell a particle from its antiparticle anyway
+        ("w+" and "w-" are one group, "w")."""
+
+        name = ''
+        try:
+            name = model.get_particle(pdg).get('name')
+        except (AttributeError, KeyError, TypeError):
+            name = ''
+        name = re.sub(r'[+~-]+$', '', str(name).lower())
+        # the key is a bare TOML key, and "-" separates the parts of an
+        # observable name, so anything else has to go
+        name = re.sub(r'[^a-z0-9_]', '', name)
+        if not name or name[0].isdigit():
+            name = 'pdg%d' % pdg
+        if name in taken:
+            name = '%s%d' % (name, pdg)
+        return name
+
+    def _histogram_groups(self, proc_def):
+        """Decide which [multiparticles] group each final-state particle is
+        histogrammed under, and how many of them are always there.
+
+        Returns [(group name, multiplicity), ...]. A particle goes under one of
+        the predefined groups (jet, lepton, ...) as soon as the final state
+        cannot tell its members apart: MadGraph merges the flavours of a group
+        into a single subprocess, and the run-time observables see only the
+        merged representative, so `p p > l+ l-` is "lepton", not "e" and "mu".
+        The same holds when several members of a group are produced, or when
+        the group is that one particle and nothing else (bottom, photon). A
+        particle that matches none of that gets a group of its own, so that
+        `p p > t t~` plots "t" and not "everything that is not a jet".
+        """
+
+        final_states, merged = self._final_states(proc_def)
+        if not final_states:
+            return []
+        model = None
+        for plist in proc_def or []:
+            for proc in plist:
+                model = proc.get('model')
+                break
+            if model is not None:
+                break
+
+        seen = []
+        for state in final_states:
+            for pdg in state:
+                if pdg not in seen:
+                    seen.append(pdg)
+        seen_set = set(seen)
+
+        multiparticles = self.dynamic_sections['multiparticles']
+        predefined = collections.OrderedDict(
+            (name, set(abs(p) for p in pids))
+            for name, pids in multiparticles.items())
+
+        # the groups that have to be used as a whole. Assigning a particle to
+        # its own group while its group is also used would double count it
+        # (a gluon is a "jet"), hence the two passes.
+        whole = set()
+        for name, pids in predefined.items():
+            hit = pids & seen_set
+            if not hit:
+                continue
+            if (hit & merged) or len(hit) > 1 or pids <= seen_set:
+                whole.add(name)
+
+        groups = collections.OrderedDict()   # name -> set of |pdg| it counts
+        for pdg in seen:
+            group = None
+            for name, pids in predefined.items():
+                if pdg in pids and name in whole:
+                    group = name
+                    break
+            if group is None:
+                # any group holding this pdg was left aside just above, so a
+                # name clash here means a different particle content
+                group = self._particle_group_name(
+                    model, pdg, set(multiparticles) | set(groups))
+                if group not in multiparticles:
+                    try:
+                        self_conj = model.get_particle(pdg).get('self_antipart')
+                    except (AttributeError, KeyError, TypeError):
+                        self_conj = True
+                    multiparticles[group] = [pdg] if self_conj else [pdg, -pdg]
+            groups.setdefault(group, set()).update(predefined.get(group, [pdg]))
+
+        # how many of each group are there in *every* process: an observable
+        # asking for the n-th hardest particle of a group is an error in a
+        # subprocess that has fewer of them, so the smallest count has the say
+        out = []
+        for name, pids in groups.items():
+            count = min(len([p for p in state if p in pids])
+                        for state in final_states)
+            if count:
+                out.append((name, min(count, self.max_histogram_slots)))
+        return out
+
+    def set_default_histograms(self, proc_characteristic, proc_def):
+        """Fill [histograms] with a starting set of plots for this process:
+        the pt and eta of every final-state particle, the invariant mass of
+        every pair of them, the partonic sqrt(s) and the distribution of the
+        event weight.
+
+        The observables are named after the [multiparticles] groups, with the
+        "_1", "_2", ... suffix selecting the hardest, second hardest, ... of a
+        group (`order_by` picks what "hardest" means, pt by default).
+        """
+
+        histograms = self.dynamic_sections['histograms']
+        if histograms:
+            return  # already set (a card being converted/read back)
+        groups = self._histogram_groups(proc_def)
+        if not groups:
+            return
+        energy, is_decay = self._histogram_scale(proc_characteristic, proc_def)
+        if not energy:
+            return
+        if is_decay:
+            # the products of a m -> X decay reach pt ~ m/2, so round up: a
+            # range that stops short of the edge hides the whole spectrum
+            pt_max = self._round_scale(energy / 2., up=True)
+            mass_max = self._round_scale(energy, up=True)
+        elif self['beam']['leptonic']:
+            pt_max = self._round_scale(energy / 2., up=False)
+            mass_max = self._round_scale(energy, up=True)
+        else:
+            # a hadron collider only puts a fraction of the beam energy into
+            # the hard process, so the full sqrt(s) is a useless axis
+            pt_max = self._round_scale(energy / 20., up=False)
+            mass_max = self._round_scale(energy / 10., up=True)
+        if not pt_max or not mass_max:
+            return
+
+        bins = self.histogram_bin_count
+        eta = self.histogram_eta_max
+        # one name per histogrammed particle: "jet_1", "jet_2", "t", ...
+        slots = []
+        for name, count in groups:
+            if count == 1:
+                slots.append(name)
+            else:
+                slots.extend('%s_%d' % (name, i + 1) for i in range(count))
+
+        for slot in slots:
+            histograms['%s-pt' % slot] = collections.OrderedDict(
+                [('min', 0.), ('max', pt_max), ('bin_count', bins)])
+        for slot in slots:
+            histograms['%s-eta' % slot] = collections.OrderedDict(
+                [('min', -eta), ('max', eta), ('bin_count', bins)])
+        pairs = 0
+        for i, first in enumerate(slots):
+            for second in slots[i + 1:]:
+                if pairs >= self.max_histogram_pairs:
+                    break
+                histograms['%s-%s-pair_mass' % (first, second)] = \
+                    collections.OrderedDict(
+                        [('min', 0.), ('max', mass_max), ('bin_count', bins)])
+                pairs += 1
+        histograms['sqrt_s'] = collections.OrderedDict(
+            [('min', 0.), ('max', mass_max), ('bin_count', bins)])
+        # "weight" is not an observable of the momenta: it is the reserved key
+        # for the distribution of the event weight itself (see
+        # MadgraphProcess.weight_histogram_key in the mg7 launcher)
+        histograms['weight'] = collections.OrderedDict(
+            [('min', 0.), ('max', self.histogram_weight_max),
+             ('bin_count', bins)])
+
+    def remove_all_histograms(self):
+        """Drop every histogram (the `set histograms OFF` shortcut)."""
+        self.dynamic_sections['histograms'] = collections.OrderedDict()
+
+    def restore_default_histograms(self, path):
+        """Put back the histograms written at output time, read from the
+        untouched `run_card_default.toml` (`set histograms default`). The
+        [multiparticles] groups they are named after come back with them, in
+        case those were removed too. Returns False when there is no such
+        card to read."""
+
+        if not path or not os.path.exists(path):
+            return False
+        default = self.__class__(path, consistency=False)
+        self.dynamic_sections['histograms'] = copy.deepcopy(
+            default.dynamic_sections['histograms'])
+        for name, pids in default.dynamic_sections['multiparticles'].items():
+            self.dynamic_sections['multiparticles'].setdefault(
+                name, copy.deepcopy(pids))
+        return True
 
     def remove_jet_cuts(self):
         """Drop jet related cuts (used for lepton colliders)."""

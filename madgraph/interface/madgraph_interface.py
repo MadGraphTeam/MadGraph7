@@ -8795,10 +8795,17 @@ os.system('%s  -O -W ignore::DeprecationWarning %s %s --mode={0}' %(sys.executab
 
         if not os.path.exists(config_path):
             files.cp(pjoin(MG5DIR,'input',misc.CONFIG_TEMPLATE_NAME), config_path)
-        if not os.path.exists(pjoin(MG5DIR,'input','default_run_card_lo.dat')) and madgraph.ReadWrite:
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_lo.dat'), pjoin(MG5DIR,'input','default_run_card_lo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_nlo.dat'), pjoin(MG5DIR,'input','default_run_card_nlo.dat'))
-            files.cp(pjoin(MG5DIR,'input','.default_run_card_mg7.toml'), pjoin(MG5DIR,'input','default_run_card_mg7.toml'))
+        if madgraph.ReadWrite:
+            # user-editable default files: run_card defaults (LO/NLO/mg7) and
+            # the launch switch defaults. Each is materialised from its own
+            # '.'-prefixed template, and checked on its own: a user who has an
+            # old installation carrying only some of them still gets the rest.
+            for name in ('default_run_card_lo.dat', 'default_run_card_nlo.dat',
+                         'default_run_card_mg7.toml', 'default_switch.txt'):
+                target = pjoin(MG5DIR, 'input', name)
+                template = pjoin(MG5DIR, 'input', '.%s' % name)
+                if not os.path.exists(target) and os.path.exists(template):
+                    files.cp(template, target)
 
         config_file = open(config_path)
 

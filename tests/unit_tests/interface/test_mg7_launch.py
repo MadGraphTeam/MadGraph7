@@ -515,6 +515,174 @@ class MG7CmdTest(unittest.TestCase):
         switch = {'shower': 'Pythia8'}
         self.assertEqual(cmd._apply_laststep(switch, {'laststep': ''}), switch)
 
+    def output_format(self, switch, initial='compact_npy'):
+        """Run force_lhe_output_if_needed on a run_card asking for `initial`
+        and return the format the run ends up with."""
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        with open(path, 'w') as stream:
+            stream.write('[run]\nrun_name = "run"\n'
+                         'output_format = "%s"\n' % initial)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            self.launch.force_lhe_output_if_needed(switch)
+        finally:
+            os.chdir(cwd)
+        from madgraph.various.banner import RunCardMG7
+        return RunCardMG7(path, consistency=False)['run']['output_format']
+
+    def test_post_processing_forces_the_lhe_output(self):
+        """the npy formats carry no event record a shower could read"""
+        self.assertEqual(self.output_format({'shower': 'Pythia8'}), 'lhe')
+        self.assertEqual(self.output_format({'madspin': 'ON'},
+                                            initial='lhe_npy'), 'lhe')
+
+    # -- the MADatLO.HwU switch ---------------------------------------------
+    class FakeHistograms:
+        """Stands in for the madspace EventHistograms of a finished run."""
+
+        JSON = ('[{"name": "jet-pt", "min": 0.0, "max": 100.0, '
+                '"bin_count": 2, "bin_values": [0.0, 1.0, 2.0, 0.0], '
+                '"bin_errors": [0.0, 0.1, 0.2, 0.0], "weights": []}]')
+
+        def to_json(self, systematics=None):
+            return self.JSON
+
+    def hwu_writer(self, write_hwu):
+        """A MadgraphProcess reduced to what write_hwu() looks at."""
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['write_hwu'] = write_hwu
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def hwu_path(self):
+        return os.path.join(self.me_dir, self.launch.MadgraphProcess.hwu_file_name)
+
+    def test_hwu_is_off_by_default(self):
+        """the same numbers are in info.json: the second file is opt-in"""
+        self.assertIs(self.launch.MadgraphProcess.__new__(
+            self.launch.MadgraphProcess).__class__, self.launch.MadgraphProcess)
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['write_hwu'], False)
+        process = self.hwu_writer(False)
+        process.write_hwu(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    def test_hwu_is_written_when_asked(self):
+        process = self.hwu_writer(True)
+        process.write_hwu(self.FakeHistograms())
+        with open(self.hwu_path()) as stream:
+            text = stream.read()
+        self.assertIn('<histogram> 2 "jet-pt', text)
+        self.assertTrue(text.startswith('##& xmin & xmax'))
+
+    def test_no_histograms_no_file(self):
+        """nothing to write when [histograms] is empty, switch or no switch"""
+        process = self.hwu_writer(True)
+        process.write_hwu(None)
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    # -- the Events/<run>/plots switch --------------------------------------
+    def plot_maker(self, make_plots):
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['make_plots'] = make_plots
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def plot_dir(self):
+        return os.path.join(self.me_dir,
+                            self.launch.MadgraphProcess.plot_dir_name)
+
+    def test_plots_are_on_by_default(self):
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['make_plots'], True)
+
+    def test_plots_can_be_switched_off(self):
+        process = self.plot_maker(False)
+        process.make_plots(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_no_histograms_no_plot_directory(self):
+        process = self.plot_maker(True)
+        process.make_plots(None)
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_missing_matplotlib_does_not_fail_the_run(self):
+        """the numbers are in info.json: a run without the backend carries on"""
+        from madgraph.iolibs.template_files.mg7 import plots
+        saved = plots._pyplot
+
+        def no_matplotlib():
+            raise plots.BackendMissing("No module named 'matplotlib'")
+
+        plots._pyplot = no_matplotlib
+        try:
+            process = self.plot_maker(True)
+            process.make_plots(self.FakeHistograms())   # must not raise
+        finally:
+            plots._pyplot = saved
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    # -- "set histograms ..." in the launch question ------------------------
+    def histogram_selector(self, card_text=None):
+        """An MG7Selector reduced to what do_set needs, on this output's card."""
+        from madgraph.various.banner import RunCardMG7
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        default_path = os.path.join(self.me_dir, 'Cards',
+                                    'run_card_default.toml')
+        card = RunCardMG7()
+        card.dynamic_sections['histograms'].update({
+            'jet_1-pt': {'min': 0., 'max': 500., 'bin_count': 50},
+            'sqrt_s': {'min': 0., 'max': 2000., 'bin_count': 50},
+        })
+        card.write(path)
+        card.write(default_path)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            selector_class, _ = self.launch.build_selector_cmd()
+        finally:
+            os.chdir(cwd)
+        obj = selector_class.__new__(selector_class)
+        obj.run_card = RunCardMG7(path, consistency=False)
+        obj.paths = {'run_default': default_path}
+        obj.modified_card = set()
+        return obj
+
+    def test_set_histograms_off_removes_them_all(self):
+        obj = self.histogram_selector()
+        self.assertTrue(obj.run_card['histograms'])
+        obj.do_set('histograms OFF')
+        self.assertEqual(dict(obj.run_card['histograms']), {})
+        self.assertIn('run', obj.modified_card)
+
+    def test_set_histograms_default_puts_them_back(self):
+        obj = self.histogram_selector()
+        obj.do_set('histograms off')
+        obj.do_set('histograms default')
+        self.assertIn('jet_1-pt', obj.run_card['histograms'])
+
+    def test_set_histograms_rejects_anything_else(self):
+        """a value that is not OFF/default leaves the section alone"""
+        obj = self.histogram_selector()
+        before = dict(obj.run_card['histograms'])
+        obj.do_set('histograms 42')
+        self.assertEqual(dict(obj.run_card['histograms']), before)
+        self.assertNotIn('run', obj.modified_card)
+
+    def test_no_post_processing_keeps_the_npy_output(self):
+        self.assertEqual(self.output_format({}), 'compact_npy')
+        self.assertEqual(self.output_format(None), 'compact_npy')
+        self.assertEqual(
+            self.output_format({'shower': 'OFF', 'analysis': 'Not Avail.'}),
+            'compact_npy')
+
     def test_run_name_is_written_to_the_run_card(self):
         cmd = self.make_cmd()
         cwd = os.getcwd()
