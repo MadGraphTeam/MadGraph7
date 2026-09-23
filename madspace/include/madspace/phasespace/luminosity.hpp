@@ -90,4 +90,73 @@ private:
     Invariant _invariant;
 };
 
+/**
+ * Momentum fractions for dressed-lepton beams, sampled directly.
+ *
+ * @ref Luminosity trades @f$x_1, x_2@f$ for @f$\hat s@f$ and a splitting
+ * variable, which suits a hadron collider. A dressed-lepton density instead
+ * diverges as @f$x \to 1@f$ on *each* beam, so the two fractions are drawn
+ * separately from that endpoint,
+ *
+ * @f[
+ *   1-x = r^{1/(1-p)} \,(1 - x_\mathrm{min}),
+ * @f]
+ * i.e. @f$x@f$ distributed as @f$(1-x)^{-p}@f$ over
+ * @f$[x_\mathrm{min}, 1]@f$, with @f$x_\mathrm{min}@f$ set by
+ * @f$\hat s_\mathrm{min}@f$ (and, for the second beam, by the first fraction).
+ *
+ * **@p sampling_power must equal the `ps_expo` the density was reduced with.**
+ * The returned Jacobian deliberately omits the @f$(1-x)^{p}@f$ of the
+ * transformation, because @ref EEPartonDensity carries exactly that factor:
+ * the two cancel analytically, which is the whole point of the reduction and
+ * avoids evaluating a divergence against a vanishing weight. Using a
+ * different exponent here leaves the cross section wrong by
+ * @f$(1-x)^{\Delta p}@f$ with nothing to flag it. (This mirrors `genps.f`,
+ * where the beam whose @f$x@f$ is *derived* rather than generated has the
+ * factor put back by hand.)
+ *
+ * @f$1-x@f$ is returned alongside @f$x@f$: it is the quantity the density
+ * needs, and recovering it as @f$1-x@f$ from a rounded @f$x@f$ throws away
+ * the precision the sampling had in hand.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `r1`, `r2` – `float`, shape `(batch,)` – random numbers, one per beam.
+ *
+ * **Conditions**
+ * - None.
+ *
+ * **Outputs**
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
+ * - `omx1`, `omx2` – `float`, shape `(batch,)` – @f$1-x_1@f$, @f$1-x_2@f$.
+ * - `s_hat` – `float`, shape `(batch,)` – @f$x_1 x_2 s_\mathrm{lab}@f$.
+ */
+class LeptonLuminosity : public Mapping {
+public:
+    /**
+     * @param s_lab          Squared collider energy.
+     * @param s_hat_min      Lower bound on @f$\hat s@f$, from the final-state
+     *                       masses and the cuts.
+     * @param sampling_power @f$p@f$ of the @f$(1-x)^{-p}@f$ sampling. Must
+     *                       match the density's reduction exponent; the
+     *                       default is `get_ee_expo()` of MadEvent.
+     */
+    LeptonLuminosity(double s_lab, double s_hat_min, double sampling_power = 0.96);
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+
+    double _s_lab, _s_hat_min, _power;
+};
+
 } // namespace madspace

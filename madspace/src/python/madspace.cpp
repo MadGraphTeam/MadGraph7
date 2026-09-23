@@ -626,6 +626,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("Luminosity::Luminosity")
         );
 
+    py::classh<LeptonLuminosity, Mapping>(
+        m, "LeptonLuminosity", pydoc::doc("LeptonLuminosity")
+    )
+        .def(
+            py::init<double, double, double>(),
+            py::arg("s_lab"),
+            py::arg("s_hat_min"),
+            py::arg("sampling_power") = 0.96,
+            pydoc::doc("LeptonLuminosity::LeptonLuminosity")
+        );
+
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
         .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
         .def(

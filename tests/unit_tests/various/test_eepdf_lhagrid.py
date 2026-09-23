@@ -12,19 +12,25 @@
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""Re-tabulation of the dressed-lepton densities as LHAPDF grids.
+"""Dressed-lepton beams in madspace: the density and its sampling.
 
-vendor/eepdfgrid/gen_eepdf_lhagrid.py resamples the grids of eepdf.f onto a
-mesh that madspace's log-bicubic kernel can reproduce. Two things have to hold
-for that to be worth anything, and both are checked here:
+Three layers, each checked against the one below it:
 
-  * the script's numpy reimplementation of CERNLIB's dfint must agree with the
-    table it was read from -- it is the reference the resampling is done
-    against, so an error there is invisible everywhere else;
+  * vendor/eepdfgrid/gen_eepdf_lhagrid.py resamples the grids of eepdf.f onto
+    a mesh madspace's log-bicubic kernel can reproduce. Its numpy
+    reimplementation of CERNLIB's dfint must agree with the table it was read
+    from -- it is the reference the resampling is done against, so an error
+    there is invisible everywhere else -- and madspace, reading the emitted
+    grid, must reproduce that reference. The latter is the accuracy gate: a
+    plain transcription of the shipped 100x20 table fails it at the 1.4e-2
+    level, which is why the script resamples at all.
 
-  * madspace, reading the emitted grid, must reproduce that reference. This is
-    the accuracy gate: a plain transcription of the shipped 100x20 table fails
-    it at the 1.4e-2 level, which is why the script resamples at all.
+  * EEPartonDensity restores the (1-x) endpoint the grid has factored out.
+
+  * LeptonLuminosity samples x from that endpoint, leaving the (1-x)**p of the
+    transformation out of its Jacobian because the density carries it. Neither
+    piece can be checked alone, so the last test integrates the two together
+    against a quadrature that uses neither.
 """
 import os
 import shutil
@@ -264,5 +270,153 @@ class TestEEPdfLhaGrid(unittest.TestCase):
                 self.assertLess(np.median(rel), 1e-5, 'pid %d' % pid)
                 self.assertLess(np.percentile(rel, 99), 1e-3, 'pid %d' % pid)
                 self.assertLess(rel.max(), 1e-2, 'pid %d' % pid)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+@unittest.skipIf(np is None or gen is None, 'numpy and the generator required')
+@unittest.skipIf(not os.path.isdir(SET_DIR), '%s not shipped' % SET)
+class TestLeptonLuminosity(unittest.TestCase):
+    """Sampling the momentum fractions for dressed-lepton beams.
+
+    The mapping draws each beam from its (1-x) endpoint and deliberately
+    leaves the (1-x)**p of the transformation out of its Jacobian, because the
+    density carries exactly that factor. That cancellation is the one thing
+    here that cannot be checked by looking at either piece alone, so the last
+    test integrates the two together against an independent quadrature.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ms = _madspace()
+        if cls.ms is None or not hasattr(cls.ms, 'LeptonLuminosity'):
+            raise unittest.SkipTest('madspace build with LeptonLuminosity required')
+        cls.s_lab = 240.0 ** 2
+        cls.power = 0.96   # get_ee_expo()
+
+    def _forward(self, tau_min, n=4000, seed=23):
+        lum = self.ms.LeptonLuminosity(self.s_lab, tau_min * self.s_lab, self.power)
+        rng = np.random.default_rng(seed)
+        r1 = rng.uniform(1e-6, 1.0, n)
+        r2 = rng.uniform(1e-6, 1.0, n)
+        return lum, r1, r2, lum.map_forward([r1, r2])
+
+    def test_matches_generate_x_ee(self):
+        """The closed form of genps.f's generate_x_ee, both beams."""
+        p = self.power
+        for tau_min in (0.0, 1e-4, 0.25):
+            _, r1, r2, f = self._forward(tau_min)
+            span1 = 1.0 - tau_min
+            omx1 = r1 ** (1.0 / (1.0 - p)) * span1
+            x1 = 1.0 - omx1
+            # the second beam's lower end is fixed by the first draw
+            span2 = 1.0 - tau_min / x1
+            omx2 = r2 ** (1.0 / (1.0 - p)) * span2
+            x2 = 1.0 - omx2
+            det = (span1 ** (1.0 - p) / (1.0 - p)) * (span2 ** (1.0 - p) / (1.0 - p))
+            for name, ref in (('x1', x1), ('omx1', omx1), ('x2', x2),
+                              ('omx2', omx2), ('det', det)):
+                got = np.asarray(getattr(f, name))
+                np.testing.assert_allclose(
+                    got, ref, rtol=1e-13,
+                    err_msg='%s at tau_min=%g' % (name, tau_min))
+            np.testing.assert_allclose(
+                np.asarray(f.s_hat), x1 * x2 * self.s_lab, rtol=1e-13)
+
+    def test_inverse_round_trips(self):
+        for tau_min in (0.0, 1e-4, 0.25):
+            lum, r1, r2, f = self._forward(tau_min, seed=31)
+            inv = lum.map_inverse([f.x1, f.omx1, f.x2, f.omx2, f.s_hat])
+            np.testing.assert_allclose(np.asarray(inv.r1), r1, rtol=1e-12)
+            np.testing.assert_allclose(np.asarray(inv.r2), r2, rtol=1e-12)
+            # both directions report the same Jacobian, as Luminosity does
+            np.testing.assert_allclose(
+                np.asarray(inv.det), np.asarray(f.det), rtol=1e-13)
+
+    def test_samples_the_requested_density(self):
+        """omx**(1-p) is the CDF, so it must come out uniform."""
+        lum = self.ms.LeptonLuminosity(self.s_lab, 0.0, self.power)
+        rng = np.random.default_rng(5)
+        n = 200000
+        f = lum.map_forward([rng.uniform(0, 1, n), rng.uniform(0, 1, n)])
+        u = np.asarray(f.omx1) ** (1.0 - self.power)
+        self.assertAlmostEqual(u.mean(), 0.5, places=2)
+        self.assertAlmostEqual(u.std(), 1.0 / np.sqrt(12.0), places=2)
+
+    def test_rejects_a_power_that_cannot_be_normalised(self):
+        """p >= 1 makes (1-x)**-p non-integrable; p < 0 flees the endpoint."""
+        for bad in (1.0, 1.5, -0.1):
+            self.assertRaises(
+                ValueError, self.ms.LeptonLuminosity, self.s_lab, 0.0, bad)
+
+    def test_jacobian_and_density_integrate_correctly(self):
+        """The (1-x)**p left out of the Jacobian is the one the density has.
+
+        Compared against a quadrature that uses neither: substituting
+        1-x = exp(-s) turns the endpoint into an exponential tail. The tail
+        has to be followed far enough -- the delta-like components fall only
+        as exp(-beta s) with beta ~ 0.06, so truncating at s = 80 loses a
+        full percent and looks exactly like a broken Jacobian.
+        """
+        tmp = tempfile.mkdtemp()
+        try:
+            shutil.copy(os.path.join(SET_DIR, 'eepdf.f'), tmp)
+            dat, meta_path, _, _ = gen.generate(tmp, SET)
+            import json
+            with open(meta_path) as fsock:
+                meta = json.load(fsock)
+            pids = meta['pids']
+            yv, zv, grids = gen.parse_eepdf(os.path.join(tmp, 'eepdf.f'))
+            yv, zv = np.asarray(yv), np.asarray(zv)
+            keys = gen.physical_keys(grids)
+
+            def beam_of(pid):
+                return 11 if pid % 10 == 2 else -11
+
+            kappa_const, offsets = [], []
+            for pid in pids:
+                k = meta['kappa']['%d_%d' % (pid // 1000, beam_of(pid))]
+                const = k['c_b'] * meta['b_exp'] + k['c_1']
+                kappa_const.append(const)
+                offsets.append(self.power - const)
+
+            q_val = 120.0
+            z = np.log(q_val / gen.ME)
+            beta = meta['alphaem'] / np.pi * (2 * z - 1)
+
+            s = np.linspace(0.0, 700.0, 300001)
+            u = np.exp(-s)
+            x_ref = 1.0 - u
+
+            ms = self.ms
+            ctx = ms.default_context()
+            grid = ms.PdfGrid(dat)
+            prefix = 'test_lumi_'
+            grid.initialize_globals(ctx, prefix)
+            dens = ms.EEPartonDensity(grid, pids, offsets, prefix=prefix)
+            dens.initialize_globals(ctx)
+            lum = ms.LeptonLuminosity((2 * q_val) ** 2, 0.0, self.power)
+
+            rng = np.random.default_rng(99)
+            n = 300000
+            f = lum.map_forward([rng.uniform(0, 1, n), rng.uniform(0, 1, n)])
+            x1 = np.asarray(f.x1)
+            omx1 = np.asarray(f.omx1)
+            q = np.full(n, q_val)
+            # tau_min = 0, so beam 2 contributes a constant factor; drop it to
+            # compare against the single-beam integral
+            det1 = 1.0 / (1.0 - self.power)
+
+            for j, pid in enumerate(pids):
+                g = gen.dfint2d(yv, zv, np.asarray(grids[keys[j]]), x_ref,
+                                np.full_like(x_ref, z))
+                ref = np.trapezoid(g * u ** (beta - kappa_const[j]) * u, s)
+                w = np.asarray(
+                    dens(x1, omx1, q, np.full(n, j, dtype=np.int32))) * det1
+                mc = w.mean()
+                err = w.std() / np.sqrt(n)
+                self.assertLess(
+                    abs(mc - ref), max(5 * err, 1e-3 * abs(ref)),
+                    'pid %d: MC %.8e vs quadrature %.8e' % (pid, mc, ref))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
