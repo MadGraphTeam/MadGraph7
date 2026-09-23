@@ -7159,6 +7159,7 @@ This implies that with decay chains:
             self._curr_proc_defs = base_objects.ProcessDefinitionList()
             self._curr_matrix_elements = helas_objects.HelasMultiProcess()
             process_checks.store_aloha = []
+            self.advise_neglected_masses()
 
         elif args[0] == 'command':
 
@@ -9229,6 +9230,58 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def post_install_RunningCoupling(self):
 
         shutil.move(pjoin(MG5DIR,'RunningCoupling'), pjoin(MG5DIR,'Template', 'Running'))
+
+    # Masses that a generation almost never wants. The light quarks are
+    # massless in every flavour scheme customize_model offers, and an electron
+    # or a muon mass buys nothing at collider energies. c, b and tau are left
+    # out on purpose: a massive b (the 4F scheme) or tau is a deliberate and
+    # very common choice, and this must not nag about it.
+    NEGLECTED_MASSES = [1, 2, 3, 11, 13]
+
+    def advise_neglected_masses(self):
+        """Point at customize_model when the model keeps a light fermion mass.
+
+        A non-zero mass for u, d, s, e or mu costs something in every process
+        those particles appear in: the Yukawa vertices they enable bring extra
+        diagrams, and the helicity configurations which vanish for a massless
+        fermion stop vanishing. At collider energies the mass itself is
+        negligible, so that is a price paid for nothing, and no restriction has
+        to ship with the model for the user to drop it: the flavour and lepton
+        mass schemes are generic options of customize_model.
+
+        Informative only. A model may well mean those masses -- a low-energy
+        process, a Yukawa-sensitive one -- so this says what is there and what
+        can be done about it, and decides nothing.
+        """
+
+        model = self._curr_model
+        if not model:
+            return
+        try:
+            massive = [pdg for pdg in self.NEGLECTED_MASSES
+                       if build_restrict_lib.is_massive(model, pdg)
+                       and build_restrict_lib.can_be_massive(model, pdg)]
+        except Exception:
+            # an informative message is never a reason to fail an import
+            return
+        if not massive:
+            return
+
+        names = ', '.join(build_restrict_lib.PARTICLE_NAME[pdg]
+                          for pdg in massive)
+        options = []
+        if any(pdg in build_restrict_lib.LIGHT_QUARKS for pdg in massive):
+            options.append("'flavour scheme'")
+        if any(pdg in build_restrict_lib.LEPTONS for pdg in massive):
+            options.append("'nb of massive leptons'")
+        logger.info("This model keeps a non-zero mass for %s. Such a mass is "
+            "negligible at collider energies but not free: it brings in the "
+            "Yukawa vertices of those particles and the helicity "
+            "configurations which would otherwise vanish, in every process "
+            "they appear in.\n  'customize_model' sets them to zero (option%s "
+            "%s), and 'customize_model --save=NAME' keeps the result as a "
+            "restriction you can import later.",
+            names, '' if len(options) == 1 else 's', ' and '.join(options))
 
     def get_customize_categories(self, model, reference_model):
         """the list of the options proposed by customize_model for a given
