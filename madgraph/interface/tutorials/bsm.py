@@ -50,8 +50,8 @@ RELOAD = 'import model SMEFTatNLO-%s' % RESTRICTION
 # param card that comes with the code is what the two lessons compare
 BEFORE = 'TTX_EFT'
 AFTER = 'TTX_TOP'
-OUTPUT_BEFORE = 'output standalone_fortran %s' % BEFORE
-OUTPUT_AFTER = 'output standalone_fortran %s' % AFTER
+OUTPUT_BEFORE = 'output standalone %s' % BEFORE
+OUTPUT_AFTER = 'output standalone %s' % AFTER
 # `open` looks in the last output directory and in its Cards/, so the bare
 # name is enough and the same line works for both directories
 OPEN_CARD = 'open param_card.dat'
@@ -61,11 +61,11 @@ CMS = 'set complex_mass_scheme True'
 def _launch(interface=None):
     """`launch DIR` for the directory the reader's last `output` made.
 
-    A standalone `launch` compiles the matrix element, asks the param card
-    question and evaluates one phase-space point.  The question is the reason
-    it is here: `set decay all auto` is a command of that question and of
-    nothing else, so a reader who only ever opens the card in an editor never
-    gets to type it.
+    A standalone `launch` asks one question -- how to build, and which
+    parameters to use -- then compiles and evaluates a phase-space point.  The
+    question is the reason it is here: `set decay all auto` is a command of a
+    card question and of nothing else, so a reader who only ever opens the
+    card in an editor never gets to type it.
     """
 
     return 'launch %s' % output_name(interface, BEFORE)
@@ -85,15 +85,19 @@ def _launch_question_hint(interface=None):
                    'opened from this question -- the `set` lines above do not '
                    'need it.\n')
     else:
-        opening = ('\nAnswering `1` opens the card in **%s** (%s); the `set` '
-                   'lines above do not need it.\n' % (editor, source))
+        opening = ('\nThe number the question puts in front of `param : '
+                   'param_card.dat` opens it in **%s** (%s); the `set` lines '
+                   'above do not need it.\n' % (editor, source))
         if is_vi(editor):
             opening += ('`help vi` here lists the handful of keys it takes to '
                         'get out of vi again.\n')
 
     return """
-This is the param card, as a question rather than as a file: every parameter
-of the model can be set from here, and `set` is how.
+One question, two halves. The top one is the build -- which `backend` to
+compile (`auto` takes the widest your machine has), which `P*` subprocess,
+how many cores -- and its defaults are what you want here. The rest is the
+param card, as a question rather than as a file: every parameter of the model
+can be set from it, and `set` is how.
 
   set decay all auto     every width computed from the parameters you set
   set decay 6 auto       the top width alone
@@ -105,8 +109,9 @@ MG7 computes each of them on the way out, from the parameters actually set --
 it generates the decays and integrates them, which takes a minute or two and
 is worth watching once.
 %(opening)s
-Then press Enter to run. The standalone evaluates one phase-space point --
-enough to know the code compiles and the card is read.
+Then press Enter. It compiles each subprocess and evaluates one phase-space
+point with the card you answered -- enough to know the code builds and the
+card is read.
 """ % {'opening': opening}
 
 # the two blocks the reader switches off at the customize_model question
@@ -355,13 +360,13 @@ def _last_generate(interface=None):
 
 
 def _widths_changed(interface=None):
-    """The widths the reader's launch recomputed, against the shipped card.
+    """The widths the reader's launch recomputed, against the shipped ones.
 
-    `output` leaves `param_card_default.dat` next to `param_card.dat`, so the
-    two together say what the question changed: a reader who asked for
-    automatic widths has different numbers in front of them, and the lesson
-    can name theirs instead of describing mine.  '' when nothing moved --
-    pressing Enter is a perfectly good answer to that question.
+    Every standalone output leaves a pristine `param_card_default.dat` beside
+    the card the question edits, so the two together say what the automatic
+    widths did -- and the reader is shown their own numbers rather than mine.
+    '' when nothing moved: pressing Enter is a perfectly good answer to that
+    question.
     """
 
     import os
@@ -531,15 +536,14 @@ one of them on its own is a detour worth taking once:
 That is the process settled. What is left is the model: a dimension-six EFT
 carries a coefficient for every operator, and most of them never touch a top
 pair. Write the process out and you get the whole list on paper -- the param
-card comes with the code. The Fortran standalone is the quickest output
-there is -- the matrix element and the cards, nothing else -- and its `launch`
-is the one that puts you in front of the param card:
+card comes with the code. `standalone` is the output to ask for here: the
+matrix element and its card, none of the run machinery, and a `launch` which
+puts that card in front of you before it builds anything:
 %(p)s %(output)s
 """ % {'p': P, 'linear': LINEAR, 'output': OUTPUT_BEFORE,
        'counts': counts_line(interface)},
      title='linear and quadratic',
-     hint="`output standalone_fortran DIR` picks up the main line. The "
-          "detour is "
+     hint="`output standalone DIR` picks up the main line. The detour is "
           "`%s`: `^2` constrains the squared matrix element." % LINEAR,
      solution=OUTPUT_BEFORE),
 
@@ -555,8 +559,8 @@ That is the detour. Back to the main line -- write the process out:
 """ % {'p': P, 'output': OUTPUT_BEFORE, 'counts': counts_line(interface)},
      title='the interference on its own (detour)',
      entry=LINEAR,
-     hint="Nothing to do here -- `output standalone_fortran DIR` picks the "
-          "main line back up.",
+     hint="Nothing to do here -- `output standalone DIR` picks the main "
+          "line back up.",
      solution=OUTPUT_BEFORE),
 
 Step('output', lambda interface: """
@@ -638,8 +642,8 @@ Write it out again, next to the first one:
 %(p)s %(output)s
 """ % {'p': P, 'output': OUTPUT_AFTER, 'counts': counts_line(interface)},
      title='the same process, a smaller model',
-     hint="`output standalone_fortran DIR` again, under a new name so the "
-          "first directory survives.",
+     hint="`output standalone DIR` again, under a new name so the first "
+          "directory survives.",
      solution=OUTPUT_AFTER),
 
 Step('output', lambda interface: """

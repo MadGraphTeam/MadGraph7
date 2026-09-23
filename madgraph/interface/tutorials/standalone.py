@@ -137,11 +137,10 @@ That is a different animal: `SubProcesses/` now holds `check_sa.cc`,
 `color_sum.cc`, `GpuAbstraction.h` and friends. Same matrix element, C++ and
 CUDA, with the vectorised and GPU paths the Fortran one does not have.
 
-It also has a `launch`, which compiles it and evaluates one point:
+It also has a `launch`, which asks one question before it builds anything --
+how to build, and which parameters to use -- then compiles it and evaluates
+one point:
 %(p)s launch %(cpp)s
-
-That asks one question before it builds anything -- how to build, and which
-parameters to use.
 """ % {'p': P, 'cpp': output_name(interface, CPP)},
      title='the C++ standalone',
      hint="`launch DIR` builds the C++ standalone and runs `check_sa.exe`.",
