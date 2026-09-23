@@ -1704,11 +1704,17 @@ class MadgraphProcess:
         previous_cpu_mode = self.run_card["run"]["cpu_mode"]
         if resolved_cpu_mode is not None:
             self.run_card["run"]["cpu_mode"] = resolved_cpu_mode
+        # A gridpack is run to feed a shower or detector chain, which reads
+        # LHE, so it writes LHE by default whatever format this run used
+        # (bin/generate_events --output_format still selects an npy output).
+        previous_output_format = self.run_card["run"]["output_format"]
+        self.run_card["run"]["output_format"] = "lhe"
         try:
             self.run_card.write_gridpack_card(
                 os.path.join(cards_path, "grid_run_card.toml"))
         finally:
             self.run_card["run"]["cpu_mode"] = previous_cpu_mode
+            self.run_card["run"]["output_format"] = previous_output_format
 
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)

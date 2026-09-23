@@ -1562,6 +1562,11 @@ class TestMECmdShell(unittest.TestCase):
             'gridpack names backend %r but ships no matching library: %s'
             % (backend, os.listdir(libdir)))
 
+        # the launch wrote npy events (the mg7 default), but a gridpack feeds
+        # a shower/detector chain: its card has to default to LHE
+        self.assertRegex(card, r'(?m)^output_format\s*=\s*"lhe"',
+                         'the gridpack card does not default to LHE')
+
         # and it has to run
         gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
         ret = subprocess.call(
@@ -1571,8 +1576,8 @@ class TestMECmdShell(unittest.TestCase):
             stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
         self.assertTrue(
-            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
-            'gridpack run produced no events (see %s)' % gplog)
+            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe.gz')),
+            'gridpack run produced no LHE events (see %s)' % gplog)
         # and it has to reweight: without a nominal alpha_s grid the gridpack
         # either crashed or dropped the weights it was configured to write.
         self.assertTrue(
