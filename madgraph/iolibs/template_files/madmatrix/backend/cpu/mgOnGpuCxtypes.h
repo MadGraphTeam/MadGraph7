@@ -535,6 +535,17 @@ namespace madmatrix
     return out;
   }
 
+  // Heaviside step of the $-excluded propagator (ALOHA 'P1D' tag): valtrue
+  // where cond >= 0 (outside the on-shell window), valfalse inside it. Same
+  // Theta(0) = 1 convention as the Fortran THETA_FUNCTIONR. Only the real part
+  // of cond is physical.
+  template<class CX>
+  inline __host__ __device__ CX
+  theta_functionr( const CX& cond, const fptype valtrue, const fptype valfalse )
+  {
+    return ( cxreal( cond ) >= 0 ) ? CX( valtrue, 0 ) : CX( valfalse, 0 );
+  }
+
 } // end namespace madmatrix
 
 //==========================================================================

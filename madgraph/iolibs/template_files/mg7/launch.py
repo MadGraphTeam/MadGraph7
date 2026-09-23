@@ -166,6 +166,14 @@ def resolve_auto_backend(build_path: str) -> str:
     return match.group(1)
 
 
+def me_parameters(run_card):
+    """Run-time parameters of the matrix-element libraries, passed to each
+    instance through umami_set_parameter by ms.Context.load_matrix_element:
+    the window of the $-excluded propagators is the run card bw_cutoff (the
+    one the phase space uses around the resonances too)."""
+    return {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -875,7 +883,8 @@ class MadgraphProcess:
                 matrix_elements.append(None)
                 continue
             api = context.load_matrix_element(
-                meta["me_path"].format(device=backend), self.param_card_path)
+                meta["me_path"].format(device=backend), self.param_card_path,
+                me_parameters(self.run_card))
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
@@ -1852,6 +1861,7 @@ class MadgraphProcess:
         data = {
             "channels": channel_files,
             "matrix_elements": matrix_elements,
+            "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
         }
         with open(os.path.join(data_path, "data.json"), "w") as f:
@@ -1940,13 +1950,20 @@ def build_topologies(
     )):
         mass = process.get_mass(pid)
         width = process.get_width(pid)
+        bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
         if i in channel["on_shell_propagators"]:
-            bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
             e_min = mass - bw_cutoff * width
             e_max = mass + bw_cutoff * width
         else:
             e_min = 0
             e_max = 0
+        # $-excluded propagator: the matrix element vanishes within bw_cutoff
+        # widths of the pole, so do not pile the channel's points up there
+        # (a flat density in that window instead of the Breit-Wigner peak).
+        # Channels written before the exporter recorded them have none.
+        flat_window = 0.
+        if i in channel.get("dollar_propagators", ()) and width > 0:
+            flat_window = float(bw_cutoff)
         propagators.append(ms.Propagator(
             mass=mass,
             width=width,
@@ -1954,6 +1971,7 @@ def build_topologies(
             e_min=e_min,
             e_max=e_max,
             pdg_id=signed_pid,
+            flat_window=flat_window,
         ))
     vertices = channel["vertices"]
     diag = ms.Diagram(
@@ -2174,7 +2192,8 @@ class MadgraphSubprocess:
             for api_paths in all_api_paths:
                 for context, api_path in zip(self.process.contexts, api_paths):
                     mat = context.load_matrix_element(
-                        api_path, self.process.param_card_path
+                        api_path, self.process.param_card_path,
+                        me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
 

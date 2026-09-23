@@ -769,7 +769,11 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 else:
                     out.write('    %s = %s;\n' % (name, self.write_obj(obj))) # AV
                     self.declaration.add(('complex', name))
-        for name, (fct, objs) in self.routine.fct.items():
+        # FCTn are numbered in creation order and a later one can use an
+        # earlier one (the $ propagator's theta function takes FCT0/FCT1), so
+        # define them in that order -- the dict order puts FCT0 last there.
+        for name in sorted(self.routine.fct, key=lambda n: (len(n), n)):
+            fct, objs = self.routine.fct[name]
             # OM the FCTn variable needs to be defined, not only assigned (and
             # write_combined_parts_cc looks for exactly this 'const <type> FCTn ='
             # form when it merges the structures of an assembled routine)
@@ -3425,6 +3429,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             flag = []
             if argument.needs_hermitian_conjugate():
                 flag = ['C%d' % i for i in argument.get_conjugate_index()]
+            if isinstance(argument, helas_objects.HelasWavefunction) and argument.get('onshell') is False:
+                flag.append('P1D') # D is for $ syntax -> offshell propagator only
             # Creating line formatting:
             # (AV NB: in the default code these two branches were identical, use a single branch)
             ###if isinstance(argument, helas_objects.HelasWavefunction): # AV e.g. FFV1P0_3 (output is wavefunction)
@@ -3470,6 +3476,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     arg['mass'] = 'm_pars->%(CM)s, '
                 else:
                     arg['mass'] = 'm_pars->%(M)s, m_pars->%(W)s, '
+                if argument.get('onshell') is False:
+                    # $-excluded propagator: the run card bw_cutoff, set at run
+                    # time through umami_set_parameter (see SigmaKin.cc)
+                    arg['mass'] += 'cBWCUTOFF, '
             else:
                 #arg['out'] = '&amp_sv[%(out)d]'
                 arg['out'] = '&amp_fp[%(out)d]'

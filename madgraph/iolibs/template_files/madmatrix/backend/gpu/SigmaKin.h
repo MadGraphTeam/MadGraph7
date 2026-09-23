@@ -68,6 +68,8 @@ namespace madmatrix
   void setIndependentCouplings( const cxtype* tIPC );
   void setFlavorCouplings( const int* tIPF_partner1, const int* tIPF_partner2, const cxtype* tIPF_value );
   void setBsmIndepParam( const double* values, int n );
+  // Window (in widths) of the $-excluded propagators, the run card bw_cutoff
+  void setBwCutoff( const double bwcutoff );
 }
 
 #endif // SIGMAKIN_H

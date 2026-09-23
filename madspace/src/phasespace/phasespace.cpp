@@ -350,7 +350,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            info.invariant = Invariant(invariant_power, mass, width);
+            info.invariant =
+                Invariant(invariant_power, mass, width, decay.flat_window);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {

@@ -930,6 +930,25 @@ namespace madmatrix
     return out;
   }
 
+  // Heaviside step of the $-excluded propagator (ALOHA 'P1D' tag): valtrue
+  // where cond >= 0 (outside the on-shell window), valfalse inside it. Same
+  // Theta(0) = 1 convention as the Fortran THETA_FUNCTIONR. Only the real part
+  // of cond is physical.
+  template<class CX>
+  inline __host__ __device__ CX
+  theta_functionr( const CX& cond, const fptype valtrue, const fptype valfalse )
+  {
+    return ( cxreal( cond ) >= 0 ) ? CX( valtrue, 0 ) : CX( valfalse, 0 );
+  }
+
+  // SIMD version of theta_functionr: a lane-by-lane select
+  inline cxtype_v
+  theta_functionr( const cxtype_v& cond, const fptype valtrue, const fptype valfalse )
+  {
+    const fptype_v zero = {};
+    return cxternary( cond.real() >= zero, cxmake( valtrue, 0 ), cxmake( valfalse, 0 ) );
+  }
+
   //==========================================================================
 
 } // end namespace madmatrix

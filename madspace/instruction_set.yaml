@@ -2059,6 +2059,64 @@ breit_wigner_invariant_inverse:
       desc: "sampling density at s"
   desc: "Inverse of `breit_wigner_invariant`. Building block of @ref Invariant."
 
+flat_window_breit_wigner_invariant:
+  inputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: mass
+      type: [float]
+      desc: "resonance mass"
+    - name: width
+      type: [float]
+      desc: "resonance width"
+    - name: window
+      type: [float]
+      desc: "half-width of the flattened window, in units of the width"
+    - name: s_min
+      type: [float]
+      desc: "lower bound of the invariant"
+    - name: s_max
+      type: [float]
+      desc: "upper bound of the invariant"
+  outputs:
+    - name: s
+      type: [float]
+      desc: "sampled invariant"
+    - name: gs
+      type: [float]
+      desc: "sampling density at s"
+  desc: "Samples a propagator invariant with a Breit-Wigner density whose peak is flattened to a constant inside |sqrt(s) - mass| < window * width (the $-excluded region). Building block of @ref Invariant."
+
+flat_window_breit_wigner_invariant_inverse:
+  inputs:
+    - name: s
+      type: [float]
+      desc: "invariant value"
+    - name: mass
+      type: [float]
+      desc: "resonance mass"
+    - name: width
+      type: [float]
+      desc: "resonance width"
+    - name: window
+      type: [float]
+      desc: "half-width of the flattened window, in units of the width"
+    - name: s_min
+      type: [float]
+      desc: "lower bound of the invariant"
+    - name: s_max
+      type: [float]
+      desc: "upper bound of the invariant"
+  outputs:
+    - name: r
+      type: [float]
+      desc: "random number in [0, 1]"
+    - name: gs
+      type: [float]
+      desc: "sampling density at s"
+  desc: "Inverse of `flat_window_breit_wigner_invariant`. Building block of @ref Invariant."
+
 stable_invariant:
   inputs:
     - name: r

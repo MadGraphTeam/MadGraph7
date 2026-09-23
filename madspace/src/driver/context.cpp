@@ -19,7 +19,8 @@ MatrixElementApi::MatrixElementApi(
     const std::string& param_card,
     ThreadPool& thread_pool,
     DevicePtr device,
-    std::size_t index
+    std::size_t index,
+    const std::unordered_map<std::string, double>& parameters
 ) :
     _file_name(file), _index(index) {
     _shared_lib = std::unique_ptr<void, std::function<void(void*)>>(
@@ -75,6 +76,18 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
+    // Optional too, unless parameters have to be set (checked below).
+    _set_parameter = reinterpret_cast<decltype(&umami_set_parameter)>(
+        dlsym(_shared_lib.get(), "umami_set_parameter")
+    );
+    if (!parameters.empty() && _set_parameter == nullptr) {
+        throw std::runtime_error(
+            std::format(
+                "Did not find symbol umami_set_parameter in shared object {}", file
+            )
+        );
+    }
+
     _matrix_element = reinterpret_cast<decltype(&umami_matrix_element)>(
         dlsym(_shared_lib.get(), "umami_matrix_element")
     );
@@ -94,10 +107,17 @@ MatrixElementApi::MatrixElementApi(
         );
     }
 
-    _instances = ThreadResource<InstanceType>(thread_pool, [&, device] {
+    _instances = ThreadResource<InstanceType>(thread_pool, [&, device, parameters] {
         device->activate();
         void* instance;
         check_umami_status(_initialize(&instance, param_card.c_str()));
+        for (const auto& [name, value] : parameters) {
+            UmamiStatus status = _set_parameter(instance, name.c_str(), value, 0.);
+            if (status != UMAMI_SUCCESS) {
+                _free(instance);
+                throw_error(std::format("could not set parameter {}", name));
+            }
+        }
         return InstanceType(instance, [this, device](void* proc) {
             device->activate();
             _free(proc);
@@ -134,11 +154,20 @@ void MatrixElementApi::throw_error(const std::string& message) const {
 }
 
 const MatrixElementApi&
-Context::load_matrix_element(const std::string& file, const std::string& param_card) {
+Context::load_matrix_element(
+    const std::string& file,
+    const std::string& param_card,
+    const std::unordered_map<std::string, double>& parameters
+) {
     _param_card_paths.push_back(param_card);
     _matrix_elements.push_back(
         std::unique_ptr<MatrixElementApi>(new MatrixElementApi(
-            file, param_card, *_thread_pool, _device, _matrix_elements.size()
+            file,
+            param_card,
+            *_thread_pool,
+            _device,
+            _matrix_elements.size(),
+            parameters
         ))
     );
     return *_matrix_elements.back().get();
