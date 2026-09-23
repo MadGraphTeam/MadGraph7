@@ -52,13 +52,30 @@ SET_DIR = os.path.join(_root, 'Template', 'Common', 'Source', 'PDF',
 
 
 def _madspace():
-    """madspace is an optional build; the gate is skipped without it."""
+    """madspace is an optional build; the gate is skipped without it.
+
+    madspace/install is a vendored site-packages -- it carries its own yaml,
+    packaging, pathspec and scikit_build_core -- so it is put on sys.path only
+    for the duration of the import. Leaving it there would shadow those
+    modules for every test that runs after this one in the same process.
+    """
     install = os.path.join(_root, 'madspace', 'install')
-    if os.path.isdir(install) and install not in sys.path:
-        sys.path.insert(0, install)
+    if not os.path.isdir(install):
+        return None
+    saved = list(sys.path)
+    sys.path.insert(0, install)
     try:
         import madspace
     except ImportError:
+        return None
+    finally:
+        sys.path[:] = saved
+    # A separate, usually older madspace is often installed in site-packages.
+    # It must not be what the gate measures, and if something imported it
+    # before us it is already cached under this name, so check rather than
+    # assume -- a silently stale build would give a wrong answer, not an error.
+    origin = getattr(madspace, '__file__', None) or ''
+    if os.path.realpath(install) not in os.path.realpath(origin):
         return None
     return madspace
 
