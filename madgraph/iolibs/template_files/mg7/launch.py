@@ -162,6 +162,27 @@ def resolve_auto_backend(build_path: str) -> str:
     return match.group(1)
 
 
+def _import_lepton_density():
+    """Import the sibling helper, however launch.py itself was imported.
+
+    It is loaded as a package module from the MadGraph tree when a run
+    directory drives it, and as a plain script in other contexts.
+    """
+    try:
+        from . import lepton_density
+        return lepton_density
+    except ImportError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    saved = list(sys.path)
+    sys.path.insert(0, here)
+    try:
+        import lepton_density
+        return lepton_density
+    finally:
+        sys.path[:] = saved
+
+
 @dataclass
 class Channel:
     phasespace_mapping: ms.PhaseSpaceMapping
@@ -533,6 +554,35 @@ class MadgraphProcess:
         else:
             self.e_cm = beam_args["e_cm"]
             self.leptonic = beam_args["leptonic"]
+
+        # A dressed-lepton density is not the same thing as beam.leptonic:
+        # 'leptonic' means no parton luminosity at all (monochromatic beams),
+        # while a density brings ISR and, for the collider-specific sets,
+        # beamstrahlung. Both are set for such a run -- there is no hadronic
+        # PDF -- but the density is what supplies the luminosity.
+        self.lepton_density = None
+        density_name = beam_args.get("lepton_density", "") if not self.is_decay else ""
+        if density_name:
+            lepton_density_mod = _import_lepton_density()
+            # launch.py runs with the process directory as cwd, and lives in
+            # the MadGraph tree it was imported from
+            mg5_root = os.path.abspath(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                os.pardir, os.pardir, os.pardir, os.pardir))
+            source_dir = os.path.abspath("Source")
+            self.lepton_density = lepton_density_mod.LeptonDensity(
+                density_name,
+                source_dir,
+                mg5_root,
+                ms,
+                self.contexts[0],
+                self.e_cm,
+                cache_dir=os.path.join(source_dir, "PDF", "lep_densities",
+                                       density_name),
+            )
+            logger.info("using the %s dressed-lepton density%s", density_name,
+                        " (with beamstrahlung)"
+                        if self.lepton_density.has_beamstrahlung else "")
 
         dynamical_scales = {
             "transverse_energy": ms.EnergyScale.transverse_energy,
@@ -2037,7 +2087,8 @@ class MadgraphSubprocess:
                     cuts=self.cuts,
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
-                    leptonic=self.process.leptonic,
+                    leptonic=self.ps_leptonic,
+                    lepton_sampling_power=self.lepton_sampling_power,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -2097,7 +2148,8 @@ class MadgraphSubprocess:
             self.process.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
-            leptonic=self.process.leptonic,
+            leptonic=self.ps_leptonic,
+            lepton_sampling_power=self.lepton_sampling_power,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
@@ -2509,6 +2561,30 @@ class MadgraphSubprocess:
         )
         return cwnet
 
+    @property
+    def ps_leptonic(self) -> bool:
+        """Whether the phase space skips the beam-fraction sampling.
+
+        A dressed-lepton run is 'leptonic' in the run card -- there is no
+        hadronic PDF -- but its beams do *not* keep their full energy, so the
+        mapping still has to sample x. The two senses of the word part here.
+        """
+        return (self.process.leptonic
+                and getattr(self.process, "lepton_density", None) is None)
+
+    @property
+    def lepton_sampling_power(self) -> float:
+        """Nonzero switches the beam split to the dressed-lepton one.
+
+        It must equal the exponent the density was reduced with, or the cross
+        section is wrong by (1-x)**delta with nothing to flag it, so it comes
+        from the same constant the density was built with.
+        """
+        density = getattr(self.process, "lepton_density", None)
+        if density is None:
+            return 0.
+        return _import_lepton_density().PS_EXPO
+
     def t_channel_mode(self, name: str) -> ms.PhaseSpaceMapping.TChannelMode:
         modes = {
             "propagator": ms.PhaseSpaceMapping.propagator,
@@ -2581,8 +2657,15 @@ class MadgraphSubprocess:
                     self.meta["diagram_count"],
                     True,
                 )
+            dressed = getattr(self.process, "lepton_density", None)
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
+            pdf_arg2 = pdf_arg
+            if dressed is not None:
+                # one luminosity for both beams, on beam 1; see
+                # lepton_density.pdf_factor for why beam 2 stays empty
+                pdf_arg = ms.CachedPdf()
+                pdf_arg2 = None
             cross_sections.append(
                 ms.DifferentialCrossSection(
                     matrix_element=mat,
@@ -2594,7 +2677,7 @@ class MadgraphSubprocess:
                     energy_scale=ms.CachedScale(),
                     pid_options=[],
                     pdf1=pdf_arg,
-                    pdf2=pdf_arg,
+                    pdf2=pdf_arg2,
                     input_momentum_fraction=True,
                     decay=self.process.is_decay,
                 )
@@ -2631,7 +2714,8 @@ class MadgraphSubprocess:
                 flavor_diff_xs_indices,
                 flavor_subproc_indices,
                 flavor_per_subproc_remap,
-                madnis_args["compressed_channel_weight_count"]
+                madnis_args["compressed_channel_weight_count"],
+                None if dressed is None else dressed.luminosity
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

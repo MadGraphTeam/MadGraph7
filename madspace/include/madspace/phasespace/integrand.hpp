@@ -155,7 +155,8 @@ public:
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
-        std::size_t compressed_channel_weight_count = 50
+        std::size_t compressed_channel_weight_count = 50,
+        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt
     );
     /// Total number of particles, incoming and outgoing.
     std::size_t particle_count() const { return _mapping.particle_count(); }
@@ -232,6 +233,7 @@ private:
     AdaptiveDiscrete _discrete_flavor;
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
+    std::optional<EELuminosity> _lepton_luminosity;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;

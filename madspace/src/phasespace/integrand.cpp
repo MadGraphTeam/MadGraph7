@@ -62,7 +62,8 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_diff_xs_indices,
     const std::vector<std::size_t>& flavor_subproc_indices,
     const std::vector<std::size_t>& flavor_per_subproc_remap,
-    std::size_t compressed_channel_weight_count
+    std::size_t compressed_channel_weight_count,
+    const std::optional<EELuminosity>& lepton_luminosity
 ) :
     FunctionGenerator(
         "Integrand",
@@ -169,6 +170,7 @@ Integrand::Integrand(
     _pid_options(pid_options),
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
+    _lepton_luminosity(lepton_luminosity),
     _prop_chan_weights(prop_chan_weights),
     _subchan_weights(subchan_weights),
     _chan_weight_net(chan_weight_net),
@@ -315,7 +317,9 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
         ret.push_back("extra_weight_after_cuts", acc_float);
     }
     ret.push_back("ren_scale", acc_float);
-    if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
+    // a dressed-lepton run has no PartonDensity at all -- one luminosity
+    // replaces both PDFs -- but still returns pdf1/fact_scale1
+    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
         if (has_multi_flavor) {
             ret.push_back("pdf_prior", acc_float_array(flav_count));
@@ -609,6 +613,28 @@ NamedVector<Value> Integrand::build_channel_part(
     out.push_back("ren_scale", scales.at(0));
     if (has_pdf_prior) {
         out.push_back("pdf_prior", pdf_prior);
+    }
+    if (_lepton_luminosity) {
+        // A dressed-lepton density does not factorize into two independent
+        // PDFs: the beams pair term by term, so one luminosity replaces both.
+        // diff_cross_section expects the LHAPDF x*f convention while these
+        // densities are plain f(x), hence the x1*x2; it goes in on beam 1 with
+        // nothing on beam 2, giving L * ME / (2 s_hat).
+        auto batch = fb.batch_size({x_acc.at(0)});
+        auto one = fb.full({1., batch});
+        auto lum = _lepton_luminosity.value().build_function(
+            fb,
+            ValueVec{
+                x_acc.at(0), fb.sub(one, x_acc.at(0)),
+                x_acc.at(1), fb.sub(one, x_acc.at(1)),
+                scales.at(1),
+                // the component choice does not enter the luminosity; the
+                // beamstrahlung split picks it again when events are written
+                fb.full({0.5, batch})
+            }
+        );
+        pdf_results.at(0) =
+            fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
     }
     if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));
