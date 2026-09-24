@@ -1,4 +1,6 @@
 #include "madspace/phasespace/phasespace.hpp"
+
+#include "madspace/phasespace/luminosity.hpp"
 #include "madspace/constants.hpp"
 #include "madspace/util.hpp"
 #include <algorithm>
@@ -150,7 +152,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    double lepton_sampling_power
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -158,7 +161,9 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             NamedVector<Type> in{
                 {"random",
                  batch_float_array(
-                     PhaseSpaceMapping::random_dim_for(topology, leptonic)
+                     PhaseSpaceMapping::random_dim_for(
+                         topology, leptonic, lepton_sampling_power
+                     )
                  )}
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
@@ -191,6 +196,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     ),
     _sqrt_s_lab(cm_energy),
     _leptonic(leptonic),
+    _lepton_power(lepton_sampling_power),
     // A decay has no beams to sample momentum fractions for: the root
     // virtuality is fixed at the decaying particle's mass (passed as
     // cm_energy) and there is no boost into a lab frame.
@@ -452,7 +458,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode mode,
     const std::optional<Cuts>& cuts,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<std::vector<std::size_t>>& color_order,
+    double lepton_sampling_power
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -491,7 +498,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         mode,
         cuts,
         {},
-        color_order
+        color_order,
+        lepton_sampling_power
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(
@@ -557,11 +565,23 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     auto sqrt_s_hat = root_data.mass.value();
     auto s_hat = root_data.mass2.value();
     if (_map_luminosity) {
-        auto [x1_new, x2_new, det_x] =
-            fb.r_to_x1x2(next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab);
-        x1 = x1_new;
-        x2 = x2_new;
-        dets.push_back(det_x);
+        if (_lepton_power != 0.) {
+            // A dressed-lepton density diverges as x -> 1, which the hadronic
+            // x1 = tau^r split gives no weight to. See @ref lepton_split.
+            auto split = lepton_split(
+                fb, s_hat, next_random(), next_random(),
+                _sqrt_s_lab * _sqrt_s_lab, _lepton_power
+            );
+            x1 = split.x1;
+            x2 = split.x2;
+            dets.push_back(split.det);
+        } else {
+            auto [x1_new, x2_new, det_x] =
+                fb.r_to_x1x2(next_random(), s_hat, _sqrt_s_lab * _sqrt_s_lab);
+            x1 = x1_new;
+            x2 = x2_new;
+            dets.push_back(det_x);
+        }
     }
 
     // if required, build t-channel part of phase space mapping
@@ -684,6 +704,16 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
+    if (_lepton_power != 0.) {
+        // The dressed split picks which beam carries the drawn fraction, and
+        // recovering that choice needs a comparison the instruction set does
+        // not have. Nothing asks for it -- Integrand inverts the adaptive
+        // mapping and the discrete samplers, never the phase space itself --
+        // so this refuses rather than returning something plausible.
+        throw std::runtime_error(
+            "PhaseSpaceMapping: no inverse map with dressed-lepton beams"
+        );
+    }
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     Value p_ext_stack =
         _map_luminosity ? fb.boost_beam_inverse(

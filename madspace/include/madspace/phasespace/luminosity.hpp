@@ -159,6 +159,49 @@ private:
     double _s_lab, _s_hat_min, _power;
 };
 
+/// Result of @ref lepton_split: the two fractions and the Jacobian.
+struct LeptonSplitResult {
+    Value x1, x2, omx1, omx2, det;
+};
+
+/**
+ * Split a given @f$\hat s@f$ into two dressed-lepton momentum fractions.
+ *
+ * madspace samples @f$\hat s@f$ first -- the topology's root invariant is
+ * what carries the resonance structure -- and only then splits it, so this is
+ * the shape a dressed-lepton run needs. The hadronic split
+ * (@f$x_1 = \tau^r@f$) puts no weight at @f$x \to 1@f$, which is exactly
+ * where a dressed-lepton density lives.
+ *
+ * The larger fraction is drawn from the endpoint over
+ * @f$[\sqrt\tau, 1]@f$ and the other follows as @f$\tau/x@f$; which beam
+ * carries which is decided per event, so both orderings appear.
+ *
+ * **The derived fraction's @f$(1-x)^{-p}@f$ is put back explicitly.** The
+ * drawn one gets that factor by omission -- the density cancels it -- but the
+ * derived one never went through the transformation, so nothing cancels it
+ * there. `genps.f` makes the same correction in the same place.
+ *
+ * @param fb       Builder to emit into.
+ * @param s_hat    The invariant to split.
+ * @param r_x      Random number for the drawn fraction.
+ * @param r_swap   Random number deciding which beam carries it.
+ * @param s_lab    Squared collider energy.
+ * @param power    @f$p@f$; must match the density's reduction exponent.
+ *
+ * The returned Jacobian is that of @f$(\hat s, r) \to (x_1, x_2)@f$, the same
+ * convention `r_to_x1x2` uses, so it already carries the
+ * @f$d\hat s \to d\tau@f$ conversion.
+ */
+LeptonSplitResult lepton_split(
+    FunctionBuilder& fb,
+    Value s_hat,
+    Value r_x,
+    Value r_swap,
+    double s_lab,
+    double power
+);
+
 /**
  * Dressed-lepton fractions sampled through a resonance in @f$\hat s@f$.
  *

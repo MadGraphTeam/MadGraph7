@@ -6693,6 +6693,12 @@ class RunCardMG7(RunCard):
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'e_cm', 13000.0)
         self.add_toml_param('beam', 'leptonic', False)
+        # Dressed-lepton density (one of Source/PDF/lep_densities), or "" for
+        # none. 'leptonic' alone cannot express this: it means "no parton
+        # luminosity at all", i.e. monochromatic beams, which is a legitimate
+        # setup and not the same as a lepton collider with ISR and, for the
+        # collider-specific sets, beamstrahlung.
+        self.add_toml_param('beam', 'lepton_density', "")
         # NNPDF4.0 LO, 5-flavour scheme, alpha_s(M_Z) = 0.118 -- the same set
         # the legacy LO run_card now defaults to (lhaid 331900). It carries a
         # 100-member error set, which is what makes the [systematics] 'errorset'
@@ -7600,6 +7606,13 @@ class RunCardMG7(RunCard):
         is_lep = lambda l: isinstance(l, int) and abs(l) in (3, 4)
         is_had = lambda l: isinstance(l, int) and abs(l) == 1
         dressed = [i for i, l in ((1, lpps[0]), (2, lpps[1])) if is_lep(l)]
+        # carry the density across when the label names one we ship
+        density = ''
+        if dressed:
+            label = str(lo['pdlabel']) if 'pdlabel' in lo else ''
+            if label in sum(RunCardLO.allowed_lep_densities.values(), []):
+                density = label
+                mg7.set('beam.lepton_density', density)
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
@@ -7615,9 +7628,18 @@ class RunCardMG7(RunCard):
                 # from the generated events. Saying nothing here (the previous
                 # behaviour for lpp=+3) reports a clean conversion for a run
                 # whose physics has changed.
-                dropped.append(
-                    'lpp%d=%s (dressed-lepton beam: mg7 has no ISR/beamstrahlung '
-                    'density, the beam becomes monochromatic)' % (i, lpp))
+                if density:
+                    # the density carries over; only the beam-type sign and
+                    # the flavour (electron vs muon) are not representable
+                    if abs(lpp) == 4:
+                        dropped.append(
+                            'lpp%d=%s (muon beam: the dressed-lepton densities '
+                            'are fitted for electrons)' % (i, lpp))
+                else:
+                    dropped.append(
+                        'lpp%d=%s (dressed-lepton beam: no density named %s in '
+                        'Source/PDF/lep_densities, so the beam becomes '
+                        'monochromatic)' % (i, lpp, lo['pdlabel']))
             elif isinstance(lpp, int) and lpp < 0:
                 dropped.append('lpp%d=%s (antiparticle beam: mg7 keeps the particle PDF)' % (i, lpp))
             elif lpp == 0:

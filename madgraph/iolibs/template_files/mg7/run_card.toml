@@ -36,6 +36,10 @@ include_madspace_source = %(gridpack.include_madspace_source)s
 [beam]
 e_cm = %(beam.e_cm)s
 leptonic = %(beam.leptonic)s
+# dressed-lepton density (a directory of Source/PDF/lep_densities), or "" for
+# none. It brings ISR and, for the collider-specific sets, beamstrahlung;
+# "leptonic" on its own means monochromatic beams.
+lepton_density = %(beam.lepton_density)s
 pdf = %(beam.pdf)s
 fixed_ren_scale = %(beam.fixed_ren_scale)s
 fixed_fact_scale = %(beam.fixed_fact_scale)s

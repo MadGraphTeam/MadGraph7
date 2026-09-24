@@ -643,3 +643,85 @@ class TestBeamstrahlungSplit(unittest.TestCase):
         # and it survives being read and written back out
         again = lhe_parser.Event(str(lhe_parser.Event(text))).parse_beamstrahlung()
         self.assertAlmostEqual(again[0], 0.99987654)
+
+
+@unittest.skipIf(np is None, 'numpy required')
+class TestDressedPhaseSpace(unittest.TestCase):
+    """PhaseSpaceMapping with dressed-lepton beams.
+
+    madspace samples s_hat first -- the topology's root invariant carries the
+    resonance structure -- and only then splits it into x1, x2. The hadronic
+    split x1 = tau^r puts essentially no weight at x -> 1, which is exactly
+    where a dressed-lepton density lives, so the split is replaced rather than
+    the whole mapping.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ms = _madspace()
+        if cls.ms is None:
+            raise unittest.SkipTest('madspace build required')
+        try:
+            cls.ms.PhaseSpaceMapping(
+                [0.] * 4, 240.0, False, 0.8,
+                cls.ms.PhaseSpaceMapping.TChannelMode.rambo, None, None, 0.96)
+        except TypeError:
+            raise unittest.SkipTest(
+                'madspace build predates lepton_sampling_power')
+        cls.power = 0.96
+        cls.e_cm = 240.0
+
+    def _mappings(self, masses):
+        M = self.ms.PhaseSpaceMapping
+        mode = M.TChannelMode.rambo
+        return (M(masses, self.e_cm, False, 0.8, mode),
+                M(masses, self.e_cm, False, 0.8, mode, None, None, self.power))
+
+    def test_the_split_costs_one_extra_random_number(self):
+        """It also has to decide which beam carries the drawn fraction."""
+        had, lep = self._mappings([0.] * 4)
+        self.assertEqual(lep.random_dim(), had.random_dim() + 1)
+
+    def test_same_phase_space_volume(self):
+        """The two splits cover the same space, so they must agree on it.
+
+        The dressed Jacobian omits (1-x)**p on the drawn beam and supplies
+        (1-x)**-p on the derived one, so the integrand carries (omx1*omx2)**p
+        -- which is what the density does. Getting the s_hat -> tau conversion
+        wrong shows up here as a factor of s_lab.
+        """
+        for masses in ([0.] * 4, [0., 0., 5., 5., 0.]):
+            had, lep = self._mappings(masses)
+            n = 400000
+            rng = np.random.default_rng(9)
+            fh = had.map_forward([rng.uniform(0, 1, (n, had.random_dim()))])
+            wh = np.nan_to_num(np.asarray(fh.det))
+            fl = lep.map_forward([rng.uniform(0, 1, (n, lep.random_dim()))])
+            wl = np.nan_to_num(
+                np.asarray(fl.det)
+                * ((1 - np.asarray(fl.x1)) * (1 - np.asarray(fl.x2))) ** self.power)
+            err = np.hypot(wh.std(), wl.std()) / np.sqrt(n)
+            self.assertLess(abs(wh.mean() - wl.mean()),
+                            max(5 * err, 0.02 * abs(wh.mean())),
+                            'masses %s: %.6e vs %.6e' % (masses, wh.mean(), wl.mean()))
+
+    def test_weight_sits_at_the_endpoint(self):
+        """The whole point: the dressed split samples where the density is."""
+        had, lep = self._mappings([0.] * 4)
+        n = 100000
+        rng = np.random.default_rng(1)
+        fracs = {}
+        for tag, m in (('hadronic', had), ('dressed', lep)):
+            f = m.map_forward([rng.uniform(0, 1, (n, m.random_dim()))])
+            omx = np.minimum(1 - np.asarray(f.x1), 1 - np.asarray(f.x2))
+            fracs[tag] = (omx < 1e-3).mean()
+        self.assertLess(fracs['hadronic'], 0.05)
+        self.assertGreater(fracs['dressed'], 0.5)
+
+    def test_no_inverse_with_dressed_beams(self):
+        """Forward only, and it says so. Integrand never asks for this one."""
+        _had, lep = self._mappings([0.] * 4)
+        n = 8
+        rng = np.random.default_rng(2)
+        f = lep.map_forward([rng.uniform(0, 1, (n, lep.random_dim()))])
+        self.assertRaises(Exception, lep.map_inverse, [f.momenta, f.x1, f.x2])

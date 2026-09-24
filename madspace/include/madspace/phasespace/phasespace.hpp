@@ -85,6 +85,15 @@ public:
      *                         More than one enables the `permutation_index`
      *                         condition.
      * @param color_order      Color ordering for @ref TChannelMode::color_ordered.
+     * @param lepton_sampling_power
+     *                         Nonzero switches the beam split from the
+     *                         hadronic @f$x_1 = \tau^r@f$ to the
+     *                         dressed-lepton one of @ref lepton_split, which
+     *                         puts its weight at @f$x \to 1@f$ where a
+     *                         dressed-lepton density lives. It must equal the
+     *                         exponent the density was reduced with. One
+     *                         further random number is consumed, and the
+     *                         inverse map is not available.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -94,7 +103,8 @@ public:
         TChannelMode t_channel_mode = propagator,
         const std::optional<Cuts>& cuts = std::nullopt,
         const std::vector<std::vector<std::size_t>>& permutations = {},
-        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt
+        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -117,7 +127,8 @@ public:
         double invariant_power = 0.8,
         TChannelMode mode = rambo,
         const std::optional<Cuts>& cuts = std::nullopt,
-        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt
+        const std::optional<std::vector<std::size_t>>& color_order = std::nullopt,
+        double lepton_sampling_power = 0.
     );
 
     /**
@@ -131,12 +142,19 @@ public:
      * @param topology  The decay topology.
      * @param leptonic  If true, skip the PDF convolution.
      */
-    static std::size_t random_dim_for(const Topology& topology, bool leptonic) {
-        return 3 * topology.outgoing_masses().size() -
+    static std::size_t random_dim_for(
+        const Topology& topology, bool leptonic, double lepton_sampling_power = 0.
+    ) {
+        std::size_t base = 3 * topology.outgoing_masses().size() -
             ((leptonic || topology.is_decay()) ? 4 : 2);
+        // the dressed split also decides which beam carries the drawn fraction
+        bool splits = !leptonic && !topology.is_decay();
+        return base + ((splits && lepton_sampling_power != 0.) ? 1 : 0);
     }
     /// Number of continuous unit-hypercube inputs consumed by the forward map.
-    std::size_t random_dim() const { return random_dim_for(_topology, _leptonic); }
+    std::size_t random_dim() const {
+        return random_dim_for(_topology, _leptonic, _lepton_power);
+    }
     /// Number of discrete channel choices.
     std::size_t discrete_dim() const override { return _n_discrete; }
     /// Total number of particles, incoming and outgoing.
@@ -164,6 +182,7 @@ private:
     double _sqrt_s_lab;
     bool _leptonic;
     bool _map_luminosity;
+    double _lepton_power;
     std::size_t _n_discrete;
     std::vector<Invariant> _s_invariants;
     std::variant<

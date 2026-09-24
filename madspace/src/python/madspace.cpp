@@ -1270,7 +1270,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1279,6 +1280,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = nested_vector2<std::size_t>{},
             py::arg("color_order") = std::nullopt,
+            py::arg("lepton_sampling_power") = 0.,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1289,7 +1291,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<std::vector<std::size_t>>&,
+                double>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1297,6 +1300,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
             py::arg("color_order") = std::nullopt,
+            py::arg("lepton_sampling_power") = 0.,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(

@@ -177,6 +177,53 @@ LeptonLuminosityInvariant::LeptonLuminosityInvariant(
     }
 }
 
+LeptonSplitResult madspace::lepton_split(
+    FunctionBuilder& fb,
+    Value s_hat,
+    Value r_x,
+    Value r_swap,
+    double s_lab,
+    double power
+) {
+    auto batch = fb.batch_size({s_hat});
+    auto one = fb.full({1., batch});
+    auto tau = fb.div(s_hat, fb.full({s_lab, batch}));
+
+    // the drawn fraction is the larger one, over [sqrt(tau), 1]
+    auto x_min = fb.sqrt(tau);
+    auto span = fb.sub(one, x_min);
+    auto omx_a = fb.mul(fb.pow(r_x, fb.full({1. / (1. - power), batch})), span);
+    auto x_a = fb.sub(one, omx_a);
+    auto det_a = fb.mul(
+        fb.pow(span, fb.full({1. - power, batch})),
+        fb.full({1. / (1. - power), batch})
+    );
+
+    // the other follows from tau; 1/x_a is the Jacobian of x2 = tau/x1, and
+    // omx_b^(-p) is the factor the density expects to have been cancelled by
+    // the sampling, which for this beam never happened
+    auto x_b = fb.div(tau, x_a);
+    auto omx_b = fb.sub(one, x_b);
+    auto det_b =
+        fb.div(one, fb.mul(x_a, fb.pow(omx_b, fb.full({power, batch}))));
+
+    auto swap = fb.sample_discrete(r_swap, fb.full({static_cast<me_int_t>(2), batch}));
+    auto index = swap[0];
+    // Jacobian of (s_hat, r) -> (x1, x2), the same convention r_to_x1x2 uses:
+    // the 1/s_lab is the d(s_hat) -> d(tau) conversion, and without it the
+    // mapping is off by exactly s_lab. The factor 2 is the 50/50 beam choice.
+    auto det = fb.product(
+        {det_a, det_b, fb.full({2. / s_lab, batch})}
+    );
+    return {
+        fb.gather(index, fb.stack({x_a, x_b})),
+        fb.gather(index, fb.stack({x_b, x_a})),
+        fb.gather(index, fb.stack({omx_a, omx_b})),
+        fb.gather(index, fb.stack({omx_b, omx_a})),
+        det
+    };
+}
+
 Mapping::Result LeptonLuminosityInvariant::build_forward_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
@@ -184,47 +231,17 @@ Mapping::Result LeptonLuminosityInvariant::build_forward_impl(
 ) const {
     auto r_s = inputs[0], r_x = inputs[1], r_swap = inputs[2];
     auto batch = fb.batch_size({r_s});
-    auto one = fb.full({1., batch});
-
     auto inv = _invariant.build_forward(fb, {r_s}, {_s_hat_min, _s_hat_max});
     auto s_hat = inv["invariant"];
-    auto tau = fb.div(s_hat, fb.full({_s_lab, batch}));
-
-    // the drawn fraction is the larger one, over [sqrt(tau), 1]
-    auto x_min = fb.sqrt(tau);
-    auto span = fb.sub(one, x_min);
-    auto omx_a = fb.mul(fb.pow(r_x, fb.full({1. / (1. - _power), batch})), span);
-    auto x_a = fb.sub(one, omx_a);
-    auto det_a = fb.mul(
-        fb.pow(span, fb.full({1. - _power, batch})),
-        fb.full({1. / (1. - _power), batch})
-    );
-
-    // the other follows from tau; 1/x_a is the Jacobian of x2 = tau/x1
-    auto x_b = fb.div(tau, x_a);
-    auto omx_b = fb.sub(one, x_b);
-    // ... and omx_b^(-p) is the factor the density expects to have been
-    // cancelled by the sampling, which for this beam never happened
-    auto det_b = fb.div(
-        one, fb.mul(x_a, fb.pow(omx_b, fb.full({_power, batch})))
-    );
-
-    // which beam carries the drawn fraction; the factor 2 is that choice
-    auto swap = fb.sample_discrete(r_swap, fb.full({static_cast<me_int_t>(2), batch}));
-    auto index = swap[0];
-    auto x1 = fb.gather(index, fb.stack({x_a, x_b}));
-    auto x2 = fb.gather(index, fb.stack({x_b, x_a}));
-    auto omx1 = fb.gather(index, fb.stack({omx_a, omx_b}));
-    auto omx2 = fb.gather(index, fb.stack({omx_b, omx_a}));
-
-    // inv["det"] is d(s_hat)/dr, while det_b below is the Jacobian of the
-    // (tau, x_a) -> (x1, x2) split, so the invariant's determinant has to be
-    // converted to tau first -- otherwise the channel is off by s_lab.
-    auto det_s = fb.div(inv["det"], fb.full({_s_lab, batch}));
-    auto det = fb.product({det_s, det_a, det_b, fb.full({2., batch})});
+    auto split = lepton_split(fb, s_hat, r_x, r_swap, _s_lab, _power);
+    // lepton_split already converts d(s_hat) to d(tau), matching r_to_x1x2
     return {
-        {{"x1", x1}, {"omx1", omx1}, {"x2", x2}, {"omx2", omx2}, {"s_hat", s_hat}},
-        det
+        {{"x1", split.x1},
+         {"omx1", split.omx1},
+         {"x2", split.x2},
+         {"omx2", split.omx2},
+         {"s_hat", s_hat}},
+        fb.mul(inv["det"], split.det)
     };
 }
 

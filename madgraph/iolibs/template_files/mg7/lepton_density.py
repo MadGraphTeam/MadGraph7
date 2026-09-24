@@ -1,0 +1,179 @@
+"""Assemble the madspace objects a dressed-lepton run needs.
+
+`beam.lepton_density` names a directory of `Source/PDF/lep_densities`. That
+directory ships the density as Fortran (`eepdf.f`), which madspace cannot
+read, so the grid is re-tabulated into the LHAPDF format the first time it is
+needed and cached next to the run. Re-tabulating takes a fraction of a second
+and needs no compiler, which is why the tables are generated rather than
+committed.
+
+Four things come out of it, and they have to agree with each other:
+
+* `luminosity`  -- `EELuminosity`, the two-beam density `sum_n f1_n f2_n`;
+* `mapping`     -- `LeptonLuminosity`, which draws x from the `(1-x)`
+                   endpoint the density lives on;
+* `sampler`     -- `BeamstrahlungSampler`, or None for a pure-ISR density;
+* `pdf_factor`  -- what to multiply the luminosity by before handing it to
+                   `DifferentialCrossSection`.
+
+The agreement that matters is the sampling exponent. The density is stored
+reduced by `ps_expo` and the mapping's Jacobian omits exactly that power so
+the two cancel; a mismatch leaves the cross section wrong by `(1-x)**delta`
+with nothing to flag it. Both are built here from the same constant for that
+reason.
+"""
+
+import logging
+import os
+import sys
+
+logger = logging.getLogger('madevent.lepton_density')
+
+# MadEvent's get_ee_expo(). The density's reduction and the mapping's
+# importance sampling must use the same value -- see the module docstring.
+PS_EXPO = 0.96
+
+_QTERM_NAMES = {
+    'sqrt': 'sqrt_u',
+    'u15': 'u_three_halves',
+    'ym15': 'y_minus_three_halves',
+}
+
+
+def _generator(mg5_root):
+    """The re-tabulation script, which lives with the grids it reads."""
+    path = os.path.join(mg5_root, 'vendor', 'eepdfgrid')
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    import gen_eepdf_lhagrid
+    return gen_eepdf_lhagrid
+
+
+def available(source_dir):
+    """Density directories that carry a grid this can use."""
+    base = os.path.join(source_dir, 'PDF', 'lep_densities')
+    if not os.path.isdir(base):
+        return []
+    return sorted(name for name in os.listdir(base)
+                  if os.path.isfile(os.path.join(base, name, 'eepdf.f')))
+
+
+class LeptonDensity:
+    """Everything a dressed-lepton run needs from madspace."""
+
+    def __init__(self, name, source_dir, mg5_root, madspace, context,
+                 e_cm, beam_pdgs=(11, -11), s_hat_min=0.0, prefix='ee_',
+                 cache_dir=None):
+        self.name = name
+        self.ms = madspace
+        gen = _generator(mg5_root)
+
+        set_dir = os.path.join(source_dir, 'PDF', 'lep_densities', name)
+        if not os.path.isdir(set_dir):
+            raise ValueError(
+                'unknown lepton density %r; %s has %s'
+                % (name, os.path.join(source_dir, 'PDF', 'lep_densities'),
+                   ', '.join(available(source_dir)) or 'none'))
+
+        work = cache_dir or set_dir
+        dat = os.path.join(work, '%s.dat' % name)
+        meta_path = os.path.join(work, '%s.json' % name)
+        if not (os.path.exists(dat) and os.path.exists(meta_path)):
+            logger.info('re-tabulating the %s density for madspace', name)
+            if work != set_dir:
+                import shutil
+                if not os.path.isdir(work):
+                    os.makedirs(work)
+                shutil.copy(os.path.join(set_dir, 'eepdf.f'), work)
+            try:
+                dat, meta_path, _, _ = gen.generate(work, name)
+            except gen.AnalyticDensity:
+                raise ValueError(
+                    '%s defines its density in closed form and has no grid; '
+                    'madspace cannot use it yet' % name)
+
+        import json
+        with open(meta_path) as fsock:
+            self.meta = json.load(fsock)
+
+        # component order has to be the same on both beams: the luminosity
+        # pairs them term by term, not as a product of sums
+        self.components = (1, 2, 3, 4)
+        pids = [self._pids(pdg) for pdg in beam_pdgs]
+        offsets = [self._offsets(pdg) for pdg in beam_pdgs]
+
+        grid = madspace.PdfGrid(dat)
+        grid.initialize_globals(context, prefix)
+        self.grid = grid
+        self.luminosity = madspace.EELuminosity(
+            grid, pids[0], pids[1], offsets[0], offsets[1], prefix=prefix)
+
+        self.mapping = madspace.LeptonLuminosity(e_cm * e_cm, s_hat_min, PS_EXPO)
+        self.sampler = self._build_sampler(beam_pdgs)
+
+    # -- component bookkeeping ------------------------------------------
+    @staticmethod
+    def _beam_index(pdg):
+        """The grid's beam index: 1 for a positron, 2 for an electron."""
+        if pdg == 11:
+            return 2
+        if pdg == -11:
+            return 1
+        raise ValueError(
+            'the dressed-lepton densities are fitted for e+ e-, not %d' % pdg)
+
+    def _pids(self, pdg):
+        index = self._beam_index(pdg)
+        return [1000 * n + 10 * index + index for n in self.components]
+
+    def _offsets(self, pdg):
+        """`ps_expo - kappa0` per component: what EEPartonDensity adds on top
+        of the Q-dependent part of the reduction."""
+        out = []
+        for n in self.components:
+            k = self.meta['kappa']['%d_%d' % (n, pdg)]
+            out.append(PS_EXPO - (k['c_b'] * self.meta['b_exp'] + k['c_1']))
+        return out
+
+    # -- beamstrahlung ---------------------------------------------------
+    def _build_sampler(self, beam_pdgs):
+        info = self.meta.get('beamstrahlung')
+        if info is None:
+            return None
+        pars = info['parameters']
+
+        def per_beam(pdg):
+            out = []
+            for n in self.components:
+                key = '%d_%d' % (n, pdg)
+                if key in pars:
+                    p = pars[key]
+                    out.append(self.ms.BeamstrahlungParameters(
+                        p['a'], p['p'], p['q'], True))
+                else:
+                    out.append(self.ms.BeamstrahlungParameters())
+            return out
+
+        # the collider-dependent factor is carried with the grid rather than
+        # assumed: getting it wrong drifts the normalisation silently
+        q_term = getattr(self.ms.BeamstrahlungQTerm,
+                         _QTERM_NAMES[info['q_term']])
+        return self.ms.BeamstrahlungSampler(
+            per_beam(beam_pdgs[0]), per_beam(beam_pdgs[1]), q_term)
+
+    @property
+    def has_beamstrahlung(self):
+        return self.sampler is not None and self.sampler.has_beamstrahlung()
+
+    # -- cross-section plumbing ------------------------------------------
+    @staticmethod
+    def pdf_factor(builder, luminosity, x1, x2):
+        """Convert the luminosity to what `diff_cross_section` expects.
+
+        That instruction computes `ME * pdf1 * pdf2 / (2 s x1^2 x2^2)`, which
+        is the LHAPDF `x f(x)` convention. The dressed densities are plain
+        `f(x)` (MadEvent's `pdg2pdf` divides by x), and the luminosity already
+        pairs the two beams, so it goes in as `L * x1 * x2` on one beam with
+        nothing on the other -- giving `L * ME / (2 s_hat)`.
+        """
+        return builder.mul(luminosity, builder.mul(x1, x2))
