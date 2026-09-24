@@ -762,3 +762,95 @@ class TestDressedPhaseSpace(unittest.TestCase):
         self.assertEqual(int((~np.isfinite(det)).sum()), 0)
         self.assertEqual(int((~np.isfinite(omx1) | ~np.isfinite(omx2)).sum()), 0)
         self.assertEqual(int(((omx1 < 0) | (omx2 < 0)).sum()), 0)
+
+
+@unittest.skipIf(np is None or gen is None, 'numpy and the generator required')
+class TestLheAnnotation(unittest.TestCase):
+    """Sampling the beamstrahlung split onto a written event file.
+
+    It runs once per written event, after unweighting, because the fractions
+    do not enter the weight. x comes back from the initial-state momenta, so
+    nothing has to be threaded through the integrand or the event record.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ms = _madspace()
+        if cls.ms is None or not hasattr(cls.ms, 'BeamstrahlungSampler'):
+            raise unittest.SkipTest('madspace build with the sampler required')
+        sys.path.insert(0, os.path.join(
+            _root, 'madgraph', 'iolibs', 'template_files', 'mg7'))
+        try:
+            import lepton_density
+        except ImportError:
+            raise unittest.SkipTest('lepton_density helper not importable')
+        cls.mod = lepton_density
+        cls.source = os.path.join(_root, 'Template', 'Common', 'Source')
+
+    def _density(self, name, tmp):
+        return self.mod.LeptonDensity(
+            name, self.source, _root, self.ms, self.ms.default_context(),
+            240.0, beam_pdgs=(-11, 11),
+            cache_dir=os.path.join(tmp, name), prefix='ann_%s_' % name)
+
+    @staticmethod
+    def _lhe(path, fractions):
+        """A minimal LHE whose initial-state momenta encode the given x."""
+        events = []
+        for x1, x2 in fractions:
+            e1, e2 = 120.0 * x1, 120.0 * x2
+            events.append(
+                '<event>\n   4    1 +1.0e+00 9.1188e+01 7.5e-03 1.2e-01\n'
+                '  11   -1    0    0    0    0 +0.0e+00 +0.0e+00 %+.16e %.16e 0.0 0.0 9.0\n'
+                ' -11   -1    0    0    0    0 +0.0e+00 +0.0e+00 %+.16e %.16e 0.0 0.0 9.0\n'
+                '  13    1    1    2    0    0 +0.0e+00 +0.0e+00 +0.0e+00 %.16e 0.0 0.0 9.0\n'
+                ' -13    1    1    2    0    0 +0.0e+00 +0.0e+00 +0.0e+00 %.16e 0.0 0.0 9.0\n'
+                '</event>\n' % (e1, e1, -e2, e2, (e1 + e2) / 2, (e1 + e2) / 2))
+        with open(path, 'w') as fsock:
+            fsock.write('<LesHouchesEvents version="3.0">\n<init>\n'
+                        ' 11 -11 1.2e+02 1.2e+02 0 0 0 0 -4 1\n'
+                        ' 1.0 1.0e-03 1.0 1\n</init>\n'
+                        + ''.join(events) + '</LesHouchesEvents>\n')
+
+    def test_annotates_every_event(self):
+        import madgraph.various.lhe_parser as lhe_parser
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('fcce240ll', tmp)
+            if not density.has_beamstrahlung:
+                self.skipTest('fcce240ll carries no beamstrahlung')
+            path = os.path.join(tmp, 'events.lhe')
+            fractions = [(1.0, 1.0), (0.9, 1.0), (0.5, 0.7), (1.0, 0.3)]
+            self._lhe(path, fractions)
+            self.assertEqual(density.annotate_lhe(path, seed=3), len(fractions))
+
+            text = open(path).read()
+            parsed = [lhe_parser.Event('<event>' + ev.split('</event>')[0]
+                                       + '</event>').parse_beamstrahlung()
+                      for ev in text.split('<event>')[1:]]
+            self.assertEqual(len(parsed), len(fractions))
+            for (x1, x2), value in zip(fractions, parsed):
+                self.assertIsNotNone(value)
+                xbs1, xbs2 = value
+                # x = x_BS * x_ISR with x_ISR <= 1, so x_BS cannot fall below x
+                self.assertGreaterEqual(xbs1, x1 - 1e-9)
+                self.assertGreaterEqual(xbs2, x2 - 1e-9)
+                self.assertLessEqual(xbs1, 1.0)
+                self.assertLessEqual(xbs2, 1.0)
+            # a beam that kept all its energy cannot have radiated
+            self.assertEqual(parsed[0], [1.0, 1.0])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_pure_isr_writes_nothing(self):
+        """isronlyll has no beamstrahlung, so there is no element to write."""
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('isronlyll', tmp)
+            self.assertFalse(density.has_beamstrahlung)
+            path = os.path.join(tmp, 'events.lhe')
+            self._lhe(path, [(0.9, 0.8)])
+            self.assertEqual(density.annotate_lhe(path), 0)
+            self.assertNotIn('<beamstrahlung>', open(path).read())
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

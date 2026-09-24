@@ -23,6 +23,7 @@ with nothing to flag it. Both are built here from the same constant for that
 reason.
 """
 
+import gzip
 import logging
 import os
 import sys
@@ -102,12 +103,16 @@ class LeptonDensity:
         pids = [self._pids(pdg) for pdg in beam_pdgs]
         offsets = [self._offsets(pdg) for pdg in beam_pdgs]
 
+        self._host_pids = pids
+        self._host_offsets = offsets
+        self._host_lum = None
         grid = madspace.PdfGrid(dat)
         grid.initialize_globals(context, prefix)
         self.grid = grid
         self.luminosity = madspace.EELuminosity(
             grid, pids[0], pids[1], offsets[0], offsets[1], prefix=prefix)
 
+        self.mapping_e_cm = e_cm
         self.mapping = madspace.LeptonLuminosity(e_cm * e_cm, s_hat_min, PS_EXPO)
         self.sampler = self._build_sampler(beam_pdgs)
 
@@ -164,6 +169,101 @@ class LeptonDensity:
     @property
     def has_beamstrahlung(self):
         return self.sampler is not None and self.sampler.has_beamstrahlung()
+
+    # -- beamstrahlung at event-writing time ------------------------------
+    # 1-x is not recoverable below this from an x stored as a double; a beam
+    # that close to 1 did not radiate measurably, and clamping here makes the
+    # component sampling pick one of the delta pieces, which is what says so.
+    OMX_FLOOR = 1e-16
+
+    def _host_luminosity(self):
+        """A luminosity bound to the default context.
+
+        The integration's copy lives on whatever device context the run uses;
+        calling a FunctionGenerator from Python goes through the default one,
+        which would not have the grid.
+        """
+        if getattr(self, '_host_lum', None) is None:
+            context = self.ms.default_context()
+            prefix = 'ee_host_%s_' % self.name
+            self.grid.initialize_globals(context, prefix)
+            self._host_lum = self.ms.EELuminosity(
+                self.grid, self._host_pids[0], self._host_pids[1],
+                self._host_offsets[0], self._host_offsets[1], prefix=prefix)
+        return self._host_lum
+
+    def annotate_lhe(self, path, seed=0):
+        """Write <beamstrahlung> into every event of an LHE file.
+
+        The split is sampled once per *written* event rather than per
+        phase-space point: it does not enter the weight, so there is nothing
+        to gain from doing it during integration and a great deal of work to
+        avoid.
+
+        x comes back from the initial-state momenta, which carry it exactly --
+        x1 = (E+pz)/sqrt(s), x2 = (E-pz)/sqrt(s) -- so this needs nothing
+        threaded through the integrand or the event record.
+
+        Returns the number of events annotated.
+        """
+        if self.sampler is None or not self.has_beamstrahlung:
+            return 0
+
+        import numpy as np
+        opener = gzip.open if path.endswith('.gz') else open
+        with opener(path, 'rt') as fsock:
+            text = fsock.read()
+        head, _, rest = text.partition('<event>')
+        if not rest:
+            return 0
+        events = ('<event>' + rest).split('<event>')[1:]
+
+        x1, x2, scale = [], [], []
+        for event in events:
+            body = event.split('</event>')[0]
+            incoming = []
+            for line in body.split('\n'):
+                field = line.split()
+                if len(field) >= 13 and field[1] == '-1':
+                    incoming.append((float(field[9]), float(field[8])))
+                elif len(field) == 6:
+                    scale.append(float(field[3]))
+            e_cm = float(self.mapping_e_cm)
+            if len(incoming) == 2:
+                x1.append((incoming[0][0] + incoming[0][1]) / e_cm)
+                x2.append((incoming[1][0] - incoming[1][1]) / e_cm)
+            else:
+                x1.append(1.0)
+                x2.append(1.0)
+        if len(scale) != len(events):
+            scale = [float(self.mapping_e_cm) / 2.] * len(events)
+
+        n = len(events)
+        x1 = np.clip(np.asarray(x1), 0.0, 1.0)
+        x2 = np.clip(np.asarray(x2), 0.0, 1.0)
+        omx1 = np.maximum(1.0 - x1, self.OMX_FLOOR)
+        omx2 = np.maximum(1.0 - x2, self.OMX_FLOOR)
+        q = np.asarray(scale, dtype=float)
+
+        rng = np.random.default_rng(seed)
+        component = np.asarray(
+            self._host_luminosity()(x1, omx1, x2, omx2, q,
+                                    rng.uniform(0, 1, n)).component_index)
+        deviates = rng.uniform(0, 1, (n, 4))
+
+        out = [head]
+        annotated = 0
+        for i, event in enumerate(events):
+            fractions = self.sampler.sample(
+                float(x1[i]), float(x2[i]), float(q[i]) ** 2,
+                int(component[i]), *deviates[i].tolist())
+            body, sep, tail = event.partition('</event>')
+            element = '<beamstrahlung>%15.7e%15.7e </beamstrahlung>\n' % fractions
+            out.append('<event>' + body + element + sep + tail)
+            annotated += 1
+        with opener(path, 'wt') as fsock:
+            fsock.write(''.join(out))
+        return annotated
 
     # -- cross-section plumbing ------------------------------------------
     @staticmethod

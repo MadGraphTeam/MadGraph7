@@ -1473,6 +1473,19 @@ class MadgraphProcess:
                 lhe_path, self.lhe_completer,
                 self.build_lhe_meta(), systematics, histograms
             )
+            # A dressed-lepton density folds beamstrahlung into the PDF, so
+            # the initial-state momenta carry x = x_BS * x_ISR and a shower
+            # cannot separate the two on its own. Sampling the split here --
+            # once per written event, after unweighting -- is enough: it does
+            # not enter the weight.
+            density = self.lepton_density
+            if density is not None and density.has_beamstrahlung:
+                count = density.annotate_lhe(
+                    lhe_path,
+                    seed=self.run_card["generation"].get("seed", 0) or 0)
+                logger.info(
+                    "wrote <beamstrahlung> into %d events; they need the "
+                    "dedicated Pythia8 main to be showered correctly", count)
             # Ship the LHE compressed by default. These files are large and
             # very compressible, madevent has always stored its events
             # gzipped, and every consumer here already accepts either form
