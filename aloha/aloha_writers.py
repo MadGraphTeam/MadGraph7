@@ -888,6 +888,13 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Formatting the variable name to Fortran format"""
         
         if isinstance(name, aloha_lib.ExtVariable):
+            if name.lower() == 'bwcutoff':
+                # an argument of the $-veto (P1D) routine, not a model
+                # parameter: including the MODEL files for it breaks the
+                # flavour-merged output, whose coupl.inc declares
+                # FLV_COUPLING without the 'use model_object' that only the
+                # M-tagged routines write
+                return name
             # external parameter nothing to do but handling model prefix
             self.has_model_parameter = True
             if name.lower() in ['pi', 'as', 'mu_r', 'aewm1','g','bwcutoff']:
@@ -1743,6 +1750,10 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
     def myHash(target_string):
         suffix = ''
         if '%(propa)s' in target_string:
+            if len(target_string.replace('%(propa)s',''))<50:
+                # keep the placeholder where it is: it can sit before a
+                # propagator tag (see join_tag)
+                return target_string
             target_string = target_string.replace('%(propa)s','')
             suffix = '%(propa)s'
             
@@ -1750,6 +1761,16 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
             return '%s%s' % (target_string, suffix)
         else:
             return 'ALOHA_%s%s' % (str(hash(target_string.lower())).replace('-','m'), suffix)
+
+    def join_tag(tag, placeholder):
+        # get_routine_name writes the propagator tag LAST, after the
+        # FLV_Coupling 'M' flag that the placeholder expands to: a $-excluded
+        # (P1D) flavour wavefunction is defined as FFV6_2MP1D_3, not
+        # FFV6_2P1DM_3.
+        tag = list(tag) if tag else []
+        if tag and tag[-1].startswith('P'):
+            return ''.join(tag[:-1]) + placeholder + tag[-1]
+        return ''.join(tag) + placeholder
 
     if tag:
         # same normalisation as get_routine_name, which sorts the tag before
@@ -1786,12 +1807,12 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
                 routine += '_%s' % id2
     
     if routine:
-        if tag is not None:
-            routine += ''.join(tag)
         if unknown_tag and outgoing:
-            routine += '%(propa)s'
+            routine += join_tag(tag, '%(propa)s')
         elif unknown_tag:
-            routine += '%(tags)s'
+            routine += join_tag(tag, '%(tags)s')
+        elif tag is not None:
+            routine += ''.join(tag)
         if outgoing is not None:
             return myHash(routine)+'_%s' % outgoing
 #            return routine +'_%s' % outgoing
@@ -1812,7 +1833,7 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
             else:
                 name = short_name
     if unknown_tag and outgoing:
-        addon += '%(propa)s'
+        addon = join_tag(tag, '%(propa)s') if tag is not None else addon + '%(propa)s'
     elif unknown_tag:
         # For an amplitude (outgoing == 0) the caller fills 'propa' with '' and
         # puts the FLV_Coupling flag ('M') into 'tags' instead -- see
@@ -1820,7 +1841,7 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
         # through 'propa'. Same convention as the FFV1_2 scheme above, which
         # has been guarded this way for a while. Without it the call site
         # emits FFV2_FFS1_0 while ALOHA writes FFV2_FFS1M_0.
-        addon += '%(tags)s'
+        addon = join_tag(tag, '%(tags)s') if tag is not None else addon + '%(tags)s'
 
 #    if outgoing is not None:
 #        return '_'.join((name,) + tuple(other_names)) + addon + '_%s' % outgoing

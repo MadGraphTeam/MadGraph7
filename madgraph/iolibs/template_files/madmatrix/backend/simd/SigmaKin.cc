@@ -67,6 +67,8 @@ namespace madmatrix
   static int cIPF_partner2[ProcessTables::nMF * nIPF > 0 ? ProcessTables::nMF * nIPF : 1];
   static fptype cIPF_value[ProcessTables::nMF * nIPF * 2 > 0 ? ProcessTables::nMF * nIPF * 2 : 1];
   static double bsmIndepParam[Parameters::nBsmIndepParam > 0 ? Parameters::nBsmIndepParam : 1];
+  // BWCUTOFF of the $-excluded propagators (ALOHA P1D tag), see setBwCutoff
+  static fptype cBWCUTOFF = 15.;
 
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
   {
@@ -95,6 +97,11 @@ namespace madmatrix
   void setBsmIndepParam( const double* values, int n )
   {
     if( n > 0 ) memcpy( bsmIndepParam, values, n * sizeof( double ) );
+  }
+
+  void setBwCutoff( const double bwcutoff )
+  {
+    cBWCUTOFF = bwcutoff;
   }
 
   //--------------------------------------------------------------------------

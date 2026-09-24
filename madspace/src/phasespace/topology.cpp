@@ -119,6 +119,7 @@ void build_decays(
             false,
             false,
             line_ref.index(),
+            propagator.flat_window,
         });
         decay_indices.push_back(decay_index);
         integration_order.push_back(propagator.integration_order);

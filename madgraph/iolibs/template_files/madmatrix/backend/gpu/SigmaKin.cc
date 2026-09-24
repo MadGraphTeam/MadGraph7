@@ -64,6 +64,8 @@ namespace madmatrix
   __device__ __constant__ int cIPF_partner2[ProcessTables::nMF * nIPF > 0 ? ProcessTables::nMF * nIPF : 1];
   __device__ __constant__ fptype cIPF_value[ProcessTables::nMF * nIPF * 2 > 0 ? ProcessTables::nMF * nIPF * 2 : 1];
   __device__ __constant__ double bsmIndepParam[Parameters::nBsmIndepParam > 0 ? Parameters::nBsmIndepParam : 1];
+  // BWCUTOFF of the $-excluded propagators (ALOHA P1D tag), see setBwCutoff
+  __device__ __constant__ fptype cBWCUTOFF = 15.;
 
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
   {
@@ -92,6 +94,12 @@ namespace madmatrix
   void setBsmIndepParam( const double* values, int n )
   {
     if( n > 0 ) gpuMemcpyToSymbol( bsmIndepParam, values, n * sizeof( double ) );
+  }
+
+  void setBwCutoff( const double bwcutoff )
+  {
+    const fptype value = bwcutoff;
+    gpuMemcpyToSymbol( cBWCUTOFF, &value, sizeof( fptype ) );
   }
 
   //--------------------------------------------------------------------------
