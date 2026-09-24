@@ -276,16 +276,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         file = open(os.path.join(self.mgme_dir,'Template','NLO',
                                  'Source','make_opts.inc')).read()  
         replace_dict={}
-        replace_dict['link_tir_libs']=' '.join(link_tir_libs)
-        if 'collier' in replace_dict['link_tir_libs']:
-            collierpath = ''
-            for lib in link_tir_libs:
-                if '-lcollier' in lib:
-                    collierpath = lib.split()[0][2:]
-                    break
-            if collierpath:
-                replace_dict['link_tir_libs'] = ' -Wl,-rpath,%s %s ' % (collierpath, replace_dict['link_tir_libs'])
-        #raise Exception
+        # External TIR libraries are linked from their installation directory.
+        # Add those directories to the runtime search path as well: ``-L`` only
+        # helps the linker and does not let the generated executable find a
+        # shared library such as libninja.so when it is launched.
+        rpath_dirs = []
+        for lib in link_tir_libs:
+            for flag in lib.split():
+                if flag.startswith('-L') and len(flag) > 2:
+                    libdir = flag[2:]
+                    if libdir not in rpath_dirs:
+                        rpath_dirs.append(libdir)
+        rpath_flags = ['-Wl,-rpath,%s' % libdir for libdir in rpath_dirs]
+        replace_dict['link_tir_libs']=' '.join(rpath_flags + link_tir_libs)
 
         replace_dict['tir_libs']=' '.join(tir_libs)
         replace_dict['dotf']='%.f'

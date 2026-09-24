@@ -521,6 +521,20 @@ class TestFKSOutput(unittest.TestCase):
     identical results
     """
 
+    def test_tir_library_paths_are_available_at_runtime(self):
+        """External TIR shared libraries need an rpath in NLO executables."""
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        exporter.mgme_dir = MGCmd.MG5DIR
+        make_opts = exporter.write_make_opts(None, [
+            '-L/opt/ninja/lib/ -lninja',
+            '-L/opt/ninja/lib/ -lavh_olo',
+            '-L/opt/collier/ -lcollier'], [])
+
+        self.assertIn('-Wl,-rpath,/opt/ninja/lib/', make_opts)
+        self.assertIn('-Wl,-rpath,/opt/collier/', make_opts)
+        self.assertEqual(
+            make_opts.count('-Wl,-rpath,/opt/ninja/lib/'), 1)
+
     def tearDown(self):
         def run_cmd(cmd):
             interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 

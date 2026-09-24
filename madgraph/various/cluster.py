@@ -719,15 +719,18 @@ class MultiCore(Cluster):
             try:
                 args = self.queue.get(timeout=10)
                 tag, exe, arg, opt = args
-                if 'env' not in opt and env2:
-                    opt['env'] = env2
-                if 'env' in opt and env2:
-                    for key in env2:
-                        if key not in opt['env']:
-                            opt['env'][key] = env2[key]
                 try:
                     # check for executable case
                     if isinstance(exe,str):
+                        # ``env`` is a subprocess option. Do not add it to the
+                        # keyword arguments of Python jobs submitted to this
+                        # pool (for example, the NLO ``compile_dir`` worker).
+                        if 'env' not in opt and env2:
+                            opt['env'] = env2
+                        if 'env' in opt and env2:
+                            for key in env2:
+                                if key not in opt['env']:
+                                    opt['env'][key] = env2[key]
                         if os.path.exists(exe) and not exe.startswith('/'):
                             exe = './' + exe
                         if isinstance(opt['stdout'],str):
