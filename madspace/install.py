@@ -13,12 +13,17 @@ Non-interactive examples:
   python install.py --source -j 8
   python install.py --source --cuda --hip --simd --debug
   python install.py --source --yes --cuda --cuda-arch 80
+  python install.py --source --clean          # rebuild from scratch
 
 Source-build options (--cuda, --hip, --openblas, --simd, --debug, ...,
 --cuda-arch, --hip-arch) are resolved per option: a flag given on the command
 line always wins; otherwise --yes reuses the value saved by the previous
 source build, else the platform default. Without --yes, compile flags describe
 the whole build: the options they leave out take the platform default.
+
+Rebuilds reuse the CMake tree in build/ and are therefore incremental. --clean
+deletes build/ and install/ first, for the rare cases where that tree is in the
+way; the saved settings live outside both and survive it.
 """
 
 import argparse
@@ -34,7 +39,13 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 INSTALL_DIR = SCRIPT_DIR / "install"
-SETTINGS_FILE = SCRIPT_DIR / "build" / "install_settings.json"
+BUILD_DIR = SCRIPT_DIR / "build"
+# Deliberately outside both directories, so --clean resets the build without
+# also forgetting how the user wants madspace built. _LEGACY_SETTINGS_FILE is
+# where it used to live; still read so an existing installation keeps its
+# choices.
+SETTINGS_FILE = SCRIPT_DIR / "install_settings.json"
+_LEGACY_SETTINGS_FILE = BUILD_DIR / "install_settings.json"
 
 PACKAGE_NAME = "madspace"
 
@@ -572,17 +583,94 @@ def _release_wheel_available() -> bool:
 
 
 def load_settings() -> dict:
-    try:
-        with open(SETTINGS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    for path in (SETTINGS_FILE, _LEGACY_SETTINGS_FILE):
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            continue
+    return {}
 
 
 def save_settings(settings: dict) -> None:
     SETTINGS_FILE.parent.mkdir(exist_ok=True)
     with open(SETTINGS_FILE, "w") as f:
         json.dump(settings, f, indent=2)
+
+
+# Starting over
+#
+# A rebuild is normally incremental: the CMake tree in build/ is what makes it
+# take seconds instead of recompiling madspace and its vendored OpenBLAS from
+# scratch, so it is kept unless there is a reason not to. --clean is that
+# reason made explicit; stale_build_reason finds the cases where reusing the
+# tree cannot work at all.
+
+
+def clean_install_dirs(build_only: bool = False) -> list[Path]:
+    """Delete the CMake build tree, and the install directory unless
+    *build_only*. Returns the directories that were actually removed."""
+    removed = []
+    for target in [BUILD_DIR] if build_only else [BUILD_DIR, INSTALL_DIR]:
+        if target.is_dir():
+            shutil.rmtree(target)
+            print(f"Removed {target}")
+            removed.append(target)
+    return removed
+
+
+def read_cmake_cache(path: Path) -> dict[str, str]:
+    """The CMakeCache.txt entries as {name: value}, or {} when unreadable."""
+    entries: dict[str, str] = {}
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return entries
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith(("#", "//")):
+            continue
+        key, sep, value = line.partition("=")
+        name = key.partition(":")[0]
+        if sep and name:
+            entries[name] = value
+    return entries
+
+
+def _same_program(cached: str, current: str) -> bool:
+    if cached == current:
+        return True
+    resolved = shutil.which(current) or current
+    return os.path.realpath(resolved) == os.path.realpath(cached)
+
+
+def stale_build_reason(build_dir: Path | None = None) -> str | None:
+    """Why the existing build tree cannot be reused, or None.
+
+    CMakeCache.txt pins the compilers and the interpreter of the first
+    configure. Changing a compiler makes CMake stop with "you have changed
+    variables that require your cache to be deleted", and a moved interpreter
+    leaves the cached Python paths pointing at an environment that is no
+    longer there; neither is repairable by reconfiguring in place. Everything
+    CMake *can* pick up on its own is deliberately not reported here -- this
+    must not turn ordinary rebuilds into full ones. The compilers are only
+    compared when CC/CXX name them explicitly: without those, CMake runs its
+    own search and the cached path is not something to second-guess.
+    """
+    cache = (build_dir or BUILD_DIR) / "CMakeCache.txt"
+    entries = read_cmake_cache(cache)
+    if not entries:
+        return None
+    checks = (
+        ("CMAKE_CXX_COMPILER", os.environ.get("CXX"), "C++ compiler"),
+        ("CMAKE_C_COMPILER", os.environ.get("CC"), "C compiler"),
+        ("Python_EXECUTABLE", sys.executable, "Python interpreter"),
+    )
+    for key, current, label in checks:
+        cached = entries.get(key)
+        if cached and current and not _same_program(cached, current):
+            return f"the {label} changed ({cached} -> {current})"
+    return None
 
 
 # Main
@@ -634,6 +722,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Install system-wide instead of into the local install/ directory.",
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        default=False,
+        help="Delete the build/ and install/ directories first, for a rebuild "
+        "from scratch (slow: madspace and its vendored OpenBLAS are recompiled). "
+        "The saved settings are kept.",
     )
 
     # Compile option flags (each defaults to None = not specified via CLI)
@@ -744,8 +840,13 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
 
-    # Load saved settings when a previous installation is present
+    # Load saved settings when a previous installation is present. This comes
+    # before --clean on purpose: the settings describe how the user wants
+    # madspace built, and starting the build over is not a reason to forget it.
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
+
+    if args.clean:
+        clean_install_dirs()
 
     # The PyPI wheel is only offered/defaulted-to in an actual release tarball
     # (input/.release, written by bin/create_release.py) that still matches
@@ -905,6 +1006,10 @@ def main(argv: list[str] | None = None) -> None:
     if enable_docs:
         cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
+
+    if not args.clean and (reason := stale_build_reason()):
+        print(f"\nThe existing build tree cannot be reused: {reason}.")
+        clean_install_dirs(build_only=True)
 
     env = install_build_deps(system=args.system)
     env = set_build_parallelism(env, args.jobs)

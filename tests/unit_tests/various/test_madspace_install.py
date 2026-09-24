@@ -25,7 +25,10 @@ from __future__ import absolute_import
 import contextlib
 import importlib.util
 import io
+import json
+import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -156,18 +159,21 @@ class TestMainSourceBuildCommand(unittest.TestCase):
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='mg7_madspace_install_')
-        install_dir = Path(self.tmpdir) / 'install'
-        (install_dir / 'madspace').mkdir(parents=True)  # "previous install"
+        self.install_dir = Path(self.tmpdir) / 'install'
+        self.build_dir = Path(self.tmpdir) / 'build'
+        (self.install_dir / 'madspace').mkdir(parents=True)  # "previous install"
+        self.build_dir.mkdir()
         self.commands = []
-        self.written = []
-        self.saved = {}
+        # the settings are read and written for real: whether they survive a
+        # --clean is part of what is under test
         patches = [
-            mock.patch.object(install, 'INSTALL_DIR', install_dir),
+            mock.patch.object(install, 'INSTALL_DIR', self.install_dir),
+            mock.patch.object(install, 'BUILD_DIR', self.build_dir),
+            mock.patch.object(install, 'SETTINGS_FILE',
+                              Path(self.tmpdir) / 'install_settings.json'),
+            mock.patch.object(install, '_LEGACY_SETTINGS_FILE',
+                              self.build_dir / 'install_settings.json'),
             mock.patch.object(install, '_release_version', return_value=None),
-            mock.patch.object(install, 'load_settings',
-                              side_effect=lambda: dict(self.saved)),
-            mock.patch.object(install, 'save_settings',
-                              side_effect=self.written.append),
             mock.patch.object(install, 'install_build_deps',
                               side_effect=lambda system=False: {}),
             mock.patch.object(install, 'set_build_parallelism',
@@ -188,14 +194,21 @@ class TestMainSourceBuildCommand(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
+    def write_cmake_cache(self, python):
+        (self.build_dir / 'CMakeCache.txt').write_text(
+            '# This is the CMakeCache file.\n'
+            'CMAKE_BUILD_TYPE:STRING=Release\n'
+            '//The Python executable\n'
+            'Python_EXECUTABLE:PATH=%s\n' % python)
+
     def main(self, saved, *argv):
-        self.saved = saved
+        if saved:
+            install.save_settings(saved)
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             install.main(list(argv))
         self.assertEqual(len(self.commands), 1)
-        self.assertEqual(len(self.written), 1)
-        return self.commands[0], self.written[0], out.getvalue()
+        return self.commands[0], install.load_settings(), out.getvalue()
 
     def test_yes_cuda_flags_reach_cmake(self):
         cmd, written, _ = self.main(CPU_SAVED, '--source', '--yes', '--cuda',
@@ -231,11 +244,153 @@ class TestMainSourceBuildCommand(unittest.TestCase):
         self.assertIn('-Ccmake.define.ENABLE_OPENBLAS=ON', cmd)
         self.assertIn('-Ccmake.build-type=RelWithDebInfo', cmd)
 
+    def test_clean_wipes_both_directories_but_keeps_the_settings(self):
+        # a clean rebuild must not also forget how madspace is to be built:
+        # the settings are read before the wipe and live outside both dirs
+        cmd, written, out = self.main(GPU_SAVED, '--source', '--yes', '--clean')
+        self.assertFalse(self.install_dir.exists())
+        self.assertFalse(self.build_dir.exists())
+        self.assertIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
+        self.assertIn('-Ccmake.define.CMAKE_CUDA_ARCHITECTURES=86', cmd)
+        self.assertEqual({k: written[k] for k in GPU_SAVED}, GPU_SAVED)
+        self.assertIn('Removed', out)
+
+    def test_clean_still_takes_the_command_line_flags(self):
+        cmd, written, _ = self.main(GPU_SAVED, '--source', '--yes', '--clean',
+                                    '--no-cuda', '--cuda-arch', '80')
+        self.assertNotIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
+        self.assertEqual(written['cuda_arch'], '80')
+
+    def test_a_plain_rebuild_keeps_the_build_tree(self):
+        # the incremental build tree is what makes a rebuild fast: only an
+        # explicit --clean or a provably stale cache may remove it
+        self.write_cmake_cache(python=sys.executable)
+        self.main(CPU_SAVED, '--source', '--yes')
+        self.assertTrue(self.build_dir.is_dir())
+        self.assertTrue(self.install_dir.is_dir())
+
+    def test_stale_cache_wipes_the_build_tree_only(self):
+        self.write_cmake_cache(python='/nonexistent/python3')
+        _, _, out = self.main(CPU_SAVED, '--source', '--yes')
+        self.assertFalse(self.build_dir.exists())
+        self.assertTrue(self.install_dir.is_dir())
+        self.assertIn('cannot be reused', out)
+        self.assertIn('Python interpreter changed', out)
+
     def test_arch_without_backend_warns(self):
         cmd, _, out = self.main(CPU_SAVED, '--source', '--yes',
                                 '--cuda-arch', '80')
         self.assertNotIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
         self.assertIn('--cuda-arch has no effect', out)
+
+
+class TestSettingsFileLocation(unittest.TestCase):
+    """Checked on the real constants, not the patched ones the other tests use."""
+
+    def test_settings_live_outside_the_directories_clean_deletes(self):
+        for directory in (install.BUILD_DIR, install.INSTALL_DIR):
+            self.assertNotIn(directory, install.SETTINGS_FILE.parents)
+
+
+class TestCleanAndSettingsFile(unittest.TestCase):
+    """clean_install_dirs / load_settings / stale_build_reason on real files."""
+
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix='mg7_madspace_clean_'))
+        self.install_dir = self.tmpdir / 'install'
+        self.build_dir = self.tmpdir / 'build'
+        (self.install_dir / 'madspace').mkdir(parents=True)
+        self.build_dir.mkdir()
+        (self.build_dir / 'CMakeFiles').mkdir()
+        for patch in [
+            mock.patch.object(install, 'INSTALL_DIR', self.install_dir),
+            mock.patch.object(install, 'BUILD_DIR', self.build_dir),
+            mock.patch.object(install, 'SETTINGS_FILE',
+                              self.tmpdir / 'install_settings.json'),
+            mock.patch.object(install, '_LEGACY_SETTINGS_FILE',
+                              self.build_dir / 'install_settings.json'),
+        ]:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def clean(self, **kwargs):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return install.clean_install_dirs(**kwargs)
+
+    def test_removes_both_directories(self):
+        removed = self.clean()
+        self.assertEqual(set(removed), {self.build_dir, self.install_dir})
+        self.assertFalse(self.build_dir.exists())
+        self.assertFalse(self.install_dir.exists())
+
+    def test_build_only_keeps_the_install(self):
+        self.assertEqual(self.clean(build_only=True), [self.build_dir])
+        self.assertFalse(self.build_dir.exists())
+        self.assertTrue(self.install_dir.is_dir())
+
+    def test_missing_directories_are_not_an_error(self):
+        self.clean()
+        self.assertEqual(self.clean(), [])
+
+    def test_settings_survive_a_clean(self):
+        install.save_settings(GPU_SAVED)
+        self.clean()
+        self.assertEqual(install.load_settings(), GPU_SAVED)
+
+    def test_settings_in_the_old_location_are_still_read(self):
+        # they used to live in build/, which --clean removes
+        legacy = self.build_dir / 'install_settings.json'
+        legacy.write_text(json.dumps(CPU_SAVED))
+        self.assertEqual(install.load_settings(), CPU_SAVED)
+        # ... and the next build writes them to the new one
+        install.save_settings(CPU_SAVED)
+        self.clean()
+        self.assertEqual(install.load_settings(), CPU_SAVED)
+
+    def test_no_settings_anywhere(self):
+        self.assertEqual(install.load_settings(), {})
+
+    def test_read_cmake_cache_skips_comments(self):
+        (self.build_dir / 'CMakeCache.txt').write_text(
+            '# a comment\n'
+            '//a description\n'
+            '\n'
+            'CMAKE_CXX_COMPILER:STRING=/usr/bin/clang++\n'
+            'CMAKE_CXX_COMPILER-ADVANCED:INTERNAL=1\n'
+            'ENABLE_CUDA:BOOL=ON\n')
+        entries = install.read_cmake_cache(self.build_dir / 'CMakeCache.txt')
+        self.assertEqual(entries['CMAKE_CXX_COMPILER'], '/usr/bin/clang++')
+        self.assertEqual(entries['ENABLE_CUDA'], 'ON')
+        self.assertNotIn('# a comment', entries)
+
+    def test_no_cache_is_not_stale(self):
+        self.assertIsNone(install.stale_build_reason())
+        self.assertIsNone(install.stale_build_reason(self.tmpdir / 'gone'))
+
+    def test_same_interpreter_is_not_stale(self):
+        (self.build_dir / 'CMakeCache.txt').write_text(
+            'Python_EXECUTABLE:PATH=%s\n' % sys.executable)
+        self.assertIsNone(install.stale_build_reason())
+
+    def test_moved_interpreter_is_stale(self):
+        (self.build_dir / 'CMakeCache.txt').write_text(
+            'Python_EXECUTABLE:PATH=/nonexistent/venv/bin/python3\n')
+        self.assertIn('Python interpreter changed', install.stale_build_reason())
+
+    def test_compiler_only_compared_when_CC_or_CXX_is_set(self):
+        (self.build_dir / 'CMakeCache.txt').write_text(
+            'CMAKE_CXX_COMPILER:STRING=/usr/bin/clang++\n')
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('CXX', None)
+            # CMake picked that compiler on its own: not ours to second-guess
+            self.assertIsNone(install.stale_build_reason())
+            os.environ['CXX'] = '/usr/bin/clang++'
+            self.assertIsNone(install.stale_build_reason())
+            os.environ['CXX'] = '/nonexistent/bin/g++-14'
+            self.assertIn('C++ compiler changed', install.stale_build_reason())
 
 
 if __name__ == '__main__':
