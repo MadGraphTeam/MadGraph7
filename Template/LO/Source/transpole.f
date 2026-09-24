@@ -330,21 +330,21 @@ c            y = xmin+(x+del-1d0)*(xmax-xmin)/del
       end
 
 
-      subroutine bw_window_cdf(pole,width,wlo,whi,a0,f1,f2,tot,c)
+      subroutine bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
 c**********************************************************************
 c     Normalisation of the flat-window Breit-Wigner density on [0,1]:
 c     g(y) = 1/((y-pole)^2+width^2) outside [wlo,whi] and the constant
-c     c = mean of g at the two window edges inside.
+c     c = wfac * (mean of g at the two window edges) inside.
 c     F(y) is its primitive with F(0)=0: f1=F(wlo), f2=F(whi), tot=F(1).
 c     a0 = atan(-pole/width)/width is the offset of the arctan primitive.
 c**********************************************************************
       implicit none
-      double precision pole,width,wlo,whi,a0,f1,f2,tot,c
+      double precision pole,width,wlo,whi,wfac,a0,f1,f2,tot,c
       double precision ga,gb
       a0 = atan(-pole/width)/width
       ga = 1d0/((wlo-pole)**2+width**2)
       gb = 1d0/((whi-pole)**2+width**2)
-      c = 0.5d0*(ga+gb)
+      c = wfac*0.5d0*(ga+gb)
       f1 = atan((wlo-pole)/width)/width - a0
       f2 = f1 + c*(whi-wlo)
       tot = f2 + atan((1d0-pole)/width)/width
@@ -352,16 +352,17 @@ c**********************************************************************
       end
 
 
-      subroutine transpole_win(pole1,width1,wlo1,whi1,x,y,jac)
+      subroutine transpole_win(pole1,width1,wlo1,whi1,wfac,x,y,jac)
 c**********************************************************************
 c     As transpole for a B.W. (pole>0) but for a $-excluded propagator:
 c     the density is the B.W. outside the window [wlo,whi] (in the same
 c     s/stot units as pole) and flat inside, at the mean of the two edge
-c     values, so that the excluded pole region is not oversampled.
+c     values times wfac, so that the excluded pole region is not
+c     oversampled (wfac=0: not sampled at all).
 c     Same scheme as madspace's flat_window_breit_wigner_invariant.
 c**********************************************************************
       implicit none
-      double precision pole1,width1,wlo1,whi1,x,y,jac
+      double precision pole1,width1,wlo1,whi1,wfac,x,y,jac
       double precision pole,width,wlo,whi,a0,f1,f2,tot,c,u,g
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
@@ -378,7 +379,7 @@ c**********************************************************************
          call transpole(pole1,width1,x,y,jac)
          return
       endif
-      call bw_window_cdf(pole,width,wlo,whi,a0,f1,f2,tot,c)
+      call bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
       u = x*tot
       if (u.lt.f1) then
          y = pole + width*tan(width*(u+a0))
@@ -394,13 +395,13 @@ c**********************************************************************
       end
 
 
-      subroutine untranspole_win(pole1,width1,wlo1,whi1,x,y,jac)
+      subroutine untranspole_win(pole1,width1,wlo1,whi1,wfac,x,y,jac)
 c**********************************************************************
 c     Inverse of transpole_win: returns the x giving y, and multiplies
 c     jac by dy/dx.
 c**********************************************************************
       implicit none
-      double precision pole1,width1,wlo1,whi1,x,y,jac
+      double precision pole1,width1,wlo1,whi1,wfac,x,y,jac
       double precision pole,width,wlo,whi,a0,f1,f2,tot,c,g
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
@@ -417,13 +418,17 @@ c**********************************************************************
          call untranspole(pole1,width1,x,y,jac)
          return
       endif
-      call bw_window_cdf(pole,width,wlo,whi,a0,f1,f2,tot,c)
+      call bw_window_cdf(pole,width,wlo,whi,wfac,a0,f1,f2,tot,c)
       if (y.lt.wlo) then
          x = (atan((y-pole)/width)/width - a0)/tot
          g = 1d0/((y-pole)**2+width**2)
       elseif (y.le.whi) then
          x = (f1 + c*(y-wlo))/tot
          g = c
+         if (c.le.0d0) then
+            jac = 0d0
+            return
+         endif
       else
          x = (f2 + atan((y-pole)/width)/width
      &        - atan((whi-pole)/width)/width)/tot

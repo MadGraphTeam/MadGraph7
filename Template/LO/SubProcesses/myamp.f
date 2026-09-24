@@ -284,8 +284,8 @@ c
 
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole          ,swidth          ,bwjac
-      double precision      swinlo(maxinvar),swinhi(maxinvar)
-      common/to_bw_window/  swinlo        ,swinhi
+      double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi        ,swinc
 
       integer        lbw(0:nexternal)  !Use of B.W.
       common /to_BW/ lbw
@@ -364,6 +364,7 @@ c     Reset variables
       enddo
       swinlo(:)=0d0
       swinhi(:)=0d0
+      swinc(:)=1d0
 c     Find non-zero process number
       do iproc=1,maxsproc
          if(sprop(iproc,-1,iconfig).ne.0) goto 10
@@ -619,13 +620,22 @@ c*****************************************************************************
       include 'run.inc'
       integer j
       double precision mass, width, stot
-      double precision      swinlo(maxinvar),swinhi(maxinvar)
-      common/to_bw_window/  swinlo        ,swinhi
+      double precision      swinlo(maxinvar),swinhi(maxinvar),swinc(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi        ,swinc
 
       swinlo(j) = max(mass-bwcutoff*width,0d0)**2/stot
       swinhi(j) = (mass+bwcutoff*width)**2/stot
-      write(*,*) 'Flat window for $ B.W.',j,sqrt(swinlo(j)*stot),
-     $     sqrt(swinhi(j)*stot)
+c     With sde_strategy=1 the channel weight of this config vanishes in
+c     the window (cut_bw rejects those points): do not sample it at all.
+c     With sde_strategy=2 the channel weight is not zero there while the
+c     non-resonant diagrams still contribute: keep it flat.
+      if (sde_strat.eq.1) then
+         swinc(j) = 0d0
+      else
+         swinc(j) = 1d0
+      endif
+      write(*,*) 'Window for $ B.W.',j,sqrt(swinlo(j)*stot),
+     $     sqrt(swinhi(j)*stot),' height factor',swinc(j)
       end
 
 
