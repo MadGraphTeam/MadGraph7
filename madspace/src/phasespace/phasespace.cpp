@@ -177,12 +177,29 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             return in;
         }(),
-        {{"momenta",
-          batch_four_vec_array(
-              topology.outgoing_masses().size() + topology.incoming_masses().size()
-          )},
-         {"x1", batch_float},
-         {"x2", batch_float}},
+        [&] {
+            NamedVector<Type> out{
+                {"momenta",
+                 batch_four_vec_array(
+                     topology.outgoing_masses().size()
+                     + topology.incoming_masses().size()
+                 )},
+                {"x1", batch_float},
+                {"x2", batch_float}
+            };
+            // A dressed-lepton density needs 1-x, not x. The split samples x
+            // so close to 1 that recomputing 1-x from a double underflows to
+            // exactly zero for about a quarter of the events, and then the
+            // (1-x)^-p the Jacobian carries has nothing to cancel against --
+            // those events silently drop out of the cross section. MadEvent
+            // carries the same quantity for the same reason, in
+            // /to_ee_omx1/.
+            if (lepton_sampling_power != 0.) {
+                out.push_back("omx1", batch_float);
+                out.push_back("omx2", batch_float);
+            }
+            return out;
+        }(),
         permutations.size() > 1
             ? NamedVector<Type>{{"permutation_index", batch_int}}
             : NamedVector<Type>{}
@@ -561,6 +578,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         }
     }
 
+    Value omx1, omx2;
     // sample momentum fractions
     auto sqrt_s_hat = root_data.mass.value();
     auto s_hat = root_data.mass2.value();
@@ -574,6 +592,8 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             );
             x1 = split.x1;
             x2 = split.x2;
+            omx1 = split.omx1;
+            omx2 = split.omx2;
             dets.push_back(split.det);
         } else {
             auto [x1_new, x2_new, det_x] =
@@ -696,7 +716,12 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         : p_ext_stack;
     dets.push_back(_cuts.build_function(fb, {p_ext_lab}).at(0));
     auto ps_weight = fb.cut_unphysical(fb.product(dets), p_ext_lab, x1, x2);
-    return {{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}}, ps_weight};
+    NamedVector<Value> outputs{{"momenta", p_ext_lab}, {"x1", x1}, {"x2", x2}};
+    if (_lepton_power != 0.) {
+        outputs.push_back("omx1", omx1);
+        outputs.push_back("omx2", omx2);
+    }
+    return {outputs, ps_weight};
 }
 
 Mapping::Result PhaseSpaceMapping::build_inverse_impl(

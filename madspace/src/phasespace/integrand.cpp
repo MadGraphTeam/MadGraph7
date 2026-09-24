@@ -437,6 +437,15 @@ NamedVector<Value> Integrand::build_channel_part(
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];
+    // A dressed-lepton mapping also hands back 1-x. It has to: it samples x
+    // close enough to 1 that recomputing 1-x from a double underflows to zero
+    // for about a quarter of the events, and the density's (1-x)^-kappa then
+    // has nothing to cancel the Jacobian's (1-x)^-p against.
+    Value omx0, omx1_val;
+    if (_lepton_luminosity) {
+        omx0 = mapping_result["omx1"];
+        omx1_val = mapping_result["omx2"];
+    }
 
     // Filter events that pass cuts
     Value weight_before_cuts = fb.product(weights_before_cuts);
@@ -449,6 +458,13 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> x_acc{
         {fb.batch_gather(indices_acc, x0), fb.batch_gather(indices_acc, x1)}
     };
+    std::array<Value, 2> omx_acc;
+    if (_lepton_luminosity) {
+        omx_acc = {
+            {fb.batch_gather(indices_acc, omx0),
+             fb.batch_gather(indices_acc, omx1_val)}
+        };
+    }
     for (auto& cond : flow_conditions) {
         cond = fb.batch_gather(indices_acc, cond);
     }
@@ -621,12 +637,11 @@ NamedVector<Value> Integrand::build_channel_part(
         // densities are plain f(x), hence the x1*x2; it goes in on beam 1 with
         // nothing on beam 2, giving L * ME / (2 s_hat).
         auto batch = fb.batch_size({x_acc.at(0)});
-        auto one = fb.full({1., batch});
         auto lum = _lepton_luminosity.value().build_function(
             fb,
             ValueVec{
-                x_acc.at(0), fb.sub(one, x_acc.at(0)),
-                x_acc.at(1), fb.sub(one, x_acc.at(1)),
+                x_acc.at(0), omx_acc.at(0),
+                x_acc.at(1), omx_acc.at(1),
                 scales.at(1),
                 // the component choice does not enter the luminosity; the
                 // beamstrahlung split picks it again when events are written
