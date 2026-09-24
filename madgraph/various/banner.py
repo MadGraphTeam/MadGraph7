@@ -6391,9 +6391,20 @@ class RunCardNLO(RunCard):
         # check for beam_id
         beam_id = set()
         for proc in proc_def:
+            try:
+                merged = proc.get('model').get('merged_particles') or {}
+            except Exception:
+                merged = {}
             for leg in proc['legs']:
                 if not leg['state']:
-                    beam_id.add(leg['id'])
+                    # A flavour-grouped (merged) particle stands for its
+                    # physical flavours, e.g. the quarks of q q~ > e+ e-.
+                    physical = merged.get(abs(leg['id']))
+                    if physical:
+                        sign = 1 if leg['id'] > 0 else -1
+                        beam_id.update(sign * abs(pdg) for pdg in physical)
+                    else:
+                        beam_id.add(leg['id'])
         if any(i in beam_id for i in [1,-1,2,-2,3,-3,4,-4,5,-5,21,22]):
             # the default follows the flavour scheme of the model, the same
             # number that defines the default 'p'/'j' multiparticles

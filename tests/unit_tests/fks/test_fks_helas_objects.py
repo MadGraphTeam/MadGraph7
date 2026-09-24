@@ -1059,6 +1059,28 @@ class testFKSHelasObjects(unittest.TestCase):
                 isinstance(charge, float)
                 for entry in mapping for charge in entry['real_charges']))
 
+    def test_grouped_drell_yan_default_run_card_has_hadron_beams(self):
+        """The default NLO run card of grouped p p > e+ e- uses proton beams.
+
+        With flavour grouping the Born initial state is the merged quark
+        only (no gluon channel as in p p > t t~), which the beam detection
+        must recognise as its physical quark flavours.
+        """
+        import madgraph.various.banner as banner_mod
+        for grouping in (True, False):
+            interface = MGCmd.MasterCmd()
+            interface.no_notification()
+            interface.exec_cmd('set apply_flavor_grouping %s' % grouping)
+            interface.exec_cmd('import model loop_sm')
+            interface.exec_cmd('generate p p > e+ e- [real=QCD]')
+            helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+            run_card = banner_mod.RunCardNLO()
+            run_card.create_default_for_process(
+                banner_mod.ProcCharacteristic(), [], helas.get_processes())
+            self.assertEqual((run_card['lpp1'], run_card['lpp2']), (1, 1),
+                             'grouping %s' % grouping)
+            self.assertEqual(run_card['maxjetflavor'], 4)
+
     def test_grouped_fks_extra_counterterm_flavor_map(self):
         """Grouped g/a -> q q~ configurations map every physical member to
         an independently indexed extra-counterterm matrix element.
