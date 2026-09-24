@@ -560,29 +560,12 @@ class MadgraphProcess:
         # while a density brings ISR and, for the collider-specific sets,
         # beamstrahlung. Both are set for such a run -- there is no hadronic
         # PDF -- but the density is what supplies the luminosity.
-        self.lepton_density = None
-        density_name = beam_args.get("lepton_density", "") if not self.is_decay else ""
-        if density_name:
-            lepton_density_mod = _import_lepton_density()
-            # launch.py runs with the process directory as cwd, and lives in
-            # the MadGraph tree it was imported from
-            mg5_root = os.path.abspath(os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                os.pardir, os.pardir, os.pardir, os.pardir))
-            source_dir = os.path.abspath("Source")
-            self.lepton_density = lepton_density_mod.LeptonDensity(
-                density_name,
-                source_dir,
-                mg5_root,
-                ms,
-                self.contexts[0],
-                self.e_cm,
-                cache_dir=os.path.join(source_dir, "PDF", "lep_densities",
-                                       density_name),
-            )
-            logger.info("using the %s dressed-lepton density%s", density_name,
-                        " (with beamstrahlung)"
-                        if self.lepton_density.has_beamstrahlung else "")
+        # Built lazily: which components radiate is not symmetric between the
+        # beams, so the density needs the beam PDGs, and those come from the
+        # subprocess data, which is not loaded yet.
+        self._lepton_density_name = (
+            beam_args.get("lepton_density", "") if not self.is_decay else "")
+        self._lepton_density = None
 
         dynamical_scales = {
             "transverse_energy": ms.EnergyScale.transverse_energy,
@@ -1557,6 +1540,42 @@ class MadgraphProcess:
         except Exception as err:
             logger.warning("could not extract observable means: %s", err)
         return result
+
+    @property
+    def lepton_density(self):
+        """The dressed-lepton density, or None.
+
+        Which components carry beamstrahlung differs between the electron and
+        the positron, so the beam PDGs decide which parameters go with which
+        beam; taking them from the process rather than assuming an order is
+        what keeps an e+ e- process from being handed the e- e+ tables.
+        """
+        if not self._lepton_density_name:
+            return None
+        if self._lepton_density is None:
+            module = _import_lepton_density()
+            mg5_root = os.path.abspath(os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                os.pardir, os.pardir, os.pardir, os.pardir))
+            source_dir = os.path.abspath("Source")
+            beam_pdgs, _energies = self._beam_info()
+            self._lepton_density = module.LeptonDensity(
+                self._lepton_density_name,
+                source_dir,
+                mg5_root,
+                ms,
+                self.contexts[0],
+                self.e_cm,
+                beam_pdgs=tuple(beam_pdgs),
+                cache_dir=os.path.join(source_dir, "PDF", "lep_densities",
+                                       self._lepton_density_name),
+            )
+            logger.info(
+                "using the %s dressed-lepton density for beams %s%s",
+                self._lepton_density_name, tuple(beam_pdgs),
+                " (with beamstrahlung)"
+                if self._lepton_density.has_beamstrahlung else "")
+        return self._lepton_density
 
     def _beam_info(self):
         """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
