@@ -2628,6 +2628,66 @@ class TutorialGateTest(unittest.TestCase):
         self.assertEqual(found[0], 1)
 
 
+class LoInstallFailureTest(unittest.TestCase):
+    """`install madspace` which fails must not take `lo` on to "madspace is
+    in place" (issue #198: pip missing, and the tutorial carried on)."""
+
+    def _run(self, installed, failed):
+        """The lo intro, then `install madspace`; (index, last message)."""
+
+        import madgraph.interface.tutorials.lo as lo_module
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        original = lo_module.madspace_is_installed
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        interface = _Recording()
+        try:
+            lo_module.madspace_is_installed = lambda: False
+            tutorial_mixin.attach(interface, tutorials.start('lo'))
+            interface.postcmd(None, 'tutorial lo')
+            lo_module.madspace_is_installed = lambda: installed
+            if failed:
+                # what onecmd does when do_install raises
+                interface.notify_failed_command('install madspace')
+            interface.postcmd(None, 'install madspace')
+            return interface._tutorial_session.index, captured[-1]
+        finally:
+            lo_module.madspace_is_installed = original
+            (logger.handlers, logger.propagate, logger.level) = saved
+            tutorial_mixin.detach(interface)
+
+    def test_a_failed_install_stays_and_says_why(self):
+        import madgraph.interface.tutorials.lo as lo_module
+
+        index, text = self._run(installed=False, failed=True)
+        self.assertEqual(index, 0)
+        self.assertIn('did not run', text)
+        self.assertIn('pip', text)
+        self.assertNotIn('madspace is in place', text)
+        self.assertIn(lo_module.INSTALL_FAILED.strip().splitlines()[0], text)
+
+    def test_an_install_which_left_nothing_is_refused(self):
+        """`install madspace --help` exits 0 and installs nothing."""
+
+        index, text = self._run(installed=False, failed=False)
+        self.assertEqual(index, 0)
+        self.assertIn('not in place yet', text)
+
+    def test_a_real_install_moves_on(self):
+        index, text = self._run(installed=True, failed=False)
+        self.assertEqual(index, 1)
+        self.assertIn('madspace is in place', text)
+
+
 class BsmInterferenceDetourTest(_TutorialTestCase):
     """The pure-interference lesson is a side quest, not a step of the line.
 

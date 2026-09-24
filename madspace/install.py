@@ -472,6 +472,29 @@ def set_build_parallelism(env: dict, jobs: int | None) -> dict:
 # Command execution
 
 
+def ensure_pip() -> None:
+    """Stop with an explanation when this interpreter has no pip.
+
+    Both install modes drive ``python -m pip``, and without pip the only
+    trace would be ``No module named pip`` from deep inside the run -- easy to
+    miss, and it says nothing about the usual cause: a virtual environment
+    that was not activated, or one created without pip.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("pip") is not None:
+        return
+    print(
+        f"\nERROR: pip is not available for {sys.executable}.\n"
+        "madspace is installed with pip, both the pre-compiled package and the\n"
+        "source build. If you work in a virtual environment, activate it before\n"
+        "starting MadGraph; otherwise add pip to this Python, for instance with\n"
+        f"    {sys.executable} -m ensurepip --upgrade\n"
+        "and run the installation again."
+    )
+    sys.exit(1)
+
+
 def run(cmd: list, env: dict | None = None) -> None:
     display = " ".join(str(c) for c in cmd)
     print(f"\n$ {display}\n")
@@ -743,6 +766,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     _set_noninteractive(args.yes)
+    # before any question: every answer ends in a pip command
+    ensure_pip()
 
     # Load saved settings when a previous installation is present
     saved = load_settings() if (INSTALL_DIR / "madspace").is_dir() else {}
