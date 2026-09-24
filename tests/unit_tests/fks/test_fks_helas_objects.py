@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(root_path,'..','..'))
 
 import tests.unit_tests as unittest
 import madgraph.various.misc as misc
+from madgraph import MadGraph5Error
 import madgraph.interface.master_interface as MGCmd
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
@@ -1026,16 +1027,26 @@ class testFKSHelasObjects(unittest.TestCase):
                     os.remove(path)
 
     def test_grouped_fks_qed_virtual_flavor_map(self):
-        """A QCD+QED loop model keeps physical QED charges and resolves each
-        virtual row independently for grouped NLO generation.
+        """A QCD+QED loop model keeps physical QED charges for grouped NLO
+        generation, and refuses a grouped QED virtual it cannot represent.
+
+        The QED virtual of p p > w+ w- contains closed loops of the merged
+        light quark coupling to photons and Z bosons with flavour-dependent
+        couplings.  One such loop stands for all merged flavours, but the
+        loop numerator evaluates a single flavour, so the generation must
+        stop with the grouping diagnostic instead of producing (or silently
+        dropping) a wrong virtual.
         """
         model_path = os.path.abspath(os.path.join(
             root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
         interface = MGCmd.MasterCmd()
         interface.no_notification()
         interface.exec_cmd('import model %s' % model_path)
-        interface.exec_cmd('generate p p > w+ w- [QED]')
+        with self.assertRaisesRegex(MadGraph5Error,
+                                    'closed loop of merged particle'):
+            interface.exec_cmd('generate p p > w+ w- [QED]')
 
+        interface.exec_cmd('generate p p > w+ w- [real=QED]')
         helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
         matrix_elements = helas.get_matrix_elements()
         self.assertEqual(len(matrix_elements), 3)
@@ -1043,9 +1054,7 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual([len(mapping) for mapping in flavor_maps],
                          [30, 30, 22])
         for me, mapping in zip(matrix_elements, flavor_maps):
-            self.assertIsNotNone(me.virt_matrix_element)
-            self.assertTrue(all(entry['virtual_flavor_index'] > 0
-                                for entry in mapping))
+            self.assertIsNone(me.virt_matrix_element)
             self.assertTrue(all(
                 isinstance(charge, float)
                 for entry in mapping for charge in entry['real_charges']))

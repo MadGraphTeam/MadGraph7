@@ -74,15 +74,21 @@ import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import models.import_ufo as import_ufo
 
-from madgraph import InvalidCmd, MG5DIR
+from madgraph import InvalidCmd, MadGraph5Error, MG5DIR
 
 pjoin = os.path.join
 
 # The cheapest loop-induced process there is: no tree-level diagram exists for
 # g g > h in loop_sm, so [noborn=QCD] gives the quark-loop amplitude alone.
 LOOP_INDUCED_PROCESS = 'g g > h [noborn=QCD]'
-# A 2 -> 2 one, to check the leg count is not accidentally right.
-LOOP_INDUCED_PROCESS_2TO2 = 'g g > z z [noborn=QCD]'
+# A 2 -> 2 one, to check the leg count is not accidentally right.  Its quark
+# loops are top and bottom ones: with flavour grouping, a closed loop of
+# merged light quarks coupling to a Z (as in g g > z z) is refused, see
+# test_grouped_light_quark_loop_induced_is_refused.
+LOOP_INDUCED_PROCESS_2TO2 = 'g g > h h [noborn=QCD]'
+# A loop-induced process with light-quark loops and flavour-dependent
+# couplings.
+LIGHT_QUARK_LOOP_INDUCED_PROCESS = 'g g > z z [noborn=QCD]'
 # The same matrix element, generated the way the refusal message recommends.
 SQRVIRT_PROCESS = 'g g > h [sqrvirt=QCD]'
 # An ordinary virtual correction, for good measure.
@@ -150,7 +156,30 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         self.assertEqual(me.get_nexternal_ninitial(), (4, 2))
         flavors, pdgs = me.get_external_flavors(return_pdgs=True)
         self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
-        self.assertEqual([list(p) for p in pdgs], [[21, 21, 23, 23]])
+        self.assertEqual([list(p) for p in pdgs], [[21, 21, 25, 25]])
+
+    def test_grouped_light_quark_loop_induced_is_refused(self):
+        """A merged light-quark loop with Z couplings is not generated.
+
+        One loop of the merged quark stands for all its flavours, but the
+        loop numerator evaluates a single flavour, so the flavour-dependent
+        Z couplings cannot be summed.  The generation must stop with the
+        grouping diagnostic, not report a process without diagrams.  The
+        ungrouped model still generates it.
+        """
+
+        with self.assertRaisesRegex(MadGraph5Error,
+                                    'closed loop of merged particle'):
+            get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('set apply_flavor_grouping False', printcmd=False,
+                           precmd=True)
+        interface.exec_cmd('import model loop_sm', printcmd=False,
+                           precmd=True)
+        interface.exec_cmd('generate %s' % LIGHT_QUARK_LOOP_INDUCED_PROCESS,
+                           printcmd=False, precmd=True)
+        self.assertTrue(interface._curr_amps[0].get('loop_diagrams'))
 
     def test_validate_model_preserves_supported_flavor_grouping(self):
         """NLO validation must not reload and replace a supported grouped

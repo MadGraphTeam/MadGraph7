@@ -1012,9 +1012,10 @@ class Interaction(PhysicsObject):
         # MadLoop associates R2/UVmass vertices with loop diagrams through
         # ``loop_particles``.  Once physical particles are replaced by a
         # merged particle, this key must describe the same merged loop content
-        # as the diagram canonical tag.  In particular, two distinct physical
-        # flavours can collapse to one merged PDG and must then occur only once
-        # (the matching code compares sets of particles).
+        # as the diagram canonical tag.  Within one entry the particles form a
+        # set (the matching code compares sets of particles); the number of
+        # entries is the number of times the counterterm contributes and is
+        # preserved.
         self.merge_loop_particles(ids_to_merge, merged)
 
         particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids_to_merge]
@@ -1062,18 +1063,18 @@ class Interaction(PhysicsObject):
                like for lepton-neutrino W interaction 
         """
 
-        # Keep the counterterm loop-content metadata in the same merged-PDG
-        # space as this interaction.  Flavor partners normally collapse to the
-        # same entry; retain a union for the general case.
+        # Flavor partners of a counterterm have the same loop content in
+        # merged-PDG space: the merge key contains it.  A union would change
+        # the number of times the counterterm contributes.
         if ('loop_particles' in other_flavor and
                 other_flavor.get('loop_particles')):
             other_loop_particles = self.merged_loop_particles(
                 other_flavor.get('loop_particles'), ids, new_part)
-            current = self.get('loop_particles') or []
-            for loop_content in other_loop_particles:
-                if loop_content not in current:
-                    current.append(loop_content)
-            self.set('loop_particles', current)
+            if other_loop_particles != (self.get('loop_particles') or [[]]):
+                raise self.PhysicsObjectError(
+                    'Cannot merge interactions with different loop content: '
+                    '%s and %s' % (self.get('loop_particles'),
+                                   other_loop_particles))
 
         self_couplings = self.get('couplings')
         other_couplings = other_flavor.get('couplings')
@@ -1166,7 +1167,14 @@ class Interaction(PhysicsObject):
 
     @staticmethod
     def merged_loop_particles(loop_particles, ids, new_part):
-        """Return MadLoop loop-particle keys in merged-PDG space."""
+        """Return MadLoop loop-particle keys in merged-PDG space.
+
+        Each entry is the set of particles running in one loop and is
+        deduplicated.  Entries are never deduplicated against each other: an
+        entry is one contribution of the counterterm (for example one per
+        quark flavour running in the loop), so ``[[1], [3]]`` becomes
+        ``[[81], [81]]`` when d and s are merged into 81.
+        """
 
         merged_pdg = abs(new_part.get('pdg_code'))
         ids = set(abs(pdg) for pdg in ids)
@@ -1178,8 +1186,7 @@ class Interaction(PhysicsObject):
                 if pdg not in transformed:
                     transformed.append(pdg)
             transformed.sort()
-            if transformed not in output:
-                output.append(transformed)
+            output.append(transformed)
         return output
 
     def merge_loop_particles(self, ids, new_part):
@@ -1761,6 +1768,17 @@ class Model(PhysicsObject):
             inter_id = [id if abs(id) not in ids else new_part.get('pdg_code') for id in inter_id]
         
         key = tuple(inter_id), str(inter.get('orders')), delta
+
+        # Loop models contain several R2/UV counterterm interactions with the
+        # same particles and orders (for example R2_GQQ and the UV_GQQ* terms
+        # of each quark flavour).  Only flavor partners of the same
+        # counterterm may be merged: they share the interaction type and the
+        # loop content in merged-PDG space.
+        if inter.get('type') != 'base':
+            loop_content = Interaction.merged_loop_particles(
+                inter.get('loop_particles'), ids, new_part)
+            key += (inter.get('type'),
+                    tuple(tuple(entry) for entry in loop_content))
 
         return key
 

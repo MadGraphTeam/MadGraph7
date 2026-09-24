@@ -1008,11 +1008,12 @@ class ModelTest2(unittest.TestCase):
 
         interaction.merge_loop_particles([1, 2, 3, 4], merged)
 
-        # The d/u keys become one merged key, repeated particles inside a key
-        # collapse as required by MadLoop's set comparison, and unrelated loop
-        # content remains untouched.
+        # Repeated particles inside a key collapse as required by MadLoop's
+        # set comparison, and unrelated loop content remains untouched.  The
+        # d and u keys both survive: each entry is one contribution of the
+        # counterterm, so the number of entries must not change.
         self.assertEqual(interaction.get('loop_particles'),
-                         [[21, 81], [81], [5]])
+                         [[21, 81], [21, 81], [81], [5]])
 
     def test_merge_flavor(self):
         """Check that merging particles is working"""

@@ -590,6 +590,9 @@ class TestFKSOutput(unittest.TestCase):
 
         interface = MGCmd.MasterCmd()
         
+        # Grouped QED virtuals with light-quark loops are refused (closed
+        # merged-quark loops with flavour-dependent couplings).
+        run_cmd('set apply_flavor_grouping False')
         run_cmd('set low_mem_multicore_nlo_generation True')
         run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QED]')
         run_cmd('output %s' % os.path.join(path, 'W-newway'))
@@ -639,6 +642,9 @@ class TestFKSOutput(unittest.TestCase):
 
         interface = MGCmd.MasterCmd()
         
+        # Grouped QED virtuals with light-quark loops are refused (closed
+        # merged-quark loops with flavour-dependent couplings).
+        run_cmd('set apply_flavor_grouping False')
         run_cmd('define p3 = d s b d~ s~ b~ a')
         run_cmd('set low_mem_multicore_nlo_generation True')
         run_cmd('generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QED]')

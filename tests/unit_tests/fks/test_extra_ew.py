@@ -1129,6 +1129,9 @@ class TestAMCatNLOEW(unittest.TestCase):
         In particular b-initiate processes have same trees but different loops (w/top)"""
         # generate the processes
 
+        # These compare physical flavours, and grouped QED virtuals with
+        # light-quark loops are refused.
+        self.interface.do_set('apply_flavor_grouping False')
         self.interface.do_import('model loop_qcd_qed_sm-no_widths')
 
         self.interface.do_generate('u u~ > g g QED^2=0 QCD^2=4 [QCD QED]')
@@ -1206,6 +1209,9 @@ class TestAMCatNLOEW(unittest.TestCase):
         In particular b-initiate processes have same trees but different loops (w/top)"""
         # generate the processes
 
+        # These compare physical flavours, and grouped QED virtuals with
+        # light-quark loops are refused.
+        self.interface.do_set('apply_flavor_grouping False')
         self.interface.do_import('model loop_qcd_qed_sm-no_widths')
 
         self.interface.do_generate('u u~ > e+ e- QED^2=4 QCD^2=0 [QED]')

@@ -925,6 +925,47 @@ class LoopAmplitude(diagram_generation.Amplitude):
 
         return (bornsuccessful or totloopsuccessful)
 
+    def get_merged_closed_loop_flavor_count(self, loop_diag):
+        """Return how many physical flavours a closed merged-particle loop sums.
+
+        Without flavour grouping, loops of massless quarks of different
+        flavours are separate diagrams that identify_loop_diagrams combines
+        with a multiplier.  With grouping, one loop of the merged particle
+        stands for all of its physical flavours.  The loop numerator has no
+        external flavour to fix the flavour in the loop, so the sum is only
+        a multiplier when every vertex of the loop has a flavour-independent
+        coupling.  Other cases are refused rather than evaluated for a single
+        flavour."""
+
+        model = self['process']['model']
+        merged = model.get('merged_particles')
+        if not merged or not loop_diag['canonical_tag']:
+            return 1
+        loop_pdgs = set(abs(model.get_particle(tag_elem[0]).get_pdg_code())
+                        for tag_elem in loop_diag['canonical_tag'])
+        if len(loop_pdgs) != 1:
+            return 1
+        loop_pdg = loop_pdgs.pop()
+        if loop_pdg not in merged:
+            return 1
+        for tag_elem in loop_diag['canonical_tag']:
+            inter = model.get_interaction(tag_elem[2])
+            if any(isinstance(coupling, base_objects.FLV_Coupling)
+                   for coupling in inter.get('couplings').values()):
+                # Not InvalidCmd: diagram generation treats that as a
+                # subprocess without diagrams and would hide this message.
+                raise MadGraph5Error(
+                    'Flavor grouping does not support the closed loop of '
+                    'merged particle %d with the flavour-dependent '
+                    'interaction %d in process %s. Run "set '
+                    'apply_flavor_grouping False" and re-import the model.' %
+                    (loop_pdg, tag_elem[2],
+                     self['process'].nice_string().replace('Process: ', '')))
+        forbidden = set(abs(pdg)
+                        for pdg in self['process']['forbidden_particles'])
+        return len([pdg for pdg in merged[loop_pdg]
+                    if abs(pdg) not in forbidden])
+
     def identify_loop_diagrams(self):
         """ Uses a loop_tag characterizing the loop with only physical
         information about it (mass, coupling, width, color, etc...) so as to 
@@ -965,7 +1006,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
             new_loop_diagram_base.append(diagram_identification[loop_tag][0][1])
             # We must add the counterterms of all the identified loop diagrams
             # to the reference one.
-            new_loop_diagram_base[-1]['multiplier'] = n_diag_in_class
+            new_loop_diagram_base[-1]['multiplier'] = n_diag_in_class * \
+                self.get_merged_closed_loop_flavor_count(
+                                         diagram_identification[loop_tag][0][1])
             for ldiag in diagram_identification[loop_tag][1:]:
                 new_loop_diagram_base[-1].get('CT_vertices').extend(
                                          copy.copy(ldiag[1].get('CT_vertices')))
@@ -1342,6 +1385,15 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # the dictionary are a list of the  interaction ID having the same key 
         # above.
         CT_interactions = {}
+        # With flavour grouping, loops are tagged with merged PDGs.  Translate
+        # the loop content of every counterterm to the same space (this also
+        # covers interactions without merged external particles, such as the
+        # g g R2 with a light-quark loop).  Entries stay separate.
+        merged_ids = {}
+        for merged_pdg, ids in \
+                    self['process']['model'].get('merged_particles').items():
+            for pdg in ids:
+                merged_ids[abs(pdg)] = abs(merged_pdg)
         for inter in self['process']['model']['interactions']:
              if inter.is_UVmass() or inter.is_UVloop() or inter.is_R2() and \
                 len(inter['particles'])>1 and inter.is_perturbating(\
@@ -1350,8 +1402,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
                 # yielding the same CT. So we add this interaction ID 
                 # for each entry in the list loop_particles.
                 for i, lparts in enumerate(inter['loop_particles']):
-                    keya=copy.copy(lparts)
-                    keya.sort()           
+                    keya=sorted(set(merged_ids.get(pdg, pdg) for pdg in lparts))
                     if inter.is_UVloop():
                         # If it is a CT of type UVloop, then do not specify the
                         # keya (leave it empty) but make sure the particles

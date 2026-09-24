@@ -1,0 +1,57 @@
+{
+ "metadata": {
+  "description": "Independent physical-subprocess virtual oracle generated before NLO parton grouping. The d/s/c channels are identical to u at QCD level and are represented by the ungrouped P0_uux_ttx/P0_uxu_ttx.",
+  "loop_optimized_output": true,
+  "model": "loop_sm (default restriction, default param_card)",
+  "source_commit": "844829d3ef0b13d294045f34dbbeef3a3d743e9b",
+  "source_process": "p p > t t~ [QCD]"
+ },
+ "virtual": {
+  "momenta": [
+   [
+    500.0,
+    0.0,
+    0.0,
+    500.0
+   ],
+   [
+    500.0,
+    0.0,
+    0.0,
+    -500.0
+   ],
+   [
+    500.0,
+    281.47035367867784,
+    93.82345122622596,
+    363.37666408287697
+   ],
+   [
+    500.0,
+    -281.47035367867784,
+    -93.82345122622596,
+    -363.37666408287697
+   ]
+  ],
+  "oracles": {
+   "P0_gg_ttx": {
+    "1eps": -0.48026249069944055,
+    "2eps": -0.21946993152278915,
+    "born": 1.947698091965676,
+    "finite": 0.2974207764764637
+   },
+   "P0_uux_ttx": {
+    "1eps": -0.1024638882019717,
+    "2eps": -0.04032453514650975,
+    "born": 0.805190233320118,
+    "finite": 0.2859087089934105
+   },
+   "P0_uxu_ttx": {
+    "1eps": -0.00953482309296666,
+    "2eps": -0.040324535146509785,
+    "born": 0.8051902333201179,
+    "finite": 0.40401195134077195
+   }
+  }
+ }
+}

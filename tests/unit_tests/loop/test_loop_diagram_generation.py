@@ -1639,10 +1639,12 @@ class LoopEWDiagramGenerationTest(unittest.TestCase):
     def setUp(self):
         """Load different objects for the tests."""
         
-        # Make sure to only load the model once
+        # Make sure to only load the model once.  The reference diagram
+        # counts are for physical (ungrouped) flavours.
         if len(self.myloopmodel['particles'])==0:
             self.myloopmodel = models.import_model(os.path.join(\
-            _input_file_path,'LoopSMEWTest'))
+            _input_file_path,'LoopSMEWTest'),
+            options={'apply_flavor_grouping': False})
         self.myloopmodel.actualize_dictionaries()
         
         self.mypartlist = self.myloopmodel['particles']
@@ -2293,6 +2295,100 @@ class LoopEWDiagramGenerationTest(unittest.TestCase):
             for loop_UVCT_diag in myloopamplitude.get('loop_UVCT_diagrams'):
                 sumUV+=len(loop_UVCT_diag.get('UVCT_couplings'))
             self.assertEqual(sumUV,nUVGoal)
+
+class GroupedLoopCounterTermTest(unittest.TestCase):
+    """Counterterms and closed loops of merged (flavour-grouped) quarks."""
+
+    grouped_loop_sm = None
+
+    def setUp(self):
+        if GroupedLoopCounterTermTest.grouped_loop_sm is None:
+            GroupedLoopCounterTermTest.grouped_loop_sm = \
+                models.import_model('loop_sm')
+        self.model = GroupedLoopCounterTermTest.grouped_loop_sm
+        self.model.actualize_dictionaries()
+        self.assertEqual(self.model.get('merged_particles')[81], [1, 2, 3, 4])
+
+    def test_grouped_gqq_counterterms_are_not_collapsed(self):
+        """Each g q q~ R2/UV counterterm survives flavour merging.
+
+        R2_GQQ and the UV counterterms share particles and orders.  Only the
+        flavour partners of one counterterm may be merged, and the number of
+        loop_particles entries (one contribution each) must not change."""
+
+        found = sorted(
+            (inter.get('type'),
+             [coupling for coupling in inter.get('couplings').values()],
+             inter.get('loop_particles'))
+            for inter in self.model.get('interactions')
+            if inter.get('type') != 'base' and sorted(
+                abs(p.get_pdg_code()) for p in inter.get('particles')) ==
+            [21, 81, 81])
+        self.assertEqual(found, sorted([
+            ('R2', ['R2_GQQ'], [[21, 81]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[81], [81], [81]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[81]]),
+            ('UVloop', ['UV_GQQb'], [[5]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[5]]),
+            ('UVloop', ['UV_GQQt'], [[6]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[6]]),
+            ('UVloop1eps', ['UV_GQQg_1eps'], [[21]])]))
+
+    def test_grouped_closed_light_quark_loop(self):
+        """A closed merged-quark loop sums its flavours and keeps its R2s.
+
+        Ungrouped, the u/d/s/c loops of q q~ > t t~ are one identified
+        diagram with multiplier 4 and four R2 counterterms; the grouped loop
+        of particle 81 must be equivalent."""
+
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 81, 'state': False}),
+            base_objects.Leg({'id': -81, 'state': False}),
+            base_objects.Leg({'id': 6, 'state': True}),
+            base_objects.Leg({'id': -6, 'state': True})])
+        process = base_objects.Process({
+            'legs': legs, 'model': self.model, 'orders': {'QED': 0},
+            'perturbation_couplings': ['QCD'], 'squared_orders': {}})
+        amplitude = loop_diagram_generation.LoopAmplitude()
+        amplitude.set('process', process)
+        amplitude.generate_diagrams()
+
+        closed = [diag for diag in amplitude.get('loop_diagrams')
+                  if set(abs(self.model.get_particle(tag[0]).get_pdg_code())
+                         for tag in diag['canonical_tag']) == set([81])]
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0].get('multiplier'), 4)
+        self.assertEqual(
+            [self.model.get_interaction(ct.get('id')).get('couplings')
+             for ct in closed[0].get('CT_vertices')],
+            [{(0, 0): 'R2_GGq'}] * 4)
+        self.assertEqual(sum(len(diag.get('CT_vertices'))
+                             for diag in amplitude.get('loop_diagrams')), 27)
+
+    def test_grouped_flavour_dependent_closed_loop_is_refused(self):
+        """A closed merged loop with flavour-dependent couplings is refused.
+
+        The loop numerator evaluates one flavour, so a photon/Z coupling
+        that depends on the quark flavour cannot be summed by a multiplier.
+        """
+
+        model = models.import_model(os.path.join(
+            _input_file_path, 'LoopSMEWTest'))
+        self.assertTrue(model.get('merged_particles'))
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 22, 'state': False}),
+            base_objects.Leg({'id': 22, 'state': False}),
+            base_objects.Leg({'id': 6, 'state': True}),
+            base_objects.Leg({'id': -6, 'state': True})])
+        process = base_objects.Process({
+            'legs': legs, 'model': model, 'orders': {},
+            'perturbation_couplings': ['QED'], 'squared_orders': {}})
+        amplitude = loop_diagram_generation.LoopAmplitude()
+        amplitude.set('process', process)
+        self.assertRaisesRegex(
+            MadGraph5Error, 'closed loop of merged particle',
+            amplitude.generate_diagrams)
+
 
 if __name__ == '__main__':
         # Save this model so that it can be loaded by other loop tests

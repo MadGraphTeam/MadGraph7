@@ -160,14 +160,15 @@ class TestCmdLoop(unittest.TestCase):
         self.assertEqual([row for row, unused in values], list(rows), output)
         return values
 
-    def test_grouped_nlo_virtual_values_all_physical_rows(self):
-        """Grouped virtual rows reproduce fixed d/u/s/c Born channels.
+    def _check_grouped_virtual_oracle(self, process, oracle_name, expected,
+                                      extra_checks=None):
+        """Compare grouped virtual rows with a pre-grouping physical oracle.
 
-        This is the Phase-02.05 numerical oracle.  It exercises both beam
-        orientations and both MadLoop exporters at one fixed physical point,
-        checking the Born interference, finite term and both poles.  The
-        references were produced by independent physical subprocesses at the
-        pre-grouping commit 844829d3ef, not by the current opt-out path.
+        ``expected`` maps each generated P directory to a tuple
+        ``(row_sequence, references, nctamps)``: the explicit virtual rows,
+        evaluated sequentially in one executable, the reference values of
+        each row, and the generated number of counterterm amplitudes.  Both
+        MadLoop exporters are generated and compared with the same oracle.
         """
 
         scratch_root = '/scratch' if os.path.isdir('/scratch') else None
@@ -180,9 +181,7 @@ class TestCmdLoop(unittest.TestCase):
             pjoin(hep_tools, 'collier'),
             env.get('LD_LIBRARY_PATH', '')])
 
-        oracle_path = pjoin(
-            MG5DIR, 'tests', 'input_files',
-            'nlo_pre_grouping_wpwm_oracle.json')
+        oracle_path = pjoin(MG5DIR, 'tests', 'input_files', oracle_name)
         with open(oracle_path) as stream:
             pre_grouping = json.load(stream)
         self.assertEqual(
@@ -191,15 +190,6 @@ class TestCmdLoop(unittest.TestCase):
         ps_input = '\n'.join(
             ' '.join('%.17e' % value for value in momentum)
             for momentum in pre_grouping['virtual']['momenta']) + '\n'
-        old_virtuals = pre_grouping['virtual']['oracles']
-        references = {
-            'q_qbar': {'down': old_virtuals['P0_ddx_wpwm'],
-                       'up': old_virtuals['P0_uux_wpwm']},
-            'qbar_q': {'down': old_virtuals['P0_dxd_wpwm'],
-                       'up': old_virtuals['P0_uxu_wpwm']}}
-        rows = ((1, 'down'), (6, 'up'), (11, 'down'), (16, 'up'))
-        row_families = dict(rows)
-        row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)
 
         try:
             for optimized in (True, False):
@@ -213,7 +203,7 @@ class TestCmdLoop(unittest.TestCase):
                         'set apply_flavor_grouping True --no_save',
                         'set loop_optimized_output %s --no_save' % optimized,
                         'import model loop_sm',
-                        'generate p p > w+ w- [QCD]',
+                        'generate %s' % process,
                         'output %s -f' % output,
                         'quit', '']))
                 self._run_checked(
@@ -223,50 +213,109 @@ class TestCmdLoop(unittest.TestCase):
                 self._run_checked(['make'], pjoin(output, 'Source'), env)
                 virtual_dirs = glob.glob(pjoin(
                     output, 'SubProcesses', 'P*', 'V*'))
-                self.assertEqual(len(virtual_dirs), 2)
+                self.assertEqual(
+                    sorted(os.path.basename(os.path.dirname(virtual_dir))
+                           for virtual_dir in virtual_dirs),
+                    sorted(expected))
                 for virtual_dir in virtual_dirs:
                     self._run_checked(['make'], virtual_dir, env)
                     p_name = os.path.basename(os.path.dirname(virtual_dir))
-                    orientation = ('qbar_q' if 'QxQ' in p_name else
-                                   'q_qbar')
+                    row_sequence, references, nctamps = expected[p_name]
 
                     with open(pjoin(virtual_dir, 'loop_matrix.f')) as stream:
                         loop_matrix = stream.read()
-                    self.assertIn('PARAMETER (NVIRTUAL_FLAVORS=16)',
-                                  loop_matrix)
                     self.assertIn('SLOOPMATRIX_THRES_FLAVOR', loop_matrix)
-                    self.assertIn('NCTAMPS=8', loop_matrix)
-                    if not optimized:
-                        with open(pjoin(virtual_dir, 'loop_num.f')) as stream:
-                            loop_num = stream.read()
-                        self.assertRegex(loop_num,
-                                         r'CALL (MP_)?FFV2(?:_3_5)?LM_')
-                        with open(pjoin(output, 'Source', 'DHELAS',
-                                        'FFV2LM_1.f')) as stream:
-                            loop_routine = stream.read().upper()
-                        self.assertIn(
-                            'SUBROUTINE FFV2LM_1(F2, V3, COUP,',
-                            loop_routine)
-                        self.assertNotIn('TYPE(FLV_COUPLING) MCOUP',
-                                         loop_routine)
+                    self.assertIn('NCTAMPS=%d' % nctamps, loop_matrix)
+                    if extra_checks:
+                        extra_checks(output, virtual_dir, loop_matrix,
+                                     optimized)
 
                     actual_rows = self._evaluate_grouped_virtual_rows(
                         virtual_dir, row_sequence, ps_input, env)
                     for row, actual in actual_rows:
-                        family = row_families[row]
-                        expected = references[orientation][family]
-                        for key in expected:
+                        reference = references[row]
+                        for key in reference:
                             tolerance = (5e-9 * max(abs(actual[key]),
-                                                    abs(expected[key])) +
+                                                    abs(reference[key])) +
                                          5e-13)
                             self.assertLessEqual(
-                                abs(actual[key] - expected[key]), tolerance,
+                                abs(actual[key] - reference[key]), tolerance,
                                 '%s %s row %d %s: %.16e != %.16e' %
                                 ('optimized' if optimized else 'default',
-                                 orientation, row, key, actual[key],
-                                 expected[key]))
+                                 p_name, row, key, actual[key],
+                                 reference[key]))
         finally:
             shutil.rmtree(work, ignore_errors=True)
+
+    def test_grouped_nlo_virtual_values_all_physical_rows(self):
+        """Grouped virtual rows reproduce fixed d/u/s/c Born channels.
+
+        This is the Phase-02.05 numerical oracle.  It exercises both beam
+        orientations and both MadLoop exporters at one fixed physical point,
+        checking the Born interference, finite term and both poles.  The
+        references were produced by independent physical subprocesses at the
+        pre-grouping commit 844829d3ef, not by the current opt-out path.
+        """
+
+        with open(pjoin(MG5DIR, 'tests', 'input_files',
+                        'nlo_pre_grouping_wpwm_oracle.json')) as stream:
+            old_virtuals = json.load(stream)['virtual']['oracles']
+        row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)
+        families = {1: 'dx', 6: 'ux', 11: 'dx', 16: 'ux'}
+
+        def extra_checks(output, virtual_dir, loop_matrix, optimized):
+            self.assertIn('PARAMETER (NVIRTUAL_FLAVORS=16)', loop_matrix)
+            if not optimized:
+                with open(pjoin(virtual_dir, 'loop_num.f')) as stream:
+                    loop_num = stream.read()
+                self.assertRegex(loop_num, r'CALL (MP_)?FFV2(?:_3_5)?LM_')
+                with open(pjoin(output, 'Source', 'DHELAS',
+                                'FFV2LM_1.f')) as stream:
+                    loop_routine = stream.read().upper()
+                self.assertIn('SUBROUTINE FFV2LM_1(F2, V3, COUP,',
+                              loop_routine)
+                self.assertNotIn('TYPE(FLV_COUPLING) MCOUP', loop_routine)
+
+        # P0_ddx_wpwm and P0_uux_wpwm (q q~), P0_dxd_wpwm and P0_uxu_wpwm
+        # (q~ q) are the independent physical references.
+        q_qbar = dict((row, old_virtuals['P0_%s_wpwm' % (
+            'ddx' if family == 'dx' else 'uux')])
+            for row, family in families.items())
+        qbar_q = dict((row, old_virtuals['P0_%s_wpwm' % (
+            'dxd' if family == 'dx' else 'uxu')])
+            for row, family in families.items())
+        self._check_grouped_virtual_oracle(
+            'p p > w+ w- [QCD]', 'nlo_pre_grouping_wpwm_oracle.json',
+            {'P0_QQx_wpwm': (row_sequence, q_qbar, 8),
+             'P0_QxQ_wpwm': (row_sequence, qbar_q, 8)},
+            extra_checks)
+
+    def test_grouped_nlo_virtual_values_ttx_all_physical_rows(self):
+        """Grouped t t~ virtuals keep all light-quark counterterms and loops.
+
+        Flavour merging must keep every distinct R2/UV counterterm of the
+        g q q~ vertex, the per-flavour multiplicity of counterterm loop
+        content, and the flavour sum of a closed merged light-quark loop.
+        The massless-quark loops enter every channel, including g g, so the
+        finite term would otherwise be wrong while some poles still cancel.
+        The references are independent physical subprocesses at the
+        pre-grouping commit 844829d3ef, where the d/s/c channels are
+        identical to u at QCD level.
+        """
+
+        with open(pjoin(MG5DIR, 'tests', 'input_files',
+                        'nlo_pre_grouping_ttx_virtual_oracle.json')) as stream:
+            old_virtuals = json.load(stream)['virtual']['oracles']
+        row_sequence = (1, 6, 11, 16, 16, 11, 6, 1)
+
+        def references(p_name):
+            return dict((row, old_virtuals[p_name]) for row in row_sequence)
+
+        self._check_grouped_virtual_oracle(
+            'p p > t t~ [QCD]', 'nlo_pre_grouping_ttx_virtual_oracle.json',
+            {'P0_gg_ttx': ((1,), {1: old_virtuals['P0_gg_ttx']}, 85),
+             'P0_QQx_ttx': (row_sequence, references('P0_uux_ttx'), 29),
+             'P0_QxQ_ttx': (row_sequence, references('P0_uxu_ttx'), 29)})
     
     def do(self, line):
         """ exec a line in the interface """        
