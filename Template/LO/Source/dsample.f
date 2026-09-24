@@ -1363,6 +1363,8 @@ c
 
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      double precision      swinlo(maxinvar),swinhi(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi
 
       integer nzoom
       double precision  tx(1:3,maxinvar)
@@ -1468,7 +1470,12 @@ c         write(*,*) "pole, width",ij,spole(ij),swidth(ij)
          if (swidth(ij) .gt. 0d0) then
 c            write(*,*) 'Tranpole called',ij,swidth(ij)
             y = x                             !Takes uniform y and returns
+            if (spole(ij).gt.0d0.and.swinhi(ij).gt.0d0) then
+               call transpole_win(spole(ij),swidth(ij),swinlo(ij),
+     &              swinhi(ij),y,x,wgt)
+            else
             call transpole(spole(ij),swidth(ij),y,x,wgt) !x on BW pole or 1/x 
+            endif
          endif
       endif
 c
@@ -1844,6 +1851,8 @@ c      common /to_fx/   fx
       common/to_mconfig2/psect          ,alpha
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      double precision      swinlo(maxinvar),swinhi(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi
       
       integer                   neventswritten
       common /to_eventswritten/ neventswritten
@@ -1979,8 +1988,13 @@ c
                if (j .gt. 0) then
                   if (swidth(j) .gt. 0d0) then
                      ddumb=0d0
+                     if (spole(j).gt.0d0.and.swinhi(j).gt.0d0) then
+                        call untranspole_win(spole(j),swidth(j),
+     &                    swinlo(j),swinhi(j),point(j),point(j),ddumb)
+                     else
                      call untranspole(spole(j),swidth(j),
      &                    point(j),point(j),ddumb)
+                     endif
                      if (point(j) .lt. 0d0) then
                         print*,'Warning point<0',j,point(j)
                      endif
@@ -2655,17 +2669,25 @@ c
       common /data_grid/ grid
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      double precision      swinlo(maxinvar),swinhi(maxinvar)
+      common/to_bw_window/  swinlo        ,swinhi
 c
 c     Data
 c
       data spole,swidth/maxinvar*0d0,maxinvar*0d0/
+      data swinlo,swinhi/maxinvar*0d0,maxinvar*0d0/
 c-----
 c  Begin Code
 c-----
       bwjac = 1d0
       if (j .gt. 0) then
          if (swidth(j) .gt. 0d0) then
+            if (spole(j).gt.0d0.and.swinhi(j).gt.0d0) then
+               call untranspole_win(spole(j),swidth(j),swinlo(j),
+     &              swinhi(j),x,y,bwjac)
+            else
             call  untranspole(spole(j),swidth(j),x,y,bwjac)
+            endif
          else
             x=y
          endif
