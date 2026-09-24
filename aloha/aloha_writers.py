@@ -888,6 +888,13 @@ class ALOHAWriterForFortran(WriteALOHA):
         """Formatting the variable name to Fortran format"""
         
         if isinstance(name, aloha_lib.ExtVariable):
+            if name.lower() == 'bwcutoff':
+                # an argument of the $-veto (P1D) routine, not a model
+                # parameter: including the MODEL files for it breaks the
+                # flavour-merged output, whose coupl.inc declares
+                # FLV_COUPLING without the 'use model_object' that only the
+                # M-tagged routines write
+                return name
             # external parameter nothing to do but handling model prefix
             self.has_model_parameter = True
             if name.lower() in ['pi', 'as', 'mu_r', 'aewm1','g','bwcutoff']:
