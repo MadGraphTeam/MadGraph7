@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <exception>
@@ -55,19 +57,40 @@ private:
     std::unordered_map<std::size_t, std::function<void(std::size_t)>> _listeners;
 };
 
+// Collects the results of jobs run on a ThreadPool by a caller that counts its
+// jobs in flight and waits for exactly that many results. Every job submitted
+// through submit() posts exactly one result -- its id, or the exception it threw
+// -- so such a caller can never block on a job that died.
 class ResultQueue {
 public:
-    void push(std::size_t result);
-    std::size_t wait();
-    std::vector<std::size_t> wait_multiple();
+    struct Result {
+        std::size_t id;
+        // Set if the job threw instead of completing
+        std::exception_ptr exception;
+    };
+
+    // Runs *job* on *pool*, then posts *id*, or the exception *job* threw.
+    void submit(ThreadPool& pool, std::size_t id, std::function<void()> job);
+    void push(std::size_t id);
+    void push_exception(std::size_t id, std::exception_ptr exception);
+    // Blocks until a result is available, calling *poll* (e.g. a check for a
+    // requested abort, which may throw) every *poll_interval* while waiting.
+    Result wait(
+        const std::function<void()>& poll = {},
+        std::chrono::milliseconds poll_interval = std::chrono::milliseconds(100)
+    );
+    // Cancels the jobs submitted but not started yet, waits for *count* further
+    // results and drops them, exceptions included. A long job can check
+    // cancelled() to stop early.
+    void discard(std::size_t count);
+    bool cancelled() const { return _cancelled; }
 
 private:
-    void fill_done_cache();
-
+    std::atomic<bool> _cancelled = false;
     std::mutex _mutex;
     std::condition_variable _cv;
-    std::deque<std::size_t> _queue;
-    std::vector<std::size_t> _buffer;
+    std::deque<Result> _queue;
+    std::vector<Result> _buffer;
 };
 
 template <typename T>
