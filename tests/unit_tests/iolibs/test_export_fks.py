@@ -521,6 +521,26 @@ class TestFKSOutput(unittest.TestCase):
     identical results
     """
 
+    def test_fks_wavefunction_calls_exist_without_loops(self):
+        """fks_singular.f only calls wavefunction routines, with the
+        ALOHA-object interface, that the plain (non-loop) ALOHA library
+        provides: real-only outputs such as [real=QCD QED] get that library,
+        and an unknown routine made them fail to link."""
+        import re
+        with open(os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                               'SubProcesses', 'fks_singular.f')) as stream:
+            source = stream.read()
+        with open(os.path.join(MGCmd.MG5DIR, 'aloha', 'template_files',
+                               'aloha_functions.f')) as stream:
+            library = stream.read().lower()
+        calls = re.findall(r'call\s+([iosv]xxx\w\w)\s*\(([^)]*)\)',
+                           source, re.I)
+        self.assertTrue(calls)
+        for name, arguments in calls:
+            self.assertIn('subroutine %s(' % name.lower(), library, name)
+            # p, mass, helicity, particle/antiparticle, flavor, output
+            self.assertEqual(len(arguments.split(',')), 6, name)
+
     def test_tir_library_paths_are_available_at_runtime(self):
         """External TIR shared libraries need an rpath in NLO executables."""
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)

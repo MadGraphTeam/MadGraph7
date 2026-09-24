@@ -5647,6 +5647,7 @@ c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
       subroutine sborncol_isr_store(p,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
      &                        ans_cnt, ret_amp_split_cnt,
      &                        coll_split, coll_cnt, coll_split_cnt)
+      USE ALOHA_OBJECT
       implicit none
       include "nexternal.inc"
       double precision p(0:3,nexternal),wgt
@@ -5686,7 +5687,8 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
 C ap and Q contain the QCD(1) and QED(2) Altarelli-Parisi kernel
       double precision t,z,ap(2),Q(2),cphi_mother,sphi_mother,
      $ pi(0:3),pj(0:3),wgt_born
-      double complex W1(6),W2(6),W3(6),W4(6),Wij_angle,Wij_recta
+      TYPE(ALOHA) W1,W2,W3,W4
+      double complex Wij_angle,Wij_recta
       double complex azifact
 
       double precision zero,vtiny
@@ -5796,15 +5798,16 @@ c general rotation is needed
                  pj(1)=-pj(1)
                  pj(3)=-pj(3)
               endif
-              CALL IXXXSO(pi ,ZERO ,+1,+1,W1)        
-              CALL OXXXSO(pj ,ZERO ,-1,+1,W2)        
-              CALL IXXXSO(pi ,ZERO ,-1,+1,W3)        
-              CALL OXXXSO(pj ,ZERO ,+1,+1,W4)        
+c Same spinors as in sborncol_isr (the ALOHA-object interface).
+              CALL IXXXXX(pi ,ZERO ,+1,+1,1,W1)
+              CALL OXXXXX(pj ,ZERO ,-1,+1,1,W2)
+              CALL IXXXXX(pi ,ZERO ,-1,+1,1,W3)
+              CALL OXXXXX(pj ,ZERO ,+1,+1,1,W4)
               Wij_angle=(0d0,0d0)
               Wij_recta=(0d0,0d0)
               do i=1,4
-                 Wij_angle = Wij_angle + W1(i)*W2(i)
-                 Wij_recta = Wij_recta + W3(i)*W4(i)
+                 Wij_angle = Wij_angle + W1%W(i)*W2%W(i)
+                 Wij_recta = Wij_recta + W3%W(i)*W4%W(i)
               enddo
               azifact=Wij_angle/Wij_recta
            endif
