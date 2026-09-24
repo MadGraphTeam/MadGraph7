@@ -232,6 +232,36 @@ def type_table():
             for n in (1, 2, 3, 4)}
 
 
+def circe_table(name):
+    """Per (component, beamid): the CIRCE parameters of the beamstrahlung
+    factor, a * exp(p*u) * Q(q, u), read from gen_bstrahl.py's table so the
+    two cannot drift apart.
+
+    Which components carry beamstrahlung on which beam is not symmetric: it
+    is n = 2, 4 for the electron and n = 3, 4 for the positron, mirroring
+    eepdf_tilde_type. Components not listed have none -- they are the
+    delta(1-x_BS) pieces, where the beam simply did not radiate.
+    """
+    try:
+        import gen_bstrahl
+    except ImportError:
+        return None, None
+    spec = gen_bstrahl.SETS.get(name)
+    if spec is None:
+        return None, None
+    (_collider, qterm, a11, a01, a10, a00,
+     p1, q1, p2, q2, p3, q3, p4, q4) = spec
+    root_a11 = math.sqrt(a11)
+    root_a00 = math.sqrt(a00)
+    table = {
+        '2_11': {'a': a01 / root_a11, 'p': p1, 'q': q1},
+        '4_11': {'a': root_a00, 'p': p3, 'q': q3},
+        '3_-11': {'a': a10 / root_a11, 'p': p2, 'q': q2},
+        '4_-11': {'a': root_a00, 'p': p4, 'q': q4},
+    }
+    return table, qterm
+
+
 def write_meta(path, name, yv, zv, xs, qs, pids):
     meta = {
         'set': name,
@@ -256,6 +286,19 @@ def write_meta(path, name, yv, zv, xs, qs, pids):
         'component_type': type_table(),
         'nonzero_only_when': 'partonid == beamid',
     }
+    circe, qterm = circe_table(name)
+    if circe is not None:
+        # The exponential factor of the CIRCE spectrum is collider dependent
+        # ('sqrt', 'u15' or 'ym15' -- see gen_bstrahl.py). Getting it wrong is
+        # silent: the normalisation of the split drifts and nothing crashes.
+        meta['beamstrahlung'] = {
+            'comment': 'D_BS(y) = a * exp(p*u) * Q(q,u) * (1-y)**(-2/3), '
+                       'u = 1-y; key is <component>_<beamid>',
+            'q_term': qterm,
+            'ra': 0.5,
+            'pa': -2.0 / 3.0,
+            'parameters': circe,
+        }
     with open(path, 'w') as fsock:
         json.dump(meta, fsock, indent=2, sort_keys=True)
         fsock.write('\n')

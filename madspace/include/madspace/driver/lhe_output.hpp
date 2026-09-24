@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <optional>
+#include <utility>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -140,6 +141,12 @@ struct LHEEvent {
     std::vector<double> rwgt;
     /// Optional `<mgrwt>` block.
     std::optional<LOReweightInfo> lo_info;
+    /// Optional `<beamstrahlung>` block: the momentum fraction each beam kept
+    /// after beamstrahlung. A dressed-lepton density folds beamstrahlung into
+    /// the PDF, so the initial-state momenta carry the product
+    /// `x = x_BS * x_ISR` and a shower cannot separate the two on its own;
+    /// this is what lets it degrade the beams and evolve only `x_ISR`.
+    std::optional<std::pair<double, double>> beamstrahlung;
 
     /// Append this event's LHE text to `buffer`.
     void format_to(std::string& buffer) const;

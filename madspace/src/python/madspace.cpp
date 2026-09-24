@@ -637,6 +637,60 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("LeptonLuminosity::LeptonLuminosity")
         );
 
+    py::enum_<BeamstrahlungQTerm>(m, "BeamstrahlungQTerm")
+        .value("sqrt_u", BeamstrahlungQTerm::sqrt_u)
+        .value("u_three_halves", BeamstrahlungQTerm::u_three_halves)
+        .value("y_minus_three_halves", BeamstrahlungQTerm::y_minus_three_halves);
+
+    py::classh<BeamstrahlungParameters>(
+        m, "BeamstrahlungParameters", pydoc::doc("BeamstrahlungParameters")
+    )
+        .def(
+            py::init([](double a, double p, double q, bool has) {
+                return BeamstrahlungParameters{a, p, q, has};
+            }),
+            py::arg("a") = 0.,
+            py::arg("p") = 0.,
+            py::arg("q") = 0.,
+            py::arg("has") = false
+        )
+        .def_readwrite("a", &BeamstrahlungParameters::a)
+        .def_readwrite("p", &BeamstrahlungParameters::p)
+        .def_readwrite("q", &BeamstrahlungParameters::q)
+        .def_readwrite("has", &BeamstrahlungParameters::has);
+
+    py::classh<BeamstrahlungSampler>(
+        m, "BeamstrahlungSampler", pydoc::doc("BeamstrahlungSampler")
+    )
+        .def(
+            py::init<
+                const std::vector<BeamstrahlungParameters>&,
+                const std::vector<BeamstrahlungParameters>&,
+                BeamstrahlungQTerm,
+                double,
+                double,
+                std::size_t>(),
+            py::arg("beam1"),
+            py::arg("beam2"),
+            py::arg("q_term"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("grid_points") = 128,
+            pydoc::doc("BeamstrahlungSampler::BeamstrahlungSampler")
+        )
+        .def(
+            "has_beamstrahlung",
+            &BeamstrahlungSampler::has_beamstrahlung,
+            pydoc::doc("BeamstrahlungSampler::has_beamstrahlung")
+        )
+        .def(
+            "sample",
+            &BeamstrahlungSampler::sample,
+            py::arg("x1"), py::arg("x2"), py::arg("q2"), py::arg("component"),
+            py::arg("u1"), py::arg("u2"), py::arg("u3"), py::arg("u4"),
+            pydoc::doc("BeamstrahlungSampler::sample")
+        );
+
     py::classh<LeptonLuminosityInvariant, Mapping>(
         m, "LeptonLuminosityInvariant", pydoc::doc("LeptonLuminosityInvariant")
     )
@@ -2832,6 +2886,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "rwgt_ids", &LHEEvent::rwgt_ids, pydoc::doc("LHEEvent::rwgt_ids")
         )
         .def_readwrite("rwgt", &LHEEvent::rwgt, pydoc::doc("LHEEvent::rwgt"))
+        .def_readwrite(
+            "beamstrahlung",
+            &LHEEvent::beamstrahlung,
+            pydoc::doc("LHEEvent::beamstrahlung")
+        )
         .def(
             "format",
             [](const LHEEvent& event) {

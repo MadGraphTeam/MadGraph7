@@ -512,3 +512,134 @@ class TestLuminosityChannels(unittest.TestCase):
         inv = lum.map_inverse([f.x1, f.x2, f.s_hat])
         np.testing.assert_allclose(np.asarray(inv.r_s), r_s, rtol=1e-12)
         np.testing.assert_allclose(np.asarray(inv.r_x), r_x, rtol=1e-12)
+
+
+@unittest.skipIf(np is None, 'numpy required')
+class TestBeamstrahlungSplit(unittest.TestCase):
+    """Splitting x into its beamstrahlung and ISR parts, and writing it out.
+
+    The sampler is a port of eepdf_sample_bstrahl (bstrahl.f), and it was
+    checked against the compiled Fortran to 1e-16 for all three collider
+    q-term forms -- vendor/eepdfgrid/dump_bstrahl_sample.f is that reference,
+    kept because it is the only thing that pins the spectrum down. What is
+    checked here are the properties that a wrong port would break without
+    anyone noticing: the collider-dependent factor actually mattering, the
+    non-radiating components staying exactly 1, and the split being a split.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ms = _madspace()
+        if cls.ms is None or not hasattr(cls.ms, 'BeamstrahlungSampler'):
+            raise unittest.SkipTest('madspace build with the sampler required')
+        if gen is None or not os.path.isdir(SET_DIR):
+            raise unittest.SkipTest('the generator and %s are required' % SET)
+        import json
+        tmp = tempfile.mkdtemp()
+        try:
+            shutil.copy(os.path.join(SET_DIR, 'eepdf.f'), tmp)
+            _, meta_path, _, _ = gen.generate(tmp, SET)
+            with open(meta_path) as fsock:
+                cls.meta = json.load(fsock)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        cls.bs = cls.meta.get('beamstrahlung')
+        if cls.bs is None:
+            raise unittest.SkipTest('%s carries no beamstrahlung' % SET)
+
+    def _params(self, beamid):
+        ms = self.ms
+        out = []
+        for n in (1, 2, 3, 4):
+            key = '%d_%d' % (n, beamid)
+            if key in self.bs['parameters']:
+                p = self.bs['parameters'][key]
+                out.append(ms.BeamstrahlungParameters(p['a'], p['p'], p['q'], True))
+            else:
+                out.append(ms.BeamstrahlungParameters())
+        return out
+
+    def _sampler(self, q_term=None):
+        ms = self.ms
+        names = {'sqrt': ms.BeamstrahlungQTerm.sqrt_u,
+                 'u15': ms.BeamstrahlungQTerm.u_three_halves,
+                 'ym15': ms.BeamstrahlungQTerm.y_minus_three_halves}
+        return ms.BeamstrahlungSampler(
+            self._params(11), self._params(-11),
+            names[q_term or self.bs['q_term']])
+
+    def test_metadata_carries_the_collider_dependent_factor(self):
+        """Which q-term a set uses has to be recorded, not guessed.
+
+        It differs between machines and getting it wrong is silent: the
+        normalisation of the split drifts and nothing fails.
+        """
+        self.assertIn(self.bs['q_term'], ('sqrt', 'u15', 'ym15'))
+        # the beams do not radiate in the same components
+        self.assertEqual(sorted(self.bs['parameters']),
+                         ['2_11', '3_-11', '4_-11', '4_11'])
+
+    def test_non_radiating_components_return_exactly_one(self):
+        """The delta(1-x_BS) pieces: the beam did not radiate at all."""
+        s = self._sampler()
+        # component 0 radiates on neither beam, 1 only on the electron
+        for comp, expect in ((0, (1.0, 1.0)), (1, (None, 1.0))):
+            got = s.sample(0.9, 0.9, 120.0 ** 2, comp, 0.3, 0.4, 0.5, 0.6)
+            for value, want in zip(got, expect):
+                if want is not None:
+                    self.assertEqual(value, want, 'component %d' % comp)
+
+    def test_the_split_is_a_split(self):
+        s = self._sampler()
+        rng = np.random.default_rng(3)
+        for _ in range(300):
+            x = float(np.clip(1 - 10 ** rng.uniform(-7, -0.05), 1e-6, 1 - 1e-12))
+            xbs, _ = s.sample(x, x, 120.0 ** 2, 3,
+                              *rng.uniform(0, 1, 4).tolist())
+            self.assertGreater(xbs, 0.0)
+            self.assertLessEqual(xbs, 1.0)
+            # x = x_BS * x_ISR with x_ISR <= 1, so x_BS can never fall below x
+            self.assertGreaterEqual(xbs, x - 1e-12)
+
+    def test_q_term_changes_the_answer(self):
+        """A wrong collider table must not be silent."""
+        base = self._sampler('sqrt')
+        others = [self._sampler('u15'), self._sampler('ym15')]
+        args = (0.97, 0.97, 120.0 ** 2, 3, 0.31, 0.62, 0.17, 0.48)
+        ref = base.sample(*args)[0]
+        for other in others:
+            self.assertNotAlmostEqual(other.sample(*args)[0], ref, places=6)
+
+    def test_cdf_inversion_is_monotone(self):
+        """u2 walks the CDF, so x_BS has to move monotonically with it."""
+        s = self._sampler()
+        vals = [s.sample(0.98, 0.98, 120.0 ** 2, 3, 0.2, u2, 0.5, 0.5)[0]
+                for u2 in np.linspace(0.01, 0.99, 40)]
+        diffs = np.diff(vals)
+        self.assertTrue((diffs >= -1e-12).all() or (diffs <= 1e-12).all(), vals)
+
+    def test_lhe_element_round_trips(self):
+        """Written by madspace, read by the tools that consume it."""
+        ms = self.ms
+        sys.path.insert(0, _root)
+        import madgraph.various.lhe_parser as lhe_parser
+        particle = ms.LHEParticle(
+            pdg_id=11, status_code=-1, mother1=0, mother2=0, color=0,
+            anti_color=0, px=0., py=0., pz=120., energy=120., mass=0.,
+            lifetime=0., spin=9.)
+        event = ms.LHEEvent(process_id=1, weight=1.0, scale=120.0,
+                            alpha_qed=0.0075, alpha_qcd=0.118,
+                            particles=[particle])
+        self.assertIsNone(
+            lhe_parser.Event(event.format()).parse_beamstrahlung(),
+            'the element must be absent unless it was set')
+        event.beamstrahlung = (0.99987654, 1.0)
+        text = event.format()
+        self.assertIn('<beamstrahlung>', text)
+        parsed = lhe_parser.Event(text).parse_beamstrahlung()
+        self.assertEqual(len(parsed), 2)
+        self.assertAlmostEqual(parsed[0], 0.99987654)
+        self.assertAlmostEqual(parsed[1], 1.0)
+        # and it survives being read and written back out
+        again = lhe_parser.Event(str(lhe_parser.Event(text))).parse_beamstrahlung()
+        self.assertAlmostEqual(again[0], 0.99987654)

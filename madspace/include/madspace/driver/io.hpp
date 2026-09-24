@@ -149,6 +149,7 @@ public:
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
+    static constexpr int f_beamstrahlung = 256;
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
@@ -203,6 +204,17 @@ public:
                 {
                     {"x2", FieldLayout::f64, 5},
                     {"fact_scale2", FieldLayout::f64, 5},
+                }
+            );
+        }
+        if (fields & f_beamstrahlung) {
+            // the fraction each beam kept after beamstrahlung; written to the
+            // event file as <beamstrahlung>, and not part of the weight
+            ret.insert(
+                ret.end(),
+                {
+                    {"xbs1", FieldLayout::f64, 6},
+                    {"xbs2", FieldLayout::f64, 6},
                 }
             );
         }
