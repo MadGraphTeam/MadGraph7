@@ -535,6 +535,37 @@ c
 !     dependent in case of delta
       integer cur_part
       common /to_ref_scale/cur_part
+C Born inputs of the MC counterterms, computed as in amplitudes_vec
+      include 'genps.inc'
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+      double precision p_born_rot(0:3,nexternal-1)
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      double precision amp2(ngraphs),born_wgt
+      double precision born_split(amp_split_size)
+      complex*16 born_cnt(2,nsplitorders),rot_cnt(2,nsplitorders)
+      double complex born_split_cnt(amp_split_size,2,nsplitorders)
+      double complex rot_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
+      double precision born_jamp2(0:ncolor),rot_jamp2(0:ncolor)
+c The MC counterterms of the production path (compute_xmcsubt_complete
+c called from driver_mintMC) take the Born at p_born and at p_born
+c rotated by pi around the y axis as inputs. Use exactly that path here,
+c so that the soft/collinear tests check the production counterterms.
+      do i=1,nexternal-1
+         p_born_rot(0,i)=p_born(0,i)
+         p_born_rot(1,i)=-p_born(1,i)
+         p_born_rot(2,i)=p_born(2,i)
+         p_born_rot(3,i)=-p_born(3,i)
+      enddo
+      calculatedBorn=.false.
+      call sborn_amp(p_born,amp2,born_jamp2,born_split,born_split_cnt
+     $     ,born_wgt,born_cnt,born_saveamp)
+      calculatedBorn=.false.
+      call sborn_amp(p_born_rot,amp2,rot_jamp2,born_split,rot_split_cnt
+     $     ,born_wgt,rot_cnt,born_saveamp)
+      calculatedBorn=.false.
       first_MCcnt_call=.true.
       is_pt_hard=.false.
       MCsec(1:nexternal,1:max_bcol)=0d0
@@ -542,9 +573,11 @@ c
       amp_split_mc(1:amp_split_size)=0d0
       do npartner=1,ipartners(0)
          if (mcatnlo_delta) cur_part=ipartners(npartner)
-         call xmcsubt(pp,xi_i_fks,y_ij_fks,gfactsf,gfactcl,probne
+         call xmcsubt_store(pp,xi_i_fks,y_ij_fks,gfactsf,gfactcl,probne
      $        ,nofpartners,lzone,flagmc,z,xkern,xkernazi,emscwgt
-     $        ,bornbars,bornbarstilde,npartner)
+     $        ,bornbars,bornbarstilde,npartner
+     $        ,born_cnt,born_split_cnt,born_jamp2
+     $        ,rot_cnt,rot_split_cnt,rot_jamp2)
          if(is_pt_hard)exit
          if(dampMCsubt) then
             if (.not.mcatnlo_delta) then
@@ -883,6 +916,12 @@ c Particle types (=colour) of i_fks, j_fks and fks_mother
 C Born variables
       double precision p_born(0:3,nexternal-1)
       common /pborn/   p_born
+      double precision p_born_coll(0:3,nexternal-1)
+      common/pborn_coll/p_born_coll
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      logical use_evpr
+      common /to_use_evpr/use_evpr
       double precision amp2(ngraphs), jamp2(0:ncolor)
       complex*16 ans_cnt(2,nsplitorders)
       double complex born_split_cnt(amp_split_size,2,nsplitorders)
@@ -896,26 +935,40 @@ c
       ! this contribution is needed only for i_fks being a gluon/photon
       ! (soft limit)
       if (is_aorg(i_fks))then
+c i_fks is gluon/photon. sreal takes the Born of each counter-event as
+c input. As in the production path (sreal_store/sborncol_isr_store),
+c this is p_born, except for the collinear counter-event with xi_i_fks>0
+c and without event projection, which uses p_born_coll. sreal
+c overwrites ret_amp_split, so recompute the Born before every call.
+         calculatedBorn=.false.
          call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
-c i_fks is gluon/photon
          call set_cms_stuff(izero)
          call sreal(p1_cnt(0,1,0),zero,y_ij_fks,wgts,ret_amp_split
      $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
            amp_split_s(iamp) = ret_amp_split(iamp)
          enddo
+         calculatedBorn=.false.
+         if (xi_i_fks.gt.0d0.and..not.use_evpr) then
+            call sborn_amp(p_born_coll,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+         else
+            call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
+         endif
          call set_cms_stuff(ione)
          call sreal(p1_cnt(0,1,1),xi_i_fks,one,wgtc,ret_amp_split
      $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
            amp_split_c(iamp) = ret_amp_split(iamp)
          enddo
+         calculatedBorn=.false.
+         call sborn_amp(p_born,amp2,jamp2,ret_amp_split,born_split_cnt,wgt,ans_cnt,born_saveamp)
          call set_cms_stuff(itwo)
          call sreal(p1_cnt(0,1,2),zero,one,wgtsc,ret_amp_split
      $             ,ans_cnt,born_split_cnt,born_saveamp)
          do iamp=1, amp_split_size
            amp_split_sc(iamp) = ret_amp_split(iamp)
          enddo
+         calculatedBorn=.false.
          wgt=wgts+(1-gfactcl)*(wgtc-wgtsc)
          wgt=wgt*(1-gfactsf)
          do iamp = 1, amp_split_size
