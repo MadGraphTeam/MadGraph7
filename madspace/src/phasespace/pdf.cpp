@@ -504,6 +504,101 @@ NamedVector<Value> EEPartonDensity::build_function_impl(
     return {{"pdf", fb.mul(reduced, fb.pow(omx, exponent))}};
 }
 
+EELuminosity::EELuminosity(
+    const PdfGrid& grid,
+    const std::vector<int>& pids1,
+    const std::vector<int>& pids2,
+    const std::vector<double>& offsets1,
+    const std::vector<double>& offsets2,
+    double alpha_em,
+    double lepton_mass,
+    const std::string& prefix
+) :
+    FunctionGenerator(
+        "EELuminosity",
+        {{"x1", batch_float},
+         {"omx1", batch_float},
+         {"x2", batch_float},
+         {"omx2", batch_float},
+         {"q", batch_float},
+         {"r", batch_float}},
+        {{"luminosity", batch_float}, {"component_index", batch_int}}
+    ),
+    _density1(grid, pids1, false, prefix),
+    _density2(grid, pids2, false, prefix),
+    _offsets1(offsets1),
+    _offsets2(offsets2),
+    _alpha_em(alpha_em),
+    _lepton_mass(lepton_mass) {
+    if (pids1.size() != pids2.size()) {
+        throw std::invalid_argument(std::format(
+            "EELuminosity: {} components on beam 1 but {} on beam 2; the two "
+            "are paired term by term and must correspond",
+            pids1.size(),
+            pids2.size()
+        ));
+    }
+    if (offsets1.size() != pids1.size() || offsets2.size() != pids2.size()) {
+        throw std::invalid_argument(
+            "EELuminosity: one exponent offset is needed per component and beam"
+        );
+    }
+    if (pids1.empty()) {
+        throw std::invalid_argument("EELuminosity: no components given");
+    }
+    if (lepton_mass <= 0.) {
+        throw std::invalid_argument("EELuminosity: lepton mass must be positive");
+    }
+}
+
+NamedVector<Value> EELuminosity::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto x1 = args.at(0), omx1 = args.at(1);
+    auto x2 = args.at(2), omx2 = args.at(3);
+    auto q = args.at(4), r = args.at(5);
+    auto batch = fb.batch_size({q});
+
+    // one interpolation per beam for all components, then pick them apart;
+    // calling the interpolation once per component would redo its search
+    auto reduced1 = _density1.build_function(fb, ValueVec{x1, q}).at(0);
+    auto reduced2 = _density2.build_function(fb, ValueVec{x2, q}).at(0);
+
+    auto log_q = fb.log(q);
+    auto two_a = fb.full({2. * _alpha_em / M_PI, batch});
+    auto beta_part = fb.mul(two_a, log_q);
+
+    std::size_t n_comp = _offsets1.size();
+    ValueVec products, weights;
+    for (std::size_t n = 0; n < n_comp; ++n) {
+        auto index = fb.full({static_cast<me_int_t>(n), batch});
+        auto exp1 = fb.add(
+            beta_part,
+            fb.full({exponent_constant(_offsets1[n], _alpha_em, _lepton_mass), batch})
+        );
+        auto exp2 = fb.add(
+            beta_part,
+            fb.full({exponent_constant(_offsets2[n], _alpha_em, _lepton_mass), batch})
+        );
+        auto f1 = fb.mul(fb.gather(index, reduced1), fb.pow(omx1, exp1));
+        auto f2 = fb.mul(fb.gather(index, reduced2), fb.pow(omx2, exp2));
+        auto product = fb.mul(f1, f2);
+        products.push_back(product);
+        weights.push_back(fb.abs(product));
+    }
+
+    auto luminosity = fb.sum(products);
+    // components may be individually negative, so sample on |f1 f2| -- the
+    // convention PD(0) uses when it accumulates DABS(PD(IPROC)) in auto_dsig.f
+    auto total = fb.max(fb.sum(weights), fb.full({1e-300, batch}));
+    ValueVec probs;
+    for (auto& w : weights) {
+        probs.push_back(fb.div(w, total));
+    }
+    auto sampled = fb.sample_discrete_probs(r, fb.stack(probs));
+    return {{"luminosity", luminosity}, {"component_index", sampled[0]}};
+}
+
 AlphaSGrid::AlphaSGrid(const std::string& file) {
     std::ifstream grid_file(file);
     if (!grid_file) {

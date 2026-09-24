@@ -159,4 +159,78 @@ private:
     double _s_lab, _s_hat_min, _power;
 };
 
+/**
+ * Dressed-lepton fractions sampled through a resonance in @f$\hat s@f$.
+ *
+ * @ref LeptonLuminosity covers the @f$x \to 1@f$ endpoint, which is where a
+ * dressed-lepton density puts its weight, but it is a poor fit to a narrow
+ * s-channel resonance. This is the companion channel: @f$\hat s@f$ is drawn
+ * with an @ref Invariant, exactly as @ref Luminosity does, and only then split
+ * into the two fractions. It is a variance-reduction channel — results are
+ * correct without it — and is meant to be mixed with @ref LeptonLuminosity by
+ * the usual multichannel weights.
+ *
+ * Only the *larger* fraction is drawn from the endpoint, over
+ * @f$[\sqrt\tau, 1]@f$; the other follows as @f$\tau/x@f$. Which beam gets
+ * which is decided per event, so both orderings are covered.
+ *
+ * **The derived fraction needs its @f$(1-x)^{-p}@f$ put back.** The density is
+ * stored reduced by @f$p@f$ and the drawn fraction's Jacobian omits that
+ * factor to cancel it (see @ref LeptonLuminosity); the derived one never went
+ * through that transformation, so nothing cancels it there and the Jacobian
+ * has to supply it. `genps.f` makes the same correction, in the same place.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `r_s` – `float`, shape `(batch,)` – random number for @f$\hat s@f$.
+ * - `r_x` – `float`, shape `(batch,)` – random number for the drawn fraction.
+ * - `r_swap` – `float`, shape `(batch,)` – random number deciding which beam
+ *   carries the drawn fraction.
+ *
+ * **Conditions**
+ * - None.
+ *
+ * **Outputs**
+ * - `x1`, `x2`, `omx1`, `omx2`, `s_hat` – as in @ref LeptonLuminosity.
+ */
+class LeptonLuminosityInvariant : public Mapping {
+public:
+    /**
+     * @param s_lab          Squared collider energy.
+     * @param s_hat_min      Lower bound on @f$\hat s@f$.
+     * @param s_hat_max      Upper bound; `0` uses @f$s_\mathrm{lab}@f$.
+     * @param sampling_power @f$p@f$; must match the density's reduction
+     *                       exponent, as for @ref LeptonLuminosity.
+     * @param mass           Resonance mass in @f$\hat s@f$.
+     * @param width          Resonance width; nonzero selects Breit-Wigner
+     *                       sampling. See @ref Invariant.
+     * @param invariant_power Exponent of the @f$1/\hat s^{\,n}@f$ sampling.
+     */
+    LeptonLuminosityInvariant(
+        double s_lab,
+        double s_hat_min,
+        double s_hat_max = 0.,
+        double sampling_power = 0.96,
+        double mass = 0.,
+        double width = 0.,
+        double invariant_power = 1.
+    );
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+
+    double _s_lab, _s_hat_min, _s_hat_max, _power;
+    Invariant _invariant;
+};
+
 } // namespace madspace

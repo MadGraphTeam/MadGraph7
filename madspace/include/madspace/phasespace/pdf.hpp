@@ -184,6 +184,75 @@ private:
 };
 
 /**
+ * Two-beam luminosity of a dressed-lepton density, and its component choice.
+ *
+ * The beam densities do not simply multiply. A dressed-lepton density is a
+ * sum of factorized terms, and the two-beam luminosity pairs them off term by
+ * term,
+ *
+ * @f[
+ *   L(x_1, x_2, Q) = \sum_{n} f^{(1)}_n(x_1, Q)\, f^{(2)}_n(x_2, Q),
+ * @f]
+ *
+ * which is `ee_comp_prod` of `pdg2pdf.f`. Pairing the *sums* instead would be
+ * wrong, so the two pid lists must be given in the same component order.
+ *
+ * One component is also sampled, with probability proportional to
+ * @f$|f^{(1)}_n f^{(2)}_n|@f$. That choice does not enter @p luminosity and so
+ * does not affect the cross section — it is what the beamstrahlung split needs
+ * downstream, where each component carries its own spectrum (the same choice
+ * `sample_bstrahl.f` makes).
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x1`, `omx1` – `float`, shape `(batch,)` – first beam's fraction and
+ *   @f$1-x@f$.
+ * - `x2`, `omx2` – `float`, shape `(batch,)` – second beam's.
+ * - `q` – `float`, shape `(batch,)` – factorization scale.
+ * - `r` – `float`, shape `(batch,)` – random number for the component choice.
+ *
+ * **Returns**
+ * - `luminosity` – `float`, shape `(batch,)` – @f$L@f$, signed.
+ * - `component_index` – `int`, shape `(batch,)` – the sampled component,
+ *   indexing the pid lists.
+ */
+class EELuminosity : public FunctionGenerator {
+public:
+    /**
+     * @param grid       Grid of the reduced densities.
+     * @param pids1      Components of the first beam, in component order.
+     * @param pids2      Components of the second beam, same order.
+     * @param offsets1   Per component, @f$p - \kappa^{(0)}_n@f$ for beam 1.
+     * @param offsets2   The same for beam 2. The two differ: which components
+     *                   are the sharply peaked ones depends on the beam.
+     * @param alpha_em   @f$\alpha@f$ in the scheme the grid was fitted in.
+     * @param lepton_mass @f$m@f$ of the beam leptons, in GeV.
+     * @param prefix     Prefix for the grid global names.
+     */
+    EELuminosity(
+        const PdfGrid& grid,
+        const std::vector<int>& pids1,
+        const std::vector<int>& pids2,
+        const std::vector<double>& offsets1,
+        const std::vector<double>& offsets2,
+        double alpha_em = 0.007562397,
+        double lepton_mass = 0.511e-3,
+        const std::string& prefix = ""
+    );
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density1, _density2;
+    std::vector<double> _offsets1, _offsets2;
+    double _alpha_em;
+    double _lepton_mass;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;

@@ -637,6 +637,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("LeptonLuminosity::LeptonLuminosity")
         );
 
+    py::classh<LeptonLuminosityInvariant, Mapping>(
+        m, "LeptonLuminosityInvariant", pydoc::doc("LeptonLuminosityInvariant")
+    )
+        .def(
+            py::init<double, double, double, double, double, double, double>(),
+            py::arg("s_lab"),
+            py::arg("s_hat_min"),
+            py::arg("s_hat_max") = 0.,
+            py::arg("sampling_power") = 0.96,
+            py::arg("mass") = 0.,
+            py::arg("width") = 0.,
+            py::arg("invariant_power") = 1.,
+            pydoc::doc("LeptonLuminosityInvariant::LeptonLuminosityInvariant")
+        );
+
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))
         .def(py::init<bool>(), py::arg("com"), pydoc::doc("TwoBodyDecay::TwoBodyDecay"))
         .def(
@@ -1806,6 +1821,30 @@ PYBIND11_MODULE(_madspace_py, m) {
             &EEPartonDensity::initialize_globals,
             py::arg("context"),
             pydoc::doc("EEPartonDensity::initialize_globals")
+        );
+
+    py::classh<EELuminosity, FunctionGenerator>(
+        m, "EELuminosity", pydoc::doc("EELuminosity")
+    )
+        .def(
+            py::init<
+                const PdfGrid&,
+                const std::vector<int>&,
+                const std::vector<int>&,
+                const std::vector<double>&,
+                const std::vector<double>&,
+                double,
+                double,
+                const std::string&>(),
+            py::arg("grid"),
+            py::arg("pids1"),
+            py::arg("pids2"),
+            py::arg("exponent_offsets1"),
+            py::arg("exponent_offsets2"),
+            py::arg("alpha_em") = 0.007562397,
+            py::arg("lepton_mass") = 0.511e-3,
+            py::arg("prefix") = "",
+            pydoc::doc("EELuminosity::EELuminosity")
         );
 
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))

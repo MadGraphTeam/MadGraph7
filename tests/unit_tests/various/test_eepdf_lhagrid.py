@@ -420,3 +420,95 @@ class TestLeptonLuminosity(unittest.TestCase):
                     'pid %d: MC %.8e vs quadrature %.8e' % (pid, mc, ref))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+@unittest.skipIf(np is None, 'numpy required')
+class TestLuminosityChannels(unittest.TestCase):
+    """The two sampling channels, and the Jacobian each of them omits.
+
+    A dressed-lepton density is stored reduced by ps_expo, so a channel's
+    Jacobian has to end up supplying exactly (1-x)**-p per beam: the drawn
+    fractions get it by *omission* (the density cancels it), the derived one
+    by an explicit factor. Multiplying a channel's Jacobian by
+    (omx1*omx2)**p therefore has to integrate the unit square to 1 -- a check
+    that needs no density at all, and the only one that pins the convention
+    down for both channels at once.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ms = _madspace()
+        if cls.ms is None or not hasattr(cls.ms, 'LeptonLuminosityInvariant'):
+            raise unittest.SkipTest('madspace build with the channels required')
+        cls.s_lab = 240.0 ** 2
+        cls.power = 0.96
+
+    def _unit_square(self, f):
+        w = (np.asarray(f.det)
+             * (np.asarray(f.omx1) * np.asarray(f.omx2)) ** self.power)
+        return w.mean(), w.std() / np.sqrt(len(w))
+
+    def test_endpoint_channel_covers_the_unit_square(self):
+        lum = self.ms.LeptonLuminosity(self.s_lab, 0.0, self.power)
+        rng = np.random.default_rng(3)
+        n = 400000
+        mean, err = self._unit_square(
+            lum.map_forward([rng.uniform(0, 1, n), rng.uniform(0, 1, n)]))
+        self.assertLess(abs(mean - 1.0), 4 * err + 1e-3)
+
+    def test_invariant_channel_covers_the_unit_square(self):
+        """Same measure through a completely different parametrisation."""
+        rng = np.random.default_rng(3)
+        n = 400000
+        for power in (0.0, 1.0):
+            lum = self.ms.LeptonLuminosityInvariant(
+                self.s_lab, 0.0, self.s_lab, self.power, 0.0, 0.0, power)
+            mean, err = self._unit_square(lum.map_forward(
+                [rng.uniform(0, 1, n), rng.uniform(0, 1, n),
+                 rng.uniform(0, 1, n)]))
+            self.assertLess(abs(mean - 1.0), 4 * err + 1e-3,
+                            'invariant_power=%g gave %.5f' % (power, mean))
+
+    def test_invariant_channel_geometry(self):
+        """The drawn fraction is the larger one, and either beam can carry it."""
+        lum = self.ms.LeptonLuminosityInvariant(
+            self.s_lab, 0.0, self.s_lab, self.power)
+        rng = np.random.default_rng(11)
+        n = 100000
+        f = lum.map_forward([rng.uniform(0, 1, n), rng.uniform(0, 1, n),
+                             rng.uniform(0, 1, n)])
+        x1, x2 = np.asarray(f.x1), np.asarray(f.x2)
+        tau = x1 * x2
+        self.assertTrue((np.maximum(x1, x2) >= np.sqrt(tau) - 1e-12).all())
+        np.testing.assert_allclose(np.asarray(f.s_hat), tau * self.s_lab,
+                                   rtol=1e-12)
+        np.testing.assert_allclose(np.asarray(f.omx1), 1.0 - x1, atol=1e-12)
+        # the swap has to be even, or one ordering is sampled twice as often
+        self.assertAlmostEqual((x1 > x2).mean(), 0.5, places=2)
+
+    def test_invariant_channel_has_no_inverse(self):
+        """Forward-only, and it says so rather than inventing an answer."""
+        lum = self.ms.LeptonLuminosityInvariant(
+            self.s_lab, 0.0, self.s_lab, self.power)
+        ones = np.full(3, 0.5)
+        self.assertRaises(Exception, lum.map_inverse,
+                          [ones, ones, ones, ones, ones])
+
+    def test_hadronic_luminosity_still_builds(self):
+        """Regression: Luminosity read Invariant's output under the wrong name.
+
+        Invariant returns "invariant" and "random"; Luminosity asked for "s"
+        and "r", so building its forward map threw as soon as anyone called
+        it. Nothing exercised it -- test_doc_convention only reads the
+        docstring -- so it had rotted unseen.
+        """
+        lum = self.ms.Luminosity(13000.0 ** 2, 100.0 ** 2)
+        r_s = np.array([0.3, 0.7, 0.5])
+        r_x = np.array([0.4, 0.6, 0.5])
+        f = lum.map_forward([r_s, r_x])
+        np.testing.assert_allclose(
+            np.asarray(f.s_hat),
+            np.asarray(f.x1) * np.asarray(f.x2) * 13000.0 ** 2, rtol=1e-12)
+        inv = lum.map_inverse([f.x1, f.x2, f.s_hat])
+        np.testing.assert_allclose(np.asarray(inv.r_s), r_s, rtol=1e-12)
+        np.testing.assert_allclose(np.asarray(inv.r_x), r_x, rtol=1e-12)
