@@ -180,6 +180,7 @@ class TestMainSourceBuildCommand(unittest.TestCase):
             mock.patch.object(install, 'ask_compile_options',
                               side_effect=AssertionError('prompted')),
             mock.patch.object(install, '_NONINTERACTIVE', False),
+            mock.patch.object(install, 'ensure_pip'),
         ]
         for patch in patches:
             patch.start()
@@ -236,6 +237,79 @@ class TestMainSourceBuildCommand(unittest.TestCase):
                                 '--cuda-arch', '80')
         self.assertNotIn('-Ccmake.define.ENABLE_CUDA=ON', cmd)
         self.assertIn('--cuda-arch has no effect', out)
+
+
+class TestEnsurePip(unittest.TestCase):
+    """Without pip both install modes die in `python -m pip`, and the only
+    trace used to be `No module named pip` (issue #198)."""
+
+    def test_missing_pip_stops_with_an_explanation(self):
+        out = io.StringIO()
+        with mock.patch('importlib.util.find_spec', return_value=None), \
+                contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit) as stopped:
+                install.ensure_pip()
+        self.assertEqual(stopped.exception.code, 1)
+        self.assertIn('pip is not available', out.getvalue())
+        self.assertIn('ensurepip', out.getvalue())
+        self.assertIn('virtual environment', out.getvalue())
+
+    def test_present_pip_is_silent(self):
+        out = io.StringIO()
+        with mock.patch('importlib.util.find_spec', return_value=object()), \
+                contextlib.redirect_stdout(out):
+            install.ensure_pip()
+        self.assertEqual(out.getvalue(), '')
+
+    def test_main_checks_before_asking_anything(self):
+        """The interactive installer used to ask its questions first, then
+        fail on the answer."""
+
+        with mock.patch.object(install, 'ensure_pip',
+                               side_effect=SystemExit(1)), \
+                mock.patch.object(install, 'ask_yes_no',
+                                  side_effect=AssertionError('prompted')), \
+                mock.patch.object(install, 'run',
+                                  side_effect=AssertionError('ran pip')):
+            with self.assertRaises(SystemExit):
+                install.main([])
+
+
+class TestInstallCommandReportsFailure(unittest.TestCase):
+    """`install madspace` at the MG7 prompt ignored the installer's exit code,
+    so a failed install looked like a successful one -- to a script and to the
+    tutorial, which went on to say madspace was in place (issue #198)."""
+
+    def interface(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Stub(mg_interface.MadGraphCmd):
+            def __init__(self):
+                self.options = {'nb_core': 1}
+
+        return _Stub()
+
+    def run_install(self, returncode):
+        import subprocess
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        done = subprocess.CompletedProcess([], returncode)
+        with mock.patch.object(mg_interface.subprocess, 'run',
+                               return_value=done) as run:
+            try:
+                return self.interface().do_install('madspace --bin')
+            finally:
+                self.assertTrue(run.called)
+
+    def test_a_failed_installer_raises(self):
+        import madgraph
+
+        with self.assertRaises(madgraph.InvalidCmd) as raised:
+            self.run_install(1)
+        self.assertIn('madspace installation failed', str(raised.exception))
+
+    def test_a_successful_installer_does_not(self):
+        self.assertIsNone(self.run_install(0))
 
 
 if __name__ == '__main__':
