@@ -587,7 +587,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             'clean:',
             '\trm -f $(NLO_REAL_BRIDGE)',
             '\t@set -e; for directory in $(NLO_REAL_DIRS); do \\',
-            '\t  $(MAKE) -C ../$$directory clean; \\',
+            '\t  $(MAKE) -C ../$$directory cleanall; \\',
             '\tdone',
         ]
         with open(pjoin(process_path, 'nlo_real.mk'), 'w') as stream:
@@ -702,7 +702,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    initialization_attempted = .true.',
             '    param_card = "auto"',
             '    library_dir = "auto"',
-            '    backend = "scalar"',
+            '    backend = "fortran"',
             '    env_value = ""',
             '    call get_environment_variable("MG7_NLO_REAL_PARAM_CARD", &',
             '      env_value, length=length, status=env_status)',
@@ -1035,6 +1035,12 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '',
             'nlo_real_offload.o: nlo_real_offload.f90 $(NLO_REAL_STAMP)',
             '\t$(FC) $(FFLAGS) -ffree-line-length-none -c $< -o $@',
+            '',
+            '.PHONY: nlo_real_clean',
+            'clean: nlo_real_clean',
+            'nlo_real_clean:',
+            '\t$(MAKE) -f nlo_real.mk clean',
+            '\trm -f .nlo_real_*.stamp',
         ]
         with open(pjoin(process_path, 'nlo_real_offload.mk'), 'w') as stream:
             stream.write('\n'.join(fragment) + '\n')

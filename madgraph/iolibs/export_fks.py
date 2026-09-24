@@ -854,10 +854,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         """ """
  
         run_card = banner_mod.RunCardNLO()
-        
         run_card.create_default_for_process(self.proc_characteristic, 
                                             history,
                                             processes)
+        if 'nlo_real_vector_size' in self.opt:
+            requested_vector_size = banner_mod.ConfigFile.format_variable(
+                self.opt['nlo_real_vector_size'], int, 'vector_size')
+            run_card.set(
+                'vector_size', max(1, requested_vector_size), user=True)
         
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'))
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'))

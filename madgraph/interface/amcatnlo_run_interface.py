@@ -2062,7 +2062,8 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                         job['run_mode']=run_mode
                         job['wgt_frac']=1.0
                         job['vecsize']=max(
-                            1, int(self.run_card.get('vector_size', 1)))
+                            1, int(self.run_card['vector_size'])
+                            if 'vector_size' in self.run_card else 1)
                         jobs_to_run.append(job)
             jobs_to_collect=copy.copy(jobs_to_run) # These are all jobs
         else:

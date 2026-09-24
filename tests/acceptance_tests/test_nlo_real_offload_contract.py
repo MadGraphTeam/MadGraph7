@@ -36,6 +36,7 @@ import unittest
 from madgraph import MG5DIR
 import madgraph.interface.master_interface as MGCmd
 import madgraph.various.misc as misc
+from madgraph.various import banner
 
 
 pjoin = os.path.join
@@ -86,7 +87,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         cmd.exec_cmd(line, errorhandling=False, printcmd=False,
                      precmd=True, postcmd=True)
 
-    def _generate_case(self, name, madmatrix=False, low_memory=False):
+    def _generate_case(self, name, madmatrix=False, low_memory=False,
+                       vector_size=None):
         case = self.oracle['cases'][name]
         output_path = pjoin(self.tmpdir, name)
         cmd = self._new_cmd()
@@ -108,7 +110,13 @@ class TestNLORealFortranOracle(unittest.TestCase):
             output_path
         if madmatrix:
             output += ' --me_exporter=mg7'
+        if vector_size is not None:
+            output += ' --vector_size=%d' % vector_size
         self._run(cmd, output)
+        if vector_size is not None:
+            run_card = banner.RunCardNLO(
+                pjoin(output_path, 'Cards', 'run_card.dat'))
+            self.assertEqual(run_card['vector_size'], vector_size)
         param_card = pjoin(output_path, 'Cards', 'param_card.dat')
         with open(param_card, 'rb') as stream:
             digest = hashlib.sha256(stream.read()).hexdigest()
@@ -329,7 +337,11 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _run_routed_driver(self, executable, case, environment=None):
         env = os.environ.copy()
         if environment:
-            env.update(environment)
+            for name, value in environment.items():
+                if value is None:
+                    env.pop(name, None)
+                else:
+                    env[name] = value
         output = subprocess.check_output(
             [executable], input=self._driver_input(case['points']),
             cwd=self.tmpdir, env=env, stderr=subprocess.STDOUT)
@@ -343,16 +355,22 @@ class TestNLORealFortranOracle(unittest.TestCase):
         case = self.oracle['cases'][name]
         output_path = self._generate_case(name, madmatrix=True)
         scalar = self._compile_routed_driver(output_path, case)
-        scalar_output = self._run_routed_driver(scalar, case)
+        scalar_environment = {'MG7_NLO_REAL_BACKEND': 'scalar'}
+        scalar_output = self._run_routed_driver(
+            scalar, case, scalar_environment)
         self.assertIn('MG7 NLO real offload initialized: backend=scalar',
                       scalar_output)
 
         vector = self._compile_routed_driver(output_path, case, vector=True)
-        vector_output = self._run_routed_driver(vector, case)
+        vector_output = self._run_routed_driver(
+            vector, case, scalar_environment)
         self.assertIn('MG7 NLO real offload initialized: backend=scalar',
                       vector_output)
 
         if test_fallback:
+            default_fallback = self._run_routed_driver(
+                scalar, case, {'MG7_NLO_REAL_BACKEND': None})
+            self.assertIn('using Fortran fallback', default_fallback)
             fallback = self._run_routed_driver(
                 scalar, case, {'MG7_NLO_REAL_BACKEND': 'fortran'})
             self.assertIn('using Fortran fallback', fallback)
@@ -368,14 +386,23 @@ class TestNLORealFortranOracle(unittest.TestCase):
             missing = library + '.missing'
             os.rename(library, missing)
             try:
-                partial = self._run_routed_driver(scalar, case)
+                partial = self._run_routed_driver(
+                    scalar, case, scalar_environment)
             finally:
                 os.rename(missing, library)
             self.assertIn('real ME %d is unavailable' % real['id'], partial)
             self.assertNotIn('real ME 1 is unavailable', partial)
 
             launch = self._new_cmd()
-            self._run(launch, 'launch %s -f' % output_path)
+            old_backend = os.environ.get('MG7_NLO_REAL_BACKEND')
+            os.environ['MG7_NLO_REAL_BACKEND'] = 'scalar'
+            try:
+                self._run(launch, 'launch %s -f' % output_path)
+            finally:
+                if old_backend is None:
+                    del os.environ['MG7_NLO_REAL_BACKEND']
+                else:
+                    os.environ['MG7_NLO_REAL_BACKEND'] = old_backend
             born_logs = []
             for manifest_path in glob.glob(pjoin(
                     output_path, 'SubProcesses', 'P*',
@@ -797,7 +824,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         """Execute every QCD flavour row and CUDA rounding boundaries."""
         self._require_cuda()
         case = self.oracle['cases']['grouped_qcd_ttx']
-        output_path = self._generate_case('grouped_qcd_ttx', madmatrix=True)
+        output_path = self._generate_case(
+            'grouped_qcd_ttx', madmatrix=True, vector_size=5)
         process_path = pjoin(
             output_path, 'SubProcesses', case['subprocess'])
         with open(pjoin(process_path, 'nlo_real_manifest.json')) as stream:
@@ -876,6 +904,14 @@ class TestNLORealFortranOracle(unittest.TestCase):
             self._assert_close(
                 weights[lane], expected, scale=abs(record['summed']),
                 label='CUDA compacted lane %d' % lane)
+
+        subprocess.check_call(['make', 'clean'], cwd=process_path)
+        self.assertFalse(os.path.exists(
+            pjoin(process_path, 'libnlo_real_bridge.so')))
+        for real in manifest['real_matrix_elements']:
+            self.assertFalse(glob.glob(pjoin(
+                output_path, 'lib', 'libmadmatrix_%s_*.so' %
+                real['library_process_id'])))
 
     def _run_cuda_mixed_case(self):
         """Use CUDA only for one-order reals and log all split-order fallback."""

@@ -839,6 +839,12 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             self._curr_exporter = export_v4.ExportV4Factory(self, noclean,
                       output_type=output_type_dict[self._export_format],
                       group_subprocesses=group_processes)
+            output_options = dict(
+                arg[2:].split('=', 1) if '=' in arg else (arg[2:], True)
+                for arg in args if arg.startswith('--'))
+            if 'vector_size' in output_options:
+                self._curr_exporter.opt['nlo_real_vector_size'] = \
+                    output_options['vector_size']
 
             self._curr_exporter.pass_information_from_cmd(self)
 
@@ -868,9 +874,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 exporter_class = madmatrix_output.MadMatrixExporterFactory.\
                     get_exporter_class('nlo_real')
                 exporter_options = dict(self.options)
-                exporter_options['output_options'] = dict(
-                    arg[2:].split('=', 1) if '=' in arg else (arg[2:], True)
-                    for arg in args if arg.startswith('--'))
+                exporter_options['output_options'] = output_options
                 self._me_curr_exporter = exporter_class(
                     self._export_dir, exporter_options)
                 self._me_curr_exporter.pass_information_from_cmd(self)

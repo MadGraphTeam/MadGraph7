@@ -29,6 +29,7 @@ import unittest
 
 from madgraph import MG5DIR
 from madgraph.interface import amcatnlo_run_interface
+from madgraph.various import banner
 from madmatrix import output as madmatrix_output
 
 
@@ -225,11 +226,10 @@ class TestNLORealOffloadContract(unittest.TestCase):
             command.me_dir = root
             command.stop_for_runweb = True
             command.force_run = False
-            command.run_card = {
-                'npoints_FO_grid': 8,
-                'niters_FO_grid': 1,
-                'vector_size': 7,
-            }
+            command.run_card = banner.RunCardNLO()
+            command.run_card['npoints_FO_grid'] = 8
+            command.run_card['niters_FO_grid'] = 1
+            command.run_card['vector_size'] = 7
             jobs, _, _ = command.create_jobs_to_run(
                 {'only_generation': False}, ['P0_test'], -1, 'all', 1,
                 'aMC@NLO', fixed_order=False)
