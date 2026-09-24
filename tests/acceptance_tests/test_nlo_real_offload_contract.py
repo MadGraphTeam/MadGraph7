@@ -1080,6 +1080,22 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 bridge.mg7_nlo_real_evaluate(
                     context, row['real_me_id'], 1, momenta, g_strong,
                     good_flavour, output), 0)
+            # Non-finite results are returned unchanged, as the retained
+            # Fortran real matrix element gives at degenerate points; the
+            # Fortran wrapper must never switch backends in a run because of
+            # them.
+            nan_momenta = (ctypes.c_double * len(flat_momenta))(*flat_momenta)
+            nan_momenta[0] = float('nan')
+            self.assertEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], 1, nan_momenta, g_strong,
+                    good_flavour, output), 0)
+            self.assertFalse(all(math.isfinite(value) for value in output))
+            self.assertEqual(
+                bridge.mg7_nlo_real_evaluate(
+                    context, row['real_me_id'], 1, momenta, g_strong,
+                    good_flavour, output), 0)
+            self.assertTrue(all(math.isfinite(value) for value in output))
 
             probes = []
             seen_reals = set()

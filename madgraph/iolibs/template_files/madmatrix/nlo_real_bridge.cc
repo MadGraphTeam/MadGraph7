@@ -236,12 +236,11 @@ extern "C"
                 << " with status " << static_cast<int>( status );
         return fail( context, message.str() );
       }
-      const size_t result_count = event_count *
-        static_cast<size_t>( real.squared_order_count );
-      for( size_t index = 0; index < result_count; ++index )
-        if( !std::isfinite( squared_orders[index] ) )
-          return fail( context, "non-finite UMAMI result for real ME " +
-                                std::to_string( real_me_id ) );
+      // Non-finite components are returned unchanged. At degenerate
+      // soft/collinear points the retained Fortran real matrix element is
+      // itself non-finite, and the caller must see what the Fortran path
+      // would give: rejecting the batch made the Fortran wrapper switch
+      // backends in the middle of a run.
       context->error.clear();
       return 0;
     }
