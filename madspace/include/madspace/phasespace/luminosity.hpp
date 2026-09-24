@@ -159,6 +159,33 @@ private:
     double _s_lab, _s_hat_min, _power;
 };
 
+/**
+ * Sample @f$\hat s@f$ from its *upper* endpoint, for dressed-lepton beams.
+ *
+ * The hadronic root sampling spreads @f$\hat s@f$ over its whole range, but a
+ * dressed-lepton density piles its weight at @f$\hat s \to s@f$, where
+ * neither beam has radiated. Integrating out the beam split at fixed
+ * @f$\tau@f$ leaves @f$(1-\tau)^{2\beta-2\kappa_0+1}@f$, which is
+ * @f$(1-\tau)^{-0.886}@f$ for the sharply peaked components -- integrable,
+ * but a sampler that ignores it puts 0.001% of its points where 7% of the
+ * weight is.
+ *
+ * So @f$s - \hat s@f$ is drawn as @f$r^{1/(1-p)}@f$ over the available range,
+ * the same law the beam split uses and with the same exponent. Unlike the
+ * beam split this Jacobian keeps its @f$(s-\hat s)^p@f$: there is no density
+ * factor in @f$\tau@f$ for it to cancel against.
+ *
+ * @param fb      Builder to emit into.
+ * @param s_min   Lower bound on @f$\hat s@f$.
+ * @param s_max   Upper bound, normally @f$s_\mathrm{lab}@f$.
+ * @param r       Random number.
+ * @param power   @f$p@f$, the density's reduction exponent.
+ * @return        @f$\hat s@f$ and @f$|d\hat s/dr|@f$.
+ */
+std::pair<Value, Value> lepton_s_hat(
+    FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
+);
+
 /// Result of @ref lepton_split: the two fractions and the Jacobian.
 struct LeptonSplitResult {
     Value x1, x2, omx1, omx2, det;

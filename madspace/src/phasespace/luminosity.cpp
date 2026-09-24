@@ -177,6 +177,20 @@ LeptonLuminosityInvariant::LeptonLuminosityInvariant(
     }
 }
 
+std::pair<Value, Value> madspace::lepton_s_hat(
+    FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
+) {
+    auto batch = fb.batch_size({s_max});
+    auto span = fb.sub(s_max, s_min);
+    auto v = fb.pow(r, fb.full({1. / (1. - power), batch}));
+    auto s_hat = fb.sub(s_max, fb.mul(span, v));
+    auto det = fb.mul(
+        fb.mul(span, fb.pow(v, fb.full({power, batch}))),
+        fb.full({1. / (1. - power), batch})
+    );
+    return {s_hat, det};
+}
+
 LeptonSplitResult madspace::lepton_split(
     FunctionBuilder& fb,
     Value s_hat,
@@ -204,8 +218,13 @@ LeptonSplitResult madspace::lepton_split(
     // the sampling, which for this beam never happened
     auto x_b = fb.div(tau, x_a);
     auto omx_b = fb.sub(one, x_b);
-    auto det_b =
-        fb.div(one, fb.mul(x_a, fb.pow(omx_b, fb.full({power, batch}))));
+    // Written as omx_b^(-p) rather than 1/omx_b^p on purpose. Once tau is
+    // sampled right at 1, x_b = tau/x_a can round to just above 1 and omx_b
+    // goes negative; pow returns 0 for a non-positive base, so this form
+    // gives such a point weight zero -- which is what an x > 1 configuration
+    // deserves -- where the reciprocal would divide by that zero and poison
+    // the whole batch with an infinity.
+    auto det_b = fb.div(fb.pow(omx_b, fb.full({-power, batch})), x_a);
 
     auto swap = fb.sample_discrete(r_swap, fb.full({static_cast<me_int_t>(2), batch}));
     auto index = swap[0];

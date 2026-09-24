@@ -725,3 +725,40 @@ class TestDressedPhaseSpace(unittest.TestCase):
         rng = np.random.default_rng(2)
         f = lep.map_forward([rng.uniform(0, 1, (n, lep.random_dim()))])
         self.assertRaises(Exception, lep.map_inverse, [f.momenta, f.x1, f.x2])
+
+    def test_s_hat_is_sampled_at_its_upper_endpoint(self):
+        """A dressed density piles its weight where neither beam radiated.
+
+        Integrating out the beam split at fixed tau leaves
+        (1-tau)**(2*beta-2*kappa0+1), about (1-tau)**-0.886 for the sharply
+        peaked components. The hadronic root sampling spreads s_hat over its
+        whole range and puts 0.001% of its points where 7% of the weight is,
+        which is what made the unweighting efficiency round to zero.
+        """
+        had, lep = self._mappings([0.] * 4)
+        n = 100000
+        rng = np.random.default_rng(9)
+        fracs = {}
+        for tag, m in (('hadronic', had), ('dressed', lep)):
+            f = m.map_forward([rng.uniform(0, 1, (n, m.random_dim()))])
+            omtau = 1.0 - np.asarray(f.x1) * np.asarray(f.x2)
+            fracs[tag] = (omtau < 1e-4).mean()
+        self.assertLess(fracs['hadronic'], 0.05)
+        self.assertGreater(fracs['dressed'], 0.4)
+
+    def test_no_infinite_weights_at_the_endpoint(self):
+        """x_b = tau/x_a can round above 1 once tau sits at its endpoint.
+
+        The derived beam's Jacobian is written as omx_b**-p so that such a
+        point gets weight zero; as 1/omx_b**p it divided by the zero the pow
+        guard returns and poisoned the batch with an infinity.
+        """
+        _had, lep = self._mappings([0.] * 4)
+        n = 200000
+        rng = np.random.default_rng(9)
+        f = lep.map_forward([rng.uniform(0, 1, (n, lep.random_dim()))])
+        det = np.asarray(f.det)
+        omx1, omx2 = np.asarray(f.omx1), np.asarray(f.omx2)
+        self.assertEqual(int((~np.isfinite(det)).sum()), 0)
+        self.assertEqual(int((~np.isfinite(omx1) | ~np.isfinite(omx2)).sum()), 0)
+        self.assertEqual(int(((omx1 < 0) | (omx2 < 0)).sum()), 0)

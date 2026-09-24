@@ -564,7 +564,17 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         if (data.decay.e_max > 0.) {
             sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
         }
-        if (decay_index != 0 || _map_luminosity) {
+        if (decay_index == 0 && _map_luminosity && _lepton_power != 0.) {
+            // A dressed-lepton density piles its weight at s_hat -> s, which
+            // the hadronic root sampling barely visits. See @ref lepton_s_hat.
+            ++invariant_index;   // keep the remaining decays aligned
+            auto s_max = fb.square(sqrt_s_max);
+            auto [s_hat, det] =
+                lepton_s_hat(fb, s_min, s_max, next_random(), _lepton_power);
+            data.mass2 = s_hat;
+            data.mass = fb.sqrt(s_hat);
+            dets.push_back(det);
+        } else if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
             auto invariant =
                 _s_invariants.at(invariant_index++)
