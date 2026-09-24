@@ -760,6 +760,45 @@ class MECmdShell(IOTests.IOTestManager):
         check_html_page(self, pjoin(self.path, 'HTML', 'run_01', 'results.html'))
 
 
+    def test_calculate_xsect_nlo_dy_vs_mg5(self):
+        """Fixed-order NLO p p > e+ e- [QCD] reproduces MG5 v3.8.0.
+
+        The fixed-order driver must evaluate the real matrix element itself:
+        sreal_store only takes it as an input.  When it did not, the real
+        emission was replaced by a Born quantity and the result of
+        p p > t t~ [QCD] was about 580 times too large, while the tests above
+        only checked that the output files exist.
+
+        Reference: MG5 v3.8.0 with its default run card for this process,
+        changed only as below (pdlabel nn23nlo, iseed 42, no reweighting)
+        with req_acc_FO 0.001: 2093.77 +/- 1.91 pb.  Grouped flavours are the
+        MG7 default.
+        """
+        self.generate('p p > e+ e- [QCD]', 'loop_sm')
+
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('pdlabel', 'nn23nlo', user=True)
+        run_card.set('iseed', 42, user=True)
+        run_card.set('req_acc_FO', 0.01, user=True)
+        run_card.set('reweight_scale', False, user=True)
+        run_card.set('reweight_PDF', False, user=True)
+        run_card.write(card_path)
+        self.assertEqual((run_card['lpp1'], run_card['lpp2']), (1, 1))
+
+        self.do('calculate_xsect NLO -f')
+
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-\s+([-\d.eE+]+)',
+                            res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec, error = float(totals[1][0]), float(totals[1][1])
+        reference, reference_error = 2093.77, 1.91
+        self.assertLess(abs(xsec - reference),
+                        5 * math.sqrt(error**2 + reference_error**2),
+                        '%s +/- %s pb differs from MG5 v3.8.0 %s +/- %s pb' %
+                        (xsec, error, reference, reference_error))
+
     def test_calculate_xsect_lo(self):
         """test the param_card created is correct"""
         

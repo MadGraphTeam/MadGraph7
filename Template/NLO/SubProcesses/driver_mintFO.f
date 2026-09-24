@@ -766,6 +766,9 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
+c sreal_store takes the real matrix element as an input (event
+c generation evaluates it in amplitudes_vec): evaluate it here.
+                      call smatrix_real(p,real_amp_split,fx_ev)
                       call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,
      $                     fx_ev,ret_amp_split,real_amp_split,
      $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
@@ -993,6 +996,8 @@ c         wgt_me_real=0d0
                calculatedBorn=.false.
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+c sreal_store takes the real matrix element as an input: evaluate it.
+               call smatrix_real(p,real_amp_split,fx_ev)
                call sreal_store(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,
      $              ret_amp_split,real_amp_split,born_amp_split,
      $              born_ans_cnt,born_amp_split_cnt,born_saveamp
