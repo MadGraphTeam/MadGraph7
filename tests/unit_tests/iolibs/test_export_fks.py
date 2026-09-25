@@ -541,6 +541,48 @@ class TestFKSOutput(unittest.TestCase):
             # p, mass, helicity, particle/antiparticle, flavor, output
             self.assertEqual(len(arguments.split(',')), 6, name)
 
+    def test_add_wgt_calls_pass_all_arguments(self):
+        """Every call of add_wgt in the NLO templates passes its seven
+        arguments (type, orders, three log coefficients, Born and real
+        weights). A call left from the signature before split orders
+        passed a weight as the orders array and crashed when reached."""
+        import glob
+        import re
+
+        def arguments(source, start):
+            # count the top-level arguments of the parenthesis at 'start'
+            depth, count = 0, 1
+            for char in source[start:]:
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                    if depth == 0:
+                        return count
+                elif char == ',' and depth == 1:
+                    count += 1
+            raise AssertionError('unbalanced call')
+
+        template = os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                                'SubProcesses')
+        arity = None
+        calls = []
+        for path in glob.glob(os.path.join(template, '*.f')):
+            with open(path) as stream:
+                # join Fortran fixed-form continuation lines
+                source = re.sub(r'\n     [$&]', '', stream.read())
+            for match in re.finditer(r'subroutine\s+add_wgt\s*\(',
+                                     source, re.I):
+                arity = arguments(source, match.end() - 1)
+            for match in re.finditer(r'call\s+add_wgt\s*\(', source, re.I):
+                calls.append((os.path.basename(path),
+                              arguments(source, match.end() - 1),
+                              source[match.start():match.start() + 60]))
+        self.assertEqual(arity, 7)
+        self.assertTrue(calls)
+        for name, count, text in calls:
+            self.assertEqual(count, arity, '%s: %s' % (name, text))
+
     def test_tir_library_paths_are_available_at_runtime(self):
         """External TIR shared libraries need an rpath in NLO executables."""
         exporter = object.__new__(export_fks.ProcessExporterFortranFKS)

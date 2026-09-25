@@ -418,6 +418,7 @@ c Randomly pick the contribution that will be written in the event file
       write(*,*) 'Time spent in Write_events : ',t_write
       write(*,*) 'Time spent in AlphaS_dependencies : ',t_coupl
       write(*,*) 'Wall time in Vector_amplitude : ',t_vecamp
+      write(*,*) 'Wall time in Vector_real_amplitude : ',t_vecreal
       write(*,*) 'Wall time in Sequential_overhead : ',
      $     tWallTot-t_vecamp
       write(*,*) 'Time spent in Other_tasks : ',tOther
@@ -462,6 +463,7 @@ c timing statistics
       data t_write/0.0/
       data t_coupl/0.0/
       data t_vecamp/0.0/
+      data t_vecreal/0.0/
       end
 
 
@@ -916,6 +918,7 @@ C Real deg amplitudes
 
       integer vector_size, ivec, icontr_bfr
       integer(kind=8) ampClockBefore,ampClockAfter,ampClockRate
+      integer(kind=8) realClockBefore
       include "timing_variables.inc"
 
 c
@@ -1044,8 +1047,14 @@ c group, which has the soft singularity) is lane_nbody(ivec).
      $            ,lane_nbody(ivec),ivec)
          enddo
 !$OMP END PARALLEL DO
+c The batched real matrix elements (the part offloaded to MadMatrix)
+         call system_clock(realClockBefore)
          call amplitudes_real_vec(proc_map,vector_size)
          call system_clock(ampClockAfter)
+         if (ampClockRate.gt.0) then
+            t_vecreal=t_vecreal+real(ampClockAfter-realClockBefore)/
+     $           real(ampClockRate)
+         endif
          if (ampClockRate.gt.0) then
             t_vecamp=t_vecamp+real(ampClockAfter-ampClockBefore)/
      $           real(ampClockRate)
@@ -1745,7 +1754,9 @@ c     include all quarks (except top quark) and the gluon.
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
+      include 'orders.inc'
       integer i_soft,isoft,i
+      integer orders(nsplitorders)
       logical found_S
       i_soft=0
       found_S=.false.
@@ -1761,9 +1772,12 @@ c     include all quarks (except top quark) and the gluon.
          endif
       enddo
       if (found_S .and. i_soft.eq.0) then
-         ! add an artificial contribution
+         ! add an artificial contribution. add_wgt takes the split orders
+         ! of the contribution (the historical call passed the weight in
+         ! their place and dropped arguments, which crashed once reached).
          call update_fks_dir(isoft)
-         call add_wgt(2,1d-199,0d0,0d0)
+         call amp_split_pos_to_orders(1,orders)
+         call add_wgt(2,orders,1d-199,0d0,0d0,0d0,0d0)
       endif
       return
       end
