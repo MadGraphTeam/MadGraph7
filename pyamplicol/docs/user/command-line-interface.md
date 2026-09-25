@@ -147,7 +147,7 @@ Use `--execution-mode on-the-fly` for the compact OTF counterpart. Keep the
 trace basis for quarks or Higgs/HEFT processes, for example:
 
 ```console
-pyamplicol generate "d d~ > z g g" artifacts/ddbar_zgg_trace_fft \
+pyamplicol generate "d d~ > z g g" artifacts/quark_zgg_trace_fft \
   --model built-in-sm --color-accuracy full \
   --fft trace --execution-mode recurrence
 ```

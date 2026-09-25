@@ -69,6 +69,16 @@ PROFILE = ROOT / "src/pyamplicol/_profiling_campaign"
 CAMPAIGN_ARTIFACT_ROOT = PROFILE / "campaign_artifacts"
 
 
+@pytest.fixture
+def repository_with_cli(tmp_path: Path) -> Path:
+    repository = tmp_path / "repository"
+    (repository / "src/pyamplicol").mkdir(parents=True)
+    executable = repository / ".venv/bin/pyamplicol"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    return repository
+
+
 def _parse(*arguments: str):
     return build_parser().parse_args(arguments)
 
@@ -946,7 +956,11 @@ def test_final_unstable_snapshot_reports_failure_instead_of_rescan(
     ]
 
 
-def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
+def test_reproduction_recipe_uses_public_generate_and_profile(
+    repository_with_cli: Path,
+) -> None:
+    repository = repository_with_cli
+    artifact_root = repository / "campaign_artifacts"
     candidate = next(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
@@ -956,15 +970,15 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     )
     recipe = reproduction_recipe(
         candidate,
-        repo_root=ROOT,
-        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+        repo_root=repository,
+        artifact_root=artifact_root,
     )
     assert recipe.kind == "public-cli-template+model-compile-prerequisite"
     assert recipe.prepare is not None
     assert recipe.prepare[:5] == (
         "env",
-        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
-        os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
+        f"PYTHONPATH={os.fspath((repository / 'src').resolve())}",
+        os.fspath((repository / ".venv/bin/pyamplicol").resolve()),
         "model",
         "compile",
     )
@@ -972,8 +986,8 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     assert recipe.generate is not None
     assert recipe.generate[:4] == (
         "env",
-        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
-        os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
+        f"PYTHONPATH={os.fspath((repository / 'src').resolve())}",
+        os.fspath((repository / ".venv/bin/pyamplicol").resolve()),
         "generate",
     )
     assert "--lc-flow-layout" in recipe.generate
@@ -981,8 +995,8 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     assert recipe.profile is not None
     assert recipe.profile[:4] == (
         "env",
-        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
-        os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
+        f"PYTHONPATH={os.fspath((repository / 'src').resolve())}",
+        os.fspath((repository / ".venv/bin/pyamplicol").resolve()),
         "profile",
     )
     assert recipe.exact is False
@@ -995,8 +1009,8 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     )
     legacy_recipe = reproduction_recipe(
         legacy,
-        repo_root=ROOT,
-        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+        repo_root=repository,
+        artifact_root=artifact_root,
     )
     assert legacy_recipe.kind == "legacy-report-adapter"
     assert legacy_recipe.generate is None
@@ -2259,11 +2273,12 @@ def test_dashboard_key_aliases_clamp_scroll_ignore_noise_and_escape() -> None:
 def _manual_service(
     tmp_path: Path,
     *,
+    repo_root: Path = ROOT,
     initialize_source_marker: bool = True,
 ) -> ReportService:
     service = ReportService(
         ReportPaths.from_repo(
-            ROOT,
+            repo_root,
             profile="macbook_M3_manual",
             artifact_root=tmp_path / "artifacts",
             coordination_root=tmp_path / "coordination",
@@ -5856,8 +5871,9 @@ def test_lightweight_result_identity_must_match_selected_cell() -> None:
 
 def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
     tmp_path: Path,
+    repository_with_cli: Path,
 ) -> None:
-    service = _manual_service(tmp_path)
+    service = _manual_service(tmp_path, repo_root=repository_with_cli)
     cell = next(
         cell
         for cell in service.catalog.measurement_cells()

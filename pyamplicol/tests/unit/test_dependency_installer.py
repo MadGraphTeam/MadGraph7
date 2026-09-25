@@ -25,8 +25,14 @@ def _module():
     return module
 
 
-def test_source_inventory_is_exact_and_profiling_references_are_optional() -> None:
+def test_source_inventory_is_exact_and_profiling_references_are_optional(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     module = _module()
+    checkouts = tmp_path / "dependencies" / "checkouts"
+    checkouts.mkdir(parents=True)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
     payload = module._lock()
     without_references = module._sources(
         payload,

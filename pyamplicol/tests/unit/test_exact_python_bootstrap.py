@@ -8,6 +8,7 @@ import runpy
 import shutil
 import subprocess
 import sys
+import sysconfig
 from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
@@ -17,10 +18,27 @@ REPORT_ENTRYPOINT = Path("src/pyamplicol/_profiling_campaign/result_tables.py")
 
 
 def test_report_worker_bootstrap_recovers_repository_venv_under_no_site(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repository = Path(__file__).resolve().parents[2]
-    script = repository / REPORT_ENTRYPOINT
+    script = Path(__file__).resolve().parents[2] / REPORT_ENTRYPOINT
+    repository = tmp_path / "repository"
+    venv = repository / ".venv"
+    executable = venv / "bin/python"
+    executable.parent.mkdir(parents=True)
+    # execve is intercepted below; only the measured venv's layout is needed.
+    executable.touch()
+    (venv / "pyvenv.cfg").write_text(
+        "include-system-site-packages = false\n", encoding="ascii"
+    )
+    variables = dict(sysconfig.get_config_vars())
+    for name in ("base", "platbase", "installed_base", "installed_platbase"):
+        variables[name] = str(venv)
+    for name in ("purelib", "platlib"):
+        (Path(sysconfig.get_path(name, vars=variables)) / "symbolica").mkdir(
+            parents=True, exist_ok=True
+        )
+    monkeypatch.setattr(sys, "executable", str(executable))
     namespace = runpy.run_path(
         str(script),
         run_name="result_tables_worker_bootstrap_test",
