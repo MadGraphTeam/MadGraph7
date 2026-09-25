@@ -10970,3 +10970,30 @@ class RunningModelLibraryTest(unittest.TestCase):
                      'MAXJETFLAVOR', 'ASMZ', 'NLOOP']:
             self.assertIn('SUBROUTINE SET_%s(' % name, wrapper)
             self.assertIn('SUBROUTINE F77_SET_%s(' % name, splitter)
+
+
+
+class DressedLeptonBeamTest(unittest.TestCase):
+    """Which initial states may take the dressed-lepton luminosity path.
+
+    get_pdf_lines writes a <part><beam>_components array next to the PDG2PDF
+    call of every initial state that has lepton densities, and contracts the
+    two beams with ee_comp_prod.  The test which decides that used to be a
+    list of single-flavor pdg pairs, which apply_flavor_grouping defeats: the
+    merged beams of 'e+ e- > mu+ mu-' expand to ([-11,-13],[11,13]).
+    """
+
+    def test_single_flavor_beams(self):
+        for pdgs in ([-11], [11], [-13], [13], [11, -11]):
+            self.assertTrue(export_v4.is_dressed_lepton_beam(pdgs), pdgs)
+
+    def test_merged_lepton_beams(self):
+        """what the model's merged particles expand to, in any order"""
+        self.assertTrue(export_v4.is_dressed_lepton_beam([-11, -13]))
+        self.assertTrue(export_v4.is_dressed_lepton_beam([13, 11]))
+
+    def test_beams_without_lepton_densities(self):
+        # no beam at all, quarks/gluons/photons, and the tau, which
+        # Source/PDF/eepdf.f has no beam type for
+        for pdgs in ([], [21], [1, 2, 21], [22], [-15], [11, 22], [11, 15]):
+            self.assertFalse(export_v4.is_dressed_lepton_beam(pdgs), pdgs)
