@@ -283,12 +283,21 @@ execution_mode = "recurrence"
 
 
 def test_capture_runtime_identity_requires_repo_venv_site_packages(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    prefix = acceptance_module.ROOT / ".venv"
-    package_file = next(
-        (prefix / "lib").glob("python*/site-packages/pyamplicol/__init__.py")
+    repository = tmp_path / "repository"
+    prefix = repository / ".venv"
+    package_file = (
+        prefix / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages/pyamplicol/__init__.py"
     )
+    package_file.parent.mkdir(parents=True)
+    package_file.touch()
+    source_file = repository / "src/pyamplicol/__init__.py"
+    source_file.parent.mkdir(parents=True)
+    source_file.touch()
+    monkeypatch.setattr(acceptance_module, "ROOT", repository)
     package = ModuleType("pyamplicol")
     package.__file__ = str(package_file)
     package.__path__ = []  # type: ignore[attr-defined]
@@ -313,9 +322,7 @@ def test_capture_runtime_identity_requires_repo_venv_site_packages(
     assert identity.source_revision == "a" * 40
     assert identity.native_build_inputs_sha256 == "b" * 64
 
-    package.__file__ = str(
-        acceptance_module.ROOT / "src" / "pyamplicol" / "__init__.py"
-    )
+    package.__file__ = str(source_file)
     with pytest.raises(NumericalAcceptanceError, match=r"\.venv site-packages"):
         acceptance_module._current_runtime_identity()
 
