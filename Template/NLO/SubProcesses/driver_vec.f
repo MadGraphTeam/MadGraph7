@@ -203,13 +203,8 @@ C Local parameters
          indent=(ivec -1)*coup_step
          x(:) = x_vegas_vec(:,ivec)
 C ZW: Generate momenta and running couplings
-         nFKS_picked_nbody=proc_map(proc_map(0,1),1)
-         if (sum.eq.0) then
-c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
-            nFKS_in=nFKS_picked_nbody
-            call get_born_nFKSprocess(nFKS_in,nFKS_out)
-            nFKS_picked_nbody=nFKS_out
-         endif
+c Each lane uses its own sampled FKS group (see sigintF_vec)
+         nFKS_picked_nbody=lane_nbody(ivec)
          nbody=.true.
          call update_fks_dir(nFKS_picked_nbody)
          dummy_jac=1d0
@@ -224,8 +219,8 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
          passcuts_born_vec(ivec)=passcuts_nbody
          nbody=.false.
 
-         do i=1,proc_map(proc_map(0,1),0)
-            iFKS=proc_map(proc_map(0,1),i)
+         do i=1,proc_map(lane_group(ivec),0)
+            iFKS=proc_map(lane_group(ivec),i)
             icoup = indent + 4*(iFKS - 1) + 1
             call update_fks_dir(iFKS)
             dummy_jac=1d0
@@ -433,8 +428,8 @@ C Local parameters
       do ivec=1,vector_size
          skip_iter = .false.
          indent=(ivec -1)*coup_step
-        do i=1,proc_map(proc_map(0,1),0)
-            iFKS=proc_map(proc_map(0,1),i)
+        do i=1,proc_map(lane_group(ivec),0)
+            iFKS=proc_map(lane_group(ivec),i)
             icoup = indent + 4*(iFKS - 1) + 1
 C            call update_fks_dir(iFKS)
             p_born(:,:)=spb(:,:,iFKS,ivec)
@@ -638,8 +633,8 @@ C Local parameters
          coup_step=4*FKS_configs + 1
          skip_iter = .false.
          indent=(ivec -1)*coup_step
-        do i=1,proc_map(proc_map(0,1),0)
-            iFKS=proc_map(proc_map(0,1),i)
+        do i=1,proc_map(lane_group(ivec),0)
+            iFKS=proc_map(lane_group(ivec),i)
             icoup = indent + 4*(iFKS - 1) + 1
             p_born(:,:)=spb(:,:,iFKS,ivec)
             p_born_ev(:,:)=spb_ev(:,:,iFKS,ivec)
@@ -747,8 +742,10 @@ c Pick the first one because that's the one with the soft singularity
       double precision g_strong(vector_size)
 
       coup_step=4*fks_configs+1
-      do i=1,proc_map(proc_map(0,1),0)
-         iFKS=proc_map(proc_map(0,1),i)
+c Lanes sample their FKS groups independently: batch every FKS row that
+c is active in at least one lane (real_active is set per lane and row).
+      do iFKS=1,fks_configs
+         if (.not.any(real_active(iFKS,1:vector_size))) cycle
          do ivec=1,vector_size
             coup_index(ivec)=(ivec-1)*coup_step+4*(iFKS-1)+4
             g_strong(ivec)=G_vec(coup_index(ivec))

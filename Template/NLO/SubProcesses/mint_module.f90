@@ -147,6 +147,11 @@ module mint_module
   double precision, dimension(nintervals_virt,ndimmax,0:n_ave_virt,maxchannels), private :: ave_virt,ave_virt_acc,ave_born_acc
   double precision, private :: upper_bound,vol_chan
   double precision, dimension(ndimmax), private :: rand
+  ! Per-lane copies of the random cell state (vector mode): get_random_x
+  ! leaves the cells of the last lane in icell/ncell/rand, but each lane
+  ! must be added to the grids (and folded) with its own cells.
+  integer, allocatable, dimension(:,:), private :: icell_vec,ncell_vec
+  double precision, allocatable, dimension(:,:), private :: rand_vec
   double precision, dimension(0:nintervals,ndimmax) :: xgrid_new
 
 ! Common blocks used elsewhere in the code
@@ -237,6 +242,7 @@ contains
          stop 1
       endif
       vector_size=driver_vector_size
+      call allocate_cell_vec(vector_size)
     do while (nit.lt.itmax)
        call start_iteration
 2      kpoint_iter=kpoint_iter+1
@@ -249,9 +255,11 @@ contains
              call get_random_x(x,vol,kfold)
              x_mint_vec(:,ivec)=x
              vegas_wgt_vec(ivec)=vol
+             call save_cells(ivec)
           enddo
           call compute_integrand_vec(fun)
            do ivec=1,driver_active_size
+             call restore_cells(ivec)
              x(:)=x_mint_vec(:,ivec)
              f(:)=f_vec(:,ivec)
              virt_wgt_mint(:)=virt_wgt_vec(:,ivec)
@@ -816,6 +824,33 @@ contains
     enddo
   end subroutine add_point_to_bounding_envelope
      
+  subroutine allocate_cell_vec(vector_size)
+    implicit none
+    integer :: vector_size
+    if (allocated(icell_vec)) then
+       if (size(icell_vec,2).ge.vector_size) return
+       deallocate(icell_vec,ncell_vec,rand_vec)
+    endif
+    allocate(icell_vec(ndimmax,vector_size),ncell_vec(ndimmax,vector_size))
+    allocate(rand_vec(ndimmax,vector_size))
+  end subroutine allocate_cell_vec
+
+  subroutine save_cells(ivec)
+    implicit none
+    integer :: ivec
+    icell_vec(:,ivec)=icell(:)
+    ncell_vec(:,ivec)=ncell(:)
+    rand_vec(:,ivec)=rand(:)
+  end subroutine save_cells
+
+  subroutine restore_cells(ivec)
+    implicit none
+    integer :: ivec
+    icell(:)=icell_vec(:,ivec)
+    ncell(:)=ncell_vec(:,ivec)
+    rand(:)=rand_vec(:,ivec)
+  end subroutine restore_cells
+
   subroutine accumulate_the_point(x)
     implicit none
     integer :: i
@@ -905,7 +940,9 @@ contains
           do ivec=1,vector_size
             x(:) = x_mint_vec(:,ivec)
             vol = vegas_wgt_vec(ivec)
+            call restore_cells(ivec)
             call get_random_x_next_fold(x,vol,kfold)
+            call save_cells(ivec)
             x_mint_vec(:,ivec) = x(:)
             vegas_wgt_vec(ivec) = vol
           enddo
@@ -1712,6 +1749,7 @@ contains
     elseif(gen_mode.eq.1) then
        driver_active_size=vector_size
        allocate(upper_bounds(vector_size))
+       call allocate_cell_vec(vector_size)
        call increase_gen_counters_before_vec(vn,1)
  10     continue
        new_point=.true.
@@ -1724,6 +1762,7 @@ contains
           x_mint_vec(:,ivec)=x
           vegas_wgt_vec(ivec)=vol
           upper_bounds(ivec)=upper_bound
+          call save_cells(ivec)
        enddo
        call compute_integrand_vec(fun)
        call increase_gen_counters_middle_vec(vn,vector_size)

@@ -6,6 +6,8 @@
          integer, allocatable :: icontr_vec(:),iwgt_vec(:),icontr_picked_vec(:),iproc_picked_vec(:)
          logical, allocatable :: H_event_vec(:,:)
          integer, allocatable :: itype_vec(:,:),nFKS_vec(:,:),QCDpower_vec(:,:)
+         integer, allocatable :: fks_flavor_class_vec(:,:)
+         integer, allocatable :: born_flavor_class_vec(:,:)
      $        ,pdg_vec(:,:,:),pdg_uborn_vec(:,:,:)
      $        ,parton_pdg_uborn_vec(:,:,:,:)
      $        ,parton_pdg_vec(:,:,:,:),plot_id_vec(:,:)
@@ -94,6 +96,14 @@ c nFKS_vec
          allocate(itemp1(n_contr,vector_size_wgt))
          itemp1(1:max_contr_vec,1:vector_size_wgt)=nFKS_vec
          call move_alloc(itemp1,nFKS_vec)
+c fks_flavor_class_vec
+         allocate(itemp1(n_contr,vector_size_wgt))
+         itemp1(1:max_contr_vec,1:vector_size_wgt)=fks_flavor_class_vec
+         call move_alloc(itemp1,fks_flavor_class_vec)
+c born_flavor_class_vec
+         allocate(itemp1(n_contr,vector_size_wgt))
+         itemp1(1:max_contr_vec,1:vector_size_wgt)=born_flavor_class_vec
+         call move_alloc(itemp1,born_flavor_class_vec)
 c QCDpower_vec         
          allocate(itemp1(n_contr,vector_size_wgt))
          itemp1(1:max_contr_vec,1:vector_size_wgt)=QCDpower_vec
@@ -240,6 +250,8 @@ c update maximum
       allocate(H_event_vec(1,vector_size_wgt))
       allocate(itype_vec(1,vector_size_wgt))
       allocate(nFKS_vec(1,vector_size_wgt))
+      allocate(fks_flavor_class_vec(1,vector_size_wgt))
+      allocate(born_flavor_class_vec(1,vector_size_wgt))
       allocate(QCDpower_vec(1,vector_size_wgt))
       allocate(pdg_vec(nexternal,0:1,vector_size_wgt))
       allocate(pdg_uborn_vec(nexternal,0:1,vector_size_wgt))
@@ -287,6 +299,10 @@ c update maximum
       if (allocated(H_event_vec)) deallocate(H_event_vec)
       if (allocated(itype_vec)) deallocate(itype_vec)
       if (allocated(nFKS_vec)) deallocate(nFKS_vec)
+      if (allocated(fks_flavor_class_vec))
+     $     deallocate(fks_flavor_class_vec)
+      if (allocated(born_flavor_class_vec))
+     $     deallocate(born_flavor_class_vec)
       if (allocated(QCDpower_vec)) deallocate(QCDpower_vec)
       if (allocated(pdg_vec)) deallocate(pdg_vec)
       if (allocated(pdg_uborn_vec)) deallocate(pdg_uborn_vec)
@@ -336,6 +352,8 @@ c update maximum
       H_event_vec(:,:)=.false.
       itype_vec(:,:)=0
       nFKS_vec(:,:)=0
+      fks_flavor_class_vec(:,:)=0
+      born_flavor_class_vec(:,:)=0
       QCDpower_vec(:,:)=0
       pdg_vec(:,:,:)=0
       pdg_uborn_vec(:,:,:)=0
@@ -388,6 +406,10 @@ c update maximum
         H_event_vec(:,ivec)=H_event(:)
         itype_vec(:,ivec)=itype(:)
         nFKS_vec(:,ivec)=nFKS(:)
+c The physical flavour classes of grouped output are per contribution
+c too: every lane has its own contributions.
+        fks_flavor_class_vec(:,ivec)=fks_flavor_class(:)
+        born_flavor_class_vec(:,ivec)=born_flavor_class(:)
         QCDpower_vec(:,ivec)=QCDpower(:)
         pdg_vec(:,:,ivec)=pdg(:,:)
         pdg_uborn_vec(:,:,ivec)=pdg_uborn(:,:)
@@ -441,6 +463,8 @@ c        vector_index(:,ivec)=vector_index(:)
         H_event(:)=H_event_vec(:,ivec)
         itype(:)=itype_vec(:,ivec)
         nFKS(:)=nFKS_vec(:,ivec)
+        fks_flavor_class(:)=fks_flavor_class_vec(:,ivec)
+        born_flavor_class(:)=born_flavor_class_vec(:,ivec)
         QCDpower(:)=QCDpower_vec(:,ivec)
         pdg(:,:)=pdg_vec(:,:,ivec)
         pdg_uborn(:,:)=pdg_uborn_vec(:,:,ivec)

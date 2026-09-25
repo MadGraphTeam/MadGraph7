@@ -998,11 +998,26 @@ c "npNLO".
             enddo
          enddo
          if (ifl.eq.0) then
-            call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
-             if (HAS_PHYSICAL_FKS_CLASSES) then
-                call get_MC_integer_group_volume(1,proc_map(0,0),
-     $              born_class_map,proc_map(0,1),born_vol1)
-             endif
+c Every lane is an independent MINT point: it samples its own FKS group.
+c One draw shared by all lanes correlated the lanes, so that MINT
+c underestimated its errors and adapted its grids to the fluctuations of
+c the group choice (biased results for large vector sizes).
+            do ivec=1,vector_size
+               call get_MC_integer(1,proc_map(0,0),lane_group(ivec)
+     $              ,lane_vol1(ivec))
+               if (HAS_PHYSICAL_FKS_CLASSES) then
+                  call get_MC_integer_group_volume(1,proc_map(0,0),
+     $                 born_class_map,lane_group(ivec)
+     $                 ,lane_born_vol1(ivec))
+               endif
+               lane_nbody(ivec)=proc_map(lane_group(ivec),1)
+               if (sum.eq.0) then
+c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
+                  nFKS_in=lane_nbody(ivec)
+                  call get_born_nFKSprocess(nFKS_in,nFKS_out)
+                  lane_nbody(ivec)=nFKS_out
+               endif
+            enddo
          endif
 
      
@@ -1019,21 +1034,14 @@ C ZW: Reset all the storage arrays
 
 c The nbody contributions
          nbody=.true.
-!          calculatedBorn=.false.
-! c Pick the first one because that's the one with the soft singularity
-         nFKS_picked_nbody=proc_map(proc_map(0,1),1)
-         if (sum.eq.0) then
-! c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
-            nFKS_in=nFKS_picked_nbody
-            call get_born_nFKSprocess(nFKS_in,nFKS_out)
-            nFKS_picked_nbody=nFKS_out
-         endif
+c The n-body FKS configuration of each lane (the first one of its sampled
+c group, which has the soft singularity) is lane_nbody(ivec).
 
          call system_clock(ampClockBefore,ampClockRate)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(IVEC)
          do ivec=1,vector_size
             call amplitudes_ivec(proc_map,rwgt,vector_size
-     $            ,nFKS_picked_nbody,ivec)
+     $            ,lane_nbody(ivec),ivec)
          enddo
 !$OMP END PARALLEL DO
          call amplitudes_real_vec(proc_map,vector_size)
@@ -1046,6 +1054,9 @@ c The nbody contributions
          
       do ivec=1,vector_size
          if(allocated(itype_vec)) call retrieve_weight_lines(nexternal,ivec)
+         nFKS_picked_nbody=lane_nbody(ivec)
+         vol1=lane_vol1(ivec)
+         born_vol1=lane_born_vol1(ivec)
          call update_fks_dir(nFKS_picked_nbody)
          MCcntcalled=MCcnt_vec(ivec)
          vegas_wgt=vegas_wgt_vec(ivec)
@@ -1124,10 +1135,10 @@ c always exactly the same momenta in computation of Born when computed
 c for different nFKSprocess.
          if(sum.eq.0) calculatedBorn=.false.
          nbody=.false.
-         do i=1,proc_map(proc_map(0,1),0)
+         do i=1,proc_map(lane_group(ivec),0)
             wgt_me_real=0d0
             wgt_me_born=0d0
-            iFKS=proc_map(proc_map(0,1),i)
+            iFKS=proc_map(lane_group(ivec),i)
             call update_fks_dir(iFKS)
             jac=1d0/vol1
             probne=1d0
@@ -1324,7 +1335,7 @@ c correctly.
             virtual_over_born=virtual_over_born_vec(ivec)
             MCcntcalled=MCcnt_vec(ivec)
             vegas_wgt=vegas_wgt_vec(ivec)
-            call special_check_SoftSing(proc_map(proc_map(0,1),1))
+            call special_check_SoftSing(proc_map(lane_group(ivec),1))
 c Include PDFs and alpha_S and reweight to include the uncertainties
             call include_PDF_and_alphas
 c Include the weight from the bias_function
@@ -1335,7 +1346,8 @@ c Update the shower starting scale for the S-events after we have
 c determined which contributions are identical.
             call update_shower_scale_Sevents(ifold_counter,ifold_picked)
             call fill_mint_function_NLOPS(f,n1body_wgt)
-            call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+            call fill_MC_integer(1,lane_group(ivec),
+     $           n1body_wgt*lane_vol1(ivec))
             f_vec(:,ivec) = f(:)
             if(allocated(itype)) call append_weight_lines(nexternal,ivec)
             MCcnt_vec(ivec)=MCcntcalled

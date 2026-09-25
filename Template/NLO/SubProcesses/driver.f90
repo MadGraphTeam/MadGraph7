@@ -72,6 +72,10 @@ module driver_vec
     double precision, allocatable, public :: sreal_amp_split(:,:,:)
     double precision, allocatable, public :: sfx_ev(:,:)
     logical, allocatable, public :: real_active(:,:)
+    ! Integer (FKS-group) sampling, one draw per lane: every lane is an
+    ! independent MINT point, so it must choose its own group.
+    integer, allocatable, public :: lane_group(:), lane_nbody(:)
+    double precision, allocatable, public :: lane_vol1(:), lane_born_vol1(:)
 
     ! Momenta
 
@@ -164,6 +168,8 @@ module driver_vec
     allocate(sreal_amp_split(amp_split_size,FKS_configs,vector_size))
     allocate(sfx_ev(FKS_configs,vector_size))
     allocate(real_active(FKS_configs,vector_size))
+    allocate(lane_group(vector_size), lane_nbody(vector_size))
+    allocate(lane_vol1(vector_size), lane_born_vol1(vector_size))
     ! Momenta
     allocate(spb(0:3,nexternal-1,0:FKS_configs,vector_size))
     allocate(spb_rot(0:3,nexternal-1,FKS_configs,vector_size))
@@ -320,6 +326,10 @@ subroutine deallocate_storage()
     if (allocated(sreal_amp_split)) deallocate(sreal_amp_split)
     if (allocated(sfx_ev)) deallocate(sfx_ev)
     if (allocated(real_active)) deallocate(real_active)
+    if (allocated(lane_group)) deallocate(lane_group)
+    if (allocated(lane_nbody)) deallocate(lane_nbody)
+    if (allocated(lane_vol1)) deallocate(lane_vol1)
+    if (allocated(lane_born_vol1)) deallocate(lane_born_vol1)
     ! Momenta
     if (allocated(spb)) deallocate(spb)
     if (allocated(spb_rot)) deallocate(spb_rot)
