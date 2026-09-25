@@ -1568,7 +1568,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         assert len(remaps) == 5
         assert all(flag.startswith("--remap-path-prefix=") for flag in remaps)
         assert (
-            f"--remap-path-prefix={ROOT / 'dependencies' / 'checkouts'}="
+            f"--remap-path-prefix={(ROOT / 'dependencies' / 'checkouts').resolve()}="
             "/pyamplicol/dependencies"
         ) in remaps
         assert os.environ["CARGO_HOME"] == str(tmp_path / "cargo-home")
