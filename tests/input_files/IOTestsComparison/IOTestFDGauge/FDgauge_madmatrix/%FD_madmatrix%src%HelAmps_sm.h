@@ -19,7 +19,11 @@
 
 #include "mgOnGpuConfig.h"
 
+#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
 #include "mgOnGpuVectors.h"
+#else
+#include "mgOnGpuCxtypes.h"
+#endif
 
 #include "Parameters.h"
 
@@ -29,11 +33,7 @@
 //#include <iomanip>
 //#include <iostream>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
+namespace madmatrix
 {
 
   // ALOHA-style object for easy flavor consolidation and non-template API
@@ -1177,7 +1177,8 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
   // Compute the direction n[5] of the gauge q[5]
   // TODO: Utilise pvec instead of the whole q
-  __host__ __device__ INLINE void
+  // Genuinely inline (unlike INLINE elsewhere): defined here, not in helas.cu.
+  __host__ __device__ inline void
   define_gauge_dir( const cxtype_amp_sv q[5], // input: gauge
                     fptype_amp_sv n[5] )      // output: direction
  {
@@ -1221,7 +1222,8 @@ namespace mg5amcCpu
 
 //--------------------------------------------------------------------------
 // Compute propagator factor d  from the gauge q[5] and mass
-  __host__ __device__ INLINE void
+// Genuinely inline (unlike INLINE elsewhere): defined here, not in helas.cu.
+  __host__ __device__ inline void
   calculate_propagator_factor( const cxtype_amp_sv q[5], // input: gauge
                                const fptype_amp_sv mass,    // input: mass
                                fptype_sv *d )        // output: propagator factor

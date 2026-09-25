@@ -25,6 +25,7 @@ import tests.unit_tests as unittest
 
 import madgraph.interface.master_interface as Cmd
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_algebra as color
 import models.import_ufo as import_ufo
 import models.model_reader as model_reader
 import madgraph.iolibs.export_v4 as export_v4
@@ -258,6 +259,384 @@ class TestImportUFO(unittest.TestCase):
 
 
 
+    def test_lorentz_info_cache_refresh(self):
+        """the name -> lorentz cache used by the coupling merging must follow the
+        model when new structures are added to it after the cache was built.
+        In FD gauge load_model optimises once, then merge_all_goldstone_with_vector
+        invents structures (SVS5, VSV2, ...) and optimises again: a frozen cache
+        made that second pass raise KeyError (SMEFTatNLO, 2HDMtII_NLO, IDM_NLO)."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        converter.refresh_lorentz_info()
+        self.assertIn('VSS1', converter.lorentz_info)
+
+        # a structure created after the cache was built
+        name = 'SVSTESTREFRESH'
+        new_lor = converter.add_lorentz(name, [1, 3, 1], 'P(2,1) - P(2,3)')
+        self.assertNotIn(name, converter.lorentz_info)
+        self.assertIs(converter.get_lorentz_info(name), new_lor)
+        self.assertEqual(converter.get_lorentz_info(name).get('spins'), [1, 3, 1])
+
+        # a name the model really does not know about is reported as such
+        self.assertIsNone(converter.get_lorentz_info('NOSUCHLORENTZ'))
+
+    def test_optimise_iden_coup_lorentz_added_after_cache(self):
+        """optimise_iden_coup merges two structures sharing a coupling even when
+        one of them was added to the model after the cache was built."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        converter.add_lorentz('SVSTESTEARLY', [1, 3, 1], 'P(2,3)')
+        converter.refresh_lorentz_info()
+        converter.add_lorentz('SVSTESTLATE', [1, 3, 1], 'P(2,1)')
+        # the cache is now stale exactly as FD gauge leaves it
+        self.assertNotIn('SVSTESTLATE', converter.lorentz_info)
+
+        inter = base_objects.Interaction({
+            'id': 1,
+            'lorentz': ['SVSTESTEARLY', 'SVSTESTLATE'],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_1'},
+            'orders': {'QED': 1},
+            'color': [],
+            'particles': base_objects.ParticleList(),
+            })
+        converter.optimise_iden_coup(inter)
+
+        # the two structures are replaced by their sum
+        self.assertEqual(len(inter.get('couplings')), 1)
+        merged = inter.get('lorentz')[list(inter.get('couplings'))[0][1]]
+        self.assertEqual(converter.get_lorentz_info(merged).get('structure'),
+                         'P(2,3) + P(2,1)')
+        self.assertEqual(converter.get_lorentz_info(merged).get('spins'), [1, 3, 1])
+
+    def test_optimise_iden_coup_unknown_lorentz_is_skipped(self):
+        """a lorentz name the model does not define at all must leave the
+        interaction untouched instead of raising."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        inter = base_objects.Interaction({
+            'id': 1,
+            'lorentz': ['VSS1', 'NOSUCHLORENTZ'],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_1'},
+            'orders': {'QED': 1},
+            'color': [],
+            'particles': base_objects.ParticleList(),
+            })
+        converter.optimise_iden_coup(inter)
+
+        self.assertEqual(inter.get('lorentz'), ['VSS1', 'NOSUCHLORENTZ'])
+        self.assertEqual(inter.get('couplings'), {(0, 0): 'GC_1', (0, 1): 'GC_1'})
+
+
+    def test_goldstone_merge_keeps_coupling_orders_apart(self):
+        """A goldstone vertex must not be absorbed by a vector vertex that has
+        different coupling orders: the merged coupling silently inherits the
+        host's orders.  SMEFTatNLO lost its QED=2 'a a G- G+' coupling into an
+        NP=2 'a a W+ G-' vertex that way, so 'a a > w+ w- NP=0' came out 4% off
+        in FD gauge.  The orders were only checked when several candidate
+        vertices existed."""
+
+        def particle(pdg, name, is_part=True):
+            return base_objects.Particle({'name': name, 'antiname': name,
+                                          'pdg_code': abs(pdg), 'spin': 3,
+                                          'is_part': is_part,
+                                          'self_antipart': pdg == 22})
+
+        a = particle(22, 'a')
+        wp = particle(24, 'w+')
+        wm = particle(24, 'w-', is_part=False)
+        gm = particle(251, 'g-', is_part=False)
+
+        def interaction(iid, parts, orders, couplings):
+            return base_objects.Interaction({
+                'id': iid,
+                'particles': base_objects.ParticleList(parts),
+                'lorentz': ['VVSS1'],
+                'color': [color.ColorString()],
+                'couplings': couplings,
+                'orders': orders,
+                })
+
+        # the goldstone vertex is pure QED, the only candidate host is NP=2
+        gold = interaction(1, [a, a, wp, gm], {'QED': 2}, {(0, 0): 'GC_6'})
+        host = interaction(2, [a, a, wp, wm], {'NP': 2, 'QED': 2}, {})
+
+        fct = import_ufo.UFOMG5Converter.update_vertex_for_goldstone
+        # the guard returns before `self` is ever needed
+        to_be_done = fct(None, [host], gold, gm, wm)
+
+        self.assertTrue(to_be_done,
+                        'the caller must build a standalone vertex instead')
+        self.assertEqual(host.get('couplings'), {},
+                         'the QED=2 coupling leaked into the NP=2 vertex')
+        self.assertEqual(host.get('lorentz'), ['VVSS1'])
+
+        # same orders: the merge does go ahead
+        host_ok = interaction(3, [a, a, wp, wm], {'QED': 2}, {})
+        self.assertFalse(fct(None, [host_ok], gold, gm, wm))
+        self.assertEqual(host_ok.get('couplings'), {(0, 0): 'GC_6'})
+
+
+    def test_goldstone_merge_is_atomic(self):
+        """A goldstone vertex that cannot be absorbed whole must leave the host
+        exactly as it found it.  Copying part of the couplings and *then*
+        telling the caller to build a standalone vertex counted what had
+        already been copied twice."""
+
+        def particle(pdg, name, is_part=True):
+            return base_objects.Particle({'name': name, 'antiname': name,
+                                          'pdg_code': abs(pdg), 'spin': 3,
+                                          'is_part': is_part,
+                                          'self_antipart': pdg == 22})
+
+        a, wp = particle(22, 'a'), particle(24, 'w+')
+        wm, gm = particle(24, 'w-', False), particle(251, 'g-', False)
+
+        def interaction(iid, parts, lorentz, couplings):
+            return base_objects.Interaction({
+                'id': iid, 'particles': base_objects.ParticleList(parts),
+                'lorentz': lorentz, 'color': [color.ColorString()],
+                'couplings': couplings, 'orders': {'QED': 2}})
+
+        # the host already uses the slot the second structure would land in
+        gold = interaction(1, [a, a, wp, gm], ['VVSS1', 'VVSS2'],
+                           {(0, 0): 'GC_1', (0, 1): 'GC_2'})
+        host = interaction(2, [a, a, wp, wm], ['VVSS1', 'VVSS2'],
+                           {(0, 1): 'GC_9'})
+
+        fct = import_ufo.UFOMG5Converter.update_vertex_for_goldstone
+        self.assertTrue(fct(None, [host], gold, gm, wm),
+                        'the caller must build a standalone vertex instead')
+        self.assertEqual(host.get('couplings'), {(0, 1): 'GC_9'},
+                         'the host was mutated even though the merge was refused')
+        self.assertEqual(host.get('lorentz'), ['VVSS1', 'VVSS2'])
+
+    def test_collapse_duplicate_lorentz(self):
+        """Permuting the legs of a vertex with identical particles can send two
+        of its structures onto the same one.  Two entries for one structure is
+        not something the goldstone merge can use: collapse them and add the
+        couplings up."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        inter = base_objects.Interaction({
+            'id': 1, 'particles': base_objects.ParticleList(),
+            'lorentz': ['VVSS1', 'VVSS2', 'VVSS1'],
+            'color': [color.ColorString()],
+            'couplings': {(0, 0): 'GC_1', (0, 1): 'GC_2', (0, 2): 'GC_3'},
+            'orders': {'QED': 2}})
+        converter.collapse_duplicate_lorentz(inter)
+
+        self.assertEqual(inter.get('lorentz'), ['VVSS1', 'VVSS2'])
+        self.assertEqual(sorted(inter.get('couplings')), [(0, 0), (0, 1)])
+        self.assertEqual(inter.get('couplings')[(0, 1)], 'GC_2')
+        # the two entries for VVSS1 became one carrying their sum
+        summed = inter.get('couplings')[(0, 0)]
+        self.assertNotIn(summed, ('GC_1', 'GC_3'))
+        value = [c.value for c in converter.additional_couplings
+                 if c.name == summed][0]
+        expr = {c.name: c.value for c in ufo_model.all_couplings}
+        self.assertEqual(value, '(%s)+(%s)' % (expr['GC_1'], expr['GC_3']))
+
+        # a vertex with no repeat is left alone
+        clean = base_objects.Interaction({
+            'id': 2, 'particles': base_objects.ParticleList(),
+            'lorentz': ['VVSS1', 'VVSS2'], 'color': [color.ColorString()],
+            'couplings': {(0, 0): 'GC_1'}, 'orders': {'QED': 2}})
+        converter.collapse_duplicate_lorentz(clean)
+        self.assertEqual(clean.get('lorentz'), ['VVSS1', 'VVSS2'])
+        self.assertEqual(clean.get('couplings'), {(0, 0): 'GC_1'})
+
+
+    def test_parse_fermion_structure(self):
+        """The chiral decomposition the goldstone phase is read from has to cope
+        with however a model chose to write its two-fermion structures."""
+
+        fct = import_ufo.parse_fermion_structure
+
+        self.assertEqual(fct('Gamma(3,2,-1)*ProjM(-1,1)'), {'L': 1})
+        self.assertEqual(fct('Gamma(3,2,1)'), {'L': 1, 'R': 1})
+        self.assertEqual(fct('ProjM(2,1) - ProjP(2,1)'), {'M': 1, 'P': -1})
+        # a model may write the neutral current as a single structure
+        self.assertEqual(
+            fct('Gamma(3,2,-1)*ProjM(-1,1) + 4*Gamma(3,2,-1)*ProjP(-1,1)'),
+            {'L': 1, 'R': 4})
+        # ... and the pseudoscalar coupling as a gamma5
+        self.assertEqual(fct('Gamma5(2,1)'), {'P': 1, 'M': -1})
+        # anything else is refused rather than guessed at
+        self.assertIsNone(fct('P(3,1)*Gamma(-1,2,1)'))
+        self.assertIsNone(fct('Gamma(3,2,1) + Sigma(1,2,3,4)'))
+        self.assertIsNone(fct('Metric(1,2)'))
+
+    @staticmethod
+    def feynman_gauge_sm():
+        """The sm converted with its goldstones still in place, which is what
+        the phase is read off."""
+
+        import aloha
+        keep = aloha.unitary_gauge
+        aloha.unitary_gauge = 0      # Feynman: the goldstones survive
+        try:
+            ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'),
+                                             decay=False)
+            converter = import_ufo.UFOMG5Converter(ufo_model)
+            converter.load_model()
+        finally:
+            aloha.unitary_gauge = keep
+        return converter
+
+    def goldstone_pairs(self, converter):
+        out = []
+        for particle in converter.particles:
+            if particle.get('type') != 'goldstone':
+                continue
+            vector = [p for p in converter.particles
+                      if p.get('mass') == particle.get('mass') and p.get('spin') == 3]
+            self.assertEqual(len(vector), 1)
+            out.append((particle, vector[0]))
+        return out
+
+    def test_goldstone_phase_of_the_sm_is_trivial(self):
+        """The SM UFO *is* the convention FD gauge assumes, so both of its
+        goldstones must measure exactly one -- anything else would mean the
+        measurement rotates a model that is already right."""
+
+        converter = self.feynman_gauge_sm()
+        pairs = self.goldstone_pairs(converter)
+        self.assertEqual(sorted(g.get('name') for g, v in pairs), ['g+', 'g0'])
+        for goldstone, vector in pairs:
+            phase = converter.measure_goldstone_phase(goldstone, vector)
+            self.assertIsNotNone(phase, 'no phase read for %s' % goldstone.get('name'))
+            self.assertAlmostEqual(abs(phase - 1), 0, places=9,
+                                   msg='%s measured %s' % (goldstone.get('name'), phase))
+
+    def test_goldstone_phase_detects_a_rotated_convention(self):
+        """Give the SM's charged goldstone another phase convention and the
+        measurement has to find it.  This is what 2HDMtII_NLO (i) and
+        SMEFTatNLO (-1 on the neutral one) look like."""
+
+        converter = self.feynman_gauge_sm()
+        charged = [(g, v) for g, v in self.goldstone_pairs(converter) if v.get('charge')]
+        self.assertEqual(len(charged), 1)
+        goldstone, vector = charged[0]
+
+        # rotate every vertex holding the goldstone, the antiparticle one by the
+        # conjugate so that the model stays hermitian
+        for inter in converter.interactions:
+            legs = [p.get_pdg_code() for p in inter.get('particles')
+                    if abs(p.get_pdg_code()) == abs(goldstone.get_pdg_code())]
+            if len(legs) != 1:
+                continue
+            factor = 1j if legs[0] > 0 else -1j
+            inter.set('couplings', dict(
+                (key, converter.rotate_coupling(name, factor))
+                for key, name in inter.get('couplings').items()))
+        for cache in ('_coupling_expr', '_coupling_values'):
+            if hasattr(converter, cache):
+                delattr(converter, cache)
+
+        phase = converter.measure_goldstone_phase(goldstone, vector)
+        self.assertIsNotNone(phase)
+        self.assertAlmostEqual(abs(phase - (-1j)), 0, places=9,
+                               msg='measured %s, expected -1j' % phase)
+
+    def test_rotate_coupling(self):
+        """A rotated coupling is a new coupling of the model, reused between
+        the vertices that need the same rotation, and the identity is a no-op."""
+
+        ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
+        converter = import_ufo.UFOMG5Converter(ufo_model)
+        converter.load_model()
+
+        self.assertEqual(converter.rotate_coupling('GC_1', 1), 'GC_1')
+        self.assertEqual(converter.rotate_coupling('-GC_1', 1.0000000001), '-GC_1')
+
+        rotated = converter.rotate_coupling('GC_1', 1j)
+        self.assertNotEqual(rotated, 'GC_1')
+        self.assertEqual(converter.rotate_coupling('GC_1', 1j), rotated)
+        self.assertEqual(converter.rotate_coupling('-GC_1', 1j), '-' + rotated)
+
+        expr = dict((c.name, c.value) for c in converter.additional_couplings)
+        base = dict((c.name, c.value) for c in ufo_model.all_couplings)
+        self.assertEqual(expr[rotated], '(complex(0,1))*(%s)' % base['GC_1'])
+        # a different rotation is a different coupling
+        self.assertNotEqual(converter.rotate_coupling('GC_1', -1), rotated)
+
+
+    def test_goldstone_mass_mismatches(self):
+        """A goldstone coupling carries a mass, and it has to be the one the
+        particle propagates with.  heft ships ymb=4.2 against MB=4.7 and
+        EWdim6NLO leaks a dim-6 shift into lam; neither is visible in unitary
+        gauge, and both cost a few per mil in Feynman and FD."""
+
+        def particle(name, pdg, spin, mass, charge=0., is_part=True):
+            return base_objects.Particle({
+                'name': name, 'antiname': name, 'pdg_code': abs(pdg),
+                'spin': spin, 'mass': mass, 'is_part': is_part,
+                'charge': charge, 'self_antipart': False})
+
+        class Lorentz(object):
+            def __init__(self, structure, spins):
+                self._d = {'structure': structure, 'spins': spins}
+            def get(self, key):
+                return self._d[key]
+
+        lorentz = {'FFV': Lorentz('Gamma(3,2,-1)*ProjM(-1,1)', [2, 2, 3]),
+                   'FFVR': Lorentz('Gamma(3,2,-1)*ProjP(-1,1)', [2, 2, 3]),
+                   'FFS': Lorentz('ProjM(2,1) - ProjP(2,1)', [2, 2, 1])}
+
+        z = particle('z', 23, 3, 'MZ', charge=0.)
+        b = particle('b', 5, 2, 'MB', charge=-1. / 3)
+        bbar = particle('b~', 5, 2, 'MB', charge=1. / 3, is_part=False)
+
+        # the merged vertex FD builds: the current and the goldstone coupling
+        # of the same fermion pair, side by side
+        inter = base_objects.Interaction({
+            'id': 1, 'particles': base_objects.ParticleList([bbar, b, z]),
+            'lorentz': ['FFV', 'FFVR', 'FFS'], 'color': [color.ColorString()],
+            'couplings': {(0, 0): 'CL', (0, 1): 'CR', (0, 2): 'CS'},
+            'orders': {'QED': 1}})
+
+        class Model(object):
+            def __init__(self, couplings):
+                self.couplings = couplings
+            def get(self, key):
+                return {'coupling_dict': self.couplings,
+                        'parameter_dict': {'MZ': 91.188, 'MB': 4.7},
+                        'particles': [z, b, bbar],
+                        'interactions': [inter]}[key]
+            def get_lorentz(self, name):
+                return lorentz[name]
+
+        # gauge invariance puts -i m/M (cL - cR) on ProjM - ProjP
+        axial = 0.37035403723587573
+        couplings = {'CL': -0.31548078172104344j, 'CR': 0.054873255514832284j}
+
+        couplings['CS'] = -axial * 4.7 / 91.188
+        self.assertEqual(import_ufo.goldstone_mass_mismatches(Model(couplings)), [],
+                         'a consistent model must be left alone')
+
+        # now build the coupling with 4.2, the way heft does
+        couplings['CS'] = -axial * 4.2 / 91.188
+        found = import_ufo.goldstone_mass_mismatches(Model(couplings))
+        self.assertEqual(len(found), 1)
+        name, implied, actual, parameter, source = found[0]
+        self.assertAlmostEqual(implied, 4.2, places=6)
+        self.assertAlmostEqual(actual, 4.7, places=6)
+        self.assertEqual(parameter, 'MB')
+        self.assertEqual(source, 'z')
+
+
 class TestImportUFO_fromcmd(unittest.TestCase):
 
     def test_import_from_cmd(self):
@@ -299,6 +678,25 @@ class TestImportUFO_fromcmd(unittest.TestCase):
             nb_lor[coup[1]] += 1
 
         self.assertEqual(nb_lor, [1,1,0,0,1])
+
+    def test_fd_gauge_interaction_ids_stay_unique(self):
+        """interaction ids are the key model.get_interaction() is looked up by,
+        so they must stay unique.  In FD gauge merge_all_goldstone_with_vector
+        shrinks the interaction list, and ids derived from its length were then
+        handed out twice to the counterterm interactions of an NLO model --
+        diagram generation ended up on the wrong vertex."""
+
+        self.cmd = Cmd.MasterCmd()
+        self.cmd.exec_cmd("set gauge FD")
+        self.cmd.exec_cmd("import model loop_sm")
+
+        interactions = self.cmd._curr_model.get('interactions')
+        ids = [inter.get('id') for inter in interactions]
+        self.assertEqual(len(ids), len(set(ids)),
+                         'duplicated interaction ids in FD gauge')
+        for inter in interactions:
+            self.assertIs(self.cmd._curr_model.get_interaction(inter.get('id')),
+                          inter)
 
         
 

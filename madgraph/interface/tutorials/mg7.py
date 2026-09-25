@@ -21,7 +21,9 @@ making it faster or more accurate, up to and including training MadNIS.
 from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
-from madgraph.interface.tutorials.session import Step, Tutorial
+from madgraph.interface.tutorials.session import (Step, Tutorial,
+                                                  counts_line,
+                                                  output_name)
 
 P = 'MG7>'
 RUN = 'MY_MG7_RUN'
@@ -56,15 +58,19 @@ Everything below lives in `Cards/run_card.toml`. Make an output to look at:
      title='welcome',
      solution='generate p p > t t~ j'),
 
-Step('generate', """
-Something with enough channels to be worth tuning.
+Step('generate', lambda interface: """
+%(counts)sEnough channels for the integrator to have decisions to make,
+which is what makes this worth tuning -- `p p > t t~` would not be.
 
 %(p)s output %(run)s
-""" % {'p': P, 'run': RUN},
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='pick a process worth tuning',
      solution='output %s' % RUN),
 
-Step('output', """
+Step('output', lambda interface: """
+That is an MG7 output, integrated by madspace: `%(run)s/` holds the process
+code, and everything below is one file inside it.
+
 `Cards/run_card.toml`, section by section. The ones you will actually touch
 are marked.
 
@@ -105,11 +111,14 @@ buys a better grid at a proportional cost; `damping` is what to reach for when
 the grid oscillates instead of settling.
 
 %(p)s history my_mg7_session.dat
-""" % {'p': P},
+""" % {'p': P, 'run': output_name(interface, RUN)},
      title='the run card, section by section',
      solution='history my_mg7_session.dat'),
 
 Step('history', lambda interface: """
+That file replays the session -- `import command my_mg7_session.dat`, or
+`./bin/madgraph my_mg7_session.dat` from a shell.
+
 **MadNIS, and why you probably do not need to configure it.**
 
 `[madnis] enable` is `"auto"`, and it means what it says. MG7 surveys the phase

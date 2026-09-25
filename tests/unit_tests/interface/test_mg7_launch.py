@@ -515,6 +515,174 @@ class MG7CmdTest(unittest.TestCase):
         switch = {'shower': 'Pythia8'}
         self.assertEqual(cmd._apply_laststep(switch, {'laststep': ''}), switch)
 
+    def output_format(self, switch, initial='compact_npy'):
+        """Run force_lhe_output_if_needed on a run_card asking for `initial`
+        and return the format the run ends up with."""
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        with open(path, 'w') as stream:
+            stream.write('[run]\nrun_name = "run"\n'
+                         'output_format = "%s"\n' % initial)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            self.launch.force_lhe_output_if_needed(switch)
+        finally:
+            os.chdir(cwd)
+        from madgraph.various.banner import RunCardMG7
+        return RunCardMG7(path, consistency=False)['run']['output_format']
+
+    def test_post_processing_forces_the_lhe_output(self):
+        """the npy formats carry no event record a shower could read"""
+        self.assertEqual(self.output_format({'shower': 'Pythia8'}), 'lhe')
+        self.assertEqual(self.output_format({'madspin': 'ON'},
+                                            initial='lhe_npy'), 'lhe')
+
+    # -- the MADatLO.HwU switch ---------------------------------------------
+    class FakeHistograms:
+        """Stands in for the madspace EventHistograms of a finished run."""
+
+        JSON = ('[{"name": "jet-pt", "min": 0.0, "max": 100.0, '
+                '"bin_count": 2, "bin_values": [0.0, 1.0, 2.0, 0.0], '
+                '"bin_errors": [0.0, 0.1, 0.2, 0.0], "weights": []}]')
+
+        def to_json(self, systematics=None):
+            return self.JSON
+
+    def hwu_writer(self, write_hwu):
+        """A MadgraphProcess reduced to what write_hwu() looks at."""
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['write_hwu'] = write_hwu
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def hwu_path(self):
+        return os.path.join(self.me_dir, self.launch.MadgraphProcess.hwu_file_name)
+
+    def test_hwu_is_off_by_default(self):
+        """the same numbers are in info.json: the second file is opt-in"""
+        self.assertIs(self.launch.MadgraphProcess.__new__(
+            self.launch.MadgraphProcess).__class__, self.launch.MadgraphProcess)
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['write_hwu'], False)
+        process = self.hwu_writer(False)
+        process.write_hwu(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    def test_hwu_is_written_when_asked(self):
+        process = self.hwu_writer(True)
+        process.write_hwu(self.FakeHistograms())
+        with open(self.hwu_path()) as stream:
+            text = stream.read()
+        self.assertIn('<histogram> 2 "jet-pt', text)
+        self.assertTrue(text.startswith('##& xmin & xmax'))
+
+    def test_no_histograms_no_file(self):
+        """nothing to write when [histograms] is empty, switch or no switch"""
+        process = self.hwu_writer(True)
+        process.write_hwu(None)
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    # -- the Events/<run>/plots switch --------------------------------------
+    def plot_maker(self, make_plots):
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['make_plots'] = make_plots
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def plot_dir(self):
+        return os.path.join(self.me_dir,
+                            self.launch.MadgraphProcess.plot_dir_name)
+
+    def test_plots_are_on_by_default(self):
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['make_plots'], True)
+
+    def test_plots_can_be_switched_off(self):
+        process = self.plot_maker(False)
+        process.make_plots(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_no_histograms_no_plot_directory(self):
+        process = self.plot_maker(True)
+        process.make_plots(None)
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_missing_matplotlib_does_not_fail_the_run(self):
+        """the numbers are in info.json: a run without the backend carries on"""
+        from madgraph.iolibs.template_files.mg7 import plots
+        saved = plots._pyplot
+
+        def no_matplotlib():
+            raise plots.BackendMissing("No module named 'matplotlib'")
+
+        plots._pyplot = no_matplotlib
+        try:
+            process = self.plot_maker(True)
+            process.make_plots(self.FakeHistograms())   # must not raise
+        finally:
+            plots._pyplot = saved
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    # -- "set histograms ..." in the launch question ------------------------
+    def histogram_selector(self, card_text=None):
+        """An MG7Selector reduced to what do_set needs, on this output's card."""
+        from madgraph.various.banner import RunCardMG7
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        default_path = os.path.join(self.me_dir, 'Cards',
+                                    'run_card_default.toml')
+        card = RunCardMG7()
+        card.dynamic_sections['histograms'].update({
+            'jet_1-pt': {'min': 0., 'max': 500., 'bin_count': 50},
+            'sqrt_s': {'min': 0., 'max': 2000., 'bin_count': 50},
+        })
+        card.write(path)
+        card.write(default_path)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            selector_class, _ = self.launch.build_selector_cmd()
+        finally:
+            os.chdir(cwd)
+        obj = selector_class.__new__(selector_class)
+        obj.run_card = RunCardMG7(path, consistency=False)
+        obj.paths = {'run_default': default_path}
+        obj.modified_card = set()
+        return obj
+
+    def test_set_histograms_off_removes_them_all(self):
+        obj = self.histogram_selector()
+        self.assertTrue(obj.run_card['histograms'])
+        obj.do_set('histograms OFF')
+        self.assertEqual(dict(obj.run_card['histograms']), {})
+        self.assertIn('run', obj.modified_card)
+
+    def test_set_histograms_default_puts_them_back(self):
+        obj = self.histogram_selector()
+        obj.do_set('histograms off')
+        obj.do_set('histograms default')
+        self.assertIn('jet_1-pt', obj.run_card['histograms'])
+
+    def test_set_histograms_rejects_anything_else(self):
+        """a value that is not OFF/default leaves the section alone"""
+        obj = self.histogram_selector()
+        before = dict(obj.run_card['histograms'])
+        obj.do_set('histograms 42')
+        self.assertEqual(dict(obj.run_card['histograms']), before)
+        self.assertNotIn('run', obj.modified_card)
+
+    def test_no_post_processing_keeps_the_npy_output(self):
+        self.assertEqual(self.output_format({}), 'compact_npy')
+        self.assertEqual(self.output_format(None), 'compact_npy')
+        self.assertEqual(
+            self.output_format({'shower': 'OFF', 'analysis': 'Not Avail.'}),
+            'compact_npy')
+
     def test_run_name_is_written_to_the_run_card(self):
         cmd = self.make_cmd()
         cwd = os.getcwd()
@@ -763,19 +931,7 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         """The tool list run_selected_tools builds, without running it."""
 
         from madgraph.iolibs.template_files.mg7 import launch
-
-        off = launch._off
-        ma5 = switch.get('analysis') == 'MadAnalysis5'
-        showered = not off(switch.get('shower'))
-        return [t for t, on in (
-            ("reweighting", not off(switch.get("reweight"))),
-            ("MadSpin", not off(switch.get("madspin"))),
-            ("MadAnalysis5 (parton level)", ma5),
-            ("Pythia8 shower", switch.get("shower") == "Pythia8"),
-            ("Delphes", switch.get("detector") == "Delphes"),
-            ("MadAnalysis5 (hadron level)", ma5 and showered),
-            ("Rivet", switch.get("analysis") == "Rivet"),
-        ) if on]
+        return launch.selected_tools(switch)
 
     def test_a_not_available_switch_selects_no_tool(self):
         """The case from a real run: Delphes is not installed, so the detector
@@ -787,6 +943,15 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
 
     def test_everything_off_selects_no_tool(self):
         switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'OFF',
+                  'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_exroot_selects_no_tool(self):
+        """analysis = ExRoot is the default when ExRootAnalysis is installed,
+        but mg7 has no driver for it: it must neither run anything nor force
+        the LHE output."""
+
+        switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'ExRoot',
                   'madspin': 'OFF', 'reweight': 'OFF'}
         self.assertEqual(self.tools_for(switch), [])
 
@@ -809,3 +974,213 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestForceLHEOutput(unittest.TestCase):
+    """The events are written as npy by default; the run_card is switched to
+    the LHE format only when something that reads LHE will run."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        self.launch = launch
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.cwd = os.getcwd()
+        os.chdir(self.tmpdir.name)
+        os.mkdir('Cards')
+        template = os.path.join(os.path.dirname(launch.__file__),
+                                'run_card.toml')
+        RunCardMG7().write(self.card, template=template)
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmpdir.cleanup()
+
+    card = os.path.join('Cards', 'run_card.toml')
+
+    def output_format(self):
+        import tomllib
+        with open(self.card, 'rb') as f:
+            return tomllib.load(f)['run']['output_format']
+
+    def edit(self, old, new):
+        with open(self.card) as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(self.card, 'w') as f:
+            f.write(text.replace(old, new, 1))
+
+    def test_default_is_npy(self):
+        self.assertEqual(self.output_format(), 'lhe_npy')
+
+    def test_nothing_to_do_keeps_npy(self):
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed(
+            {'shower': 'OFF', 'detector': 'Not Avail.', 'analysis': 'ExRoot',
+             'madspin': 'OFF', 'reweight': 'OFF'})
+        self.assertEqual(self.output_format(), 'lhe_npy')
+
+    def test_tool_forces_lhe(self):
+        self.launch.force_lhe_output_if_needed({'shower': 'Pythia8'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_time_of_flight_forces_lhe(self):
+        self.edit('time_of_flight = -1.0', 'time_of_flight = 0.5')
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_legacy_systematics_forces_lhe_only_without_native(self):
+        self.edit('\nsystematics = false', '\nsystematics = true')
+        self.launch.force_lhe_output_if_needed({})
+        # madspace computes the weights itself: systematics.py never runs
+        self.assertEqual(self.output_format(), 'lhe_npy')
+        with open(self.card) as f:
+            text = f.read()
+        start = text.index('[systematics]')
+        end = text.index('enable = true', start)
+        with open(self.card, 'w') as f:
+            f.write(text[:end] + 'enable = false' + text[end + 13:])
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_scan_card_survives(self):
+        """A scan value is not a valid RunCardMG7 entry: the card is edited
+        as text, and only on its output_format line."""
+        self.edit('e_cm = 13000.0', 'e_cm = "scan:[13000, 14000]"')
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+        with open(self.card) as f:
+            self.assertIn('e_cm = "scan:[13000, 14000]"', f.read())
+
+    def test_missing_output_format_line(self):
+        with open(self.card, 'w') as f:
+            f.write('[run]\nseed = 3\n')
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestNpyToLHE(unittest.TestCase):
+    """npy_to_lhe rebuilds the LHE file of an npy run from the header.lhe
+    written next to the events (the compact_npy completion is covered by comparing a
+    real run against its output_format = "lhe" twin, which needs a process)."""
+
+    def setUp(self):
+        import numpy as np
+        from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+        self.np = np
+        self.npy_to_lhe = npy_to_lhe
+        self.ms = npy_to_lhe._madspace()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.run = os.path.join(self.tmpdir.name, 'Events', 'run_01')
+        os.makedirs(self.run)
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def write_lhe_npy(self):
+        """Two e+ e- > mu+ mu- events in the lhe_npy layout, the second one
+        padded with an empty particle slot."""
+        fields = [('process_id', '<i4'), ('weight', '<f8'), ('scale', '<f8'),
+                  ('alpha_qed', '<f8'), ('alpha_qcd', '<f8'),
+                  ('rwgt_1', '<f8'), ('rwgt_2', '<f8')]
+        names = ('pdg_id', 'status_code', 'mother1', 'mother2', 'color',
+                 'anti_color', 'px', 'py', 'pz', 'energy', 'mass', 'lifetime',
+                 'spin')
+        for i in range(5):
+            fields += [('part%d_%s' % (i + 1, n), '<i4' if j < 6 else '<f8')
+                       for j, n in enumerate(names)]
+        events = self.np.zeros(2, dtype=fields)
+        rows = [(-11, -1, 0, 0, 0, 0, 0., 0., 500., 500.),
+                (11, -1, 0, 0, 0, 0, 0., 0., -500., 500.),
+                (-13, 1, 1, 2, 0, 0, 100., 0., 489.9, 500.),
+                (13, 1, 1, 2, 0, 0, -100., 0., -489.9, 500.)]
+        for n in range(2):
+            events['weight'][n] = 0.5
+            events['scale'][n] = 1000.
+            events['rwgt_1'][n] = 0.4 + n
+            events['rwgt_2'][n] = 0.6
+            for i, row in enumerate(rows):
+                for name, value in zip(names, row):
+                    events['part%d_%s' % (i + 1, name)][n] = value
+        self.np.save(os.path.join(self.run, 'events.npy'), events)
+
+    def save_meta(self):
+        """The header.lhe an npy run writes next to its events."""
+        ms = self.ms
+        meta = ms.LHEMeta(
+            beam1_pdg_id=-11, beam2_pdg_id=11, beam1_energy=500.,
+            beam2_energy=500., beam1_pdf_id=-1, beam2_pdf_id=-1,
+            weight_mode=3, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
+            headers=[ms.LHEHeader(name="MG7Seed", content="7"),
+                     ms.LHEHeader(name="initrwgt",
+                                  content='<weight id="1">a</weight>')])
+        writer = ms.LHEFileWriter(os.path.join(self.run, 'header.lhe'), meta)
+        del writer
+
+    def test_lhe_npy_round_trip(self):
+        from madgraph.various import lhe_parser
+        self.write_lhe_npy()
+        self.save_meta()
+        output = self.npy_to_lhe.convert('run_01', me_dir=self.tmpdir.name)
+        self.assertEqual(output, os.path.join(self.run, 'events.lhe.gz'))
+        lhe = lhe_parser.EventFile(output)
+        self.assertIn('<MG7Seed>', lhe.banner)
+        self.assertIn('<initrwgt>', lhe.banner)
+        events = list(lhe)
+        self.assertEqual(len(events), 2)
+        self.assertEqual([p.pid for p in events[0]], [-11, 11, -13, 13])
+        self.assertEqual([p.status for p in events[1]], [-1, -1, 1, 1])
+        self.assertAlmostEqual(events[0][2].px, 100.)
+        self.assertAlmostEqual(events[1].wgt, 0.5)
+        self.assertEqual(events[1].parse_reweight(), {'1': 1.4, '2': 0.6})
+
+    def test_default_picks_unconverted_run(self):
+        self.write_lhe_npy()
+        self.save_meta()
+        self.npy_to_lhe.main(['--no-gzip'], me_dir=self.tmpdir.name)
+        self.assertTrue(os.path.exists(os.path.join(self.run, 'events.lhe')))
+        with self.assertRaises(SystemExit):
+            # nothing left to convert
+            self.npy_to_lhe.main([], me_dir=self.tmpdir.name)
+
+    def test_run_without_saved_header(self):
+        self.write_lhe_npy()
+        self.assertFalse(self.npy_to_lhe.can_convert(self.run))
+        with self.assertRaises(FileNotFoundError):
+            self.npy_to_lhe.convert(self.run)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestHistogramSwitches(unittest.TestCase):
+    """[run] weighted_histograms / postprocessing_histograms."""
+
+    def test_defaults(self):
+        from madgraph.various.banner import RunCardMG7
+        card = RunCardMG7()
+        self.assertIs(card['run']['weighted_histograms'], False)
+        self.assertIs(card['run']['postprocessing_histograms'], True)
+
+    def test_mean_ignores_under_and_overflow(self):
+        """Both histogram kinds carry the under/overflow bins first and last;
+        they have no position and must not shift the in-range bins."""
+        from madgraph.iolibs.template_files.mg7 import launch
+        mean = launch.MadgraphProcess._histogram_mean
+        # bins [0,10) and [10,20) with weights 1 and 3, plus 100 in overflow
+        self.assertAlmostEqual(mean(0., 20., [5., 1., 3., 100.]), 12.5)
+        self.assertIsNone(mean(0., 20., [5., 0., 0., 100.]))
+
+    def test_postprocessing_off_builds_no_event_histograms(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['postprocessing_histograms'] = False
+        process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
+        self.assertIsNone(process.build_event_histograms())
+        self.assertIsNone(process.event_histograms)

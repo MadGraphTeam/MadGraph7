@@ -337,6 +337,21 @@ COLOR_MATRIX_ENCODING_TEMPLATES = frozenset((
     'matrix_madevent_group_v4_onia_pwave.inc',
 ))
 
+# The initial states a dressed-lepton beam (pdlabel='dressed') can be made of.
+# Source/PDF/eepdf.f only provides the lepton densities of an electron or a
+# muon beam (|lpp| = 3 or 4), and only these get a <part><beam>_components
+# array written out next to their PDG2PDF call, so only these may take the
+# ee_comp_prod path below.
+DRESSED_LEPTON_PDGS = frozenset((11, 13))
+
+
+def is_dressed_lepton_beam(pdgs):
+    """Whether every initial state of one beam carries lepton-density
+    components, i.e. whether that beam can be a dressed-lepton beam."""
+
+    return bool(pdgs) and all(abs(pdg) in DRESSED_LEPTON_PDGS for pdg in pdgs)
+
+
 #===============================================================================
 # ProcessExporterFortran
 #===============================================================================
@@ -4225,10 +4240,43 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             one_initial_state += [-i for i in self.model['merged_particles'][-pdg]]
 
 
-            if tuple(initial_states) in [([-11],[11]), ([11],[-11]), ([-13],[13]),([13],[-13])]:
-                dressed_lep = True
-            else:
-                dressed_lep = False
+            # With pdlabel='dressed' a lepton density is not one number but
+            # n_ee components which have to be contracted beam by beam
+            # (ee_comp_prod), so the two beams may take that path only if
+            # every one of their initial states has such components. Testing
+            # tuple(initial_states) against a list of pdg pairs used to stand
+            # in for that, but the loop just above expands the merged
+            # particles of the model into initial_states: with
+            # apply_flavor_grouping on, 'e+ e- > mu+ mu-' gives
+            # ([-11,-13],[11,13]), which no list of pairs covers, and the
+            # components were silently dropped (leaving only the first one,
+            # i.e. no beamstrahlung, 13% low at FCC-ee).
+            dressed_lep = all(is_dressed_lepton_beam(one_initial_state)
+                              for one_initial_state in initial_states)
+
+            if not dressed_lep and all(any(abs(pdg) in DRESSED_LEPTON_PDGS
+                                           for pdg in one_initial_state)
+                                       for one_initial_state in initial_states):
+                # Both beams are (partly) leptonic but one of them also holds
+                # something with no lepton density -- a tau, say. Contracting
+                # the components is then only half right and multiplying the
+                # plain PDG2PDF values is not right at all, so refuse at run
+                # time, where pdlabel is known: it is a card entry, so
+                # generation cannot tell whether this directory will ever see
+                # 'dressed'. A beam with no lepton at all (a quark or a photon
+                # facing a lepton beam) does not come here: that subprocess is
+                # simply absent from the density, and pdg2pdf answers 0 for
+                # it, which is the right answer and not a mis-sum.
+                pdf_lines += "IF (PDLABEL.EQ.'dressed') THEN\n" + \
+                    "WRITE(*,*) 'ERROR: dressed lepton densities are not " + \
+                    "supported for this subprocess:'\n" + \
+                    "WRITE(*,*) '       its initial states are not all " + \
+                    "electrons/muons, so the'\n" + \
+                    "WRITE(*,*) '       luminosity components cannot be " + \
+                    "combined.'\n" + \
+                    "STOP 1\n" + \
+                    "ENDIF\n"
+
             ee_pdf_definition_lines += "DOUBLE PRECISION dummy_components(n_ee)\n"
 
    
@@ -4266,7 +4314,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 ee_pdf_definition_lines += "DOUBLE PRECISION " + \
                                        ",".join(["%s%d_components(n_ee %s)" % (pdf_codes[pdg],i+1, vector_ext2) \
                                                  for pdg in \
-                                                 initial_states[i] if abs(pdg) in [11,13]]) + \
+                                                 initial_states[i] if abs(pdg) in DRESSED_LEPTON_PDGS]) + \
                                                  "\n"
                 
 

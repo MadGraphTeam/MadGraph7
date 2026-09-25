@@ -9,6 +9,11 @@
 
 #include "mgOnGpuConfig.h"
 
+#ifdef MGONGPUCPP_GPUIMPL
+#include "GpuAbstraction.h"
+#include "GpuRuntime.h" // for checkGpu(), used by gpuMemcpyFromSymbol()
+#endif
+
 #include "CPPProcess.h"
 #include "MadgraphTest.h"
 #include "MatrixElementKernels.h"
@@ -18,15 +23,33 @@
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
 #include "RandomNumberKernels.h"
-#include "coloramps.h"
-#include "epoch_process_id.h"
+#include "ColorData.h"
+#include "ProcessData.h"
 
 #include <memory>
 
-#ifdef MGONGPUCPP_GPUIMPL
-using namespace mg5amcGpu;
+using namespace madmatrix;
+
+// Host-accessible copy of mgOnGpu::channel2iconfig, needed only by setChannelIds()
+#ifndef MGONGPUCPP_GPUIMPL
+inline const int*
+getHostChannel2iconfig()
+{
+  return mgOnGpu::channel2iconfig;
+}
 #else
-using namespace mg5amcCpu;
+inline const int*
+getHostChannel2iconfig()
+{
+  static int hostCopy[mgOnGpu::nchannels];
+  static bool first = true;
+  if( first )
+  {
+    first = false;
+    gpuMemcpyFromSymbol( hostCopy, mgOnGpu::channel2iconfig, mgOnGpu::nchannels * sizeof( int ) );
+  }
+  return hostCopy;
+}
 #endif
 
 struct CUDA_CPU_TestBase : public TestDriverBase
@@ -64,7 +87,7 @@ struct CUDA_CPU_TestBase : public TestDriverBase
       //for( unsigned int idiagram = 1; idiagram < CPPProcess::ndiagrams; idiagram++ ) // two bugs #920 and #919
       for( unsigned int idiagram = 0; idiagram < mgOnGpu::nchannels; idiagram++ ) // fix #920 and work around #919
       {
-        if( mgOnGpu::hostChannel2iconfig[idiagram] == iconfig )
+        if( getHostChannel2iconfig()[idiagram] == iconfig )
         {
           channelId = idiagram + 1; // fix #917 (NB add +1 because channelId uses F indexing)
           break;

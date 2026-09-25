@@ -6,9 +6,9 @@ Reads the per-process JSON records written by
 tests/acceptance_tests/test_check_xsec_processes_mg7.py (one file per
 process, via $MG7_XSEC_RESULTS_DIR) plus the reference file that defines
 which processes should have been tested, and prints a markdown report:
-a table of every process (with pass/fail, cross-sections, deviation and
-pull), followed by the scraped error message for every process that did
-not succeed.
+a table of every process (with pass/fail, cross-sections, deviation,
+pull and overweight tail), followed by the scraped error message for every
+process that did not succeed.
 
 Usage:
     build_xsec_summary.py <reference.json> <results_dir> [--tolerance PCT] \
@@ -80,7 +80,7 @@ def main():
 
             if record is None:
                 status = 'fail'
-                got = err = None
+                got = err = overweight = None
                 message = ('No result recorded for this process -- the job '
                             'likely crashed or was cancelled before it '
                             'completed. Check the workflow run log for '
@@ -89,6 +89,7 @@ def main():
                 status = record.get('status', 'fail')
                 got = record.get('cross')
                 err = record.get('error')
+                overweight = record.get('overweight')
                 message = record.get('message')
 
             if status == 'pass':
@@ -119,6 +120,8 @@ def main():
                 'ref_error': fmt_value(ref_error),
                 'reldev': fmt_signed(reldev_pct),
                 'pull': fmt_signed(pull),
+                'overweight': (fmt_value(100.0 * overweight, sig=2)
+                               if overweight is not None else '—'),
             })
 
             if status != 'pass':
@@ -143,13 +146,13 @@ def main():
         out.append('')
     out.append('**%d/%d processes passed**' % (n_pass, n_pass + n_fail))
     out.append('')
-    out.append('| | Section | Process | σ [pb] | ± σ | Ref σ [pb] | ± Ref | Δ [%] | Pull |')
-    out.append('|---|---|---|---|---|---|---|---|---|')
+    out.append('| | Section | Process | σ [pb] | ± σ | Ref σ [pb] | ± Ref | Δ [%] | Pull | Overw. [%] |')
+    out.append('|---|---|---|---|---|---|---|---|---|---|')
     for r in rows:
-        out.append('| %s | %s | `%s`<br>%s | %s | %s | %s | %s | %s | %s |' % (
+        out.append('| %s | %s | `%s`<br>%s | %s | %s | %s | %s | %s | %s | %s |' % (
             r['status_cell'], r['section'], r['id'], r['process'],
             r['cross'], r['error'], r['ref_cross'], r['ref_error'],
-            r['reldev'], r['pull']))
+            r['reldev'], r['pull'], r['overweight']))
 
     if failures:
         out.append('')

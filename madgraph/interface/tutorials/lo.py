@@ -30,6 +30,8 @@ import os
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   describe_applied_orders,
+                                                  is_vi, last_run_info,
+                                                  text_editor,
                                                   lhapdf_configured,
                                                   output_name,
                                                   total_diagrams)
@@ -107,9 +109,45 @@ The two cards worth knowing here:
 
 The rest belong to whichever programs are switched on above them.
 `tutorial mg7` goes through the run card properly.
-
+%(editor)s
 **For this tutorial the defaults are fine -- just press Enter.**
 """
+
+
+def _editor_at_question(interface=None):
+    """Which editor a card opens in -- said before the reader opens one."""
+
+    editor, source = text_editor(interface)
+    if not editor:
+        return ("\nNo text editor was found, so a card cannot be opened from "
+                "here;\n`set text_editor nano` (or emacs, code, ...) at the "
+                "MG7 prompt fixes that.\n")
+    text = "\nA card you open comes up in **%s** -- that is %s." % (
+        editor, source)
+    if is_vi(editor):
+        text += ("\nIf vi is new to you, type `help vi` here first: it lists "
+                 "the handful of\nkeys it takes to edit a card and get out "
+                 "again.")
+    return text + "\n"
+
+
+def _launch_question_hint(interface=None):
+    return LAUNCH_QUESTION_HINT % {'editor': _editor_at_question(interface)}
+
+
+def _editor_back_at_the_prompt(interface=None):
+    """How to change the editor, once the run is over."""
+
+    editor, source = text_editor(interface)
+    opened = ("Cards open in **%s** here -- that is %s." % (editor, source)
+              if editor else "No text editor was found for opening cards.")
+    return """
+%s For another
+editor:
+
+  set text_editor nano         for this session (or emacs, code, ...)
+  save options text_editor     to keep it for the next ones
+""" % opened
 
 
 def _detour_text(interface=None):
@@ -150,27 +188,8 @@ That is the detour. Back to the main line:
 """ % {'count': count, 'p': P}
 
 
-def _last_run_info(interface=None):
-    """The info.json of the most recent run in the output directory, or None.
-
-    Lets the step show the reader their own numbers instead of invented ones.
-    None means there is nothing to read -- no output yet, or a run that made no
-    events -- and the illustrative values are used instead.
-    """
-
-    try:
-        done = getattr(interface, '_done_export', None)
-        if not done:
-            return None
-        events = os.path.join(done[0], 'Events')
-        runs = [os.path.join(events, name) for name in os.listdir(events)]
-        runs = [d for d in runs if os.path.isfile(os.path.join(d, 'info.json'))]
-        if not runs:
-            return None
-        with open(os.path.join(max(runs, key=os.path.getmtime), 'info.json')) as f:
-            return json.load(f)
-    except Exception:
-        return None
+# shared with the other tutorials that run something
+_last_run_info = last_run_info
 
 
 def _result_row(info):
@@ -309,6 +328,7 @@ madspace is in place. Now pick a process:
 between particle names is mandatory.
 """ % {'p': P},
      title='install madspace',
+     entry='install madspace',
      solution='generate p p > t t~'),
 
 Step('generate', lambda interface: """
@@ -336,6 +356,7 @@ The typical next step is to inspect the generated diagrams to check them:
 
 Step('generate', lambda interface: _detour_text(interface),
      title='the electroweak diagrams (detour)',
+     entry='generate p p > t t~ QED<=2',
      hint="Nothing to do here -- `display diagrams` picks the main line back up.",
      solution='display diagrams'),
 
@@ -380,7 +401,7 @@ the first run takes longer than the ones after it.
 """ % {'p': P, 'run': output_name(interface, RUN)},
      title='produce the output',
      hint="`output NAME` with no format gives you the default MG7 output.",
-     question_hint=LAUNCH_QUESTION_HINT,
+     question_hint=_launch_question_hint,
      solution=lambda interface: 'launch %s' % output_name(interface, RUN)),
 
 Step('launch', lambda interface: """
@@ -398,14 +419,15 @@ The **theoretical** uncertainty gets its own box at the end:
 %(systematics)s
 
 `tutorial mg7` covers how it is computed and how to change what is varied.
-%(lhapdf)s
+%(lhapdf)s%(editor)s
 Save what you typed, so you can do this again without remembering it:
 
 %(p)s history my_first_run.dat
 """ % {'p': P, 'run': output_name(interface, RUN),
        'result': _result_row(_last_run_info(interface)),
        'systematics': _systematics_rows(_last_run_info(interface)),
-       'lhapdf': _lhapdf_note(interface)},
+       'lhapdf': _lhapdf_note(interface),
+       'editor': _editor_back_at_the_prompt(interface)},
      title='run it',
      hint="`history FILE` saves the session; `open FILE` shows a file from the output.",
      solution='history my_first_run.dat'),
