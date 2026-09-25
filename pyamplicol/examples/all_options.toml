@@ -67,6 +67,12 @@ accuracy = "lc"
 # color.contraction: "direct" or "symmetric-group-fft". Default direct.
 # The FFT method requires NLC/full with recurrence or on-the-fly execution.
 contraction = "direct"
+# color.fft_basis: "trace" or "adjoint". Default trace.
+# Pure-gluon FFT examples explicitly recommend adjoint; the schema default
+# shown here remains trace, including for quarks and Higgs/HEFT processes.
+# Adjoint DDM requires FFT contraction and certified pure Yang-Mills trees;
+# quarks, external singlets, and correlated generation are not supported.
+fft_basis = "trace"
 # color.lc_flow_layout: "topology-replay" or "all-flow-union". Default
 # topology-replay. The all-flow union is LC-only and cannot be combined with
 # generation-selected or truncated color/helicity coverage.

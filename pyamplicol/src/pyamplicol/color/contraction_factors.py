@@ -533,6 +533,13 @@ def exact_color_contraction_factors(
 ) -> tuple[Fraction, Fraction, Fraction]:
     """Return exact reference-normalized ``(LC, NLC, full)`` color factors."""
 
+    if color_plan.basis == "adjoint":
+        return tuple(
+            exact_color_contraction_factor(
+                color_plan, left, right, accuracy=accuracy, full_col_acc=full_col_acc
+            )
+            for accuracy in ("lc", "nlc", "full")
+        )
     open_line_count = color_plan.process.color_endpoints.pair_count
     n_ord = len(_coloured_word(left))
     if len(_coloured_word(right)) != n_ord:
@@ -565,6 +572,18 @@ def exact_color_contraction_factor(
 
     if accuracy not in {"lc", "nlc", "full"}:
         return Fraction(0)
+    if color_plan.basis == "adjoint":
+        from .adjoint_kernel import adjoint_color_factor
+
+        return Fraction(
+            adjoint_color_factor(
+                _coloured_word(left),
+                _coloured_word(right),
+                accuracy=accuracy,
+                nc=NC,
+                full_col_acc=full_col_acc,
+            )
+        )
     if color_plan.process.color_endpoints.pair_count == 0:
         n_ord = len(_coloured_word(left))
         if len(_coloured_word(right)) != n_ord:

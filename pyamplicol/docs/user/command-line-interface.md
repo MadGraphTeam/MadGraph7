@@ -110,6 +110,7 @@ Useful generation options include:
 - `--flavor-scheme N` and `--max-quark-lines N` to constrain expansion;
 - `--color-accuracy {lc,nlc,full}`;
 - `--color-contraction {direct,symmetric-group-fft}`;
+- `--fft {trace,adjoint}` as a shorthand selecting symmetric-group FFT and its basis;
 - `--correlators FILE.json` to prepare named colour operators and allowed spin
   replacements for the [Python and native correlated APIs](../correlators.md);
 - `--lc-flow-layout {topology-replay,all-flow-union}`;
@@ -132,14 +133,35 @@ pyamplicol generate "p p > Z j j" artifacts/unused \
   --execution-mode compiled --dry-run
 ```
 
-For exact symmetric-group FFT colour contraction, select contracted colour and
-a supported execution lane:
+For certified pure-gluon Yang–Mills trees, adjoint DDM is the recommended
+starting point for exact FFT colour contraction. Select contracted colour and
+a supported execution lane (`recurrence` or `on-the-fly`) explicitly:
 
 ```console
-pyamplicol generate "g g > g g g" artifacts/ggg_fft \
+pyamplicol generate "g g > g g g" artifacts/ggg_adjoint_fft \
   --model built-in-sm --color-accuracy full \
-  --color-contraction symmetric-group-fft --execution-mode recurrence
+  --fft adjoint --execution-mode recurrence
 ```
+
+Use `--execution-mode on-the-fly` for the compact OTF counterpart. Keep the
+trace basis for quarks or Higgs/HEFT processes, for example:
+
+```console
+pyamplicol generate "d d~ > z g g" artifacts/ddbar_zgg_trace_fft \
+  --model built-in-sm --color-accuracy full \
+  --fft trace --execution-mode recurrence
+```
+
+The trace basis retains `(n-1)!` ordered amplitudes; adjoint fixes two gluon
+anchors and retains `(n-2)!` for the same `n`-gluon amplitude. Adjoint rejects
+quarks, external colour singlets, uncertified interactions, and correlations.
+Both choices preserve the explicitly requested `full` or `nlc` accuracy.
+The smaller adjoint basis does not guarantee a speedup at every multiplicity;
+compare warmed evaluation and setup costs for the intended workload.
+`--color-contraction symmetric-group-fft` remains valid and defaults to trace.
+Do not combine `--fft` and `--color-contraction`; use either spelling. Card
+settings are overridden by dedicated flags, then by ordered `--set` options
+as usual.
 
 For the dedicated direct/FFT/reference scaling scan, see
 [FullColor FFT Profiling](fullcolor-fft-profiling.md).

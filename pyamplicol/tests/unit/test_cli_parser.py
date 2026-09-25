@@ -9,6 +9,7 @@ import pytest
 from pyamplicol.cli import build_parser, parse_cli
 from pyamplicol.config import (
     ColorContraction,
+    ColorFFTBasis,
     ConfigurationError,
     EvaluatorExecutionMode,
     LCFlowLayout,
@@ -73,6 +74,92 @@ def test_generate_accepts_symmetric_group_color_contraction() -> None:
         .effective
     )
     assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is ColorFFTBasis.TRACE
+
+
+@pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+@pytest.mark.parametrize("execution_mode", ("recurrence", "on-the-fly"))
+def test_fft_shorthand_selects_contraction_and_basis(
+    fft_basis: ColorFFTBasis, accuracy: str, execution_mode: str
+) -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--fft",
+                fft_basis.value,
+                "--color-accuracy",
+                accuracy,
+                "--execution-mode",
+                execution_mode,
+            )
+        )
+        .resolve()
+        .effective
+    )
+
+    assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is fft_basis
+    assert config.color.accuracy == accuracy
+    assert config.evaluator.execution_mode == execution_mode
+
+
+@pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
+def test_fft_shorthand_requires_explicit_contracted_accuracy(
+    fft_basis: ColorFFTBasis,
+) -> None:
+    with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
+        parse_cli(("generate", "--fft", fft_basis.value)).resolve()
+
+
+def test_fft_shorthand_obeys_card_and_ordered_override_precedence(
+    tmp_path: Path,
+) -> None:
+    card = tmp_path / "fft.toml"
+    card.write_text(
+        'action = "generate"\n[color]\naccuracy = "full"\n'
+        'contraction = "direct"\nfft_basis = "trace"\n',
+        encoding="utf-8",
+    )
+    config = (
+        parse_cli(("generate", "--card", str(card), "--fft", "adjoint"))
+        .resolve()
+        .effective
+    )
+    assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is ColorFFTBasis.ADJOINT
+
+    overridden = (
+        parse_cli(
+            (
+                "generate",
+                "--card",
+                str(card),
+                "--fft",
+                "adjoint",
+                "--set",
+                "color.fft_basis=trace",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert overridden.color.fft_basis is ColorFFTBasis.TRACE
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ("--fft", "invalid"),
+        ("--fft", "adjoint", "--color-contraction", "direct"),
+    ),
+)
+def test_fft_shorthand_rejects_invalid_or_conflicting_flags(
+    arguments: tuple[str, ...],
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli(("generate", *arguments))
 
 
 def test_profile_help_explains_layout_aware_selector_default(

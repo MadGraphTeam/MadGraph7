@@ -40,6 +40,11 @@ class ColorContraction(StrEnum):
     SYMMETRIC_GROUP_FFT = "symmetric-group-fft"
 
 
+class ColorFFTBasis(StrEnum):
+    TRACE = "trace"
+    ADJOINT = "adjoint"
+
+
 class LCFlowLayout(StrEnum):
     TOPOLOGY_REPLAY = "topology-replay"
     ALL_FLOW_UNION = "all-flow-union"
@@ -426,6 +431,10 @@ class ColorConfig:
         default=LCFlowLayout.TOPOLOGY_REPLAY,
         metadata=_setting("str", choices=tuple(LCFlowLayout)),
     )
+    fft_basis: ColorFFTBasis = field(
+        default=ColorFFTBasis.TRACE,
+        metadata=_setting("str", choices=tuple(ColorFFTBasis)),
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -439,6 +448,11 @@ class ColorConfig:
                 ColorContraction,
                 "color.contraction",
             ),
+        )
+        object.__setattr__(
+            self,
+            "fft_basis",
+            _enum(self.fft_basis, ColorFFTBasis, "color.fft_basis"),
         )
         object.__setattr__(
             self,
@@ -459,6 +473,14 @@ class ColorConfig:
             raise ConfigurationError(
                 "color.contraction='symmetric-group-fft' requires "
                 "color.accuracy='nlc' or 'full'"
+            )
+        if (
+            self.fft_basis is ColorFFTBasis.ADJOINT
+            and self.contraction is not ColorContraction.SYMMETRIC_GROUP_FFT
+        ):
+            raise ConfigurationError(
+                "color.fft_basis='adjoint' requires "
+                "color.contraction='symmetric-group-fft'"
             )
 
 
@@ -1094,6 +1116,7 @@ __all__ = [
     "ColorAccuracy",
     "ColorConfig",
     "ColorContraction",
+    "ColorFFTBasis",
     "ColorMode",
     "CouplingOrderPolicy",
     "CppConfig",

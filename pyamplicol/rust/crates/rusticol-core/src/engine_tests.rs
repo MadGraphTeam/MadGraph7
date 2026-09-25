@@ -4493,6 +4493,7 @@ fn scalar_on_the_fly_native_runtime_with_color_contraction(
         &seed,
         OnTheFlyLcSelectorPolicyV1 {
             color_coverage: OnTheFlyLcColorCoverageV1::Complete,
+            color_basis: Default::default(),
             reference_color_word: None,
             trace_reflections_folded: false,
         },

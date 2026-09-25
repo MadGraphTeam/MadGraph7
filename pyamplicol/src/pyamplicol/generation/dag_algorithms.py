@@ -962,6 +962,7 @@ def _infer_minimal_coupling_order_limits_from_color_plan(
             diagnostics=color_plan.diagnostics,
             truncated=color_plan.truncated,
             trace_reflections_folded=color_plan.trace_reflections_folded,
+            basis=color_plan.basis,
         )
     color_engine = ColorEngine(color_plan, model)
     full_mask = _labels_mask(leg.label for leg in process_ir.legs)

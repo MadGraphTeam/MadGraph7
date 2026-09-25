@@ -458,6 +458,7 @@ fn selector_policy(
     };
     OnTheFlyLcSelectorPolicyV1 {
         color_coverage,
+        color_basis: policy.color_basis,
         reference_color_word: policy
             .reference_color_word
             .clone()

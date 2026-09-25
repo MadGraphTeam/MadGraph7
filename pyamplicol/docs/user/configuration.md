@@ -170,6 +170,7 @@ assign arbitrary names fixed QCD or electroweak meanings.
 [color]
 accuracy = "lc"                 # lc, nlc, or full
 contraction = "direct"          # direct or symmetric-group-fft
+fft_basis = "trace"              # trace or adjoint; used by FFT contraction
 lc_flow_layout = "topology-replay"
 ```
 
@@ -196,10 +197,25 @@ permutation orbits and retaining all other terms as direct residuals. It is
 available for `recurrence` and `on-the-fly`; compiled/eager execution and LC
 flows deliberately reject it.
 
+For certified pure Yang–Mills tree processes, start with the explicitly selected
+`fft_basis = "adjoint"` Del Duca–Dixon–Maltoni (DDM) basis. It fixes two external
+gluon anchors
+and retains `(n-2)!` ordered amplitudes for `n` external gluons, instead of the
+trace basis's `(n-1)!`. This prunes redundant ordered amplitudes representing
+the same amplitude; it is not a colour-accuracy approximation. The adjoint
+choice rejects quarks, external colour singlets (including Higgs insertions),
+uncertified interactions, and correlated generation. Keep the trace FFT path
+for quarks and Higgs/HEFT processes; correlations use their separate direct
+contraction path. The configuration default remains `fft_basis = "trace"`,
+and contraction still defaults to `"direct"`. An adjoint basis with
+`contraction = "direct"` is invalid.
+
 This is an exact contraction algorithm, not an approximation. Its speedup is
 process-dependent: a small certified symmetry subgroup or a residual-dominated
 contraction can make the FFT and direct curves scale similarly. Keep the
-direct result as the baseline when characterizing a new process family. See
+direct result as the baseline when characterizing a new process family.
+Likewise, adjoint's smaller basis does not guarantee faster evaluation than
+trace at every multiplicity; compare setup and warmed runtime separately. See
 [FullColor FFT Profiling](fullcolor-fft-profiling.md) for the resumable
 comparison driver and published snapshots.
 
@@ -207,10 +223,16 @@ comparison driver and published snapshots.
 [color]
 accuracy = "full"
 contraction = "symmetric-group-fft"
+fft_basis = "adjoint"  # for example, built-in-sm with g g > g g g
 
 [evaluator]
 execution_mode = "recurrence"
 ```
+
+Use `execution_mode = "on-the-fly"` for the compact OTF lane. The matching
+CLI shorthand is `--fft adjoint --color-accuracy full`; `--fft trace` selects
+the original trace path. Both require an explicit NLC/full accuracy setting
+(on the command line or in the card).
 
 ## Execution mode and evaluator backend
 

@@ -13,6 +13,7 @@ from pyamplicol.config import (
     ColorAccuracy,
     ColorConfig,
     ColorContraction,
+    ColorFFTBasis,
     ConfigurationError,
     CppConfig,
     EagerEvaluatorConfig,
@@ -38,7 +39,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 78
+    assert len(FIELD_REGISTRY) == 79
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -73,6 +74,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
         ColorContraction.DIRECT,
         ColorContraction.SYMMETRIC_GROUP_FFT,
     )
+    assert FIELD_REGISTRY["color.fft_basis"].default is ColorFFTBasis.TRACE
+    assert FIELD_REGISTRY["color.fft_basis"].choices == tuple(ColorFFTBasis)
     assert FIELD_REGISTRY["evaluator.eager.point_tile_size"].default == 1024
     assert FIELD_REGISTRY["evaluator.eager.workspace_mib"].default == 256
     assert "evaluator.eager" in CONFIG_SECTIONS
@@ -182,6 +185,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.action is Action.EVALUATE
     assert config.color.accuracy is ColorAccuracy.LC
     assert config.color.contraction is ColorContraction.DIRECT
+    assert config.color.fft_basis is ColorFFTBasis.TRACE
     assert config.color.lc_flow_layout is LCFlowLayout.TOPOLOGY_REPLAY
     assert config.evaluator.backend is EvaluatorBackend.JIT
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -283,9 +287,12 @@ def test_all_flow_union_layout_requires_lc_accuracy() -> None:
         ColorConfig(accuracy="full", lc_flow_layout="all-flow-union")
 
 
-def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> None:
+@pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
+def test_symmetric_group_fft_requires_contracted_color_and_supported_lane(
+    fft_basis: ColorFFTBasis,
+) -> None:
     with pytest.raises(ConfigurationError, match=r"requires color\.accuracy"):
-        ColorConfig(contraction="symmetric-group-fft")
+        ColorConfig(contraction="symmetric-group-fft", fft_basis=fft_basis)
 
     for accuracy in ("nlc", "full"):
         for execution_mode in ("recurrence", "on-the-fly"):
@@ -294,10 +301,12 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> N
                 color=ColorConfig(
                     accuracy=accuracy,
                     contraction="symmetric-group-fft",
+                    fft_basis=fft_basis,
                 ),
                 evaluator=EvaluatorConfig(execution_mode=execution_mode),
             )
             assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+            assert config.color.fft_basis is fft_basis
 
     compiled_direct = RunConfig(
         action="generate",
@@ -317,9 +326,23 @@ def test_symmetric_group_fft_requires_contracted_color_and_supported_lane() -> N
                 color=ColorConfig(
                     accuracy="full",
                     contraction="symmetric-group-fft",
+                    fft_basis=fft_basis,
                 ),
                 evaluator=EvaluatorConfig(execution_mode=execution_mode),
             )
+
+
+def test_adjoint_basis_requires_fft_contraction() -> None:
+    with pytest.raises(
+        ConfigurationError,
+        match=r"color\.fft_basis='adjoint' requires color\.contraction",
+    ):
+        ColorConfig(accuracy="full", fft_basis="adjoint")
+
+
+def test_fft_basis_rejects_unknown_values() -> None:
+    with pytest.raises(ConfigurationError, match=r"color\.fft_basis"):
+        ColorConfig(accuracy="full", fft_basis="other")
 
 
 def test_on_the_fly_execution_supports_every_color_accuracy() -> None:

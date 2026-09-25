@@ -433,6 +433,32 @@ def test_non_full_plans_are_rejected(accuracy):
 
 
 @pytest.mark.parametrize(
+    "correlator", (ColorCorrelator("born"), ColorCorrelator.dipole("T12", 1, 2))
+)
+@pytest.mark.parametrize("plural", (False, True))
+def test_adjoint_plans_are_rejected_before_literal_tensor_conversion(
+    correlator, plural, monkeypatch
+):
+    plan = build_color_plan(
+        build_process_ir("g g > g g", color_accuracy="full"),
+        color_accuracy="full",
+        basis="adjoint",
+    )
+
+    def unexpected_tensor_conversion(*_args):
+        pytest.fail("adjoint ordering records are not literal trace tensors")
+
+    monkeypatch.setattr(
+        correlator_matrices, "_sector_color_tensor", unexpected_tensor_conversion
+    )
+    with pytest.raises(ValueError, match="do not support the adjoint DDM basis"):
+        if plural:
+            build_color_correlator_matrices(plan, (correlator,))
+        else:
+            build_color_correlator_matrix(plan, correlator)
+
+
+@pytest.mark.parametrize(
     "change", ({"truncated": True}, {"trace_reflections_folded": True}, {"sectors": ()})
 )
 def test_incomplete_or_folded_plans_are_rejected(change):

@@ -101,6 +101,7 @@ def _restrict_color_plan(
             diagnostics=diagnostics,
             truncated=color_plan.truncated or bool(missing_sector_ids),
             trace_reflections_folded=color_plan.trace_reflections_folded,
+            basis=color_plan.basis,
         ),
         missing_sector_ids,
     )

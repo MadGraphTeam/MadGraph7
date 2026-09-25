@@ -21,6 +21,7 @@ def build_color_plan(
     max_sectors: int | None = None,
     reference_color_order: Sequence[int] | None = None,
     fold_trace_reflections: bool = False,
+    basis: str = "trace",
 ) -> GenericColorPlan:
     if not isinstance(process, CanonicalProcessIR):
         raise TypeError("color planning requires a model-resolved CanonicalProcessIR")
@@ -28,6 +29,14 @@ def build_color_plan(
     max_sector_count = _normalize_sector_cap(max_sectors)
     if color_accuracy != process_ir.color_accuracy:
         raise ValueError("color plan accuracy must match the model-resolved process IR")
+    if basis not in {"trace", "adjoint"}:
+        raise ValueError(f"unknown colour basis {basis!r}")
+    if basis == "adjoint":
+        return _build_adjoint_color_plan(
+            process_ir,
+            max_sectors=max_sector_count,
+            reference_color_order=reference_color_order,
+        )
     fundamental_legs = _legs_by_labels(
         process_ir,
         process_ir.fundamental_labels,
@@ -125,6 +134,80 @@ def _normalize_sector_cap(value: int | None) -> int | None:
         return None
     normalized = int(value)
     return None if normalized < 0 else normalized
+
+
+def _build_adjoint_color_plan(
+    process: CanonicalProcessIR,
+    *,
+    max_sectors: int | None,
+    reference_color_order: Sequence[int] | None,
+) -> GenericColorPlan:
+    """Choose two-anchor primitive words for the DDM half-ladder metric.
+
+    The generation service additionally checks that the model interactions
+    obey the pure Yang--Mills tree identities.  These records retain their
+    single-trace *ordering* shape so the ordered-current grammar is unchanged.
+    """
+
+    from .adjoint_kernel import MAX_ADJOINT_GLUONS
+
+    labels = tuple(sorted(process.adjoint_labels))
+    if (
+        len(labels) < 3
+        or len(labels) != len(process.legs)
+        or process.fundamental_labels
+        or process.antifundamental_labels
+        or process.singlet_labels
+    ):
+        raise ValueError("adjoint colour basis requires only external gluons")
+    if len(labels) > MAX_ADJOINT_GLUONS:
+        raise ValueError(
+            f"adjoint colour basis supports at most {MAX_ADJOINT_GLUONS} "
+            "external gluons"
+        )
+    if process.color_accuracy not in {"nlc", "full"}:
+        raise ValueError("adjoint colour basis requires NLC or full colour")
+    first, last = labels[0], labels[-1]
+    reference = (
+        ()
+        if reference_color_order is None
+        else tuple(int(label) for label in reference_color_order)
+    )
+    if reference:
+        if len(reference) != len(labels) or set(reference) != set(labels):
+            raise ValueError("adjoint reference colour order must cover every gluon")
+        pivot = reference.index(first)
+        reference = reference[pivot:] + reference[:pivot]
+        if reference[-1] != last:
+            raise ValueError(
+                "adjoint reference colour order must preserve both anchors"
+            )
+    sectors: list[LCColorSector] = []
+    if reference and (max_sectors is None or max_sectors > 0):
+        sectors.append(LCColorSector(id=0, kind="single-trace", trace_labels=reference))
+    truncated = False
+    for middle in permutations(labels[1:-1]):
+        word = (first, *middle, last)
+        if sectors and word == reference:
+            continue
+        if max_sectors is not None and len(sectors) >= max_sectors:
+            truncated = True
+            break
+        sectors.append(
+            LCColorSector(id=len(sectors), kind="single-trace", trace_labels=word)
+        )
+    return GenericColorPlan(
+        process=process,
+        color_accuracy=process.color_accuracy,
+        sectors=tuple(sectors),
+        basis="adjoint",
+        truncated=truncated,
+        diagnostics=(
+            (f"adjoint sector enumeration reached max_sectors={max_sectors}",)
+            if truncated
+            else ()
+        ),
+    )
 
 
 def _build_no_fundamental_color_plan(

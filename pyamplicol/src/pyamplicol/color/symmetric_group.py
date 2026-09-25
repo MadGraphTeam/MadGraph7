@@ -285,6 +285,7 @@ def certify_symmetric_group_orbits(
             sectors_by_id[sector_id],
             permuted_labels=permuted_labels,
             fixed_labels=fixed_labels,
+            basis=color_plan.basis,
         )
         if candidate is None or degree < 2:
             residual.add(sector_id)
@@ -469,6 +470,7 @@ def build_symmetric_group_color_contraction_plan(
             symmetry = 1.0 if left_channel == right_channel else 2.0
             quotient_diagonal_trace = (
                 left_channel == right_channel
+                and color_plan.basis == "trace"
                 and color_plan.process.color_endpoints.pair_count == 0
                 and left_sector.kind == "single-trace"
                 and left_orbit.channel_key[:1] == ("single-trace",)
@@ -796,6 +798,8 @@ def _adjoint_action_labels(
         return (), ()
     if color_plan.process.fundamental_labels:
         return adjoint_labels, ()
+    if color_plan.basis == "adjoint":
+        return adjoint_labels[1:-1], (adjoint_labels[0], adjoint_labels[-1])
     anchor = adjoint_labels[0]
     return adjoint_labels[1:], (anchor,)
 
@@ -805,8 +809,22 @@ def _sector_orbit_coordinate(
     *,
     permuted_labels: tuple[int, ...],
     fixed_labels: tuple[int, ...],
+    basis: str = "trace",
 ) -> tuple[tuple[object, ...], tuple[int, ...]] | None:
     rank_by_label = {label: rank for rank, label in enumerate(permuted_labels)}
+    if basis == "adjoint":
+        word = tuple(int(label) for label in sector.trace_labels)
+        if (
+            sector.kind != "single-trace"
+            or len(fixed_labels) != 2
+            or len(word) != len(permuted_labels) + 2
+            or word[0] != fixed_labels[0]
+            or word[-1] != fixed_labels[1]
+            or set(word[1:-1]) != set(permuted_labels)
+            or sector.singlet_labels
+        ):
+            return None
+        return (("adjoint", fixed_labels), tuple(rank_by_label[x] for x in word[1:-1]))
     if sector.kind == "single-trace":
         if len(fixed_labels) != 1:
             return None

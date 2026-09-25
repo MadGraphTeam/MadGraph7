@@ -605,6 +605,9 @@ class GenericColorPlan:
     diagnostics: tuple[str, ...] = ()
     truncated: bool = False
     trace_reflections_folded: bool = False
+    # The ordered words select primitive amplitudes in either basis.  Only the
+    # associated colour tensors/metric differ; adjoint means DDM half-ladders.
+    basis: Literal["trace", "adjoint"] = "trace"
 
     @property
     def sector_count(self) -> int:
@@ -647,6 +650,7 @@ class GenericColorPlan:
         return {
             "process": self.process.to_json_dict(),
             "color_accuracy": self.color_accuracy,
+            **({"basis": self.basis} if self.basis != "trace" else {}),
             "sector_count": self.sector_count,
             "truncated": self.truncated,
             "trace_reflections_folded": self.trace_reflections_folded,

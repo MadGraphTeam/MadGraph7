@@ -7,7 +7,9 @@ to otherwise literal colour tensors. Every stored entry is directed and means
 doubling or assumption of Hermiticity is implicit. Runtime contraction therefore
 uses ``conjugate(a[left]) * entry * a[right]``.
 
-Only complete full-colour amplitude plans are accepted, even for LC/NLC output.
+Only complete full-colour trace/open-line amplitude plans are accepted, even
+for LC/NLC output. Adjoint DDM sectors retain single-trace ordering records for
+current construction, but these are not their literal colour tensors.
 The approximation acts on the inserted metric at fixed physical amplitudes;
 it is not a strict expansion of their hidden colour weights. The Born matrix
 uses the inherited ordinary factors. The ordinary matrix's zero pattern
@@ -235,6 +237,8 @@ def _selected_sectors(
 ) -> tuple[LCColorSector, ...]:
     if not isinstance(plan, GenericColorPlan):
         raise TypeError("colour correlator planning requires a GenericColorPlan")
+    if plan.basis == "adjoint":
+        raise ValueError("colour correlators do not support the adjoint DDM basis")
     if plan.color_accuracy != "full" or plan.process.color_accuracy != "full":
         raise ValueError("colour correlators require a full-colour plan")
     if plan.truncated or plan.trace_reflections_folded or not plan.sectors:

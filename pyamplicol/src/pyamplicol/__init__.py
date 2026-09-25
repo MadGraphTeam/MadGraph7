@@ -96,7 +96,14 @@ if TYPE_CHECKING:
         generate,
         load,
     )
-    from .config import BenchmarkConfig, EvaluationConfig, GenerationConfig, RunConfig
+    from .config import (
+        BenchmarkConfig,
+        ColorConfig,
+        ColorFFTBasis,
+        EvaluationConfig,
+        GenerationConfig,
+        RunConfig,
+    )
     from .correlators import (
         ColorCorrelator,
         CorrelatedRequest,
@@ -119,7 +126,9 @@ __all__ = [
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
     "ColorComponent",
+    "ColorConfig",
     "ColorCorrelator",
+    "ColorFFTBasis",
     "ColorFlow",
     "CompatibilityError",
     "CompiledModel",
@@ -220,6 +229,8 @@ _SERVICE_EXPORTS = (
 )
 _CONFIG_EXPORTS = (
     "BenchmarkConfig",
+    "ColorConfig",
+    "ColorFFTBasis",
     "EvaluationConfig",
     "GenerationConfig",
     "RunConfig",

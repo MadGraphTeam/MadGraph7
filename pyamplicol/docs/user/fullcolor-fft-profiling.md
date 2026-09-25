@@ -26,6 +26,14 @@ This workflow is distinct from selecting
 The orchestrator is source-checkout-only. It is intended for a workstation or
 cluster node with explicit CPU, memory, and wall-time budgets.
 
+For ordinary generation, the recommended starting point for certified
+pure-gluon trees is `--fft adjoint --color-accuracy full`, which explicitly
+selects the smaller two-anchor DDM basis. Quark and Higgs/HEFT processes retain
+the trace basis. Configuration defaults remain direct contraction and trace;
+historical FFT curves must be interpreted using their saved basis settings,
+not relabelled as adjoint results. A smaller basis does not guarantee a speedup
+at every multiplicity, so compare setup and warmed runtime separately.
+
 ## Prepare a profiling checkout
 
 Enter the repository's Nix environment when available, then request only the

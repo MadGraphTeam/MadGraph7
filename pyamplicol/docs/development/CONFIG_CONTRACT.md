@@ -52,6 +52,7 @@ their defaults and use the runtime selectors below.
 
 - `accuracy: lc | nlc | full = lc`
 - `contraction: direct | symmetric-group-fft = direct`
+- `fft_basis: trace | adjoint = trace`
 - `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
 
 LC generation always includes complete physical flow coverage. Runtime flow
@@ -61,6 +62,18 @@ topology, replay, and reference-order IDs are not configurable.
 `symmetric-group-fft` is an exact contracted-colour reducer for NLC/full
 recurrence and on-the-fly execution. It is rejected for LC, compiled, and eager
 execution. `direct` remains the default.
+
+`fft_basis` selects the trace or two-anchor adjoint DDM basis. Adjoint requires
+`contraction = "symmetric-group-fft"`; the model boundary additionally requires
+a certified pure Yang–Mills tree process with no external quarks or singlets
+and rejects correlated generation. For `n` gluons, the adjoint basis retains
+`(n-2)!` ordered amplitudes for the same amplitude represented by the trace
+basis's `(n-1)!`. The CLI `--fft {trace,adjoint}` sets both contraction and basis;
+it does not change accuracy. The existing contraction flag retains trace as
+the default basis. `ColorFFTBasis` and `ColorConfig` are public Python exports.
+Pure-gluon FFT examples explicitly select adjoint as their recommended starting
+point; this does not change the trace schema default or apply to quark/HEFT
+processes.
 
 ## Generation
 

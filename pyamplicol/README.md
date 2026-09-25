@@ -179,9 +179,18 @@ Recurrence, eager, and on-the-fly execution reuse the same prepared model
 kernel bundle.
 
 Contracted NLC/full-colour recurrence and on-the-fly execution can use the
-exact `symmetric-group-fft` colour contraction. It transforms certified
-permutation-orbit blocks and retains unsupported terms as exact direct
-residuals. Recurrence artifacts persist one helicity-parametric physical-colour
+exact `symmetric-group-fft` colour contraction. For certified pure-gluon
+Yang–Mills trees, start with `--fft adjoint --color-accuracy full`: the
+two-anchor DDM basis retains `(n-2)!` ordered amplitudes instead of the trace
+basis's `(n-1)!`. Use `--fft trace` for quarks or Higgs/HEFT processes. The
+configuration defaults remain direct contraction and trace basis; examples
+select adjoint explicitly. A smaller basis does not guarantee faster runtime
+at every multiplicity. See the
+[FFT configuration guide](docs/user/configuration.md#color-accuracy-and-lc-layout).
+FFT transforms certified permutation-orbit blocks and retains unsupported
+terms as exact direct residuals.
+
+Recurrence artifacts persist one helicity-parametric physical-colour
 schedule, its helicity-support masks, and precomputed per-helicity row groups;
 loading binds those groups once, so warmed evaluation does not rescan the
 masks. On-the-fly execution instead constructs and caches the requested family

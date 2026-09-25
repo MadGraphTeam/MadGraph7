@@ -97,12 +97,22 @@ pub(super) enum OnTheFlyColorCoverage {
     Contracted,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum OnTheFlyColorBasis {
+    #[default]
+    Trace,
+    Adjoint,
+}
+
 /// Compact facts that affect the internal structural color basis but cannot be
 /// reconstructed from external color roles alone.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct OnTheFlySelectorPolicy {
     pub(super) color_coverage: OnTheFlyColorCoverage,
+    #[serde(default)]
+    pub(super) color_basis: OnTheFlyColorBasis,
     #[serde(default)]
     pub(super) reference_color_word: Option<Vec<u32>>,
     pub(super) trace_reflections_folded: bool,
@@ -289,6 +299,8 @@ impl OnTheFlySelectorPolicy {
                 | ("nlc" | "full", OnTheFlyColorCoverage::Contracted)
         );
         if !coverage_matches
+            || self.color_basis == OnTheFlyColorBasis::Adjoint
+                && self.color_coverage != OnTheFlyColorCoverage::Contracted
             || self.color_coverage == OnTheFlyColorCoverage::Contracted
                 && (self.trace_reflections_folded
                     || self.selector_census.physical_color_flow_count != 1)
@@ -1048,6 +1060,30 @@ mod tests {
         stale_transformed_size["runtime_metadata"]["color_contraction"]["fft_provenance"]["transformed_kernel_bytes"] =
             json!(88);
         assert!(parse_contracted(&stale_transformed_size, "full").is_err());
+    }
+
+    #[test]
+    fn adjoint_basis_is_explicit_and_limited_to_contracted_color() {
+        assert_eq!(
+            parse(&manifest()).unwrap().selector_policy.color_basis,
+            OnTheFlyColorBasis::Trace
+        );
+        for accuracy in ["nlc", "full"] {
+            let mut value = symmetric_group_contracted_manifest(accuracy);
+            value["selector_policy"]["color_basis"] = json!("adjoint");
+            assert_eq!(
+                parse_contracted(&value, accuracy)
+                    .unwrap()
+                    .selector_policy
+                    .color_basis,
+                OnTheFlyColorBasis::Adjoint
+            );
+            value["selector_policy"]["color_basis"] = json!("unknown");
+            assert!(parse_contracted(&value, accuracy).is_err());
+        }
+        let mut lc = manifest();
+        lc["selector_policy"]["color_basis"] = json!("adjoint");
+        assert!(parse(&lc).is_err());
     }
 
     #[test]

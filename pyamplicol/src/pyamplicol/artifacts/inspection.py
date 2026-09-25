@@ -1980,7 +1980,7 @@ def _execution_inspection(
             execution.get("selector_policy"),
             "on-the-fly execution.selector_policy",
         )
-        if set(selector_policy) != {
+        if set(selector_policy) - {"color_basis"} != {
             "color_coverage",
             "reference_color_word",
             "trace_reflections_folded",
@@ -1989,6 +1989,14 @@ def _execution_inspection(
             raise ArtifactError(
                 "on-the-fly execution.selector_policy has unsupported fields"
             )
+        color_basis = selector_policy.get("color_basis", "trace")
+        if color_basis not in ("trace", "adjoint"):
+            raise ArtifactError(
+                "on-the-fly execution.selector_policy.color_basis "
+                "must be trace or adjoint"
+            )
+        if color_basis == "adjoint" and not contracted_color:
+            raise ArtifactError("adjoint on-the-fly color requires contracted NLC/full")
         expected_color_coverage = "contracted" if contracted_color else "complete"
         if selector_policy.get("color_coverage") != expected_color_coverage:
             raise ArtifactError(

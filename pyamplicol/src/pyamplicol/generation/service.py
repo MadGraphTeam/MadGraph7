@@ -3261,11 +3261,17 @@ class GenerationBackend:
             resolved_model = self._resolve_model_for_plan(source)
             self._require_eager_kernel_pack(resolved_model)
             self._apply_prepared_kernel_pack_policy(resolved_model)
-            if self._on_the_fly_execution_enabled and resolved_model.model is None:
+            if resolved_model.model is None and (
+                self._on_the_fly_execution_enabled
+                or (
+                    self._run_config is not None
+                    and self._run_config.color.fft_basis.value == "adjoint"
+                )
+            ):
                 compiled = resolved_model.compiled
                 if compiled is None:  # pragma: no cover - model preflight invariant
                     raise GenerationError(
-                        "on-the-fly planning requires a resolved model"
+                        "on-the-fly or adjoint FFT planning requires a resolved model"
                     )
                 from ..models.external import CompiledUFOModel
 
@@ -3904,6 +3910,7 @@ class GenerationBackend:
             ),
             coupling_order_limits=explicit_limits,
             reference_color_order=self._process_selection.reference_color_order,
+            color_basis=self._fft_color_basis(expanded.process_ir, model),
         )
         return _ProjectedOnTheFlyProcess(
             index=index,
@@ -4077,13 +4084,24 @@ class GenerationBackend:
             ),
             runtime_metadata=runtime_metadata,
             selector_policy={
+                **(
+                    {"color_basis": projection.color_plan.basis}
+                    if projection.color_plan is not None
+                    and projection.color_plan.basis != "trace"
+                    else {}
+                ),
                 "color_coverage": (
                     "complete" if contracted_color is None else "contracted"
                 ),
                 "reference_color_word": (
                     None
                     if selection.reference_color_order is None
-                    else list(selection.reference_color_order)
+                    else list(
+                        projection.color_plan.sectors[0].trace_labels
+                        if projection.color_plan is not None
+                        and projection.color_plan.basis == "adjoint"
+                        else selection.reference_color_order
+                    )
                 ),
                 "trace_reflections_folded": bool(
                     contracted_color is None
@@ -7712,6 +7730,7 @@ class GenerationBackend:
         selected, rejected = _select_color_ready_processes(
             candidates,
             color_accuracy=self._color_accuracy,
+            basis="trace" if run is None else run.color.fft_basis.value,
         )
         if not selected:
             detail = "; ".join(rejected) or "no concrete processes"
@@ -7720,6 +7739,25 @@ class GenerationBackend:
                 f"{detail}"
             )
         return selected
+
+    def _fft_color_basis(
+        self, process: CanonicalProcessIR, model: Model | None
+    ) -> Literal["trace", "adjoint"]:
+        """Require the model's Yang--Mills identities before reducing its basis."""
+
+        if (
+            self._run_config is None
+            or self._run_config.color.fft_basis.value == "trace"
+        ):
+            return "trace"
+        if model is None or not model.shared_single_trace_color_basis_is_proven(
+            process
+        ):
+            raise GenerationError(
+                "adjoint FFT requires a certified pure Yang--Mills gluon process; "
+                "use the trace basis for other interactions or external particles"
+            )
+        return "adjoint"
 
     def _plan_concrete_process(
         self,
@@ -7738,6 +7776,7 @@ class GenerationBackend:
             )
         color_plan = build_color_plan(
             process,
+            basis=self._fft_color_basis(process, model),
             color_accuracy=self._color_accuracy,
             max_sectors=selection.max_color_sectors,
             reference_color_order=selection.reference_color_order,
@@ -7973,6 +8012,7 @@ class GenerationBackend:
             )
         complete_color_plan = build_color_plan(
             process,
+            basis=self._fft_color_basis(process, model),
             color_accuracy=self._color_accuracy,
             max_sectors=selection.max_color_sectors,
             reference_color_order=selection.reference_color_order,
@@ -8213,6 +8253,7 @@ def _select_color_ready_processes(
     processes: Sequence[CanonicalProcessIR],
     *,
     color_accuracy: str,
+    basis: str = "trace",
 ) -> tuple[tuple[CanonicalProcessIR, ...], tuple[str, ...]]:
     """Drop structurally impossible children of an external multiparticle request."""
 
@@ -8222,6 +8263,7 @@ def _select_color_ready_processes(
         color_plan = build_color_plan(
             process,
             color_accuracy=color_accuracy,
+            basis=basis,
         )
         if color_plan.ready_for_requested_colour:
             selected.append(process)

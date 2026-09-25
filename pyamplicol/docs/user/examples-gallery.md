@@ -88,6 +88,7 @@ machine-readable stdout.
 | `builtin_sm_lc.toml` | Built-in SM recurrence JIT O2, LC | Small generation example |
 | `builtin_sm_nlc.toml` | Built-in SM recurrence JIT O2, contracted NLC | Small generation example |
 | `builtin_sm_full.toml` | Built-in SM compiled C++, contracted full color | Requires a C++ toolchain during generation |
+| `builtin_sm_adjoint_fft.toml` | Pure-gluon full color in the adjoint DDM FFT basis | Recurrence; also supports an on-the-fly override |
 | `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, recurrence JIT O2, contracted full color | Small HEFT workflow; no external UFO required |
 | `builtin_sm_eager.toml` | Built-in SM eager execution with wheel-owned prepared kernels | Small eager example |
 | `builtin_sm_on_the_fly.toml` | Built-in SM compact OTF LC artifact | Small generation example; first selected family is built at runtime |

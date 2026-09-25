@@ -173,6 +173,7 @@ def project_on_the_fly_process_seed_v1(
     coupling_order_policy: Literal["minimal", "explicit"],
     coupling_order_limits: Mapping[str, int],
     reference_color_order: Sequence[int] | None = None,
+    color_basis: Literal["trace", "adjoint"] = "trace",
 ) -> OnTheFlyGenerationProjectionV1:
     """Project one complete source domain without materializing a process DAG.
 
@@ -220,6 +221,7 @@ def project_on_the_fly_process_seed_v1(
     if process.color_accuracy in {"nlc", "full"}:
         color_plan = build_color_plan(
             process,
+            basis=color_basis,
             color_accuracy=process.color_accuracy,
             reference_color_order=reference_color_order,
             fold_trace_reflections=False,

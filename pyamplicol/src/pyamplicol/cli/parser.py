@@ -13,6 +13,8 @@ from pyamplicol.config import (
     ACTIONS,
     Action,
     ClampRequest,
+    ColorContraction,
+    ColorFFTBasis,
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
@@ -268,11 +270,22 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         choices=("lc", "nlc", "full"),
         default=argparse.SUPPRESS,
     )
-    parser.add_argument(
+    contraction = parser.add_mutually_exclusive_group()
+    contraction.add_argument(
         "--color-contraction",
         dest="color.contraction",
-        choices=("direct", "symmetric-group-fft"),
+        choices=tuple(ColorContraction),
         default=argparse.SUPPRESS,
+    )
+    contraction.add_argument(
+        "--fft",
+        dest="_fft_basis",
+        choices=tuple(ColorFFTBasis),
+        default=argparse.SUPPRESS,
+        help=(
+            "Use symmetric-group FFT contraction in the trace or adjoint DDM "
+            "basis; requires --color-accuracy nlc or full."
+        ),
     )
     parser.add_argument(
         "--lc-flow-layout",
@@ -904,6 +917,10 @@ def _namespace_to_invocation(
     coupling_orders = raw.pop("_max_coupling_orders", None)
     if coupling_orders is not None:
         raw["process.max_coupling_orders"] = dict(coupling_orders)
+    fft_basis = raw.pop("_fft_basis", None)
+    if fft_basis is not None:
+        raw["color.contraction"] = ColorContraction.SYMMETRIC_GROUP_FFT
+        raw["color.fft_basis"] = fft_basis
     return CliInvocation(
         action=action,
         card=card,

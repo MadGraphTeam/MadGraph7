@@ -143,6 +143,7 @@ def _configuration(
     color_accuracy: str = "lc",
     *,
     contraction: str = "direct",
+    fft_basis: str = "trace",
 ) -> _GenerationConfigProvenance:
     return _GenerationConfigProvenance.from_config(
         RunConfig(
@@ -150,6 +151,7 @@ def _configuration(
             color=ColorConfig(
                 accuracy=color_accuracy,
                 contraction=contraction,
+                fft_basis=fft_basis,
             ),
             generation=GenerationConfig(
                 emit_api_bundle=False,
@@ -266,12 +268,14 @@ def _contracted_process_artifact(
     *,
     color_accuracy: str,
     contraction: str = "direct",
+    fft_basis: str = "trace",
     expression: str = "d d~ > z",
     process_id: str = _PROCESS_ID,
 ) -> OnTheFlyProcessArtifact:
     process = build_process_ir(expression, color_accuracy=color_accuracy)
     color_plan = build_color_plan(
         process,
+        basis=fft_basis,
         color_accuracy=color_accuracy,
         fold_trace_reflections=False,
     )
@@ -298,6 +302,7 @@ def _contracted_process_artifact(
         },
         selector_policy={
             **base.selector_policy,
+            **({"color_basis": fft_basis} if fft_basis != "trace" else {}),
             "color_coverage": "contracted",
             "trace_reflections_folded": False,
             "selector_census": {
@@ -591,6 +596,87 @@ def test_on_the_fly_writer_publishes_authenticated_contracted_color(
     assert inspected.recurrence_color_component_count == 1
     assert inspected.recurrence_color_group_count == 1
     assert inspected.recurrence_color_destination_count == 1
+
+
+@pytest.mark.parametrize(
+    ("color_accuracy", "color_basis"),
+    (("lc", "trace"), ("nlc", "adjoint"), ("full", "adjoint")),
+)
+def test_on_the_fly_writer_and_inspector_validate_optional_color_basis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    color_accuracy: str,
+    color_basis: str,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    source_path = _prepared_model_path()
+    contracted = color_accuracy != "lc"
+    contraction = "symmetric-group-fft" if contracted else "direct"
+    process = (
+        _contracted_process_artifact(
+            tmp_path,
+            color_accuracy=color_accuracy,
+            contraction=contraction,
+            fft_basis=color_basis,
+            expression="g g > g g",
+        )
+        if contracted
+        else _process_artifact(tmp_path)
+    )
+    process = replace(
+        process, selector_policy={**process.selector_policy, "color_basis": color_basis}
+    )
+    output = tmp_path / "artifact"
+    write_schema_v3_artifact(
+        output,
+        mode="error",
+        source=ModelSource.from_path(source_path),
+        compiled_model=load_compiled_model(source_path),
+        configuration=_configuration(
+            color_accuracy, contraction=contraction, fft_basis=color_basis
+        ),
+        processes=(process,),
+        timings={},
+        api_bundle_hook=None,
+    )
+    manifest = load_manifest(output)
+    execution_path = output / f"processes/{_PROCESS_ID}/execution.json"
+    execution = json.loads(execution_path.read_text(encoding="utf-8"))
+    assert execution["selector_policy"]["color_basis"] == color_basis
+    assert inspect_artifact(output).processes[0].color_accuracy == color_accuracy
+    color_record = next(
+        (
+            record
+            for record in manifest.payloads
+            if record.path == f"processes/{_PROCESS_ID}/on-the-fly-color.bin"
+        ),
+        None,
+    )
+    mutations = [{"color_basis": value} for value in ("other", None, True, [])]
+    mutations.append(
+        {"trace_reflections_folded": True}
+        if contracted
+        else {"color_basis": "adjoint"}
+    )
+    if contracted:
+        mutations.append({"color_coverage": "complete"})
+    for index, mutation in enumerate(mutations):
+        policy = {**process.selector_policy, **mutation}
+        with pytest.raises(ValueError, match=r"basis|contracted|selector policy"):
+            artifact_writer._on_the_fly_execution_summary(
+                replace(process, selector_policy=policy),
+                color_contraction_record=color_record,
+            )
+        invalid_execution = {**execution, "selector_policy": policy}
+        invalid_path = tmp_path / f"invalid-basis-{index}.json"
+        invalid_path.write_text(json.dumps(invalid_execution), encoding="utf-8")
+        with pytest.raises(ArtifactError, match=r"basis|contracted|selector_policy"):
+            artifact_inspection._execution_inspection(
+                manifest,
+                invalid_path,
+                execution["required_runtime_capabilities"],
+                process=manifest.processes[0],
+            )
 
 
 def test_color_contraction_regenerates_only_the_process_artifact_identity(

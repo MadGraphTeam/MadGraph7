@@ -9,6 +9,7 @@ import pytest
 from pyamplicol.config import (
     ClampRequest,
     ColorContraction,
+    ColorFFTBasis,
     ConfigurationError,
     EvaluatorExecutionMode,
     LCFlowLayout,
@@ -259,6 +260,7 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     assert plain["color"] == {  # type: ignore[index]
         "accuracy": "lc",
         "contraction": "direct",
+        "fft_basis": "trace",
         "lc_flow_layout": "all-flow-union",
     }
     assert resolve_config(plain).effective == config
@@ -267,7 +269,10 @@ def test_lc_flow_layout_card_and_dotted_overrides_round_trip() -> None:
     assert resolve_config(tomllib.loads(serialized)).effective == config
 
 
-def test_symmetric_group_fft_card_and_dotted_override_round_trip() -> None:
+@pytest.mark.parametrize("fft_basis", tuple(ColorFFTBasis))
+def test_symmetric_group_fft_card_and_dotted_override_round_trip(
+    fft_basis: ColorFFTBasis,
+) -> None:
     pytest.importorskip("tomli_w")
     config = resolve_config(
         {
@@ -275,20 +280,36 @@ def test_symmetric_group_fft_card_and_dotted_override_round_trip() -> None:
             "color": {"accuracy": "full", "contraction": "direct"},
             "evaluator": {"execution_mode": "recurrence"},
         },
-        overrides=("color.contraction=symmetric-group-fft",),
+        overrides=(
+            "color.contraction=symmetric-group-fft",
+            f"color.fft_basis={fft_basis}",
+        ),
     ).effective
 
     assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is fft_basis
     plain = config_to_dict(config)
     assert plain["color"] == {  # type: ignore[index]
         "accuracy": "full",
         "contraction": "symmetric-group-fft",
+        "fft_basis": fft_basis.value,
         "lc_flow_layout": "topology-replay",
     }
     assert resolve_config(plain).effective == config
     serialized = config_to_toml(config)
     assert 'contraction = "symmetric-group-fft"' in serialized
+    assert f'fft_basis = "{fft_basis}"' in serialized
     assert resolve_config(tomllib.loads(serialized)).effective == config
+
+
+def test_packaged_adjoint_fft_card_selects_certified_pure_gluon_example() -> None:
+    card = Path(__file__).resolve().parents[2] / "examples/builtin_sm_adjoint_fft.toml"
+    config = load_config(card)
+    assert config.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
+    assert config.color.fft_basis is ColorFFTBasis.ADJOINT
+    assert config.color.accuracy == "full"
+    assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+    assert config.process.entries[0].expression == "g g > g g g"
 
 
 @pytest.mark.parametrize(

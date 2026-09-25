@@ -449,6 +449,13 @@ def color_contraction_factors(
 ) -> tuple[float, float, float]:
     """Return reference-normalized (LC, NLC, full) colour factors."""
 
+    if color_plan.basis == "adjoint":
+        return tuple(
+            float(value)
+            for value in exact_color_contraction_factors(
+                color_plan, left, right, full_col_acc=full_col_acc
+            )
+        )
     open_line_count = color_plan.process.color_endpoints.pair_count
     n_ord = len(_coloured_word(left))
     if len(_coloured_word(right)) != n_ord:
@@ -474,6 +481,12 @@ def color_contraction_factor(
 ) -> float:
     """Return only the requested reference-normalized colour factor."""
 
+    if color_plan.basis == "adjoint":
+        return float(
+            exact_color_contraction_factor(
+                color_plan, left, right, accuracy=accuracy, full_col_acc=full_col_acc
+            )
+        )
     open_line_count = color_plan.process.color_endpoints.pair_count
     n_ord = len(_coloured_word(left))
     if len(_coloured_word(right)) != n_ord:

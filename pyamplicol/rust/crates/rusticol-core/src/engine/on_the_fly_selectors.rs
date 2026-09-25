@@ -16,6 +16,7 @@
 //! materialize it through [`OnTheFlySelectorIntrospectionCacheV1`].
 
 use super::on_the_fly_lane::{OnTheFlyLcQueryRequestV1, OnTheFlyLcReductionTargetV1};
+use super::on_the_fly_manifest::OnTheFlyColorBasis;
 use crate::recurrence::on_the_fly::{
     DecodedLcQueryV1, OnTheFlyExternalColorRoleV1, OnTheFlyLcSelectorV1, OnTheFlyProcessSeedV1,
 };
@@ -92,10 +93,12 @@ pub(super) enum OnTheFlyLcColorCoverageV1 {
 /// Small generation-owned selector policy which cannot be reconstructed from
 /// external roles.  `reference_color_word` may reorder one ordinary complete
 /// flow to the front; reflection folding changes pure-trace public ordering
-/// while preserving both members as public aliases.
+/// while preserving both members as public aliases. Contracted adjoint colour
+/// instead retains ordinary trace amplitudes with two fixed DDM endpoints.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct OnTheFlyLcSelectorPolicyV1 {
     pub(super) color_coverage: OnTheFlyLcColorCoverageV1,
+    pub(super) color_basis: OnTheFlyColorBasis,
     pub(super) reference_color_word: Option<Box<[u32]>>,
     pub(super) trace_reflections_folded: bool,
 }
@@ -108,6 +111,7 @@ impl OnTheFlyLcSelectorPolicyV1 {
     ) -> Self {
         Self {
             color_coverage: OnTheFlyLcColorCoverageV1::Complete,
+            color_basis: OnTheFlyColorBasis::Trace,
             reference_color_word: reference_color_word.map(Vec::into_boxed_slice),
             trace_reflections_folded,
         }
@@ -130,6 +134,7 @@ pub(super) struct OnTheFlyCompactSelectorAdapterV1 {
     antifundamental_labels: Box<[u32]>,
     adjoint_labels: Box<[u32]>,
     color_domain: CompactColorDomainV1,
+    color_basis: OnTheFlyColorBasis,
     reference_unfolded_color_ordinal: Option<usize>,
     trace_reflections_folded: bool,
     helicity_count: usize,
@@ -265,6 +270,15 @@ impl OnTheFlyCompactSelectorAdapterV1 {
         } else {
             CompactColorDomainV1::Singlet
         };
+        if policy.color_basis == OnTheFlyColorBasis::Adjoint
+            && (adjoint_labels.len() < 3
+                || adjoint_labels.len() != externals_by_public_slot.len()
+                || policy.trace_reflections_folded)
+        {
+            return Err(integrity(
+                "adjoint color basis requires at least three all-adjoint external sources and no trace-reflection folding",
+            ));
+        }
         let helicity_count = checked_product(
             externals_by_public_slot
                 .iter()
@@ -274,7 +288,7 @@ impl OnTheFlyCompactSelectorAdapterV1 {
         let color_count = match color_domain {
             CompactColorDomainV1::Singlet => 1,
             CompactColorDomainV1::SingleTrace => {
-                checked_factorial(adjoint_labels.len().saturating_sub(1), "single-trace count")?
+                single_trace_color_count(adjoint_labels.len(), policy.color_basis)?
             }
             CompactColorDomainV1::OpenLines => {
                 let line_count = fundamental_labels.len();
@@ -324,6 +338,7 @@ impl OnTheFlyCompactSelectorAdapterV1 {
             antifundamental_labels: antifundamental_labels.into_boxed_slice(),
             adjoint_labels: adjoint_labels.into_boxed_slice(),
             color_domain,
+            color_basis: policy.color_basis,
             reference_unfolded_color_ordinal: None,
             trace_reflections_folded: policy.trace_reflections_folded,
             helicity_count,
@@ -591,6 +606,13 @@ impl OnTheFlyCompactSelectorAdapterV1 {
                         "single-trace LC flow must use the minimum adjoint label as cyclic anchor",
                     ));
                 }
+                if self.color_basis == OnTheFlyColorBasis::Adjoint
+                    && labels.last() != self.adjoint_labels.last()
+                {
+                    return Err(invalid(
+                        "adjoint color flow must preserve both fixed endpoint labels",
+                    ));
+                }
                 Ok(OnTheFlyLcSelectorV1::single_trace(public_slots))
             }
             CompactColorDomainV1::OpenLines => {
@@ -735,7 +757,13 @@ impl OnTheFlyCompactSelectorAdapterV1 {
                     .first()
                     .ok_or_else(|| integrity("single-trace domain has no adjoint anchor"))?;
                 let mut labels = vec![first];
-                labels.extend(nth_permutation(&self.adjoint_labels[1..], index)?);
+                if self.color_basis == OnTheFlyColorBasis::Adjoint {
+                    let last = self.adjoint_labels.len() - 1;
+                    labels.extend(nth_permutation(&self.adjoint_labels[1..last], index)?);
+                    labels.push(self.adjoint_labels[last]);
+                } else {
+                    labels.extend(nth_permutation(&self.adjoint_labels[1..], index)?);
+                }
                 labels
             }
             CompactColorDomainV1::OpenLines => self.open_line_color_at(index)?,
@@ -869,7 +897,17 @@ impl OnTheFlyCompactSelectorAdapterV1 {
                 if labels.first() != self.adjoint_labels.first() {
                     return Err(invalid("single-trace cyclic anchor differs"));
                 }
-                permutation_rank(&self.adjoint_labels[1..], &labels[1..])
+                if self.color_basis == OnTheFlyColorBasis::Adjoint {
+                    if labels.len() != self.adjoint_labels.len()
+                        || labels.last() != self.adjoint_labels.last()
+                    {
+                        return Err(invalid("adjoint color flow endpoints differ"));
+                    }
+                    let last = self.adjoint_labels.len() - 1;
+                    permutation_rank(&self.adjoint_labels[1..last], &labels[1..last])
+                } else {
+                    permutation_rank(&self.adjoint_labels[1..], &labels[1..])
+                }
             }
             CompactColorDomainV1::OpenLines => {
                 let mut antifundamentals = Vec::new();
@@ -1356,6 +1394,14 @@ fn checked_product(values: impl IntoIterator<Item = usize>, label: &str) -> Rust
     })
 }
 
+fn single_trace_color_count(count: usize, basis: OnTheFlyColorBasis) -> RusticolResult<usize> {
+    let anchors = match basis {
+        OnTheFlyColorBasis::Trace => 1,
+        OnTheFlyColorBasis::Adjoint => 2,
+    };
+    checked_factorial(count.saturating_sub(anchors), "single-trace count")
+}
+
 fn checked_factorial(value: usize, label: &str) -> RusticolResult<usize> {
     (2..=value).try_fold(1usize, |total, factor| {
         total
@@ -1510,6 +1556,13 @@ mod tests {
     fn adapter(
         roles: &[(u32, OnTheFlyExternalColorRoleV1, &[i32])],
     ) -> OnTheFlyCompactSelectorAdapterV1 {
+        adapter_in_basis(roles, OnTheFlyColorBasis::Trace)
+    }
+
+    fn adapter_in_basis(
+        roles: &[(u32, OnTheFlyExternalColorRoleV1, &[i32])],
+        color_basis: OnTheFlyColorBasis,
+    ) -> OnTheFlyCompactSelectorAdapterV1 {
         let externals_by_public_slot = roles
             .iter()
             .enumerate()
@@ -1557,7 +1610,7 @@ mod tests {
         let color_count = match color_domain {
             CompactColorDomainV1::Singlet => 1,
             CompactColorDomainV1::SingleTrace => {
-                checked_factorial(adjoint_labels.len() - 1, "test traces").unwrap()
+                single_trace_color_count(adjoint_labels.len(), color_basis).unwrap()
             }
             CompactColorDomainV1::OpenLines => {
                 checked_factorial(fundamental_labels.len(), "test pairings").unwrap()
@@ -1594,6 +1647,7 @@ mod tests {
             antifundamental_labels,
             adjoint_labels,
             color_domain,
+            color_basis,
             reference_unfolded_color_ordinal: None,
             trace_reflections_folded: false,
             helicity_count,
@@ -1618,6 +1672,64 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn adjoint_color_ordinals_permute_only_between_both_fixed_anchors() {
+        for (total, expected_count) in [(3, 1), (4, 2), (5, 6), (6, 24), (7, 120)] {
+            let roles = (1..=total)
+                .map(|label| (label, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1][..]))
+                .collect::<Vec<_>>();
+            let selector = adapter_in_basis(&roles, OnTheFlyColorBasis::Adjoint);
+            assert_eq!(selector.color_count(), expected_count);
+            assert_eq!(selector.helicity_count(), 1 << total);
+            let mut words = BTreeSet::new();
+            for index in 0..expected_count {
+                let (word, _) = selector.color_at(index).unwrap();
+                assert_eq!(word.first(), Some(&1));
+                assert_eq!(word.last(), Some(&total));
+                assert_eq!(selector.color_ordinal(&word).unwrap(), index);
+                let (parsed, _) = selector.parse_color_id(&canonical_color_id(&word)).unwrap();
+                assert_eq!(parsed, word);
+                assert!(words.insert(word));
+            }
+            assert!(selector.color_at(expected_count).is_err());
+        }
+    }
+
+    #[test]
+    fn adjoint_reference_reordering_and_public_aliases_preserve_the_basis() {
+        let mut selector = adapter_in_basis(
+            &[
+                (1, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1]),
+                (2, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1]),
+                (3, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1]),
+                (4, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1]),
+            ],
+            OnTheFlyColorBasis::Adjoint,
+        );
+        assert!(selector.parse_color_id("flow:1,2,4,3").is_err());
+        assert!(selector.unfolded_color_ordinal(&[1, 2, 4, 3]).is_err());
+        assert!(selector.unfolded_color_ordinal(&[2, 1, 3, 4]).is_err());
+        assert!(selector.unfolded_color_ordinal(&[1, 4]).is_err());
+        selector.reference_unfolded_color_ordinal = Some(1);
+        for (index, expected) in [(0, [1, 3, 2, 4]), (1, [1, 2, 3, 4])] {
+            let (word, _) = selector.color_at(index).unwrap();
+            assert_eq!(word.as_ref(), expected);
+            assert_eq!(selector.color_ordinal(&word).unwrap(), index);
+        }
+        let aliased = selector.with_public_permutation(&[3, 1, 2, 0]).unwrap();
+        let (word, _) = aliased.parse_color_id("flow:4,3,2,1").unwrap();
+        assert_eq!(word.as_ref(), [1, 3, 2, 4]);
+        assert_eq!(aliased.color_ordinal(&word).unwrap(), 0);
+    }
+
+    #[test]
+    fn adjoint_basis_rejects_a_non_adjoint_seed_at_the_adapter_boundary() {
+        let seed = scalar_adapter_test_seed(digest(1), digest(2), digest(3), digest(4)).unwrap();
+        let mut policy = OnTheFlyLcSelectorPolicyV1::complete(None, false);
+        policy.color_basis = OnTheFlyColorBasis::Adjoint;
+        assert!(OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, policy).is_err());
     }
 
     #[test]

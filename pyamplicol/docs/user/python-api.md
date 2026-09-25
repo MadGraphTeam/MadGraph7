@@ -72,6 +72,47 @@ Use an explicit `HIG = 1` coupling-order limit in a resolved run configuration
 when generating the process; see [Models and Processes](models-and-processes.md#built-in-scalar-heft-model)
 and the packaged `builtin_sm_heft.toml` card.
 
+## Generate with adjoint FFT contraction
+
+The Python API uses the same `RunConfig` and `ColorConfig` fields as TOML and
+the CLI. For a certified pure Yang–Mills tree process, start with the explicitly
+selected adjoint DDM basis:
+
+```python
+from pyamplicol import ColorConfig, ColorFFTBasis, Generator, ModelSource, RunConfig
+from pyamplicol.config import EvaluatorConfig
+
+config = RunConfig(
+    color=ColorConfig(
+        accuracy="full",
+        contraction="symmetric-group-fft",
+        fft_basis=ColorFFTBasis.ADJOINT,
+    ),
+    evaluator=EvaluatorConfig(execution_mode="recurrence"),
+)
+result = Generator(config).generate(
+    "g g > g g g",
+    "artifacts/ggg_adjoint_fft",
+    model=ModelSource.built_in_sm(),
+)
+```
+
+`fft_basis="adjoint"` is equivalent to the enum value. The configuration default
+remains `"trace"`; use it for quarks or Higgs/HEFT processes. Select
+`accuracy="nlc"` for NLC contraction, or
+`execution_mode="on-the-fly"` for a compact OTF artifact. Compiled/eager modes
+and LC accuracy do not support FFT contraction.
+
+For `n` external gluons, adjoint DDM fixes two anchors and prunes the redundant
+trace set of `(n-1)!` ordered amplitudes to `(n-2)!`, representing the same
+amplitude. Quarks, external colour singlets such as Higgs insertions,
+uncertified interactions, and `correlators=` are unsupported for adjoint.
+An adjoint basis requires FFT contraction; it cannot be combined with direct
+contraction. Runtime totals, resolved helicities and native SDK evaluation
+calls are unchanged.
+The smaller basis is not a universal runtime speedup; benchmark the intended
+multiplicity and selector workload.
+
 ## Generate a named process set
 
 ```python

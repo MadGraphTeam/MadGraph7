@@ -81,6 +81,11 @@ def correlated_configuration(
         clamps = ()
     else:
         raise TypeError("invalid correlated generation configuration")
+    if effective.color.fft_basis.value == "adjoint":
+        raise ValueError(
+            "adjoint FFT is not supported for correlated matrix elements; "
+            "use the direct colour contraction"
+        )
     result = replace(
         effective,
         color=replace(

@@ -2058,13 +2058,18 @@ def _on_the_fly_execution_summary(
 ) -> bytes:
     capabilities = list(_on_the_fly_process_runtime_capabilities(process))
     selector_policy = _mapping(process.selector_policy)
-    if set(selector_policy) != {
+    if set(selector_policy) - {"color_basis"} != {
         "color_coverage",
         "reference_color_word",
         "trace_reflections_folded",
         "selector_census",
     }:
         raise ValueError("on-the-fly selector policy fields are invalid")
+    color_basis = selector_policy.get("color_basis", "trace")
+    if color_basis not in ("trace", "adjoint"):
+        raise ValueError("on-the-fly selector color basis must be trace or adjoint")
+    if color_basis == "adjoint" and process.color_accuracy not in {"nlc", "full"}:
+        raise ValueError("adjoint on-the-fly color requires contracted NLC/full")
     expected_coverage = "complete" if process.color_accuracy == "lc" else "contracted"
     if selector_policy.get("color_coverage") != expected_coverage or not isinstance(
         selector_policy.get("trace_reflections_folded"), bool
