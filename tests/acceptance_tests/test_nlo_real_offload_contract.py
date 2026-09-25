@@ -117,6 +117,20 @@ class TestNLORealFortranOracle(unittest.TestCase):
             run_card = banner.RunCardNLO(
                 pjoin(output_path, 'Cards', 'run_card.dat'))
             self.assertEqual(run_card['vector_size'], vector_size)
+        if madmatrix:
+            # The backend is a run-card setting compiled into the wrapper.
+            run_card = banner.RunCardNLO(
+                pjoin(output_path, 'Cards', 'run_card.dat'))
+            self.assertIn('nlo_real_backend', run_card.user_set)
+            self.assertEqual(run_card['nlo_real_backend'], 'fortran')
+            subprocess_path = pjoin(output_path, 'SubProcesses',
+                                    case['subprocess'])
+            with open(pjoin(subprocess_path, 'nlo_real_offload.mk')) as stream:
+                self.assertIn('NLO_REAL_RUNTIME_BACKEND ?= fortran',
+                              stream.read())
+            with open(pjoin(subprocess_path,
+                            'nlo_real_offload.f90')) as stream:
+                self.assertIn("include 'nlo_real_backend.inc'", stream.read())
         param_card = pjoin(output_path, 'Cards', 'param_card.dat')
         with open(param_card, 'rb') as stream:
             digest = hashlib.sha256(stream.read()).hexdigest()

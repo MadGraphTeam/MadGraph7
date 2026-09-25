@@ -211,6 +211,18 @@ class TestNLORealOffloadContract(unittest.TestCase):
         for prototype in prototypes:
             self.assertRegex(header, prototype)
 
+    def test_run_card_selects_nlo_real_backend(self):
+        """The real-ME backend is a run-card setting (design section 4.1)
+        with the safe Fortran default; unknown backends are rejected."""
+        run_card = banner.RunCardNLO()
+        self.assertEqual(run_card['nlo_real_backend'], 'fortran')
+        for backend in ('scalar', 'avx512y', 'cuda'):
+            run_card['nlo_real_backend'] = backend
+            self.assertEqual(run_card['nlo_real_backend'], backend)
+        with self.assertRaises(Exception):
+            run_card.set('nlo_real_backend', 'no_such_backend',
+                         raiseerror=True)
+
     def test_nlo_event_jobs_honor_run_card_vector_size(self):
         """The run layer must not force event-generation jobs to one lane."""
 

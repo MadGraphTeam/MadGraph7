@@ -5332,6 +5332,12 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         if self.proc_characteristics['has_loops'] and \
                           not os.path.exists(pjoin(self.me_dir,'OLP_virtuals')):
             self.make_opts_var['madloop'] = 'true'
+        # Outputs made with --me_exporter=mg7: the run-card real-ME backend
+        # selects the MadMatrix libraries built and the wrapper default.
+        if misc.glob(pjoin(self.me_dir, 'SubProcesses', 'P*',
+                           'nlo_real_offload.mk')):
+            self.make_opts_var['NLO_REAL_RUNTIME_BACKEND'] = \
+                self.run_card['nlo_real_backend']
 
         self.update_status('Compiling the code', level=None, update_results=True)
 

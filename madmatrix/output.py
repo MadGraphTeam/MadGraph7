@@ -573,7 +573,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '',
             'libraries:',
             '\t@set -e; for directory in $(NLO_REAL_BUILD_DIRS); do \\',
-            '\t  $(MAKE) -C ../$$directory BACKEND=$(BACKEND) '
+            '\t  $(MAKE) -C ../$$directory USEBUILDDIR=1 BACKEND=$(BACKEND) '
             'FPTYPE=$(FPTYPE) HELINL=$(HELINL) HRDCOD=$(HRDCOD); \\',
             '\tdone',
             '',
@@ -644,6 +644,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  logical, save :: real_unavailable(%d) = .false.' % real_count,
             '  logical, save :: real_evaluated(%d) = .false.' % real_count,
             '  logical, save :: trace_batches = .false.',
+            "  include 'nlo_real_backend.inc'",
             '  character(len=64), save :: backend_name = "uninitialized"',
             '',
             '  interface',
@@ -723,7 +724,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '    initialization_attempted = .true.',
             '    param_card = "auto"',
             '    library_dir = "auto"',
-            '    backend = "fortran"',
+            '    backend = default_backend',
             '    env_value = ""',
             '    call get_environment_variable("MG7_NLO_REAL_PARAM_CARD", &',
             '      env_value, length=length, status=env_status)',
@@ -1032,8 +1033,14 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             real['library_process_id']
             for real in manifest['real_matrix_elements'])
         fragment = [
-            '# Generated scalar NLO-real production routing.',
-            'NLO_REAL_BACKEND ?= scalar',
+            '# Generated NLO-real production routing.',
+            '# NLO_REAL_RUNTIME_BACKEND is the run-card nlo_real_backend',
+            '# (set in Source/make_opts by the run interface); it is compiled',
+            '# into the wrapper as its default. NLO_REAL_BACKEND is the',
+            '# MadMatrix backend built (scalar when the runtime is fortran).',
+            'NLO_REAL_RUNTIME_BACKEND ?= fortran',
+            'NLO_REAL_BACKEND ?= $(if $(filter fortran,'
+            '$(NLO_REAL_RUNTIME_BACKEND)),scalar,$(NLO_REAL_RUNTIME_BACKEND))',
             'NLO_REAL_FPTYPE ?= d',
             'NLO_REAL_DIRS := %s' % directories,
             'NLO_REAL_STAMP := .nlo_real_$(NLO_REAL_BACKEND)_$(NLO_REAL_FPTYPE).stamp',
@@ -1052,14 +1059,21 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             'FPTYPE=$(NLO_REAL_FPTYPE) all',
             '\ttouch $@',
             '',
-            'nlo_real_offload.o: nlo_real_offload.f90 $(NLO_REAL_STAMP)',
+            '.PHONY: nlo_real_backend_force',
+            'nlo_real_backend.inc: nlo_real_backend_force',
+            '\t@echo \'character(len=*), parameter :: default_backend = '
+            '"$(NLO_REAL_RUNTIME_BACKEND)"\' > $@.new',
+            '\t@cmp -s $@.new $@ || mv $@.new $@; rm -f $@.new',
+            '',
+            'nlo_real_offload.o: nlo_real_offload.f90 $(NLO_REAL_STAMP) '
+            'nlo_real_backend.inc',
             '\t$(FC) $(FFLAGS) -ffree-line-length-none -c $< -o $@',
             '',
             '.PHONY: nlo_real_clean',
             'clean: nlo_real_clean',
             'nlo_real_clean:',
             '\t$(MAKE) -f nlo_real.mk clean',
-            '\trm -f .nlo_real_*.stamp',
+            '\trm -f .nlo_real_*.stamp nlo_real_backend.inc',
         ]
         with open(pjoin(process_path, 'nlo_real_offload.mk'), 'w') as stream:
             stream.write('\n'.join(fragment) + '\n')

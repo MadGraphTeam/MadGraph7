@@ -5889,6 +5889,13 @@ class RunCardNLO(RunCard):
         self.add_param(
             'vector_size', 1, include=False, hidden=True,
             comment='lockstep size for NLO real-amplitude batches')
+        self.add_param(
+            'nlo_real_backend', 'fortran', include=False, hidden=True,
+            allowed=['fortran', 'scalar', 'simd_128', 'simd_256',
+                     'avx512y', 'simd_512', 'cuda', 'hip'],
+            comment='real-emission matrix-element backend of an output '
+                    'made with --me_exporter=mg7 (fortran: retained '
+                    'Fortran, no MadMatrix)')
         self.add_param("time_of_flight", -1.0, include=False)
         self.add_param('event_norm', 'average')
         #FO parameter

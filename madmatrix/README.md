@@ -19,17 +19,24 @@ manifest, and retained Fortran real routines. Generated MINT jobs use the reques
 `vector_size`; inactive lanes are compacted before one batch call per physical FKS
 row and restored to their original lanes afterwards.
 
-The runtime defaults to the retained Fortran implementation, so generated output
-does not require a MadMatrix process library at runtime unless offloading is
-explicitly selected. Set `MG7_NLO_REAL_BACKEND` to one of `scalar`, `simd_128`,
-`simd_256`, `simd_512`, `avx512y`, `cuda`, or `hip`. Values `fortran`, `off`, and
-`none` select Fortran explicitly. For example:
+The real-emission backend is the run-card setting `nlo_real_backend`, which
+defaults to `fortran` (the retained Fortran real matrix elements; no MadMatrix
+library is needed at run time). Other values are `scalar`, `simd_128`,
+`simd_256`, `avx512y`, `simd_512`, `cuda`, and `hip`. When the run is
+compiled, the run interface builds the MadMatrix libraries for that backend
+and compiles it into the generated wrapper. The choice is therefore recorded
+in the run banner and does not depend on the environment of (cluster) jobs.
+Libraries for several backends can coexist in one output. For example, in
+`Cards/run_card.dat`:
 
-```sh
-make -C SubProcesses/P0_QQx_ttx madevent_mintMC \
-  NLO_REAL_BACKEND=avx512y
-MG7_NLO_REAL_BACKEND=avx512y SubProcesses/P0_QQx_ttx/madevent_mintMC
+```text
+  avx512y = nlo_real_backend
 ```
+
+For diagnostics, the environment variable `MG7_NLO_REAL_BACKEND` overrides the
+compiled backend at run time (the values `fortran`, `off`, and `none` select
+Fortran). A manual build can set `NLO_REAL_RUNTIME_BACKEND` (and optionally
+`NLO_REAL_BACKEND` for the libraries built) on the `make` command line.
 
 `MG7_NLO_REAL_PARAM_CARD` and `MG7_NLO_REAL_LIBRARY_DIR` override the default
 locations. Otherwise they are resolved relative to `libnlo_real_bridge.so`, which

@@ -845,6 +845,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             if 'vector_size' in output_options:
                 self._curr_exporter.opt['nlo_real_vector_size'] = \
                     output_options['vector_size']
+            if me_exporter:
+                self._curr_exporter.opt['nlo_real_offload'] = True
 
             self._curr_exporter.pass_information_from_cmd(self)
 

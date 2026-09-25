@@ -862,6 +862,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 self.opt['nlo_real_vector_size'], int, 'vector_size')
             run_card.set(
                 'vector_size', max(1, requested_vector_size), user=True)
+        if self.opt.get('nlo_real_offload'):
+            # Show the real-ME backend of the MadMatrix offload in the run
+            # card, with the safe Fortran default.
+            run_card.set('nlo_real_backend', 'fortran', user=True)
         
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'))
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'))
