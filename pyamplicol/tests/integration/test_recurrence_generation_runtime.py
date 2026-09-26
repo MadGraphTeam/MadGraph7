@@ -1173,7 +1173,7 @@ def test_charged_current_alias_uses_native_identity_for_numerical_probes(
     Generator(
         _generation_config(
             "recurrence",
-            relation_discovery_mode=None,
+            relation_discovery_mode="certified-reuse",
         )
     ).generate(
         _CHARGED_CURRENT_PROCESS,
@@ -1191,16 +1191,16 @@ def test_charged_current_alias_uses_native_identity_for_numerical_probes(
     assert lane["requested_mode"] == "certified-reuse"
 
 
-def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan(
+def test_no_relation_certified_reuse_and_explicit_opt_out_emit_identical_recurrence_plan(
     tmp_path: Path,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
 ) -> None:
-    """Default-on discovery is byte-neutral when its certified set is empty."""
+    """Certified-reuse discovery is byte-neutral when its certified set is empty."""
 
     _require_native_recurrence()
     artifacts: dict[str, Path] = {}
     executions: dict[str, dict[str, Any]] = {}
-    for label, mode in (("default", None), ("off", "off")):
+    for label, mode in (("certified", "certified-reuse"), ("off", "off")):
         artifact = tmp_path / label
         Generator(
             _generation_config(
@@ -1215,22 +1215,22 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
         artifacts[label] = artifact
         executions[label] = _single_recurrence_execution(artifact)
 
-    default_lane = _manifest_relation_discovery(artifacts["default"])["lanes"][
+    certified_lane = _manifest_relation_discovery(artifacts["certified"])["lanes"][
         "primary"
     ]
-    assert default_lane["requested_mode"] == "certified-reuse"
-    assert default_lane["certified_relation_count"] == 0
-    assert default_lane["applied_relation_count"] == 0
-    assert default_lane["state"] == "no_certified_numerical_relation"
-    default_schedule = next(artifacts["default"].rglob("recurrence-runtime.pacbin"))
+    assert certified_lane["requested_mode"] == "certified-reuse"
+    assert certified_lane["certified_relation_count"] == 0
+    assert certified_lane["applied_relation_count"] == 0
+    assert certified_lane["state"] == "no_certified_numerical_relation"
+    certified_schedule = next(artifacts["certified"].rglob("recurrence-runtime.pacbin"))
     off_schedule = next(artifacts["off"].rglob("recurrence-runtime.pacbin"))
-    assert default_schedule.read_bytes() == off_schedule.read_bytes()
+    assert certified_schedule.read_bytes() == off_schedule.read_bytes()
     assert (
-        executions["default"]["plan"]["inspection_summary"]["schedule_digest"]
+        executions["certified"]["plan"]["inspection_summary"]["schedule_digest"]
         != executions["off"]["plan"]["inspection_summary"]["schedule_digest"]
     )
     assert (
-        executions["default"]["plan"]["process_binding"][
+        executions["certified"]["plan"]["process_binding"][
             "native_schedule_semantic_digest"
         ]
         == executions["off"]["plan"]["process_binding"][
@@ -1238,7 +1238,7 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
         ]
     )
     assert (
-        executions["default"]["recurrence_summary"]
+        executions["certified"]["recurrence_summary"]
         == executions["off"]["recurrence_summary"]
     )
     for key in (
@@ -1247,7 +1247,7 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
         "selector_work_certificate",
         "direct_arena",
     ):
-        assert executions["default"]["plan"]["inspection_summary"].get(
+        assert executions["certified"]["plan"]["inspection_summary"].get(
             key
         ) == executions["off"]["plan"]["inspection_summary"].get(key)
 
@@ -1316,7 +1316,7 @@ def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
             _generation_config(
                 "recurrence",
                 lc_flow_layout="all-flow-union",
-                relation_discovery_mode=(None if mode == "certified-reuse" else mode),
+                relation_discovery_mode=mode,
             )
         ).generate(
             _RELATION_REUSE_PROCESS,

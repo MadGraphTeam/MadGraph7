@@ -896,7 +896,10 @@ def config_values(
                 # own resolved, high-precision, and authority validation.
                 "post_build_validation": False,
             },
-            **({"relation_discovery": {"mode": "off"}} if on_the_fly else {}),
+            # The published campaign protocol searches for certified numerical
+            # current reuse; it is explicit here because the package default
+            # is off.
+            "relation_discovery": {"mode": "off" if on_the_fly else "certified-reuse"},
         },
         "evaluator": {
             "backend": measurement.backend,

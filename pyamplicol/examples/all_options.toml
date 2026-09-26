@@ -106,9 +106,10 @@ post_build_validation = false
 # generation.relation_discovery.mode: "off", "diagnostic", or
 # "certified-reuse". Exact proofs are preferred. Independently verified
 # equal, opposite, and zero currents may also be applied with persisted
-# numerical evidence and a warning. Default certified-reuse; use "off" or
-# --no-numerical-current-reuse for the unoptimized path.
-mode = "certified-reuse"
+# numerical evidence and a warning. Default off, because the high-precision
+# probes are costly at generation time; set "certified-reuse" or pass
+# --numerical-current-reuse to search for additional reuse.
+mode = "off"
 # generation.relation_discovery.precision_digits: Decimal probe precision,
 # at least 80. Default 96.
 precision_digits = 96

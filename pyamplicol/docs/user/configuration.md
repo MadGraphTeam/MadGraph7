@@ -336,7 +336,9 @@ pyamplicol generate --card run.toml \
 
 ## Numerical current reuse
 
-Certified current-relation reuse is enabled by default. It prefers exact
+Certified current-relation reuse is an opt-in optimization. It is off by
+default because its high-precision probes are costly at generation time;
+enable it to search for additional reuse. It prefers exact
 structural proofs and may apply independently verified high-precision equal,
 opposite, or zero relations. The artifact records the evidence, tolerances,
 probe derivation, replay identity, and whether a structural proof was present.
@@ -359,18 +361,21 @@ opposite relations remain recorded but are not applied in that layout; their
 currents retain their original computation. Existing helicity/flow-selector
 restrictions still apply. No relation search is deferred to the first evaluation.
 
-Keep the unoptimized path for a comparison with:
+Enable the search with:
 
 ```console
-pyamplicol generate --card run.toml --no-numerical-current-reuse
+pyamplicol generate --card run.toml --numerical-current-reuse
 ```
 
 Or in TOML:
 
 ```toml
 [generation.relation_discovery]
-mode = "off"                    # off, diagnostic, certified-reuse
+mode = "certified-reuse"        # off (default), diagnostic, certified-reuse
 ```
+
+`--no-numerical-current-reuse` restates the default and overrides a card that
+enables the search.
 
 The exhaustive probe, precision, seed, and tolerance fields are documented in
 `all_options.toml`.

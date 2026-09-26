@@ -191,12 +191,9 @@ def test_generate_post_build_validation_is_opt_in() -> None:
     assert explicit.generation.validation.post_build_validation
 
 
-def test_generate_defaults_to_certified_numerical_current_reuse() -> None:
+def test_generate_defaults_to_no_numerical_current_reuse() -> None:
     config = parse_cli(("generate",)).resolve().effective
-    assert (
-        config.generation.relation_discovery.mode
-        is RelationDiscoveryMode.CERTIFIED_REUSE
-    )
+    assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF
 
 
 @pytest.mark.parametrize(

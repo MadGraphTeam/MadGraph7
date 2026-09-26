@@ -370,7 +370,9 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         const="certified-reuse",
         default=argparse.SUPPRESS,
         help=(
-            "apply independently certified numerical current relations (the default)"
+            "search for and apply independently certified numerical current "
+            "relations (off by default: the high-precision probes are costly at "
+            "generation time)"
         ),
     )
     numerical_reuse.add_argument(
@@ -379,7 +381,7 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         action="store_const",
         const="off",
         default=argparse.SUPPRESS,
-        help="disable numerical current-relation discovery and reuse",
+        help="disable numerical current-relation discovery and reuse (the default)",
     )
 
 

@@ -256,7 +256,7 @@ def test_numerical_current_warning_aggregation(value, expected) -> None:
     assert service_module._numerical_current_warning_required(value) is expected
 
 
-def test_default_numerical_current_reuse_applies_on_final_materialized_dag() -> None:
+def test_certified_numerical_current_reuse_applies_on_final_materialized_dag() -> None:
     model = BuiltinSMModel()
     config = RunConfig(
         action="generate",

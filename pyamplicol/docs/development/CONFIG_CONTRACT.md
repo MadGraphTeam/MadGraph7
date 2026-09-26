@@ -93,7 +93,7 @@ processes.
 
 ### Relation Discovery
 
-- `mode: off | diagnostic | certified-reuse = certified-reuse`
+- `mode: off | diagnostic | certified-reuse = off`
 - `precision_digits: int >= 80 = 96`
 - `probe_count: int >= 2 = 4`
 - `verification_probe_count: int >= 2 = 4`
@@ -118,13 +118,16 @@ complete certification input and mapping are persisted for replay. One warning
 is emitted per generated artifact when such proof-less mappings are applied.
 Malformed, non-finite, unstable, or stale evidence fails closed.
 
-The feature is enabled by default for LC, NLC, and full colour, for compiled,
-eager, and recurrence generation using built-in or prepared external/UFO
-models. The compact on-the-fly source projection does not run this configurable
-relation-discovery pass. `mode = "off"`—or the public
-`--no-numerical-current-reuse` flag—selects the unoptimized path without
-changing numerical results. Direct vertex-kernel equivalence remains
-model-certificate-owned.
+The feature is off by default: its high-precision probes evaluate the complete
+current schedule several times at generation time, which dominates the build at
+high multiplicity. `mode = "certified-reuse"`—or the public
+`--numerical-current-reuse` flag—enables it for LC, NLC, and full colour, for
+compiled, eager, and recurrence generation using built-in or prepared
+external/UFO models, to search for additional equal, opposite, or zero-current
+reuse. The compact on-the-fly source projection does not run this configurable
+relation-discovery pass. `mode = "off"`—or `--no-numerical-current-reuse`—
+restates the default and never changes numerical results. Direct vertex-kernel
+equivalence remains model-certificate-owned.
 
 ## Evaluator
 

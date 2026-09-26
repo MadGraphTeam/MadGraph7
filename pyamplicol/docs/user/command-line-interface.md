@@ -119,7 +119,9 @@ Useful generation options include:
 - `--workers auto|N`;
 - `--mode {error,append,replace}` or the `--force` shortcut for replacement;
 - `--no-emit-api-bundle` when standalone drivers are not wanted;
-- `--no-numerical-current-reuse` for an unoptimized diagnostic build;
+- `--numerical-current-reuse` to search for certified numerical current
+  relations at generation time (off by default because the high-precision
+  probes are costly);
 - `--post-build-validation` for an optional immediate native total-versus-
   resolved smoke after writing the artifact.
 

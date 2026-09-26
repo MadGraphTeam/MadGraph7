@@ -534,10 +534,10 @@ class GenerationValidationConfig:
 
 @dataclass(frozen=True, slots=True)
 class GenerationRelationDiscoveryConfig:
-    """Default-on, replayable current-relation discovery policy."""
+    """Opt-in, replayable current-relation discovery policy (off by default)."""
 
     mode: RelationDiscoveryMode = field(
-        default=RelationDiscoveryMode.CERTIFIED_REUSE,
+        default=RelationDiscoveryMode.OFF,
         metadata=_setting("str", choices=tuple(RelationDiscoveryMode)),
     )
     precision_digits: int = field(default=96, metadata=_setting("int"))

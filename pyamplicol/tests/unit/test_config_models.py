@@ -83,7 +83,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluator.recurrence.workspace_mib"].default == 256
     assert "evaluator.recurrence" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["generation.relation_discovery.mode"].default is (
-        RelationDiscoveryMode.CERTIFIED_REUSE
+        RelationDiscoveryMode.OFF
     )
     assert (
         FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
@@ -195,10 +195,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1
     assert config.generation.validation.samples == 2
-    assert (
-        config.generation.relation_discovery.mode
-        is RelationDiscoveryMode.CERTIFIED_REUSE
-    )
+    assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF
     assert config.generation.relation_discovery.precision_digits == 96
     assert config.generation.relation_discovery.probe_count == 4
     assert config.generation.relation_discovery.verification_probe_count == 4
@@ -228,11 +225,8 @@ def test_jit_compression_auto_tracks_python_configuration_overrides() -> None:
     )
 
 
-def test_relation_discovery_defaults_on_and_validates_certification_policy() -> None:
-    assert (
-        GenerationRelationDiscoveryConfig().mode
-        is RelationDiscoveryMode.CERTIFIED_REUSE
-    )
+def test_relation_discovery_defaults_off_and_validates_certification_policy() -> None:
+    assert GenerationRelationDiscoveryConfig().mode is RelationDiscoveryMode.OFF
     assert (
         GenerationRelationDiscoveryConfig(mode="off").mode is RelationDiscoveryMode.OFF
     )

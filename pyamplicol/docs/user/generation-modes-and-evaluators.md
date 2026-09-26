@@ -380,14 +380,16 @@ pyamplicol generate ... --post-build-validation
 ```
 
 Ordinary generation validation defaults to two deterministic samples. Current
-relation discovery defaults to `certified-reuse` and remains independently
-high precision. To retain the unoptimized current schedule for a comparison:
+relation discovery is off by default because its high-precision probes are
+costly at generation time. Enable it to search for additional certified
+equal, opposite, or zero-current reuse in the generated schedule:
 
 ```console
-pyamplicol generate ... --no-numerical-current-reuse
+pyamplicol generate ... --numerical-current-reuse
 ```
 
-This changes optimization, not the expected physics result.
+This changes optimization, not the expected physics result; the search may
+find nothing for a given process, in which case the schedule is unchanged.
 OTF uses its compact source projection and does not run the configurable
 relation-discovery pass. Correlated generation also disables this pass,
 regardless of the requested ordinary reuse setting.
