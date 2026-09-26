@@ -4861,7 +4861,13 @@ c
       common/fks_indices/i_fks,j_fks
       ref_sc=0d0
       if (cur_part.eq.-1) then ! this is non-delta (or no MC subtr. needed)
-         if(i_scale.eq.0)then
+         if(nincoming.eq.1)then
+c 1->n decay: the frame is the resonance rest frame, whose z axis is
+c arbitrary, so transverse masses would make the scale depend on the decay
+c orientation. Use the resonance mass (Lorentz invariant, identical for S-
+c and H-events, and the starting scale of a resonance-decay shower).
+            ref_sc=dsqrt(sh)
+         elseif(i_scale.eq.0)then
 c Born-level CM energy squared
             ref_sc=dsqrt(max(0d0,(1-xii)*sh))
          elseif(i_scale.eq.1)then
