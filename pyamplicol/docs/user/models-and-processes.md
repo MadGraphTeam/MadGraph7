@@ -418,5 +418,6 @@ unsupported custom propagator tensors, and unproven general colored
 higher-point contacts. Massive spin-2 is experimental; the packaged massless
 `scalar_gravity` model is a tested path.
 
-For the validated release boundary, see
-[Release and Support](release-and-support.md).
+The exact, code-derived list of every condition, rejection and diagnostic
+code is kept in [UFO Model Coverage](ufo-model-coverage.md). For the
+validated release boundary, see [Release and Support](release-and-support.md).

@@ -1,6 +1,6 @@
 ---
 title: "Generation Modes and Evaluators"
-nav_order: 3
+nav_order: 4
 parent: "Configuration"
 ---
 <!-- SPDX-License-Identifier: 0BSD -->

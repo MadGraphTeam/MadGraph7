@@ -1,6 +1,6 @@
 ---
 title: "Process Selection and Permutations"
-nav_order: 2
+nav_order: 3
 parent: "Configuration"
 ---
 <!-- SPDX-License-Identifier: 0BSD -->
