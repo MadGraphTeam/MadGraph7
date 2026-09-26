@@ -1617,33 +1617,63 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
-    def test_from_LO_reports_dressed_lepton_beams(self):
-        """lpp=+-3/+-4 must be reported: mg7 has no dressed-lepton density.
+    def test_from_LO_carries_dressed_lepton_beams(self):
+        """lpp=+-3/+-4 keeps its density, and says so when it cannot.
 
-        beam.leptonic is mg7's "no parton luminosity", so converting an ILC or
-        FCC-ee card turns a run with ISR (and beamstrahlung) into one with
-        monochromatic beams. lpp=+3 used to fall through every branch and be
-        reported as a clean conversion; lpp=-3 was reported as an antiparticle
-        PDF question, which it is not.
+        mg7 reads the same Source/PDF/lep_densities sets, so an FCC-ee or ILC
+        card converts with its ISR -- and, for the collider-specific sets, its
+        beamstrahlung -- intact, and there is nothing to report. This test used
+        to assert the opposite, that such a beam becomes monochromatic and must
+        be reported; that was true of 14d7eae73 and stopped being true when
+        f5c6ecaa6 wired the density through, leaving the assertion behind.
+
+        What genuinely cannot be represented is still reported: a muon beam,
+        whose densities are not fitted, and a label naming no density at all,
+        which really does leave the beam monochromatic. Neither may be reported
+        as an antiparticle-PDF question, which was the original bug for lpp=-3.
         """
-        for lpp1, lpp2, label in ((3, -3, 'fcce240ll'), (3, -3, 'isronlyll'),
-                                  (4, -4, 'isronlyll')):
+        # a density mg7 ships: carried over, so a clean conversion
+        for label in ('fcce240ll', 'isronlyll'):
             lo = bannermod.RunCardLO()
-            lo['lpp1'], lo['lpp2'] = lpp1, lpp2
+            lo['lpp1'], lo['lpp2'] = 3, -3
             lo['ebeam1'] = lo['ebeam2'] = 120
             lo['pdlabel'] = label
             mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
             self.assertTrue(mg7['beam']['leptonic'])
-            for i, lpp in ((1, lpp1), (2, lpp2)):
-                entry = [d for d in dropped if d.startswith('lpp%d=%s ' % (i, lpp))]
-                self.assertEqual(len(entry), 1,
-                                 'lpp%d=%s not reported for %s' % (i, lpp, label))
-                self.assertIn('monochromatic', entry[0])
-                self.assertNotIn('antiparticle', entry[0])
-            # the density label is known, and no default is "kept": mg7 uses no
-            # PDF for such a run, so _resolve_pdf must not add its own claim
+            self.assertEqual(mg7['beam']['lepton_density'], label)
+            self.assertFalse([d for d in dropped if d.startswith('lpp')],
+                             'nothing is lost for %s: %s' % (label, dropped))
+            # the label is known and no default is "kept": mg7 uses no LHAPDF
+            # set for such a run, so _resolve_pdf must not add its own claim
             self.assertFalse([d for d in dropped if 'pdlabel=' in d],
                              'misleading pdlabel entry for %s: %s' % (label, dropped))
+
+        # a muon beam: the densities are fitted for electrons
+        lo = bannermod.RunCardLO()
+        lo['lpp1'], lo['lpp2'] = 4, -4
+        lo['ebeam1'] = lo['ebeam2'] = 120
+        lo['pdlabel'] = 'isronlyll'
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        for i, lpp in ((1, 4), (2, -4)):
+            entry = [d for d in dropped if d.startswith('lpp%d=%s ' % (i, lpp))]
+            self.assertEqual(len(entry), 1,
+                             'lpp%d=%s not reported: %s' % (i, lpp, dropped))
+            self.assertIn('muon', entry[0])
+            self.assertNotIn('antiparticle', entry[0])
+
+        # a label naming no density: that beam really does go monochromatic
+        lo = bannermod.RunCardLO()
+        lo['lpp1'], lo['lpp2'] = 3, -3
+        lo['ebeam1'] = lo['ebeam2'] = 120
+        lo['pdlabel'] = 'nn23lo1'
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['lepton_density'], '')
+        for i, lpp in ((1, 3), (2, -3)):
+            entry = [d for d in dropped if d.startswith('lpp%d=%s ' % (i, lpp))]
+            self.assertEqual(len(entry), 1,
+                             'lpp%d=%s not reported: %s' % (i, lpp, dropped))
+            self.assertIn('monochromatic', entry[0])
+            self.assertNotIn('antiparticle', entry[0])
 
     def test_from_LO_reports_lepton_hadron_beams(self):
         """One dressed beam switches off the other beam's PDF as well."""
