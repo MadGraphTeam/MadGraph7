@@ -135,6 +135,12 @@ c
       enddo
 
       call setrun                !Sets up run parameters
+c MC@NLO-Delta (Pythia8 initialisation, global reference scale, ISR
+c kinematics of the colour partners) assumes two incoming beams.
+      if (nincoming.eq.1 .and. mcatnlo_delta) then
+         write (*,*) 'MC@NLO-Delta is not supported for decay processes'
+         stop 1
+      endif
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
       call printout              !Prints out a summary of paramaters

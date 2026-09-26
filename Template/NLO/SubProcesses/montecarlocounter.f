@@ -5137,8 +5137,8 @@ c incoming resonance, which is at rest in the decay frame (zero 3-momentum).
 c The father-partner angle is then geometrically undefined; get_angle would
 c stop. theta2p only enters the PYTHIA6 angular dead zones, so default it to
 c the maximal angle (pi) -> no angular-ordering restriction from a partner at
-c rest. For all other (>=1 momentum) cases use the genuine angle.
-      if(pip(1)**2+pip(2)**2+pip(3)**2.eq.0d0)then
+c rest (up to rounding). For all other cases use the genuine angle.
+      if(pip(1)**2+pip(2)**2+pip(3)**2.le.(1d-10*pip(0))**2)then
          theta2p=acos(-1d0)
       else
          theta2p=get_angle(pip,pifat) ! father-partner angle (Born level)

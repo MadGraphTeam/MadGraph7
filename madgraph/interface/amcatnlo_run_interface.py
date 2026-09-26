@@ -1898,6 +1898,12 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
                 raise aMCatNLOError('Decay processes cannot be matched to a parton shower. '
                                     'Use fixed_order=OFF with shower=OFF to write events '
                                     '(e.g. for MadSpin).')
+            if self.ninitial == 1 and self.run_card['mcatnlo_delta']:
+                # The MC@NLO-Delta machinery (Pythia8 initialisation, global
+                # reference scale, ISR kinematics of the colour partners)
+                # assumes two incoming beams.
+                raise aMCatNLOError('MC@NLO-Delta (mcatnlo_delta = True) is not '
+                                    'supported for decay processes.')
             mode_dict = {'aMC@NLO': 'all', 'aMC@LO': 'born',\
                          'noshower': 'all', 'noshowerLO': 'born'}
             shower = self.run_card['parton_shower'].upper()

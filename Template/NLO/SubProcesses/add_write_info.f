@@ -370,7 +370,13 @@ c include initial state masses
             else
 c decay: no initial-state reshuffling; Born kinematics are already valid.
 c The incoming momentum is rebuilt below from momentum conservation.
-               mfail=0
+c A failed phase-space generation leaves p1_cnt(0,1,0) negative (same
+c check as in put_on_MC_mshell_in).
+               if (p1_cnt(0,1,0).lt.0d0) then
+                  mfail=1
+               else
+                  mfail=0
+               endif
             endif
          endif
  888     continue
