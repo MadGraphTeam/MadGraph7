@@ -1523,7 +1523,8 @@ class MadgraphProcess:
             if density is not None and density.has_beamstrahlung:
                 count = density.annotate_lhe(
                     lhe_path,
-                    seed=self.run_card["generation"].get("seed", 0) or 0)
+                    seed=self.run_seed,
+                    fact_scale=self.fixed_fact_scale)
                 logger.info(
                     "wrote <beamstrahlung> into %d events; they need the "
                     "dedicated Pythia8 main to be showered correctly", count)
@@ -1713,6 +1714,25 @@ class MadgraphProcess:
                 " (with beamstrahlung)"
                 if self._lepton_density.has_beamstrahlung else "")
         return self._lepton_density
+
+    @property
+    def fixed_fact_scale(self):
+        """The factorisation scale as a number, or None if it is dynamical.
+
+        The beamstrahlung split has to be sampled at the scale the density
+        was evaluated at, which is `fact_scale1` -- the same one Integrand
+        hands to the luminosity. An LHE file does not carry it: SCALUP is
+        the shower starting scale, a different quantity (MadEvent happens to
+        write mu_F there, mg7 does not), so a run with a dynamical
+        factorisation scale has nothing to recover it from after the fact.
+        A dressed-lepton run has `fixed_fact_scale` on by default --
+        RunCardMG7 sets it for any lepton collider -- so that is the case
+        worth getting right; the other one says so and falls back.
+        """
+        beam = self.run_card["beam"]
+        if not beam["fixed_fact_scale"]:
+            return None
+        return float(beam["fact_scale1"])
 
     def _beam_info(self):
         """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.

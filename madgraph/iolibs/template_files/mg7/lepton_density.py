@@ -106,6 +106,10 @@ class LeptonDensity:
         self._host_pids = pids
         self._host_offsets = offsets
         self._host_lum = None
+        # kept for _host_luminosity: deriving its prefix from the set name
+        # instead would collide as soon as one process builds two densities
+        # for the same set, which the context refuses
+        self._prefix = prefix
         grid = madspace.PdfGrid(dat)
         grid.initialize_globals(context, prefix)
         self.grid = grid
@@ -185,14 +189,14 @@ class LeptonDensity:
         """
         if getattr(self, '_host_lum', None) is None:
             context = self.ms.default_context()
-            prefix = 'ee_host_%s_' % self.name
+            prefix = '%shost_%s_' % (self._prefix, self.name)
             self.grid.initialize_globals(context, prefix)
             self._host_lum = self.ms.EELuminosity(
                 self.grid, self._host_pids[0], self._host_pids[1],
                 self._host_offsets[0], self._host_offsets[1], prefix=prefix)
         return self._host_lum
 
-    def annotate_lhe(self, path, seed=0):
+    def annotate_lhe(self, path, seed=0, fact_scale=None):
         """Write <beamstrahlung> into every event of an LHE file.
 
         The split is sampled once per *written* event rather than per
@@ -203,6 +207,16 @@ class LeptonDensity:
         x comes back from the initial-state momenta, which carry it exactly --
         x1 = (E+pz)/sqrt(s), x2 = (E-pz)/sqrt(s) -- so this needs nothing
         threaded through the integrand or the event record.
+
+        `fact_scale` is the scale the density was evaluated at, and has to be
+        passed in: the only scale an LHE event carries is SCALUP, which is
+        the shower starting scale. MadEvent happens to write mu_F there, so
+        reading it looks right when the two files are compared, but mg7 does
+        not -- it writes a per-event shower scale, 10 to 120 GeV where mu_F
+        is 91.188 -- and sampling the split at that scale draws it from a
+        different spectrum than the density that produced the event. None
+        falls back to SCALUP with a warning, which is all a run with a
+        dynamical factorisation scale can do.
 
         Returns the number of events annotated.
         """
@@ -218,34 +232,51 @@ class LeptonDensity:
             return 0
         events = ('<event>' + rest).split('<event>')[1:]
 
+        e_cm = float(self.mapping_e_cm)
         x1, x2, scale = [], [], []
         for event in events:
             body = event.split('</event>')[0]
             incoming = []
+            header = None
             for line in body.split('\n'):
                 field = line.split()
-                if len(field) >= 13 and field[1] == '-1':
+                # The header is the FIRST six-field line of this event.
+                # Collecting every six-field line in the file instead lets an
+                # <mgrwt> or <scales> payload -- or anything another LHEF
+                # writer added -- shift the scales against the events, and
+                # the only symptom would be the length check below firing and
+                # silently putting every event at e_cm/2.
+                if header is None and len(field) == 6:
+                    header = field
+                elif len(field) >= 13 and field[1] == '-1':
                     incoming.append((float(field[9]), float(field[8])))
-                elif len(field) == 6:
-                    scale.append(float(field[3]))
-            e_cm = float(self.mapping_e_cm)
             if len(incoming) == 2:
                 x1.append((incoming[0][0] + incoming[0][1]) / e_cm)
                 x2.append((incoming[1][0] - incoming[1][1]) / e_cm)
             else:
                 x1.append(1.0)
                 x2.append(1.0)
-        if len(scale) != len(events):
-            scale = [float(self.mapping_e_cm) / 2.] * len(events)
+            scale.append(float(header[3]) if header else e_cm / 2.)
 
         n = len(events)
         x1 = np.clip(np.asarray(x1), 0.0, 1.0)
         x2 = np.clip(np.asarray(x2), 0.0, 1.0)
         omx1 = np.maximum(1.0 - x1, self.OMX_FLOOR)
         omx2 = np.maximum(1.0 - x2, self.OMX_FLOOR)
-        q = np.asarray(scale, dtype=float)
+        if fact_scale is not None:
+            q = np.full(n, float(fact_scale))
+        else:
+            logger.warning(
+                'the factorisation scale is dynamical, so the beamstrahlung '
+                'split falls back to the shower scale in SCALUP; it is not '
+                'the scale the density was evaluated at')
+            q = np.asarray(scale, dtype=float)
 
-        rng = np.random.default_rng(seed)
+        # A list seed gives a stream independent of default_rng(run_seed),
+        # which the event generation already used; the mask keeps any integer
+        # the run card allows -- including the -1 that means "draw one" before
+        # it is resolved -- a legal non-negative seed rather than a ValueError.
+        rng = np.random.default_rng([int(seed) & ((1 << 64) - 1), 0xB57A])
         component = np.asarray(
             self._host_luminosity()(x1, omx1, x2, omx2, q,
                                     rng.uniform(0, 1, n)).component_index)
