@@ -2735,7 +2735,8 @@ class MultiProcess(base_objects.PhysicsObject):
         
 
     @staticmethod
-    def find_optimal_process_orders(process_definition, diagram_filter=False):
+    def find_optimal_process_orders(process_definition, diagram_filter=False,
+                                    allow_decay=False):
         """Find the minimal WEIGHTED order for this set of processes.
 
         The algorithm:
@@ -2785,8 +2786,9 @@ class MultiProcess(base_objects.PhysicsObject):
             return process_definition.get('orders')
 
         # If this is a decay process (and not a decay chain), return
-        if process_definition.get_ninitial() == 1 and not \
-                process_definition.get('is_decay_chain'):
+        # unless asked to search anyway (NLO decays need explicit orders)
+        if process_definition.get_ninitial() == 1 and not allow_decay and \
+                not process_definition.get('is_decay_chain'):
             return process_definition.get('orders')
 
         logger.info("Checking for minimal orders which gives processes.")

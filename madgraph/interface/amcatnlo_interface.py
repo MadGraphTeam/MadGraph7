@@ -567,7 +567,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         if not myprocdef['squared_orders'] and not myprocdef['orders']:
             # find the minimum weighted order, then extract the values for the varius
             # couplings in the model
-            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef)
+            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(
+                                                    myprocdef, allow_decay=True)
             if not weighted:
                 raise MadGraph5Error('\nProcess orders cannot be determined automatically. \n' + \
                                       'Please specify them from the command line.')
