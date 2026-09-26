@@ -31,8 +31,9 @@ pure-gluon trees is `--fft adjoint --color-accuracy full`, which explicitly
 selects the smaller two-anchor DDM basis. Quark and Higgs/HEFT processes retain
 the trace basis. Configuration defaults remain direct contraction and trace;
 historical FFT curves must be interpreted using their saved basis settings,
-not relabelled as adjoint results. A smaller basis does not guarantee a speedup
-at every multiplicity, so compare setup and warmed runtime separately.
+not relabelled as adjoint results. In the benchmarked pure-gluon family the
+adjoint basis was faster than trace for six or more external gluons; compare
+setup and warmed runtime separately for other workloads.
 
 ## Prepare a profiling checkout
 

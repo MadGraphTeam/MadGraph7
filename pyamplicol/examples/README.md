@@ -85,9 +85,10 @@ basis's `4!`. To use the original trace FFT, pass `--fft trace`. Either basis
 also supports `--execution-mode on-the-fly`; choose a different output path
 when comparing artifacts. Adjoint is restricted to certified pure Yang–Mills
 trees, without quarks, external colour singlets, or correlated generation.
-Keep trace for quarks and Higgs/HEFT processes. The smaller adjoint basis is not
-a speed guarantee at every multiplicity; compare setup and warmed runtime for
-the workload of interest.
+Keep trace for quarks and Higgs/HEFT processes. In the benchmarked pure-gluon
+family the adjoint basis was faster than trace for six or more external gluons
+(3.9x per sample at ten gluons); compare setup and warmed runtime for other
+workloads.
 The generated Python, C, C++, Fortran, and Rust drivers need no new runtime
 option to evaluate it.
 

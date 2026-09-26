@@ -184,8 +184,9 @@ Yang–Mills trees, start with `--fft adjoint --color-accuracy full`: the
 two-anchor DDM basis retains `(n-2)!` ordered amplitudes instead of the trace
 basis's `(n-1)!`. Use `--fft trace` for quarks or Higgs/HEFT processes. The
 configuration defaults remain direct contraction and trace basis; examples
-select adjoint explicitly. A smaller basis does not guarantee faster runtime
-at every multiplicity. See the
+select adjoint explicitly. In the benchmarked pure-gluon family the adjoint
+basis was faster than trace for six or more external gluons, by 3.9x per
+sample with 4x faster generation at ten gluons. See the
 [FFT configuration guide](docs/user/configuration.md#color-accuracy-and-lc-layout).
 FFT transforms certified permutation-orbit blocks and retains unsupported
 terms as exact direct residuals.

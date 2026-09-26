@@ -110,8 +110,9 @@ uncertified interactions, and `correlators=` are unsupported for adjoint.
 An adjoint basis requires FFT contraction; it cannot be combined with direct
 contraction. Runtime totals, resolved helicities and native SDK evaluation
 calls are unchanged.
-The smaller basis is not a universal runtime speedup; benchmark the intended
-multiplicity and selector workload.
+In the benchmarked pure-gluon family the adjoint basis was faster than trace
+for six or more external gluons (3.9x per sample at ten gluons); benchmark
+other multiplicities and selector workloads.
 
 ## Generate a named process set
 

@@ -158,8 +158,10 @@ The trace basis retains `(n-1)!` ordered amplitudes; adjoint fixes two gluon
 anchors and retains `(n-2)!` for the same `n`-gluon amplitude. Adjoint rejects
 quarks, external colour singlets, uncertified interactions, and correlations.
 Both choices preserve the explicitly requested `full` or `nlc` accuracy.
-The smaller adjoint basis does not guarantee a speedup at every multiplicity;
-compare warmed evaluation and setup costs for the intended workload.
+In the benchmarked pure-gluon family the adjoint basis was faster than trace
+for six or more external gluons (3.9x per sample and 4x faster generation at
+ten gluons); at lower multiplicity the two are comparable, so compare warmed
+evaluation and setup costs for other workloads.
 `--color-contraction symmetric-group-fft` remains valid and defaults to trace.
 Do not combine `--fft` and `--color-contraction`; use either spelling. Card
 settings are overridden by dedicated flags, then by ordered `--set` options
