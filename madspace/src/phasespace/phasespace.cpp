@@ -554,6 +554,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     root_data.max_mass = _sqrt_s_lab;
 
     // sample decay s-invariants, following the integration order
+    // 1 - s_hat/s_lab for the dressed-lepton root, carried from where it is
+    // still exact to lepton_split; see lepton_s_hat.
+    Value lepton_omtau;
     std::size_t invariant_index = 0;
     for (std::size_t decay_index : _topology.decay_integration_order()) {
         auto& decay = _topology.decays().at(decay_index);
@@ -569,11 +572,22 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             // the hadronic root sampling barely visits. See @ref lepton_s_hat.
             ++invariant_index;   // keep the remaining decays aligned
             auto s_max = fb.square(sqrt_s_max);
-            auto [s_hat, det] =
+            auto root =
                 lepton_s_hat(fb, s_min, s_max, next_random(), _lepton_power);
-            data.mass2 = s_hat;
-            data.mass = fb.sqrt(s_hat);
-            dets.push_back(det);
+            data.mass2 = root.s_hat;
+            data.mass = fb.sqrt(root.s_hat);
+            dets.push_back(root.det);
+            // (s_lab - s_max) + (s_max - s_hat), over s_lab. Built from the
+            // gap rather than from s_hat so that the endpoint survives: for
+            // 22% of the draws s_hat has rounded to s_max and 1 - s_hat/s_lab
+            // would be exactly zero. With the usual s_max = s_lab the first
+            // term drops out and this is just the gap.
+            auto batch = fb.batch_size({s_max});
+            double s_lab_sq = _sqrt_s_lab * _sqrt_s_lab;
+            auto s_lab_val = fb.full({s_lab_sq, batch});
+            lepton_omtau = fb.div(
+                fb.add(fb.sub(s_lab_val, s_max), root.s_gap), s_lab_val
+            );
         } else if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
             auto invariant =
@@ -597,7 +611,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
             // A dressed-lepton density diverges as x -> 1, which the hadronic
             // x1 = tau^r split gives no weight to. See @ref lepton_split.
             auto split = lepton_split(
-                fb, s_hat, next_random(), next_random(),
+                fb, s_hat, lepton_omtau, next_random(), next_random(),
                 _sqrt_s_lab * _sqrt_s_lab, _lepton_power
             );
             x1 = split.x1;

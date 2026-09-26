@@ -175,14 +175,30 @@ private:
  * beam split this Jacobian keeps its @f$(s-\hat s)^p@f$: there is no density
  * factor in @f$\tau@f$ for it to cancel against.
  *
+ * @f$s_\mathrm{max} - \hat s@f$ is returned alongside @f$\hat s@f$, for the
+ * same reason @ref LeptonLuminosity returns @f$1-x@f$: with @f$p = 0.96@f$
+ * the draw is @f$r^{25}@f$, which falls below the spacing of doubles at 1 for
+ * 22% of uniform @f$r@f$. Recovering the gap by subtracting @f$\hat s@f$ from
+ * @f$s@f$ then gives exactly zero, and @ref lepton_split can only answer with
+ * a zero Jacobian -- a fifth of the sample contributing nothing. Passed on as
+ * @p omtau it stays exact.
+ *
  * @param fb      Builder to emit into.
  * @param s_min   Lower bound on @f$\hat s@f$.
  * @param s_max   Upper bound, normally @f$s_\mathrm{lab}@f$.
  * @param r       Random number.
  * @param power   @f$p@f$, the density's reduction exponent.
- * @return        @f$\hat s@f$ and @f$|d\hat s/dr|@f$.
  */
-std::pair<Value, Value> lepton_s_hat(
+struct LeptonSHatResult {
+    /// The sampled invariant.
+    Value s_hat;
+    /// @f$s_\mathrm{max} - \hat s@f$, exact however close to the endpoint.
+    Value s_gap;
+    /// @f$|d\hat s/dr|@f$.
+    Value det;
+};
+
+LeptonSHatResult lepton_s_hat(
     FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
 );
 
@@ -209,8 +225,15 @@ struct LeptonSplitResult {
  * derived one never went through the transformation, so nothing cancels it
  * there. `genps.f` makes the same correction in the same place.
  *
+ * @p omtau is @f$1-\tau@f$, and must be built from the gap @ref lepton_s_hat
+ * returns rather than from @f$\tau@f$ itself. Both bounds of the draw are
+ * @f$O(1-\tau)@f$ -- @f$1-\sqrt\tau = (1-\tau)/(1+\sqrt\tau)@f$ and
+ * @f$1-x_b = (1-\tau-(1-x_a))/x_a@f$ -- so a @f$\tau@f$ that has rounded to
+ * 1 collapses them both to zero and the point is lost.
+ *
  * @param fb       Builder to emit into.
  * @param s_hat    The invariant to split.
+ * @param omtau    @f$1-\hat s/s_\mathrm{lab}@f$, to full precision.
  * @param r_x      Random number for the drawn fraction.
  * @param r_swap   Random number deciding which beam carries it.
  * @param s_lab    Squared collider energy.
@@ -223,6 +246,7 @@ struct LeptonSplitResult {
 LeptonSplitResult lepton_split(
     FunctionBuilder& fb,
     Value s_hat,
+    Value omtau,
     Value r_x,
     Value r_swap,
     double s_lab,

@@ -128,15 +128,23 @@ Mapping::Result LeptonLuminosity::build_inverse_impl(
     double tau_min = _s_hat_min / _s_lab;
     auto one = fb.full({1., batch});
     auto inv_exponent = fb.full({1. - _power, batch});
-    auto norm = fb.full({1. / (1. - _power), batch});
+    // An inverse map returns its own Jacobian, d(r)/d(x), not the forward
+    // one: kernel_uniform_invariant gives gs = s_max - s_min while
+    // kernel_uniform_invariant_inverse gives gs = 1/(s_max - s_min). So these
+    // are the reciprocals of the two factors build_forward_impl returns.
+    auto inv_norm = fb.full({1. - _power, batch});
+    // as a negative power rather than a reciprocal, so that a degenerate
+    // span (x1 at its lower limit) gives zero instead of an infinity -- the
+    // same reason lepton_split writes omx_b^(-p)
+    auto neg_exponent = fb.full({_power - 1., batch});
 
     double span1 = 1. - tau_min;
     auto r1 = fb.pow(fb.div(omx1, fb.full({span1, batch})), inv_exponent);
-    auto det1 = fb.full({std::pow(span1, 1. - _power) / (1. - _power), batch});
+    auto det1 = fb.full({(1. - _power) / std::pow(span1, 1. - _power), batch});
 
     auto span2 = fb.sub(one, fb.div(fb.full({tau_min, batch}), x1));
     auto r2 = fb.pow(fb.div(omx2, span2), inv_exponent);
-    auto det2 = fb.mul(fb.pow(span2, inv_exponent), norm);
+    auto det2 = fb.mul(fb.pow(span2, neg_exponent), inv_norm);
 
     return {{{"r1", r1}, {"r2", r2}}, fb.mul(det1, det2)};
 }
@@ -177,23 +185,30 @@ LeptonLuminosityInvariant::LeptonLuminosityInvariant(
     }
 }
 
-std::pair<Value, Value> madspace::lepton_s_hat(
+LeptonSHatResult madspace::lepton_s_hat(
     FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
 ) {
     auto batch = fb.batch_size({s_max});
     auto span = fb.sub(s_max, s_min);
     auto v = fb.pow(r, fb.full({1. / (1. - power), batch}));
-    auto s_hat = fb.sub(s_max, fb.mul(span, v));
+    // s_gap is the product, not s_max - s_hat recomputed: with p = 0.96 it is
+    // r^25, which for 22% of uniform r is smaller than the spacing of doubles
+    // at s_max, so the subtraction below gives back exactly zero. Everything
+    // downstream needs the gap, not s_hat, and this is the only place it
+    // still exists exactly.
+    auto s_gap = fb.mul(span, v);
+    auto s_hat = fb.sub(s_max, s_gap);
     auto det = fb.mul(
         fb.mul(span, fb.pow(v, fb.full({power, batch}))),
         fb.full({1. / (1. - power), batch})
     );
-    return {s_hat, det};
+    return {s_hat, s_gap, det};
 }
 
 LeptonSplitResult madspace::lepton_split(
     FunctionBuilder& fb,
     Value s_hat,
+    Value omtau,
     Value r_x,
     Value r_swap,
     double s_lab,
@@ -203,9 +218,14 @@ LeptonSplitResult madspace::lepton_split(
     auto one = fb.full({1., batch});
     auto tau = fb.div(s_hat, fb.full({s_lab, batch}));
 
-    // the drawn fraction is the larger one, over [sqrt(tau), 1]
+    // The drawn fraction is the larger one, over [sqrt(tau), 1]. The span is
+    // built as (1-tau)/(1+sqrt(tau)) rather than 1-sqrt(tau): the sampling
+    // puts 22% of its points where tau has rounded to exactly 1, and the
+    // subtraction gives zero there, which sends det_a to zero and throws the
+    // point away. This form keeps it, because omtau never went through a
+    // cancellation.
     auto x_min = fb.sqrt(tau);
-    auto span = fb.sub(one, x_min);
+    auto span = fb.div(omtau, fb.add(one, x_min));
     auto omx_a = fb.mul(fb.pow(r_x, fb.full({1. / (1. - power), batch})), span);
     auto x_a = fb.sub(one, omx_a);
     auto det_a = fb.mul(
@@ -216,14 +236,21 @@ LeptonSplitResult madspace::lepton_split(
     // the other follows from tau; 1/x_a is the Jacobian of x2 = tau/x1, and
     // omx_b^(-p) is the factor the density expects to have been cancelled by
     // the sampling, which for this beam never happened
+    // x_b keeps the division: it is what makes x_a * x_b equal tau exactly,
+    // which the momenta are built from, and tau/x_a is accurate at both ends.
     auto x_b = fb.div(tau, x_a);
-    auto omx_b = fb.sub(one, x_b);
-    // Written as omx_b^(-p) rather than 1/omx_b^p on purpose. Once tau is
-    // sampled right at 1, x_b = tau/x_a can round to just above 1 and omx_b
-    // goes negative; pow returns 0 for a non-positive base, so this form
-    // gives such a point weight zero -- which is what an x > 1 configuration
-    // deserves -- where the reciprocal would divide by that zero and poison
-    // the whole batch with an infinity.
+    // 1 - x_b is not, so omx_b is built as (x_a - tau)/x_a = (omtau-omx_a)/x_a
+    // instead. At tau -> 1 the operands of `1 - x_b` are both ~1 and their
+    // difference is pure rounding, whereas omtau and omx_a are both small and
+    // exact. omx_a <= span <= omtau keeps this non-negative, and at small tau
+    // -- where the two are instead both ~1 -- the cancellation is bounded by
+    // omx_a <= omtau/(1+sqrt(tau)), leaving a relative error of order
+    // eps/sqrt(tau) on a quantity that is O(1) there anyway.
+    auto omx_b = fb.div(fb.sub(omtau, omx_a), x_a);
+    // Written as omx_b^(-p) rather than 1/omx_b^p on purpose: pow returns 0
+    // for a non-positive base, so a degenerate point gets weight zero, where
+    // the reciprocal would divide by zero and poison the whole batch with an
+    // infinity.
     auto det_b = fb.div(fb.pow(omx_b, fb.full({-power, batch})), x_a);
 
     auto swap = fb.sample_discrete(r_swap, fb.full({static_cast<me_int_t>(2), batch}));
@@ -252,7 +279,13 @@ Mapping::Result LeptonLuminosityInvariant::build_forward_impl(
     auto batch = fb.batch_size({r_s});
     auto inv = _invariant.build_forward(fb, {r_s}, {_s_hat_min, _s_hat_max});
     auto s_hat = inv["invariant"];
-    auto split = lepton_split(fb, s_hat, r_x, r_swap, _s_lab, _power);
+    // This channel samples s_hat through a resonance, not from the endpoint,
+    // so there is no exact gap to carry and 1-tau is the best available. That
+    // is fine here: the Breit-Wigner puts its weight at the resonance, not at
+    // tau -> 1 where the cancellation bites.
+    auto omtau =
+        fb.sub(fb.full({1., batch}), fb.div(s_hat, fb.full({_s_lab, batch})));
+    auto split = lepton_split(fb, s_hat, omtau, r_x, r_swap, _s_lab, _power);
     // lepton_split already converts d(s_hat) to d(tau), matching r_to_x1x2
     return {
         {{"x1", split.x1},

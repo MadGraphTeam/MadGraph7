@@ -329,9 +329,15 @@ class TestLeptonLuminosity(unittest.TestCase):
             inv = lum.map_inverse([f.x1, f.omx1, f.x2, f.omx2, f.s_hat])
             np.testing.assert_allclose(np.asarray(inv.r1), r1, rtol=1e-12)
             np.testing.assert_allclose(np.asarray(inv.r2), r2, rtol=1e-12)
-            # both directions report the same Jacobian, as Luminosity does
+            # Each direction reports its OWN Jacobian, so the inverse gives
+            # the reciprocal. This assertion used to read `== f.det` on the
+            # grounds that Luminosity does the same; it does not. Luminosity
+            # multiplies the dets its sub-maps hand back, and those already
+            # differ by direction -- kernel_uniform_invariant returns
+            # s_max - s_min where kernel_uniform_invariant_inverse returns
+            # 1/(s_max - s_min) -- so a Luminosity round trip gives 1/det too.
             np.testing.assert_allclose(
-                np.asarray(inv.det), np.asarray(f.det), rtol=1e-13)
+                np.asarray(inv.det), 1.0 / np.asarray(f.det), rtol=1e-13)
 
     def test_samples_the_requested_density(self):
         """omx**(1-p) is the CDF, so it must come out uniform."""
@@ -787,20 +793,39 @@ class TestLheAnnotation(unittest.TestCase):
         cls.mod = lepton_density
         cls.source = os.path.join(_root, 'Template', 'Common', 'Source')
 
+    _density_count = 0
+
     def _density(self, name, tmp):
+        # a fresh prefix each time: the grid uploads its globals into the
+        # shared default context under this name, and a second density with
+        # the same prefix is refused
+        type(self)._density_count += 1
         return self.mod.LeptonDensity(
             name, self.source, _root, self.ms, self.ms.default_context(),
             240.0, beam_pdgs=(-11, 11),
-            cache_dir=os.path.join(tmp, name), prefix='ann_%s_' % name)
+            cache_dir=os.path.join(tmp, name),
+            prefix='ann%d_%s_' % (self._density_count, name))
 
     @staticmethod
-    def _lhe(path, fractions):
-        """A minimal LHE whose initial-state momenta encode the given x."""
+    def _tags(path):
+        """The <beamstrahlung> lines of a file, in order."""
+        return [line for line in open(path).read().split('\n')
+                if line.startswith('<beamstrahlung>')]
+
+    @staticmethod
+    def _lhe(path, fractions, scale=91.188, extra=''):
+        """A minimal LHE whose initial-state momenta encode the given x.
+
+        `scale` goes into SCALUP; `extra` is an extra line inserted into every
+        event body, to check that the header is found by position and not by
+        counting six-field lines across the file.
+        """
         events = []
         for x1, x2 in fractions:
             e1, e2 = 120.0 * x1, 120.0 * x2
             events.append(
-                '<event>\n   4    1 +1.0e+00 9.1188e+01 7.5e-03 1.2e-01\n'
+                ('<event>\n   4    1 +1.0e+00 %.6e 7.5e-03 1.2e-01\n' % scale)
+                + extra +
                 '  11   -1    0    0    0    0 +0.0e+00 +0.0e+00 %+.16e %.16e 0.0 0.0 9.0\n'
                 ' -11   -1    0    0    0    0 +0.0e+00 +0.0e+00 %+.16e %.16e 0.0 0.0 9.0\n'
                 '  13    1    1    2    0    0 +0.0e+00 +0.0e+00 +0.0e+00 %.16e 0.0 0.0 9.0\n'
@@ -839,6 +864,84 @@ class TestLheAnnotation(unittest.TestCase):
                 self.assertLessEqual(xbs2, 1.0)
             # a beam that kept all its energy cannot have radiated
             self.assertEqual(parsed[0], [1.0, 1.0])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_fact_scale_replaces_scalup(self):
+        """mu_F has to be passed in; SCALUP is a different scale.
+
+        SCALUP is the only scale an LHE event carries and MadEvent happens to
+        write mu_F there, but mg7 writes a per-event shower scale. The split
+        turns out to be weakly scale dependent -- two orders of magnitude in Q
+        barely move it -- so this cannot be pinned by comparing the fractions
+        it produces; what it pins is that a caller who supplies mu_F is not
+        silently put on the fallback, and one who cannot is told.
+        """
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('fcce240ll', tmp)
+            if not density.has_beamstrahlung:
+                self.skipTest('fcce240ll carries no beamstrahlung')
+            fractions = [(0.7, 0.9), (0.95, 0.6), (0.99, 0.99), (0.5, 0.5)]
+
+            # mu_F given: SCALUP is not consulted, so a file carrying a
+            # nonsense one is annotated exactly like a file carrying mu_F
+            right = os.path.join(tmp, 'right.lhe')
+            self._lhe(right, fractions, scale=91.188)
+            density.annotate_lhe(right, seed=5, fact_scale=91.188)
+            odd = os.path.join(tmp, 'odd.lhe')
+            self._lhe(odd, fractions, scale=7.0)
+            density.annotate_lhe(odd, seed=5, fact_scale=91.188)
+            self.assertEqual(self._tags(right), self._tags(odd))
+
+            # and without it the run is told which scale it fell back to
+            fallback = os.path.join(tmp, 'fallback.lhe')
+            self._lhe(fallback, fractions, scale=7.0)
+            with self.assertLogs(self.mod.logger, level='WARNING') as caught:
+                density.annotate_lhe(fallback, seed=5)
+            self.assertTrue(any('SCALUP' in line for line in caught.output))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_header_is_found_per_event(self):
+        """An extra six-field line must not shift the scales.
+
+        They used to be collected by scanning the whole file for six-field
+        lines, so one <mgrwt> or <scales> payload put every event's scale at
+        e_cm/2 without saying so.
+        """
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('fcce240ll', tmp)
+            if not density.has_beamstrahlung:
+                self.skipTest('fcce240ll carries no beamstrahlung')
+            fractions = [(0.7, 0.9), (0.95, 0.6), (0.99, 0.99)]
+            clean = os.path.join(tmp, 'clean.lhe')
+            self._lhe(clean, fractions)
+            density.annotate_lhe(clean, seed=5)
+
+            noisy = os.path.join(tmp, 'noisy.lhe')
+            self._lhe(noisy, fractions, extra='  1  2  3  4  5  6\n')
+            density.annotate_lhe(noisy, seed=5)
+            self.assertEqual(self._tags(clean), self._tags(noisy))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_any_run_seed_is_accepted(self):
+        """The run card's seed reaches this unresolved, -1 included.
+
+        numpy refuses a negative seed, so passing the card value straight
+        through used to be a ValueError waiting for the first run that did it.
+        """
+        tmp = tempfile.mkdtemp()
+        try:
+            density = self._density('fcce240ll', tmp)
+            if not density.has_beamstrahlung:
+                self.skipTest('fcce240ll carries no beamstrahlung')
+            for seed in (-1, 0, 7, 2 ** 63 + 5):
+                path = os.path.join(tmp, 'seed%s.lhe' % abs(seed))
+                self._lhe(path, [(0.8, 0.9)])
+                self.assertEqual(density.annotate_lhe(path, seed=seed), 1)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

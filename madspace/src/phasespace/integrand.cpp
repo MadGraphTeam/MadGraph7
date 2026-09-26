@@ -321,7 +321,14 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     // replaces both PDFs -- but still returns pdf1/fact_scale1
     if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
-        if (has_multi_flavor) {
+        // pdf_prior is built from the per-flavour PartonDensity values, which
+        // a dressed-lepton run does not have: build_channel_part only sets it
+        // inside its own `_pdfs` test, and build_common_part likewise. Adding
+        // _lepton_luminosity here alone would promise an output that is never
+        // pushed. Whether such a run should get a flavour prior from the
+        // luminosity instead is a separate question; until it does, the three
+        // conditions have to say the same thing.
+        if (has_multi_flavor && (_pdfs.at(0) || _pdfs.at(1))) {
             ret.push_back("pdf_prior", acc_float_array(flav_count));
         }
         for (std::size_t i = 0; i < 2; ++i) {
