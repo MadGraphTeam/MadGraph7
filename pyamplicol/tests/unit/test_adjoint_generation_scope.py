@@ -14,6 +14,9 @@ from pyamplicol.generation import service as generation_service
 from pyamplicol.generation.on_the_fly_seed import project_on_the_fly_process_seed_v1
 from pyamplicol.generation.service import GenerationBackend
 from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.adjoint_color_certificate import (
+    adjoint_tree_color_basis_is_proven,
+)
 from pyamplicol.models.base import Model
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.contracts import CompiledOrientedKernel
@@ -26,7 +29,35 @@ from tests.unit.test_on_the_fly_seed_projection import (
 
 
 class _UncertifiedAdjointModel(BuiltinSMModel):
-    adjoint_tree_color_basis_is_proven = Model.adjoint_tree_color_basis_is_proven
+    """An unknown extension must not inherit the pinned model's certificate."""
+
+
+def test_pinned_builtin_certificate_does_not_leak_into_unknown_subclasses():
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    model = BuiltinSMModel()
+    unknown = _UncertifiedAdjointModel()
+    assert model.lc_trace_reflection_equivalence_is_proven(process)
+    assert unknown.lc_trace_reflection_equivalence_is_proven(process)
+    assert adjoint_tree_color_basis_is_proven(model, process)
+    assert not adjoint_tree_color_basis_is_proven(unknown, process)
+
+
+def test_adjoint_certificate_dispatch_preserves_external_model_hook_and_limits():
+    process = build_process_ir("g g > z g", color_accuracy="full")
+    limits = {"HIG": 1}
+    observed = []
+
+    class CertifiedModel(_UncertifiedAdjointModel):
+        def adjoint_tree_color_basis_is_proven(
+            self, selected_process, *, max_coupling_orders=None
+        ):
+            observed.append((selected_process, max_coupling_orders))
+            return True
+
+    assert adjoint_tree_color_basis_is_proven(
+        CertifiedModel(), process, max_coupling_orders=limits
+    )
+    assert observed == [(process, limits)]
 
 
 def _backend(lane: str, basis: str = "adjoint", accuracy: str = "full"):

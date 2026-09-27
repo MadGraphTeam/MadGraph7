@@ -23,7 +23,31 @@ from .tensors import normalize_color_expression
 
 if TYPE_CHECKING:
     from ..processes.ir import CanonicalProcessIR
+    from .base import Model
     from .contracts import CompiledModelIR
+
+
+def adjoint_tree_color_basis_is_proven(
+    model: Model,
+    process: CanonicalProcessIR,
+    *,
+    max_coupling_orders: Mapping[str, int] | None = None,
+) -> bool:
+    """Dispatch the pinned SM certificate without changing its physics inputs.
+
+    The exact built-in implementation contains only connected f-tensors in
+    its pure-gluon tree sector. Subclasses and external models must supply
+    their own certificate: inheriting that model's name or reflection hook
+    does not establish the same interaction inventory.
+    """
+
+    from .builtin.model import BuiltinSMModel
+
+    if type(model) is BuiltinSMModel:
+        return model.lc_trace_reflection_equivalence_is_proven(process)
+    return model.adjoint_tree_color_basis_is_proven(
+        process, max_coupling_orders=max_coupling_orders
+    )
 
 
 def compiled_adjoint_tree_color_basis_is_proven(

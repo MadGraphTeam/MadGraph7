@@ -61,6 +61,7 @@ from ..color.plan import (
     build_color_topology_replay_certificate,
     build_lc_topology_replay_plan,
 )
+from ..models.adjoint_color_certificate import adjoint_tree_color_basis_is_proven
 from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
 from ..models.prepared import PreparedKernelPack, PreparedModelBundle
@@ -7760,8 +7761,8 @@ class GenerationBackend:
             and not process.fundamental_labels
             and not process.antifundamental_labels
             and len(process.adjoint_labels) >= 2
-            and model.adjoint_tree_color_basis_is_proven(
-                process, max_coupling_orders=self._coupling_order_limits or None
+            and adjoint_tree_color_basis_is_proven(
+                model, process, max_coupling_orders=self._coupling_order_limits or None
             )
         )
         return best_general_fft_basis(process, ddm_proven=ddm_proven).actual_basis
