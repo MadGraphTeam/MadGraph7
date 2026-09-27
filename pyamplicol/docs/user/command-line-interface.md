@@ -135,8 +135,9 @@ pyamplicol generate "p p > Z j j" artifacts/unused \
   --execution-mode compiled --dry-run
 ```
 
-For certified pure-gluon Yang–Mills trees, adjoint DDM is the recommended
-starting point for exact FFT colour contraction. Select contracted colour and
+Adaptive `--fft adjoint` is the recommended starting point for exact FFT colour
+contraction. It selects certified DDM where valid and otherwise retains exact
+fundamental-chain or trace tensors. Select contracted colour and
 a supported execution lane (`recurrence` or `on-the-fly`) explicitly:
 
 ```console
@@ -145,19 +146,23 @@ pyamplicol generate "g g > g g g" artifacts/ggg_adjoint_fft \
   --fft adjoint --execution-mode recurrence
 ```
 
-Use `--execution-mode on-the-fly` for the compact OTF counterpart. Keep the
-trace basis for quarks or Higgs/HEFT processes, for example:
+Use `--execution-mode on-the-fly` for the compact OTF counterpart. The same
+option works for quark processes, using their existing fundamental chains:
 
 ```console
-pyamplicol generate "d d~ > z g g" artifacts/quark_zgg_trace_fft \
+pyamplicol generate "d d~ > z g g" artifacts/quark_zgg_fft \
   --model built-in-sm --color-accuracy full \
-  --fft trace --execution-mode recurrence
+  --fft adjoint --execution-mode recurrence
 ```
 
-The trace basis retains `(n-1)!` ordered amplitudes; adjoint fixes two gluon
-anchors and retains `(n-2)!` for the same `n`-gluon amplitude. Adjoint rejects
-quarks, external colour singlets, uncertified interactions, and correlations.
-Both choices preserve the explicitly requested `full` or `nlc` accuracy.
+For a certified `n`-gluon tree, DDM fixes two gluon anchors and retains
+`(n-2)!` orderings instead of `(n-1)!`. Certified single-insertion HEFT also
+uses DDM: see `examples/builtin_sm_heft.toml`, which explicitly sets `HIG = 1`.
+Other interactions retain their exact trace representation; multi-quark-line
+processes retain fundamental-chain products, not a JO primitive basis.
+The saved `fft_basis_selection` states the requested and actual basis and the
+selection reason. `--fft trace` forces the original representation.
+Both requests preserve `full` or `nlc` accuracy and reject correlations.
 In the benchmarked pure-gluon family the adjoint basis was faster than trace
 for six or more external gluons (3.9x per sample and 4x faster generation at
 ten gluons); at lower multiplicity the two are comparable, so compare warmed

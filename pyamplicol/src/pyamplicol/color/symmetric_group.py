@@ -821,10 +821,12 @@ def _sector_orbit_coordinate(
             or word[0] != fixed_labels[0]
             or word[-1] != fixed_labels[1]
             or set(word[1:-1]) != set(permuted_labels)
-            or sector.singlet_labels
         ):
             return None
-        return (("adjoint", fixed_labels), tuple(rank_by_label[x] for x in word[1:-1]))
+        return (
+            ("adjoint", fixed_labels, tuple(sector.singlet_labels)),
+            tuple(rank_by_label[x] for x in word[1:-1]),
+        )
     if sector.kind == "single-trace":
         if len(fixed_labels) != 1:
             return None

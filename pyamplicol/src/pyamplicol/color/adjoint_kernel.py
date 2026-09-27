@@ -76,14 +76,21 @@ def adjoint_color_kernel(
     for factor diagnostics; adjoint generation itself requires NLC/full.
     """
 
-    if type(total_gluons) is not int or not 3 <= total_gluons <= MAX_ADJOINT_GLUONS:
-        raise ValueError("adjoint colour kernel requires 3 to 12 external gluons")
+    if type(total_gluons) is not int or not 2 <= total_gluons <= MAX_ADJOINT_GLUONS:
+        raise ValueError("adjoint colour kernel requires 2 to 12 external adjoints")
     if accuracy not in {"lc", "nlc", "full"}:
         raise ValueError(f"unknown adjoint colour accuracy {accuracy!r}")
     if type(nc) is not int or nc < 2:
         raise ValueError("adjoint colour kernel requires integer Nc >= 2")
     if type(full_col_acc) is not int or full_col_acc < 0:
         raise ValueError("adjoint full-colour accuracy must be nonnegative")
+    if total_gluons == 2:
+        # The degenerate ladder is Tr(Ta Tb)=delta_ab. There is no
+        # commutator to remove U(1), so retain SU(Nc)'s exact dimension.
+        leading_only = accuracy == "lc" or (accuracy == "full" and full_col_acc == 0)
+        kernel = np.asarray([nc * nc - (0 if leading_only else 1)], dtype=np.int64)
+        kernel.flags.writeable = False
+        return kernel
     degree = total_gluons - 1
     # Each difference at most doubles the largest absolute input.  Check once
     # before allocating; numpy's int64 arithmetic must never silently wrap.
@@ -137,7 +144,7 @@ def adjoint_color_factor(
     """Evaluate one DDM overlap from its middle-label relative permutation."""
 
     if (
-        len(left) < 3
+        len(left) < 2
         or len(left) != len(right)
         or left[0] != right[0]
         or left[-1] != right[-1]

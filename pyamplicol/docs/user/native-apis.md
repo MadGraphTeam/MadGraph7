@@ -15,13 +15,14 @@ uses the wheel's PyO3 binding for these native operations.
 
 FFT basis is a generation-time choice, not a native runtime flag. Start with
 `generate --fft adjoint` or Python's `ColorConfig(accuracy="full",
-contraction="symmetric-group-fft", fft_basis="adjoint")` for certified
-pure-gluon trees. Retain trace for quarks and Higgs/HEFT processes; the
-configuration default remains trace.
+contraction="symmetric-group-fft", fft_basis="adjoint")` for adaptive exact-basis
+selection. Certified gluon trees and single-insertion HEFT use DDM; quark
+processes use fundamental chains, while uncertified interactions retain trace.
+The saved `fft_basis_selection` reports the actual representation and reason;
+the configuration default remains trace.
 C, C++, Fortran and Rust load either generated artifact and use their existing
-total/resolved evaluation calls unchanged. Adjoint DDM is limited to certified
-pure Yang–Mills trees with NLC/full colour in recurrence or on-the-fly mode;
-it does not support correlated generation.
+total/resolved evaluation calls unchanged. Both FFT choices require NLC/full
+colour in recurrence or on-the-fly mode and do not support correlated generation.
 
 > **Prerequisites:** install a binary wheel as described in [Installation](installation.md),
 > activate that environment, and generate the primary artifact from

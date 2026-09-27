@@ -52,6 +52,7 @@ from pyamplicol.reporting import (
     ProgressStart,
 )
 
+from ..color.fft_basis_strategy import best_general_fft_basis
 from ..color.plan import (
     ColorTopologyReplayCertificate,
     GenericColorPlan,
@@ -4121,13 +4122,14 @@ class GenerationBackend:
             query_construction_threads=query_construction_threads,
             validation_point=points[0],
             generation_filters={
+                **self._fft_basis_metadata(projection.color_plan),
                 "on_the_fly": {
                     "coupling_order_policy": coupling_policy,
                     "coupling_order_limits": dict(explicit_limits),
                     "selector_coverage": (
                         "complete" if contracted_color is None else "contracted"
                     ),
-                }
+                },
             },
         )
         return _GeneratedOnTheFlyProcess(
@@ -6190,6 +6192,7 @@ class GenerationBackend:
             recurrence_summary=recurrence_summary,
             validation_point=points[0],
             generation_filters={
+                **self._fft_basis_metadata(prepared.complete_color_plan),
                 "lc_flow_layout": layout,
                 "recurrence": recurrence_summary,
                 "relation_discovery": relation_discovery_payload,
@@ -7730,7 +7733,9 @@ class GenerationBackend:
         selected, rejected = _select_color_ready_processes(
             candidates,
             color_accuracy=self._color_accuracy,
-            basis="trace" if run is None else run.color.fft_basis.value,
+            # Structural colour coverage is independent of the requested
+            # reduction. Model/coupling-order certification happens below.
+            basis="trace",
         )
         if not selected:
             detail = "; ".join(rejected) or "no concrete processes"
@@ -7743,21 +7748,45 @@ class GenerationBackend:
     def _fft_color_basis(
         self, process: CanonicalProcessIR, model: Model | None
     ) -> Literal["trace", "adjoint"]:
-        """Require the model's Yang--Mills identities before reducing its basis."""
+        """Select a suitable exact basis, never assume unproved identities."""
 
         if (
             self._run_config is None
             or self._run_config.color.fft_basis.value == "trace"
         ):
             return "trace"
-        if model is None or not model.shared_single_trace_color_basis_is_proven(
-            process
-        ):
-            raise GenerationError(
-                "adjoint FFT requires a certified pure Yang--Mills gluon process; "
-                "use the trace basis for other interactions or external particles"
+        ddm_proven = (
+            model is not None
+            and not process.fundamental_labels
+            and not process.antifundamental_labels
+            and len(process.adjoint_labels) >= 2
+            and model.adjoint_tree_color_basis_is_proven(
+                process, max_coupling_orders=self._coupling_order_limits or None
             )
-        return "adjoint"
+        )
+        return best_general_fft_basis(process, ddm_proven=ddm_proven).actual_basis
+
+    def _fft_basis_metadata(
+        self, color_plan: GenericColorPlan | None
+    ) -> dict[str, object]:
+        """Expose the actual representation without changing runtime identity."""
+
+        run = self._run_config
+        if color_plan is None or run is None or run.color.fft_basis.value != "adjoint":
+            return {}
+        strategy = best_general_fft_basis(
+            color_plan.process, ddm_proven=color_plan.basis == "adjoint"
+        )
+        return {
+            "fft_basis_selection": {
+                "requested": "adjoint",
+                "actual_basis": strategy.actual_basis,
+                "name": strategy.name,
+                "reason": strategy.reason,
+                "permutation_degree": strategy.permutation_degree,
+                "tensor_count": strategy.tensor_count,
+            }
+        }
 
     def _plan_concrete_process(
         self,
@@ -7817,6 +7846,7 @@ class GenerationBackend:
                 else "complete"
             ),
             "color_diagnostics": tuple(color_plan.diagnostics),
+            **self._fft_basis_metadata(color_plan),
             "coupling_order_limits": self._coupling_order_limits,
             "dag_compilation_deferred": True,
         }
@@ -7845,6 +7875,7 @@ class GenerationBackend:
             "color_diagnostics": (
                 () if color_plan is None else tuple(color_plan.diagnostics)
             ),
+            **self._fft_basis_metadata(color_plan),
             "coupling_order_limits": self._coupling_order_limits,
             "color_plan_materialized": color_plan is not None,
             "source_projection_validated": True,
@@ -8264,8 +8295,11 @@ def _select_color_ready_processes(
             process,
             color_accuracy=color_accuracy,
             basis=basis,
+            max_sectors=1,
         )
-        if color_plan.ready_for_requested_colour:
+        # This is only a structural existence probe. Its deliberately capped
+        # plan may be truncated; complete basis construction happens later.
+        if color_plan.sectors:
             selected.append(process)
             continue
         detail = "; ".join(color_plan.diagnostics) or "no color sectors"

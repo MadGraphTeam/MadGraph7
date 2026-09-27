@@ -63,17 +63,27 @@ topology, replay, and reference-order IDs are not configurable.
 recurrence and on-the-fly execution. It is rejected for LC, compiled, and eager
 execution. `direct` remains the default.
 
-`fft_basis` selects the trace or two-anchor adjoint DDM basis. Adjoint requires
-`contraction = "symmetric-group-fft"`; the model boundary additionally requires
-a certified pure Yang–Mills tree process with no external quarks or singlets
-and rejects correlated generation. For `n` gluons, the adjoint basis retains
-`(n-2)!` ordered amplitudes for the same amplitude represented by the trace
-basis's `(n-1)!`. The CLI `--fft {trace,adjoint}` sets both contraction and basis;
-it does not change accuracy. The existing contraction flag retains trace as
-the default basis. `ColorFFTBasis` and `ColorConfig` are public Python exports.
-Pure-gluon FFT examples explicitly select adjoint as their recommended starting
-point; this does not change the trace schema default or apply to quark/HEFT
-processes.
+`fft_basis = "adjoint"` requests adaptive exact-basis selection and requires
+`contraction = "symmetric-group-fft"`. Certified Yang–Mills trees and certified
+single-insertion scalar HEFT (`HIG = 1`) use two-anchor DDM; quark processes
+retain fundamental chains or their products, and uncertified adjoint domains
+retain trace tensors. Singlet domains have one trivial tensor. This does not
+add a JO primitive decomposition or assume identities for arbitrary models.
+Correlated generation remains unsupported.
+
+For `n` gluons, DDM retains `(n-2)!` ordered amplitudes instead of `(n-1)!`;
+its two-adjoint endpoint case is the single delta tensor. Saved
+`fft_basis_selection` contains `requested`, `actual_basis`, `name`, `reason`,
+`permutation_degree`, and `tensor_count`. `actual_basis` selects the metric
+implementation (`trace` or `adjoint`); `name` distinguishes DDM, fundamental
+chains/products, singlets, and trace tensors. Counts exclude open-line
+traversal aliases and do not assert linear independence at fixed `Nc`.
+
+The CLI `--fft {trace,adjoint}` sets both contraction and basis request without
+changing accuracy. The existing contraction flag and schema retain trace as
+default. `ColorFFTBasis` and `ColorConfig` are public Python exports. Examples
+select the adaptive adjoint option explicitly without implying that every
+process has a smaller basis or faster runtime.
 
 ## Generation
 

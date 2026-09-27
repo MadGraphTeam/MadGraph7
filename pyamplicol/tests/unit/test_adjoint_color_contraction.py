@@ -175,8 +175,8 @@ def test_adjoint_plan_keeps_basis_separate_from_primitive_words():
     assert empty.truncated and empty.sectors == ()
 
 
-def test_adjoint_plan_rejects_non_gluon_domains_and_lc():
-    with pytest.raises(ValueError, match="only external gluons"):
+def test_ddm_plan_rejects_fundamental_domains_and_lc():
+    with pytest.raises(ValueError, match="adjoint"):
         process = build_process_ir("d d~ > g g", color_accuracy="full")
         build_color_plan(process, color_accuracy="full", basis="adjoint")
     with pytest.raises(ValueError, match="NLC or full"):

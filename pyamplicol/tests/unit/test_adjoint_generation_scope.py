@@ -9,8 +9,8 @@ from typing import cast
 
 import pytest
 
-from pyamplicol.api.errors import GenerationError
 from pyamplicol.config import ColorConfig, EvaluatorConfig, ProcessConfig, RunConfig
+from pyamplicol.generation import service as generation_service
 from pyamplicol.generation.on_the_fly_seed import project_on_the_fly_process_seed_v1
 from pyamplicol.generation.service import GenerationBackend
 from pyamplicol.models import BuiltinSMModel
@@ -26,9 +26,7 @@ from tests.unit.test_on_the_fly_seed_projection import (
 
 
 class _UncertifiedAdjointModel(BuiltinSMModel):
-    shared_single_trace_color_basis_is_proven = (
-        Model.shared_single_trace_color_basis_is_proven
-    )
+    adjoint_tree_color_basis_is_proven = Model.adjoint_tree_color_basis_is_proven
 
 
 def _backend(lane: str, basis: str = "adjoint", accuracy: str = "full"):
@@ -72,16 +70,36 @@ def test_adjoint_scope_requires_model_proof_not_external_adjoint_roles(lane):
     process = build_process_ir("g g > g g", color_accuracy="full")
     backend = _backend(lane)
     for model in (None, _UncertifiedAdjointModel()):
-        with pytest.raises(GenerationError, match="certified pure Yang--Mills"):
-            backend._fft_color_basis(process, model)
+        assert backend._fft_color_basis(process, model) == "trace"
+        planned = backend._plan_concrete_process(process, model=model)
+        selected = planned["fft_basis_selection"]
+        assert selected["requested"] == "adjoint"
+        assert selected["name"] == "trace"
+        assert "No DDM amplitude identity" in selected["reason"]
 
 
-@pytest.mark.parametrize("process", ("d d~ > g g", "g g > g g z"))
-def test_adjoint_scope_rejects_non_gluon_external_domains(process):
-    with pytest.raises(GenerationError, match="certified pure Yang--Mills"):
-        _backend("recurrence")._fft_color_basis(
-            build_process_ir(process, color_accuracy="full"), BuiltinSMModel()
-        )
+@pytest.mark.parametrize("lane", ("recurrence", "on-the-fly"))
+@pytest.mark.parametrize(
+    "process,name",
+    (
+        ("d d~ > g g", "fundamental-chain"),
+        ("d d~ > d d~ g g", "fundamental-chain-products"),
+        ("g g > g g z", "trace"),
+        ("e- e+ > mu- mu+", "singlet"),
+    ),
+)
+def test_general_adjoint_selection_preserves_other_exact_bases(lane, process, name):
+    backend = _backend(lane)
+    model = BuiltinSMModel()
+    process_ir = build_process_ir(process, color_accuracy="full")
+    assert backend._fft_color_basis(process_ir, model) == "trace"
+    planned = backend._plan_concrete_process(process_ir, model=model)
+    assert planned["fft_basis_selection"]["name"] == name
+    prepared = backend._prepare_process_construction(process_ir, model)
+    assert prepared.complete_color_plan.basis == "trace"
+    assert backend._fft_basis_metadata(prepared.complete_color_plan) == {
+        "fft_basis_selection": planned["fft_basis_selection"]
+    }
 
 
 def test_trace_scope_does_not_require_the_new_adjoint_certificate():
@@ -91,6 +109,38 @@ def test_trace_scope_does_not_require_the_new_adjoint_certificate():
         )
         == "trace"
     )
+
+
+def test_structural_preflight_never_materializes_the_full_trace_domain(monkeypatch):
+    original = generation_service.build_color_plan
+    probes = []
+
+    def bounded_probe(process, **kwargs):
+        # Twelve gluons would otherwise build 11! temporary trace sectors
+        # before even selecting the much smaller DDM construction domain.
+        assert kwargs["max_sectors"] == 1
+        result = original(process, **kwargs)
+        assert len(result.sectors) <= 1
+        probes.append(result)
+        return result
+
+    monkeypatch.setattr(generation_service, "build_color_plan", bounded_probe)
+    expressions = (
+        "g g > " + " ".join(["g"] * 10),
+        "d d~ > z g g",
+        "d d > z d d~",  # unbalanced all-outgoing colour endpoints
+    )
+    candidates = tuple(
+        build_process_ir(expression, color_accuracy="full")
+        for expression in expressions
+    )
+    selected, rejected = generation_service._select_color_ready_processes(
+        candidates, color_accuracy="full"
+    )
+    assert selected == candidates[:2]
+    assert len(rejected) == 1
+    assert rejected[0].startswith(expressions[-1] + ":")
+    assert probes[0].truncated  # truncation is not structural rejection
 
 
 @pytest.mark.parametrize("accuracy", ("nlc", "full"))

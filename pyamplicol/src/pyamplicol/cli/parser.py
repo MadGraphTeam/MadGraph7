@@ -283,8 +283,9 @@ def _add_color_options(parser: argparse.ArgumentParser) -> None:
         choices=tuple(ColorFFTBasis),
         default=argparse.SUPPRESS,
         help=(
-            "Use symmetric-group FFT contraction in the trace or adjoint DDM "
-            "basis; requires --color-accuracy nlc or full."
+            "Use symmetric-group FFT contraction. 'adjoint' selects certified "
+            "DDM where applicable, otherwise exact fundamental chains or an "
+            "explicit trace fallback; requires --color-accuracy nlc or full."
         ),
     )
     parser.add_argument(

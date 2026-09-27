@@ -271,12 +271,12 @@ impl OnTheFlyCompactSelectorAdapterV1 {
             CompactColorDomainV1::Singlet
         };
         if policy.color_basis == OnTheFlyColorBasis::Adjoint
-            && (adjoint_labels.len() < 3
-                || adjoint_labels.len() != externals_by_public_slot.len()
+            && (adjoint_labels.len() < 2
+                || !fundamental_labels.is_empty()
                 || policy.trace_reflections_folded)
         {
             return Err(integrity(
-                "adjoint color basis requires at least three all-adjoint external sources and no trace-reflection folding",
+                "adjoint color basis requires at least two adjoint external sources, no fundamental lines and no trace-reflection folding",
             ));
         }
         let helicity_count = checked_product(
@@ -1730,6 +1730,33 @@ mod tests {
         let mut policy = OnTheFlyLcSelectorPolicyV1::complete(None, false);
         policy.color_basis = OnTheFlyColorBasis::Adjoint;
         assert!(OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, policy).is_err());
+    }
+
+    #[test]
+    fn adjoint_color_ordinals_allow_certified_colourless_spectators() {
+        // Model/coupling-order certification is generation-side. Here only
+        // the structural selector domain is validated: singlets do not take
+        // part in the two-anchor colour permutation.
+        for gluon_count in [2, 3, 4] {
+            let mut sources: Vec<_> = (1..=gluon_count)
+                .map(|label| (label, OnTheFlyExternalColorRoleV1::Adjoint, &[-1, 1][..]))
+                .collect();
+            sources.push((gluon_count + 1, OnTheFlyExternalColorRoleV1::Singlet, &[0]));
+            let selector = adapter_in_basis(&sources, OnTheFlyColorBasis::Adjoint);
+            assert_eq!(selector.helicity_count(), 1 << gluon_count);
+            assert_eq!(
+                selector.color_count(),
+                single_trace_color_count(gluon_count as usize, OnTheFlyColorBasis::Adjoint)
+                    .unwrap()
+            );
+            for index in 0..selector.color_count() {
+                let (word, _) = selector.color_at(index).unwrap();
+                assert_eq!(word.len(), gluon_count as usize);
+                assert_eq!(word.first(), Some(&1));
+                assert_eq!(word.last(), Some(&gluon_count));
+                assert_eq!(selector.color_ordinal(&word).unwrap(), index);
+            }
+        }
     }
 
     #[test]

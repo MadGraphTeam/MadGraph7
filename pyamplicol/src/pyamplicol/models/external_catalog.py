@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from ._physics_ir import ParticleIdentityIR, ParticleOrientation
@@ -514,6 +514,22 @@ class ExternalModelCatalogMixin:
         legs = tuple(getattr(process, "legs", ()))
         return bool(legs) and all(
             self._particle_name_for_leg(leg) in names for leg in legs
+        )
+
+    def adjoint_tree_color_basis_is_proven(
+        self,
+        process: Any,
+        *,
+        max_coupling_orders: Mapping[str, int] | None = None,
+    ) -> bool:
+        """Certify actual colour tensors without assuming Yang--Mills helicities."""
+
+        from .adjoint_color_certificate import (
+            compiled_adjoint_tree_color_basis_is_proven,
+        )
+
+        return compiled_adjoint_tree_color_basis_is_proven(
+            self.compiled.ir, process, max_coupling_orders=max_coupling_orders
         )
 
     def _particle_name_for_leg(self, leg: Any) -> str | None:

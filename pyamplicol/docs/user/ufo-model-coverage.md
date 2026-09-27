@@ -178,7 +178,7 @@ carry a `ValueError` message instead of a code; they are marked below.
 | Colour-flow selectors | conditional | LC outputs only; NLC and full outputs return one contracted entry per helicity. |
 | `all-flow-union` layout | conditional | LC only, with complete coverage. |
 | FFT contraction | conditional | `symmetric-group-fft` needs `nlc` or `full` with `recurrence` or `on-the-fly` and at most ten permutable gluons whose colour sectors form complete permutation orbits. |
-| Adjoint FFT basis | conditional | `--fft adjoint` is limited to pure-gluon tree processes without quarks, external colour singlets or correlators; use `--fft trace` otherwise. |
+| Adjoint FFT selection | conditional | `--fft adjoint` adaptively uses DDM for certified Yang–Mills or single-insertion scalar HEFT (`HIG = 1`), fundamental chains/products for quarks, and trace tensors otherwise. Saved `fft_basis_selection` reports the actual representation; no universal DDM or speedup claim. Correlators remain unsupported. |
 | Shared-trace optimisation | conditional | applied only to pure gauge-boson processes whose Yang-Mills structure the model certificate proves; results are exact either way. |
 | Correlators | conditional | representations 1, 3, -3, 8 from complete full-colour plans in compiled execution. |
 

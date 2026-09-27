@@ -62,7 +62,7 @@ These three showcase cards print colorized terminal tables by default. Add
 | `builtin_sm_nlc.toml` | Built-in compatibility SM, default recurrence JIT O2, contracted NLC |
 | `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
 | `builtin_sm_adjoint_fft.toml` | Certified pure-gluon tree, recurrence full color in the adjoint DDM FFT basis |
-| `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, recurrence JIT O2, contracted full color |
+| `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, one insertion, recurrence JIT O2 with adjoint DDM FFT |
 | `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
 | `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
 | `otf_pp_zjj.toml` | Generate compact OTF LC `p p > Z j j`, then profile one flow with a helicity sum |
@@ -83,9 +83,11 @@ The card keeps the same amplitude in the two-anchor DDM basis: for its five
 external gluons, it retains `3!` ordered amplitudes instead of the trace
 basis's `4!`. To use the original trace FFT, pass `--fft trace`. Either basis
 also supports `--execution-mode on-the-fly`; choose a different output path
-when comparing artifacts. Adjoint is restricted to certified pure Yang–Mills
-trees, without quarks, external colour singlets, or correlated generation.
-Keep trace for quarks and Higgs/HEFT processes. In the benchmarked pure-gluon
+when comparing artifacts. The adjoint request adaptively selects DDM for
+certified Yang–Mills and single-insertion HEFT trees, exact fundamental
+chains/products for quarks, and trace tensors otherwise. Inspect saved
+`fft_basis_selection` for the actual representation and selection reason.
+Correlated generation is not supported by this option. In the benchmarked pure-gluon
 family the adjoint basis was faster than trace for six or more external gluons
 (3.9x per sample at ten gluons); compare setup and warmed runtime for other
 workloads.
@@ -102,9 +104,12 @@ pyamplicol generate --card builtin_sm_heft.toml
 pyamplicol inspect artifacts/builtin_sm_heft
 ```
 
-The explicit `HIG = 1` limit retains one effective Higgs-gluon insertion.
-The generated artifact uses full-colour recurrence over the wheel-owned
-prepared JIT O2 kernels. See the website's
+The explicit `HIG = 1` limit retains one effective Higgs-gluon insertion and
+allows the certified DDM colour reduction. The four gluons in this example
+have `2!` DDM orderings instead of `3!` trace orderings; the Higgs is not
+counted as a coloured leg. The artifact uses full-colour recurrence over the
+wheel-owned prepared JIT O2 kernels. Use `--fft trace` to compare the original
+representation, without assuming a speedup at every multiplicity. See the website's
 [Models and Processes](https://mg5amcnlo.github.io/pyamplicol/user/models-and-processes/)
 guide for execution-mode and trusted-UFO details.
 

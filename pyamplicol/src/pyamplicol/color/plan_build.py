@@ -144,22 +144,23 @@ def _build_adjoint_color_plan(
 ) -> GenericColorPlan:
     """Choose two-anchor primitive words for the DDM half-ladder metric.
 
-    The generation service additionally checks that the model interactions
-    obey the pure Yang--Mills tree identities.  These records retain their
-    single-trace *ordering* shape so the ordered-current grammar is unchanged.
+    The generation service additionally proves connected f-tree colour for
+    the selected model interactions and coupling orders. These records retain
+    their single-trace *ordering* shape, leaving the ordered-current grammar intact.
     """
 
     from .adjoint_kernel import MAX_ADJOINT_GLUONS
 
     labels = tuple(sorted(process.adjoint_labels))
     if (
-        len(labels) < 3
-        or len(labels) != len(process.legs)
+        len(labels) < 2
+        or len(labels) + len(process.singlet_labels) != len(process.legs)
         or process.fundamental_labels
         or process.antifundamental_labels
-        or process.singlet_labels
     ):
-        raise ValueError("adjoint colour basis requires only external gluons")
+        raise ValueError(
+            "DDM colour basis requires external adjoints and optional singlets"
+        )
     if len(labels) > MAX_ADJOINT_GLUONS:
         raise ValueError(
             f"adjoint colour basis supports at most {MAX_ADJOINT_GLUONS} "
@@ -184,7 +185,14 @@ def _build_adjoint_color_plan(
             )
     sectors: list[LCColorSector] = []
     if reference and (max_sectors is None or max_sectors > 0):
-        sectors.append(LCColorSector(id=0, kind="single-trace", trace_labels=reference))
+        sectors.append(
+            LCColorSector(
+                id=0,
+                kind="single-trace",
+                trace_labels=reference,
+                singlet_labels=process.singlet_labels,
+            )
+        )
     truncated = False
     for middle in permutations(labels[1:-1]):
         word = (first, *middle, last)
@@ -194,7 +202,12 @@ def _build_adjoint_color_plan(
             truncated = True
             break
         sectors.append(
-            LCColorSector(id=len(sectors), kind="single-trace", trace_labels=word)
+            LCColorSector(
+                id=len(sectors),
+                kind="single-trace",
+                trace_labels=word,
+                singlet_labels=process.singlet_labels,
+            )
         )
     return GenericColorPlan(
         process=process,

@@ -179,12 +179,16 @@ Recurrence, eager, and on-the-fly execution reuse the same prepared model
 kernel bundle.
 
 Contracted NLC/full-colour recurrence and on-the-fly execution can use the
-exact `symmetric-group-fft` colour contraction. For certified pure-gluon
-Yang–Mills trees, start with `--fft adjoint --color-accuracy full`: the
-two-anchor DDM basis retains `(n-2)!` ordered amplitudes instead of the trace
-basis's `(n-1)!`. Use `--fft trace` for quarks or Higgs/HEFT processes. The
-configuration defaults remain direct contraction and trace basis; examples
-select adjoint explicitly. In the benchmarked pure-gluon family the adjoint
+exact `symmetric-group-fft` colour contraction. Start with
+`--fft adjoint --color-accuracy full` for adaptive exact-basis selection.
+Certified pure-gluon Yang–Mills trees and single-insertion HEFT use two-anchor
+DDM tensors: for `n` external gluons, `(n-2)!` ordered amplitudes replace the
+trace basis's `(n-1)!`. Quark processes retain fundamental chains or their
+products; uncertified adjoint processes retain trace tensors. The saved
+`fft_basis_selection` records the actual representation and its reason, so a
+fallback is not presented as a DDM reduction. Use `--fft trace` to keep the
+original representation explicitly. Configuration defaults remain direct
+contraction and trace basis. In the benchmarked pure-gluon family the adjoint
 basis was faster than trace for six or more external gluons, by 3.9x per
 sample with 4x faster generation at ten gluons. See the
 [FFT configuration guide](docs/user/configuration.md#color-accuracy-and-lc-layout).

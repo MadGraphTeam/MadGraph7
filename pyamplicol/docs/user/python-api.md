@@ -75,8 +75,8 @@ and the packaged `builtin_sm_heft.toml` card.
 ## Generate with adjoint FFT contraction
 
 The Python API uses the same `RunConfig` and `ColorConfig` fields as TOML and
-the CLI. For a certified pure Yang–Mills tree process, start with the explicitly
-selected adjoint DDM basis:
+the CLI. Start with the explicitly selected adaptive adjoint option; this
+certified pure Yang–Mills example uses the DDM basis:
 
 ```python
 from pyamplicol import ColorConfig, ColorFFTBasis, Generator, ModelSource, RunConfig
@@ -98,18 +98,22 @@ result = Generator(config).generate(
 ```
 
 `fft_basis="adjoint"` is equivalent to the enum value. The configuration default
-remains `"trace"`; use it for quarks or Higgs/HEFT processes. Select
+remains `"trace"`, which explicitly retains the original representation. Select
 `accuracy="nlc"` for NLC contraction, or
 `execution_mode="on-the-fly"` for a compact OTF artifact. Compiled/eager modes
 and LC accuracy do not support FFT contraction.
 
-For `n` external gluons, adjoint DDM fixes two anchors and prunes the redundant
-trace set of `(n-1)!` ordered amplitudes to `(n-2)!`, representing the same
-amplitude. Quarks, external colour singlets such as Higgs insertions,
-uncertified interactions, and `correlators=` are unsupported for adjoint.
-An adjoint basis requires FFT contraction; it cannot be combined with direct
-contraction. Runtime totals, resolved helicities and native SDK evaluation
-calls are unchanged.
+For certified trees with `n` external gluons, DDM fixes two anchors and reduces
+the trace set from `(n-1)!` orderings to `(n-2)!`, representing the same amplitude.
+Certified single-insertion HEFT also uses DDM; specify explicit coupling orders
+with `HIG = 1`, as in `examples/builtin_sm_heft.toml`. Quark processes keep exact
+fundamental chains or their products, not a newly assumed JO primitive basis;
+uncertified adjoint interactions retain trace tensors. The saved
+`fft_basis_selection` reports `requested`, `actual_basis`, `name`, `reason`,
+`permutation_degree`, and `tensor_count`, making that choice explicit.
+An adjoint request requires FFT contraction and cannot be combined with direct
+contraction or `correlators=`. Runtime totals, resolved helicities and native
+SDK evaluation calls are unchanged. No universal speedup is implied.
 In the benchmarked pure-gluon family the adjoint basis was faster than trace
 for six or more external gluons (3.9x per sample at ten gluons); benchmark
 other multiplicities and selector workloads.

@@ -707,6 +707,22 @@ class Model:
         del process
         return False
 
+    def adjoint_tree_color_basis_is_proven(
+        self,
+        process: Any,
+        *,
+        max_coupling_orders: Mapping[str, int] | None = None,
+    ) -> bool:
+        """Prove connected DDM colour, independently of helicity identities.
+
+        Singlet exchange can produce a colour forest even when every local
+        adjoint tensor is a structure constant.  Implementations must account
+        for the selected interactions and coupling-order limits.
+        """
+
+        del process, max_coupling_orders
+        return False
+
     def propagator_lowering_rule(
         self,
         particle_id: int,

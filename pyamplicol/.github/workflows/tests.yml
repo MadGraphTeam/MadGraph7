@@ -157,6 +157,8 @@ jobs:
             tests/unit/test_benchmarking.py \
             tests/unit/test_adjoint_color_contraction.py \
             tests/unit/test_adjoint_generation_scope.py \
+            tests/unit/test_adjoint_singlet_color_certificate.py \
+            tests/unit/test_fft_basis_strategy.py \
             tests/unit/test_compiler_kernel_scale.py \
             tests/unit/test_compiler_auxiliary_components.py \
             tests/unit/test_heft_contact_trees.py \
@@ -209,6 +211,7 @@ jobs:
           tests/integration/test_correlator_colour_accuracy.py
           tests/integration/test_otf_cache.py
           tests/integration/test_adjoint_fft_runtime.py
+          tests/integration/test_generalized_adjoint_fft_runtime.py
           tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings
           -q
       - name: Check Rust workspace (30 GiB RSS limit)

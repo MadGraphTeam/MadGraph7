@@ -197,18 +197,38 @@ permutation orbits and retaining all other terms as direct residuals. It is
 available for `recurrence` and `on-the-fly`; compiled/eager execution and LC
 flows deliberately reject it.
 
-For certified pure Yang–Mills tree processes, start with the explicitly selected
-`fft_basis = "adjoint"` Del Duca–Dixon–Maltoni (DDM) basis. It fixes two external
-gluon anchors
-and retains `(n-2)!` ordered amplitudes for `n` external gluons, instead of the
-trace basis's `(n-1)!`. This prunes redundant ordered amplitudes representing
-the same amplitude; it is not a colour-accuracy approximation. The adjoint
-choice rejects quarks, external colour singlets (including Higgs insertions),
-uncertified interactions, and correlated generation. Keep the trace FFT path
-for quarks and Higgs/HEFT processes; correlations use their separate direct
-contraction path. The configuration default remains `fft_basis = "trace"`,
-and contraction still defaults to `"direct"`. An adjoint basis with
-`contraction = "direct"` is invalid.
+Start with explicitly selected `fft_basis = "adjoint"` for adaptive exact-basis
+selection. The requested option and the mathematical representation are
+distinct: generation chooses a certified Del Duca–Dixon–Maltoni (DDM) reduction
+where available, and otherwise keeps the exact representation appropriate to
+the process.
+
+| Process domain | Actual representation |
+| --- | --- |
+| Certified Yang–Mills trees | Two-anchor DDM half-ladders. |
+| Certified single-insertion scalar HEFT, with gluons and one Higgs | DDM half-ladders; the two-gluon case is the single delta tensor. Use explicit `HIG = 1`. |
+| One quark–antiquark line, with optional colour singlets | Fundamental chain, already fixing both quark endpoints. |
+| Multiple quark lines | Exact products of fundamental chains and all endpoint routings; not a Melia/Johansson–Ochirov primitive decomposition. |
+| Colour singlets only | The trivial singlet tensor. |
+| Adjoint interactions without a DDM certificate | Original trace tensors, without assuming amplitude identities. |
+
+For `n` external gluons, a certified DDM reduction retains `(n-2)!` ordered
+amplitudes instead of `(n-1)!`. Count only the gluons, not a colourless Higgs.
+This removes redundant orderings without changing colour accuracy. A quark
+process need not become smaller or faster: retaining its existing fundamental
+chains is a deliberate exact choice, not an adjoint reduction.
+
+Generation records `fft_basis_selection`, with `requested`, `actual_basis`,
+`name`, `reason`, `permutation_degree`, and `tensor_count`. For fundamental
+chains, `actual_basis = "trace"` identifies the existing metric implementation,
+while `name = "fundamental-chain"` or `"fundamental-chain-products"` identifies
+the tensors. The tensor count excludes traversal aliases and is not a rank
+claim at fixed `Nc`. Use these recorded fields when comparing artifacts.
+
+Explicit `fft_basis = "trace"` keeps the original path. It remains the schema
+default, and contraction still defaults to `"direct"`. An adjoint request with
+`contraction = "direct"` is invalid. Correlated generation does not support
+this FFT option; correlations retain their separate direct contraction path.
 
 This is an exact contraction algorithm, not an approximation. Its speedup is
 process-dependent: a small certified symmetry subgroup or a residual-dominated

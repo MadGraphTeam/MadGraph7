@@ -26,12 +26,14 @@ This workflow is distinct from selecting
 The orchestrator is source-checkout-only. It is intended for a workstation or
 cluster node with explicit CPU, memory, and wall-time budgets.
 
-For ordinary generation, the recommended starting point for certified
-pure-gluon trees is `--fft adjoint --color-accuracy full`, which explicitly
-selects the smaller two-anchor DDM basis. Quark and Higgs/HEFT processes retain
-the trace basis. Configuration defaults remain direct contraction and trace;
-historical FFT curves must be interpreted using their saved basis settings,
-not relabelled as adjoint results. In the benchmarked pure-gluon family the
+For ordinary generation, start with `--fft adjoint --color-accuracy full`.
+This adaptively selects certified two-anchor DDM for pure Yang–Mills trees and
+single-insertion HEFT (`HIG = 1`), retains fundamental chains for quarks, and
+uses exact trace tensors where DDM is unproven. Compare the saved
+`fft_basis_selection` as well as the request: requesting adjoint does not imply
+that every process used DDM or gained a smaller basis. Configuration defaults
+remain direct contraction and trace; historical curves retain their saved
+basis settings and must not be relabelled. In the benchmarked pure-gluon family the
 adjoint basis was faster than trace for six or more external gluons; compare
 setup and warmed runtime separately for other workloads.
 

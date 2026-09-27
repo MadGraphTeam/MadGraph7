@@ -98,6 +98,11 @@ def _pure_adjoint_color_factor(
     if accuracy == "lc":
         return float(NC**n_ord) if iper == jper else 0.0
     if accuracy == "nlc":
+        if n_ord == 2:
+            # Tr(Ta Tb)=delta_ab, whose norm Nc^2-1 is already exact at
+            # NLC. The n>=3 shortcut below would incorrectly count two
+            # independent U(1) subtractions for the same identity tensor.
+            return float(NC**2 - 1)
         if iper == jper:
             return float(NC**n_ord - n_ord * NC ** (n_ord - 2))
         return float(_check_nlc(tuple(jper), tuple(iper)) * NC ** (n_ord - 2))
@@ -134,6 +139,8 @@ def _pure_adjoint_color_factor_exact(
     if accuracy == "lc":
         return nc**n_ord if iper == jper else Fraction(0)
     if accuracy == "nlc":
+        if n_ord == 2:
+            return nc**2 - 1
         if iper == jper:
             return nc**n_ord - n_ord * nc ** (n_ord - 2)
         return Fraction(_check_nlc(tuple(jper), tuple(iper))) * nc ** (n_ord - 2)

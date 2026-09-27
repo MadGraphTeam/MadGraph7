@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Literal, cast
@@ -779,6 +779,17 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
     def shared_single_trace_color_basis_is_proven(self, process: Any) -> bool:
         """Prove the shared NLC/full trace basis for built-in Yang--Mills."""
 
+        return self.lc_trace_reflection_equivalence_is_proven(process)
+
+    def adjoint_tree_color_basis_is_proven(
+        self,
+        process: Any,
+        *,
+        max_coupling_orders: Mapping[str, int] | None = None,
+    ) -> bool:
+        """The pinned gluon tree sector contains only connected f-tensors."""
+
+        del max_coupling_orders
         return self.lc_trace_reflection_equivalence_is_proven(process)
 
     def coupling_order_hierarchies(self) -> dict[str, int]:
