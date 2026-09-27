@@ -10,6 +10,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuFptypes.h"
+#include "mgOnGpuDW.h"
 
 #include <iostream>
 #include <type_traits>
@@ -54,6 +55,9 @@ namespace mgOnGpu /* clang-format off */
     __host__ __device__ constexpr const FP& real() const { return m_real; }
     __host__ __device__ constexpr const FP& imag() const { return m_imag; }
     template<typename FP2> __host__ __device__ constexpr operator cxsmpl<FP2>() const { return cxsmpl<FP2>( m_real, m_imag ); }
+#ifdef MGONGPU_DWTYPE
+    template<typename T> __host__ __device__ constexpr operator XDW<T>() const { return XDW<T>( m_real, m_imag ); }
+#endif
 #ifdef MGONGPU_CPPCXTYPE_STDCOMPLEX
     template<typename FP2> __host__ __device__ constexpr operator std::complex<FP2>() const { return std::complex<FP2>( m_real, m_imag ); }
 #endif
@@ -221,6 +225,11 @@ namespace madmatrix
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
   typedef std::complex<fptype_colour> cxtype_colour;
+#elif defined MGONGPU_DWTYPE
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef XDW<fptype_amp::BaseType> cxtype_amp;
+  typedef cxtype_amp cxtype_denom;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
 #else
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;

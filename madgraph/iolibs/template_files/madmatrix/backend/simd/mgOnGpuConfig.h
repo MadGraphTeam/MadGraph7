@@ -60,8 +60,21 @@
 #if defined MGONGPU_FPTYPE2_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
 #error You cannot use double precision for color algebra and single precision elsewhere
 #endif
+#if defined MGONGPU_DWTYPE_DOUBLE and defined MGONGPU_DWTYPE_FLOAT
+#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_DWTYPE_DOUBLE or MGONGPU_DWTYPE_FLOAT
+#endif
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX and defined MGONGPU_CPPCXTYPE_CXSMPL
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
+#endif
+
+// Double-word kernel arithmetic (FPTYPE=ff/dd): wavefunctions, amplitudes, momentum sums and
+// denominators in CompleXDW DW<T>/XDW<T>, while all buffers (momenta, couplings, MEs) stay FP64
+#if defined MGONGPU_DWTYPE_DOUBLE or defined MGONGPU_DWTYPE_FLOAT
+#define MGONGPU_DWTYPE 1
+#if not defined MGONGPU_FPTYPE_DOUBLE
+#error Double-word builds keep FP64 buffers: MGONGPU_DWTYPE_* needs MGONGPU_FPTYPE_DOUBLE
+#endif
+#include "CompleXDW/DW.h"
 #endif
 
 // NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
@@ -95,19 +108,33 @@ namespace mgOnGpu
 #else
   typedef fptype fptype_momenta;
 #endif
+#if defined MGONGPU_DWTYPE_DOUBLE
+  typedef DW<double> fptype_amp;
+  typedef fptype_amp fptype_denom;
+#elif defined MGONGPU_DWTYPE_FLOAT
+  typedef DW<float> fptype_amp;
+  typedef fptype_amp fptype_denom;
+#else
   typedef fptype_momenta fptype_denom; // denominator precision == momenta precision
   typedef fptype fptype_amp;           // amplitudes/wavefunctions == fptype
+#endif
   typedef fptype2 fptype_colour;       // color algebra == fptype2
 
+#ifndef MGONGPU_DWTYPE
   // Valid precision ordering: colour <= amp <= momenta (4=fp32, 8=fp64)
   static_assert( sizeof( fptype_colour ) <= sizeof( fptype_amp ), "colour precision must not exceed amp precision" );
   static_assert( sizeof( fptype_amp ) <= sizeof( fptype_momenta ), "amp precision must not exceed momenta precision" );
+#endif
 
   // Maximum number of threads per block
   const int ntpbMAX = 1024; // NB: 512 is ok, but 1024 does fail with "too many resources requested for launch"
 
   // Alignment requirement for using reinterpret_cast with SIMD vectorized code
+#ifdef MGONGPU_DWTYPE_FLOAT
+  constexpr int cppAlign = 128; // float lanes over FP64 buffers: a 512-bit page of floats is 1024 bits of doubles
+#else
   constexpr int cppAlign = 64; // 64-byte i.e. 512-bit
+#endif
 
   // Retrieve the compiler that was used to build this module
   inline std::string
@@ -188,33 +215,38 @@ using mgOnGpu::fptype_colour;
 #undef __ARM_NEON
 #endif
 
+// SIMD lanes follow the kernel arithmetic: float lanes for float-float (FPTYPE=ff), whose buffers are FP64
+#if defined MGONGPU_FPTYPE_DOUBLE and not defined MGONGPU_DWTYPE_FLOAT
+#define MGONGPU_LANE_DOUBLE 1
+#endif
+
 // C++ SIMD vectorization width (this will be used to set neppV)
 #if defined __AVX512VL__ && defined MGONGPU_PVW512 // "512z" AVX512 512-bit: 8 (DOUBLE) or 16 (FLOAT)
-#ifdef MGONGPU_FPTYPE_DOUBLE
+#ifdef MGONGPU_LANE_DOUBLE
 #define MGONGPU_CPPSIMD 8
 #else
 #define MGONGPU_CPPSIMD 16
 #endif
 #elif defined __AVX512VL__ // "512y" AVX512 256-bit: 4 (DOUBLE) or 8 (FLOAT) [gcc default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
+#ifdef MGONGPU_LANE_DOUBLE
 #define MGONGPU_CPPSIMD 4
 #else
 #define MGONGPU_CPPSIMD 8
 #endif
 #elif defined __AVX2__ // "avx2" 256-bit: 4 (DOUBLE) or 8 (FLOAT) [clang default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
+#ifdef MGONGPU_LANE_DOUBLE
 #define MGONGPU_CPPSIMD 4
 #else
 #define MGONGPU_CPPSIMD 8
 #endif
 #elif defined __SSE4_2__ // "sse4" SSE4.2 128-bit: 2 (DOUBLE) or 4 (FLOAT) [Power9 default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
+#ifdef MGONGPU_LANE_DOUBLE
 #define MGONGPU_CPPSIMD 2
 #else
 #define MGONGPU_CPPSIMD 4
 #endif
 #elif defined __ARM_NEON // ARM NEON 128-bit: 2 (DOUBLE) or 4 (FLOAT) [ARM default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
+#ifdef MGONGPU_LANE_DOUBLE
 #define MGONGPU_CPPSIMD 2
 #else
 #define MGONGPU_CPPSIMD 4

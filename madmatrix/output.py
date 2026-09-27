@@ -228,12 +228,28 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             for f in ['Double.h', 'basicOPs.h', 'errorFreeOPs.h']:
                 files.cp(pjoin(arithmetics_src, f), arithmetics_dst)
 
+        self.copy_complexdw()
+
         # Rename Makefile to makefile
         if self.template_src_make:
             shutil.move(os.path.join(self.dir_path, "src", "Makefile"), os.path.join(self.dir_path, "src", "makefile"))
         if self.template_Sub_make:
             shutil.move(os.path.join(self.dir_path, "SubProcesses", "Makefile"), os.path.join(self.dir_path, "SubProcesses", "makefile"))
         self.write_p_makefiles(model)
+
+    def copy_complexdw(self):
+        """Copy the CompleXDW headers the double-word builds (FPTYPE=ff/dd) need into src/CompleXDW,
+        from $MADMATRIX_COMPLEXDW (default ~/git/CompleXDW)."""
+        source = os.path.expanduser(os.environ.get('MADMATRIX_COMPLEXDW', '~/git/CompleXDW'))
+        if not os.path.isfile(pjoin(source, 'XDW.h')):
+            logger.info('CompleXDW not found in %s (set MADMATRIX_COMPLEXDW): FPTYPE=ff/dd will not build', source)
+            return
+        target = pjoin(self.dir_path, 'src', 'CompleXDW')
+        os.makedirs(pjoin(target, 'src'), exist_ok=True)
+        for header in ('DW.h', 'XDW.h'):
+            files.cp(pjoin(source, header), target)
+        for header in template_sources(pjoin(source, 'src'), extensions=('.h',)):
+            files.cp(pjoin(source, 'src', header), pjoin(target, 'src'))
 
     def write_p_makefiles(self, model):
         """Render the build rules shared by all the P* directories into

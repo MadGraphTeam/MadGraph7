@@ -116,6 +116,18 @@ namespace madmatrix
   }
 #endif
 
+#ifdef MGONGPU_DWTYPE
+  // Double-word kernel vectors: fptype_v stays the FP64 buffer vector, the kernel works on DW/XDW of lane vectors
+  typedef fptype_amp::BaseType fptype_lane;
+#ifdef __clang__
+  typedef fptype_lane fptype_lane_v __attribute__( ( ext_vector_type( neppV ) ) );
+#else
+  typedef fptype_lane fptype_lane_v __attribute__( ( vector_size( neppV * sizeof( fptype_lane ) ), aligned( neppV * sizeof( fptype_lane ) ) ) );
+#endif
+  typedef DW<fptype_lane_v> fptype_amp_v;
+  typedef XDW<fptype_lane_v> cxtype_amp_v;
+#endif
+
   // --- Type definition (using vector compiler extensions: need -march=...)
   class cxtype_v // no need for "class alignas(2*sizeof(fptype_v)) cxtype_v"
   {
@@ -132,6 +144,9 @@ namespace madmatrix
       : m_real( r ), m_imag{ 0 } {} // IIII=0000
     cxtype_v( const fptype& r )
       : m_real( fptype_v{} + r ), m_imag{ 0 } {} // IIII=0000
+#ifdef MGONGPU_DWTYPE
+    operator cxtype_amp_v() const { return cxtype_amp_v( m_real, m_imag ); }
+#endif
     template<typename FP2>
     cxtype_v( const mgOnGpu::cxsmpl<FP2>& c ) // broadcast a scalar complex (amp precision)
       : m_real( fptype_v{} + fptype( c.real() ) ), m_imag( fptype_v{} + fptype( c.imag() ) ) {}
@@ -212,16 +227,16 @@ namespace madmatrix
   // --- Type definition (using vector compiler extensions: need -march=...)
 #ifdef __clang__ // https://clang.llvm.org/docs/LanguageExtensions.html#vectors-and-extended-vectors
   typedef unsigned int uint_v __attribute__( ( ext_vector_type( neppV ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MGONGPU_LANE_DOUBLE
   typedef long int bool_v __attribute__( ( ext_vector_type( neppV ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#else
   typedef int bool_v __attribute__( ( ext_vector_type( neppV ) ) );                         // bbbb
 #endif
 #else // gcc
   typedef unsigned int uint_v __attribute__( ( vector_size( neppV * sizeof( unsigned int ) ), aligned( neppV * sizeof( unsigned int ) ) ) );
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MGONGPU_LANE_DOUBLE
   typedef long int bool_v __attribute__( ( vector_size( neppV * sizeof( long int ) ), aligned( neppV * sizeof( long int ) ) ) ); // bbbb
-#elif defined MGONGPU_FPTYPE_FLOAT
+#else
   typedef int bool_v __attribute__( ( vector_size( neppV * sizeof( int ) ), aligned( neppV * sizeof( int ) ) ) ); // bbbb
 #endif
 #endif
@@ -569,6 +584,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // Functions and operators for bool_v (ternary and masks)
+#ifndef MGONGPU_DWTYPE_FLOAT // FP64 buffer vectors: their masks are not the float-lane bool_v of FPTYPE=ff
 
 
   inline fptype_v
@@ -680,6 +696,8 @@ namespace madmatrix
 #endif
   }
 
+#endif
+
   /*
   inline bool
   maskor( const bool_v& mask )
@@ -702,6 +720,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // Functions and operators for fptype_v (min/max)
+#ifndef MGONGPU_DWTYPE_FLOAT // FP64 buffer vectors: their masks are not the float-lane bool_v of FPTYPE=ff
 
 
   inline fptype_v
@@ -743,6 +762,8 @@ namespace madmatrix
     return fpternary( ( a < b ), a, b );
   }
   */
+
+#endif
 
   //--------------------------------------------------------------------------
 
@@ -870,11 +891,22 @@ namespace madmatrix
   typedef uint_v uint_sv;
   typedef cxtype_v cxtype_sv;
   typedef cxtype_v_ref cxtype_sv_ref;
+#ifdef MGONGPU_DWTYPE
+  typedef fptype_amp_v fptype_amp_sv;
+  typedef cxtype_amp_v cxtype_amp_sv;
+#else
   typedef fptype_v fptype_amp_v;              typedef fptype_v fptype_amp_sv;
   typedef cxtype_v cxtype_amp_v;              typedef cxtype_v cxtype_amp_sv;
+#endif
   typedef fptype2_v fptype_colour_v;          typedef fptype2_v fptype_colour_sv;
   typedef cxtype_v cxtype_colour_v;           typedef cxtype_v cxtype_colour_sv;
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MGONGPU_DWTYPE
+  // FPTYPE=ff/dd: kernel momenta, their sums and the denominators in double words
+  typedef fptype_amp_v fptype_momenta_v;      typedef fptype_amp_v fptype_momenta_sv;
+  typedef fptype_amp_v fptype_denom_v;        typedef fptype_amp_v fptype_denom_sv;
+  typedef cxtype_amp_v cxtype_momenta_v;      typedef cxtype_amp_v cxtype_momenta_sv;
+  typedef cxtype_amp_v cxtype_denom_v;        typedef cxtype_amp_v cxtype_denom_sv;
+#elif defined MGONGPU_SIMD_DENOM64
   // FPTYPE=v: momenta computed 2x to fill for rest
   typedef fptype_denom_sv fptype_momenta_v;     typedef fptype_denom_sv fptype_momenta_sv;
   typedef fptype_denom_sv fptype_denom_v;       // fptype_denom_sv is the struct defined above
@@ -896,6 +928,32 @@ namespace madmatrix
 #endif
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
+
+#ifdef MGONGPU_DWTYPE
+  inline fptype_amp_v
+  fpternary( const bool_v& mask, const fptype_amp_v& a, const fptype_amp_v& b )
+  {
+    return select( mask, a, b );
+  }
+
+  inline cxtype_amp_v
+  cxternary( const bool_v& mask, const cxtype_amp_v& a, const cxtype_amp_v& b )
+  {
+    return select( mask, a, b );
+  }
+
+  inline fptype_amp_v
+  fpmax( const fptype_amp_v& a, const fptype_amp_v& b )
+  {
+    return max( a, b );
+  }
+
+  inline fptype_amp_v
+  fpmin( const fptype_amp_v& a, const fptype_amp_v& b )
+  {
+    return min( a, b );
+  }
+#endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
   // Template version for multi-precision (explicit template parameter required)

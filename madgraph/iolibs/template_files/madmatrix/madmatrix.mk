@@ -32,8 +32,13 @@ ifeq ($(HRDCOD),)
 endif
 
 # Set the default FASTMATH choice (0: IEEE-strict, i.e. no fast-math and no FP contraction)
+# Double-word builds (FPTYPE=ff/dd) are only sound IEEE-strict, so there it defaults to 0
 ifeq ($(FASTMATH),)
-  override FASTMATH = 1
+  ifneq ($(filter $(FPTYPE),ff dd),)
+    override FASTMATH = 0
+  else
+    override FASTMATH = 1
+  endif
 endif
 
 # default USEBUILDDIR = 1
@@ -53,7 +58,7 @@ endif
 
 # 3 precision macros: amp (MGONGPU_FPTYPE_*), colour (MGONGPU_FPTYPE2_*), momenta/denom (MGONGPU_FPTYPE_MOMENTA_*)
 # 5 modes: d=all64, f=all32, m=color32 (colour FP32, momenta+amp FP64), v=denom64 (momenta/denom FP64, colour+amp FP32), e=doubleword expansion (compensated FP64-in-FP32 denom, see MADARITH_DOUBLEEXPANSION below)
-override SUPPORTED_FPTYPES = d f m e v
+override SUPPORTED_FPTYPES = d f m e v ff dd
 ifneq ($(words $(filter $(FPTYPE), $(SUPPORTED_FPTYPES))),1)
   $(error Invalid fptype FPTYPE='$(FPTYPE)': supported fptypes are $(foreach fptype,$(SUPPORTED_FPTYPES),'$(fptype)'))
 endif
@@ -71,6 +76,18 @@ endif
 override SUPPORTED_FASTMATHS = 0 1
 ifneq ($(words $(filter $(FASTMATH), $(SUPPORTED_FASTMATHS))),1)
   $(error Invalid fastmath FASTMATH='$(FASTMATH)': supported fastmaths are $(foreach fastmath,$(SUPPORTED_FASTMATHS),'$(fastmath)'))
+endif
+ifneq ($(filter $(FPTYPE),ff dd),)
+  ifneq ($(FASTMATH),0)
+    $(error FPTYPE='$(FPTYPE)' (double-word arithmetic) needs FASTMATH=0)
+  endif
+endif
+
+# C++ standard: CompleXDW (FPTYPE=ff/dd) needs C++20
+ifneq ($(filter $(FPTYPE),ff dd),)
+  override CXXSTD = c++20
+else
+  override CXXSTD = c++17
 endif
 
 # Stop immediately if BACKEND=cuda but nvcc is missing
@@ -182,7 +199,7 @@ endif
 
 #=== Configure the C++ compiler
 
-CXXFLAGS = $(OPTFLAGS) -std=c++17 -Wall -Wshadow -Wextra
+CXXFLAGS = $(OPTFLAGS) -std=$(CXXSTD) -Wall -Wshadow -Wextra
 ifeq ($(FASTMATH),0)
   CXXFLAGS += -fno-fast-math -ffp-contract=off
 else ifeq ($(shell $(CXX) --version | grep ^nvc++),)
@@ -330,7 +347,7 @@ ifeq ($(BACKEND),cuda)
   GPUFLAGS += $(CUDA_INC) $(USE_NVTX) 
 
   # C++ standard
-  GPUFLAGS += -std=c++17 # need CUDA >= 11.2 (see #333): this is enforced in mgOnGpuConfig.h
+  GPUFLAGS += -std=$(CXXSTD) # need CUDA >= 11.2 (see #333): this is enforced in mgOnGpuConfig.h
 
   # For nvcc, use -maxrregcount to control the maximum number of registries (this does not exist in hipcc)
   # Without -maxrregcount: baseline throughput: 6.5E8 (16384 32 12) up to 7.3E8 (65536 128 12)
@@ -392,7 +409,7 @@ else ifeq ($(BACKEND),hip)
   GPUFLAGS += $(HIP_INC)
 
   # C++ standard
-  GPUFLAGS += -std=c++17
+  GPUFLAGS += -std=$(CXXSTD)
 
 else
 
@@ -630,9 +647,24 @@ else
     override AVXFLAGS = -march=skylake-avx512 -DMGONGPU_PVW512 # AVX512 with 512 width (zmm registers)
   endif
 endif
+# CompleXDW needs hardware FMA, which the x86 'scalar' and 'simd_128' targets lack
+ifneq ($(filter $(FPTYPE),ff dd),)
+  ifeq ($(UNAME_M),x86_64)
+    ifneq ($(filter $(BACKEND),scalar simd_128),)
+      override AVXFLAGS += -mfma
+    endif
+  endif
+endif
 # For the moment, use AVXFLAGS everywhere (in C++ builds): eventually, use them only in encapsulated implementations?
 ifeq ($(GPUCC),)
   CXXFLAGS+= $(AVXFLAGS)
+endif
+
+# Double-word builds (FPTYPE=ff/dd) need the CompleXDW headers, copied into src/ at output time
+ifneq ($(filter $(FPTYPE),ff dd),)
+  ifeq ($(wildcard $(SRC)/CompleXDW/XDW.h),)
+    $(error FPTYPE='$(FPTYPE)' needs $(SRC)/CompleXDW: regenerate the process with MADMATRIX_COMPLEXDW pointing to CompleXDW)
+  endif
 endif
 
 # Set the build flags appropriate to each FPTYPE choice (example: "make FPTYPE=f")
@@ -652,6 +684,12 @@ else ifeq ($(FPTYPE),v) # denom64: momenta/denom FP64, colour+amp FP32
   # cppnone/cuda/hip trivial, SIMD denom ex. twice, rest narrowed 
   GPUFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
   CXXFLAGS += -DMGONGPU_FPTYPE_FLOAT -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_FPTYPE_MOMENTA_DOUBLE
+else ifeq ($(FPTYPE),ff) # double-word float kernel (CompleXDW DW<float>/XDW<float>), buffers FP64, colour FP64 (C++) or FP32 (GPU)
+  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE -DMGONGPU_DWTYPE_FLOAT
+  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT -DMGONGPU_DWTYPE_FLOAT
+else ifeq ($(FPTYPE),dd) # double-word double kernel (CompleXDW DW<double>/XDW<double>), buffers and colour FP64
+  CXXFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE -DMGONGPU_DWTYPE_DOUBLE
+  GPUFLAGS += -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_DOUBLE -DMGONGPU_DWTYPE_DOUBLE
 else ifeq ($(FPTYPE),e)
   CXXFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
   GPUFLAGS += -DMADARITH_DOUBLEEXPANSION -DMGONGPU_FPTYPE_DOUBLE -DMGONGPU_FPTYPE2_FLOAT
@@ -712,6 +750,13 @@ GPUFLAGS += $(BLASCXXFLAGS)
 # could be linked was settled when this directory was written out; it is only
 # taken for processes whose color matrix is large enough to be worth it, and for
 # those the generated color_sum.cc carries both paths (example: "make CPPBLAS=hasNoBlas").
+# The host BLAS color sum takes plain jamps: double-word builds (FPTYPE=ff/dd) use the color sum loop
+ifneq ($(filter $(FPTYPE),ff dd),)
+  ifeq ($(CPPBLAS),hasBlas)
+    $(error FPTYPE='$(FPTYPE)' does not support CPPBLAS=hasBlas)
+  endif
+  override CPPBLAS = hasNoBlas
+endif
 ifeq ($(CPPBLAS),)
   ifeq ($(GPUCC),) # CPU-only build
     override CPPBLAS = %(cpp_blas_default)s

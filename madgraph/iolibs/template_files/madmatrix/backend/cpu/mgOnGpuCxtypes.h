@@ -10,6 +10,7 @@
 #include "mgOnGpuConfig.h"
 
 #include "mgOnGpuFptypes.h"
+#include "mgOnGpuDW.h"
 
 #include <cassert>
 #include <iostream>
@@ -55,6 +56,9 @@ namespace mgOnGpu /* clang-format off */
     __host__ __device__ constexpr const FP& real() const { return m_real; }
     __host__ __device__ constexpr const FP& imag() const { return m_imag; }
     template<typename FP2> __host__ __device__ constexpr operator cxsmpl<FP2>() const { return cxsmpl<FP2>( m_real, m_imag ); }
+#ifdef MGONGPU_DWTYPE
+    template<typename T> __host__ __device__ constexpr operator XDW<T>() const { return XDW<T>( m_real, m_imag ); }
+#endif
 #ifdef MGONGPU_CPPCXTYPE_STDCOMPLEX
     template<typename FP2> __host__ __device__ constexpr operator std::complex<FP2>() const { return std::complex<FP2>( m_real, m_imag ); }
 #endif
@@ -222,6 +226,11 @@ namespace madmatrix
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
   typedef std::complex<fptype_colour> cxtype_colour;
+#elif defined MGONGPU_DWTYPE
+  typedef cxsmpl<fptype_momenta> cxtype_momenta;
+  typedef XDW<fptype_amp::BaseType> cxtype_amp;
+  typedef cxtype_amp cxtype_denom;
+  typedef cxsmpl<fptype_colour> cxtype_colour;
 #else
   typedef cxsmpl<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
@@ -488,11 +497,11 @@ namespace madmatrix
   typedef unsigned int uint_sv;
   typedef cxtype cxtype_sv;
   typedef cxtype_ref cxtype_sv_ref;
-  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
+  typedef fptype_denom fptype_momenta_sv;     typedef fptype_denom fptype_momenta_v;
   typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
   typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
   typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
-  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
+  typedef cxtype_denom cxtype_momenta_sv;     typedef cxtype_denom cxtype_momenta_v;
   typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
   typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
   typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;

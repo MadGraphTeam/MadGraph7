@@ -255,7 +255,13 @@ namespace
 
   const char* fp_label()
   {
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_DWTYPE_FLOAT and defined MGONGPU_FPTYPE2_FLOAT
+    return "DOUBLE-WORD FLOAT (FLOAT COLOUR)";
+#elif defined MGONGPU_DWTYPE_FLOAT
+    return "DOUBLE-WORD FLOAT";
+#elif defined MGONGPU_DWTYPE_DOUBLE
+    return "DOUBLE-WORD DOUBLE";
+#elif defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     return "MIXED";
 #elif defined MGONGPU_FPTYPE_DOUBLE
     return "DOUBLE";
