@@ -31,6 +31,11 @@ ifeq ($(HRDCOD),)
   override HRDCOD = 0
 endif
 
+# Set the default FASTMATH choice (0: IEEE-strict, i.e. no fast-math and no FP contraction)
+ifeq ($(FASTMATH),)
+  override FASTMATH = 1
+endif
+
 # default USEBUILDDIR = 1
 ifeq ($(USEBUILDDIR),)
   override USEBUILDDIR = 1
@@ -63,6 +68,11 @@ ifneq ($(words $(filter $(HRDCOD), $(SUPPORTED_HRDCODS))),1)
   $(error Invalid hrdcod HRDCOD='$(HRDCOD)': supported hrdcods are $(foreach hrdcod,$(SUPPORTED_HRDCODS),'$(hrdcod)'))
 endif
 
+override SUPPORTED_FASTMATHS = 0 1
+ifneq ($(words $(filter $(FASTMATH), $(SUPPORTED_FASTMATHS))),1)
+  $(error Invalid fastmath FASTMATH='$(FASTMATH)': supported fastmaths are $(foreach fastmath,$(SUPPORTED_FASTMATHS),'$(fastmath)'))
+endif
+
 # Stop immediately if BACKEND=cuda but nvcc is missing
 ifeq ($(BACKEND),cuda)
   ifeq ($(shell which nvcc 2>/dev/null),)
@@ -81,7 +91,7 @@ endif
 
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...), see TAG below.
-override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+override DIRTAG := $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_fm$(FASTMATH)
 
 # Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
@@ -173,7 +183,9 @@ endif
 #=== Configure the C++ compiler
 
 CXXFLAGS = $(OPTFLAGS) -std=c++17 -Wall -Wshadow -Wextra
-ifeq ($(shell $(CXX) --version | grep ^nvc++),)
+ifeq ($(FASTMATH),0)
+  CXXFLAGS += -fno-fast-math -ffp-contract=off
+else ifeq ($(shell $(CXX) --version | grep ^nvc++),)
   CXXFLAGS += -ffast-math # see issue #117
 endif
 ###CXXFLAGS+= -Ofast # performance is not different from --fast-math
@@ -304,7 +316,11 @@ ifeq ($(BACKEND),cuda)
   ###GPUCC_VERSION = $(shell $(GPUCC) --version | grep 'Cuda compilation tools' | cut -d' ' -f5 | cut -d, -f1)
 
   # Fast math
-  GPUFLAGS += -use_fast_math
+  ifeq ($(FASTMATH),0)
+    GPUFLAGS += -fmad=false
+  else
+    GPUFLAGS += -use_fast_math
+  endif
 
   # Extra build warnings
   GPUFLAGS += $(XCOMPILERFLAG) -Wunused-parameter
@@ -362,7 +378,11 @@ else ifeq ($(BACKEND),hip)
   GPUFLAGS += -target x86_64-linux-gnu -DHIP_PLATFORM=amd
 
   # Fast math (is -DHIP_FAST_MATH equivalent to -ffast-math?)
-  GPUFLAGS += -DHIP_FAST_MATH
+  ifeq ($(FASTMATH),0)
+    GPUFLAGS += -ffp-contract=off
+  else
+    GPUFLAGS += -DHIP_FAST_MATH
+  endif
 
   # Extra build warnings
   ###GPUFLAGS += $(XCOMPILERFLAG) -Wall $(XCOMPILERFLAG) -Wextra $(XCOMPILERFLAG) -Wshadow
@@ -740,7 +760,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is, so it matches DIRTAG above (there is no common prefix to strip)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)_fm$(FASTMATH)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
