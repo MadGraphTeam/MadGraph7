@@ -29,6 +29,7 @@ from pyamplicol.config import (
     EvaluatorConfig,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
     ModelConfig,
@@ -559,6 +560,9 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
             action="generate",
             color=ColorConfig(accuracy="nlc"),
             evaluator=EvaluatorConfig(execution_mode="compiled"),
+            generation=GenerationConfig(
+                relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+            ),
         )
     ).generate("g g > t t~ g", artifact)
 
@@ -571,6 +575,8 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
     # retains the proof recurrence as a separate execution lane. Exact
     # reflection/permutation equivalences remove duplicate current values from
     # both forms without changing the sector-local NLC result checked below.
+    # Optional numerical relation discovery is disabled: only structural reuse
+    # contributes to these plan counts.
     assert execution["dag_summary"] == {
         "amplitude_root_count": 6,
         "current_count": 35,
@@ -583,7 +589,7 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
         "amplitude_root_count": 192,
         "current_count": 250,
         "interaction_count": 624,
-        "interaction_evaluation_count": 412,
+        "interaction_evaluation_count": 420,
         "source_count": 10,
         "truncated": False,
     }
