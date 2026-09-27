@@ -164,7 +164,7 @@ namespace madmatrix
   // Accumulate a multichannel numerator contribution in place. In C++ each
   // event page is processed serially within the helicity loop, so a plain
   // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
-#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
+#define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += static_cast<fptype_sv>( VAL )
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
@@ -180,8 +180,8 @@ namespace madmatrix
                    const unsigned int* iflavorVec,     // input: indices of the flavor combinations
                    cxtype_amp_sv* allJamp_sv,          // output: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for this helicity
                    bool storeChannelWeights,
-                   fptype_amp* allNumerators,          // input/output: multichannel numerators[nevt], add helicity ihel
-                   fptype_amp* allDenominators,        // input/output: multichannel denominators[nevt], add helicity ihel
+                   fptype* allNumerators,           // input/output: multichannel numerators[nevt], add helicity ihel
+                   fptype* allDenominators,         // input/output: multichannel denominators[nevt], add helicity ihel
                    fptype_amp_sv* jamp2_sv,            // output: jamp2[nParity][ncolor_flow][neppV] for color choice (nullptr if disabled)
                    const int ievt00 )                  // input: first event number in current C++ event page
   {
@@ -245,7 +245,7 @@ namespace madmatrix
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
         COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
-      fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
+      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
 
@@ -276,7 +276,7 @@ namespace madmatrix
 
       // Numerators for the current event page (C++); denominators are no longer
       // accumulated here: they are derived as the sum of numerators later.
-      fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+      fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
       // Scalar iflavor for the current event page (constant across the SIMD vector)
       const unsigned int* iflavor_rec = F_ACCESS::ieventAccessRecordConst( iflavorVec, ievt0 );
       const uint_sv iflavor_sv = F_ACCESS::kernelAccessConst( iflavor_rec );
@@ -311,8 +311,8 @@ namespace madmatrix
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
                        const unsigned int* iflavorVec,   // input: index of the flavor combination
                        fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
-                       fptype_amp* allNumerators,        // output: multichannel numerators[nevt], running_sum_over_helicities
-                       fptype_amp* allDenominators,      // output: multichannel denominators[nevt], running_sum_over_helicities
+                       fptype* allNumerators,         // output: multichannel numerators[nevt], running_sum_over_helicities
+                       fptype* allDenominators,       // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
@@ -473,8 +473,8 @@ namespace madmatrix
             fptype* allMEs,                    // output: allMEs[nevt], |M|^2 final_avg_over_helicities
             int* allselhel,                    // output: helicity selection[nevt]
             int* allselcol,                    // output: helicity selection[nevt]
-            fptype_amp* allNumerators,         // tmp: multichannel numerators[nevt], running_sum_over_helicities
-            fptype_amp* allDenominators,       // tmp: multichannel denominators[nevt], running_sum_over_helicities
+            fptype* allNumerators,          // tmp: multichannel numerators[nevt], running_sum_over_helicities
+            fptype* allDenominators,        // tmp: multichannel denominators[nevt], running_sum_over_helicities
             unsigned int* allDiagramIdsOut,    // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
             const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
@@ -501,15 +501,15 @@ namespace madmatrix
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = fptype_sv{ 0 };
-      fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
-      fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
-      fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-      fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
+      fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+      fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+      fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
       for( int i = 0; i < ndiagrams; ++i )
       {
-        numerators_sv[i] = fptype_amp_sv{ 0 };
+        numerators_sv[i] = fptype_sv{ 0 };
       }
-      denominators_sv = fptype_amp_sv{ 0 };
+      denominators_sv = fptype_sv{ 0 };
     }
 
     // === PART 1 - HELICITY LOOP: CALCULATE WAVEFUNCTIONS ===
@@ -694,7 +694,7 @@ namespace madmatrix
               targetamp[icolC] = targetamp[icolC - 1];
 #ifdef MGONGPU_CPPSIMD
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV % neppV];
+              static_cast<fptype_sv>( jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )] )[ieppV % neppV];
 #else
             if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
               jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
@@ -741,11 +741,11 @@ namespace madmatrix
         // over the helicity loop), so there is no helicity dimension to sum here. The denominator is
         // just the sum of all numerators for this event page: derive it once and store it for the
         // downstream consumers (e.g. the multichannel amp2 output).
-        fptype_amp* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
-        fptype_amp* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
-        fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-        fptype_amp_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
-        denominators_sv = fptype_amp_sv{ 0 };
+        fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
+        fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
+        fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+        fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+        denominators_sv = fptype_sv{ 0 };
         for( int idiag = 0; idiag < ndiagrams; ++idiag )
           denominators_sv += numerators_sv[idiag];
         if( mulChannelWeight && allChannelIds != nullptr )

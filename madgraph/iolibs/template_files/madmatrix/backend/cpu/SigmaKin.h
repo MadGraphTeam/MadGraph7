@@ -26,8 +26,8 @@ namespace madmatrix
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
                        const unsigned int* iflavorVec,   // input: index of the flavor combination
                        fptype* allMEs,                   // output: allMEs[nevt], |M|^2 final_avg_over_helicities
-                       fptype_amp* allNumerators,         // output: multichannel numerators[nevt], running_sum_over_helicities
-                       fptype_amp* allDenominators,       // output: multichannel denominators[nevt], running_sum_over_helicities
+                       fptype* allNumerators,          // output: multichannel numerators[nevt], running_sum_over_helicities
+                       fptype* allDenominators,        // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array (C++ implementation)
                        const int nevt );                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
@@ -45,8 +45,8 @@ namespace madmatrix
             fptype* allMEs,                    // output: allMEs[nevt], |M|^2 final_avg_over_helicities
             int* allselhel,                    // output: helicity selection[nevt]
             int* allselcol,                    // output: helicity selection[nevt]
-            fptype_amp* allNumerators,          // tmp: multichannel numerators[nevt], running_sum_over_helicities
-            fptype_amp* allDenominators,        // tmp: multichannel denominators[nevt], running_sum_over_helicities
+            fptype* allNumerators,           // tmp: multichannel numerators[nevt], running_sum_over_helicities
+            fptype* allDenominators,         // tmp: multichannel denominators[nevt], running_sum_over_helicities
             unsigned int* allDiagramIdsOut,    // output: multichannel channelIds[nevt] (1 to #diagrams)
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
             const int nevt );                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)

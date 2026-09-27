@@ -57,8 +57,8 @@ namespace
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
-    fptype_amp* numerators,
-    fptype_amp* denominators,
+    fptype* numerators,
+    fptype* denominators,
     std::size_t count )
   {
     bool is_good_hel[ProcessData::ncomb];
@@ -75,8 +75,8 @@ namespace
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
-    fptype_amp* numerators,
-    fptype_amp* denominators,
+    fptype* numerators,
+    fptype* denominators,
     std::size_t count )
   {
     // static local initialization is called exactly once in a thread-safe way
@@ -338,8 +338,8 @@ extern "C"
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
-    HostBufferBase<fptype_amp, false> numerators( rounded_count * ProcessData::ndiagrams );
-    HostBufferBase<fptype_amp, false> denominators( rounded_count );
+    HostBufferBase<fptype, false> numerators( rounded_count * ProcessData::ndiagrams );
+    HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
     if ( sort_flavors ) {

@@ -13,6 +13,13 @@
 #include <cmath>
 #include <type_traits>
 
+// Double-word types cannot be read through volatile, nor need it: it works around fast-math (#736)
+#ifdef MGONGPU_DWTYPE
+#define MGONGPU_VOLATILE
+#else
+#define MGONGPU_VOLATILE volatile
+#endif
+
 //One namespace. Split ber backend.
 namespace madmatrix
 {
@@ -57,6 +64,10 @@ namespace madmatrix
   template<typename FP>
   inline bool
   fpsignbit( FP f ) { return std::signbit( f ); }
+
+  template<typename FP>
+  inline FP
+  fpabs( FP f ) { return std::abs( f ); }
 
   //==========================================================================
 

@@ -59,9 +59,9 @@ namespace madmatrix
   __device__ inline void
   SUMW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
   {
-    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
-    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
-    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
     for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
     for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] + wV3[i];
     V1.flv_index = V2.flv_index;
@@ -73,9 +73,9 @@ namespace madmatrix
   __device__ inline void
   SUBW_1( const ALOHAOBJ& V2, const ALOHAOBJ& V3, ALOHAOBJ& V1 )
   {
-    const cxtype_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
-    const cxtype_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
-    cxtype_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
+    const cxtype_amp_sv* wV2 = W_ACCESS::kernelAccessConst( V2.w );
+    const cxtype_amp_sv* wV3 = W_ACCESS::kernelAccessConst( V3.w );
+    cxtype_amp_sv* wV1 = W_ACCESS::kernelAccess( V1.w );
     for( int i = 0; i < ALOHAOBJ::np4; i++ ) V1.pvec[i] = V2.pvec[i];
     for( int i = 0; i < ALOHAOBJ::nw6; i++ ) wV1[i] = wV2[i] - wV3[i];
     V1.flv_index = V2.flv_index;

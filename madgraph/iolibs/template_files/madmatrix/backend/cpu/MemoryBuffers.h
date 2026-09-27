@@ -172,25 +172,25 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for numerators (of the multichannel single-diagram enhancement factors)
-  typedef BufferBase<fptype_amp> BufferNumerators;
+  typedef BufferBase<fptype> BufferNumerators;
 
   // The size (number of elements) per event in a memory buffer for numerators
   // (should be equal to the number of diagrams in the process)
   constexpr size_t sizePerEventNumerators = ProcessData::ndiagrams;
 
   // A class encapsulating a C++ host buffer for numerators
-  typedef HostBuffer<fptype_amp, sizePerEventNumerators, HostBufferALIGNED> HostBufferNumerators;
+  typedef HostBuffer<fptype, sizePerEventNumerators, HostBufferALIGNED> HostBufferNumerators;
 
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for denominators (of the multichannel single-diagram enhancement factors)
-  typedef BufferBase<fptype_amp> BufferDenominators;
+  typedef BufferBase<fptype> BufferDenominators;
 
   // The size (number of elements) per event in a memory buffer for denominators
   constexpr size_t sizePerEventDenominators = 1;
 
   // A class encapsulating a C++ host buffer for denominators
-  typedef HostBuffer<fptype_amp, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
+  typedef HostBuffer<fptype, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
 
   //--------------------------------------------------------------------------
 
