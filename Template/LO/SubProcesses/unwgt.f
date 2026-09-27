@@ -328,6 +328,12 @@ c      save neventswritten
       integer ngroup
       common/to_group/ngroup
 
+c     maximum weight of this unweighting, for the refine last iteration (dsample)
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_it
+
 c
 c     external
 c
@@ -341,7 +347,7 @@ C-----
 c
 c     First scale all of the events to the total cross section
 c
-
+      last_uref = 0d0
       if (nw .le. 0) return
       if (scale_to_xsec) then
          call sample_result(xsecabs,xsec,xerr,itmin)
@@ -368,6 +374,13 @@ c
       th_maxwgt = dabs(swgt(i))
       if ( force_max_wgt.lt.0)then
          target_wgt = dabs(swgt(i))
+c        the events are in units of twgt*fudge (fudge=10 in unwgt): the maximum
+c        weight in units of twgt, i.e. of |wgt|/twgt of a phase-space point
+         last_uref = target_wgt*10d0
+c        the refine last iteration is unweighted against the maximum weight its
+c        stop was counted with: a large weight it contains stays an overweight
+c        event and does not set the maximum for all the other events of the job
+         if (last_it .and. last_ufix .gt. 0d0) target_wgt = last_ufix/10d0
       else if (.not.scale_to_xsec) then
          target_wgt = force_max_wgt / xscale
       else

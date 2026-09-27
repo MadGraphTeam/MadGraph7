@@ -1613,6 +1613,8 @@ c     &        dble(xbin_max-xbin_min),bwjac
       cur_it = i
 c     Use the last 3 iterations or cur_it-1 if cur_it-1 >= itmin
       itsum = min(max(itmin,cur_it-1),3)
+c     (the refine can ask for this after itmin-1 iterations)
+      itsum = min(itsum,cur_it-1)
       i = cur_it - itsum
       tmean = 0d0
       trmean = 0d0
@@ -1851,6 +1853,20 @@ c      common /to_fx/   fx
       integer            lastbin(maxdim)
       common /to_lastbin/lastbin
 
+c     Refine: last iteration decided before it is run, stopped at the requested
+c     luminosity. last_uref is the per-job unweighting maximum weight of the
+c     latest store_events, in units of twgt; last_ufix the one of the iteration
+c     that took the decision, used to count (last_lumi) and to unweight the
+c     events of the last iteration.
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_it
+      logical last_stop
+      integer last_size
+      double precision last_cap
+      parameter (last_cap=8d0) ! largest last iteration, in units of the deciding one
+
       data prb/maxprb*1d0/
       data fprb/maxfprb*1d0/
       data jpnt,jplace /1,1/
@@ -1861,6 +1877,10 @@ c-----
 
       if (first_time) then
          first_time = .false.
+         last_it = .false.
+         last_ufix = 0d0
+         last_lumi = 0d0
+         last_goal = 0d0
          twgt_it = 0d0
          twgt1 = 0d0       !
          iavg = 0         !Vars for averging to increase err estimate
@@ -1930,6 +1950,10 @@ c        Add the current point to the DiscreteSamplerGrid
             non_zero = non_zero + 1
             mean = mean + dabs(wgt)
             rmean = rmean + wgt
+c           expected number of unweighted events of this point: a large weight
+c           counts at most once, so it cannot end the last iteration early
+            if (last_it .and. twgt .gt. 0d0) last_lumi = last_lumi
+     &           + min(1d0, dabs(wgt)/twgt/last_ufix)
             if (.true. ) then
 c               psect(ipole)=psect(ipole)+wgt*wgt/alpha(ipole)  !Ohl 
 c               psect(ipole)=1d0                 !Not doing multi_config
@@ -2010,7 +2034,7 @@ c         write(*,*) 'allow_update', allow_update, 'nb_pass_cuts', nb_pass_cuts,
         endif
         endif
          if (allow_update.and.(non_zero .ge. events .or. (kn .gt. 200*events .and.
-     $        non_zero .gt. 5))) then
+     $        non_zero .gt. 5) .or. (last_it .and. last_lumi .ge. last_goal))) then
 
 c          # special mode where we store information to combine them
            if(use_cut.eq.-2)then
@@ -2394,7 +2418,10 @@ c 122              close(22)
 c
 c New check to see if we need to keep integrating this one or not.
 c
-            if (cur_it .gt. itmin .and. accur .lt. 0d0) then  !Check luminocity
+c     (from iteration itmin-1 on: the last iteration can then be iteration itmin)
+            if ((cur_it .gt. itmin .or. (cur_it .eq. itmin .and.
+     &           cur_it .gt. 2 .and. use_cut .ne. -2)) .and.
+     &           accur .lt. 0d0) then  !Check luminocity
 c
 c             Lets get the actual number instead 
 c             tjs 5/22/2007
@@ -2415,6 +2442,7 @@ c     Calculate chi2 for last few iterations (ja 03/11)
                tsigmat = 0d0
 c     Use the last 3 iterations or cur_it-1 if cur_it-1 >= itmin but < 3
                itsum = min(max(itmin,cur_it-1),3)
+               itsum = min(itsum,cur_it-1)
                do i=cur_it-itsum,cur_it-1
                   tmeant = tmeant+xmean(i)*xmean(i)**2/xsigma(i)**2
                   tsigmat = tsigmat + xmean(i)**2/ xsigma(i)**2
@@ -2427,8 +2455,40 @@ c     Use the last 3 iterations or cur_it-1 if cur_it-1 >= itmin but < 3
                chi2tmp = chi2tmp/2d0  !Since using only last 3, n-1=2
 c     JA 8/17/2011 Redefined -accur as lumi, so nevents is -accur*cross section
                write(*,*) "Checking number of events",-accur*tmeant,nun,' chi2: ',chi2tmp
-c     Check nun and chi2 (ja 03/11)
-               if (nun .gt. -accur*tmeant .and. chi2tmp .lt. 10d0)then   
+c     The iteration whose events are kept is decided before it is run.
+c     Stopping after the first iteration that reaches the request (as done
+c     before) keeps an iteration only if its own weights are small: one that
+c     catches a rare large weight has a larger unweighting maximum, hence
+c     fewer events, and was replaced by the next one, which biased the tails
+c     of the distributions low. Instead, once an iteration shows that the
+c     request is within reach (last_cap times its points at most), the next
+c     iteration is the last one: it runs on the grid adapted from this one
+c     (no further grid update happens) until its number of unweighted events
+c     at this iteration's maximum weight reaches the request (plus three
+c     standard deviations, so that the job does not end short); its events
+c     are unweighted against that same maximum weight and kept whatever they
+c     contain.
+               last_stop = last_it
+               if (use_cut .ne. -2 .and. .not. last_it .and. cur_it .gt. 2
+     &              .and. nun .gt. 0 .and.
+     &              last_uref .gt. 0d0 .and.
+     &              -accur*tmeant .le. last_cap*dble(nun)) then
+                  last_it = .true.
+                  last_ufix = last_uref
+                  last_lumi = 0d0
+                  last_goal = -accur*tmeant + 3d0*sqrt(-accur*tmeant)
+c     room for up to last_cap times the points of this iteration (events was
+c     already doubled for the next one): redo twgt, vol and knt for that size
+                  last_size = int(last_cap*dble(events/2))
+                  twgt = twgt*dble(events)/dble(last_size)
+                  events = last_size
+                  vol = 1d0/dble(events*itm)
+                  knt = events
+                  write(*,*) 'Next iteration is the last one: stop it at ',
+     &                 last_goal, ' unweighted events'
+               endif
+               if (last_stop .or. (use_cut .eq. -2 .and.
+     &              nun .gt. -accur*tmeant .and. chi2tmp .lt. 10d0)) then
                   tmean = tmean / tsigma
                   if (cur_it .gt. 2) then
                      chi2 = (chi2/tmean/tmean-tsigma)/dble(cur_it-2)
