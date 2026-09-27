@@ -22,7 +22,13 @@ import pytest
 
 import pyamplicol.generation.service as service_module
 from pyamplicol.api import ProcessRequest
-from pyamplicol.config import ColorConfig, EvaluatorConfig, RunConfig
+from pyamplicol.config import (
+    ColorConfig,
+    EvaluatorConfig,
+    GenerationConfig,
+    GenerationRelationDiscoveryConfig,
+    RunConfig,
+)
 from pyamplicol.generation.eager_lowering import (
     EagerExecutionTables,
     PreparedCatalogEagerKernelResolver,
@@ -106,6 +112,13 @@ def _build_case(
     backend = service_module.GenerationBackend(
         RunConfig(
             action="generate",
+            # Fix the historical v2 optimization policy independently of
+            # changing production defaults for numerical current discovery.
+            generation=GenerationConfig(
+                relation_discovery=GenerationRelationDiscoveryConfig(
+                    mode="certified-reuse"
+                )
+            ),
             color=ColorConfig(
                 accuracy=accuracy,
                 lc_flow_layout=lc_flow_layout,
