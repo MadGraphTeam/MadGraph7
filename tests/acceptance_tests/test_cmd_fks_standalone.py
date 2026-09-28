@@ -120,6 +120,10 @@ PROCESSES = [
     {'id': 'uux_wpwm',
      'process': 'u u~ > w+ w- [QED]',
      'model': 'loop_sm',
+     # grouped [QED] virtuals with closed light-quark loops are refused
+     # (flavour-dependent W couplings in a merged loop), so this process is
+     # generated ungrouped, like the other EW tests
+     'grouping': False,
      # the soft-photon limit test (test_soft_col_limits) fails for this
      # process in a plain aMC@NLO output too (identical failures), so it is
      # kept out of the '--limits' check until that is understood
@@ -137,6 +141,11 @@ PROCESSES = [
              (3, 4): -0.0005260715219174538,
              (4, 4): 0.0002630357609587269}},
 ]
+
+
+# processes generated with 'set apply_flavor_grouping False'
+UNGROUPED_PROCESSES = set(spec['process'] for spec in PROCESSES
+                          if not spec.get('grouping', True))
 
 
 class TestFKSStandalone(unittest.TestCase):
@@ -171,9 +180,14 @@ class TestFKSStandalone(unittest.TestCase):
         cmd = self._generate_fks_sa(process, model, path, limits=limits)
         self._run(cmd, 'launch %s -f' % path)
 
+    def _set_grouping(self, cmd, process):
+        self._run(cmd, 'set apply_flavor_grouping %s --no_save' %
+                  (process not in UNGROUPED_PROCESSES))
+
     def _generate_fks_sa(self, process, model, path, limits=False):
         """Generate FKS standalone source without compiling or launching it."""
         cmd = self._new_cmd()
+        self._set_grouping(cmd, process)
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
         self._run(cmd, 'output standalone_fortran --fks %s%s -f'
@@ -183,6 +197,7 @@ class TestFKSStandalone(unittest.TestCase):
     def _output_amcatnlo(self, process, model, path):
         """generate + plain (full) aMC@NLO output of the same process."""
         cmd = self._new_cmd()
+        self._set_grouping(cmd, process)
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
         self._run(cmd, 'output %s -f' % path)
