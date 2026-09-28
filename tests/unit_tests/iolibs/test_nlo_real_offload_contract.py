@@ -223,6 +223,52 @@ class TestNLORealOffloadContract(unittest.TestCase):
             run_card.set('nlo_real_backend', 'no_such_backend',
                          raiseerror=True)
 
+    def test_nlo_real_backend_has_no_runtime_override(self):
+        """The generated wrapper takes the backend only from the compiled
+        run-card value, never from the environment of the job."""
+
+        path = os.path.join(MG5DIR, 'madmatrix', 'output.py')
+        with open(path) as stream:
+            source = stream.read()
+        self.assertNotIn('MG7_NLO_REAL_BACKEND', source)
+        self.assertIn("include 'nlo_real_backend.inc'", source)
+        self.assertIn('backend = default_backend', source)
+
+    def test_fks_standalone_launch_uses_run_card_backend(self):
+        """'launch' of an 'output standalone_fortran --fks' made with
+        --me_exporter=mg7 compiles the run-card backend, like aMC@NLO."""
+
+        from madgraph.interface import launch_ext_program
+
+        root = tempfile.mkdtemp(prefix='nlo-fkssa-backend-')
+        try:
+            for path in ('Cards', 'Source', 'SubProcesses/P0_test'):
+                os.makedirs(os.path.join(root, path))
+            make_opts = os.path.join(root, 'Source', 'make_opts')
+            with open(make_opts, 'w') as stream:
+                stream.write('DEFAULT_F_COMPILER=gfortran\n'
+                             '#end_of_make_opts_variables\n\n'
+                             'FC=$(DEFAULT_F_COMPILER)\nlibext=a\n')
+            launcher = launch_ext_program.FKSSALauncher
+
+            # Ordinary FKS standalone output: nothing is written.
+            launcher._set_nlo_real_backend(root)
+            with open(make_opts) as stream:
+                self.assertNotIn('NLO_REAL_RUNTIME_BACKEND', stream.read())
+
+            open(os.path.join(root, 'SubProcesses', 'P0_test',
+                              'nlo_real_offload.mk'), 'w').close()
+            run_card = banner.RunCardNLO()
+            run_card.set('nlo_real_backend', 'avx512y', user=True)
+            run_card.write(os.path.join(root, 'Cards', 'run_card.dat'))
+            launcher._set_nlo_real_backend(root)
+            with open(make_opts) as stream:
+                content = stream.read()
+            self.assertIn('NLO_REAL_RUNTIME_BACKEND=avx512y', content)
+            self.assertIn('FC=$(DEFAULT_F_COMPILER)', content)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_nlo_event_jobs_honor_run_card_vector_size(self):
         """The run layer must not force event-generation jobs to one lane."""
 

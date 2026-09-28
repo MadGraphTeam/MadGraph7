@@ -33,10 +33,13 @@ Libraries for several backends can coexist in one output. For example, in
   avx512y = nlo_real_backend
 ```
 
-For diagnostics, the environment variable `MG7_NLO_REAL_BACKEND` overrides the
-compiled backend at run time (the values `fortran`, `off`, and `none` select
-Fortran). A manual build can set `NLO_REAL_RUNTIME_BACKEND` (and optionally
-`NLO_REAL_BACKEND` for the libraries built) on the `make` command line.
+There is no run-time override: an executable always uses the backend it was
+compiled with. To change the backend, edit the run card and relaunch (the run
+interface recompiles). `launch` of an `output standalone_fortran --fks --limits`
+output made with `--me_exporter=mg7` reads the same run-card setting for its
+limit test. A manual build can set `NLO_REAL_RUNTIME_BACKEND` (and
+optionally `NLO_REAL_BACKEND` for the libraries built) on the `make` command
+line.
 
 `MG7_NLO_REAL_PARAM_CARD` and `MG7_NLO_REAL_LIBRARY_DIR` override the default
 locations. Otherwise they are resolved relative to `libnlo_real_bridge.so`, which

@@ -638,6 +638,7 @@ class FKSSALauncher(ExtLauncher):
     def launch_program(self):
         """compile and run check_fks in each born subprocess directory."""
         me_dir = self.running_dir
+        self._set_nlo_real_backend(me_dir)
         logger.info(
             'Compiling Source libraries for the FKS standalone check...')
         misc.compile(cwd=pjoin(me_dir, 'Source'))
@@ -689,6 +690,25 @@ class FKSSALauncher(ExtLauncher):
             if failed:
                 raise MadGraph5Error('Soft/collinear limit test FAILED in %s '
                     '(see test_ME.log there)' % ', '.join(failed))
+
+    @staticmethod
+    def _set_nlo_real_backend(me_dir):
+        """For an output made with --me_exporter=mg7, compile the run_card
+        nlo_real_backend into the real-emission wrapper, as the aMC@NLO run
+        interface does. The run_card is the only source of the backend."""
+        if not misc.glob(pjoin(me_dir, 'SubProcesses', 'P*',
+                               'nlo_real_offload.mk')):
+            return
+        run_card_path = pjoin(me_dir, 'Cards', 'run_card.dat')
+        backend = 'fortran'
+        if os.path.isfile(run_card_path):
+            backend = banner_mod.RunCardNLO(run_card_path)['nlo_real_backend']
+        import madgraph.interface.common_run_interface as common_run_interface
+        common_run_interface.CommonRunCmd.update_make_opts_full(
+            pjoin(me_dir, 'Source', 'make_opts'),
+            {'NLO_REAL_RUNTIME_BACKEND': backend})
+        logger.info('NLO real-emission backend (run_card nlo_real_backend): '
+                    '%s' % backend)
 
     def _run_limits(self, born_path):
         """build and run test_soft_col_limits; True if no check FAILED."""
