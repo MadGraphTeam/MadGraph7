@@ -1857,12 +1857,17 @@ c     Refine: last iteration decided before it is run, stopped at the requested
 c     luminosity. last_uref is the per-job unweighting maximum weight of the
 c     latest store_events, in units of twgt; last_ufix the one of the iteration
 c     that took the decision, used to count (last_lumi) and to unweight the
-c     events of the last iteration.
+c     events of the last iteration; last_xnorm the mean of the last iteration,
+c     to which its events are normalised.
       logical last_it
-      double precision last_uref, last_ufix, last_lumi, last_goal
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
-     &     last_it
-      logical last_stop
+     &     last_xnorm, last_it
+c     last_on: this job adapts its grid from scratch (normal refine); jobs that
+c     start from a stored grid (gridpack, MadSpin decays) keep the old stop rule
+      logical last_stop, last_on
+      integer last_min
+      save last_on, last_min
       integer last_size
       double precision last_cap
       parameter (last_cap=8d0) ! largest last iteration, in units of the deciding one
@@ -1878,7 +1883,9 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
+         last_on = use_cut .ne. 0 .and. use_cut .ne. -2
          last_ufix = 0d0
+         last_xnorm = 0d0
          last_lumi = 0d0
          last_goal = 0d0
          twgt_it = 0d0
@@ -2034,7 +2041,8 @@ c         write(*,*) 'allow_update', allow_update, 'nb_pass_cuts', nb_pass_cuts,
         endif
         endif
          if (allow_update.and.(non_zero .ge. events .or. (kn .gt. 200*events .and.
-     $        non_zero .gt. 5) .or. (last_it .and. last_lumi .ge. last_goal))) then
+     $        non_zero .gt. 5) .or. (last_it .and. last_lumi .ge. last_goal
+     $        .and. non_zero .ge. last_min))) then
 
 c          # special mode where we store information to combine them
            if(use_cut.eq.-2)then
@@ -2420,7 +2428,7 @@ c New check to see if we need to keep integrating this one or not.
 c
 c     (from iteration itmin-1 on: the last iteration can then be iteration itmin)
             if ((cur_it .gt. itmin .or. (cur_it .eq. itmin .and.
-     &           cur_it .gt. 2 .and. use_cut .ne. -2)) .and.
+     &           cur_it .gt. 2 .and. last_on)) .and.
      &           accur .lt. 0d0) then  !Check luminocity
 c
 c             Lets get the actual number instead 
@@ -2428,6 +2436,10 @@ c             tjs 5/22/2007
 c
 c               nun = n_unwgted()
 c               write(*,*) 'Estimated events',nun, accur
+c     the events of a refine last iteration are normalised to its own mean
+c     (the job result combines several iterations and would rescale them all
+c     when that one contains a large weight)
+               if (last_it) last_xnorm = xmean(cur_it-1)
                if (use_cut.eq.-2) then
                   call store_events(force_max_wgt, .False.)
                else
@@ -2467,9 +2479,10 @@ c     (no further grid update happens) until its number of unweighted events
 c     at this iteration's maximum weight reaches the request (plus three
 c     standard deviations, so that the job does not end short); its events
 c     are unweighted against that same maximum weight and kept whatever they
-c     contain.
+c     contain. Jobs that start from a stored grid (last_on false: gridpack,
+c     MadSpin decays) keep the previous rule.
                last_stop = last_it
-               if (use_cut .ne. -2 .and. .not. last_it .and. cur_it .gt. 2
+               if (last_on .and. .not. last_it .and. cur_it .gt. 2
      &              .and. nun .gt. 0 .and.
      &              last_uref .gt. 0d0 .and.
      &              -accur*tmeant .le. last_cap*dble(nun)) then
@@ -2478,7 +2491,10 @@ c     contain.
                   last_lumi = 0d0
                   last_goal = -accur*tmeant + 3d0*sqrt(-accur*tmeant)
 c     room for up to last_cap times the points of this iteration (events was
-c     already doubled for the next one): redo twgt, vol and knt for that size
+c     already doubled for the next one): redo twgt, vol and knt for that size.
+c     It runs at least the usual (doubled) number of points, so that its
+c     cross-section is never less precise than before
+                  last_min = events
                   last_size = int(last_cap*dble(events/2))
                   twgt = twgt*dble(events)/dble(last_size)
                   events = last_size
@@ -2487,7 +2503,7 @@ c     already doubled for the next one): redo twgt, vol and knt for that size
                   write(*,*) 'Next iteration is the last one: stop it at ',
      &                 last_goal, ' unweighted events'
                endif
-               if (last_stop .or. (use_cut .eq. -2 .and.
+               if (last_stop .or. (.not. last_on .and.
      &              nun .gt. -accur*tmeant .and. chi2tmp .lt. 10d0)) then
                   tmean = tmean / tsigma
                   if (cur_it .gt. 2) then

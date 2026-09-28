@@ -223,6 +223,11 @@ C
       logical               zooming
       common /to_zoomchoice/zooming
 
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
+
 c
 c     External
 c
@@ -238,6 +243,10 @@ C-----
 C  BEGIN CODE
 C-----
       local_twgt = max(twgt_it, twgt)
+c     refine last iteration (dsample): a large weight must not coarsen the events
+c     stored after it beyond the maximum weight they are unweighted against
+      if (last_it .and. last_ufix .gt. 0d0)
+     &     local_twgt = min(local_twgt, twgt*last_ufix/fudge)
 c      write(*,*) "twgt", twgt, twgt_it, local_twgt
       if (local_twgt .ge. 0d0) then
          p(:,:) = px(:,:)
@@ -330,9 +339,9 @@ c      save neventswritten
 
 c     maximum weight of this unweighting, for the refine last iteration (dsample)
       logical last_it
-      double precision last_uref, last_ufix, last_lumi, last_goal
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
-     &     last_it
+     &     last_xnorm, last_it
 
 c
 c     external
@@ -352,6 +361,8 @@ c
       if (scale_to_xsec) then
          call sample_result(xsecabs,xsec,xerr,itmin)
          if (xsecabs .le. 0) return !Fix by TS 12/3/2010
+c        refine last iteration: its events are normalised to its own mean
+         if (last_it .and. last_xnorm .gt. 0d0) xsecabs = last_xnorm
       else
          xscale = nw*twgt
       endif
@@ -374,9 +385,12 @@ c
       th_maxwgt = dabs(swgt(i))
       if ( force_max_wgt.lt.0)then
          target_wgt = dabs(swgt(i))
-c        the events are in units of twgt*fudge (fudge=10 in unwgt): the maximum
-c        weight in units of twgt, i.e. of |wgt|/twgt of a phase-space point
-         last_uref = target_wgt*10d0
+c        maximum weight for a refine last iteration decided now: the 99% quantile
+c        of the event weights, a count quantile that one large weight cannot move
+c        (unlike the truncation above, whose maximum a single large weight sets).
+c        The events are in units of twgt*fudge (fudge=10 in unwgt): in units of
+c        twgt, i.e. of |wgt|/twgt of a phase-space point
+         last_uref = dabs(swgt(max(1,min(nw,int(0.99d0*nw)))))*10d0
 c        the refine last iteration is unweighted against the maximum weight its
 c        stop was counted with: a large weight it contains stays an overweight
 c        event and does not set the maximum for all the other events of the job
