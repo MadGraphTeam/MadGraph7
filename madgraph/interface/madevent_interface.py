@@ -4056,7 +4056,8 @@ Beware that this can be dangerous for local multicore runs.""")
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          nb_output=self.run_card['nb_unweight_output'])
+                          nb_output=self.run_card['nb_unweight_output'],
+                          keep_overweight_weight=True)
             self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                              "unweighted_events.lhe"), start)
 
@@ -4099,7 +4100,8 @@ Beware that this can be dangerous for local multicore runs.""")
                                 log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                                 proc_charac=self.proc_characteristic,
                                 keep_overshoot=self.run_card['allow_overshoot_events'],
-                                nb_output=self.run_card['nb_unweight_output'])
+                                nb_output=self.run_card['nb_unweight_output'],
+                                keep_overweight_weight=True)
                 self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                                  "unweighted_events.lhe"), start)
 
@@ -4174,7 +4176,8 @@ Beware that this can be dangerous for local multicore runs.""")
         nb_event = max(min(abs(1.01*self.run_card['nevents']*sum_axsec/cross),self.run_card['nevents']), 10)
         get_wgt = lambda event: event.wgt   
         AllEvent.unweight(output,
-                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event)  
+                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event,
+                          keep_overweight_weight=True)  
         return output, sum_xsec, math.sqrt(sum(x**2 for x in sum_xerru)), sum_axsec
 
     ############################################################################ 
