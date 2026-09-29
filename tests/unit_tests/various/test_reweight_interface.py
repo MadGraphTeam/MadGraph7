@@ -15,6 +15,10 @@
 """Unit tests for the reweight interface helpers."""
 from __future__ import absolute_import
 
+import itertools
+import os
+import shutil
+import tempfile
 import unittest
 
 import madgraph.interface.reweight_interface as rwgt_interface
@@ -109,6 +113,69 @@ class TestPdgForMeCall(unittest.TestCase):
         self.obj.merged_particles = self.MERGED
         out = self.call(((21, -81), (24, -81)), [21, -1, 24, -2], model=None)
         self.assertEqual(out, [21, -1, 24, -2])
+
+
+class FakeCrossingModule(object):
+    """The two per-matrix-element f2py entry points build_cross_resolve walks,
+    for the base g u > e+ e- u (prefix m0_, one flavor) and its crossing 30,
+    which swaps slots 1 and 5: u~ u > e+ e- g."""
+
+    def py_m0_get_flavor_layout(self):
+        return (1, 5, 36)        # NFLAV, NEXTERNAL, NCROSS
+
+    def py_m0_get_pdg_for_flavor(self, flav_idx):
+        return {1: [21, 2, -11, 11, 2],
+                31: [-2, 2, -11, 11, 21]}.get(flav_idx, [0] * 5)
+
+
+class TestFoldedCrossingHelicity(unittest.TestCase):
+    """A folded crossed event is evaluated with USERHEL = a row of the BASE
+    helicity table, and the generated SMATRIX applies the crossing as tau
+    (APPLY_CROSSING_TABLE): the momenta move into the base slots, crossed leg
+    perm[k] landing in base slot k, but the NHEL slots stay where they are. The
+    row an event needs has therefore entry k = the event's helicity of crossed
+    leg perm[k]. The base dictionary read positionally in the crossed leg order
+    (right while the table was permuted, sigma) picked another configuration:
+    for p p > e+ e- j, with q q~ > e+ e- g folded onto g q > e+ e- q, the third
+    event of a madevent sample came out exactly 0 ("Invalid matrix element")."""
+
+    def setUp(self):
+        self.obj = rwgt_interface.ReweightInterface.__new__(
+            rwgt_interface.ReweightInterface)
+        # __del__ calls do_quit; keep it a no-op on this bare instance
+        self.obj.exitted = True
+        self.obj.is_decay = False
+        self.obj.keep_ordering = False
+        self.path = tempfile.mkdtemp(prefix='rwgt_crossing')
+        with open(os.path.join(self.path, 'crossed_flavors.dat'), 'w') as f:
+            f.write('M0_ 1 30\n')
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+
+    def test_crossed_helicity_row_follows_the_crossing(self):
+        base = dict((row, i + 1) for i, row in
+                    enumerate(itertools.product([-1, 1], repeat=5)))
+        cross_data = {}
+        self.obj.build_cross_resolve(
+            FakeCrossingModule(), ['m0_'], [[21, 2, -11, 11, 2]],
+            {'m0_': base}, self.path, False, cross_data, None)
+
+        # the crossed subprocess is reached, in its own leg order
+        tag = ((-2, 2), (-11, 11, 21))
+        self.assertEqual(list(cross_data), [tag])
+        [(order, pdir, hel, procindex, flav_idx, phys)] = cross_data[tag]
+        self.assertEqual(order, ([-2, 2], [-11, 11, 21]))
+        self.assertEqual((procindex, flav_idx), (1, 31))
+
+        # u~(h1) u(h2) e+(h3) e-(h4) g(h5): the gluon sits in base slot 1 and
+        # the u~ in base slot 5, so the row is (h5, h2, h3, h4, h1)
+        self.assertEqual(len(hel), 32)
+        for h in itertools.product([-1, 1], repeat=5):
+            self.assertEqual(hel[h], base[(h[4], h[1], h[2], h[3], h[0])])
+        # the event of the report: the old keying gave the row whose leg 1
+        # and 5 helicities are swapped, which vanishes for this process
+        self.assertNotEqual(hel[(1, -1, 1, -1, -1)], base[(1, -1, 1, -1, -1)])
 
 
 if __name__ == '__main__':

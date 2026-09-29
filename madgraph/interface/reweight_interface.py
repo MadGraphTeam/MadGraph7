@@ -2686,11 +2686,16 @@ class ReweightInterface(extended_cmd.Cmd):
         `procindex` is the 1-based get_prefix slot the crossing-aware
         SMATRIXHEL_IDX dispatch expects.
 
-        The helicity dictionary is the base one, unchanged: SMATRIX applies the
-        crossing to its whole NHEL table before the helicity loop, which makes
-        the helicity configuration selected by row r the base row r read
-        positionally in the crossed leg order (verified against independently
-        generated crossed subprocesses, per helicity)."""
+        The helicity dictionary is the base one RE-KEYED through the crossing.
+        SMATRIX applies the crossing as tau (APPLY_CROSSING_TABLE): it moves the
+        momenta into the base slots, crossed leg perm[k] landing in base slot k,
+        but leaves the NHEL slots where they are, so USERHEL=r evaluates the
+        particle in crossed leg perm[k] at the helicity of base row r in slot k.
+        An event with helicities h (crossed leg order) therefore needs the row
+        whose entry k is h[perm[k]]. Keying on the base rows read positionally
+        in the crossed leg order -- right while the table was permuted along
+        with the momenta (sigma) -- asks for a different helicity configuration
+        of the crossed process, often an exactly vanishing one."""
         codes = self.get_recorded_crossings(pdir)
         if not codes:
             return
@@ -2718,6 +2723,14 @@ class ReweightInterface(extended_cmd.Cmd):
                 perm, ic, valid = get_perm(cross, nexternal)
                 if not valid:
                     continue
+                # tau: base slot k is evaluated at row entry k and holds
+                # crossed leg perm[k] (see the docstring).
+                hel = {}
+                for row, ihel in hel_dict.get(prefix, {}).items():
+                    xrow = [0] * nexternal
+                    for k in range(nexternal):
+                        xrow[perm[k]] = row[k]
+                    hel[tuple(xrow)] = ihel
                 for flav in range(1, nflav+1):
                     crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
                     if not any(crossed):
@@ -2742,7 +2755,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         if is_virt:
                             tag = (tag, 'V')
                         cross_data.setdefault(tag, []).append(
-                            (order, pdir, hel_dict.get(prefix, {}),
+                            (order, pdir, hel,
                              procindex, cross*nflav + flav, phys))
 
     def tag_from_pdgs(self, pdgs):
