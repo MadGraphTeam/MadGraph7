@@ -9335,15 +9335,36 @@ C       so this also stays correct for split-order processes.
         check_sa demo, the reweight's folded-crossing lookup) intersect the two
         here.
 
-        `matches` is a list of ``(pdg_signature, cross)`` in the recorded order,
-        matched LABEL-AWARE: a recorded process may carry merged multiparticle
-        labels (_quark = 81) and so may the reachable signature (a leg that does
-        not vary with the flavor index keeps its label), so a label matches any
-        member flavor of the same sign, and two labels match when equal. That is
+        `matches` holds, in the recorded order, the list of every
+        ``(pdg_signature, cross)`` that instantiates one recorded process, its
+        first entry being the one the check_sa demo shows. It is a list because
+        one code does not always cover a merged record: with flavor grouping,
+        _quark _anti_quark > _quark _anti_quark off Q Q > Q Q is u c~ > u c~
+        through one code but u u~ > c c~ only through another, and every such
+        code is a requested crossing. The signatures are matched LABEL-AWARE: a
+        recorded process may carry merged multiparticle labels (_quark = 81)
+        and so may the reachable signature (a leg that does not vary with the
+        flavor index keeps its label), so a label matches any member flavor of
+        the same sign, and two labels match when equal. That is
         also why a recorded process is matched as a whole rather than leg by leg:
         the reachable set already encodes the correct flavor pairings, which
         resolving each merged leg on its own would not (it would fabricate e.g. a
         W coupling two same-flavor quarks). Both beam orientations are tried.
+
+        A crossing only swaps legs, so it can reach a recorded process with its
+        FINAL legs in another order than the one it was recorded in: for
+        g g > w+ q q~ the recorded g q > w+ g q is reached by the swap of the
+        second beam and the q~ slot, as g u > w+ d g. The final legs are
+        therefore matched as a multiset (the same physical process; consumers
+        take the leg order from the signature), after the matches in the
+        recorded order, so that the entry the demo shows stays the leg-by-leg
+        one wherever that exists. Matching them only positionally, and keeping
+        one code per record, lost those subprocesses: the record came out
+        incomplete, or complete but short of a code, and the reweight, reading
+        the codes back from crossed_flavors.dat, could not reach the g q
+        channel of any V j j or j j generation, nor the q q~ > q' q~' one of
+        j j.
+
         `complete` is False when a recorded process has NO reachable
         instantiation, so a caller can fall back rather than hide a real
         crossing."""
@@ -9366,6 +9387,35 @@ C       so this also stays correct for split-order processes.
                 return False
             return (a in merged and b in merged[a]) or \
                    (b in merged and a in merged[b])
+
+        def final_legs_match(want, have):
+            # Can the final legs `have` be put in one-to-one correspondence with
+            # the recorded `want`? leg_matches is no equivalence (a label
+            # matches two members that do not match each other), so a greedy
+            # pick can fail where an assignment exists: augmenting paths.
+            owner = [None] * len(have)
+
+            def assign(i, seen):
+                for j, pdg in enumerate(have):
+                    if j in seen or not leg_matches(want[i], pdg):
+                        continue
+                    seen.add(j)
+                    if owner[j] is None or assign(owner[j], seen):
+                        owner[j] = i
+                        return True
+                return False
+            return len(want) == len(have) and \
+                all(assign(i, set()) for i in range(len(want)))
+
+        def in_order(orient, r):
+            return len(r) == len(orient) and \
+                all(leg_matches(L, P) for L, P in zip(orient, r))
+
+        def any_final_order(orient, r):
+            return len(r) == len(orient) and \
+                all(leg_matches(L, P) for L, P in
+                    zip(orient[:ninitial], r[:ninitial])) and \
+                final_legs_match(orient[ninitial:], r[ninitial:])
 
         ninitial = matrix_element.get_nexternal_ninitial()[1]
         # signatures the runtime can actually reach (applicable crossings)
@@ -9392,24 +9442,21 @@ C       so this also stays correct for split-order processes.
             orients = [legs]
             if ninitial == 2:                 # try the beam-swapped orientation
                 orients.append([legs[1], legs[0]] + legs[2:])
-            hit = None
-            for orient in orients:
-                for (r, cross) in reachable:
-                    if len(r) == len(orient) and \
-                       all(leg_matches(L, P) for L, P in zip(orient, r)):
-                        hit = (r, cross)
-                        break
-                if hit is not None:
-                    break
-            if hit is None:
+            hits = []
+            for match in (in_order, any_final_order):
+                for orient in orients:
+                    for hit in reachable:
+                        if hit not in hits and match(orient, hit[0]):
+                            hits.append(hit)
+            if not hits:
                 complete = False
                 continue
-            if hit[1] == 0:
+            if hits[0][1] == 0:
                 # The identity: a recorded process that is the base's own beam
                 # swap (mirror), not a crossing. Consumers show/reach the base
                 # through its own PDG entry, so drop it.
                 continue
-            matches.append(hit)
+            matches.append(hits)
         return matches, complete
 
     def recorded_crossing_codes(self, matrix_element):
@@ -9421,9 +9468,20 @@ C       so this also stays correct for split-order processes.
         soundly: it can enumerate GET_PDG_FOR_FLAVOR over
         ``cross*NFLAV + flav`` (getting the exact per-flavor signature, which
         the flavor index and not the code determines) while skipping the codes
-        that are merely applicable. See _recorded_crossing_matches."""
+        that are merely applicable. See _recorded_crossing_matches.
+
+        Every crossing that instantiates a record is listed, once: I==1 and
+        J==2 swap a particle with itself, so several codes decode to the same
+        permutation (4 and 10 for NEXTERNAL=5) and the smallest one stands for
+        it, and a code that decodes to no permutation at all is the base."""
         matches, complete = self._recorded_crossing_matches(matrix_element)
-        return sorted(set(cross for (_sig, cross) in matches)), complete
+        codes = {}
+        for hits in matches:
+            for (sig, cross) in hits:
+                perm = tuple(self.get_crossing_permutation(cross, len(sig))[0])
+                if perm != tuple(range(len(sig))):
+                    codes[perm] = min(cross, codes.get(perm, cross))
+        return sorted(codes.values()), complete
 
     def _crossed_signatures(self, matrix_element):
         """(signatures, complete) for the crossed subprocesses folded into this
@@ -9440,7 +9498,7 @@ C       so this also stays correct for split-order processes.
         matches, complete = self._recorded_crossing_matches(matrix_element)
         ninitial = matrix_element.get_nexternal_ninitial()[1]
         sigs, seen = [], set()
-        for (hit, _cross) in matches:
+        for ((hit, _cross), *_others) in matches:
             mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
             if hit in seen or mirror in seen:
                 continue                      # mirror partner already taken

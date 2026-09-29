@@ -206,6 +206,180 @@ class TestReweightGenerationFoldsCrossings(unittest.TestCase):
         self.assertEqual(self.obj.tree_crossing_flag(['p p > t t~']), '')
 
 
+class FakeOutputMG5Cmd(FakeMG5Cmd):
+    """Also writes, at each 'output', the crossed_flavors.dat a folded (or
+    unfolded) generation of the last 'generate' leaves behind."""
+
+    def __init__(self, folded_record):
+        FakeMG5Cmd.__init__(self)
+        self.folded_record = folded_record
+
+    def exec_cmd(self, line, *args, **opts):
+        FakeMG5Cmd.exec_cmd(self, line, *args, **opts)
+        if not line.startswith('output'):
+            return
+        generate = [c for c in self.commands if c.startswith('generate')][-1]
+        sub = os.path.join(line.split()[2], 'SubProcesses')
+        os.makedirs(sub)
+        with open(os.path.join(sub, 'crossed_flavors.dat'), 'w') as f:
+            f.write('# <proc_prefix> <complete> <cross code> ...\n')
+            f.write('M0_ 1\n' if '--use_crossing=False' in generate
+                    else self.folded_record)
+
+
+class TestReweightGenerationUnfoldsIncompleteRecords(unittest.TestCase):
+    """A folded crossed subprocess is reached only through the codes of
+    crossed_flavors.dat (build_cross_resolve). When a record could not name all
+    the crossed subprocesses it folded (complete 0) -- g g > w+ q q~ lost
+    g q > w+ g q that way, and every V j j / j j reweight then stopped at its
+    first g q event -- the generation is redone with the crossings unfolded."""
+
+    def setUp(self):
+        self.obj = rwgt_interface.ReweightInterface.__new__(
+            rwgt_interface.ReweightInterface)
+        # __del__ calls do_quit; keep it a no-op on this bare instance
+        self.obj.exitted = True
+        self.obj.keep_ordering = False
+        self.obj.use_eventid = False
+        self.obj.flag_density_matrix = False
+        self.obj.inc_sudakov = False
+        self.obj.nb_rw = 0
+        self.obj.path2prefix = {}
+        self.path = tempfile.mkdtemp(prefix='rwgt_crossing')
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+
+    def commands(self, record, processes=('p p > w+ j j',)):
+        self.obj.mg5cmd = FakeOutputMG5Cmd(record)
+        data = {'path': self.path, 'paths': ['rw_me', 'rw_mevirt'],
+                'processes': list(processes)}
+        self.obj.create_standalone_tree_directory(data)
+        return [c.split(' --', 1)[0] if c.startswith('output') else c
+                for c in self.obj.mg5cmd.commands
+                if c.startswith('generate') or c.startswith('output')]
+
+    def test_incomplete_record_is_generated_again_unfolded(self):
+        out = os.path.join(self.path, 'rw_me')
+        self.assertEqual(
+            self.commands('M0_ 0 4 24 29 34\nM1_ 1 5 29 30\n'),
+            ['generate p p > w+ j j --use_crossing=True ;',
+             'output %s %s' % (self.obj.sa_class, out),
+             'generate p p > w+ j j --use_crossing=False ;',
+             'output %s %s' % (self.obj.sa_class, out)])
+        self.assertEqual(self.obj.read_crossing_records(
+            os.path.join(out, 'SubProcesses')), {'m0_': ([], True)})
+
+    def test_complete_record_is_kept_folded(self):
+        self.assertEqual(
+            [c.split()[0] for c in
+             self.commands('M0_ 1 4 5 24 29 30 34\nM1_ 1 4 5 24 29 30 34\n')],
+            ['generate', 'output'])
+
+    def test_explicit_true_is_generated_again_unfolded(self):
+        """the card's True cannot be honoured soundly either; the False comes
+        last, which wins for the whole definition"""
+        self.assertEqual(
+            self.commands('M0_ 0 4\n',
+                          ['p p > w+ j j --use_crossing=True'])[2],
+            'generate p p > w+ j j --use_crossing=True --use_crossing=False ;')
+
+
+class TestFindMatrixElement(unittest.TestCase):
+    """With flavor grouping a crossed q q~ pair leaves the merged all-leg
+    multiset of its base unchanged: u d~ > w+ g g and g g > w+ q q~ are both
+    {81,-81,24,21,21}, which is all the legacy get_crossing_tag compares. It
+    used to be asked first, so a folded u d~ > w+ g g event was claimed for the
+    base and handed to get_all_momenta in the base's leg order (ValueError: a
+    gluon cannot be moved across by a sign flip) instead of being evaluated
+    through the crossing the generation folded."""
+
+    base_tag = ((21, 21), (-81, 24, 81))
+    base = ([[21, 21], [24, 81, -81]], 'rw_me/SubProcesses', {'base': 1})
+    tag = ((-81, 81), (21, 21, 24))
+    phys = ((-1, 2), (21, 21, 24))
+    folded = ([[2, -1], [24, 21, 21]], 'rw_me/SubProcesses', {'crossed': 1},
+              1, 59)
+
+    def setUp(self):
+        self.obj = rwgt_interface.ReweightInterface.__new__(
+            rwgt_interface.ReweightInterface)
+        # __del__ calls do_quit; keep it a no-op on this bare instance
+        self.obj.exitted = True
+        self.obj.is_decay = False
+        self.obj.revert_merged = dict((q, 81) for q in (1, 2, 3, 4))
+        self.obj.id_to_path = {self.base_tag: self.base}
+        self.obj.cross_resolve = {
+            self.tag: [self.folded + ([2, -1, 24, 21, 21],)]}
+
+    def test_the_legacy_lookup_would_claim_the_event(self):
+        """the premise: without the folded lookup it is the base's"""
+        self.assertEqual(self.obj.get_crossing_tag(self.tag), self.base_tag)
+
+    def test_folded_crossing_comes_first(self):
+        self.assertEqual(
+            self.obj.find_matrix_element(self.tag, self.phys,
+                                         self.obj.id_to_path,
+                                         self.obj.cross_resolve),
+            self.folded)
+
+    def test_direct_entry_and_legacy_fallback(self):
+        self.assertEqual(
+            self.obj.find_matrix_element(self.base_tag, ((21, 21), (-2, 1, 24)),
+                                         self.obj.id_to_path,
+                                         self.obj.cross_resolve),
+            self.base + (None, None))
+        # nothing folded for it: the legacy lookup still answers
+        self.assertEqual(
+            self.obj.find_matrix_element(self.tag, self.phys,
+                                         self.obj.id_to_path, {}),
+            self.base + (None, None))
+
+    def test_second_hypothesis_does_not_use_the_original(self):
+        """the legacy lookup searches the matrix elements it was given only"""
+        self.assertIsNone(
+            self.obj.find_matrix_element(self.tag, self.phys, {}, {}))
+
+
+class TestCrossingRecordsCoverTheFoldedSubprocesses(unittest.TestCase):
+    """crossed_flavors.dat must list every crossing code through which a
+    recorded crossed subprocess is reached. Two things lost codes:
+     - the recorded process was matched to the runtime signature leg by leg,
+       while a crossing may deliver its final legs in another order: for
+       g g > w+ q q~ the recorded g q > w+ g q only exists as g u > w+ d g
+       (code 5), so the record came out incomplete;
+     - one code was kept per recorded process, while with flavor grouping one
+       merged record may need several: off Q Q > Q Q, q q~ > q q~ is u c~ > u c~
+       through code 4 but u u~ > c~ c only through code 3."""
+
+    @staticmethod
+    def records(process):
+        import madgraph.interface.master_interface as master_interface
+        import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.core.helas_objects as helas_objects
+        cmd = master_interface.MasterCmd()
+        cmd.exec_cmd('set apply_flavor_grouping True --no_save')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate %s --use_crossing=True' % process)
+        exporter = export_v4.ProcessExporterFortranSA()
+        return dict(
+            (me.get('processes')[0].shell_string(print_id=False),
+             exporter.recorded_crossing_codes(me))
+            for me in helas_objects.HelasMultiProcess(
+                cmd._curr_amps).get_matrix_elements())
+
+    def test_v_j_j(self):
+        records = self.records('p p > w+ j j')
+        self.assertEqual(records['gg_wpQQx'], ([4, 5, 24, 29, 30, 34], True))
+        self.assertEqual(records['QQ_wpQQ'], ([4, 5, 24, 29, 30, 34], True))
+
+    def test_j_j(self):
+        records = self.records('p p > j j')
+        self.assertEqual(records['gg_QQx'], ([3, 4, 15, 19, 20, 23], True))
+        self.assertEqual(records['QQ_QQ'], ([3, 4, 15, 19, 20, 23], True))
+        self.assertEqual(records['gg_gg'], ([], True))
+
+
 class FakeCrossingModule(object):
     """The two per-matrix-element f2py entry points build_cross_resolve walks,
     for the base g u > e+ e- u (prefix m0_, one flavor) and its crossing 30,

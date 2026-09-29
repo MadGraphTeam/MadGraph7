@@ -1663,36 +1663,25 @@ class ReweightInterface(extended_cmd.Cmd):
 
         # A crossed subprocess folded in by crossing symmetry has no id_to_path
         # entry of its own; it is reached through the base's crossing-aware
-        # SMATRIX at an extended flavor index (see build_cross_resolve). Stays
-        # None for every ordinary lookup.
-        flav_idx = procindex = None
+        # SMATRIX at an extended flavor index (see build_cross_resolve).
+        # procindex / flav_idx stay None for every ordinary lookup.
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
-            if tag in self.id_to_path:
-                orig_order, Pdir, hel_dict = self.id_to_path[tag]
-            else:
-                cross_tag = self.get_crossing_tag(tag)
-                folded = None if cross_tag else self.resolve_folded_crossing(
-                    tag, tag_orig, self.cross_resolve)
-                if folded:
-                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
-                else:
-                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+            found = self.find_matrix_element(tag, tag_orig, self.id_to_path,
+                                             self.cross_resolve)
+            if not found:
+                logger.critical('The following initial/final state %s matches no matrix element generated for the reweighting.', tag)
+                raise Exception('no matrix element for %s' % (tag,))
         else:
-            try:
-                orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
-            except KeyError:
-                cross_tag = self.get_crossing_tag(tag)
-                folded = None if cross_tag else self.resolve_folded_crossing(
-                    tag, tag_orig, self.cross_resolve_second)
-                if cross_tag:
-                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
-                elif folded:
-                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
-                elif self.options['allow_missing_finalstate']:
+            found = self.find_matrix_element(tag, tag_orig,
+                                             self.id_to_path_second,
+                                             self.cross_resolve_second)
+            if not found:
+                if self.options['allow_missing_finalstate']:
                     return 0.0
                 else:
                     logger.critical('The following initial/final state %s can not be found in the new model/process. If you want to set the weights of such events to zero use "change allow_missing_finalstate False"', tag)
                     raise Exception
+        orig_order, Pdir, hel_dict, procindex, flav_idx = found
 
 
         base = os.path.basename(os.path.dirname(Pdir))
@@ -1795,22 +1784,54 @@ class ReweightInterface(extended_cmd.Cmd):
             return me_value
         
 
-    def get_crossing_tag(self,tag):
-        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
+    def find_matrix_element(self, tag, phys_tag, id_to_path, cross_resolve):
+        """(orig_order, Pdir, hel_dict, procindex, flav_idx) of the matrix
+        element that evaluates an event of (merged) tag `tag` and physical tag
+        `phys_tag`, among `id_to_path` and the crossings folded into it
+        (`cross_resolve`, see build_cross_resolve); None when there is none.
+        procindex and flav_idx are None unless the event is a folded crossing.
 
+        The folded crossing is looked up BEFORE the legacy get_crossing_tag.
+        That one matches the event's merged all-leg multiset, which a crossed
+        q q~ pair leaves unchanged (u d~ > w+ g g and g g > w+ q q~ are both
+        {81,-81,24,21,21}), so it would claim such a folded event for the base
+        and evaluate it through get_all_momenta's sign flips -- which cannot
+        move a gluon across (ValueError) and keep the base's spin and colour
+        averages -- instead of through the crossing the generation folded. The
+        legacy lookup also searches `id_to_path` only: the second hypothesis'
+        must not fall back on the original matrix elements, whose library is
+        not even loaded with the second card (load_module stops at MENUM=2)."""
+        if tag in id_to_path:
+            return tuple(id_to_path[tag]) + (None, None)
+        folded = self.resolve_folded_crossing(tag, phys_tag, cross_resolve)
+        if folded:
+            return folded
+        cross_tag = self.get_crossing_tag(tag, id_to_path)
+        if cross_tag:
+            return tuple(id_to_path[cross_tag]) + (None, None)
+        return None
+
+    def get_crossing_tag(self, tag, id_to_path=None):
+        """find if using crossing symmetry allow to find the correct tag and return the assoicated tag
+        (a key of `id_to_path`, self.id_to_path by default)"""
+
+        if id_to_path is None:
+            id_to_path = self.id_to_path
         # get list of possible crossing tag
         # id_to_path is not uniformly keyed: the NLO path also stores the
         # virtual matrix element under ((initial, final), 'V'), so t[1] can be a
         # string rather than a list of PDGs. Only a plain (initial, final) pair
         # can carry a crossing, so skip anything else instead of trying to sort
-        # a string against a tuple.
+        # a string against a tuple (and keep the keys aligned with what is kept).
         crossing_tag = []
-        for t in self.id_to_path.keys():
+        keys = []
+        for t in id_to_path.keys():
             try:
                 crossing_tag.append(
                     tuple([int(x) for x in sorted(list(t[0]) + list(t[1]))]))
             except (TypeError, ValueError):
                 continue
+            keys.append(t)
 
         mytag = list(tag[0])+list(tag[1])
         if self.revert_merged:
@@ -1828,7 +1849,7 @@ class ReweightInterface(extended_cmd.Cmd):
             raise Exception('more than one cross-matrix element found')
         else:
             index = crossing_tag.index(mytag)
-        return list(self.id_to_path.keys())[index]
+        return keys[index]
 
 
 
@@ -1999,6 +2020,8 @@ class ReweightInterface(extended_cmd.Cmd):
            set by an earlier tree line of the same definition.
          - the EW Sudakov output (ewsudakovsa) is written: it is no folding
            format, so the folded crossings would only be expanded back.
+        A folded generation whose crossing records come out incomplete is
+        redone unfolded afterwards (see create_standalone_tree_directory).
         """
         if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
             return ' --use_crossing=False'
@@ -2082,6 +2105,31 @@ class ReweightInterface(extended_cmd.Cmd):
             # in this case, the sudakov output format has to be changed
             commandline = 'output ewsudakovsa %s --prefix=int' % pjoin(path_me,data['paths'][0])
         mgcmd.exec_cmd(commandline, precmd=True)
+
+        # The folded crossings are read back from the records this output wrote
+        # (build_cross_resolve). A record that could not name every crossed
+        # subprocess it folded (complete 0) leaves those events without a
+        # matrix element, and the first of them would stop the reweighting; so
+        # such a generation is redone with the crossings unfolded, which gives
+        # every subprocess an entry of its own.
+        incomplete = sorted(prefix for prefix, (_codes, complete) in
+            self.read_crossing_records(pjoin(path_me, data['paths'][0],
+                                             'SubProcesses')).items()
+            if not complete)
+        if incomplete and not self.inc_sudakov and \
+           not any('[' in proc for proc in data['processes']) and \
+           xflag != ' --use_crossing=False':
+            logger.warning('Crossing symmetry folded subprocesses into %s that '
+                           'the reweighting could not reach back; generating '
+                           'the matrix elements again with --use_crossing=False.',
+                           ', '.join(incomplete))
+            unfolded = ''.join("add process %s --use_crossing=False ;" % proc
+                               for proc in data['processes'])
+            unfolded = unfolded.replace('add process', 'generate', 1)
+            logger.info(unfolded)
+            mgcmd.exec_cmd(unfolded, precmd=True, errorhandling=False)
+            shutil.rmtree(pjoin(path_me, data['paths'][0]))
+            mgcmd.exec_cmd(commandline, precmd=True)
 
         logger.info('Done %.4g' % (time.time()-start))
         self.has_standalone_dir = True
@@ -2803,6 +2851,23 @@ class ReweightInterface(extended_cmd.Cmd):
             outgoing.sort()
         return (tuple(incoming), tuple(outgoing)), order
 
+    @staticmethod
+    def read_crossing_records(pdir):
+        """{prefix: ([cross codes], complete)} as written in the
+        crossed_flavors.dat of `pdir` (see export_v4.write_crossing_records);
+        empty when there is no such file."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        records = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if not line:
+                continue
+            records[line[0].lower()] = ([int(c) for c in line[2:]],
+                                        line[1] == '1')
+        return records
+
     def get_recorded_crossings(self, pdir):
         """{prefix: [cross codes]} of the crossed subprocesses folded into the
         matrix elements of `pdir`, from the crossed_flavors.dat written at output
@@ -2811,16 +2876,10 @@ class ReweightInterface(extended_cmd.Cmd):
         An absent file means an output produced before crossings were recorded,
         hence one with nothing folded; an empty list for a prefix means that
         matrix element folds no crossing."""
-        path = pjoin(pdir, 'crossed_flavors.dat')
-        if not os.path.exists(path):
-            return {}
         codes = {}
-        for line in open(path):
-            line = line.split('#', 1)[0].split()
-            if not line:
-                continue
-            prefix, complete = line[0].lower(), line[1] == '1'
-            codes[prefix] = [int(c) for c in line[2:]]
+        for prefix, (pcodes, complete) in \
+                self.read_crossing_records(pdir).items():
+            codes[prefix] = pcodes
             if not complete:
                 logger.warning('Crossing symmetry folded a subprocess into the '
                                'matrix element %s that could not be resolved '
