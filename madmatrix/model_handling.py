@@ -3689,7 +3689,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         getGoodHel). For a helicity-carrying leg the wavefunction is built for
         each of the leg's helicity states and accumulated weighted by a per-lane
         mask (does this lane want state _v?), so a single pass computes each
-        lane's own good helicity. get_amp downstream stays fully SIMD. Scalars
+        lane's own good helicity. Only the wavefunction is masked: a lane past
+        its crossing's last good helicity (a padding row, every mask 0) must
+        keep its momentum, or it evaluates 0/0 propagators and returns NaN
+        instead of an exact zero. get_amp downstream stays fully SIMD. Scalars
         carry no helicity, so their block is the plain NSF blend. GPU unchanged."""
         routine = helas_call_writers.HelasCallWriter.mother_dict[
             argument.get_spin_state_number()].lower()
@@ -3746,12 +3749,15 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
             lines.append('            reinterpret_cast<fptype*>( &_hm )[_ie] = ( _hr >= 0 && (int)cHel[_hr][%d] == _v ) ? (fptype)1. : (fptype)0.;' % s)
             lines.append('          }')
+            # The momentum is helicity independent: set it once, unmasked, so a
+            # padding lane (_hr = -1, every _hm 0) gets a zero wavefunction but
+            # keeps finite propagators, hence an exact-zero contribution. With
+            # a masked (zero) momentum its massless propagators gave 0/0 = NaN.
             lines.append('          if( _first%d ) {' % s)
-            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
+            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] = _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k];' % me)
             lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] = _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
             lines.append('            _first%d = false;' % s)
             lines.append('          } else {')
-            lines.append('            for( int _k = 0; _k < np4; _k++ ) pvec_sv[%d][_k] += _hm * ( _sp * pvec_x[0][_k] + _sm * pvec_x[1][_k] );' % me)
             lines.append('            for( int _k = 0; _k < nw6; _k++ ) w_sv[%d][_k] += _hm * ( _sp * w_x[0][_k] + _sm * w_x[1][_k] );' % me)
             lines.append('          } }')
             lines.append('        aloha_obj[%d].flv_index = aloha_x[0].flv_index; }' % me)

@@ -96,7 +96,8 @@ namespace madmatrix
   // sigmaKin only ever reads these tables and stays thread-safe. It is
   // all-or-nothing: one unpaired good row or one mismatched pair turns it off
   // (per crossing on the crossed path, where lanes of one page may carry
-  // different crossings, so the weight and the 50/50 are applied per lane).
+  // different crossings, so the weight and the 50/50 are applied per lane;
+  // the verdict is then made uniform across crossings, see sigmaKin_getGoodHel).
   static int cFlip[ncomb];            // C-parity partner: every helicity negated (an involution)
   static bool cCsymScanned;           // the validating scan actually ran (never trust a default)
   static bool cCsymBad;               // uncrossed: latched when ANY pair mismatched at a scan point
@@ -693,15 +694,26 @@ namespace madmatrix
 #endif
         cCsymOkCross[c] = ok;
       }
-      // ALL-OR-NOTHING ACROSS CROSSINGS, and not for a physics reason: reducing
-      // only some of them would leave cNGoodPerCross non-uniform, and the lanes
-      // of a SHORTER crossing would then reach the ighel >= cNGoodPerCross
-      // padding row (-1 in calculate_jamps). That row yields NaN rather than 0
-      // -- its zeroed wavefunctions give a 0/0 propagator, and for a VALID
-      // crossing the per-event denominator multiplies instead of assigning 0,
-      // so the NaN reaches the output. Latent today only because every
-      // crossing happens to have the same good-hel count; keeping the verdict
-      // uniform preserves that invariant exactly.
+      // ALL-OR-NOTHING ACROSS CROSSINGS -- no longer needed for correctness.
+      // Reducing only some crossings leaves cNGoodPerCross non-uniform, so the
+      // lanes of a SHORTER crossing reach the ighel >= cNGoodPerCross padding
+      // rows (-1 in calculate_jamps). Such a row masks the wavefunctions of
+      // the helicity-carrying external legs but keeps their momenta, so the
+      // lane adds an exact 0 to |M|^2, to the multichannel numerators and to
+      // jamp2, and the helicity choice never lands on it (its stretch of the
+      // running CDF is flat). It used to zero the momenta too, and the
+      // massless propagators then turned the lane into 0/0 = NaN. The counts
+      // can differ without any de-duplication too: a row at |M|^2 ~ 1e-30 in
+      // one crossing can be an exact zero (not good) in another. A forced
+      // split verdict on g g > q q~ folding crossings 3 and 23 reproduces the
+      // uniform |M|^2 of every lane, alone or mixed in one page, to rounding
+      // (NaN with the old mask).
+      // Kept anyway, because a split buys little and is unexercised: the loop
+      // bound is the LONGEST crossing's count, so halving only some crossings
+      // saves a trip only when the longest is among them; and C-parity is a
+      // property of the amplitude all crossings share, so a split verdict only
+      // arises from a numerically degenerate row -- never observed on a real
+      // process, and the helicity choice has not been checked under one.
       bool allok = cCsymScanned;
       for( int c = 0; c < cNcross; c++ )
         if( cNGoodPerCross[c] > 0 && !cCsymOkCross[c] ) allok = false;

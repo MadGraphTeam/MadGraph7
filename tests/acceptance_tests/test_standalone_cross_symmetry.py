@@ -2507,7 +2507,10 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             self.skipTest('madmatrix build toolchain unavailable (make failed)')
 
     def _event_mes(self, pdir, flavor_id, env=None):
-        """Run check_sa.exe perf verbose and return the per-event ME list."""
+        """Run check_sa.exe perf verbose and return the per-event ME list.
+
+        A NaN is parsed as NaN rather than skipped: skipping it would shift
+        every later event onto the wrong index of a mixed-crossing page."""
         run_env = dict(os.environ)
         if env:
             run_env.update(env)
@@ -2515,13 +2518,48 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             ['./check_sa.exe', 'perf', '-v', '-f', str(flavor_id), '1', '8', '1'],
             cwd=pdir, env=run_env).decode()
         mes = [float(m) for m in
-               re.findall(r'Matrix element =\s*([-\d.eE+]+)', out)]
+               re.findall(r'Matrix element =\s*(\S+)', out)]
         self.assertTrue(mes, 'no matrix element parsed from:\n%s' % out)
         return mes
 
     def _me(self, pdir, flavor_id):
         """First-event ME for a single (uniform) flavor id."""
         return self._event_mes(pdir, flavor_id)[0]
+
+    # Test-only knobs spliced into the output's copy of the backend SigmaKin.cc,
+    # right after the good-helicity scan has built the per-crossing lists:
+    #   MG_PADCROSS=c  drop the last good row of crossing c but keep the loop
+    #                  bound, so the lanes of c reach a padding row (_hr = -1);
+    #   MG_ONLYLAST=c  keep only that row, with the loop bound set to 1 (no
+    #                  padding at all): its own contribution, on a uniform page.
+    _PADDING_KNOBS = '''\
+      if( const char* pc = getenv( "MG_PADCROSS" ) ) cNGoodPerCross[atoi( pc )] -= 1;
+      if( const char* oc = getenv( "MG_ONLYLAST" ) )
+      {
+        const int c = atoi( oc );
+        cGoodHelOfCross[c][0] = cGoodHelOfCross[c][cNGoodPerCross[c] - 1];
+        cNGoodPerCross[c] = 1;
+        cNGoodMaxCross = 1;
+      }
+'''
+
+    def _add_padding_knobs(self, pdir):
+        """Splice _PADDING_KNOBS into the cpu and simd SigmaKin.cc that the
+        output of `pdir` compiles (whichever of the two the build picks)."""
+        anchor = ('      for( int c = 0; c < cNcross; c++ ) if( cNGoodPerCross[c] '
+                  '> cNGoodMaxCross ) cNGoodMaxCross = cNGoodPerCross[c];\n')
+        backend = pjoin(os.path.dirname(os.path.dirname(pdir)), 'backend')
+        for variant in ('cpu', 'simd'):
+            path = pjoin(backend, variant, 'SigmaKin.cc')
+            with open(path) as fsock:
+                src = fsock.read()
+            self.assertEqual(src.count(anchor), 1,
+                             'the loop-bound line the knobs hook onto is gone '
+                             'from %s' % path)
+            src = '#include <cstdlib>\n' + src.replace(
+                anchor, anchor + self._PADDING_KNOBS)
+            with open(path, 'w') as fsock:
+                fsock.write(src)
 
     def _output_folded_gg_qqx(self, name):
         """Write a multiprocess in which `g g > q q~` is the FOLDED base of its
@@ -2640,6 +2678,50 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                 me, expected, delta=self.tolerance * abs(expected) + 1e-12,
                 msg='event %d (cross %s) got %r, expected %r'
                 % (i, 'id' if i % 2 == 0 else '2<->3', me, expected))
+
+    def test_padding_helicity_row_contributes_zero(self):
+        """A lane whose crossing has FEWER good helicities than the per-lane
+        loop bound (cNGoodMaxCross) runs into padding rows (_hr = -1, every
+        helicity mask 0), and must add exactly nothing there.
+
+        The external block used to mask the momentum along with the
+        wavefunction, so a padding lane had p = 0, its massless propagators
+        evaluated 0/0 and its |M|^2 came out NaN. Nothing keeps the
+        per-crossing counts equal (a row at ~1e-30 in one crossing can be an
+        exact zero in another), so the padding row is forced: crossing 23's
+        list loses its last row after the scan while the loop bound stays.
+        Those lanes must return the full value minus that row's contribution,
+        measured on its own without any padding (MG_ONLYLAST), and the
+        identity lanes sharing the page must not move."""
+        pdir = self._output_folded_gg_qqx('ggqqx_padding')
+        self._add_padding_knobs(pdir)
+        self._patch_and_build(pdir)
+        cross = self.CROSS_TO_QQ_GG
+        identity_val = self._me(pdir, self.IDENTITY)
+        full_val = self._me(pdir, cross)
+        dropped_val = self._event_mes(pdir, cross,
+                                      env={'MG_ONLYLAST': str(cross)})[0]
+        # Non-vacuous: the dropped row carries a visible share of |M|^2, so a
+        # padding lane that silently kept it would fail too.
+        self.assertGreater(dropped_val, 1e-3 * full_val,
+                           'the dropped row (%r of %r) is too small to tell '
+                           'the padded value apart' % (dropped_val, full_val))
+        expected = full_val - dropped_val
+        mixed = self._event_mes(
+            pdir, self.IDENTITY,
+            env={'MG_PADCROSS': str(cross), 'MG_SAMEMOM': '1',
+                 'MG_FLVMIX': '%d,%d' % (self.IDENTITY, cross)})
+        self.assertGreaterEqual(len(mixed), 4,
+                                'need several events to mix crossings in a page')
+        for i, me in enumerate(mixed):
+            want = identity_val if i % 2 == 0 else expected
+            self.assertFalse(math.isnan(me),
+                             'event %d (cross %s) is NaN: the padding row was '
+                             'not a clean zero' % (i, 'id' if i % 2 == 0 else cross))
+            self.assertAlmostEqual(
+                me, want, delta=self.tolerance * abs(want) + 1e-12,
+                msg='event %d (cross %s) got %r, expected %r'
+                % (i, 'id' if i % 2 == 0 else cross, me, want))
 
     def test_invalid_overlapping_swap_returns_zero(self):
         """An overlapping-swap crossing code (I=2, J=1 -> cross 11) is invalid;
