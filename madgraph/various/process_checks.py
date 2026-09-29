@@ -4148,6 +4148,32 @@ _MG7_MOM_TO = (
     '        }')
 
 
+def _mg7_compiled_crossings(pdir):
+    """The crossing codes the madmatrix module in `pdir` can be asked for.
+
+    Structurally applicable (what _crossing_pdg_entries enumerates) is a much
+    weaker statement than evaluable. A module compiled with
+    ProcessTables::use_crossing = true takes the identity and the codes its
+    matrix element RECORDED (cross_recorded_tab; any other applicable code
+    aborts, see _crossing_preamble in madmatrix/model_handling.py). A module
+    compiled without the machinery -- --use_crossing=False, a pinned s-channel,
+    or nothing folded in -- decodes no crossing at all, so an extended id past
+    nmaxflavor would index its flavor tables out of range. Read from the
+    generated header, since that is what was compiled."""
+    try:
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            text = fsock.read()
+    except IOError:
+        return set([0])
+    if 'constexpr bool use_crossing = true;' not in text:
+        return set([0])
+    match = re.search(r'cross_recorded_tab\[ncross\]\s*=\s*\{([^}]*)\}', text)
+    if not match:
+        return set([0])
+    flags = [tok.strip() for tok in match.group(1).split(',')]
+    return set([0]) | set(i for i, flag in enumerate(flags) if flag == 'true')
+
+
 class _Mg7CrossingBackend(object):
     """The cudacpp CPU-SIMD standalone (madmatrix) crossing backend.
 
@@ -4198,7 +4224,14 @@ class _Mg7CrossingBackend(object):
         return rc == 0 and os.path.isfile(pjoin(pdir, 'check_sa.exe'))
 
     def enumerate(self, pdir, matrix_element, card, env, identity_only):
-        return _crossing_pdg_entries(matrix_element, identity_only=identity_only)
+        entries = _crossing_pdg_entries(matrix_element,
+                                        identity_only=identity_only)
+        if not entries:
+            return entries
+        # Applicable is not evaluable here: a madmatrix module only takes the
+        # crossing codes it was compiled for (see _mg7_compiled_crossings).
+        compiled = _mg7_compiled_crossings(pdir)
+        return [e for e in entries if e[1] in compiled]
 
     def evaluate(self, pdir, items, card, env):
         values = []

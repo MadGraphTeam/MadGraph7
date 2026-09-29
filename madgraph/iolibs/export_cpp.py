@@ -3695,16 +3695,27 @@ class ProcessExporterMG7(ProcessExporterCPP):
         )
 
         # Enable the crossing machinery (extended flavor id) when the process was
-        # generated with --use_crossing (default OFF) and the process does not pin
-        # a specific s-channel (which a crossing would not preserve). Only a
-        # single-ME directory carries the flavor tables the crossing needs. When
-        # off, use_crossing stays False and the output is byte-identical.
+        # generated with --use_crossing (default OFF), the matrix element really
+        # folds a crossed subprocess in, and the process does not pin a specific
+        # s-channel (which a crossing would not preserve). Only a single-ME
+        # directory carries the flavor tables the crossing needs. When off,
+        # use_crossing stays False and the output is byte-identical.
+        # The recorded crossings are part of the gate, not just the option: the
+        # good-helicity scan and the runtime guard accept the recorded codes and
+        # the identity only, so with nothing recorded the machinery (per-state
+        # external blend, per-event momentum gather, cNGoodMaxCross loop) could
+        # only ever run the identity -- pure overhead. That is every directory
+        # of 'output mg7' (not a folding format: its crossings were expanded
+        # back into subprocesses of their own) and every base that folds
+        # nothing (g g > t t~ g g g).
+        me0 = process_exporter_mg7.matrix_elements[0]
         process_exporter_mg7.use_crossing = bool(
             getattr(self, 'supports_crossing', False)
             and self.opt.get('use_crossing', False)
             and len(process_exporter_mg7.matrix_elements) == 1
+            and 'crossed_processes' in me0 and me0.get('crossed_processes')
             and not ProcessExporterFortran.breaks_crossing_symmetry(
-                process_exporter_mg7.matrix_elements[0].get('processes')[0]))
+                me0.get('processes')[0]))
 
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name

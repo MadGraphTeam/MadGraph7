@@ -92,9 +92,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
 
     # Crossing symmetry (extended flavor id) is supported by the madmatrix /
-    # cudacpp CPU-SIMD backend (gated by --use_crossing, default on). The MG7
-    # (pure-cpp mg7_v5) exporter keeps supports_crossing=False. When
-    # --use_crossing=False the generated output is byte-identical to before.
+    # cudacpp CPU-SIMD backend (gated by --use_crossing, default off, and by
+    # the matrix element recording a crossed subprocess: see
+    # ProcessExporterMG7.generate_subprocess_directory). The MG7 (pure-cpp
+    # mg7_v5) exporter keeps supports_crossing=False. When the machinery is off
+    # the generated output is byte-identical to before.
     supports_crossing = True
 
     # Information to find the template file that we want to include from madgraph

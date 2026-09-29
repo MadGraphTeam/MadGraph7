@@ -2855,7 +2855,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # written here, into ProcessTables.h, plus the crossed CPPProcess::flavorPDG
     # body. With self.use_crossing False, ProcessTables::use_crossing is false,
     # the tables are zero placeholders and every crossing branch of SigmaKin.cc
-    # is discarded at compile time.
+    # is discarded at compile time. That is --use_crossing=False, a process
+    # pinning an s-channel, and a matrix element that records no crossed
+    # subprocess (see ProcessExporterMG7.generate_subprocess_directory): only
+    # the identity could be asked for, and the plain path computes it.
     # ------------------------------------------------------------------
     def get_madmatrix_crossing_tables(self, matrix_element):
         """ProcessTables.h 'crossing_tables' and CPPProcess.cc 'flavorpdg_body'."""
@@ -2870,7 +2873,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    constexpr int ncross = ( ProcessData::npar + 1 ) * ( ProcessData::npar + 1 );\n")
         if not getattr(self, 'use_crossing', False):
             tables = header + (
-                "    constexpr bool use_crossing = false; // --use_crossing=False: placeholders only\n"
+                "    constexpr bool use_crossing = false; // no crossing folded in: placeholders only\n"
                 "    __device__ constexpr bool cross_recorded_tab[ncross] = {};\n"
                 "    __device__ constexpr int spincol_part[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"

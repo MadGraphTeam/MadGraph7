@@ -2561,18 +2561,15 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             with open(path, 'w') as fsock:
                 fsock.write(src)
 
-    def _output_folded_gg_qqx(self, name):
-        """Write a multiprocess in which `g g > q q~` is the FOLDED base of its
-        crossings, and return that P* dir.
+    def _output_pq_gg_qqx(self, name, options='', out_options=''):
+        """Write the multiprocess `pq pq > pq pq` (pq = g u u~) and return its
+        `g g > q q~` P* dir.
 
-        The good-helicity scan only visits the crossings this ME actually
-        records (cross_recorded / _scanned_crossings), so a crossed matrix
-        element can only be asked for on a base that folded it in. A bare
-        `generate u u~ > g g` records nothing, so the crossings below have to
-        come from a real multiparticle expansion: `pq pq > pq pq` with
-        pq = g u u~ folds `g u~ > g u~` (cross 3) and `u u~ > g g` (cross 23)
-        onto the `g g > q q~` base -- the same two directions the standalone
-        references below compute on their own.
+        `options` goes on the generate line (crossing pinned on unless it names
+        --use_crossing itself), `out_options` on the output line. With the
+        crossing on this is the FOLDED base of _output_folded_gg_qqx; with it
+        off (on either line) it is the same process written on its own, next to
+        the crossed subprocesses given back as directories of their own.
 
         The trace basis is forced because the sibling all-gluon dir of this
         multiprocess cannot be written with the DDM default (unrelated to
@@ -2587,19 +2584,37 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set color_basis trace')
         cmd.exec_cmd('import model sm')
         cmd.exec_cmd('define pq = g u u~')
-        cmd.exec_cmd('generate pq pq > pq pq --use_crossing=True')
-        cmd.exec_cmd('output standalone %s -f' % outdir)
+        cmd.exec_cmd('generate pq pq > pq pq %s' % _pin_crossing(options))
+        cmd.exec_cmd(('output standalone %s -f %s'
+                      % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
                  if d.startswith('P') and 'gg_QQx' in d
                  and os.path.isdir(pjoin(subproc_root, d))]
         self.assertEqual(len(pdirs), 1,
-                         'expected exactly one folded g g > q q~ dir, got %s'
-                         % pdirs)
-        demo = pjoin(pdirs[0], 'crossing_demo.dat')
+                         'expected exactly one g g > q q~ dir, got %s' % pdirs)
+        return pdirs[0]
+
+    def _output_folded_gg_qqx(self, name):
+        """Write a multiprocess in which `g g > q q~` is the FOLDED base of its
+        crossings, and return that P* dir.
+
+        The good-helicity scan only visits the crossings this ME actually
+        records (cross_recorded / _scanned_crossings), so a crossed matrix
+        element can only be asked for on a base that folded it in -- and a
+        base that folds nothing is written without the crossing machinery at
+        all (see test_nothing_folded_drops_the_machinery). A bare
+        `generate u u~ > g g` records nothing, so the crossings below have to
+        come from a real multiparticle expansion: `pq pq > pq pq` with
+        pq = g u u~ folds `g u~ > g u~` (cross 3) and `u u~ > g g` (cross 23)
+        onto the `g g > q q~` base -- the same two directions the standalone
+        references below compute on their own.
+        """
+        pdir = self._output_pq_gg_qqx(name, options='--use_crossing=True')
+        demo = pjoin(pdir, 'crossing_demo.dat')
         self.assertTrue(os.path.exists(demo),
-                        'no crossing was folded onto %s' % pdirs[0])
+                        'no crossing was folded onto %s' % pdir)
         with open(demo) as fsock:
             recorded = [int(tok) for tok in fsock.read().split()]
         for wanted in (self.CROSS_2_3, self.CROSS_TO_QQ_GG):
@@ -2607,7 +2622,11 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                           'crossing %d is not recorded in %s (got %s); the '
                           'good-hel scan would not have scanned it'
                           % (wanted, demo, recorded))
-        return pdirs[0]
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            self.assertTrue('use_crossing = true' in fsock.read(),
+                            'the folded base %s was written without the '
+                            'crossing machinery' % pdir)
+        return pdir
 
     # ------------------------------------------------------------------
     def test_gg_qqx_crossed_gives_qg_qg(self):
@@ -2725,9 +2744,27 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     def test_invalid_overlapping_swap_returns_zero(self):
         """An overlapping-swap crossing code (I=2, J=1 -> cross 11) is invalid;
-        the per-event denominator must short-circuit its matrix element to 0."""
-        pdir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_inv')
+        the per-event denominator must short-circuit its matrix element to 0.
+
+        Asked of a base that really folds crossings, since only such a base is
+        written with the crossing machinery (one that folds nothing decodes no
+        crossing code at all). No generation can record an invalid code, so 11
+        is also an UNRECORDED one: this pins that the unrecorded-crossing guard
+        of calculate_jamps lets it through to its 0 instead of aborting (an
+        abort fails check_output in _me)."""
+        import madgraph.various.process_checks as process_checks
+        pdir = self._output_folded_gg_qqx('ggqqx_inv')
+        compiled = process_checks._mg7_compiled_crossings(pdir)
+        self.assertIn(self.CROSS_2_3, compiled,
+                      'the recorded code %d is missing from %s'
+                      % (self.CROSS_2_3, sorted(compiled)))
+        self.assertNotIn(self.OVERLAP, compiled,
+                         'the invalid code %d is recorded in %s'
+                         % (self.OVERLAP, pdir))
         self._patch_and_build(pdir)
+        # Guard the guard: a build that returned 0 for everything would pass.
+        self.assertNotEqual(self._me(pdir, self.IDENTITY), 0.0,
+                            'degenerate: the identity ME is already 0')
         self.assertEqual(self._me(pdir, self.OVERLAP), 0.0,
                          'an overlapping-swap code must give a zero ME')
 
@@ -2736,10 +2773,14 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         token absent from the generated source) and still give the same
         uncrossed matrix element as the crossing-on build. (A full byte-identical
         `diff -r` against the pre-feature output was checked by hand; here we
-        assert the token absence and the numerical invariance.)"""
-        on_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_on')
-        off_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_off',
-                                              options='--use_crossing=False')
+        assert the token absence and the numerical invariance.)
+
+        The crossing-on side is a base that really folds crossings: one that
+        folds nothing is written without the machinery whatever the flag says
+        (test_nothing_folded_drops_the_machinery)."""
+        on_dir = self._output_folded_gg_qqx('ggqqx_on')
+        off_dir = self._output_pq_gg_qqx('ggqqx_off',
+                                         options='--use_crossing=False')
         on_src = self._cpp_source(on_dir)
         off_src = self._cpp_source(off_dir)
         self.assertIn('use_crossing = true', on_src)
@@ -2767,19 +2808,22 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cNGoodMaxCross loop bound) was emitted anyway. Writing the same source
         as the generate-time flag is the sharpest statement of the fix, since
         that build is the one covered by the tests above.
+
+        On a base that really folds crossings: one that folds nothing is
+        written without the machinery whatever either flag says, which would
+        make the equality below hold for the wrong reason.
         """
-        gen_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_genoff',
-                                              options='--use_crossing=False')
-        out_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_outoff',
-                                              out_options='--use_crossing=False')
+        gen_dir = self._output_pq_gg_qqx('ggqqx_genoff',
+                                         options='--use_crossing=False')
+        out_dir = self._output_pq_gg_qqx('ggqqx_outoff',
+                                         out_options='--use_crossing=False')
         out_src = self._cpp_source(out_dir)
         self.assertEqual(self._cpp_source(gen_dir), out_src,
                          '--use_crossing=False writes a different source on the '
                          'output line than on the generate line')
         # Guard the guard: an exporter that never emits the machinery would
         # satisfy the equality above with both sides broken.
-        on_src = self._cpp_source(
-            self._output_madmatrix(PROC_QQ_GG, 'qqgg_defaulton'))
+        on_src = self._cpp_source(self._output_folded_gg_qqx('ggqqx_defaulton'))
         self.assertIn('use_crossing = true', on_src)
         self.assertIn('use_crossing = false', out_src)
         for token in ('spincol_cross', 'base_pdg',
@@ -2802,8 +2846,9 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         counts the out-of-range ids and umami_matrix_element refuses the batch,
         the kernels never index a flavor table with a raw event id and give such
         an event a NaN |M|^2, and check_sa's crossing demo is left to cpu/simd."""
-        pdir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_gpu')
-        self.assertIn('use_crossing = true', self._cpp_source(pdir))
+        # a base that really folds crossings: one folding nothing is written
+        # on the plain path (use_crossing = false)
+        pdir = self._output_folded_gg_qqx('ggqqx_gpu')
         gpu = pjoin(pdir, os.pardir, os.pardir, 'backend', 'gpu')
         with open(pjoin(gpu, 'umami.cc')) as fsock:
             umami = fsock.read()
@@ -2829,6 +2874,81 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             r'#ifdef MGONGPUCPP_GPUIMPL\n[^#]*not supported by the GPU backend'
             r'[^#]*#else\n\s*for\( unsigned int fid : demo_ids \)', check_sa),
             'check_sa runs the crossing demo on a GPU build')
+
+    def _assert_plain_path(self, pdir, label):
+        """`pdir` was written without the crossing machinery."""
+        # assertTrue, not assertIn: the latter would print the whole file.
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            self.assertTrue('use_crossing = false' in fsock.read(),
+                            '%s: ProcessTables::use_crossing is not false'
+                            % label)
+        with open(pjoin(pdir, 'EvaluateDiagrams.inc')) as fsock:
+            diagrams = fsock.read()
+        for token in ('xmom', 'cGoodHelOfCross'):
+            self.assertFalse(token in diagrams,
+                             '%s: %s emitted into EvaluateDiagrams.inc'
+                             % (label, token))
+        self.assertFalse(os.path.exists(pjoin(pdir, 'crossing_demo.dat')),
+                         '%s: a crossing demo was written' % label)
+        # ... so `check crossing` must not ask it for anything but the identity
+        import madgraph.various.process_checks as process_checks
+        self.assertEqual(process_checks._mg7_compiled_crossings(pdir), set([0]),
+                         '%s: check crossing would ask a plain build for a '
+                         'crossing code' % label)
+
+    def test_nothing_folded_drops_the_machinery(self):
+        """--use_crossing=True on a process that folds nothing writes the
+        plain path.
+
+        A bare `u u~ > g g` records no crossed subprocess, so the good-helicity
+        scan and the runtime guard accept the identity only: the per-lane
+        crossing path (per-state external blend, per-event momentum gather,
+        cNGoodMaxCross loop) could only ever recompute what the plain path
+        computes. It used to be written all the same, being gated on the flag
+        alone. Gated on the recorded crossings too, the output is exactly the
+        --use_crossing=False one.
+        """
+        on_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_nofold_on',
+                                        options='--use_crossing=True')
+        off_dir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_nofold_off',
+                                         options='--use_crossing=False')
+        self._assert_plain_path(on_dir, PROC_QQ_GG)
+        self.assertEqual(self._cpp_source(on_dir), self._cpp_source(off_dir),
+                         'a crossing-on output folding nothing differs from '
+                         'the --use_crossing=False one')
+
+    def test_mg7_output_drops_the_machinery(self):
+        """`output mg7` never gets the crossing machinery.
+
+        mg7 is not a folding format: the crossings recorded at generation are
+        given back as subprocesses of their own before the exporter runs, so no
+        directory records one and each must be written on the plain path, even
+        with --use_crossing=True (the case the flag-only gate got wrong).
+        """
+        outdir = pjoin(self.tmpdir, 'mg7_on')
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('set group_subprocesses False')
+        cmd.exec_cmd('set apply_flavor_grouping True')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('define xq = u u~')
+        cmd.exec_cmd('generate xq xq > xq xq --use_crossing=True')
+        # Guard the guard: the generation must really have folded crossings,
+        # or there would be nothing for the output to expand.
+        self.assertTrue(any(amp.get('crossed_processes')
+                            for amp in cmd._curr_amps),
+                        'xq xq > xq xq folded no crossing at generation')
+        cmd.exec_cmd('output mg7 %s -f' % outdir)
+
+        subproc_root = pjoin(outdir, 'SubProcesses')
+        pdirs = [pjoin(subproc_root, d) for d in sorted(os.listdir(subproc_root))
+                 if d.startswith('P') and os.path.isdir(pjoin(subproc_root, d))]
+        self.assertGreater(len(pdirs), 1,
+                           'the folded crossings did not come back as '
+                           'directories of their own: %s' % pdirs)
+        for pdir in pdirs:
+            self._assert_plain_path(pdir, os.path.basename(pdir))
 
 
 class TestCrossingPartition(unittest.TestCase):
