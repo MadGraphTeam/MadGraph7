@@ -5612,8 +5612,9 @@ class decay_all_events_onshell(decay_all_events):
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         # Per-instance suffix for the f2py-linked shared library: with the
-        # default ``PROCNAME=`` the makefile produces ``liball_2me.{so,dylib}``
-        # regardless of which madspin_me_<N> subdir we are in, and the
+        # makefile's former (always empty) default ``PROCNAME=`` it produced
+        # ``liball_2me.{so,dylib}`` whichever madspin_me_<N> subdir we are in
+        # (the default is now the output directory name), and the
         # dynamic loader on both Linux (SONAME) and macOS (LC_ID_DYLIB)
         # caches that library by its baked-in name. So a second MadSpin
         # call in the same process — even loading a wrapper from a fresh
@@ -5628,7 +5629,7 @@ class decay_all_events_onshell(decay_all_events):
         # the *same* Python process to build the density matrix. They must NOT
         # share the f2py extension-module name (all_matrix<MENUM>py) nor the
         # dependent Fortran shared library name (liball<PROCNAME>_<MENUM>me):
-        # with the empty default PROCNAME both sides otherwise produce
+        # with the former empty default PROCNAME both sides produced
         # ``all_matrix2py`` + ``@rpath/liball_2me.dylib``, and two identically
         # named f2py modules (sharing the same Fortran COMMON blocks / global
         # symbols) co-existing in one process corrupt memory and segfault
