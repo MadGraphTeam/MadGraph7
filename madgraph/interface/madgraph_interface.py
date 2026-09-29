@@ -12643,6 +12643,29 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 return True
         return False
 
+    @staticmethod
+    def _copy_decay_chain(dc_amp):
+        """A copy of the DecayChainAmplitude `dc_amp` that the matrix-element
+        builders may consume.
+
+        HelasDecayChainProcess pops the decay chains off the amplitude it is
+        built from, recursively, to save memory, so building straight from
+        self._curr_amps empties the generation's own chains. The end-of-export
+        replacement of self._curr_amps used to hide that; a generation with
+        recorded crossings keeps its amplitudes (see _export), and a later
+        output rebuilt from an emptied chain wrote the core process with its
+        resonance left undecayed -- p p > z j, z > e+ e- came out as P1_gQ_zQ,
+        without an error. Only the lists are copied: the amplitudes and their
+        diagrams are shared.
+        """
+        new = copy.copy(dc_amp)
+        new.set('amplitudes',
+                diagram_generation.AmplitudeList(dc_amp.get('amplitudes')))
+        new.set('decay_chains', diagram_generation.DecayChainAmplitudeList(
+            [MadGraphCmd._copy_decay_chain(dc)
+             for dc in dc_amp.get('decay_chains')]))
+        return new
+
     def _expand_crossings_for_ungrouped_output(self):
         """The amplitudes an ungrouped output builds its matrix elements from:
         self._curr_amps, with the folded crossings put back if the output
@@ -12825,8 +12848,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 self._curr_me_folds_crossings = folds_crossings
                 if group_processes:
                     cpu_time1 = time.time()
+                    # Copies: building the matrix elements empties a decay
+                    # chain, and self._curr_amps must keep its own for the next
+                    # output (see _copy_decay_chain).
                     dc_amps = diagram_generation.DecayChainAmplitudeList(\
-                        [amp for amp in self._curr_amps if isinstance(amp, \
+                        [self._copy_decay_chain(amp) for amp in self._curr_amps
+                         if isinstance(amp, \
                                         diagram_generation.DecayChainAmplitude)])
                     non_dc_amps = diagram_generation.AmplitudeList(\
                              [amp for amp in self._curr_amps if not \
@@ -12978,6 +13005,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     # silently missing from the output. For this output only:
                     # self._curr_amps keeps the recorded crossings.
                     amps = self._expand_crossings_for_ungrouped_output()
+                    # And the decay chains as copies, which the matrix elements
+                    # may empty (see _copy_decay_chain).
+                    if any(isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                           for amp in amps):
+                        amps = diagram_generation.AmplitudeList(
+                            [self._copy_decay_chain(amp) if isinstance(amp,
+                                      diagram_generation.DecayChainAmplitude)
+                             else amp for amp in amps])
                     mode = {}
                     if self._export_format in [ 'standalone_msP' ,
                                              'standalone_msF', 'standalone_rw']:

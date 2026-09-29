@@ -2167,10 +2167,21 @@ class TestCrossingOutputOrder(unittest.TestCase):
     compared, file by file, with the same output written first in a fresh
     session. No 'import model' line: the define imports the Standard Model on
     its own, as it does for a script starting that way.
+
+    Decay chains have a trap of their own: building the matrix elements pops
+    the decay chains off the DecayChainAmplitude they come from, so an output
+    built straight from self._curr_amps leaves the generation's chain without
+    its decays. Once self._curr_amps was no longer replaced at the end of an
+    output, the next output rebuilt from it wrote pq pq > z pq, z > e+ e- as
+    the undecayed pq pq > z pq, and nothing complained. Covered on its own
+    (DECAY_CHAIN) and next to a folding process, where the decay chain itself
+    records nothing (MIXED).
     """
 
     SETUP = ('define pq = g u u~',)
-    PROCESS = 'pq pq > pq pq --use_crossing=True'
+    GENERATION = ('generate pq pq > pq pq --use_crossing=True',)
+    DECAY_CHAIN = ('generate pq pq > z pq, z > e+ e- --use_crossing=True',)
+    MIXED = GENERATION + ('add process u u~ > z g, z > e+ e-',)
     # Drops the cached matrix elements but keeps the generation, so the next
     # output is rebuilt from self._curr_amps. (set group_subprocesses cannot
     # be used for this: it drops the generation as well.)
@@ -2188,16 +2199,17 @@ class TestCrossingOutputOrder(unittest.TestCase):
         if os.path.isdir(cls.tmpdir):
             shutil.rmtree(cls.tmpdir)
 
-    def _session(self, steps, setup=()):
-        """One interface generating PROCESS, then running `steps` in turn: a
-        'set ...' line is executed, anything else is an output format written
-        to a new directory. Returns the output directories, in order."""
+    def _session(self, steps, setup=(), generation=None):
+        """One interface running the `generation` lines (GENERATION by
+        default), then `steps` in turn: a 'set ...' line is executed, anything
+        else is an output format written to a new directory. Returns the
+        output directories, in order."""
         cmd = cmd_interface.MasterCmd()
         cmd.no_notification()
         cmd.exec_cmd('set automatic_html_opening False')
-        for line in tuple(setup) + self.SETUP:
+        for line in tuple(setup) + self.SETUP + \
+                tuple(generation or self.GENERATION):
             cmd.exec_cmd(line)
-        cmd.exec_cmd('generate %s' % self.PROCESS)
         outs = []
         for step in steps:
             if step.startswith('set '):
@@ -2209,10 +2221,10 @@ class TestCrossingOutputOrder(unittest.TestCase):
             outs.append(out)
         return outs
 
-    def _fresh_output(self, fmt, setup=()):
-        key = (fmt, tuple(setup))
+    def _fresh_output(self, fmt, setup=(), generation=None):
+        key = (fmt, tuple(setup), tuple(generation or self.GENERATION))
         if key not in self._fresh:
-            self._fresh[key] = self._session([fmt], setup)[0]
+            self._fresh[key] = self._session([fmt], setup, generation)[0]
         return self._fresh[key]
 
     @staticmethod
@@ -2253,15 +2265,15 @@ class TestCrossingOutputOrder(unittest.TestCase):
                                 '%s: %s/%s differs from a fresh output'
                                 % (label, pdir, name))
 
-    def _assert_order_independent(self, sequences, setup=()):
+    def _assert_order_independent(self, sequences, setup=(), generation=None):
         """Each sequence's last output must equal a fresh one of its format."""
         for steps in sequences:
             fmt = [s for s in steps if not s.startswith('set ')][-1]
             label = ' ; '.join(steps)
             with self.subTest(sequence=label):
-                out = self._session(steps, setup)[-1]
-                self._assert_same_output(out, self._fresh_output(fmt, setup),
-                                         label)
+                out = self._session(steps, setup, generation)[-1]
+                self._assert_same_output(
+                    out, self._fresh_output(fmt, setup, generation), label)
 
     def test_fresh_outputs_fold_and_expand(self):
         """Guard the guards: the process has to fold for the tests below to
@@ -2299,6 +2311,45 @@ class TestCrossingOutputOrder(unittest.TestCase):
              ('madevent', self.REBUILD, 'standalone_fortran'),
              ('standalone_fortran', self.REBUILD, 'madevent')],
             setup=self.UNGROUPED)
+
+    def test_decay_chain_outputs_keep_the_decay(self):
+        """Guard: the decay chain folds, and keeps its decay, when written
+        first."""
+        folded = self._subprocesses(self._fresh_output(
+            'standalone_fortran', generation=self.DECAY_CHAIN))
+        self.assertTrue(folded and all('_z_' in pdir for pdir in folded),
+                        'expected decayed subprocesses: %s' % sorted(folded))
+        self.assertTrue(any('Crossed processes (folded into this matrix '
+                            'element)' in files.get('check_sa.f', '')
+                            for files in folded.values()),
+                        'expected folded crossings in %s' % sorted(folded))
+
+    def test_decay_chain_output_order(self):
+        """A decay chain with recorded crossings, rebuilt by a later output of
+        either kind."""
+        self._assert_order_independent(
+            [('standalone_fortran', self.REBUILD, 'standalone_fortran'),
+             ('standalone_fortran', 'madevent', 'standalone_fortran'),
+             ('standalone', self.REBUILD, 'standalone'),
+             ('madevent', self.REBUILD, 'madevent')],
+            generation=self.DECAY_CHAIN)
+
+    def test_decay_chain_ungrouped_output_order(self):
+        """The same on the ungrouped path."""
+        self._assert_order_independent(
+            [('standalone_fortran', self.REBUILD, 'standalone_fortran'),
+             ('madevent', 'standalone_fortran', 'madevent')],
+            setup=self.UNGROUPED, generation=self.DECAY_CHAIN)
+
+    def test_decay_chain_next_to_folding_process(self):
+        """A decay chain recording no crossing, generated next to a process
+        that records some: the generation is kept across outputs all the
+        same."""
+        self._assert_order_independent(
+            [('madevent', 'standalone_fortran'),
+             ('standalone_fortran', 'madevent'),
+             ('madevent', self.REBUILD, 'madevent')],
+            generation=self.MIXED)
 
 
 # The C++ standalone driver: take a fixed RAMBO phase space point once
