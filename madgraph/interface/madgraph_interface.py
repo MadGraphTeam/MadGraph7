@@ -3748,6 +3748,11 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     # Same flag on the output line, for the output being written (see do_output).
     # do_output sets it on every call, so it can never leak to the next output.
     _output_use_crossing = False
+    # _output_folds_crossings() of the output _curr_matrix_elements were built
+    # for (None: not built by _export). Recorded crossings come out folded or
+    # expanded depending on it, so an output asking for the other answer must
+    # not reuse them; see generate_matrix_elements in _export.
+    _curr_me_folds_crossings = None
     _done_export = False
     _curr_decaymodel = None
 
@@ -12578,6 +12583,15 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         Shared by the grouped and the ungrouped paths so that an output which
         cannot read folded crossings gets them expanded automatically, without
         the user having to pass --use_crossing=False.
+
+        `amps` is left untouched: the bases come back as shallow copies (same
+        process and diagrams, their own crossed_processes and
+        has_mirror_process -- the mirror fold can mark a base that recorded
+        nothing, so every one is copied). They are self._curr_amps' own
+        amplitudes, and emptying their crossed_processes or marking their
+        mirror in place made every later output depend on this one -- a
+        standalone_fortran written after a madevent one, from the same
+        generation, folded nothing.
         """
         if self.options['group_subprocesses'] == 'Auto':
             collect_mirror = True
@@ -12593,7 +12607,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         expanded = diagram_generation.AmplitudeList()
         seen = {}   # fast_proc -> amplitude, for mirror fold
         for amp, _crossed in originals:
-            amp.set('crossed_processes', [])
+            amp = copy.copy(amp)
+            if 'crossed_processes' in amp:
+                amp.set('crossed_processes', [])
             expanded.append(amp)
             seen[_fastproc(amp)] = amp
         for amp, crossed in originals:
@@ -12612,16 +12628,39 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 seen[fp] = xamp
         return expanded
 
+    @staticmethod
+    def _has_recorded_crossings(amps):
+        """True if any amplitude of `amps` folds crossings recorded at
+        generation (merge_crossing='record'): a plain amplitude on its own
+        `crossed_processes`, a decay chain on its inner amplitudes'."""
+        for amp in amps:
+            if isinstance(amp, diagram_generation.DecayChainAmplitude):
+                inner = amp.get('amplitudes')
+            else:
+                inner = [amp]
+            if any(a.get('crossed_processes') for a in inner
+                   if 'crossed_processes' in a):
+                return True
+        return False
+
     def _expand_crossings_for_ungrouped_output(self):
-        """Put folded crossings back for an output that cannot read them.
+        """The amplitudes an ungrouped output builds its matrix elements from:
+        self._curr_amps, with the folded crossings put back if the output
+        cannot read them.
 
         Counterpart of the grouped path's expansion, for the ungrouped one. A
         plain amplitude carries its crossings in `crossed_processes` and is
-        expanded in place; a decay chain records them on its inner amplitudes
-        instead, and its grouping does not survive a partial expansion, so the
-        affected chains are regenerated whole with merge_crossing=False (the
-        base diagrams are still reused by cross_amplitude). Either way the
-        result is exactly the complete unmerged output.
+        expanded (on copies); a decay chain records them on its inner
+        amplitudes instead, and its grouping does not survive a partial
+        expansion, so the affected chains are regenerated whole with
+        merge_crossing=False (the base diagrams are still reused by
+        cross_amplitude). Either way the result is exactly the complete
+        unmerged output.
+
+        Returned rather than stored: self._curr_amps is the generation, and an
+        output must not rewrite it. It used to be replaced by the expanded list,
+        so any later output rebuilt from it -- a folding one included -- came
+        out unfolded.
         """
         dc_amps = [amp for amp in self._curr_amps
                    if isinstance(amp, diagram_generation.DecayChainAmplitude)]
@@ -12630,12 +12669,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
              if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
 
         dc_crossed = not self._output_folds_crossings() and \
-            any(a.get('crossed_processes')
-                for dc in dc_amps for a in dc.get('amplitudes')
-                if 'crossed_processes' in a)
+            self._has_recorded_crossings(dc_amps)
         expand_non_dc = self._crossing_needs_expansion(non_dc_amps)
         if not dc_crossed and not expand_non_dc:
-            return
+            return self._curr_amps
 
         if expand_non_dc:
             non_dc_amps = self._expand_recorded_crossings(non_dc_amps)
@@ -12655,7 +12692,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         new_amps.extend(non_dc_amps)
         new_amps.extend(dc_amps)
         new_amps.sort(key=lambda x: x.get_number_of_diagrams(), reverse=True)
-        self._curr_amps = new_amps
+        return new_amps
 
     # Export a matrix element
     def set_color_basis_mode(self, *exporters):
@@ -12768,9 +12805,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # to get most efficient multichannel output
             self._curr_amps.sort(key=lambda x: x.get_number_of_diagrams(),reverse=True)
 
+            # The matrix elements of the previous output are reused as they
+            # are, but with recorded crossings they are not the same for every
+            # output: folded into their base for a folding standalone backend,
+            # expanded into explicit subprocesses for anything else. Reusing
+            # them across that line made the output depend on the one written
+            # before it -- a madevent output after a standalone_fortran one
+            # dropped every crossed subprocess, a standalone_fortran after a
+            # madevent one folded nothing. Rebuild them instead.
+            folds_crossings = self._output_folds_crossings()
+            if self._curr_matrix_elements.get_matrix_elements() and \
+                    self._curr_me_folds_crossings != folds_crossings and \
+                    self._has_recorded_crossings(self._curr_amps):
+                self._curr_matrix_elements = helas_objects.HelasMultiProcess()
+
             cpu_time1 = time.time()
             ndiags = 0
             if not self._curr_matrix_elements.get_matrix_elements():
+                self._curr_me_folds_crossings = folds_crossings
                 if group_processes:
                     cpu_time1 = time.time()
                     dc_amps = diagram_generation.DecayChainAmplitudeList(\
@@ -12851,9 +12903,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         # decay chains fully (merge_crossing=False), giving exactly
                         # the pre-dedup output. cross_amplitude reuse still avoids
                         # regenerating the diagrams of the base subprocess.
-                        if any(a.get('crossed_processes')
-                               for dc in dc_amps for a in dc.get('amplitudes')
-                               if 'crossed_processes' in a):
+                        # The chains are regenerated into a list of their own:
+                        # self._curr_amps keeps the recorded ones for the next
+                        # output.
+                        if self._has_recorded_crossings(dc_amps):
                             ign6 = self.options.get(
                                 'ignore_six_quark_processes', []) or []
                             if self.options['group_subprocesses'] == 'Auto':
@@ -12922,15 +12975,16 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     # the folded crossings, so put them back as explicit
                     # subprocesses instead of forcing the user to regenerate with
                     # --use_crossing=False. Without this the crossings would be
-                    # silently missing from the output.
-                    self._expand_crossings_for_ungrouped_output()
+                    # silently missing from the output. For this output only:
+                    # self._curr_amps keeps the recorded crossings.
+                    amps = self._expand_crossings_for_ungrouped_output()
                     mode = {}
                     if self._export_format in [ 'standalone_msP' ,
                                              'standalone_msF', 'standalone_rw']:
                         mode['mode'] = 'MadSpin'
                     # The conditional statement tests whether we are dealing
                     # with a loop induced process.
-                    if isinstance(self._curr_amps[0], 
+                    if isinstance(amps[0],
                                          loop_diagram_generation.LoopAmplitude):
                         mode['optimized_output']=self.options['loop_optimized_output']
                         HelasMultiProcessClass = loop_helas_objects.LoopHelasProcess
@@ -12940,7 +12994,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                         compute_loop_nc = False
                     
                     self._curr_matrix_elements = HelasMultiProcessClass(
-                      self._curr_amps, compute_loop_nc=compute_loop_nc,
+                      amps, compute_loop_nc=compute_loop_nc,
                                                        matrix_element_opts=mode)
                     
                     ndiags = sum([len(me.get('diagrams')) for \
@@ -13163,11 +13217,18 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
         # Replace the amplitudes with the actual amplitudes from the
         # matrix elements, which allows proper diagram drawing also of
-        # decay chain processes
-        matrix_elements = self._curr_matrix_elements.get_matrix_elements()
-        self._curr_amps = diagram_generation.AmplitudeList(\
-               [me.get('base_amplitude') for me in \
-                matrix_elements])
+        # decay chain processes.
+        # Not when the generation recorded crossings: the amplitudes rebuilt
+        # from the matrix elements carry none (get_base_amplitude keeps only the
+        # process and the diagrams), and they are this output's -- folded, or
+        # expanded into explicit subprocesses -- not the generation's. The next
+        # output would inherit that choice: after a standalone_fortran one, a
+        # madevent output rebuilt from them misses every crossed subprocess.
+        if not self._has_recorded_crossings(self._curr_amps):
+            matrix_elements = self._curr_matrix_elements.get_matrix_elements()
+            self._curr_amps = diagram_generation.AmplitudeList(\
+                   [me.get('base_amplitude') for me in \
+                    matrix_elements])
 
     def finalize(self, nojpeg, online = False, flaglist=[]):
         """Make the html output, write proc_card_mg5.dat and create

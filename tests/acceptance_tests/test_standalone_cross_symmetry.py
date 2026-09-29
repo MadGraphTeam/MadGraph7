@@ -2146,6 +2146,161 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
                 self._output(fmt, 'ok_%s' % fmt)
 
 
+class TestCrossingOutputOrder(unittest.TestCase):
+    """An output must not depend on the outputs written before it.
+
+    One generation with recorded crossings (merge_crossing='record') comes out
+    folded into its bases for a folding standalone backend and expanded into
+    explicit subprocesses for every other output. Both are built from the same
+    self._curr_amps, so writing one output must leave that generation -- and
+    the matrix elements the next output may reuse -- fit for the other kind.
+    It did not: the expansion emptied the bases' crossed_processes in place,
+    the ungrouped path replaced self._curr_amps by the expanded list, the
+    amplitudes rebuilt from the matrix elements at the end of every output
+    carry no crossing at all, and the cached matrix elements were reused
+    whatever the crossing treatment they had been built for. A madevent output
+    after a standalone_fortran one lost every crossed subprocess; a folding
+    output after a madevent one folded nothing.
+
+    pq pq > pq pq (pq = g u u~) is small and really folds: g g > g g,
+    g g > u u~ and u u > u u carry every other subprocess. Every output is
+    compared, file by file, with the same output written first in a fresh
+    session. No 'import model' line: the define imports the Standard Model on
+    its own, as it does for a script starting that way.
+    """
+
+    SETUP = ('define pq = g u u~',)
+    PROCESS = 'pq pq > pq pq --use_crossing=True'
+    # Drops the cached matrix elements but keeps the generation, so the next
+    # output is rebuilt from self._curr_amps. (set group_subprocesses cannot
+    # be used for this: it drops the generation as well.)
+    REBUILD = 'set loop_optimized_output False'
+    UNGROUPED = ('set group_subprocesses False',)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmpdir = tempfile.mkdtemp(prefix='cross_order_')
+        cls._fresh = {}
+        cls._count = 0
+
+    @classmethod
+    def tearDownClass(cls):
+        if os.path.isdir(cls.tmpdir):
+            shutil.rmtree(cls.tmpdir)
+
+    def _session(self, steps, setup=()):
+        """One interface generating PROCESS, then running `steps` in turn: a
+        'set ...' line is executed, anything else is an output format written
+        to a new directory. Returns the output directories, in order."""
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        for line in tuple(setup) + self.SETUP:
+            cmd.exec_cmd(line)
+        cmd.exec_cmd('generate %s' % self.PROCESS)
+        outs = []
+        for step in steps:
+            if step.startswith('set '):
+                cmd.exec_cmd(step)
+                continue
+            type(self)._count += 1
+            out = pjoin(self.tmpdir, '%s_%d' % (step, self._count))
+            cmd.exec_cmd('output %s %s -f -nojpeg' % (step, out))
+            outs.append(out)
+        return outs
+
+    def _fresh_output(self, fmt, setup=()):
+        key = (fmt, tuple(setup))
+        if key not in self._fresh:
+            self._fresh[key] = self._session([fmt], setup)[0]
+        return self._fresh[key]
+
+    @staticmethod
+    def _subprocesses(out_dir):
+        """{P directory: {file: content}} over the regular files of every
+        subprocess directory. FLV_<n> coupling names are numbered by a
+        counter shared across the session, which depends on the outputs
+        written before whatever the crossing does (--use_crossing=False drifts
+        the same way on a decay chain), so the number is blanked."""
+        path = pjoin(out_dir, 'SubProcesses')
+        result = {}
+        for pdir in sorted(os.listdir(path)):
+            if not pdir.startswith('P'):
+                continue
+            files = {}
+            for name in sorted(os.listdir(pjoin(path, pdir))):
+                fpath = pjoin(path, pdir, name)
+                if os.path.islink(fpath) or not os.path.isfile(fpath):
+                    continue
+                with open(fpath, 'rb') as stream:
+                    text = stream.read().decode('utf-8', 'replace')
+                files[name] = re.sub(r'\bFLV_\d+\b', 'FLV_n', text)
+            result[pdir] = files
+        return result
+
+    def _assert_same_output(self, out_dir, fresh_dir, label):
+        got = self._subprocesses(out_dir)
+        want = self._subprocesses(fresh_dir)
+        self.assertEqual(sorted(got), sorted(want),
+                         '%s: not the subprocess directories of a fresh '
+                         'output' % label)
+        for pdir in want:
+            self.assertEqual(sorted(got[pdir]), sorted(want[pdir]),
+                             '%s: %s holds other files than in a fresh '
+                             'output' % (label, pdir))
+            for name in want[pdir]:
+                self.assertTrue(got[pdir][name] == want[pdir][name],
+                                '%s: %s/%s differs from a fresh output'
+                                % (label, pdir, name))
+
+    def _assert_order_independent(self, sequences, setup=()):
+        """Each sequence's last output must equal a fresh one of its format."""
+        for steps in sequences:
+            fmt = [s for s in steps if not s.startswith('set ')][-1]
+            label = ' ; '.join(steps)
+            with self.subTest(sequence=label):
+                out = self._session(steps, setup)[-1]
+                self._assert_same_output(out, self._fresh_output(fmt, setup),
+                                         label)
+
+    def test_fresh_outputs_fold_and_expand(self):
+        """Guard the guards: the process has to fold for the tests below to
+        mean anything, and the two kinds of output must really differ."""
+        folded = self._subprocesses(self._fresh_output('standalone_fortran'))
+        expanded = self._subprocesses(self._fresh_output('madevent'))
+        self.assertTrue(any('Crossed processes (folded into this matrix '
+                            'element)' in files.get('check_sa.f', '')
+                            for files in folded.values()),
+                        'expected folded crossings in %s' % sorted(folded))
+        self.assertLess(len(folded), len(expanded),
+                        'expected the madevent output to expand the folded '
+                        'crossings: %s vs %s' % (sorted(folded),
+                                                 sorted(expanded)))
+
+    def test_folding_output_after_grouped_output(self):
+        """A folding output written after the grouped madevent one."""
+        sequences = []
+        for fmt in ('standalone_fortran', 'standalone'):
+            sequences.append(('madevent', fmt))
+            sequences.append(('madevent', self.REBUILD, fmt))
+        self._assert_order_independent(sequences)
+
+    def test_grouped_output_after_folding_output(self):
+        """The grouped madevent output written after a folding one."""
+        self._assert_order_independent(
+            [('standalone_fortran', 'madevent'),
+             ('standalone_fortran', self.REBUILD, 'madevent')])
+
+    def test_ungrouped_output_order(self):
+        """The same, with the ungrouped madevent output (the ungrouped path of
+        the expansion)."""
+        self._assert_order_independent(
+            [('madevent', 'standalone_fortran'),
+             ('madevent', self.REBUILD, 'standalone_fortran'),
+             ('standalone_fortran', self.REBUILD, 'madevent')],
+            setup=self.UNGROUPED)
+
+
 # The C++ standalone driver: take a fixed RAMBO phase space point once
 # (all-massless, so the momenta are identical between the two P directories) and
 # print sigmaKin at each flavor_id passed on the command line. Each flavor_id is
