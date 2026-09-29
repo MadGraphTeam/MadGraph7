@@ -1762,7 +1762,147 @@ class TestCmdShell2(unittest.TestCase,
         for i,_ in enumerate(original):
             self.assertEqual(original[i], new[i])
 
-    def _output_standalone_cpp(self, out_dir, force=False):
+    def test_standalone_cpp_cparity_dedup(self):
+        """The scalar C++ C-parity helicity de-duplication must engage, stay
+        exact, and keep the good-helicity lists inside their rows.
+
+        sigmaKin validates the pairing of every helicity row with its fully
+        flipped partner on the first 19 calls of a flavor, then computes only
+        the lower-index row of each pair and counts it twice. That reuse used
+        to sit in the helicity-sampling branch, which the default sum_hel == 0
+        mode never takes, so it never ran; and igood was filled 1-based into an
+        ncomb-long row, which for g g > t t~ (all 16 helicities good) wrote one
+        past the row and left igood[0] unset.
+
+        check_sa.cpp is replaced by a driver that counts the
+        calculate_wavefunctions calls of every sigmaKin call and dumps the
+        good-helicity bookkeeping (the header's private section is opened for
+        it). Both with and without the crossing machinery:
+          * g g > t t~: 16 rows per call while scanning, 8 once settled, the
+            same |M|^2 throughout, igood[0..ngood-1] the 16 good rows; a
+            crossed flavor_id (t t~ > g g) keeps the full sum;
+          * u u~ > e+ e- (parity violating through the Z): the pairing is
+            refused, every call keeps the full sum.
+        """
+        driver = r'''
+#include <iostream>
+#include <iomanip>
+#include <cstdlib>
+#include "CPPProcess.h"
+#include "rambo.h"
+
+extern long cw_count;
+
+int main(int argc, char** argv){
+  CPPProcess seed("../../Cards/param_card.dat");
+  double weight;
+  vector<double*> p = get_momenta(seed.ninitial, 1000., seed.getMasses(),
+                                  weight);
+  std::cout << std::setprecision(17);
+  for (int a = 1; a < argc; a++){
+    int fid = atoi(argv[a]);
+    CPPProcess process("../../Cards/param_card.dat");
+    process.setMomenta(p);
+    for (int i = 1; i <= 30; i++){
+      long before = cw_count;
+      double me = process.sigmaKin(fid);
+      std::cout << "CALL " << fid << " " << i << " " << cw_count - before
+                << " " << me << std::endl;
+    }
+    int f = fid % CPPProcess::nflavors;
+    std::cout << "GOOD " << fid << " " << process.csym_bad[f];
+    for (int i = 0; i < CPPProcess::ncomb; i++)
+      if (process.goodhel[f][i]) std::cout << " " << i;
+    std::cout << std::endl << "IGOOD " << fid;
+    for (int g = 0; g < process.ngood[f]; g++)
+      std::cout << " " << process.igood[f][g];
+    std::cout << std::endl;
+  }
+  return 0;
+}
+'''
+
+        def run(proc_dir, fids):
+            cc = pjoin(proc_dir, 'CPPProcess.cc')
+            src = open(cc).read()
+            marker = '// Calculate wavefunctions for all processes'
+            self.assertIn(marker, src)
+            src = src.replace(marker, marker + '\n  cw_count++;', 1)
+            open(cc, 'w').write('long cw_count = 0;\n' + src)
+            header = pjoin(proc_dir, 'CPPProcess.h')
+            src = open(header).read()
+            self.assertIn('private:', src)
+            open(header, 'w').write(src.replace('private:', 'public:'))
+            open(pjoin(proc_dir, 'check_sa.cpp'), 'w').write(driver)
+            with open(os.devnull, 'w') as devnull:
+                subprocess.call(['make'], stdout=devnull,
+                                stderr=subprocess.STDOUT, cwd=proc_dir)
+            self.assertTrue(os.path.isfile(pjoin(proc_dir, 'check')),
+                            'the driver did not build in %s' % proc_dir)
+            out = subprocess.check_output(['./check'] + [str(f) for f in fids],
+                                          cwd=proc_dir).decode()
+            res = {}
+            for line in out.splitlines():
+                toks = line.split()
+                if toks[:1] == ['CALL']:
+                    res.setdefault(int(toks[1]), {}).setdefault(
+                        'calls', []).append((int(toks[3]), float(toks[4])))
+                elif toks[:1] == ['GOOD']:
+                    res[int(toks[1])]['csym_bad'] = int(toks[2])
+                    res[int(toks[1])]['good'] = [int(x) for x in toks[3:]]
+                elif toks[:1] == ['IGOOD']:
+                    res[int(toks[1])]['igood'] = [int(x) for x in toks[2:]]
+            return res
+
+        def check(res, fid, nfull, deduped, scanned=True):
+            calls = res[fid]['calls']
+            self.assertEqual(len(calls), 30)
+            first = calls[0][1]
+            self.assertGreater(first, 0.)
+            for i, (ncw, me) in enumerate(calls):
+                # Call 1 is the plain full sum: every call must reproduce it.
+                self.assertAlmostEqual(me, first, delta=1e-12 * first,
+                                       msg='fid %d call %d' % (fid, i + 1))
+                # call 1 visits every row (16 for both processes) to find the
+                # good ones, the scan the nfull good ones, the reuse half.
+                expected = 16 if i == 0 else nfull
+                if deduped and i >= 19:
+                    expected = nfull // 2
+                self.assertEqual(ncw, expected,
+                                 'fid %d call %d: %d wavefunction evaluations,'
+                                 ' expected %d' % (fid, i + 1, ncw, expected))
+            if scanned:
+                self.assertEqual(res[fid]['csym_bad'], 0 if deduped else 1)
+            # 0-based: igood[0..ngood-1] lists exactly the good rows.
+            self.assertEqual(sorted(res[fid]['igood']), res[fid]['good'])
+            self.assertEqual(len(res[fid]['good']), nfull)
+
+        self.do('import model sm')
+        self.do('generate g g > t t~')
+        self.do('add process u u~ > e+ e-')
+        for use_crossing in (False, True):
+            self._output_standalone_cpp(self.out_dir, force=True,
+                                        use_crossing=use_crossing)
+            proc_root = pjoin(self.out_dir, 'SubProcesses')
+            dirs = dict((suffix, pjoin(proc_root, d))
+                        for d in os.listdir(proc_root)
+                        for suffix in ('_gg_ttx', '_uux_epem')
+                        if d.endswith(suffix))
+            self.assertEqual(len(dirs), 2, os.listdir(proc_root))
+            crossing = 'cross_perm_ic' in open(
+                pjoin(dirs['_gg_ttx'], 'CPPProcess.cc')).read()
+            self.assertEqual(crossing, use_crossing)
+            # cross 23 (1<->4, 2<->3) on g g > t t~ is t t~ > g g.
+            fids = [0, 23] if use_crossing else [0]
+            res = run(dirs['_gg_ttx'], fids)
+            check(res, 0, 16, deduped=True)
+            if use_crossing:
+                # a crossed call never runs the C-parity scan
+                check(res, 23, 16, deduped=False, scanned=False)
+            res = run(dirs['_uux_epem'], [0])
+            check(res, 0, 4, deduped=False)
+
+    def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False):
         """Write a scalar C++ standalone output for the processes currently
         held by the interface, driving export_cpp.ProcessExporterCPP through
         its internal API.
@@ -1773,6 +1913,7 @@ class TestCmdShell2(unittest.TestCase,
         this way (see madgraph/various/process_checks.py and
         tests/unit_tests/various/test_process_checks.py).  Going through the API
         keeps the scalar-C++ coverage of these tests without the command.
+        use_crossing emits the crossing machinery (the extended flavor_id).
         """
         import madgraph.iolibs.export_cpp as export_cpp
         import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -1787,7 +1928,8 @@ class TestCmdShell2(unittest.TestCase,
         opt = dict(cmd.options)
         opt['output_options'] = {}
         opt.update({'sa_symmetry': False, 'export_format': 'standalone_cpp',
-                    'mp': False, 'v5_model': True})
+                    'mp': False, 'v5_model': True,
+                    'use_crossing': use_crossing})
         exporter = export_cpp.ProcessExporterCPP(out_dir, opt)
 
         # Reuse the helas objects the interface already built, exactly like

@@ -1425,7 +1425,7 @@ class OneProcessExporterCPP(object):
 
         Mirrors export_v4.fill_crossing_replace_dict for the standalone_cpp
         backend. When self.use_crossing is False every hole gets the plain,
-        pre-crossing code so the output is byte-for-byte the old one; when it is
+        pre-crossing code (no crossing token in the output); when it is
         True the extended flavor_id (a flavor AND a crossing) is decoded in
         sigmaKin, the momenta/helicities are permuted through the crossing and
         the swapped legs' NSF flag is flipped (via the ic[] array the HELAS
@@ -1433,7 +1433,7 @@ class OneProcessExporterCPP(object):
         dependent initial-state spin*color (spincol_cross) times the flavor-
         dependent identical-final-state factor (ident_cross).
         """
-        # Plain (no-crossing) fills: identical to the historical template.
+        # Plain (no-crossing) fills: the historical template's code.
         plain = {
             'fidx': 'flavor_id',
             'cross_tables_decode': '',
@@ -1450,15 +1450,18 @@ class OneProcessExporterCPP(object):
             # No crossing: every call is the uncrossed process, so the C-parity
             # de-duplication is always allowed.
             'csym_dedup_ok': 'true',
-            # Historical good-helicity filter (byte-identical to pre-crossing).
+            # Historical good-helicity filter, except that igood is filled
+            # 0-based (the historical fill-after-increment left igood[0] unset
+            # and wrote igood[ncomb], one past the row, when every helicity is
+            # good).
             'cross_ghidx_setup': '',
             'cross_goodhel_gate':
                 'goodhel[flavor_id][ihel] || ntry[flavor_id] < 2',
             'cross_goodhel_train':
                 'if (t != 0. && !goodhel[flavor_id][ihel]){\n'
                 '                goodhel[flavor_id][ihel]=true;\n'
-                '                ngood[flavor_id] ++;\n'
                 '                igood[flavor_id][ngood[flavor_id]] = ihel;\n'
+                '                ngood[flavor_id] ++;\n'
                 '            }',
         }
         if not self.use_crossing:
@@ -1655,8 +1658,10 @@ class OneProcessExporterCPP(object):
             # then find the identity row carrying it. ghidx = -1 disables the
             # filter for a non-filterable crossing (ghfilt[cross] == 0: compute
             # the row, never train). For cross 0 perm/ic are the identity so
-            # ghidx == ihel, exactly the historical filter. The search is only
-            # reached while scanning (ntry < 10), so it is off the hot path.
+            # ghidx == ihel, exactly the historical filter. The search runs for
+            # every row the full helicity sum visits, i.e. on every call in the
+            # default sum_hel == 0 mode (bar the C-parity partners skipped once
+            # the de-duplication is validated): O(ncomb*nexternal) per row.
             'cross_ghidx_setup':
                 'int ghidx = -1;\n'
                 '        if (ghfilt[cross]){\n'
@@ -1680,11 +1685,15 @@ class OneProcessExporterCPP(object):
                 '        ',
             'cross_goodhel_gate':
                 'ghidx < 0 || goodhel[flav_use][ghidx] || ntry[flav_use] < 2',
+            # igood lists the IDENTITY rows (ghidx), the rows goodhel is keyed
+            # by: the C-parity verdict and the helicity-sampling mode read it
+            # for the uncrossed process only, where a crossed row index would
+            # name the wrong helicity. Filled 0-based.
             'cross_goodhel_train':
                 'if (t != 0. && ghidx >= 0 && !goodhel[flav_use][ghidx]){\n'
                 '                goodhel[flav_use][ghidx]=true;\n'
+                '                igood[flav_use][ngood[flav_use]] = ghidx;\n'
                 '                ngood[flav_use] ++;\n'
-                '                igood[flav_use][ngood[flav_use]] = ihel;\n'
                 '            }',
         }
 
