@@ -321,7 +321,7 @@ class IOExportV4IOTest(IOTests.IOTestManager,
 
     def test_madevent_csym_self_pair_latch_is_per_subprocess(self):
         """The C-parity self-pair latch refuses the reuse for its OWN matrix
-        element only.
+        element only, and both madevent templates carry it.
 
         A self-paired helicity row (FLIP(I)=I) has no distinct partner, so the
         full-sum loop cannot be halved uniformly and SMATRIX latches CSYMBAD
@@ -332,13 +332,17 @@ class IOExportV4IOTest(IOTests.IOTestManager,
         Latching the whole array -- as the grouped template did -- let the
         first call of one such subprocess switch the de-duplication off for
         every ordinary one of the group, which then never reported a
-        'CSYM PAIR:' line to the helicity recycler.
+        'CSYM PAIR:' line to the helicity recycler. The ungrouped template had
+        lost the latch altogether, leaving a self-paired row at full weight in
+        an otherwise halved loop.
         """
         tmpdir = tempfile.mkdtemp(prefix='csym_latch_')
         try:
             for exporter_class, proc_id, own_write in (
                     (export_v4.ProcessExporterFortranMEGroup, '2',
-                     'CSYMBAD(JHEL,2)=1'),):
+                     'CSYMBAD(JHEL,2)=1'),
+                    (export_v4.ProcessExporterFortranME, '',
+                     'CSYMBAD(JHEL)=1')):
                 name = exporter_class.__name__
                 path = pjoin(tmpdir, 'matrix%s.f' % proc_id)
                 exporter_class().write_matrix_element_v4(

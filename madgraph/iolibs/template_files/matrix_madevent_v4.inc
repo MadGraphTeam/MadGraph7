@@ -78,11 +78,13 @@ C   enough: read_good_hel restores NTRY above the threshold without ever
 C   scanning, and the random-helicity branch bumps NTRY without a full sum).
 C   CSYMBAD/NCSCAN live in a COMMON block (zero-initialised, like NTRY above) so
 C   write_good_hel/read_good_hel can persist the verdict across jobs.
-    INTEGER FLIP(NCOMB)
+    INTEGER FLIP(NCOMB), JHEL
     REAL*8 TSMAX
-    LOGICAL DEDUP
+    LOGICAL DEDUP, CSYM_DONE
     INTEGER CSYMBAD(MAXFLAVPERPROC), NCSCAN(MAXFLAVPERPROC)
     COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+    SAVE CSYM_DONE
+    DATA CSYM_DONE/.FALSE./
 %(flip_data)s
     INTEGER FLAVOR(NEXTERNAL)
     INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
@@ -125,6 +127,21 @@ C ----------
     NTRY(IFLAV)=NTRY(IFLAV)+1
 C   FLIP(I) -- the C-parity partner of each helicity row, every helicity
 C   negated -- is generated DATA (see _helstate_data); nothing to build.
+    IF (.NOT.CSYM_DONE) THEN
+C     A self-paired row (FLIP(I)=I, every helicity 0) has no
+C     distinct partner, so the loop could not be halved
+C     uniformly: refuse the reuse outright, for every flavor.
+C     The scan below only compares distinct pairs, so it cannot
+C     catch this row itself.
+      DO I=1,NCOMB
+        IF (FLIP(I).EQ.I) THEN
+          DO JHEL=1,MAXFLAVPERPROC
+            CSYMBAD(JHEL)=1
+          ENDDO
+        ENDIF
+      ENDDO
+      CSYM_DONE = .TRUE.
+    ENDIF
     DO I=1,NEXTERNAL
        JC(I) = +1
     ENDDO
