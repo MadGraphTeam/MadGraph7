@@ -52,6 +52,20 @@ def cpp_blas_colour_sum_test_factory(process, model='sm', tolerance=1e-6):
     return test
 
 
+def cpp_blas_crossed_colour_sum_test_factory(process, base_dir, defines=(),
+                                             model='sm', tolerance=1e-6,
+                                             color_basis=None):
+    def test(self):
+        self.check_cpp_blas_crossed_colour_sum(
+            process, base_dir, defines=defines, model=model,
+            tolerance=tolerance, color_basis=color_basis)
+    test.__name__ = 'test_cpp_blas_crossed_%s' % _sanitize_process_name(base_dir)
+    test.__doc__ = ('Check the crossed madmatrix colour sum of the %s base of '
+                    '%s agrees with the fortran standalone with and without '
+                    'BLAS.' % (base_dir, process))
+    return test
+
+
 class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
     debugging = getattr(unittest, 'debug', False)
@@ -149,8 +163,12 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         # -- (4) standalone (madmatrix CPU-SIMD) --------------------------------
         # Skipped (not failed) if no C++ compiler or the madmatrix build
         # toolchain is unavailable. Matched by flavor order like madevent: the
-        # extended flavor id is cross*nflav+flav, so the base flavors are ids
-        # 0..nflav-1, in the same order as the standalone check.
+        # base flavors are ids 0..nflav-1, in the same order as the standalone
+        # check. Generated with the crossing on, but a single process folds no
+        # crossed subprocess in, so this compiles the plain helicity loop: the
+        # crossed one (extended ids cross*nflav+flav, with nflav > 1 on a
+        # multi-flavor base) is compared to the fortran standalone by
+        # check_cpp_blas_crossed_colour_sum.
         mg7_by_iflav = self._run_standalone_mg7(process, seeded_phase_space, ref_rows)
         if mg7_by_iflav is not None:
             self._compare_by_iflav(
@@ -180,8 +198,13 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         performance threshold that no process cheap enough for a test reaches,
         so it is lowered for the duration of the output -- the code path is the
         one the big processes get, only the "is it worth the call" gate moves.
-        Both crossing settings are covered: backend/<variant>/SigmaKin.cc runs a
-        different helicity loop for each (per lane with crossing).
+
+        This is the plain helicity loop only. backend/<variant>/SigmaKin.cc runs
+        another one, per lane, when the crossing machinery is compiled in, and
+        that is only written for a base that folds a crossed subprocess in: a
+        bare process folds nothing, so --use_crossing=True would compile the
+        very same plain loop again. The crossed loop is
+        check_cpp_blas_crossed_colour_sum.
         """
         from madmatrix.model_handling import OneProcessExporterMadMatrix
         if not OneProcessExporterMadMatrix.blas_is_available():
@@ -204,38 +227,193 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         self._assert_phase_space_reasonable(
             printed_phase_space, seeded_phase_space, ref_sub)
 
-        for crossing in ('--use_crossing=True', '--use_crossing=False'):
-            saved = OneProcessExporterMadMatrix.blas_min_ncolor
-            OneProcessExporterMadMatrix.blas_min_ncolor = 1
-            try:
-                pdir = self._output_standalone_mg7(
-                    process, crossing,
-                    'standalone_madmatrix_blas%s'
-                    % ('_nocross' if crossing.endswith('False') else ''))
-            finally:
-                OneProcessExporterMadMatrix.blas_min_ncolor = saved
-            if pdir is None:
-                self.skipTest('standalone (madmatrix) output unavailable')
+        saved = OneProcessExporterMadMatrix.blas_min_ncolor
+        OneProcessExporterMadMatrix.blas_min_ncolor = 1
+        try:
+            pdir = self._output_standalone_mg7(
+                process, '--use_crossing=False', 'standalone_madmatrix_blas')
+        finally:
+            OneProcessExporterMadMatrix.blas_min_ncolor = saved
+        if pdir is None:
+            self.skipTest('standalone (madmatrix) output unavailable')
 
-            # Without the BLAS colour sum selected for this process both
-            # variants below run the very same scalar loop and the check is vacuous.
-            with open(pjoin(pdir, 'ColorData.h')) as fsock:
-                emitted = fsock.read()
-            self.assertIn(
-                'shouldUseBlas = true', emitted,
-                'The BLAS colour sum was not selected for %s: the CPPBLAS '
-                'comparison below would not test anything' % process)
+        # Without the BLAS colour sum selected for this process both
+        # variants below run the very same scalar loop and the check is vacuous.
+        self._assert_blas_selected(pdir, process)
 
-            for label, make_args in (('hasBlas (default)', ()),
-                                     ('hasNoBlas', ('CPPBLAS=hasNoBlas',))):
-                by_iflav = self._run_check_sa(
-                    pdir, process, seeded_phase_space, ref_rows, make_args)
-                if by_iflav is None:
-                    self.skipTest('cannot build check_sa.exe (CPPBLAS=%s)' % label)
-                self._compare_by_iflav(
-                    process,
-                    'standalone CPPBLAS=%s, %s' % (label, crossing),
-                    ref_rows, by_iflav, tolerance)
+        for label, make_args in self.CPPBLAS_VARIANTS:
+            by_iflav = self._run_check_sa(
+                pdir, process, seeded_phase_space, ref_rows, make_args)
+            if by_iflav is None:
+                self.skipTest('cannot build check_sa.exe (CPPBLAS=%s)' % label)
+            self._compare_by_iflav(
+                process, 'standalone CPPBLAS=%s' % label,
+                ref_rows, by_iflav, tolerance)
+
+    # The two C++ colour sums: the BLAS batch (the default wherever a host BLAS
+    # can be linked) and the scalar per-helicity loop.
+    CPPBLAS_VARIANTS = (('hasBlas (default)', ()),
+                        ('hasNoBlas', ('CPPBLAS=hasNoBlas',)))
+
+    def _assert_blas_selected(self, pdir, label):
+        # assertTrue, not assertIn: the latter would print the whole file.
+        with open(pjoin(pdir, 'ColorData.h')) as fsock:
+            emitted = fsock.read()
+        self.assertTrue(
+            'shouldUseBlas = true' in emitted,
+            'The BLAS colour sum was not selected for %s: the CPPBLAS '
+            'comparison would not test anything' % label)
+
+    def check_cpp_blas_crossed_colour_sum(self, process, base_dir, defines=(),
+                                          model='sm', tolerance=1e-6,
+                                          color_basis=None):
+        """The crossed helicity loop of standalone (madmatrix) must reproduce the
+        fortran standalone lane by lane, with BLAS or without.
+
+        With the crossing machinery compiled in (ProcessTables::use_crossing),
+        backend/<variant>/SigmaKin.cc runs its own copy of the helicity loop:
+        cNGoodMaxCross iterations in which every lane evaluates the ighel-th
+        good helicity of ITS OWN crossing (picked per lane inside
+        calculate_jamps), with a per-lane C-parity weight (csym_lane_on, per
+        crossing). The BLAS batch carries a second copy of all of it, and is
+        where a lost weight once gave exactly half of |M|^2. The machinery is
+        only written for a base that folds a crossed subprocess in, so `process`
+        has to be a multiprocess whose `base_dir` subprocess really does; a bare
+        process folds nothing and compiles the plain loop
+        (check_cpp_blas_colour_sum).
+
+        Every extended flavor id (cross*nmaxflavor + flavor) of a crossing the
+        base recorded is evaluated at the seeded point of its own crossed PDG
+        signature. It is compared, matched by that PDG, to the plain
+        (--use_crossing=False) fortran standalone of the same multiprocess,
+        where it is a subprocess of its own. Each id is run once with every
+        lane the same, then all of them together, one per event. In that run
+        the lanes of one SIMD page carry different crossings, which is what the
+        per-lane helicity and C-parity weight are for. With nmaxflavor > 1,
+        umami also regroups the reduced flavors into pages, and the id is decoded
+        as cross = id / nmaxflavor, flavor = id % nmaxflavor. An id whose PDG
+        signature the reference does not print (it printed another
+        representative of the same flavor class) is not compared. Every
+        recorded crossing must still be compared at least once, and on a
+        multi-flavor base so must a crossed id with a non-zero reduced flavor.
+        """
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        if not OneProcessExporterMadMatrix.blas_is_available():
+            self.skipTest('no host BLAS to link the C++ colour sum against')
+        if not shutil.which(os.environ.get('CXX', 'g++')):
+            self.skipTest('no C++ compiler')
+
+        self.do('set automatic_html_opening False')
+        self.do('set group_subprocesses False')
+        self.do('set apply_flavor_grouping True')
+        self.do('set zerowidth_tchannel False')
+        if color_basis:
+            self.do('set color_basis %s' % color_basis)
+        self.do('import model %s' % model)
+        for line in defines:
+            self.do(line)
+
+        # -- The folded base, with the BLAS colour sum selected ----------------
+        self.do('generate %s --use_crossing=True' % process)
+        mg_root = pjoin(self.tmpdir, 'standalone_madmatrix_crossed')
+        saved = OneProcessExporterMadMatrix.blas_min_ncolor
+        OneProcessExporterMadMatrix.blas_min_ncolor = 1
+        try:
+            self.do('output standalone %s -f' % mg_root)
+        finally:
+            OneProcessExporterMadMatrix.blas_min_ncolor = saved
+        base_me, pdir = None, None
+        for matrix_element in self.cmd._curr_matrix_elements.get_matrix_elements():
+            name = process_checks._crossing_dir_name(matrix_element)
+            if name.split('_', 1)[-1] == base_dir:
+                base_me = matrix_element
+                pdir = pjoin(mg_root, 'SubProcesses', name)
+        self.assertTrue(base_me is not None and os.path.isdir(pdir),
+                        'no %s directory written for %s' % (base_dir, process))
+        label = '%s of %s' % (base_dir, process)
+        # Vacuity guards: the crossed loop is compiled in, the batch is selected
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            self.assertTrue('use_crossing = true' in fsock.read(),
+                            '%s was written without the crossing machinery: '
+                            'the crossed loop is not compiled' % label)
+        self._assert_blas_selected(pdir, label)
+        recorded = process_checks._mg7_compiled_crossings(pdir)
+        entries = [entry for entry in process_checks._crossing_pdg_entries(base_me)
+                   if entry[1] in recorded]
+        model_obj = self.cmd._curr_model
+        ninitial = base_me.get_nexternal_ninitial()[1]
+
+        seeded_by_pdg = {}
+        def seeded(pdg):
+            if pdg not in seeded_by_pdg:
+                seeded_by_pdg[pdg] = process_checks._crossing_momenta(
+                    pdg, ninitial, model_obj, None, 1000.0, self.cmd)
+                self.assertTrue(seeded_by_pdg[pdg],
+                                'no seeded phase-space point for %s' % (pdg,))
+            return seeded_by_pdg[pdg]
+
+        # -- Reference: each subprocess on its own, plain fortran standalone ---
+        wanted = set(entry[3] for entry in entries)
+        self.do('generate %s --use_crossing=False' % process)
+        ref_root = pjoin(self.tmpdir, 'standalone_plain')
+        self.do('output standalone_fortran %s -f' % ref_root)
+        reference = {}
+        for ref_me in self.cmd._curr_matrix_elements.get_matrix_elements():
+            identities = set(entry[3] for entry in
+                             process_checks._crossing_pdg_entries(
+                                 ref_me, identity_only=True))
+            if not identities & wanted:
+                continue  # the base reaches none of its flavors: not built
+            ref_sub = pjoin(ref_root, 'SubProcesses',
+                            process_checks._crossing_dir_name(ref_me))
+            rows, printed = self._run_standalone(ref_sub)
+            # Every flavor of a directory is printed at the one point, the
+            # seeded point of any of them (they share the masses)
+            self._assert_phase_space_reasonable(
+                printed, seeded(rows[0]['pdg']), ref_sub)
+            for pdg, value in self._rows_by_pdg(rows, ref_sub).items():
+                self.assertNotIn(pdg, reference,
+                                 'flavor %s printed by two reference '
+                                 'directories' % (pdg,))
+                reference[pdg] = value
+
+        lanes = [(idx, cross, flav, pdg, seeded(pdg))
+                 for (idx, cross, flav, pdg) in entries if pdg in reference]
+        compared = set(lane[1] for lane in lanes)
+        self.assertEqual(compared, recorded,
+                         'no reference for the crossings %s recorded by %s'
+                         % (sorted(recorded - compared), label))
+        if any(cross and flav for (_idx, cross, flav, _pdg) in entries):
+            self.assertTrue(any(lane[1] and lane[2] for lane in lanes),
+                            'no crossed id with a non-zero reduced flavor of '
+                            '%s is compared' % label)
+        for lane in lanes:
+            self.assertGreater(abs(reference[lane[3]]), 0.,
+                               'degenerate: the reference of %s is 0'
+                               % (lane[3],))
+
+        self._lift_check_sa_flavor_cap(pdir)
+        for blas_label, make_args in self.CPPBLAS_VARIANTS:
+            if not self._build_check_sa(pdir, make_args):
+                self.skipTest('cannot build check_sa.exe (CPPBLAS=%s)'
+                              % blas_label)
+            for run in [[lane] for lane in lanes] + [lanes]:
+                values = self._run_check_sa_lanes(
+                    pdir, [(lane[0], lane[4]) for lane in run])
+                for ievt, value in enumerate(values):
+                    idx, cross, flav, pdg, _momenta = run[ievt % len(run)]
+                    ref_me = reference[pdg]
+                    rel = abs(ref_me - value) / max(abs(ref_me), abs(value), 1e-99)
+                    logger.debug('%s id=%s event %d CPPBLAS=%s: diff=%f%%',
+                                 label, idx, ievt, blas_label, 100 * rel)
+                    self.assertLessEqual(
+                        rel, tolerance,
+                        'Incompatible matrix elements for %s id=%s (cross=%s '
+                        'flavor=%s, PDG %s), event %d of a run of %s: '
+                        'reference=%s standalone CPPBLAS=%s=%s'
+                        % (label, idx, cross, flav, pdg, ievt,
+                           'one id' if len(run) == 1 else 'mixed ids',
+                           ref_me, blas_label, value))
 
     def _rows_by_pdg(self, rows, subproc_dir):
         """{PDG tuple -> matrix element} from _extract_standalone_flavors rows."""
@@ -400,12 +578,7 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         lhe = pjoin(pdir, 'seeded.lhe')
         self._write_lhe_events(lhe, phase_space, nevt)
 
-        # cleanall first: the objects of a previous variant were compiled with
-        # that variant's flags and the makefile has no way to notice.
-        self._call_with_optional_redirection(['make', 'cleanall'], pdir)
-        rc = self._call_with_optional_redirection(
-            ['make', '-j2'] + list(make_args) + ['check_sa.exe'], pdir)
-        if rc != 0:
+        if not self._build_check_sa(pdir, make_args):
             return None
 
         by_iflav = {}
@@ -423,6 +596,70 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
             by_iflav[iflav] = float(values[0])
         return by_iflav
 
+    def _build_check_sa(self, pdir, make_args=()):
+        """Build check_sa.exe with `make_args`; False if the toolchain cannot."""
+        # cleanall first: the objects of a previous variant were compiled with
+        # that variant's flags and the makefile has no way to notice.
+        self._call_with_optional_redirection(['make', 'cleanall'], pdir)
+        rc = self._call_with_optional_redirection(
+            ['make', '-j2'] + list(make_args) + ['check_sa.exe'], pdir)
+        return rc == 0
+
+    # The CPU branch of run_perf_mode, where the per-event flavor ids are set
+    _FLVVEC_FROM = '    std::vector<unsigned int> flvVec( nevt, flavorID );\n#endif\n'
+    _FLVVEC_TO = (
+        '    std::vector<unsigned int> flvVec( nevt, flavorID );\n'
+        '    if( const char* mgfl = getenv( "MG_FLVLIST" ) )\n'
+        '    {\n'
+        '      std::vector<unsigned int> mgids;\n'
+        '      std::istringstream mgin( mgfl );\n'
+        '      std::string mgtok;\n'
+        '      while( std::getline( mgin, mgtok, \',\' ) ) mgids.push_back( (unsigned int)std::stoul( mgtok ) );\n'
+        '      for( unsigned int ievt = 0; ievt < nevt; ievt++ ) flvVec[ievt] = mgids[ievt % mgids.size()];\n'
+        '    }\n'
+        '#endif\n')
+
+    def _lift_check_sa_flavor_cap(self, pdir):
+        """Patch the shipped check_sa.cc (before _build_check_sa) so that it
+        takes (a) the extended flavor ids of the crossings -- the shipped cap
+        stops at nmaxflavor, see process_checks' crossing backend -- and (b)
+        with MG_FLVLIST=id0,id1,... set, a different one per event: event i
+        gets id[i % n]."""
+        check = pjoin(pdir, 'check_sa.cc')
+        with open(check) as fsock:
+            src = fsock.read()
+        for old, new in ((process_checks._MG7_CAP_FROM, process_checks._MG7_CAP_TO),
+                         (self._FLVVEC_FROM, self._FLVVEC_TO)):
+            self.assertEqual(src.count(old), 1,
+                             'check_sa.cc changed, cannot patch %r' % old)
+            src = src.replace(old, new)
+        with open(check, 'w') as fsock:
+            fsock.write(src)
+
+    def _run_check_sa_lanes(self, pdir, lanes):
+        """Per-event |M|^2 of the patched check_sa.exe for `lanes`, a list of
+        (flavor id, momenta): event i is lanes[i % len(lanes)], over enough
+        events to fill whole SIMD pages (two of them in mixed precision) on
+        any vector width."""
+        nevt = 32 * ((len(lanes) + 31) // 32)
+        lhe = pjoin(pdir, 'lanes.lhe')
+        self._write_lhe_points(
+            lhe, [lanes[ievt % len(lanes)][1] for ievt in range(nevt)])
+        env = dict(os.environ,
+                   MG_FLVLIST=','.join(str(lane[0]) for lane in lanes))
+        output = subprocess.Popen(
+            ['./check_sa.exe', 'perf', '-v', '-f', str(lanes[0][0]),
+             '-e', lhe, '1', str(nevt), '1'],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cwd=pdir, env=env).communicate()[0].decode()
+        values = [float(value) for value in
+                  re.findall(r'Matrix element =\s*([-\d.eE+]+)', output)]
+        self.assertEqual(len(values), nevt,
+                         'expected %d matrix elements from check_sa.exe in %s '
+                         '(flavor ids %s), got:\n%s'
+                         % (nevt, pdir, env['MG_FLVLIST'], output))
+        return values
+
     def _run_standalone_mg7(self, process, phase_space, ref_rows):
         """{IFLAV -> matrix element} for standalone (madmatrix) at the seeded momenta."""
         pdir = self._output_standalone_mg7(process)
@@ -437,16 +674,19 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         pdg/status/colour columns are placeholders. The momenta are replicated
         across the SIMD page so every lane evaluates the seeded point.
         """
+        self._write_lhe_points(path, [phase_space] * nevents)
+
+    def _write_lhe_points(self, path, points):
+        """Write one minimal LHE event per phase-space point of `points`."""
         def as_float(value):
             if isinstance(value, str):
                 return float(value.replace('d', 'e').replace('D', 'E'))
             return float(value)
 
-        npar = len(phase_space)
         lines = []
-        for _ in range(nevents):
+        for phase_space in points:
             lines.append('<event>')
-            lines.append('%d 0 0.0 0.0 0.0 0.0' % npar)
+            lines.append('%d 0 0.0 0.0 0.0 0.0' % len(phase_space))
             for momentum in phase_space:
                 e, px, py, pz = (as_float(v) for v in momentum)
                 lines.append('1 1 0 0 0 0 %.17E %.17E %.17E %.17E 0.0'
@@ -635,6 +875,10 @@ class TestMadMatrixCppBlasColourSum(
     Pure QCD on purpose: these are the processes where the C-parity helicity
     de-duplication fires, and the weight it owes each surviving representative
     is what the BLAS batch once dropped (giving exactly half of |M|^2).
+
+    Both helicity loops are covered: the plain one (test_cpp_blas_<process>)
+    and the per-lane crossed one, which only a base folding crossed
+    subprocesses compiles (test_cpp_blas_crossed_<base>).
     """
 
     test_cpp_blas_gg_ttx = cpp_blas_colour_sum_test_factory(
@@ -645,3 +889,24 @@ class TestMadMatrixCppBlasColourSum(
     # cope with before it can be on at all.
     test_cpp_blas_uux_gg = cpp_blas_colour_sum_test_factory(
         'u u~ > g g', model='sm', tolerance=1e-6)
+
+    # The crossed helicity loop, on bases that really fold crossings in.
+    # g g > u u~ folds, among others, g u~ > g u~ and u u~ > g g (the process
+    # above, here a crossed lane). The trace basis is forced because the
+    # all-gluon sibling of this multiprocess cannot be written in the DDM
+    # default.
+    test_cpp_blas_crossed_gg_qqx = cpp_blas_crossed_colour_sum_test_factory(
+        'pq pq > pq pq', 'gg_QQx', defines=('define pq = g u u~',),
+        model='sm', tolerance=1e-6, color_basis='trace')
+
+    # A multi-flavor base (nmaxflavor = 2: two equal and two different quark
+    # flavors): the extended ids decode a non-zero reduced flavor and umami
+    # regroups the lanes by reduced flavor.
+    test_cpp_blas_crossed_qq_qq = cpp_blas_crossed_colour_sum_test_factory(
+        'q q > q q', 'QQ_QQ', defines=('define q = u d u~ d~',),
+        model='sm', tolerance=1e-6)
+
+    # Massive and 2->3 (nexternal = 5): g q > t t~ q folds g q~ > t t~ q~ and
+    # q~ q > t t~ g, the crossed twin of test_cpp_blas_gg_ttx.
+    test_cpp_blas_crossed_gq_ttxq = cpp_blas_crossed_colour_sum_test_factory(
+        'p p > t t~ j', 'gQ_ttxQ', model='sm', tolerance=1e-6)
