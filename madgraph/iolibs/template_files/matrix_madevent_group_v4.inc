@@ -96,7 +96,7 @@ C       ran the scan -- NTRY alone is not enough, since read_good_hel restores
 C       it above the threshold without ever scanning. CSYMBAD/NCSCAN sit in a
 C       COMMON block (zero-initialised, like NTRY) so the good-hel file can
 C       carry the verdict across jobs.
-        INTEGER FLIP(NCOMB), JHEL, KHEL
+        INTEGER FLIP(NCOMB), JHEL
         REAL*8 TSMAX
         LOGICAL DEDUP, CSYM_DONE
         INTEGER CSYMBAD(MAXFLAVPERPROC,MAXSPROC)
@@ -158,14 +158,16 @@ C ----------
     CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
     NTRY(%(me_flav_key)s,%(proc_id)s)=NTRY(%(me_flav_key)s,%(proc_id)s)+1
     IF (.NOT.CSYM_DONE) THEN
-C     A self-paired row (FLIP(I)=I, every helicity 0) has no distinct partner,
-C     so the loop could not be halved uniformly: refuse the reuse outright.
+C     A self-paired row (FLIP(I)=I, every helicity 0) has no
+C     distinct partner, so the loop could not be halved
+C     uniformly: refuse the reuse outright, for every flavor of
+C     THIS subprocess only. BLOCK_CSYM spans the whole group, and
+C     every other subprocess runs its own latch against its own
+C     FLIP table (CSYM_DONE is local to each SMATRIX<i>).
       DO I=1,NCOMB
         IF (FLIP(I).EQ.I) THEN
-          DO KHEL=1,MAXSPROC
-            DO JHEL=1,MAXFLAVPERPROC
-              CSYMBAD(JHEL,KHEL)=1
-            ENDDO
+          DO JHEL=1,MAXFLAVPERPROC
+            CSYMBAD(JHEL,%(proc_id)s)=1
           ENDDO
         ENDIF
       ENDDO

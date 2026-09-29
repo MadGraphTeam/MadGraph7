@@ -318,7 +318,50 @@ class IOExportV4IOTest(IOTests.IOTestManager,
             writers.FortranWriter(pjoin(self.IOpath, 'matrix.f')),
             self.mymatrixelement,
             self.myfortranmodel)
-    
+
+    def test_madevent_csym_self_pair_latch_is_per_subprocess(self):
+        """The C-parity self-pair latch refuses the reuse for its OWN matrix
+        element only.
+
+        A self-paired helicity row (FLIP(I)=I) has no distinct partner, so the
+        full-sum loop cannot be halved uniformly and SMATRIX latches CSYMBAD
+        once, on its first call; the validating scan only compares distinct
+        pairs and would never catch it. In a madevent group COMMON/BLOCK_CSYM
+        is (flavor, subprocess)-shaped and shared by every matrix<i>.f, while
+        each SMATRIX<i> runs its own latch (CSYM_DONE is a SAVEd local).
+        Latching the whole array -- as the grouped template did -- let the
+        first call of one such subprocess switch the de-duplication off for
+        every ordinary one of the group, which then never reported a
+        'CSYM PAIR:' line to the helicity recycler.
+        """
+        tmpdir = tempfile.mkdtemp(prefix='csym_latch_')
+        try:
+            for exporter_class, proc_id, own_write in (
+                    (export_v4.ProcessExporterFortranMEGroup, '2',
+                     'CSYMBAD(JHEL,2)=1'),):
+                name = exporter_class.__name__
+                path = pjoin(tmpdir, 'matrix%s.f' % proc_id)
+                exporter_class().write_matrix_element_v4(
+                    writers.FortranWriter(path), self.mymatrixelement,
+                    self.myfortranmodel, proc_id)
+                source = open(path).read()
+                latch = re.search(r'IF \(\.NOT\.CSYM_DONE\) THEN\n(.*?)\n'
+                                  r'\s*CSYM_DONE = \.TRUE\.', source, re.S)
+                self.assertTrue(latch, '%s: no self-pair latch' % name)
+                code = [line.strip() for line in latch.group(1).splitlines()
+                        if line.strip() and not line.startswith('C')]
+                self.assertIn('IF (FLIP(I).EQ.I) THEN', code)
+                self.assertEqual(
+                    [line for line in code if line.startswith('CSYMBAD(')],
+                    [own_write],
+                    '%s: the latch must write every flavor of its own '
+                    'subprocess and nothing else' % name)
+                # Local to SMATRIX, so every matrix<i>.f latches for itself.
+                self.assertIn('SAVE CSYM_DONE', source)
+                self.assertNotRegex(source, r'COMMON\s*/\w*/[^\n]*CSYM_DONE')
+        finally:
+            shutil.rmtree(tmpdir)
+
     @IOTests.createIOTest()
     def testIO_export_matrix_element_v4_madevent_group(self):
         """target: amp2lines.txt 
