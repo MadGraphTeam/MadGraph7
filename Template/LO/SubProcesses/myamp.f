@@ -287,6 +287,11 @@ c
 
       integer        lbw(0:nexternal)  !Use of B.W.
       common /to_BW/ lbw
+c     Breit-Wigner map with off-shell tails (transpole) for a resonance free to
+c     go off shell; a forced (decay chain) or required on-shell one is cut
+c     outside its window, where the tails would only add vetoed points
+      logical bwtail(maxinvar)
+      common/to_bwtail/bwtail
 
       double precision real_stot,m1,m2
       common/to_stot/real_stot,m1,m2
@@ -359,6 +364,9 @@ c     Reset variables
       do i=1,nexternal-2
          spole(i)=0
          swidth(i)=0
+      enddo
+      do i=1,maxinvar
+         bwtail(i)=.false.
       enddo
 c     Find non-zero process number
       do iproc=1,maxsproc
@@ -441,6 +449,7 @@ c----
                      write(*,*) 'Setting PDF BW',j,nbw,prmass(i,iconfig)
                      spole(j)=prmass(i,iconfig)*prmass(i,iconfig)/stot
                      swidth(j) = prwidth(i,iconfig)*prmass(i,iconfig)/stot ! keep the real width here (important for the jacobian)
+                     bwtail(j) = gforcebw(i,iconfig).ne.1 .and. lbw(nbw).ne.1
                   endif
                else if((prmass(i,iconfig)+bwcut_for_PS(i)*prwidth_tmp(i,iconfig)).ge.xm(i)
      $                  .and. iden_part(i).eq.0 .or. lbw(nbw).eq.1) then
@@ -448,6 +457,7 @@ c              JA 02/13 Only allow BW if xm below M+5*Gamma
                   write(*,*) 'Setting BW',i,nbw,prmass(i,iconfig)
                   spole(-i)=prmass(i,iconfig)*prmass(i,iconfig)/stot
                   swidth(-i) = prwidth(i,iconfig)*prmass(i,iconfig)/stot ! keep the real width here (important for the jacobian)
+                  bwtail(-i) = gforcebw(i,iconfig).ne.1 .and. lbw(nbw).ne.1
                endif
 c     JA 4/1/2011 Set grid in case there is no BW (radiation process)
                if (swidth(-i) .eq. 0d0 .and.

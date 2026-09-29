@@ -1363,6 +1363,9 @@ c
 
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      logical bwtail(maxinvar), use_bwtail
+      common/to_bwtail/bwtail
+      common/to_bwtail_on/use_bwtail
 
       integer nzoom
       double precision  tx(1:3,maxinvar)
@@ -1468,7 +1471,9 @@ c         write(*,*) "pole, width",ij,spole(ij),swidth(ij)
          if (swidth(ij) .gt. 0d0) then
 c            write(*,*) 'Tranpole called',ij,swidth(ij)
             y = x                             !Takes uniform y and returns
+            use_bwtail = bwtail(ij)
             call transpole(spole(ij),swidth(ij),y,x,wgt) !x on BW pole or 1/x 
+            use_bwtail = .false.
          endif
       endif
 c
@@ -1540,6 +1545,9 @@ c
       common /to_random/ituple
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      logical bwtail(maxinvar), use_bwtail
+      common/to_bwtail/bwtail
+      common/to_bwtail_on/use_bwtail
 
 c-----
 c  Begin Code
@@ -1846,6 +1854,9 @@ c      common /to_fx/   fx
       common/to_mconfig2/psect          ,alpha
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      logical bwtail(maxinvar), use_bwtail
+      common/to_bwtail/bwtail
+      common/to_bwtail_on/use_bwtail
       
       integer                   neventswritten
       common /to_eventswritten/ neventswritten
@@ -2010,8 +2021,10 @@ c
                if (j .gt. 0) then
                   if (swidth(j) .gt. 0d0) then
                      ddumb=0d0
+                     use_bwtail = bwtail(j)
                      call untranspole(spole(j),swidth(j),
      &                    point(j),point(j),ddumb)
+                     use_bwtail = .false.
                      if (point(j) .lt. 0d0) then
                         print*,'Warning point<0',j,point(j)
                      endif
@@ -2731,17 +2744,24 @@ c
       common /data_grid/ grid
       double precision      spole(maxinvar),swidth(maxinvar),bwjac
       common/to_brietwigner/spole        ,swidth        ,bwjac
+      logical bwtail(maxinvar), use_bwtail
+      common/to_bwtail/bwtail
+      common/to_bwtail_on/use_bwtail
 c
 c     Data
 c
       data spole,swidth/maxinvar*0d0,maxinvar*0d0/
+      data bwtail/maxinvar*.false./
+      data use_bwtail/.false./
 c-----
 c  Begin Code
 c-----
       bwjac = 1d0
       if (j .gt. 0) then
          if (swidth(j) .gt. 0d0) then
+            use_bwtail = bwtail(j)
             call  untranspole(spole(j),swidth(j),x,y,bwjac)
+            use_bwtail = .false.
          else
             x=y
          endif
