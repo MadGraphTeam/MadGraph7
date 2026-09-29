@@ -2502,6 +2502,46 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                              '%s must NOT survive --use_crossing=False on the '
                              'output line' % token)
 
+    def test_gpu_backend_refuses_crossed_flavor_ids(self):
+        """The GPU backend has no crossing: an extended flavor id must fail
+        loudly there, never come back as the base |M|^2 at uncrossed momenta.
+
+        It used to: calculate_jamps reduced the id modulo nmaxflavor (the base
+        flavor, evaluated with the plain external calls), and normalise_output
+        handed the raw id to broken_symmetry_factor, which then read cFlavors
+        past its nmaxflavor rows. No CUDA/HIP toolchain runs in this suite, so
+        this checks the SHIPPED gpu source rather than its behaviour: the device
+        counts the out-of-range ids and umami_matrix_element refuses the batch,
+        the kernels never index a flavor table with a raw event id and give such
+        an event a NaN |M|^2, and check_sa's crossing demo is left to cpu/simd."""
+        pdir = self._output_madmatrix(PROC_QQ_GG, 'qqgg_gpu')
+        self.assertIn('use_crossing = true', self._cpp_source(pdir))
+        gpu = pjoin(pdir, os.pardir, os.pardir, 'backend', 'gpu')
+        with open(pjoin(gpu, 'umami.cc')) as fsock:
+            umami = fsock.read()
+        with open(pjoin(gpu, 'SigmaKin.cc')) as fsock:
+            sigmakin = fsock.read()
+        with open(pjoin(pdir, 'check_sa.cc')) as fsock:
+            check_sa = fsock.read()
+
+        # assertTrue rather than assertIn/assertRegex: those print the whole file
+        self.assertTrue('atomicAdd( n_bad_flavors, 1u )' in umami,
+                        'copy_inputs does not count the out-of-range flavor ids')
+        self.assertTrue(re.search(
+            r'crossing is not supported by the GPU backend;[^;]*'
+            r'--use_crossing=False[^;]*;[^}]*return UMAMI_ERROR_UNSUPPORTED_INPUT;',
+            umami), 'umami_matrix_element does not refuse a crossed flavor id')
+        self.assertFalse('% (unsigned int)nmaxflavor' in sigmakin,
+                         'calculate_jamps evaluates a crossed id as its base flavor')
+        self.assertFalse('broken_symmetry_factor( iflavorVec[ievt] )' in sigmakin,
+                         'normalise_output indexes cFlavors with the raw flavor id')
+        self.assertTrue('allMEs[ievt] = (fptype)nan( "" );' in sigmakin,
+                        'an out-of-range flavor id does not get a NaN |M|^2')
+        self.assertTrue(re.search(
+            r'#ifdef MGONGPUCPP_GPUIMPL\n[^#]*not supported by the GPU backend'
+            r'[^#]*#else\n\s*for\( unsigned int fid : demo_ids \)', check_sa),
+            'check_sa runs the crossing demo on a GPU build')
+
 
 class TestCrossingPartition(unittest.TestCase):
     """partition_crossing_classes routes each subprocess flavor to a base matrix

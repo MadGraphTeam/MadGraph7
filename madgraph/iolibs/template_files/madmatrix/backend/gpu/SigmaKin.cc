@@ -270,11 +270,14 @@ namespace madmatrix
     // Numerators for the current event (CUDA); denominators are no longer
     // accumulated here: they are derived as the sum of numerators later.
     fptype_amp_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
-    // Scalar iflavor for the current event
-    // (with crossing the id is cross*nmaxflavor + flavor: only the flavor is
-    // used here, crossing is not implemented on GPU -- see EvaluateDiagrams.inc)
-    const unsigned int iflavor_ext = F_ACCESS::kernelAccessConst( iflavorVec );
-    const unsigned int iflavor = use_crossing ? iflavor_ext % (unsigned int)nmaxflavor : iflavor_ext;
+    // Scalar iflavor for the current event. Crossing is not implemented on GPU (the
+    // external calls in EvaluateDiagrams.inc are the plain, uncrossed ones), so only
+    // an index below nmaxflavor names a flavor. Any other one, e.g. an extended
+    // crossed id cross*nmaxflavor + flavor, is refused by umami_matrix_element and
+    // gets a NaN |M|^2 in normalise_output: it is evaluated as flavor 0 here only so
+    // that cFlavors is never read out of bounds.
+    const unsigned int iflavor_in = F_ACCESS::kernelAccessConst( iflavorVec );
+    const unsigned int iflavor = iflavor_in < (unsigned int)nmaxflavor ? iflavor_in : 0;
 #include "EvaluateDiagrams.inc"
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
@@ -441,7 +444,14 @@ namespace madmatrix
                     const fptype globaldenom )
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
-    allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( iflavorVec[ievt] ) / globaldenom;
+    // Crossing is not implemented on GPU: an event whose flavor index is not a row of
+    // cFlavors (an extended crossed id cross*nmaxflavor + flavor, which
+    // umami_matrix_element refuses) was evaluated as flavor 0 at its uncrossed
+    // momenta by calculate_jamps. Flavor 0 stands in for it here too, so that
+    // broken_symmetry_factor never reads out of bounds, and its outputs are then
+    // overwritten with NaN, which cannot pass for a valid matrix element.
+    const bool validFlavor = iflavorVec[ievt] < (unsigned int)nmaxflavor;
+    allMEs[ievt] = allMEs[ievt] * broken_symmetry_factor( validFlavor ? (int)iflavorVec[ievt] : 0 ) / globaldenom;
     if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')
     {
       // The numerators have already been accumulated over all good helicities in place (atomicAdd in
@@ -466,6 +476,13 @@ namespace madmatrix
 #endif
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
+    }
+    if( !validFlavor )
+    {
+      // Plain stores, nothing computed with the NaN afterwards: the denominator
+      // turns every channel weight (amp2) of the event into a NaN as well.
+      allMEs[ievt] = (fptype)nan( "" );
+      if( storeChannelWeights ) allDenominators[ievt] = (fptype_amp)nan( "" );
     }
   }
 

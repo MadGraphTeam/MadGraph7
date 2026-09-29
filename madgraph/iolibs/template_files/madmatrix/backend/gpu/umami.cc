@@ -8,6 +8,7 @@
 
 #include "ProcessData.h"
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
+#include "ProcessTables.h" // for use_crossing
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
@@ -15,6 +16,7 @@
 
 #include <cfloat>
 #include <cmath>
+#include <iostream>
 #include <vector>
 #include <array>
 #include <utility>
@@ -123,6 +125,7 @@ namespace
     fptype* diagram_random,
     fptype* g_s,
     unsigned int* flavor_indices,
+    unsigned int* n_bad_flavors, // output: #events whose flavor index is >= nmaxflavor (nullptr to skip the count)
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -140,7 +143,14 @@ namespace
     helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_in + offset] : 0.5;
     color_random[i_event] = color_random_in ? color_random_in[i_in + offset] : 0.5;
     g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_in + offset] ) : 1.2177157847767195;
-    flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    const unsigned int flavor_index = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    flavor_indices[i_event] = flavor_index;
+    // Crossing is not implemented on GPU, so only an index below nmaxflavor names a
+    // flavor: count the events carrying any other one (e.g. an extended crossed id
+    // cross*nmaxflavor + flavor) for umami_matrix_element to refuse the batch. The
+    // padding events repeat the first one and are not counted again.
+    if( n_bad_flavors != nullptr && i_event < count && flavor_index >= (unsigned int)ProcessData::nmaxflavor )
+      atomicAdd( n_bad_flavors, 1u );
   }
 
   __global__ void copy_outputs(
@@ -384,10 +394,10 @@ extern "C"
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
-    unsigned int *flavor_indices, *diagram_index;
+    unsigned int *flavor_indices, *diagram_index, *n_bad_flavors;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 17> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -408,6 +418,10 @@ extern "C"
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        // A single counter (see check_flavors below). Kept last: buf_offset rounds each
+        // entry up to 8 bytes but total_size only to MAX_SIZE, possibly 4, which agree
+        // for every entry above (all multiples of rounded_count) but not for this one.
+        {reinterpret_cast<void**>(&n_bad_flavors), sizeof( unsigned int )},
     }};
     std::size_t total_size = 0;
     constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
@@ -425,6 +439,17 @@ extern "C"
         buf_offset += aligned_size;
     }
 
+    // Crossing is not implemented on GPU: calculate_jamps evaluates the plain,
+    // uncrossed external wavefunctions, so a crossed subprocess of a
+    // --use_crossing=True build (extended flavor id cross*nmaxflavor + flavor)
+    // would come back as the base |M|^2 at the unpermuted momenta. The flavor
+    // indices are device data: copy_inputs counts those out of range and the batch
+    // is refused here, on the host. Reading the count back costs a stream
+    // synchronisation, so only a crossing build pays it: no other build has
+    // extended ids to offer, and one passed an out-of-range index anyway gets a NaN
+    // |M|^2 for it (normalise_output), never an out-of-bounds read.
+    const bool check_flavors = ProcessTables::use_crossing && flavor_indices_in != nullptr;
+    if( check_flavors ) gpuMemsetAsync( n_bad_flavors, 0, sizeof( unsigned int ), gpu_stream );
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
       random_helicity_in,
@@ -438,11 +463,27 @@ extern "C"
       diagram_random,
       g_s,
       flavor_indices,
+      check_flavors ? n_bad_flavors : nullptr,
       count,
       stride,
       offset );
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
+    if( check_flavors )
+    {
+      unsigned int hst_n_bad_flavors = 0;
+      gpuMemcpyAsync( &hst_n_bad_flavors, n_bad_flavors, sizeof( unsigned int ), gpuMemcpyDeviceToHost, gpu_stream );
+      gpuStreamSynchronize( gpu_stream );
+      if( hst_n_bad_flavors != 0 )
+      {
+        std::cerr << "ERROR! umami_matrix_element: " << hst_n_bad_flavors << " of " << count
+                  << " events carry a flavor index >= nmaxflavor=" << ProcessData::nmaxflavor
+                  << ", i.e. a crossed subprocess: crossing is not supported by the GPU backend;"
+                  << " regenerate with --use_crossing=False or run on cpu/simd" << std::endl;
+        gpuFreeAsync( buffer, gpu_stream );
+        return UMAMI_ERROR_UNSUPPORTED_INPUT;
+      }
+    }
 
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
