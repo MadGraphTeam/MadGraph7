@@ -1783,11 +1783,16 @@ class TestCmdShell2(unittest.TestCase,
             crossed flavor_id (t t~ > g g) keeps the full sum;
           * u u~ > e+ e- (parity violating through the Z): the pairing is
             refused, every call keeps the full sum.
+        The helicity-sampling mode (sum_hel > 0, set by the driver) must
+        average to the full sum, also when crossed calls of the same flavor
+        are interleaved: they used to rewind the shared sampling cursor, so
+        every uncrossed call redrew the same first representatives.
         """
         driver = r'''
 #include <iostream>
 #include <iomanip>
 #include <cstdlib>
+#include <cstdio>
 #include "CPPProcess.h"
 #include "rambo.h"
 
@@ -1800,6 +1805,31 @@ int main(int argc, char** argv){
                                   weight);
   std::cout << std::setprecision(17);
   for (int a = 1; a < argc; a++){
+    int nhel, fa, fb;
+    if (sscanf(argv[a], "s%d:%d:%d", &nhel, &fa, &fb) == 3){
+      // Helicity sampling (sum_hel = nhel) on one process, alternating the
+      // calls of fa and fb (fb == fa: fa alone). 19 full-sum calls validate
+      // the pairing, the 400 sampling ones then cycle nhel*400 times through
+      // the representatives, a whole number of rounds for the 8 (or 4) of
+      // the tests: the averages are the full sums up to roundoff.
+      CPPProcess process("../../Cards/param_card.dat");
+      process.setMomenta(p);
+      process.sum_hel[fa % CPPProcess::nflavors] = nhel;
+      process.sum_hel[fb % CPPProcess::nflavors] = nhel;
+      double suma = 0., sumb = 0.;
+      const int ncall = 19 + 400;
+      for (int i = 0; i < ncall; i++){
+        suma += process.sigmaKin(fa);
+        if (fb != fa)
+          sumb += process.sigmaKin(fb);
+      }
+      std::cout << "AVG " << argv[a] << " " << fa << " " << suma / ncall
+                << std::endl;
+      if (fb != fa)
+        std::cout << "AVG " << argv[a] << " " << fb << " " << sumb / ncall
+                  << std::endl;
+      continue;
+    }
     int fid = atoi(argv[a]);
     CPPProcess process("../../Cards/param_card.dat");
     process.setMomenta(p);
@@ -1852,7 +1882,16 @@ int main(int argc, char** argv){
                     res[int(toks[1])]['good'] = [int(x) for x in toks[3:]]
                 elif toks[:1] == ['IGOOD']:
                     res[int(toks[1])]['igood'] = [int(x) for x in toks[2:]]
+                elif toks[:1] == ['AVG']:
+                    res.setdefault(toks[1], {})[int(toks[2])] = float(toks[3])
             return res
+
+        def check_sampling(res, mode, fid):
+            # the sampled average is the full sum of the plain calls
+            full = res[fid]['calls'][0][1]
+            self.assertAlmostEqual(res[mode][fid], full, delta=1e-12 * full,
+                                   msg='%s: fid %d sampled average %r, full sum'
+                                       ' %r' % (mode, fid, res[mode][fid], full))
 
         def check(res, fid, nfull, deduped, scanned=True):
             calls = res[fid]['calls']
@@ -1894,13 +1933,22 @@ int main(int argc, char** argv){
             self.assertEqual(crossing, use_crossing)
             # cross 23 (1<->4, 2<->3) on g g > t t~ is t t~ > g g.
             fids = [0, 23] if use_crossing else [0]
-            res = run(dirs['_gg_ttx'], fids)
+            # helicity sampling of 2 and 3 of the 8 representatives; with the
+            # crossing, crossed calls interleaved (they share the flavor's
+            # sampling cursor and must not rewind it).
+            modes = ['s2:0:%d' % fids[-1], 's3:0:%d' % fids[-1]]
+            res = run(dirs['_gg_ttx'], fids + modes)
             check(res, 0, 16, deduped=True)
             if use_crossing:
                 # a crossed call never runs the C-parity scan
                 check(res, 23, 16, deduped=False, scanned=False)
-            res = run(dirs['_uux_epem'], [0])
+            for mode in modes:
+                for fid in fids:
+                    check_sampling(res, mode, fid)
+            # refused pairing: the sampling draws the 4 good rows, weight 1
+            res = run(dirs['_uux_epem'], [0, 's3:0:0'])
             check(res, 0, 4, deduped=False)
+            check_sampling(res, 's3:0:0', 0)
 
     def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False):
         """Write a scalar C++ standalone output for the processes currently

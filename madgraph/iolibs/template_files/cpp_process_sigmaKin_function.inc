@@ -154,11 +154,13 @@ if (sum_hel[%(fidx)s] == 0 || ntry[%(fidx)s] < 10 || !dedup_ok || csym_scan){
             nrep[%(fidx)s]++;
         }
     }
-    jhel[%(fidx)s] = 0;
+    // Only an uncrossed call touches the sampling state: jhel and sum_hel are
+    // shared by every crossing of the flavor, and a crossed call (which never
+    // samples) rewinding jhel would make the next uncrossed sampling call
+    // redraw the same first sum_hel representatives every time.
     if (dedup_ok){
+        jhel[%(fidx)s] = 0;
         sum_hel[%(fidx)s] = min(sum_hel[%(fidx)s], nrep[%(fidx)s]);
-    } else {
-        sum_hel[%(fidx)s] = min(sum_hel[%(fidx)s], ngood[%(fidx)s]);
     }
 } else {
     // Helicity sampling (uncrossed, verdict settled): draw sum_hel of the nrep
