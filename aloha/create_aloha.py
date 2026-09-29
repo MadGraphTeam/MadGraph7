@@ -894,7 +894,22 @@ class AbstractALOHAModel(dict):
         
         if write_dir:
             self.main(write_dir,format=format)
-            
+
+    @classmethod
+    def from_model(cls, model, **opts):
+        """Build the AbstractALOHAModel associated to an already loaded
+        madgraph.core.base_objects.Model. The model name alone is not enough:
+        it can carry a restriction suffix ('sm-no_b_mass') and it does not say
+        where the model was imported from, so a model outside of MG5DIR/models
+        would not be found at all. Use the directory the model was loaded from
+        whenever it is still available."""
+
+        try:
+            model_name = model.get('modelpath')
+        except Exception:
+            model_name = model.get('name')
+        return cls(model_name, **opts)
+
     def main(self, output_dir, format='Fortran'):
         """ Compute if not already compute. 
             Write file in models/MY_MODEL/MY_FORMAT.

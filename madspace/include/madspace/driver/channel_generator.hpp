@@ -87,10 +87,9 @@ public:
     bool needs_optimization() const {
         return (_vegas_optimizer || _discrete_optimizer) && !_status.optimized;
     }
-    /// Set the target unweighted event count.
-    void set_target_count(std::size_t target_count) {
-        _status.count_target = target_count;
-    }
+    /// Set the target unweighted event count; a smaller target tightens the
+    /// maximum-weight estimate to the smaller truncation budget.
+    void set_target_count(std::size_t target_count);
     /// Names of the compute-graph globals this channel's integrand reads.
     const std::unordered_set<std::string>& used_globals() const {
         return _used_globals;
@@ -143,6 +142,7 @@ public:
     void save(const std::string& file_name) const;
 
 private:
+    void apply_truncation_budget();
     ChannelEventGenerator(
         const std::vector<ContextPtr>& contexts,
         std::size_t particle_count,

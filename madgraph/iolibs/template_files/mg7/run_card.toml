@@ -23,7 +23,22 @@ simd_vector_size = %(run.simd_vector_size)s
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
-output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
+output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe (switched to lhe when a post-processing step needs it)
+# fill the [histograms] with the weighted events during the integration
+# (info.json "histograms"); costs an observable evaluation per phase-space point
+weighted_histograms = %(run.weighted_histograms)s
+# fill the [histograms] with the final events and all their scale/PDF weights
+# (info.json "event_histograms"); the plots and the HwU file are drawn from these
+postprocessing_histograms = %(run.postprocessing_histograms)s
+# draw the [histograms] distributions, bands included, into Events/<run>/plots
+# (one PDF per observable). Needs matplotlib: without it the run says so once
+# and carries on, the numbers being in Events/<run>/info.json either way.
+make_plots = %(run.make_plots)s
+# write the [histograms] distributions as MADatLO.HwU next to the events, in
+# the format aMC@NLO writes as MADatNLO.HwU, so that an LO run can be overlaid
+# on an NLO one with madgraph/various/histograms.py. The same numbers (bands
+# included) are in Events/<run>/info.json either way.
+write_hwu = %(run.write_hwu)s
 verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
 
@@ -127,6 +142,18 @@ $multiparticles
 $cuts
 
 [histograms]
+# The observables to histogram, written at output time for this final state.
+# Same names as the cuts above, with "_1", "_2", ... selecting the hardest,
+# second hardest, ... particle of a group (order_by says what "hardest" means,
+# pt by default). Each needs a range and a number of bins:
+#     jet_1-pt.min = 0.0
+#     jet_1-pt.max = 500.0
+#     jet_1-pt.bin_count = 50
+# "weight" is the one name that is not an observable of the momenta: it is the
+# distribution of the event weight, in units of the cross section (so a fully
+# unweighted sample is a spike at 1).
+# "set histograms OFF" in the launch question removes them all, and
+# "set histograms default" puts the generated ones back.
 $histograms
 
 [madnis]

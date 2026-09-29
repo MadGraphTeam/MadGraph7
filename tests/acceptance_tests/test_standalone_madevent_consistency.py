@@ -43,6 +43,15 @@ def matrix_element_consistency_test_factory(process, model='sm', tolerance=1e-6)
     return test
 
 
+def cpp_blas_colour_sum_test_factory(process, model='sm', tolerance=1e-6):
+    def test(self):
+        self.check_cpp_blas_colour_sum(process, model=model, tolerance=tolerance)
+    test.__name__ = 'test_cpp_blas_%s' % _sanitize_process_name(process)
+    test.__doc__ = ('Check the madmatrix colour sum agrees with the fortran '
+                    'standalone with and without BLAS for %s.' % process)
+    return test
+
+
 class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
     debugging = getattr(unittest, 'debug', False)
@@ -146,6 +155,87 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         if mg7_by_iflav is not None:
             self._compare_by_iflav(
                 process, 'standalone', ref_rows, mg7_by_iflav, tolerance)
+
+    def check_cpp_blas_colour_sum(self, process, model='sm', tolerance=1e-6):
+        """standalone (madmatrix) must reproduce the fortran standalone with BLAS or without.
+
+        The BLAS colour sum (CPPBLAS=hasBlas, which is the default wherever a
+        host BLAS can be linked) is a SECOND copy of the helicity loop: it keeps
+        the jamps of every good helicity and sums the colour for all of them in
+        one SYMM call after the loop. That copy has to carry everything the
+        scalar loop carries, and in particular the C-parity de-duplication
+        weight: the good helicities are halved to one representative per mirror
+        pair, so a path that counts each representative once returns exactly
+        HALF of |M|^2 -- silently, since nothing else about the answer looks wrong.
+
+        Hence all three ingredients below are load bearing:
+          - a C-symmetric process (pure QCD, so |M(h)|^2 == |M(-h)|^2 and the
+            de-duplication actually fires). On a process where it stays off the
+            two variants agree without the weight ever being exercised;
+          - BOTH CPPBLAS settings, since only one of them is the batch;
+          - the fortran standalone as the reference, so that a weight lost from
+            BOTH paths at once would still be caught.
+
+        The BLAS colour sum is only selected above blas_min_ncolor, a
+        performance threshold that no process cheap enough for a test reaches,
+        so it is lowered for the duration of the output -- the code path is the
+        one the big processes get, only the "is it worth the call" gate moves.
+        Both crossing settings are covered: backend/<variant>/SigmaKin.cc runs a
+        different helicity loop for each (per lane with crossing).
+        """
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        if not OneProcessExporterMadMatrix.blas_is_available():
+            self.skipTest('no host BLAS to link the C++ colour sum against')
+
+        self.do('set automatic_html_opening False')
+        self.do('set group_subprocesses False')
+        self.do('set apply_flavor_grouping True')
+        self.do('set zerowidth_tchannel False')
+        self.do('import model %s' % model)
+
+        # -- Reference: plain fortran standalone, as in check_process ----------
+        self.do('generate %s --use_crossing=False' % process)
+        generated_process = self.cmd._curr_amps[0].get('process')
+        seeded_phase_space = self._get_seeded_phase_space(generated_process)
+        ref_root = pjoin(self.tmpdir, 'standalone_plain')
+        self.do('output standalone_fortran %s -f' % ref_root)
+        ref_sub = self._get_single_subprocess_dir(pjoin(ref_root, 'SubProcesses'))
+        ref_rows, printed_phase_space = self._run_standalone(ref_sub)
+        self._assert_phase_space_reasonable(
+            printed_phase_space, seeded_phase_space, ref_sub)
+
+        for crossing in ('--use_crossing=True', '--use_crossing=False'):
+            saved = OneProcessExporterMadMatrix.blas_min_ncolor
+            OneProcessExporterMadMatrix.blas_min_ncolor = 1
+            try:
+                pdir = self._output_standalone_mg7(
+                    process, crossing,
+                    'standalone_madmatrix_blas%s'
+                    % ('_nocross' if crossing.endswith('False') else ''))
+            finally:
+                OneProcessExporterMadMatrix.blas_min_ncolor = saved
+            if pdir is None:
+                self.skipTest('standalone (madmatrix) output unavailable')
+
+            # Without the BLAS colour sum selected for this process both
+            # variants below run the very same scalar loop and the check is vacuous.
+            with open(pjoin(pdir, 'ColorData.h')) as fsock:
+                emitted = fsock.read()
+            self.assertIn(
+                'shouldUseBlas = true', emitted,
+                'The BLAS colour sum was not selected for %s: the CPPBLAS '
+                'comparison below would not test anything' % process)
+
+            for label, make_args in (('hasBlas (default)', ()),
+                                     ('hasNoBlas', ('CPPBLAS=hasNoBlas',))):
+                by_iflav = self._run_check_sa(
+                    pdir, process, seeded_phase_space, ref_rows, make_args)
+                if by_iflav is None:
+                    self.skipTest('cannot build check_sa.exe (CPPBLAS=%s)' % label)
+                self._compare_by_iflav(
+                    process,
+                    'standalone CPPBLAS=%s, %s' % (label, crossing),
+                    ref_rows, by_iflav, tolerance)
 
     def _rows_by_pdg(self, rows, subproc_dir):
         """{PDG tuple -> matrix element} from _extract_standalone_flavors rows."""
@@ -281,30 +371,40 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                                   cwd=subproc_dir).communicate()[0].decode()
         return self._extract_madevent_by_iflav(output, subproc_dir)
 
-    def _run_standalone_mg7(self, process, phase_space, ref_rows):
-        """{IFLAV -> matrix element} for standalone (madmatrix) at the seeded momenta.
+    def _output_standalone_mg7(self, process, options='--use_crossing=True',
+                               outdir_name='standalone_madmatrix'):
+        """Write a standalone (madmatrix) output for `process`, return its P* dir.
 
-        Returns None (skip) if there is no C++ compiler or the madmatrix build
-        toolchain cannot build check_sa.exe. check_sa.exe reads the external
-        momenta from an LHE file (-e), so the same seeded point is used as for
-        the fortran backends; the base flavors are the extended ids 0..nflav-1.
+        Returns None (skip) if there is no C++ compiler or the exporter refuses
+        the process.
         """
         if not shutil.which(os.environ.get('CXX', 'g++')):
             return None
-        outdir = pjoin(self.tmpdir, 'standalone_madmatrix')
-        self.do('generate %s --use_crossing=True' % process)
+        outdir = pjoin(self.tmpdir, outdir_name)
+        self.do('generate %s %s' % (process, options))
         try:
             self.do('output standalone %s -f' % outdir)
         except Exception:
             return None
-        pdir = self._get_single_subprocess_dir(pjoin(outdir, 'SubProcesses'))
+        return self._get_single_subprocess_dir(pjoin(outdir, 'SubProcesses'))
 
+    def _run_check_sa(self, pdir, process, phase_space, ref_rows, make_args=()):
+        """{IFLAV -> matrix element} from a check_sa.exe built with `make_args`.
+
+        Returns None (skip) if the madmatrix build toolchain cannot build
+        check_sa.exe. check_sa.exe reads the external momenta from an LHE file
+        (-e), so the same seeded point is used as for the fortran backends; the
+        base flavors are the extended ids 0..nflav-1.
+        """
         nevt = 8
         lhe = pjoin(pdir, 'seeded.lhe')
         self._write_lhe_events(lhe, phase_space, nevt)
 
+        # cleanall first: the objects of a previous variant were compiled with
+        # that variant's flags and the makefile has no way to notice.
+        self._call_with_optional_redirection(['make', 'cleanall'], pdir)
         rc = self._call_with_optional_redirection(
-            ['make', '-j2', 'check_sa.exe'], pdir)
+            ['make', '-j2'] + list(make_args) + ['check_sa.exe'], pdir)
         if rc != 0:
             return None
 
@@ -322,6 +422,13 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                             'for %s:\n%s' % (flavor_id, process, output))
             by_iflav[iflav] = float(values[0])
         return by_iflav
+
+    def _run_standalone_mg7(self, process, phase_space, ref_rows):
+        """{IFLAV -> matrix element} for standalone (madmatrix) at the seeded momenta."""
+        pdir = self._output_standalone_mg7(process)
+        if pdir is None:
+            return None
+        return self._run_check_sa(pdir, process, phase_space, ref_rows)
 
     def _write_lhe_events(self, path, phase_space, nevents):
         """Write `nevents` identical minimal LHE events at `phase_space`.
@@ -519,3 +626,22 @@ class TestStandaloneMadeventMatrixElementConsistency(
     
     test_standalone_madevent_consistency_qq = matrix_element_consistency_test_factory(
         'u _quark  > u _quark QCD=0', model='sm', tolerance=1e-5)
+
+
+class TestMadMatrixCppBlasColourSum(
+        StandaloneMadeventMatrixElementConsistency):
+    """The two C++ colour sums (scalar loop and BLAS batch) must agree.
+
+    Pure QCD on purpose: these are the processes where the C-parity helicity
+    de-duplication fires, and the weight it owes each surviving representative
+    is what the BLAS batch once dropped (giving exactly half of |M|^2).
+    """
+
+    test_cpp_blas_gg_ttx = cpp_blas_colour_sum_test_factory(
+        'g g > t t~', model='sm', tolerance=1e-6)
+
+    # MHV-vanishing gluon configurations sit ~30 orders of magnitude below the
+    # largest |M|^2 here, which is what the de-duplication's noise floor has to
+    # cope with before it can be on at all.
+    test_cpp_blas_uux_gg = cpp_blas_colour_sum_test_factory(
+        'u u~ > g g', model='sm', tolerance=1e-6)

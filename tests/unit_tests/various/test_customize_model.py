@@ -835,16 +835,24 @@ class TestSetShortcut(unittest.TestCase):
 #===============================================================================
 class TestExplainModes(unittest.TestCase):
     """--explain=life reports each command, --explain=final reports the
-    attribution once the question is closed, --explain alone means life."""
+    attribution once the question is closed, --explain alone means life.
+    The live report is what one gets without asking for it, --explain=off
+    is how one asks for no report at all."""
 
     def test_parse(self):
         parse = mg_interface.parse_explain_mode
         self.assertEqual(parse('--explain'), 'life')
         self.assertEqual(parse('--explain=life'), 'life')
         self.assertEqual(parse('--explain=final'), 'final')
+        self.assertEqual(parse('--explain=off'), 'off')
         # 'live' is the spelling one expects, accept it too
         self.assertEqual(parse('--explain=live'), 'life')
         self.assertEqual(parse('--explain=LIFE'), 'life')
+        # and so are the other ways of spelling 'off'
+        self.assertEqual(parse('--explain=OFF'), 'off')
+        self.assertEqual(parse('--explain=none'), 'off')
+        self.assertEqual(parse('--explain=False'), 'off')
+        self.assertEqual(parse('--explain=no'), 'off')
 
     def test_parse_of_something_else(self):
         parse = mg_interface.parse_explain_mode
@@ -856,6 +864,7 @@ class TestExplainModes(unittest.TestCase):
     def test_check_accepts_the_valid_modes(self):
         cmd = mg_interface.MadGraphCmd()
         for args in [[], ['--explain'], ['--explain=life'], ['--explain=final'],
+                     ['--explain=off'], ['--explain=OFF'],
                      ['--explain=live'], ['--save=NAME', '--explain=final'],
                      ['--explain', '--save=NAME']]:
             cmd.check_customize_model(list(args))
@@ -869,10 +878,26 @@ class TestExplainModes(unittest.TestCase):
     def test_the_last_one_wins(self):
         """'--explain --explain=final' asks for the final report"""
 
-        args = ['--explain', '--explain=final']
-        explain = ([None] + [mg_interface.parse_explain_mode(a) for a in args
-                             if mg_interface.parse_explain_mode(a)])[-1]
-        self.assertEqual(explain, 'final')
+        resolve = mg_interface.resolve_explain_mode
+        self.assertEqual(resolve(['--explain', '--explain=final']), 'final')
+        self.assertEqual(resolve(['--explain=final', '--explain']), 'life')
+        self.assertEqual(resolve(['--explain=final', '--explain=off']), None)
+
+    def test_the_live_report_is_the_default(self):
+        """the report used to be opt-in, it now has to be opt-out"""
+
+        resolve = mg_interface.resolve_explain_mode
+        self.assertEqual(resolve([]), 'life')
+        self.assertEqual(resolve(['--save=NAME']), 'life')
+        self.assertEqual(resolve(['--save=NAME', '--all']), 'life')
+
+    def test_off_asks_for_no_report(self):
+        """'off' is not a report mode, it is the absence of one"""
+
+        resolve = mg_interface.resolve_explain_mode
+        for arg in ['--explain=off', '--explain=OFF', '--explain=none',
+                    '--explain=no', '--explain=False']:
+            self.assertEqual(resolve(['--save=NAME', arg]), None, arg)
 
 
 #===============================================================================

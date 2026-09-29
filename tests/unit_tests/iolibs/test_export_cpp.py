@@ -990,11 +990,11 @@ class DDMColorFlowMG7Test(unittest.TestCase):
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
 
-    def test_ddm_coloramps_is_written_and_mode_independent(self):
-        """coloramps.h bakes the canonical color flow code of each flow, which
+    def test_ddm_colordata_is_written_and_mode_independent(self):
+        """ColorData.h bakes the canonical color flow code of each flow, which
         has to be decomposed on the flow basis: asking the DDM basis itself
         raises (its elements are products of f's and have no single flow
-        each). That left a 0 byte coloramps.h and no CPPProcess.cc at all for
+        each). That left a 0 byte header and no CPPProcess.cc at all for
         every all-gluon process, silently and with a zero exit code."""
 
         import madmatrix.model_handling as model_handling
@@ -1007,9 +1007,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
                     cls=model_handling.OneProcessExporterMadMatrix)
                 exporter.path = tempfile.mkdtemp()
                 try:
-                    exporter.edit_coloramps()
-                    with open(pjoin(exporter.path, 'coloramps.h')) as stream:
-                        written[(npar, ddm)] = stream.read()
+                    exporter.edit_colordata()
+                    with open(pjoin(exporter.path, 'ColorData.h')) as stream:
+                        # the color flow half: the color matrix before it is
+                        # the one of the basis the color sum runs on
+                        text = stream.read()
+                        written[(npar, ddm)] = text[text.index('namespace mgOnGpu'):]
                 finally:
                     shutil.rmtree(exporter.path)
                 self.assertTrue(written[(npar, ddm)])
@@ -1018,3 +1021,67 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             # switching the color basis changes how the jamps are computed,
             # never which color flows exist
             self.assertEqual(written[(npar, True)], written[(npar, False)])
+
+
+#===============================================================================
+# AlohaModelPathTest
+#===============================================================================
+class AlohaModelPathTest(unittest.TestCase):
+    """The ALOHA model has to be located from the directory the model was
+    imported from, never from its name: the name can carry a restriction
+    suffix ('SMEFTatNLO-NLO') and it says nothing at all about a model
+    living outside of MG5DIR/models."""
+
+    def get_model(self, name, modeldir):
+        model = base_objects.Model()
+        model.set('name', name)
+        model.set('version_tag', '%s##1' % modeldir)
+        return model
+
+    def get_aloha_model(self, model):
+        """Build the aloha model, recording which name reaches load_model
+        (and faking the UFO module, so that nothing is imported here)."""
+
+        recorded = []
+        class FakeUFO(object):
+            pass
+        def fake_load_model(name, decay=False):
+            recorded.append(name)
+            ufo = FakeUFO()
+            ufo.__file__ = os.path.join(name, '__init__.py')
+            return ufo
+
+        real_load_model = create_aloha.models.load_model
+        create_aloha.models.load_model = fake_load_model
+        try:
+            aloha_model = create_aloha.AbstractALOHAModel.from_model(model)
+        finally:
+            create_aloha.models.load_model = real_load_model
+        return aloha_model, recorded
+
+    def test_aloha_model_of_a_model_outside_of_mg5dir(self):
+        """A restricted model outside of MG5DIR/models used to be looked for
+        by name ('SMEFTatNLO-NLO'), which is neither a directory we know of
+        nor an importable module."""
+
+        modeldir = tempfile.mkdtemp(prefix='aloha_model_path')
+        try:
+            model = self.get_model('SMEFTatNLO-NLO',
+                                   os.path.join(modeldir, 'SMEFTatNLO'))
+            os.mkdir(os.path.join(modeldir, 'SMEFTatNLO'))
+            aloha_model, recorded = self.get_aloha_model(model)
+        finally:
+            shutil.rmtree(modeldir)
+
+        self.assertEqual(recorded, [os.path.join(modeldir, 'SMEFTatNLO')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(modeldir, 'SMEFTatNLO'))
+
+    def test_aloha_model_of_a_restricted_model_of_mg5dir(self):
+        """The restriction is dropped for a model of MG5DIR/models as well."""
+
+        model = self.get_model('sm-no_b_mass', os.path.join(MG5DIR, 'models', 'sm'))
+        aloha_model, recorded = self.get_aloha_model(model)
+        self.assertEqual(recorded, [os.path.join(MG5DIR, 'models', 'sm')])
+        self.assertEqual(aloha_model.model_pos,
+                         os.path.join(MG5DIR, 'models', 'sm'))

@@ -2248,8 +2248,16 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         return pdirs[0]
 
     def _cpp_source(self, pdir):
-        with open(pjoin(pdir, 'CPPProcess.cc')) as fsock:
-            return fsock.read()
+        """The process-specific generated source: the crossing data lives in
+        ProcessTables.h, the per-event momentum gather and the per-lane
+        external calls in EvaluateDiagrams.inc and the crossed flavorPDG in
+        CPPProcess.cc. (The generic crossing code is backend-owned, in
+        backend/<variant>/SigmaKin.cc, and is the same for every process.)"""
+        text = []
+        for name in ('CPPProcess.cc', 'ProcessTables.h', 'EvaluateDiagrams.inc'):
+            with open(pjoin(pdir, name)) as fsock:
+                text.append(fsock.read())
+        return '\n'.join(text)
 
     def _patch_and_build(self, pdir):
         """Patch the shipped check_sa.cc so it can (a) evaluate the EXTENDED
@@ -2446,8 +2454,10 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                                               options='--use_crossing=False')
         on_src = self._cpp_source(on_dir)
         off_src = self._cpp_source(off_dir)
-        for token in ('spincol_cross', 'cross_perm_ic', 'spincol_part',
-                      'ident_cross', 'xmom', 'ids_base'):
+        self.assertIn('use_crossing = true', on_src)
+        self.assertIn('use_crossing = false', off_src)
+        for token in ('spincol_cross', 'base_pdg',
+                      'cGoodHelOfCross', 'xmom', 'icsign'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
             self.assertNotIn(token, off_src,
@@ -2482,8 +2492,10 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         # satisfy the equality above with both sides broken.
         on_src = self._cpp_source(
             self._output_madmatrix(PROC_QQ_GG, 'qqgg_defaulton'))
-        for token in ('spincol_cross', 'cross_perm_ic', 'ident_cross',
-                      'cNGoodMaxCross'):
+        self.assertIn('use_crossing = true', on_src)
+        self.assertIn('use_crossing = false', out_src)
+        for token in ('spincol_cross', 'base_pdg',
+                      'cGoodHelOfCross', 'xmom'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
             self.assertNotIn(token, out_src,
