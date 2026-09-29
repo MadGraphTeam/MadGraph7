@@ -5113,7 +5113,8 @@ c entering this function
       elseif (xi_i_fks.lt.tiny)then
          if (need_color_links.or.need_charge_links)then
 c has soft singularities
-            call sbornsoft(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,ret_saveamp,ret_amp_split_cnt)
+            call sbornsoft(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     $                     ans_cnt,ret_saveamp,ret_amp_split_cnt)
          else
             wgt=0d0
             ret_amp_split(1:amp_split_size) = 0d0
@@ -5229,7 +5230,8 @@ c entering this function
          if (need_color_links.or.need_charge_links)then
 c has soft singularities
             ret_amp_split(:) = born_split(:)
-            call sbornsoft_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,born_saveamp,born_split_cnt)
+            call sbornsoft_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
+     $                           born_cnt,born_saveamp,born_split_cnt)
          else
             wgt=0d0
             ret_amp_split(1:amp_split_size) = 0d0
@@ -5303,6 +5305,7 @@ c Particle types (=color/charges) of i_fks, j_fks and fks_mother
       include 'orders.inc'
       include 'born_nhel.inc'
       double precision amp_split_local(amp_split_size)
+      double complex amp_split_cnt_local(amp_split_size,2,nsplitorders)
       logical split_type(nsplitorders) 
       common /c_split_type/split_type
       double precision amp2(ngraphs), jamp2(0:ncolor)
@@ -5358,6 +5361,17 @@ C check if any extra_cnt is needed
             wgt1(1) = ans_cnt(1,iord)
             wgt1(2) = ans_cnt(2,iord)
          endif
+c The split orders of the counterterm Born: those of the Born (argument),
+c or, for the extra counterterm (isplitorder_cnt), those that extra_cnt has
+c just written to the amp_split_cnt common (as the summed wgt1 uses
+c ans_extra_cnt). They are copied, so the caller's array is never rescaled.
+         if (iextra_cnt.gt.0 .and. iord.eq.isplitorder_cnt) then
+            amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $           amp_split_cnt(1:amp_split_size,1:2,iord)
+         else
+            amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $           ret_amp_split_cnt(1:amp_split_size,1:2,iord)
+         endif
          if ((abs(j_type).eq.3 .and.i_type.eq.8) .or.
      #       (dabs(ch_j).ne.0d0 .and.ch_i.eq.0d0)) then
             Q(1)=0d0
@@ -5374,8 +5388,8 @@ c from a spacelike splitting: psi is measured in the helicity basis of the
 c boosted mother, so the getaziangles factor of the legacy branch below is
 c already accounted for and must not be applied again.
                wgt1(2) = -azifact * wgt1(2)
-               amp_split_cnt(1:amp_split_size,2,iord) = -azifact
-     $              *amp_split_cnt(1:amp_split_size,2,iord)
+               amp_split_cnt_local(1:amp_split_size,2,iord) = -azifact
+     $              *amp_split_cnt_local(1:amp_split_size,2,iord)
             else
             if (1d0-y_ij_fks.lt.vtiny)then
                azifact=xij_aor
@@ -5401,9 +5415,9 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
      #                       cphi_mother,sphi_mother)
             wgt1(2) = -(cphi_mother-ximag*sphi_mother)**2 *
      #             wgt1(2) * azifact
-            ret_amp_split_cnt(1:amp_split_size,2,iord) = -(cphi_mother-ximag
-     $           *sphi_mother)**2 *ret_amp_split_cnt(1:amp_split_size,2
-     $           ,iord) * azifact
+            amp_split_cnt_local(1:amp_split_size,2,iord) =
+     $           -(cphi_mother-ximag*sphi_mother)**2
+     $           *amp_split_cnt_local(1:amp_split_size,2,iord) * azifact
             endif
          else
             write(*,*) 'FATAL ERROR in sborncol_fsr',i_type,j_type,i_fks
@@ -5414,15 +5428,15 @@ c Insert the extra factor due to Madgraph convention for polarization vectors
             wgt=wgt+dble(wgt1(1)*ap(1)+wgt1(2)*Q(1))
             amp_split_local(1:amp_split_size) =
      $           amp_split_local(1:amp_split_size)
-     $           +dble(ret_amp_split_cnt(1:amp_split_size,1,iord)*AP(1)
-     $           +ret_amp_split_cnt(1:amp_split_size,2,iord)*Q(1))
+     $           +dble(amp_split_cnt_local(1:amp_split_size,1,iord)*AP(1)
+     $           +amp_split_cnt_local(1:amp_split_size,2,iord)*Q(1))
          endif
          if (iord.eq.qed_pos) then
             wgt=wgt+dble(wgt1(1)*ap(2)+wgt1(2)*Q(2))
             amp_split_local(1:amp_split_size) =
      $           amp_split_local(1:amp_split_size)
-     $           +dble(ret_amp_split_cnt(1:amp_split_size,1,iord)*AP(2)
-     $           +ret_amp_split_cnt(1:amp_split_size,2,iord)*Q(2))
+     $           +dble(amp_split_cnt_local(1:amp_split_size,1,iord)*AP(2)
+     $           +amp_split_cnt_local(1:amp_split_size,2,iord)*Q(2))
          endif
       enddo
       wgt=wgt*iden_comp
@@ -5556,10 +5570,17 @@ C check if any extra_cnt is needed
          else
             wgt1(1:2) = ans_cnt(1:2,iord)
         endif
-        amp_split_cnt_local(1:amp_split_size,1,iord)=
-     $       ret_amp_split_cnt(1:amp_split_size,1,iord)
-        amp_split_cnt_local(1:amp_split_size,2,iord)=
-     $       ret_amp_split_cnt(1:amp_split_size,2,iord)
+c The split orders of the counterterm Born: those of the Born (argument),
+c or, for the extra counterterm (isplitorder_cnt), those that extra_cnt has
+c just written to the amp_split_cnt common (as the summed wgt1 uses
+c ans_extra_cnt). They are copied, so the caller's array is never rescaled.
+        if (iextra_cnt.gt.0 .and. iord.eq.isplitorder_cnt) then
+           amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $          amp_split_cnt(1:amp_split_size,1:2,iord)
+        else
+           amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $          ret_amp_split_cnt(1:amp_split_size,1:2,iord)
+        endif
         if (abs(m_type).eq.3.or.ch_m.ne.0d0) then
            Q(1)=0d0
            Q(2)=0d0
@@ -5772,10 +5793,17 @@ C check if any extra_cnt is needed
          else
             wgt1(1:2) = ans_cnt(1:2,iord)
         endif
-        amp_split_cnt_local(1:amp_split_size,1,iord)=
-     $       ret_amp_split_cnt(1:amp_split_size,1,iord)
-        amp_split_cnt_local(1:amp_split_size,2,iord)=
-     $       ret_amp_split_cnt(1:amp_split_size,2,iord)
+c The split orders of the counterterm Born: those of the Born (argument),
+c or, for the extra counterterm (isplitorder_cnt), those that extra_cnt has
+c just written to the amp_split_cnt common (as the summed wgt1 uses
+c ans_extra_cnt). They are copied, so the caller's array is never rescaled.
+        if (iextra_cnt.gt.0 .and. iord.eq.isplitorder_cnt) then
+           amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $          amp_split_cnt(1:amp_split_size,1:2,iord)
+        else
+           amp_split_cnt_local(1:amp_split_size,1:2,iord)=
+     $          ret_amp_split_cnt(1:amp_split_size,1:2,iord)
+        endif
         if (abs(m_type).eq.3.or.ch_m.ne.0d0) then
            Q(1)=0d0
            Q(2)=0d0
@@ -6467,7 +6495,10 @@ c q->gq splitting
 
 
       subroutine sbornsoft(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
-     $                     ret_saveamp, ret_amp_split_cnt)
+     $                     ans_cnt, ret_saveamp, ret_amp_split_cnt)
+c ans_cnt is the Born for the counterterms (sborn_amp), which the
+c charge-linked (QED) soft limit needs in sborn_sf; the colour-linked Borns
+c are recomputed there.
       implicit none
 
       include "nexternal.inc"
@@ -6550,7 +6581,8 @@ c      amp_split(1:amp_split_size) = ret_amp_split(1:amp_split_size)
       end
       
       subroutine sbornsoft_store(pp,xi_i_fks,y_ij_fks,wgt,ret_amp_split,
-     $                     ret_saveamp, ret_amp_split_cnt)
+     $                     ans_cnt, ret_saveamp, ret_amp_split_cnt)
+c ans_cnt: see sbornsoft.
       implicit none
 
       include "nexternal.inc"
@@ -6912,6 +6944,9 @@ C check if any extra_cnt is needed
                call extra_cnt_frame(p_born_used,iextra_cnt,ans_extra_cnt)
                wgt1(1) = ans_extra_cnt(1,iord)
                wgt1(2) = ans_extra_cnt(2,iord)
+c its split orders, which extra_cnt writes to the amp_split_cnt common
+               used_split_cnt(1:amp_split_size,1:2,iord) =
+     $              amp_split_cnt(1:amp_split_size,1:2,iord)
             else
                write(*,*) 'ERROR in sreal_deg', iord
                stop
