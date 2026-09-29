@@ -1890,7 +1890,7 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
-        # When True, external HELAS calls permute the helicity through perm[]
+        # When True, external HELAS calls read their momentum through perm[]
         # and multiply their NSF flag by ic[] so a crossed leg flips (set by the
         # standalone_cpp exporter around calculate_wavefunctions generation).
         self.use_crossing_ic = False
@@ -1925,10 +1925,14 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
         """Build the ixxxxx/oxxxxx/vxxxxx/sxxxxx call for an external leg.
 
         When self.use_crossing_ic is False this reproduces the historical call
-        byte-for-byte. When True the helicity is read through perm[] and the NSF
-        flag is multiplied by ic[], so a leg the crossing moved between the
-        initial and the final state flips (helas folds the momentum sign change
-        and the helicity flip out of that flag)."""
+        byte-for-byte. When True the momentum is read through perm[] (base
+        slot n takes the momentum of input slot perm[n]) and the NSF flag is
+        multiplied by ic[], so a leg the crossing moved between the initial and
+        the final state flips (helas folds the momentum sign change and the
+        helicity flip out of that flag). The helicity stays the base slot's
+        own (tau, as in the fortran APPLY_CROSSING_TABLE): read through perm[]
+        it would feed a slot helicity values of another leg's state set -- a
+        quark helicity 0 when a Z moves in."""
         n = wf.get('number_external') - 1
         me = wf.get('me_id') - 1
         if not is_boson:
@@ -1938,7 +1942,7 @@ class CPPUFOHelasCallWriter(UFOHelasCallWriter):
             # For bosons (incl. scalars), need initial/final
             nsf = (-1) ** (wf.get('state') == 'initial')
         cross = getattr(self, 'use_crossing_ic', False)
-        hel_tok = ('hel[perm[%d]]' % n) if cross else ('hel[%d]' % n)
+        hel_tok = 'hel[%d]' % n
         nsf_tok = ('%+d*ic[%d]' % (nsf, n)) if cross else ('%+d' % nsf)
         if spin == 1:
             return '%s(p[perm[%d]],%s,w[%d]);' % (routine, n, nsf_tok, me)

@@ -2268,106 +2268,15 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.close()
 
     def _folded_crossing_flavorids(self, matrix_element):
-        """Extended flavor ids of the crossed subprocesses folded into this base
-        ME (merge_crossing='record'). One id per asked crossing direction
-        (mirror pairs collapsed), matched LABEL-AWARE against the reachable
-        (index, cross, flav, pdg) enumeration so a merged _quark leg matches any
-        same-sign flavor -- the same selection check_sa.f's crossing demo uses.
-        The index IS the mg7 flavor id (cross*nflav+flav0), so flavorPDG(id, k)
-        gives the crossed PDG at runtime."""
-        crossed = matrix_element.get('crossed_processes')
-        if not crossed:
+        """Extended flavor ids (0-based, K*nmaxflavor + flav0) of the crossed
+        subprocesses folded into this base ME (merge_crossing='record'): one
+        per recorded crossed process, mirror pairs collapsed -- the same
+        selection check_sa.f's crossing demo uses. The index IS the mg7 flavor
+        id, so flavorPDG(id, k) gives the crossed PDG at runtime."""
+        if not matrix_element.get('crossed_processes'):
             return []
-        import madgraph.iolibs.export_v4 as export_v4
-        Fort = export_v4.ProcessExporterFortran
-        merged = matrix_element.get('processes')[0].get('model').get(
-            'merged_particles')
-        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
-        pdg_to_id = {}
-        for (index, _cross, _flav0, pdg) in entries:
-            pdg_to_id.setdefault(pdg, index)
-        reach = [pdg for (_i, _c, _f, pdg) in entries]
-
-        def leg_matches(leg_id, pdg):
-            a = abs(leg_id)
-            if a in merged:
-                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
-            return pdg == leg_id
-
-        ninitial = matrix_element.get_nexternal_ninitial()[1]
-        ids, seen = [], set()
-        for (proc, _bp, _xp) in crossed:
-            legs = [l.get('id') for l in proc.get('legs')]
-            orients = [legs]
-            if ninitial == 2:
-                orients.append([legs[1], legs[0]] + legs[2:])
-            hit = None
-            for orient in orients:
-                for r in reach:
-                    if len(r) == len(orient) and \
-                       all(leg_matches(L, P) for L, P in zip(orient, r)):
-                        hit = r
-                        break
-                if hit is not None:
-                    break
-            if hit is None:
-                continue
-            mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
-            if hit in seen or mirror in seen:
-                continue
-            seen.add(hit)
-            seen.add(mirror)
-            ids.append(pdg_to_id[hit])
-        return ids
-
-    def _scanned_crossings(self, matrix_element):
-        """Crossing codes the good-helicity scan has to visit.
-
-        A crossing code is only ever carried by an event if this ME actually
-        RECORDED that crossed subprocess (merge_crossing='record'), so the scan
-        needs the recorded codes and nothing else. Enumerating every code that
-        is merely structurally applicable instead costs a full ncomb-helicity
-        scan per code -- 48 of them for g g > t t~ g g g, which records none at
-        all -- and every one past the recorded set builds a cGoodHelOfCross row
-        no event can ever index. See the runtime guard in _crossing_preamble for
-        what happens if an unrecorded code does show up.
-
-        The identity (0) is always included: it is the base process itself.
-
-        NB this is deliberately NOT _folded_crossing_flavorids. That one answers
-        a different question -- one representative id per crossed subprocess,
-        mirror pairs collapsed -- which is what a demo wants and what a scan must
-        not use: the runtime may hand us EITHER member of a mirror pair, and a
-        collapsed partner would hit the guard and abort. Here every reachable
-        entry matching a recorded process in either orientation is kept."""
-        crossings = set([0])
-        crossed = matrix_element.get('crossed_processes')
-        if not crossed:
-            return sorted(crossings)
-        import madgraph.iolibs.export_v4 as export_v4
-        Fort = export_v4.ProcessExporterFortran
-        merged = matrix_element.get('processes')[0].get('model').get(
-            'merged_particles')
-        entries = Fort.compute_crossing_pdg_entries(self, matrix_element)
-
-        def leg_matches(leg_id, pdg):
-            a = abs(leg_id)
-            if a in merged:
-                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
-            return pdg == leg_id
-
-        ninitial = matrix_element.get_nexternal_ninitial()[1]
-        for (proc, _bp, _xp) in crossed:
-            legs = [l.get('id') for l in proc.get('legs')]
-            orients = [legs]
-            if ninitial == 2:
-                orients.append([legs[1], legs[0]] + legs[2:])
-            for (_index, cross, _flav0, pdg) in entries:
-                if any(len(pdg) == len(orient) and
-                       all(leg_matches(L, P) for L, P in zip(orient, pdg))
-                       for orient in orients):
-                    crossings.add(cross)
-        return sorted(crossings)
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        return self.get_crossing_table(matrix_element).demo_ids(nflav)
 
     def edit_crossing_demo(self):
         """Write crossing_demo.dat (the folded-crossing flavor ids) into the P*
@@ -2864,43 +2773,47 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """ProcessTables.h 'crossing_tables' and CPPProcess.cc 'flavorpdg_body'."""
 
         header = (
-            "    // ---- Crossing symmetry (extended id = cross*nmaxflavor + flav) ----\n"
-            "    // A crossing is a fixed slot relabelling decoded from the crossing\n"
-            "    // code at runtime (cross_perm_ic below, mirroring the fortran\n"
-            "    // GET_CROSS_PERM), so no table is indexed by the crossing code except\n"
-            "    // cross_recorded_tab. The per-leg tables let backend/<variant>/SigmaKin.cc\n"
-            "    // rebuild the crossed denominator and the crossed helicity code.\n"
-            "    constexpr int ncross = ( ProcessData::npar + 1 ) * ( ProcessData::npar + 1 );\n")
+            "    // ---- Crossing symmetry (extended id = K*nmaxflavor + flav) ----\n"
+            "    // K is a row of this matrix element's crossing table (row 0 the\n"
+            "    // identity), written by the exporter from the crossings it records\n"
+            "    // (export_v4 get_crossing_table): a slot permutation stored in both\n"
+            "    // views (cross_gather / cross_pinv below) plus the initial-state\n"
+            "    // spin*colour average of the process each row crosses into. The\n"
+            "    // per-leg tables let backend/<variant>/SigmaKin.cc rebuild the\n"
+            "    // crossed denominator and the crossed helicity code.\n")
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+
+        def arr(vals):
+            return '{ ' + ', '.join(str(v) for v in vals) + ' }'
+
         if not getattr(self, 'use_crossing', False):
+            identity = arr(range(nexternal))
+            ones = arr([1] * nexternal)
             tables = header + (
-                "    constexpr bool use_crossing = false; // no crossing folded in: placeholders only\n"
-                "    __device__ constexpr bool cross_recorded_tab[ncross] = {};\n"
-                "    __device__ constexpr int spincol_part[ProcessData::npar] = {};\n"
+                "    constexpr bool use_crossing = false; // no crossing folded in: the identity only\n"
+                "    constexpr int ncross = 1;\n"
+                "    __device__ constexpr int xperm_tab[ProcessData::npar] = %(identity)s;\n"
+                "    __device__ constexpr int xsgn_tab[ProcessData::npar] = %(ones)s;\n"
+                "    __device__ constexpr int xpinv_tab[ProcessData::npar] = %(identity)s;\n"
+                "    __device__ constexpr int xsgni_tab[ProcessData::npar] = %(ones)s;\n"
+                "    __device__ constexpr int xspincol_tab[ncross] = {};\n"
                 "    __device__ constexpr int ids_base[ProcessData::npar] = {};\n"
                 "    __device__ constexpr int antipid_base[ProcessData::npar] = {};\n"
+                "    __device__ constexpr int countable_tab[ProcessData::npar] = {};\n"
+                "    constexpr int ident_resonance = 1;\n"
                 "    constexpr int xhel_maxhel = 1;\n"
                 "    __device__ constexpr int xhel_nhstate[ProcessData::npar] = {};\n"
-                "    __device__ constexpr int xhel_states[ProcessData::npar * xhel_maxhel] = {};\n")
+                "    __device__ constexpr int xhel_states[ProcessData::npar * xhel_maxhel] = {};\n"
+            ) % {'identity': identity, 'ones': ones}
             return {'crossing_tables': tables,
                     'flavorpdg_body': '    return flavorPDGs[iflavor][ipar];'}
 
         import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.crossing_table as crossing_table
         Fort = export_v4.ProcessExporterFortran
         me = matrix_element
         tables = Fort.compute_crossing_tables(self, me)
-        nexternal = tables['nexternal']
-        ncross = (nexternal + 1) * (nexternal + 1)
-        nflav = len(me.get_external_flavors_with_iden())
-        # _build_flav_pdg_tables gives the base signed PDG per (flavor, leg) and
-        # its charge conjugate, from which flavorPDG rebuilds the crossed PDGs at
-        # runtime (see flavorpdg_body).
-        n_flavors, pdg_flat, antipdg_flat = Fort._build_flav_pdg_tables(self, me)
-        # Crossing codes this ME actually RECORDED (merge_crossing='record'),
-        # i.e. the only ones an event can ever carry; see _scanned_crossings.
-        scanned_crossings = set(self._scanned_crossings(me))
-
-        def arr(vals):
-            return '{ ' + ', '.join(str(v) for v in vals) + ' }'
+        table = self.get_crossing_table(me)
 
         # Per-leg helicity states used to re-encode a crossed helicity config
         # into its canonical code. allow_reverse=True is NOT optional: it is the
@@ -2926,48 +2839,69 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
         tables_text = header + (
             "    constexpr bool use_crossing = true;\n"
-            "    // Crossing codes this ME actually RECORDED (merge_crossing='record'):\n"
-            "    // cross_perm_ic answers whether a code is structurally APPLICABLE,\n"
-            "    // which is a much weaker statement (g g > t t~ g g g has 48 applicable\n"
-            "    // codes and 0 recorded ones). The good-helicity scan walks THIS set\n"
-            "    // and calculate_jamps checks incoming events against it. The\n"
-            "    // identity is always in.\n"
-            "    __device__ constexpr bool cross_recorded_tab[ncross] = %(cross_recorded)s;\n"
-            "    // per-leg spin*color (conjugation invariant): the crossed initial-state average\n"
-            "    __device__ constexpr int spincol_part[ProcessData::npar] = %(spincol_part)s;\n"
+            "    constexpr int ncross = %(ncross)d;\n"
+            "    // base-slot view: base slot b takes the momentum of input slot\n"
+            "    // xperm_tab[K*npar+b], NSF sign xsgn_tab[K*npar+b]\n"
+            "    __device__ constexpr int xperm_tab[ncross * ProcessData::npar] = %(xperm)s;\n"
+            "    __device__ constexpr int xsgn_tab[ncross * ProcessData::npar] = %(xsgn)s;\n"
+            "    // input-slot view: input slot k is fed to base slot\n"
+            "    // xpinv_tab[K*npar+k], charge conjugated when xsgni_tab is -1\n"
+            "    __device__ constexpr int xpinv_tab[ncross * ProcessData::npar] = %(xpinv)s;\n"
+            "    __device__ constexpr int xsgni_tab[ncross * ProcessData::npar] = %(xsgni)s;\n"
+            "    // initial-state spin*colour average of the crossed process\n"
+            "    __device__ constexpr int xspincol_tab[ncross] = %(xspincol)s;\n"
             "    // per-leg flavor-group representative PDG, and its charge conjugate\n"
             "    __device__ constexpr int ids_base[ProcessData::npar] = %(ids_base)s;\n"
             "    __device__ constexpr int antipid_base[ProcessData::npar] = %(antipid_base)s;\n"
+            "    // 1 for a single external leg, 0 for a decay-block leaf (whose symmetry\n"
+            "    // is resonance-level: the constant ident_resonance, see ident_cross)\n"
+            "    __device__ constexpr int countable_tab[ProcessData::npar] = %(countable)s;\n"
+            "    constexpr int ident_resonance = %(ident_resonance)d;\n"
             "    // per-leg helicity states (allow_reverse=True order, see the exporter)\n"
             "    constexpr int xhel_maxhel = %(maxhel)d;\n"
             "    __device__ constexpr int xhel_nhstate[ProcessData::npar] = %(xnhstate)s;\n"
             "    __device__ constexpr int xhel_states[ProcessData::npar * xhel_maxhel] = %(xstates)s;\n"
-        ) % {'spincol_part': arr(tables['spincol_part']),
+        ) % {'ncross': len(table),
+             'xperm': arr(table.flat('B')), 'xsgn': arr(table.flat('SB')),
+             'xpinv': arr(table.flat('D')), 'xsgni': arr(table.flat('SD')),
+             'xspincol': arr(table.spincol(tables['spincol_part'])),
              'ids_base': arr(tables['ids_base']),
              'antipid_base': arr(tables['antipid_base']),
-             'cross_recorded': arr(['true' if c in scanned_crossings else 'false'
-                                    for c in range(ncross)]),
+             'countable': arr(tables['countable']),
+             'ident_resonance': tables['ident_resonance'],
              'maxhel': maxhel, 'xnhstate': arr(hnstate),
              'xstates': arr(states_flat)}
 
-        # Crossed physical signed PDG per (extended id, leg), rebuilt at runtime
-        # like the fortran GET_PDG_FOR_FLAVOR: base signed PDG of the leg the
-        # crossing moves into slot ipar (base_pdg per (flavor, leg)), charge-
-        # conjugated when that leg swapped side -- no per-crossing PDG table.
+        # Crossed physical signed PDG per (extended id, leg), like the fortran
+        # GET_PDG_FOR_FLAVOR: the PDG of the base leg input slot ipar is fed to,
+        # charge conjugated when that leg changes side. The base PDGs are the
+        # class REPRESENTATIVES -- the rows cFlavors / flavorPDGs are built from
+        # (get_external_flavors_with_iden, members[0]) -- not the leading rows
+        # of the physical flavor table, which name another process from three
+        # merged flavors on.
+        anti = crossing_table.make_anti(me.get('processes')[0].get('model'))
+        reps = []
+        for flav0, pdgs in Fort.crossing_base_entries(self, me, 'classes'):
+            if flav0 == len(reps):
+                reps.append(pdgs)
+        base_pdg = [p for row in reps for p in row]
+        # Host copies of the input-slot view: flavorPDG runs on the host, so
+        # it must not read the __device__ tables of ProcessTables.h (a GPU
+        # build only has their device copy).
         flavorpdg_body = (
-            "    const int ncross = ( npar + 1 ) * ( npar + 1 );\n"
             "    if ( iflavor < 0 || iflavor >= ncross * nmaxflavor ) return 0;\n"
             "    static const int base_pdg[nmaxflavor * npar] = %(base_pdg)s;\n"
             "    static const int base_antipdg[nmaxflavor * npar] = %(base_antipdg)s;\n"
+            "    static const int pinv_h[ncross * npar] = %(pinv)s;\n"
+            "    static const int sgn_h[ncross * npar] = %(sgn)s;\n"
             "    const int cross = iflavor / nmaxflavor;\n"
             "    const int flav0 = iflavor %% nmaxflavor;\n"
-            "    int perm[npar], ic[npar];\n"
-            "    if ( !cross_perm_ic( cross, perm, ic ) ) return 0; // invalid crossing\n"
-            "    const int src = perm[ipar];\n"
-            "    return ( ic[ipar] == 1 ) ? base_pdg[flav0 * npar + src]\n"
-            "                             : base_antipdg[flav0 * npar + src];"
-        ) % {'base_pdg': arr(pdg_flat[:nflav * nexternal]),
-             'base_antipdg': arr(antipdg_flat[:nflav * nexternal])}
+            "    const int src = pinv_h[cross * npar + ipar];\n"
+            "    return ( sgn_h[cross * npar + ipar] == 1 ) ? base_pdg[flav0 * npar + src]\n"
+            "                                               : base_antipdg[flav0 * npar + src];"
+        ) % {'base_pdg': arr(base_pdg),
+             'base_antipdg': arr([anti(p) for p in base_pdg]),
+             'pinv': arr(table.flat('D')), 'sgn': arr(table.flat('SD'))}
 
         return {'crossing_tables': tables_text,
                 'flavorpdg_body': flavorpdg_body}
@@ -3607,14 +3541,16 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
         All events in a SIMD page share flav_use but may carry DIFFERENT
         crossings, so this gather is genuinely per-event (NOT vectorized): for
-        each event we permute its momenta into the crossed slot order (xmom,
+        each event we permute its momenta into the base slot order (xmom,
         positive energy preserved) and record the per-event NSF sign flips
-        (icsign). The momentum sign flip of a swapped leg is applied through the
-        NSF flag inside the HELAS routines (see _crossing_external_block)."""
+        (icsign). The momentum sign flip of a leg changing side is applied
+        through the NSF flag inside the HELAS routines (see
+        _crossing_external_block)."""
         return """#ifndef MGONGPUCPP_GPUIMPL
       // === CROSSING SYMMETRY: per-event momentum permutation (NOT vectorized) ===
-      // The crossing slot permutation and NSF signs are decoded per event from
-      // its crossing code (cross_perm_ic), not read from a per-crossing table.
+      // Each event's crossing-table row (cross_gather, the base-slot view):
+      // base slot s takes the momentum of input slot xperm[s], NSF sign xic[s].
+      // A row out of range gathers the identity; its denominator is 0.
       alignas( mgOnGpu::cppAlign ) fptype xmom[npar * np4 * neppV];
       fptype_sv icsign[npar];
       // 2 scratch external wavefunctions for the per-event NSF-sign blend
@@ -3626,34 +3562,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
       for( int ieppV = 0; ieppV < neppV; ++ieppV )
       {
         const int xcr = (int)( iflavorVec[ievt0 + ieppV] / nmaxflavor );
-        // GUARD: the good-helicity scan only builds a cGoodHelOfCross row for the
-        // crossings this ME records, so a code outside that set would find an
-        // empty row, mask every helicity in the per-lane blend below, and hand
-        // back a SILENTLY ZERO |M|^2 -- an event quietly lost, not a crash. Fail
-        // loudly instead. (_ighel < 0 is the good-helicity scan itself, which
-        // runs before the table exists and is gated by cross_recorded already.)
-        //
-        // A structurally INVALID code (an overlapping swap, spincol_cross == 0)
-        // is deliberately NOT an error: the per-event denominator already
-        // ASSIGNS 0 for it, which is the documented contract. Only an
-        // APPLICABLE-but-unrecorded code is the ambiguous, dangerous case.
-        //
-        // Order matters: cross_recorded is a table lookup but spincol_cross runs
-        // cross_perm_ic, and this sits in the per-helicity path (ncomb calls per
-        // page). Short-circuiting on the recorded test keeps spincol_cross off
-        // the hot path for every event that has a recorded crossing, i.e. all
-        // of them outside the error case.
-        if( _ighel >= 0 && !cross_recorded( xcr ) && spincol_cross( xcr ) != 0 )
-        {
-          std::cerr << "ERROR! calculate_jamps: event " << ( ievt0 + ieppV )
-                    << " carries crossing code " << xcr
-                    << ", which this process does not record: no good-helicity row was"
-                    << " scanned for it and its matrix element would be silently zero."
-                    << std::endl;
-          std::abort();
-        }
         int xperm[npar], xic[npar];
-        cross_perm_ic( xcr, xperm, xic );
+        cross_gather( xcr, xperm, xic );
         for( int s = 0; s < npar; ++s )
         {
           const int src = xperm[s];
@@ -3749,7 +3659,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             lines.append('          for( int _ie = 0; _ie < neppV; _ie++ ) {')
             lines.append('            int _hr;')
             lines.append('            if( _ighel < 0 ) { _hr = ihel; }')
-            lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
+            lines.append('            else { const int _cr = (int)( iflavorVec[ievt0 + _ie] / nmaxflavor ); _hr = ( _cr < cNcross && _ighel < cNGoodPerCross[_cr] ) ? cGoodHelOfCross[_cr][_ighel] : -1; }')
             lines.append('            reinterpret_cast<fptype*>( &_hm )[_ie] = ( _hr >= 0 && (int)cHel[_hr][%d] == _v ) ? (fptype)1. : (fptype)0.;' % s)
             lines.append('          }')
             # The momentum is helicity independent: set it once, unmasked, so a

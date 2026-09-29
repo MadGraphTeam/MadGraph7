@@ -4,7 +4,7 @@ C
 C     These exist because the FLAVOR(NEXTERNAL) array cannot express a
 C     crossing: it holds unsigned group positions and is resolved through
 C     GET_FLAVOR_INDEX, which only ever returns 1..NFLAV. An *extended*
-C     FLAV_IDX = cross*NFLAV + flav carries both, so every entry point a
+C     FLAV_IDX = K*NFLAV + flav carries both, so every entry point a
 C     crossing-aware caller needs must take the index, not the array.
 C
 C     Only emitted for matrix_standalone_v4.inc, the one template that has
@@ -36,10 +36,11 @@ CF2PY INTENT(OUT) :: PDGS(NEXTERNAL)
       SUBROUTINE PY_%(proc_prefix)sGET_FLAVOR_LAYOUT(NFLAV_OUT,
      &     NEXTERNAL_OUT, NCROSS_OUT)
 C     The three constants a caller needs to build an extended FLAV_IDX at
-C     all: FLAV_IDX = cross*NFLAV + flav with cross in [0,NCROSS-1], and
-C     cross = I*(NEXTERNAL+1)+J. Without NFLAV the encoding is simply not
-C     expressible, and parsing it out of matrix.f (as the tests must) is
-C     not something a caller should have to do.
+C     all: FLAV_IDX = K*NFLAV + flav with K in [0,NCROSS-1] a row of the
+C     crossing table of this matrix element (K=0: no crossing; see
+C     PY_GET_CROSSING for what a row does). Without NFLAV the encoding is
+C     simply not expressible, and parsing it out of matrix.f is not
+C     something a caller should have to do.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -55,7 +56,7 @@ CF2PY INTENT(OUT) :: NCROSS_OUT
       RETURN
       END
 
-      SUBROUTINE PY_%(proc_prefix)sGET_NHEL_IDX(FLAV_IDX, IDEN_STAR,
+%(crossing_wrapper)s      SUBROUTINE PY_%(proc_prefix)sGET_NHEL_IDX(FLAV_IDX, IDEN_STAR,
      &     NHEL_STAR)
 C     Crossing-aware twin of PY_GET_NHEL.
 C

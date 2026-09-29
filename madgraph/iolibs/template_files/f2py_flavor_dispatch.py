@@ -23,16 +23,25 @@ Example
 Crossing / PDG matching
 -----------------------
 When the module was generated with crossing symmetry on, a single flavor index
-also carries a *crossing*: the extended ``FLAV_IDX = cross*NFLAV + flav`` makes
-the one generated matrix element evaluate any process related to it by moving
-legs between the initial and the final state. The caller usually does not want
-to think in those indices -- they have a physical process as a list of signed
-PDG codes and want the right index. ``find_pdg`` does that lookup and
-``matrix_element_pdg`` / ``get_value_pdg`` call straight through:
+also carries a *crossing*: the extended ``FLAV_IDX = K*NFLAV + flav`` selects
+row K of the crossing table generated for the matrix element (row 0 the
+identity), so the one matrix element evaluates the processes related to it by
+moving legs between the initial and the final state -- the crossings recorded
+at generation, or every applicable one with ``--crossing_table=all`` on the
+output line. The caller usually does not want to think in those indices --
+they have a physical process as a list of signed PDG codes and want the right
+index. ``find_pdg`` does that lookup and ``matrix_element_pdg`` /
+``get_value_pdg`` call straight through:
 
 >>> me.find_pdg([2, 21, 2, 21])            # u g > u g from a u u~ > g g module
-4
+2
+
+(a module of the single process u u~ > g g records no crossing: that index
+exists when it is written with ``--crossing_table=all``; one written from a
+multiparticle generation carries the crossings the generation folded).
 >>> ans = me.get_value_pdg(P, alphas, nhel, [2, 21, 2, 21])
+
+``crossing_for_index`` returns the row itself: which base leg feeds each slot.
 
 The PDG list is matched in the leg order the momenta are given in: the index
 ``find_pdg`` returns is exactly the one to pass to the ``*_idx`` entry points
@@ -141,8 +150,9 @@ class FlavorDispatch(object):
     def flavor_layout(self):
         """Return (nflav, nexternal, ncross) from GET_FLAVOR_LAYOUT.
 
-        ncross = (nexternal+1)**2 is the number of crossing codes, so the
-        extended index ranges over 1 .. ncross*nflav. Raises if the module was
+        ncross is the number of rows of the matrix element's crossing table
+        (row 0 the identity), so the extended index K*nflav + flav ranges
+        over 1 .. ncross*nflav. Raises if the module was
         built without the crossing entry points (an old or non-standalone-v4
         output)."""
         func = self._find_one('get_flavor_layout')
@@ -171,6 +181,23 @@ class FlavorDispatch(object):
             return None
         return pdgs
 
+    def crossing_for_index(self, flav_idx):
+        """(D, SD, flav) of the crossing an extended FLAV_IDX selects, or None
+        if the index names none: slot k of the momenta is fed to base leg D[k]
+        (0-based), charge conjugated when SD[k] is -1 (the leg changes side),
+        and flav is the base flavor index. Needs a module generated with
+        crossing on."""
+        func = self._find_one('get_crossing')
+        if func is None:
+            raise AttributeError(
+                "This module exposes no 'get_crossing': it was not generated "
+                "with crossing symmetry.")
+        pinv, sgni, flav = func(flav_idx)
+        if int(flav) == 0:
+            return None
+        return (tuple(int(d) - 1 for d in pinv),
+                tuple(int(s) for s in sgni), int(flav))
+
     def _pdg_map(self):
         """{signed-PDG-tuple: extended FLAV_IDX} over every valid index.
 
@@ -182,9 +209,9 @@ class FlavorDispatch(object):
             return self._cache['pdg_map']
         nflav, _nexternal, ncross = self.flavor_layout()
         mapping = {}
-        for cross in range(ncross):
+        for K in range(ncross):
             for flav in range(1, nflav + 1):
-                flav_idx = cross * nflav + flav
+                flav_idx = K * nflav + flav
                 pdgs = self.pdg_for_index(flav_idx)
                 if pdgs is not None:
                     mapping.setdefault(pdgs, flav_idx)

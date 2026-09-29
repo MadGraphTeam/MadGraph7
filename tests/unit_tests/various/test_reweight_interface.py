@@ -222,13 +222,13 @@ class FakeOutputMG5Cmd(FakeMG5Cmd):
         sub = os.path.join(line.split()[2], 'SubProcesses')
         os.makedirs(sub)
         with open(os.path.join(sub, 'crossed_flavors.dat'), 'w') as f:
-            f.write('# <proc_prefix> <complete> <cross code> ...\n')
+            f.write('# <proc_prefix> <complete> <crossing row K> ...\n')
             f.write('M0_ 1\n' if '--use_crossing=False' in generate
                     else self.folded_record)
 
 
 class TestReweightGenerationUnfoldsIncompleteRecords(unittest.TestCase):
-    """A folded crossed subprocess is reached only through the codes of
+    """A folded crossed subprocess is reached only through the rows of
     crossed_flavors.dat (build_cross_resolve). When a record could not name all
     the crossed subprocesses it folded (complete 0) -- g g > w+ q q~ lost
     g q > w+ g q that way, and every V j j / j j reweight then stopped at its
@@ -262,7 +262,7 @@ class TestReweightGenerationUnfoldsIncompleteRecords(unittest.TestCase):
     def test_incomplete_record_is_generated_again_unfolded(self):
         out = os.path.join(self.path, 'rw_me')
         self.assertEqual(
-            self.commands('M0_ 0 4 24 29 34\nM1_ 1 5 29 30\n'),
+            self.commands('M0_ 0 1 2 3\nM1_ 1 1 2\n'),
             ['generate p p > w+ j j --use_crossing=True ;',
              'output %s %s' % (self.obj.sa_class, out),
              'generate p p > w+ j j --use_crossing=False ;',
@@ -273,14 +273,14 @@ class TestReweightGenerationUnfoldsIncompleteRecords(unittest.TestCase):
     def test_complete_record_is_kept_folded(self):
         self.assertEqual(
             [c.split()[0] for c in
-             self.commands('M0_ 1 4 5 24 29 30 34\nM1_ 1 4 5 24 29 30 34\n')],
+             self.commands('M0_ 1 1 2 3 4 5 6\nM1_ 1 1 2 3 4 5 6\n')],
             ['generate', 'output'])
 
     def test_explicit_true_is_generated_again_unfolded(self):
         """the card's True cannot be honoured soundly either; the False comes
         last, which wins for the whole definition"""
         self.assertEqual(
-            self.commands('M0_ 0 4\n',
+            self.commands('M0_ 0 1\n',
                           ['p p > w+ j j --use_crossing=True'])[2],
             'generate p p > w+ j j --use_crossing=True --use_crossing=False ;')
 
@@ -342,64 +342,114 @@ class TestFindMatrixElement(unittest.TestCase):
 
 
 class TestCrossingRecordsCoverTheFoldedSubprocesses(unittest.TestCase):
-    """crossed_flavors.dat must list every crossing code through which a
-    recorded crossed subprocess is reached. Two things lost codes:
-     - the recorded process was matched to the runtime signature leg by leg,
-       while a crossing may deliver its final legs in another order: for
-       g g > w+ q q~ the recorded g q > w+ g q only exists as g u > w+ d g
-       (code 5), so the record came out incomplete;
-     - one code was kept per recorded process, while with flavor grouping one
-       merged record may need several: off Q Q > Q Q, q q~ > q q~ is u c~ > u c~
-       through code 4 but u u~ > c~ c only through code 3."""
+    """crossed_flavors.dat must list every crossing-table row through which a
+    recorded crossed subprocess is reached: together with the base rows, the
+    rows of a folded generation must reach every physical subprocess the
+    unfolded generation has. Two things lost subprocesses under the former
+    I*(NEXTERNAL+1)+J codes:
+     - a crossing may deliver its final legs in another order than the record:
+       for g g > w+ q q~ the recorded g q > w+ g q only existed as
+       g u > w+ d g, so the record came out incomplete;
+     - with flavor grouping one merged record may need several rows: off
+       Q Q > Q Q, q q~ > q q~ is u c~ > u c~ through one permutation but
+       u u~ > c~ c only through another."""
 
     @staticmethod
-    def records(process):
+    def generation(process, use_crossing):
+        """({physical subprocess}, {matrix element: recorded_crossing_codes},
+        {matrix element: crossing table}) of `process`."""
         import madgraph.interface.master_interface as master_interface
         import madgraph.iolibs.export_v4 as export_v4
+        import madgraph.iolibs.crossing_table as crossing_table
         import madgraph.core.helas_objects as helas_objects
         cmd = master_interface.MasterCmd()
         cmd.exec_cmd('set apply_flavor_grouping True --no_save')
         cmd.exec_cmd('import model sm')
-        cmd.exec_cmd('generate %s --use_crossing=True' % process)
+        cmd.exec_cmd('generate %s --use_crossing=%s' % (process, use_crossing))
         exporter = export_v4.ProcessExporterFortranSA()
-        return dict(
-            (me.get('processes')[0].shell_string(print_id=False),
-             exporter.recorded_crossing_codes(me))
-            for me in helas_objects.HelasMultiProcess(
-                cmd._curr_amps).get_matrix_elements())
+        physical, records, tables = set(), {}, {}
+
+        def add(pdgs, mirror):
+            physical.add(crossing_table.physical_key(pdgs, 2))
+            if mirror:
+                # the beam-swapped subprocess a mirror process evaluates too
+                physical.add(crossing_table.physical_key(
+                    (pdgs[1], pdgs[0]) + tuple(pdgs[2:]), 2))
+
+        for me in helas_objects.HelasMultiProcess(
+                cmd._curr_amps).get_matrix_elements():
+            mirror = bool(me.get('has_mirror_process'))
+            for _flav, pdgs in exporter.crossing_base_entries(me, 'rows'):
+                add(pdgs, mirror)
+            name = me.get('processes')[0].shell_string(print_id=False)
+            records[name] = exporter.recorded_crossing_codes(me)
+            tables[name] = exporter.output_crossing_table(me)
+            for assignment in tables[name].assignments():
+                add(assignment.pdgs, mirror)
+        return physical, records, tables
+
+    def assert_covers(self, process):
+        folded, records, tables = self.generation(process, True)
+        unfolded, _, _ = self.generation(process, False)
+        # nothing the unfolded generation evaluates is lost by the folding
+        self.assertEqual(unfolded - folded, set())
+        # ... and the folding adds no process: at most the other beam ordering
+        # of an identical-label initial state, which a flavor table keeps once
+        # (the matrix element is symmetric under that swap)
+        def swapped(key):
+            return ((key[0][1], key[0][0]), key[1])
+        self.assertEqual(set(key for key in folded - unfolded
+                             if swapped(key) not in unfolded), set())
+        for name, (rows, complete, perms) in records.items():
+            self.assertTrue(complete, name)
+            # the table holds the rows some record needs, nothing else
+            self.assertEqual(rows, list(range(1, len(tables[name]))), name)
+            # ... and crossed_flavors.dat names each row by the table's own D
+            for K in rows:
+                self.assertEqual(perms[K], tables[name][K].D, name)
+        return records, tables
 
     def test_v_j_j(self):
-        records = self.records('p p > w+ j j')
-        self.assertEqual(records['gg_wpQQx'], ([4, 5, 24, 29, 30, 34], True))
-        self.assertEqual(records['QQ_wpQQ'], ([4, 5, 24, 29, 30, 34], True))
+        records, _ = self.assert_covers('p p > w+ j j')
+        self.assertEqual(len(records['gg_wpQQx'][0]), 6)
+        self.assertEqual(len(records['QQ_wpQQ'][0]), 10)
 
     def test_j_j(self):
-        records = self.records('p p > j j')
-        self.assertEqual(records['gg_QQx'], ([3, 4, 15, 19, 20, 23], True))
-        self.assertEqual(records['QQ_QQ'], ([3, 4, 15, 19, 20, 23], True))
-        self.assertEqual(records['gg_gg'], ([], True))
+        records, tables = self.assert_covers('p p > j j')
+        self.assertEqual(len(records['gg_QQx'][0]), 6)
+        self.assertEqual(records['gg_gg'], ([], True, {}))
+        # the merged q q~ > q q~ record needs several rows of Q Q > Q Q
+        by_record = [set(a.K for a in record.assignments)
+                     for record in tables['QQ_QQ'].records]
+        self.assertGreater(max(len(ks) for ks in by_record), 1)
+        # ... one of them a genuine 3-cycle (no (I,J) code could name it)
+        self.assertTrue(any(
+            any(perm.D[perm.D[k]] != k for k in range(4))
+            for perm in tables['QQ_QQ']))
 
 
 class FakeCrossingModule(object):
     """The two per-matrix-element f2py entry points build_cross_resolve walks,
-    for the base g u > e+ e- u (prefix m0_, one flavor) and its crossing 30,
-    which swaps slots 1 and 5: u~ u > e+ e- g."""
+    for the base g u > e+ e- u (prefix m0_, one flavor) and row 1 of its
+    crossing table, the 3-cycle D = (1, 4, 2, 3, 0): u u~ > e+ e- g, i.e.
+    q q~ > e+ e- g folded onto g q > e+ e- q. Not an involution, so reading
+    the row in the wrong view (D for B) keys another helicity row."""
 
     def py_m0_get_flavor_layout(self):
-        return (1, 5, 36)        # NFLAV, NEXTERNAL, NCROSS
+        return (1, 5, 2)         # NFLAV, NEXTERNAL, NCROSS
 
     def py_m0_get_pdg_for_flavor(self, flav_idx):
         return {1: [21, 2, -11, 11, 2],
-                31: [-2, 2, -11, 11, 21]}.get(flav_idx, [0] * 5)
+                2: [2, -2, -11, 11, 21]}.get(flav_idx, [0] * 5)
 
 
 class TestFoldedCrossingHelicity(unittest.TestCase):
     """A folded crossed event is evaluated with USERHEL = a row of the BASE
     helicity table, and the generated SMATRIX applies the crossing as tau
     (APPLY_CROSSING_TABLE): the momenta move into the base slots, crossed leg
-    perm[k] landing in base slot k, but the NHEL slots stay where they are. The
-    row an event needs has therefore entry k = the event's helicity of crossed
-    leg perm[k]. The base dictionary read positionally in the crossed leg order
+    B[b] landing in base slot b, but the NHEL slots stay where they are. The
+    row an event needs has therefore entry b = the event's helicity of crossed
+    leg B[b]. The base dictionary read positionally in the crossed leg order
     (right while the table was permuted, sigma) picked another configuration:
     for p p > e+ e- j, with q q~ > e+ e- g folded onto g q > e+ e- q, the third
     event of a madevent sample came out exactly 0 ("Invalid matrix element")."""
@@ -413,7 +463,8 @@ class TestFoldedCrossingHelicity(unittest.TestCase):
         self.obj.keep_ordering = False
         self.path = tempfile.mkdtemp(prefix='rwgt_crossing')
         with open(os.path.join(self.path, 'crossed_flavors.dat'), 'w') as f:
-            f.write('M0_ 1 30\n')
+            f.write('M0_ 1 1\n')
+            f.write('perm M0_ 1 2 5 3 4 1\n')
 
     def tearDown(self):
         shutil.rmtree(self.path)
@@ -430,14 +481,16 @@ class TestFoldedCrossingHelicity(unittest.TestCase):
         tag = ((-2, 2), (-11, 11, 21))
         self.assertEqual(list(cross_data), [tag])
         [(order, pdir, hel, procindex, flav_idx, phys)] = cross_data[tag]
-        self.assertEqual(order, ([-2, 2], [-11, 11, 21]))
-        self.assertEqual((procindex, flav_idx), (1, 31))
+        self.assertEqual(order, ([2, -2], [-11, 11, 21]))
+        self.assertEqual((procindex, flav_idx), (1, 2))
 
-        # u~(h1) u(h2) e+(h3) e-(h4) g(h5): the gluon sits in base slot 1 and
-        # the u~ in base slot 5, so the row is (h5, h2, h3, h4, h1)
+        # u(h1) u~(h2) e+(h3) e-(h4) g(h5): base slot 1 (the gluon) holds
+        # crossed leg 5, base slot 2 (the u) crossed leg 1 and base slot 5
+        # (the final u) crossed leg 2, so the row is (h5, h1, h3, h4, h2) --
+        # reading the row the other way round would give (h2, h5, h3, h4, h1)
         self.assertEqual(len(hel), 32)
         for h in itertools.product([-1, 1], repeat=5):
-            self.assertEqual(hel[h], base[(h[4], h[1], h[2], h[3], h[0])])
+            self.assertEqual(hel[h], base[(h[4], h[0], h[2], h[3], h[1])])
         # the event of the report: the old keying gave the row whose leg 1
         # and 5 helicities are swapped, which vanishes for this process
         self.assertNotEqual(hel[(1, -1, 1, -1, -1)], base[(1, -1, 1, -1, -1)])

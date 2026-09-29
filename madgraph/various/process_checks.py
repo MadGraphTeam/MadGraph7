@@ -4066,27 +4066,6 @@ MG7_SIMD_CHOICES = ('auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_5
 MG7_PRECISION_CHOICES = ('f', 'm', 'd')
 
 
-def _crossing_pdg_entries(matrix_element, identity_only=False):
-    """Python enumeration of a matrix element's reachable extended flavor ids.
-
-    Returns ``[(index, cross, flav0, pdg_tuple), ...]`` with a 0-based index
-    (``cross*NFLAV+flav0``) -- the encoding the C++/mg7 sigmaKin decodes. This
-    is the crossing twin of the fortran runtime GET_PDG_FOR_FLAVOR, used for the
-    backends that have no runtime PDG accessor. See
-    ProcessExporterFortran.compute_crossing_pdg_entries.
-    """
-    if matrix_element is None:
-        # Correlation to a P* directory failed; the caller skips this module.
-        return None
-    import madgraph.iolibs.export_v4 as export_v4
-    entries = export_v4.ProcessExporterFortran.compute_crossing_pdg_entries(
-        None, matrix_element, zero_based=True)
-    if identity_only:
-        entries = [e for e in entries if e[1] == 0]
-    return entries
-
-
-
 class _FortranCrossingBackend(object):
     """The fortran standalone (f2py) crossing backend -- the historical path.
 
@@ -4127,13 +4106,10 @@ class _FortranCrossingBackend(object):
 # ── cudacpp CPU-SIMD standalone (madmatrix) ─────────────────────────────
 # check_sa.exe generates its own RAMBO momenta, so to evaluate at a prescribed
 # phase-space point the shipped check_sa.cc is patched (as the acceptance test
-# TestStandaloneMg7CrossSymmetry does): its flavorID cap is lifted so the
-# extended crossing ids pass validation, and, when MG_MOMFILE is set, the
-# momenta read from that file are written into every event of the SIMD page
-# before the matrix element is computed.
-_MG7_CAP_FROM = 'if( flavorID >= CPPProcess::nmaxflavor )'
-_MG7_CAP_TO = ('if( flavorID >= CPPProcess::nmaxflavor * '
-               '(unsigned)((CPPProcess::npar+1)*(CPPProcess::npar+1)) )')
+# TestStandaloneMg7CrossSymmetry does): when MG_MOMFILE is set, the momenta
+# read from that file are written into every event of the SIMD page before the
+# matrix element is computed. (Its flavorID cap already admits the extended
+# ids of the compiled crossing table.)
 _MG7_MOM_FROM = '        prsk->getMomentaFinal();'
 _MG7_MOM_TO = (
     '        prsk->getMomentaFinal();\n'
@@ -4148,30 +4124,72 @@ _MG7_MOM_TO = (
     '        }')
 
 
-def _mg7_compiled_crossings(pdir):
-    """The crossing codes the madmatrix module in `pdir` can be asked for.
-
-    Structurally applicable (what _crossing_pdg_entries enumerates) is a much
-    weaker statement than evaluable. A module compiled with
-    ProcessTables::use_crossing = true takes the identity and the codes its
-    matrix element RECORDED (cross_recorded_tab; any other applicable code
-    aborts, see _crossing_preamble in madmatrix/model_handling.py). A module
-    compiled without the machinery -- --use_crossing=False, a pinned s-channel,
-    or nothing folded in -- decodes no crossing at all, so an extended id past
-    nmaxflavor would index its flavor tables out of range. Read from the
-    generated header, since that is what was compiled."""
+def _mg7_crossing_rows(pdir):
+    """{K: D} over the crossing-table rows the madmatrix module in `pdir` was
+    compiled with, D[k] the base slot input slot k is fed to (None for the
+    identity of a module without the machinery). Read from the generated
+    ProcessTables.h, since that is what was compiled: a module compiled with
+    ProcessTables::use_crossing = true takes exactly the rows of its table
+    (the crossings its matrix element RECORDED, see export_v4
+    get_crossing_table); one compiled without the machinery --
+    --use_crossing=False, a pinned s-channel, or nothing folded in -- decodes
+    no crossing at all, so an extended id past nmaxflavor would index its
+    flavor tables out of range."""
     try:
         with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
             text = fsock.read()
     except IOError:
-        return set([0])
+        return {0: None}
     if 'constexpr bool use_crossing = true;' not in text:
-        return set([0])
-    match = re.search(r'cross_recorded_tab\[ncross\]\s*=\s*\{([^}]*)\}', text)
-    if not match:
-        return set([0])
-    flags = [tok.strip() for tok in match.group(1).split(',')]
-    return set([0]) | set(i for i, flag in enumerate(flags) if flag == 'true')
+        return {0: None}
+    ncross = re.search(r'constexpr int ncross = (\d+);', text)
+    pinv = re.search(r'xpinv_tab\[[^\]]*\]\s*=\s*\{([^}]*)\}', text)
+    if not ncross or not pinv:
+        return {0: None}
+    ncross = int(ncross.group(1))
+    values = [int(tok) for tok in pinv.group(1).split(',') if tok.strip()]
+    npar = len(values) // ncross if ncross else 0
+    if not npar or npar * ncross != len(values):
+        return {0: None}
+    return dict((K, tuple(values[K * npar:(K + 1) * npar]))
+                for K in range(ncross))
+
+
+def _mg7_compiled_crossings(pdir):
+    """The crossing-table rows the madmatrix module in `pdir` can be asked for
+    (see _mg7_crossing_rows)."""
+    return set(_mg7_crossing_rows(pdir))
+
+
+def _mg7_crossing_entries(matrix_element, rows, identity_only=False,
+                          members=True):
+    """(index, K, flav0, pdg) for the rows `rows` ({K: D}, see
+    _mg7_crossing_rows; D None for the identity) of a madmatrix matrix
+    element: the 0-based id K*nmaxflavor + flav0 evaluates flavor class flav0
+    through its representative's couplings, which every member shares, so
+    each member row crossed by D is a process that id evaluates (only the
+    representative's with members=False)."""
+    import madgraph.iolibs.export_v4 as export_v4
+    import madgraph.iolibs.crossing_table as crossing_table
+    base = export_v4.ProcessExporterFortran.crossing_base_entries(
+        None, matrix_element, 'classes')
+    if not members:
+        base = [entry for i, entry in enumerate(base)
+                if i == 0 or base[i - 1][0] != entry[0]]
+    nflav = len(matrix_element.get_external_flavors_with_iden())
+    nexternal, ninitial = matrix_element.get_nexternal_ninitial()
+    anti = crossing_table.make_anti(
+        matrix_element.get('processes')[0].get('model'))
+    entries = []
+    for K, D in sorted(rows.items()):
+        if identity_only and K != 0:
+            continue
+        perm = crossing_table.CrossingPerm(
+            D if D is not None else range(nexternal), ninitial)
+        for flav0, pdg in base:
+            entries.append((K * nflav + flav0, K, flav0,
+                            perm.crossed(pdg, anti)))
+    return entries
 
 
 class _Mg7CrossingBackend(object):
@@ -4211,7 +4229,6 @@ class _Mg7CrossingBackend(object):
                 src = fsock.read()
         except IOError:
             return False
-        src = src.replace(_MG7_CAP_FROM, _MG7_CAP_TO)
         src = src.replace(_MG7_MOM_FROM, _MG7_MOM_TO, 1)
         with open(check, 'w') as fsock:
             fsock.write(src)
@@ -4224,14 +4241,16 @@ class _Mg7CrossingBackend(object):
         return rc == 0 and os.path.isfile(pjoin(pdir, 'check_sa.exe'))
 
     def enumerate(self, pdir, matrix_element, card, env, identity_only):
-        entries = _crossing_pdg_entries(matrix_element,
-                                        identity_only=identity_only)
-        if not entries:
-            return entries
-        # Applicable is not evaluable here: a madmatrix module only takes the
-        # crossing codes it was compiled for (see _mg7_compiled_crossings).
-        compiled = _mg7_compiled_crossings(pdir)
-        return [e for e in entries if e[1] in compiled]
+        """(index, K, flav0, pdg) for every row the module was compiled with
+        (_mg7_crossing_rows) and every physical member of every flavor class:
+        the id K*nmaxflavor + flav0 evaluates the class through its
+        representative's couplings, which every member shares, so each member
+        row crossed by D is a process that id evaluates."""
+        if matrix_element is None:
+            # Correlation to a P* directory failed; the caller skips this module.
+            return None
+        return _mg7_crossing_entries(matrix_element, _mg7_crossing_rows(pdir),
+                                     identity_only=identity_only)
 
     def evaluate(self, pdir, items, card, env):
         values = []
@@ -4298,10 +4317,11 @@ def check_crossing(process_definition, param_card=None, options=None,
     The backend abstraction (:data:`_CROSSING_BACKENDS`) parametrises the three
     steps that differ per exporter -- the ``output`` format, the build, and how
     an extended index is evaluated -- while the generate/match/momenta logic is
-    shared. ``'standalone'`` enumerates the crossed PDG at runtime via f2py
-    (GET_PDG_FOR_FLAVOR); ``'standalone'`` (madmatrix) has no
-    runtime accessor and compute it in python from the same crossing tables
-    (:func:`_crossing_pdg_entries`), then evaluate through a compiled driver.
+    shared. ``'standalone_fortran'`` enumerates the crossed PDG at runtime
+    via f2py (GET_PDG_FOR_FLAVOR); ``'standalone'`` (madmatrix) has no
+    runtime accessor and computes it in python from the crossing table its
+    ProcessTables.h was compiled with (:func:`_mg7_crossing_rows`), then
+    evaluates through a compiled driver.
 
     Processes whose crossing is auto-disabled by an s-channel constraint (e.g.
     ``u u~ > z > e+ e-``: what is s-channel in one arrangement is not in its

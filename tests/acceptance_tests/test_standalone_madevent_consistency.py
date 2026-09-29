@@ -66,6 +66,17 @@ def cpp_blas_crossed_colour_sum_test_factory(process, base_dir, defines=(),
     return test
 
 
+def madevent_routed_rows_test_factory(process, defines=(), model='sm',
+                                      tolerance=1e-8):
+    def test(self):
+        self.check_madevent_routed_rows(process, defines=defines, model=model,
+                                        tolerance=tolerance)
+    test.__name__ = 'test_routed_rows_%s' % _sanitize_process_name(process)
+    test.__doc__ = ('Check every leshouche row of a grouped crossing madevent '
+                    'output of %s against the plain standalone.' % process)
+    return test
+
+
 class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
 
     debugging = getattr(unittest, 'debug', False)
@@ -338,8 +349,9 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                             'the crossed loop is not compiled' % label)
         self._assert_blas_selected(pdir, label)
         recorded = process_checks._mg7_compiled_crossings(pdir)
-        entries = [entry for entry in process_checks._crossing_pdg_entries(base_me)
-                   if entry[1] in recorded]
+        # one lane per (crossing-table row, flavor class): the representative
+        entries = process_checks._mg7_crossing_entries(
+            base_me, process_checks._mg7_crossing_rows(pdir), members=False)
         model_obj = self.cmd._curr_model
         ninitial = base_me.get_nexternal_ninitial()[1]
 
@@ -360,8 +372,8 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         reference = {}
         for ref_me in self.cmd._curr_matrix_elements.get_matrix_elements():
             identities = set(entry[3] for entry in
-                             process_checks._crossing_pdg_entries(
-                                 ref_me, identity_only=True))
+                             process_checks._mg7_crossing_entries(
+                                 ref_me, {0: None}, members=False))
             if not identities & wanted:
                 continue  # the base reaches none of its flavors: not built
             ref_sub = pjoin(ref_root, 'SubProcesses',
@@ -414,6 +426,227 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
                         % (label, idx, cross, flav, pdg, ievt,
                            'one id' if len(run) == 1 else 'mixed ids',
                            ref_me, blas_label, value))
+
+    def check_madevent_routed_rows(self, process, defines=(), model='sm',
+                                   tolerance=1e-8):
+        """Every leshouche row of every subprocess of a GROUPED madevent output
+        with the crossing on must evaluate the matrix element of that very
+        physical row -- the plain (--use_crossing=False) fortran standalone at
+        the same momenta.
+
+        The rows a crossing router serves are what this is about. Its SMATRIX
+        hands the call to a base's, whose denominator used to be read off the
+        BASE's flavor-row table at the event's IPSEL -- which counts the
+        ROUTER's leshouche rows -- so a routed row whose identical particles
+        differ from those of the base row with the same number came out a
+        factor 2 (or 1/2, ...) off, with the cross section none the wiser
+        wherever such rows weigh little. Each row is driven directly, with
+        IPSEL set to it, which is the only way to see a per-row error.
+        """
+        self.do('set automatic_html_opening False')
+        self.do('set apply_flavor_grouping True')
+        self.do('set zerowidth_tchannel False')
+        self.do('import model %s' % model)
+        for line in defines:
+            self.do(line)
+        model_obj = self.cmd._curr_model
+
+        # -- Reference: plain fortran standalone, every subprocess -------------
+        self.do('set group_subprocesses False')
+        self.do('generate %s --use_crossing=False' % process)
+        ref_root = pjoin(self.tmpdir, 'standalone_plain')
+        self.do('output standalone_fortran %s -f' % ref_root)
+        reference = {}          # PDG tuple -> (matrix element, momenta)
+        ninitial = len(process.split('>')[0].split())
+        for name in sorted(os.listdir(pjoin(ref_root, 'SubProcesses'))):
+            ref_sub = pjoin(ref_root, 'SubProcesses', name)
+            if not name.startswith('P') or not os.path.isdir(ref_sub):
+                continue
+            rows, printed = self._run_standalone(ref_sub)
+            point = process_checks._crossing_momenta(
+                tuple(rows[0]['pdg']), ninitial, model_obj, None, 1000.0,
+                self.cmd)
+            self.assertTrue(point, 'no seeded point for %s' % (rows[0]['pdg'],))
+            self._assert_phase_space_reasonable(printed, point, ref_sub)
+            for pdg, value in self._rows_by_pdg(rows, ref_sub).items():
+                reference[pdg] = (value, point)
+
+        # -- Grouped madevent with the crossing on -----------------------------
+        self.do('set group_subprocesses True')
+        self.do('generate %s --use_crossing=True' % process)
+        me_root = pjoin(self.tmpdir, 'madevent_routed')
+        self.do('output madevent %s -f -nojpeg' % me_root)
+        self.do('set group_subprocesses False')
+        retcode = self._call_with_optional_redirection(
+            ['make'], pjoin(me_root, 'Source'))
+        self.assertEqual(retcode, 0, 'Failed to compile MadEvent Source')
+
+        routed_rows = compared = 0
+        for name in sorted(os.listdir(pjoin(me_root, 'SubProcesses'))):
+            pdir = pjoin(me_root, 'SubProcesses', name)
+            if not name.startswith('P') or not os.path.isdir(pdir):
+                continue
+            routers = set(int(m.group(1)) for m in
+                          (re.match(r'matrix(\d+)_router\.f$', f)
+                           for f in os.listdir(pdir)) if m)
+            if not routers:
+                continue        # nothing routed within this group
+            entries = []
+            for iproc, rows in sorted(self._leshouche_rows(pdir).items()):
+                shifts = self._ipsel_shifts(pjoin(pdir, 'auto_dsig%d.f' % iproc))
+                for irow, pdg in enumerate(rows, 1):
+                    if pdg not in reference:
+                        continue
+                    iflav = max(k for k, shift in shifts.items() if shift < irow)
+                    entries.append((iproc, irow, iflav, pdg))
+                    routed_rows += iproc in routers
+            self.assertTrue(entries, 'no row of %s has a reference' % name)
+            self._write_row_driver(pjoin(pdir, 'driver.f'),
+                                   [(i, r, f, reference[pdg][1])
+                                    for (i, r, f, pdg) in entries])
+            retcode = self._call_with_optional_redirection(
+                ['make', 'madevent_forhel'], pdir)
+            self.assertEqual(retcode, 0, 'Failed to compile the row driver '
+                             'in %s' % pdir)
+            output = subprocess.Popen(
+                ['./madevent_forhel'], stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, cwd=pdir).communicate()[0].decode()
+            got = dict(((int(i), int(r)), float(v.replace('D', 'E')))
+                       for i, r, v in re.findall(
+                           r'ROW\s+(\d+)\s+(\d+)\s+(\S+)', output))
+            for (iproc, irow, iflav, pdg) in entries:
+                self.assertIn((iproc, irow), got, 'no value for row %d of '
+                              'subprocess %d in %s:\n%s'
+                              % (irow, iproc, name, output))
+                ref_me = reference[pdg][0]
+                value = got[(iproc, irow)]
+                rel = abs(ref_me - value) / max(abs(ref_me), abs(value), 1e-99)
+                self.assertLessEqual(
+                    rel, tolerance,
+                    '%s: row %d (%s, IFLAV %d) of subprocess %d%s gives %r, '
+                    'the plain standalone %r (ratio %r)'
+                    % (name, irow, pdg, iflav, iproc,
+                       ' (a router)' if iproc in routers else '', value,
+                       ref_me, value / ref_me if ref_me else None))
+                compared += 1
+        self.assertGreater(routed_rows, 0, 'no routed row compared for %s: the '
+                           'crossing routes nothing here' % process)
+        logger.info('%s: %d rows compared, %d of them routed',
+                    process, compared, routed_rows)
+
+    @staticmethod
+    def _leshouche_rows(pdir):
+        """{subprocess: [signed PDG tuple of each leshouche row]}."""
+        rows = {}
+        with open(pjoin(pdir, 'leshouche.inc')) as fsock:
+            for line in fsock:
+                match = re.match(r'\s*DATA\s*\(IDUP\(I,(\d+),(\d+)\)\s*,'
+                                 r'\s*I\s*=\s*1\s*,\s*(\d+)\s*\)\s*/([^/]*)/',
+                                 line.replace(' ', ''))
+                if match:
+                    rows.setdefault(int(match.group(2)), {})[
+                        int(match.group(1))] = tuple(
+                            int(v) for v in match.group(4).split(','))
+        return dict((iproc, [by_row[r] for r in sorted(by_row)])
+                    for iproc, by_row in rows.items())
+
+    @staticmethod
+    def _ipsel_shifts(auto_dsig):
+        """{IFLAV: IPSEL_SHIFT} out of an auto_dsig file."""
+        with open(auto_dsig) as fsock:
+            text = fsock.read()
+        shifts = dict((int(k), int(s)) for k, s in re.findall(
+            r'IF\s*\(IFLAV\.EQ\.(\d+)\)\s*THEN\s*\n\s*IPSEL_SHIFT\s*=\s*(\d+)',
+            text))
+        return shifts or {1: 0}
+
+    def _write_row_driver(self, driver_path, entries):
+        """A madevent driver evaluating SMATRIX<iproc>(P, IFLAV) with IPSEL
+        set to `irow`, for each (iproc, irow, iflav, momenta) of `entries`."""
+        lines = [
+            '      PROGRAM DRIVER',
+            '      use model_object',
+            '      IMPLICIT NONE',
+            "      INCLUDE 'genps.inc'",
+            "      INCLUDE 'nexternal.inc'",
+            "      INCLUDE 'maxamps.inc'",
+            "      INCLUDE 'maxconfigs.inc'",
+            "      INCLUDE 'vector.inc'",
+            "      INCLUDE 'coupl.inc'",
+            '      REAL*8 ZERO',
+            '      PARAMETER (ZERO=0D0)',
+            '      INTEGER SELECTED_HEL, SELECTED_COL, IVEC',
+            '      REAL*8 P(0:3,NEXTERNAL), ANS',
+            '      REAL*8 POL(2)',
+            '      COMMON/TO_POLARIZATION/POL',
+            '      INTEGER ISUM_HEL',
+            '      LOGICAL MULTI_CHANNEL',
+            '      COMMON/TO_MATRIX/ISUM_HEL, MULTI_CHANNEL',
+            '      LOGICAL INIT_MODE',
+            '      COMMON /TO_DETERMINE_ZERO_HEL/INIT_MODE',
+            '      LOGICAL ALLOW_HELICITY_GRID_ENTRIES',
+            '      COMMON/TO_ALLOW_HELICITY_GRID_ENTRIES/ALLOW_HELICITY_GRID_ENTRIES',
+            '      INTEGER MINCFIG, MAXCFIG',
+            '      COMMON/TO_CONFIGS/MINCFIG, MAXCFIG',
+            '      INTEGER NB_SPIN_STATE(2)',
+            '      COMMON /NB_HEL_STATE/ NB_SPIN_STATE',
+            '      CHARACTER*30 PARAM_CARD_NAME',
+            '      COMMON/TO_PARAM_CARD_NAME/PARAM_CARD_NAME',
+            '      REAL*8 PMASS(NEXTERNAL)',
+            '      COMMON/TO_MASS/PMASS',
+            '      INTEGER IPSEL',
+            '      COMMON /SUBPROC/ IPSEL',
+            '      INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG',
+            '      COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG',
+            "      PARAM_CARD_NAME='param_card.dat'",
+            '      CALL SETRUN',
+            '      CALL SETPARA(PARAM_CARD_NAME)',
+            "      INCLUDE 'pmass.inc'",
+            '      POL(1)=1D0',
+            '      POL(2)=1D0',
+            '      ISUM_HEL=0',
+            '      MULTI_CHANNEL=.FALSE.',
+            '      HEL_PICKED=0',
+            '      HEL_JACOBIAN=1D0',
+            '      INIT_MODE=.FALSE.',
+            '      ALLOW_HELICITY_GRID_ENTRIES=.FALSE.',
+            '      MINCFIG=1',
+            '      MAXCFIG=1',
+            '      ICONFIG=1',
+            '      NB_SPIN_STATE(1)=2',
+            '      NB_SPIN_STATE(2)=2',
+            '      IVEC=1']
+        for (iproc, irow, iflav, momenta) in entries:
+            for index, momentum in enumerate(momenta):
+                for component, value in enumerate(momentum):
+                    lines.append('      P(%d,%d)=%s' % (
+                        component, index + 1,
+                        ('%.17E' % float(value)).replace('E', 'D')))
+            lines += [
+                '      IPSEL=%d' % irow,
+                '      CALL SMATRIX%d(P, %d, 0.5D0, 0.5D0, 1, IVEC, ANS,'
+                % (iproc, iflav),
+                '     $    SELECTED_HEL, SELECTED_COL)',
+                "      WRITE(*,'(A,2I6,1X,E25.17)') ' ROW', %d, %d, ANS"
+                % (iproc, irow)]
+        lines += [
+            '      END',
+            '',
+            '      SUBROUTINE OPEN_FILE_LOCAL(LUN,FILENAME,FOPENED)',
+            '      IMPLICIT NONE',
+            '      INTEGER LUN',
+            '      LOGICAL FOPENED',
+            '      CHARACTER*(*) FILENAME',
+            '      FOPENED=.FALSE.',
+            "      OPEN(UNIT=LUN,FILE=FILENAME,STATUS='OLD',ERR=10)",
+            '      FOPENED=.TRUE.',
+            '      RETURN',
+            ' 10   CONTINUE',
+            '      RETURN',
+            '      END',
+            '']
+        with open(driver_path, 'w') as driver:
+            driver.write('\n'.join(lines))
 
     def _rows_by_pdg(self, rows, subproc_dir):
         """{PDG tuple -> matrix element} from _extract_standalone_flavors rows."""
@@ -620,16 +853,14 @@ class StandaloneMadeventMatrixElementConsistency(unittest.TestCase):
         '#endif\n')
 
     def _lift_check_sa_flavor_cap(self, pdir):
-        """Patch the shipped check_sa.cc (before _build_check_sa) so that it
-        takes (a) the extended flavor ids of the crossings -- the shipped cap
-        stops at nmaxflavor, see process_checks' crossing backend -- and (b)
-        with MG_FLVLIST=id0,id1,... set, a different one per event: event i
-        gets id[i % n]."""
+        """Patch the shipped check_sa.cc (before _build_check_sa) so that,
+        with MG_FLVLIST=id0,id1,... set, it takes a different flavor id per
+        event: event i gets id[i % n]. (The shipped flavorID cap already
+        admits the extended ids of the crossing table.)"""
         check = pjoin(pdir, 'check_sa.cc')
         with open(check) as fsock:
             src = fsock.read()
-        for old, new in ((process_checks._MG7_CAP_FROM, process_checks._MG7_CAP_TO),
-                         (self._FLVVEC_FROM, self._FLVVEC_TO)):
+        for old, new in ((self._FLVVEC_FROM, self._FLVVEC_TO),):
             self.assertEqual(src.count(old), 1,
                              'check_sa.cc changed, cannot patch %r' % old)
             src = src.replace(old, new)
@@ -866,6 +1097,23 @@ class TestStandaloneMadeventMatrixElementConsistency(
     
     test_standalone_madevent_consistency_qq = matrix_element_consistency_test_factory(
         'u _quark  > u _quark QCD=0', model='sm', tolerance=1e-5)
+
+
+class TestMadeventRoutedRowConsistency(
+        StandaloneMadeventMatrixElementConsistency):
+    """Grouped madevent with the crossing on: every leshouche row of every
+    subprocess, routers included, against the plain standalone
+    (check_madevent_routed_rows)."""
+
+    # The routed Q~ Q~ > W+ Q~ Q~: its row d~ u~ > w+ u~ u~ (two identical u~)
+    # came out twice the plain standalone when the base read its own
+    # flavor-row table at the router's IPSEL (a row with no identical pair).
+    test_routed_rows_pp_wpjj = madevent_routed_rows_test_factory(
+        'p p > w+ j j')
+
+    # Q Q~ > Q Q~ routes its flavour-changing class through a 3-cycle
+    test_routed_rows_qq_qq = madevent_routed_rows_test_factory(
+        'q q > q q', defines=('define q = u d u~ d~',))
 
 
 class TestMadMatrixCppBlasColourSum(

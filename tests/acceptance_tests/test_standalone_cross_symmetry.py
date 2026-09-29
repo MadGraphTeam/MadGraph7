@@ -18,28 +18,30 @@ The standalone SMATRIX takes a flavor index (IFLAV / FLAV_IDX). Its range is
 extended so that a single value carries both the flavor and a crossing to
 apply, decoded as::
 
-    cross = (IFLAV-1) / NFLAV
-    flav  = mod(IFLAV-1, NFLAV) + 1        ! the index used for masking/...
-    I     = cross / (NEXTERNAL+1)
-    J     = mod(cross, NEXTERNAL+1)
+    K    = (IFLAV-1) / NFLAV               ! a row of the crossing table
+    flav = mod(IFLAV-1, NFLAV) + 1         ! the index used for masking/...
 
-I and J are the crossing partners of particle 1 and particle 2 respectively:
-particle 1 is swapped with particle I and particle 2 with particle J, with 0
-meaning "leave that particle alone". IFLAV in [1,NFLAV] gives cross=0, i.e. the
-identity, so existing callers are unaffected. The base is NEXTERNAL+1 rather
-than NEXTERNAL so that I and J run over 0..NEXTERNAL and can designate the last
-particle as well.
+Row K of the table generated for the matrix element is a slot permutation D:
+input slot k of the crossed call (the crossed process' own leg order) is fed
+to base slot D[k], the leg charge conjugated when it changes side. Row 0 is the
+identity, so IFLAV in [1,NFLAV] keeps its meaning and existing callers are
+unaffected. A folding output holds the rows of its recorded crossings; the
+bare single-process outputs of these tests are written with
+``--crossing_table=all``, which adds every ordered choice of initial legs (the
+leg sent to the final state taking the slot of the leg replacing it), and the
+tests look the row of a crossing up by its permutation D through
+GET_CROSS_PINV -- no test knows how the rows are numbered.
 
-Swapping a particle across the initial/final state flips its NSF/NSV helas flag
-(which is what negates the momentum stored in the wavefunction) and flips its
-helicity, so the crossed call evaluates the same analytic amplitude in a
-different kinematic region.
+Moving a particle across the initial/final state flips its NSF/NSV helas flag
+(which is what negates the momentum stored in the wavefunction), so the
+crossed call evaluates the same analytic amplitude in a different kinematic
+region.
 
 The processes u u~ > g g and u g > u g are exactly each other's crossing under
-(I=0, J=3): swapping particle 2 with particle 3 turns the incoming u~ into an
-outgoing u and the outgoing g into an incoming g. Because the swap also
-reorders the legs, the crossed call takes the *other* process's natural
-momentum layout, so this test feeds both codes the very same momenta.
+D = (0, 2, 1, 3): slot 2 of u g > u g takes the outgoing gluon of slot 3, now
+incoming, and slot 3 the incoming u~ of slot 2, now an outgoing u. Because the
+crossing also reorders the legs, the crossed call takes the *other* process's
+natural momentum layout, so this test feeds both codes the very same momenta.
 
 Crossing preserves the raw sum over helicities and colors of |M|^2, not the
 averaged matrix element: the two processes have different averaging/symmetry
@@ -71,11 +73,11 @@ import madgraph.interface.master_interface as cmd_interface
 
 pjoin = os.path.join
 
-# The two processes are each other's crossing under (I=0, J=3).
+# The two processes are each other's crossing under D_2_3.
 PROC_QQ_GG = 'u u~ > g g'
 PROC_QG_QG = 'u g > u g'
-# The crossed partner that `g g > q q~` reaches with cross 3 (slot 1 <-> slot 2),
-# used by the madmatrix tests that need the crossing to be a RECORDED one.
+# A crossed partner of `g g > q q~` (base slots 2 and 3 swapped across), used
+# by the madmatrix tests that need the crossing to be a RECORDED one.
 PROC_GQX_GQX = 'g u~ > g u~'
 
 # A CHIRAL pair: the W+ couples only to a left-handed u and a right-handed d~, so
@@ -83,14 +85,14 @@ PROC_GQX_GQX = 'g u~ > g u~'
 # is fully asymmetric ((++) empty, (--) full, or vice versa). That is what makes
 # a crossed-fermion helicity FLIP detectable: on u u~ > g g the fermion density
 # is (++)==(--), so a flip would be invisible; here it would swap a full entry
-# with an empty one. u d~ > w+ g is mapped onto u g > w+ d by (I=0, J=NEXTERNAL):
+# with an empty one. u d~ > w+ g is mapped onto u g > w+ d by D_2_LAST:
 # the incoming d~ becomes the outgoing d of the last slot (the crossed, still
 # 100%-polarized fermion), the outgoing g becomes incoming.
 PROC_UDX_WPG = 'u d~ > w+ g'
 PROC_UG_WPD = 'u g > w+ d'
 
-# q q~ > g q q~ is likewise mapped onto q g > q q q~ by the same (I=0, J=3)
-# crossing: the incoming q~ becomes the outgoing q of slot 3 and the outgoing g
+# q q~ > g q q~ is likewise mapped onto q g > q q q~ by the same slot 2 <-> 3
+# crossing (D_2_3_5): the incoming q~ becomes the outgoing q of slot 3 and the outgoing g
 # becomes an incoming one, leaving the legs ordered as (q, g, q, q, q~).
 # Repeated over the quark flavors to exercise the flavor tables / masks and the
 # BROKEN_SYM factor, which sees two identical final u's on the crossed side.
@@ -129,26 +131,29 @@ PROC_UNCONSTRAINED = 'u u~ > e+ e-'
 # Every routine/table that only exists to decode an extended FLAV_IDX.
 CROSSING_MACHINERY_NAMES = [
     'APPLY_CROSSING', 'APPLY_CROSSING_TABLE', 'GET_CROSS_PERM',
-    'GET_SPINCOL_CROSS', 'GET_IDENT_CROSS', 'SWAP_LEGS',
-    'SPINCOL_CROSS_TABLE', 'BASEPID_CROSS_TABLE', 'SRC_CROSS_TABLE']
+    'GET_CROSS_PINV', 'GET_SPINCOL_CROSS', 'GET_IDENT_CROSS', 'CROSS_GHIDX',
+    'XPERM', 'XPINV', 'XSPINCOL', 'GHFILT']
 
-# cross = I*(NEXTERNAL+1) + J = 0*5 + 3 = 3. Both processes have NFLAV=1, so
-# IFLAV = cross*NFLAV + flav = 3*1 + 1 = 4.
-NEXTERNAL = 4
-CROSS_2_3 = 0 * (NEXTERNAL + 1) + 3
-# Same crossing for the 2->3 pair, where the base is NEXTERNAL+1 = 6.
-NEXTERNAL_5 = 5
-CROSS_2_3_5 = 0 * (NEXTERNAL_5 + 1) + 3
-# Crossing particle 2 with the *last* particle. Only expressible because the
-# base is NEXTERNAL+1: with base NEXTERNAL, mod(cross, NEXTERNAL) could never
-# yield NEXTERNAL.
-CROSS_2_LAST = 0 * (NEXTERNAL + 1) + NEXTERNAL
+# The crossings the tests probe, as the permutation D of a crossing-table row
+# (0-based): input slot k of the crossed call is fed to base slot D[k].
+# Particle 2 swapped with particle 3 (the former code I=0, J=3), on a 2->2 and
+# on a 2->3.
+D_2_3 = (0, 2, 1, 3)
+D_2_3_5 = (0, 2, 1, 3, 4)
+# Particle 2 swapped with the LAST particle (the former I=0, J=NEXTERNAL).
+D_2_LAST = (0, 3, 2, 1)
+# A genuine 3-cycle, which no (I,J) code could name: on u u~ > g g, leg 1 of
+# the crossed call takes the u~ (still incoming), leg 2 a gluon (now incoming)
+# and leg 3 the u (now an outgoing u~), i.e. u~ g > u~ g. Not an involution (D != D^-1), so a
+# consumer reading the permutation in the wrong direction cannot hide.
+D_3CYCLE = (1, 2, 0, 3)
 IFLAV_IDENTITY = 1
 
 
-def _iflav(cross, flav, nflav):
-    """Encode a crossing code and a flavor index into the extended IFLAV."""
-    return cross * nflav + flav
+def _iflav(row, flav, nflav):
+    """Encode a crossing-table row and a flavor index into the extended
+    IFLAV."""
+    return row * nflav + flav
 
 
 def _massless_2to2(energy, cos_theta):
@@ -174,19 +179,22 @@ PROC_CPARITY_PAIRED = 'u u~ > g g'
 PROC_CPARITY_BROKEN = 'd u~ > e- ve~'
 
 
-# Subprocess probe for the good-helicity remap (GHREMAP) relation. Run against
-# a compiled matrix2py module: for every DERIVABLE crossing (active partners all
-# final), the crossed good-helicity set -- the rows where py_smatrixhel_idx is
-# non-zero, unioned over many phase-space points -- must equal the identity
-# good-helicity set mapped through the crossing's own row permutation sigma
-# (config h -> (ic[k]*nhel[perm[k],h])_k). This is the invariant the generated
-# GHREMAP encodes, so a wrong table (or a wrong derivability condition) breaks
-# the fix. Run in a subprocess: importing an f2py .so into the test interpreter
-# would leak a compiled module and clash across tests.
+# Subprocess probe for the good-helicity remap relation. Run against a compiled
+# matrix2py module: for every row of the crossing table (read back through
+# py_get_crossing, the f2py face of GET_CROSS_PINV), the crossed good-helicity
+# set -- the rows where py_smatrixhel_idx is non-zero, unioned over many
+# phase-space points -- must equal the identity good-helicity set mapped
+# through tau, the sign flip of the legs that change side, indexed by BASE slot
+# (config h -> (SB[b]*nhel[b,h])_b). This is the invariant the generated
+# CROSS_GHIDX / GHFILT encode, so a wrong table, or signs read in the input-slot
+# view (SD) instead of the base view (SB) -- identical for an involution,
+# different for the 3-cycles the table now holds -- breaks it. Run in a
+# subprocess: importing an f2py .so into the test interpreter would leak a
+# compiled module and clash across tests.
 #
 # GOTCHA locked in by this probe: 3 phase-space points are NOT enough -- for
-# u u~ > g g, cross=23 then showed 6 non-zero rows instead of 8 (an accidental
-# zero at the probed points). NPTS is deliberately >= 12.
+# u u~ > g g, the former cross=23 then showed 6 non-zero rows instead of 8 (an
+# accidental zero at the probed points). NPTS is deliberately >= 12.
 _GOODHEL_PROBE = r'''
 import sys, math
 import numpy as np
@@ -196,17 +204,19 @@ import matrix2py as m
 NINITIAL = %(ninitial)d
 NPTS = %(npts)d
 
-def get_crossing_permutation(cross, nexternal):
-    base = nexternal + 1
-    i_part, j_part = cross // base, cross %% base
-    perm = list(range(nexternal)); ic = [1] * nexternal
-    def swap(a, b):
-        perm[a], perm[b] = perm[b], perm[a]; ic[a] = -ic[a]; ic[b] = -ic[b]
-    valid = not (i_part not in (0, 1) and j_part not in (0, 2)
-                 and (i_part == 2 or j_part == 1 or i_part == j_part))
-    if i_part not in (0, 1): swap(0, i_part - 1)
-    if j_part not in (0, 2): swap(1, j_part - 1)
-    return perm, ic, valid
+def crossing_row(flav_idx, nexternal):
+    """(D, SB) of the table row an extended index selects, None if it names
+    no crossing. D[k] = base slot input slot k is fed to; SB[b] = -1 when base
+    leg b changes side."""
+    pinv, sgni, flav_out = m.py_get_crossing(flav_idx)
+    if int(flav_out) == 0:
+        return None
+    D = [int(x) - 1 for x in pinv]
+    SD = [int(x) for x in sgni]
+    B = [0] * nexternal
+    for k, b in enumerate(D):
+        B[b] = k
+    return D, [SD[B[b]] for b in range(nexternal)]
 
 def rambo(nf, ecm, rng):
     q = np.zeros((4, nf))
@@ -259,47 +269,45 @@ def good_set(flav_idx):
 
 g_id = good_set(1)
 assert g_id, 'identity has no good helicity -- probe is broken'
-base = nexternal + 1
-checked = genuine = 0
-for cross in range(1, base * base):
-    perm, ic, valid = get_crossing_permutation(cross, nexternal)
-    if not valid:
-        continue
-    I, J = cross // base, cross %% base
-    # DERIVABLE = the crossing's active partners are all final particles.
-    final_only = ((I in (0, 1) or I > NINITIAL) and (J in (0, 2) or J > NINITIAL))
-    if not final_only:
-        continue
-    flav_idx = cross * nflav + 1
-    # Skip a crossing that is not evaluable (spincol==0 -> SMATRIX returns 0).
+checked = genuine = cycles = 0
+for K in range(1, ncross):
+    flav_idx = K * nflav + 1
+    row = crossing_row(flav_idx, nexternal)
+    assert row is not None, 'row %%d names no crossing' %% K
+    D, SB = row
+    # Every row is a crossing some caller asked for: none may be null.
     tot = sum(abs(m.py_smatrixhel_idx(ps[0], h, flav_idx))
               for h in range(1, ncomb + 1))
-    if tot == 0:
-        continue
-    # TAU, not sigma: the matrix element sign-flips the helicity IN PLACE and
-    # does not permute the slots (APPLY_CROSSING_TABLE), so the map relating a
-    # crossed row to its identity row is ic[k]*nhel[k,h) -- no perm[] indexing.
-    # This is the same map the recycled optim and the madmatrix lanes realise,
-    # which is the point: one good-helicity relation now describes every
-    # backend. tau is a clean bijection (each leg's states are closed under
-    # negation), so this stays an EQUALITY rather than a containment.
+    assert tot > 0, 'row %%d (D=%%s) evaluates to zero' %% (K, D)
+    # TAU, not a helicity-row permutation: the matrix element evaluates base
+    # slot b at NHEL(b)*SB(b) with the base slot order (APPLY_CROSSING_TABLE
+    # permutes only the momenta), so the map relating a crossed row to its
+    # identity row is SB[b]*nhel[b,h] -- no D[] indexing. This is the same map
+    # the recycled optim and the madmatrix lanes realise, which is the point:
+    # one good-helicity relation describes every backend. tau is a clean
+    # bijection (each leg's states are closed under negation), so this stays an
+    # EQUALITY rather than a containment.
     tau = {}
     for h in range(ncomb):
-        cfg = tuple(ic[k] * nhel[k, h] for k in range(nexternal))
+        cfg = tuple(SB[b] * nhel[b, h] for b in range(nexternal))
         hp = row_of.get(cfg)
-        assert hp is not None, 'cross %%d: tau is not a row bijection' %% cross
+        assert hp is not None, 'row %%d: tau is not a row bijection' %% K
         tau[h + 1] = hp
     expected = {tau[h] for h in g_id}
     g_cr = good_set(flav_idx)
     assert g_cr == expected, (
-        'cross %%d (I=%%d,J=%%d): crossed good-hel %%s != tau(identity) %%s'
-        %% (cross, I, J, sorted(g_cr), sorted(expected)))
+        'row %%d (D=%%s): crossed good-hel %%s != tau(identity) %%s'
+        %% (K, D, sorted(g_cr), sorted(expected)))
     checked += 1
-    if perm != list(range(nexternal)):
+    if -1 in SB:
         genuine += 1
-assert genuine >= 1, 'no genuine (non-identity) derivable crossing was checked'
-print('GHREMAP_RELATION_OK checked=%%d genuine=%%d points=%%d' %%
-      (checked, genuine, NPTS))
+    if any(D[D[k]] != k for k in range(nexternal)):
+        cycles += 1
+assert checked == ncross - 1, 'checked %%d of %%d rows' %% (checked, ncross - 1)
+assert genuine >= 1, 'no genuine (side-changing) crossing was checked'
+assert cycles >= 1, 'no non-involution row was checked'
+print('GHREMAP_RELATION_OK checked=%%d genuine=%%d cycles=%%d points=%%d' %%
+      (checked, genuine, cycles, NPTS))
 '''
 
 
@@ -387,6 +395,10 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
 
         Split out of _generate for the tests that only inspect the emitted
         fortran and so have no reason to pay for a compile.
+
+        A single process records no crossing, so its crossing table would hold
+        the identity alone: the output asks for every applicable crossing
+        (--crossing_table=all), the rows these tests probe.
         """
         outdir = pjoin(self.tmpdir, name)
         self.cmd.exec_cmd('set automatic_html_opening False')
@@ -395,7 +407,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd(
             ('generate %s %s' % (process, _pin_crossing(options))).strip())
-        self.cmd.exec_cmd('output standalone_fortran %s -f' % outdir)
+        self.cmd.exec_cmd('output standalone_fortran %s -f --crossing_table=all'
+                          % outdir)
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, name) for name in sorted(os.listdir(subproc_root))
@@ -446,6 +459,16 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
          CALL GET_PDG_FOR_FLAVOR(FLAV_IDX, PDGS)
          WRITE(*,*) 'IDEN= ', IDEN_STAR
          WRITE(*,*) 'PDG= ', (PDGS(I),I=1,NEXTERNAL)'''
+        # GET_CROSS_PINV only exists with the crossing machinery; a driver
+        # built against a matrix.f without it must not reference it.
+        if re.search(r'SUBROUTINE\s+GET_CROSS_PINV\b', self._matrix_code(pdir)):
+            rows_call = '''         READ(42,*) NFL, NCR
+         DO K=0,NCR-1
+            CALL GET_CROSS_PINV(K*NFL+1, PINV, SGNI, XIDX)
+            WRITE(*,*) 'ROW= ', K, XIDX, (PINV(I),I=1,NEXTERNAL)
+         ENDDO'''
+        else:
+            rows_call = "         WRITE(*,*) 'NOROWS'"
         # GET_NHEL writes NEXTERNAL*NCOMB entries into NHEL_STAR using its own
         # NCOMB; an oversized array in the caller is safe and avoids parsing
         # NCOMB out of matrix.f.
@@ -463,6 +486,7 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
       INTEGER NHEL_STAR(NEXTERNAL,NCOMB_MAX), IDEN_STAR
       INTEGER DPOS(1), ALLOW_HEL(2)
       INTEGER PDGS(NEXTERNAL)
+      INTEGER PINV(NEXTERNAL), SGNI(NEXTERNAL), XIDX, NFL, NCR, K
       DOUBLE COMPLEX INTER(3)
       call setpara('param_card.dat')
       OPEN(UNIT=42,FILE='cross_input.dat',STATUS='OLD')
@@ -496,6 +520,11 @@ C        uncrossed one), and GET_PDG_FOR_FLAVOR returns the per-leg signed PDG
 C        of the process the extended FLAV_IDX selects (crossed and conjugated).
          READ(42,*) FLAV_IDX
 %(nhel_idx_call)s
+      ELSEIF (MODE.EQ.6) THEN
+C        The crossing table, one row per line: K, the base flavor the index
+C        K*NFLAV+1 resolves to (0: the row names no crossing) and D (1-based),
+C        the base slot each input slot is fed to (GET_CROSS_PINV).
+%(rows_call)s
       ELSE
          READ(42,*) FLAV_IDX
          DO I=1,NEXTERNAL
@@ -511,7 +540,8 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
 '''
         with open(pjoin(pdir, 'check_sa.f'), 'w') as fsock:
             fsock.write(driver % {'density_call': density_call,
-                                  'nhel_idx_call': nhel_idx_call})
+                                  'nhel_idx_call': nhel_idx_call,
+                                  'rows_call': rows_call})
 
     def _build(self, pdir):
         retcode = self._call(['make', 'check'], pdir)
@@ -567,6 +597,75 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         match = re.search(r'IDX=\s*(-?\d+)', output)
         self.assertTrue(match, 'No IDX from %s, got:\n%s' % (pdir, output))
         return int(match.group(1))
+
+    def _read_ncross(self, pdir):
+        """NCROSS of a generated process: the rows of its crossing table."""
+        with open(pjoin(pdir, 'matrix.f')) as fsock:
+            match = re.search(r'PARAMETER\s*\(NCROSS=(\d+)\)', fsock.read())
+        self.assertTrue(match, 'Could not read NCROSS from %s' % pdir)
+        return int(match.group(1))
+
+    def _crossing_rows(self, pdir):
+        """{D: K} over the valid rows of the crossing table, D the 0-based
+        permutation (input slot k fed to base slot D[k]), read back from the
+        compiled GET_CROSS_PINV."""
+        output = self._probe(pdir, ['6', '%d %d' % (self._read_nflav(pdir),
+                                                    self._read_ncross(pdir))])
+        rows = {}
+        for line in re.findall(r'ROW=\s*(.*)', output):
+            fields = [int(token) for token in line.split()]
+            if fields[1] == 0:
+                continue
+            rows[tuple(d - 1 for d in fields[2:])] = fields[0]
+        self.assertTrue(rows, 'No crossing-table row from %s, got:\n%s'
+                        % (pdir, output))
+        return rows
+
+    def _crossing_rows_f2py(self, pdir):
+        """The same {D: K} map through the compiled f2py module
+        (FlavorDispatch.crossing_for_index / PY_GET_CROSSING), for a directory
+        with no fortran driver. Requires the module built (_build_f2py)."""
+        script = '''
+import sys
+sys.path.insert(0, %(pdir)r)
+import matrix2py
+from flavor_dispatch import FlavorDispatch
+me = FlavorDispatch(matrix2py)
+nflav, _nexternal, ncross = me.flavor_layout()
+for K in range(ncross):
+    row = me.crossing_for_index(K * nflav + 1)
+    if row is not None:
+        print('ROW= %%d %%s' %% (K, ' '.join(str(d) for d in row[0])))
+''' % {'pdir': pdir}
+        script_path = pjoin(pdir, 'rows_probe.py')
+        with open(script_path, 'w') as fsock:
+            fsock.write(script)
+        output = subprocess.Popen(
+            [sys.executable, script_path], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, cwd=pdir).communicate()[0].decode()
+        rows = {}
+        for line in re.findall(r'ROW=\s*(.*)', output):
+            fields = [int(token) for token in line.split()]
+            rows[tuple(fields[1:])] = fields[0]
+        self.assertTrue(rows, 'No crossing-table row from the f2py module in '
+                        '%s, got:\n%s' % (pdir, output))
+        return rows
+
+    def _row(self, pdir, perm, rows=None):
+        """Row K of the crossing table holding the permutation `perm` (D,
+        0-based); fails when the table has no such row."""
+        rows = self._crossing_rows(pdir) if rows is None else rows
+        self.assertIn(tuple(perm), rows,
+                      'The crossing table of %s has no row D=%s (rows: %s)'
+                      % (pdir, perm, sorted(rows)))
+        return rows[tuple(perm)]
+
+    def _cross_iflav(self, pdir, perm, flav=1, nflav=None, rows=None):
+        """The extended IFLAV evaluating base flavor `flav` through the row
+        holding the permutation `perm`."""
+        if nflav is None:
+            nflav = self._read_nflav(pdir)
+        return _iflav(self._row(pdir, perm, rows), flav, nflav)
 
     def _nhel_idx(self, pdir, iflav):
         """(crossed IDEN, per-leg signed PDG) an extended FLAV_IDX selects.
@@ -648,7 +747,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
     def _read_nflav(self, pdir):
         """NFLAV of a generated process, needed to encode the extended IFLAV.
 
-        IFLAV = cross*NFLAV + flav, so the crossing code cannot be turned into
+        IFLAV = K*NFLAV + flav, so a crossing-table row cannot be turned into
         an index without it. Read it rather than assume 1: if flavor grouping
         ever merges several flavors here, a hardcoded 1 would silently probe
         the wrong flavor instead of failing.
@@ -729,43 +828,95 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
     # tests
     # ------------------------------------------------------------------
     def test_crossing_gives_back_identity(self):
-        """cross=0 must leave the existing behaviour untouched."""
+        """Row 0 must be the identity and leave the behaviour untouched."""
         qq_gg = self._generate(PROC_QQ_GG, 'Proc_qq_gg')
+        self.assertEqual(self._row(qq_gg, (0, 1, 2, 3)), 0,
+                         'Row 0 of the crossing table is not the identity')
         momenta = self._phase_space(self.cos_thetas[0])
         plain = self._run(qq_gg, momenta, IFLAV_IDENTITY)
         self.assertNotEqual(plain, 0.0,
                             'Sanity check failed: %s gives a null matrix element'
                             % PROC_QQ_GG)
-        # IFLAV = cross*NFLAV + flav with cross=0 is just flav: same answer.
-        self.assertEqual(plain, self._run(qq_gg, momenta,
-                                          _iflav(0, 1, nflav=1)))
+        # An index past the last row names no crossing: SMATRIX returns 0
+        # rather than evaluating some other row (or reading past the tables).
+        self.assertEqual(
+            self._run(qq_gg, momenta,
+                      _iflav(self._read_ncross(qq_gg), 1, nflav=1)), 0.0,
+            'an index past the crossing table does not give a zero ME')
 
     def test_qq_gg_crossed_gives_qg_qg(self):
         """u u~ > g g with particle 2 <-> 3 crossed must give u g > u g."""
         qq_gg = self._generate(PROC_QQ_GG, 'Proc_qq_gg')
         qg_qg = self._generate(PROC_QG_QG, 'Proc_qg_qg')
         self._assert_crossing(
-            crossed_dir=qq_gg, crossed_iflav=_iflav(CROSS_2_3, 1, nflav=1),
-            reference_dir=qg_qg, label='%s crossed (I=0,J=3) vs %s'
-            % (PROC_QQ_GG, PROC_QG_QG))
+            crossed_dir=qq_gg, crossed_iflav=self._cross_iflav(qq_gg, D_2_3),
+            reference_dir=qg_qg, label='%s crossed (D=%s) vs %s'
+            % (PROC_QQ_GG, D_2_3, PROC_QG_QG))
 
     def test_qq_gg_crossed_with_last_particle(self):
-        """Particle 2 must be crossable with the last particle (J=NEXTERNAL).
+        """Particle 2 must be crossable with the last particle.
 
-        This is the case the NEXTERNAL+1 base exists for: with base NEXTERNAL,
-        J could only reach NEXTERNAL-1 and this crossing was unreachable.
-        Swapping particle 2 with particle 4 in u u~ > g g turns the incoming u~
-        into an outgoing u sitting in slot 4 and the outgoing g of slot 4 into
-        an incoming one, so the legs come out ordered as u g > g u: the same
-        physics as u g > u g with the two final legs exchanged.
+        (The former I*(NEXTERNAL+1)+J code needed its NEXTERNAL+1 base for
+        this one.) Swapping particle 2 with particle 4 in u u~ > g g turns the
+        incoming u~ into an outgoing u sitting in slot 4 and the outgoing g of
+        slot 4 into an incoming one, so the legs come out ordered as
+        u g > g u: the same physics as u g > u g with the two final legs
+        exchanged.
         """
         qq_gg = self._generate(PROC_QQ_GG, 'Proc_qq_gg')
         qg_qg = self._generate(PROC_QG_QG, 'Proc_qg_qg')
         self._assert_crossing(
-            crossed_dir=qq_gg, crossed_iflav=_iflav(CROSS_2_LAST, 1, nflav=1),
+            crossed_dir=qq_gg, crossed_iflav=self._cross_iflav(qq_gg, D_2_LAST),
             reference_dir=qg_qg, reference_perm=(0, 1, 3, 2),
-            label='%s crossed (I=0,J=4) vs %s with final legs swapped'
-            % (PROC_QQ_GG, PROC_QG_QG))
+            label='%s crossed (D=%s) vs %s with final legs swapped'
+            % (PROC_QQ_GG, D_2_LAST, PROC_QG_QG))
+
+    def test_qq_gg_three_cycle(self):
+        """3-cycle rows: u u~ > g g evaluating u~ g > u~ g, u g > u g
+        evaluating g u~ > u~ g.
+
+        No (I,J) code could name them: D = (1, 2, 0, 3) sends leg 1 to base
+        slot 2, leg 2 to base slot 3 and leg 3 to base slot 1. D is not an
+        involution (D != D^-1), so a consumer reading the permutation in the
+        wrong direction -- the momentum gather, the crossed PDG, the NSF flags
+        or the denominator -- gives a different number instead of hiding
+        behind a symmetric swap. On u g > u g the two directions also differ
+        in the crossed initial state (g u~, spin*colour 96, against u~ u, 36),
+        which pins the denominator; the crossed PDG and denominator the f2py
+        accessors report are compared too.
+
+        The compiled rows must also be the python table's, row for row: rows
+        are looked up here through the compiled GET_CROSS_PINV, and the table
+        of every applicable crossing holds D^-1 too, so an emitter swapping
+        the two views consistently would otherwise pass unseen.
+        """
+        import madgraph.iolibs.crossing_table as crossing_table
+        cases = [(PROC_QQ_GG, 'Proc_qq_gg', 'u~ g > u~ g', 'Proc_qxg_qxg',
+                  (-2, 21, -2, 21)),
+                 (PROC_QG_QG, 'Proc_qg_qg', 'g u~ > u~ g', 'Proc_gqx_qxg',
+                  (21, -2, -2, 21))]
+        expected_rows = dict((D, K) for K, D in
+                             enumerate(crossing_table.applicable_perms(4, 2)))
+        for base_line, base_name, ref_line, ref_name, pdgs in cases:
+            with self.subTest(base=base_line):
+                base = self._generate(base_line, base_name)
+                reference = self._generate(ref_line, ref_name)
+                self.assertEqual(self._crossing_rows(base), expected_rows,
+                                 'the compiled crossing table of %s is not the '
+                                 'python one' % base_line)
+                crossed_iflav = self._cross_iflav(base, D_3CYCLE)
+                iden, got = self._nhel_idx(base, crossed_iflav)
+                self.assertEqual(got, pdgs,
+                                 'the 3-cycle row of %s should evaluate %s, '
+                                 'got %s' % (base_line, ref_line, got))
+                self.assertEqual(iden, self._nhel_idx(reference,
+                                                      IFLAV_IDENTITY)[0],
+                                 'crossed denominator differs from %s'
+                                 % ref_line)
+                self._assert_crossing(
+                    crossed_dir=base, crossed_iflav=crossed_iflav,
+                    reference_dir=reference, label='%s crossed (D=%s) vs %s'
+                    % (base_line, D_3CYCLE, ref_line))
 
     def test_qqx_gqqx_crossed_gives_qg_qqqx(self):
         """q q~ > g q q~ crossed (2<->3) must give q g > q q q~, for each q.
@@ -789,7 +940,8 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                 momenta = self._phase_space_2to3()
 
                 crossed = self._run(qqx_gqqx, momenta,
-                                    _iflav(CROSS_2_3_5, 1, nflav=nflav))
+                                    self._cross_iflav(qqx_gqqx, D_2_3_5, 1,
+                                                      nflav=nflav))
                 reference = self._run(qg_qqqx, momenta, IFLAV_IDENTITY)
 
                 self.assertNotEqual(
@@ -799,9 +951,9 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                 scale = max(abs(crossed), abs(reference), 1e-99)
                 self.assertLessEqual(
                     abs(crossed - reference) / scale, self.tolerance,
-                    '%s crossed (I=0,J=3) disagrees with %s: '
+                    '%s crossed (D=%s) disagrees with %s: '
                     'crossed=%r reference=%r'
-                    % (PROC_QQX_GQQX % {'q': quark},
+                    % (PROC_QQX_GQQX % {'q': quark}, D_2_3_5,
                        PROC_QG_QQQX % {'q': quark}, crossed, reference))
 
     def test_merged_flavor_crossing_every_flavor(self):
@@ -828,13 +980,13 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                            'NFLAV=%s: this test would not probe the flavor '
                            'dependence of the denominator' % nflav_a)
         momenta = self._phase_space_2to3()
+        row_2_3 = self._row(merged_a, D_2_3_5)
 
         unmapped = []
         for flav in range(1, nflav_a + 1):
             positions = self._flavor_positions(merged_a, flav)
             # Caller slot 2 holds leg 3 (the gluon) and slot 3 holds leg 2.
-            crossed = (positions[0], positions[2], positions[1],
-                       positions[3], positions[4])
+            crossed = tuple(positions[d] for d in D_2_3_5)
             reference_perm = None
             target = self._flavor_index(merged_b, crossed)
             if target < 1:
@@ -851,8 +1003,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
 
             with self.subTest(flav=flav, positions=positions):
                 crossed_value = self._run(merged_a, momenta,
-                                          _iflav(CROSS_2_3_5, flav,
-                                                 nflav=nflav_a))
+                                          _iflav(row_2_3, flav, nflav=nflav_a))
                 reference_momenta = momenta if reference_perm is None else \
                     [momenta[index] for index in reference_perm]
                 reference = self._run(merged_b, reference_momenta, target)
@@ -873,57 +1024,62 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
 
         q g > q q q~ has fewer flavors (16) than q q~ > g q q~ (28), which
         looks like the reverse mapping cannot be onto. It is: the crossing
-        partner J is the missing degree of freedom. J=3 and J=4 cross particle
-        2 with one or the other of the two final quarks, and those land on
-        different flavors of the target. The two coincide only when the two
-        final quarks already share a flavor, so the count works out exactly:
+        partner is the missing degree of freedom. Particle 2 swapped with
+        particle 3 or with particle 4 crosses one or the other of the two final
+        quarks, and those land on different flavors of the target. The two
+        coincide only when the two final quarks already share a flavor, so the
+        count works out exactly:
 
             16 flavors x 2 crossings - 4 degenerate = 28
 
-        J=4 leaves the legs ordered (q, q~, q, g, q~) instead of the target's
-        (q, q~, g, q, q~), hence the momentum swap of slots 3 and 4.
+        The swap with particle 4 leaves the legs ordered (q, q~, q, g, q~)
+        instead of the target's (q, q~, g, q, q~), hence the momentum swap of
+        slots 3 and 4.
         """
         merged_a = self._generate(PROC_MERGED_QQX_GQQX, 'Proc_merged_a')
         merged_b = self._generate(PROC_MERGED_QG_QQQX, 'Proc_merged_b')
         nflav_a = self._read_nflav(merged_a)
         nflav_b = self._read_nflav(merged_b)
         momenta = self._phase_space_2to3()
+        rows_b = self._crossing_rows(merged_b)
+        # particle 2 swapped with particle 4
+        d_2_4 = (0, 3, 2, 1, 4)
 
         covered = {}
         for flav_b in range(1, nflav_b + 1):
             positions = self._flavor_positions(merged_b, flav_b)
             variants = (
-                # J=3: legs already come out in the target's order.
-                (3, (positions[0], positions[2], positions[1],
-                     positions[3], positions[4]), None),
-                # J=4: cross the other final quark, then reorder slots 3/4.
-                (4, (positions[0], positions[3], positions[1],
-                     positions[2], positions[4]), (0, 1, 3, 2, 4)),
+                # 2 <-> 3: legs already come out in the target's order.
+                (D_2_3_5, (positions[0], positions[2], positions[1],
+                           positions[3], positions[4]), None),
+                # 2 <-> 4: cross the other final quark, then reorder slots 3/4.
+                (d_2_4, (positions[0], positions[3], positions[1],
+                         positions[2], positions[4]), (0, 1, 3, 2, 4)),
             )
-            for j_part, target_positions, perm in variants:
+            for cross_perm, target_positions, perm in variants:
                 flav_a = self._flavor_index(merged_a, target_positions)
                 self.assertGreaterEqual(
                     flav_a, 1,
-                    'Crossed flavor %s (from %s flavor %s, J=%s) has no '
+                    'Crossed flavor %s (from %s flavor %s, D=%s) has no '
                     'counterpart in %s'
-                    % (target_positions, PROC_MERGED_QG_QQQX, flav_b, j_part,
+                    % (target_positions, PROC_MERGED_QG_QQQX, flav_b, cross_perm,
                        PROC_MERGED_QQX_GQQX))
-                covered.setdefault(flav_a, []).append((flav_b, j_part))
+                covered.setdefault(flav_a, []).append((flav_b, cross_perm))
 
-                with self.subTest(flav_b=flav_b, j_part=j_part):
-                    cross = 0 * (NEXTERNAL_5 + 1) + j_part
+                with self.subTest(flav_b=flav_b, cross_perm=cross_perm):
                     crossed_momenta = momenta if perm is None else \
                         [momenta[index] for index in perm]
                     crossed_value = self._run(merged_b, crossed_momenta,
-                                              _iflav(cross, flav_b,
-                                                     nflav=nflav_b))
+                                              self._cross_iflav(
+                                                  merged_b, cross_perm, flav_b,
+                                                  nflav=nflav_b, rows=rows_b))
                     reference = self._run(merged_a, momenta, flav_a)
                     scale = max(abs(crossed_value), abs(reference), 1e-99)
                     self.assertLessEqual(
                         abs(crossed_value - reference) / scale, self.tolerance,
-                        '%s flavor %s crossed (J=%s) disagrees with %s flavor '
+                        '%s flavor %s crossed (D=%s) disagrees with %s flavor '
                         '%s: crossed=%r reference=%r'
-                        % (PROC_MERGED_QG_QQQX, flav_b, j_part,
+                        % (PROC_MERGED_QG_QQQX, flav_b, cross_perm,
                            PROC_MERGED_QQX_GQQX, flav_a, crossed_value,
                            reference))
 
@@ -957,7 +1113,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
             momenta = self._phase_space(cos_theta)
             with self.subTest(cos_theta=cos_theta):
                 crossed = self._density(qq_gg, momenta,
-                                        _iflav(CROSS_2_3, 1, nflav=1), leg=2)
+                                        self._cross_iflav(qq_gg, D_2_3), leg=2)
                 reference = self._density(qg_qg, momenta, IFLAV_IDENTITY,
                                           leg=2)
                 self.assertTrue(any(abs(term) > 1e-99 for term in reference),
@@ -1037,7 +1193,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         """The crossed spin-density matrix of a CHIRAL process, via the compiled
         Fortran GET_DENSITY_IDX (no f2py).
 
-        u d~ > w+ g crossed by (I=0, J=NEXTERNAL) is u g > w+ d; its outgoing d
+        u d~ > w+ g crossed by D_2_LAST is u g > w+ d; its outgoing d
         is the incoming d~ that swapped sides, still 100% polarized by the W. The
         density matrix is per helicity, so it is the probe that pins how that
         crossed leg's helicity is LABELLED -- the same no-flip convention the
@@ -1046,7 +1202,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         """
         udx_wpg = self._generate(PROC_UDX_WPG, 'Proc_udx_wpg')
         ug_wpd = self._generate(PROC_UG_WPD, 'Proc_ug_wpd')
-        crossed_iflav = _iflav(CROSS_2_LAST, 1, nflav=1)
+        crossed_iflav = self._cross_iflav(udx_wpg, D_2_LAST)
         for cos_theta in self.cos_thetas:
             momenta = self._phase_space(cos_theta)
             with self.subTest(cos_theta=cos_theta):
@@ -1065,7 +1221,9 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         ug_wpd = self._output_standalone(PROC_UG_WPD, 'Proc_ug_wpd_f2py')
         self._build_f2py(udx_wpg)
         self._build_f2py(ug_wpd)
-        crossed_iflav = _iflav(CROSS_2_LAST, 1, nflav=1)
+        crossed_iflav = _iflav(
+            self._row(udx_wpg, D_2_LAST, self._crossing_rows_f2py(udx_wpg)),
+            1, nflav=1)
         for cos_theta in self.cos_thetas:
             momenta = self._phase_space(cos_theta)
             with self.subTest(cos_theta=cos_theta):
@@ -1160,14 +1318,14 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
                            'Expected a merged multi-flavor matrix element, got '
                            'NFLAV=%s' % nflav_a)
         momenta = self._phase_space_2to3()
+        row_2_3 = self._row(merged_a, D_2_3_5)
 
         unmapped = []
         checked = 0
         for flav in range(1, nflav_a + 1):
             positions = self._flavor_positions(merged_a, flav)
             # Caller slot 2 holds leg 3 (the gluon) and slot 3 holds leg 2.
-            crossed = (positions[0], positions[2], positions[1],
-                       positions[3], positions[4])
+            crossed = tuple(positions[d] for d in D_2_3_5)
             reference_perm = None
             target = self._flavor_index(merged_b, crossed)
             if target < 1:
@@ -1184,8 +1342,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
 
             with self.subTest(flav=flav, positions=positions):
                 crossed_value = self._run(merged_a, momenta,
-                                          _iflav(CROSS_2_3_5, flav,
-                                                 nflav=nflav_a))
+                                          _iflav(row_2_3, flav, nflav=nflav_a))
                 reference_momenta = momenta if reference_perm is None else \
                     [momenta[index] for index in reference_perm]
                 reference = self._run(merged_b, reference_momenta, target)
@@ -1317,9 +1474,9 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
             GET_NHEL bug) rather than the crossed one, and
           * GET_PDG_FOR_FLAVOR forgetting to conjugate a leg that swapped
             between the initial and the final state.
-        For u u~ > g g the identity (IFLAV=1) is itself, and the (I=0,J=3)
-        crossing (IFLAV=4) is u g > u g: leg 2's u~ (pdg -2) becomes an
-        outgoing u (pdg +2) in slot 3, and IDEN goes 72 -> 96.
+        For u u~ > g g the identity (IFLAV=1) is itself, and the D_2_3
+        crossing is u g > u g: leg 2's u~ (pdg -2) becomes an outgoing u
+        (pdg +2) in slot 3, and IDEN goes 72 -> 96.
         """
         qq_gg = self._generate(PROC_QQ_GG, 'Proc_qq_gg')
 
@@ -1329,7 +1486,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         self.assertEqual(pdg_id, (2, -2, 21, 21),
                          'Identity PDG wrong: %s' % (pdg_id,))
 
-        iden_cr, pdg_cr = self._nhel_idx(qq_gg, _iflav(CROSS_2_3, 1, nflav=1))
+        iden_cr, pdg_cr = self._nhel_idx(qq_gg, self._cross_iflav(qq_gg, D_2_3))
         self.assertEqual(iden_cr, 96,
                          'Crossed IDEN should be 96 (u g > u g), got %s. A 72 '
                          'here is the GET_NHEL static-IDEN bug.' % iden_cr)
@@ -1345,10 +1502,14 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         process as a signed-PDG list must get back the extended FLAV_IDX (via
         find_pdg) and the correct crossed matrix element (via
         matrix_element_pdg). For a u u~ > g g module the identity is itself and
-        the (I=0,J=3) crossing is u g > u g. Skips if f2py cannot build here.
+        the D_2_3 crossing is u g > u g. Skips if f2py cannot build here.
         """
         pdir = self._output_standalone(PROC_QQ_GG, 'Proc_qq_gg_f2py')
         self._build_f2py(pdir)
+        rows = self._crossing_rows_f2py(pdir)
+        # every ordered choice of the two initial legs among four
+        self.assertEqual(len(rows), 12, sorted(rows))
+        iflav_2_3 = _iflav(self._row(pdir, D_2_3, rows), 1, nflav=1)
 
         # Run in a subprocess: importing an f2py .so into the test interpreter
         # would leak a compiled module and clash across tests.
@@ -1359,21 +1520,25 @@ import matrix2py
 from flavor_dispatch import FlavorDispatch
 me = FlavorDispatch(matrix2py)
 me.initialisemodel(%(card)r)
-assert me.flavor_layout() == (1, 4, 25), me.flavor_layout()
+IDX = %(iflav)d
+assert me.flavor_layout() == (1, 4, 12), me.flavor_layout()
 assert me.pdg_for_index(1) == (2, -2, 21, 21), me.pdg_for_index(1)
-assert me.pdg_for_index(4) == (2, 21, 2, 21), me.pdg_for_index(4)
+assert me.pdg_for_index(IDX) == (2, 21, 2, 21), me.pdg_for_index(IDX)
+assert me.crossing_for_index(IDX)[0] == %(perm)r, me.crossing_for_index(IDX)
+assert me.crossing_for_index(IDX)[1] == (1, -1, -1, 1)
+assert me.crossing_for_index(13) is None      # past the last row
 assert me.find_pdg([2, -2, 21, 21]) == 1
-assert me.find_pdg([2, 21, 2, 21]) == 4
+assert me.find_pdg([2, 21, 2, 21]) == IDX
 assert me.find_pdg([6, -6, 21, 21]) is None   # unreachable process
 E = 500.0; c = 0.3; s = math.sqrt(1.0 - c * c)
 P = np.asfortranarray(np.array([[E, 0, 0, E], [E, 0, 0, -E],
     [E, E * s, 0, E * c], [E, -E * s, 0, -E * c]]).T)
-direct = me.smatrix(P, 4)
+direct = me.smatrix(P, IDX)
 via = me.matrix_element_pdg(P, [2, 21, 2, 21])
 assert abs(direct - via) <= 1e-11 * abs(direct), (direct, via)
 assert direct > 0.0
 print("F2PY_PDG_OK")
-''' % {'pdir': pdir,
+''' % {'pdir': pdir, 'iflav': iflav_2_3, 'perm': D_2_3,
        'card': pjoin(pdir, os.pardir, os.pardir, 'Cards', 'param_card.dat')}
         script_path = pjoin(pdir, 'pdg_wrapper_probe.py')
         with open(script_path, 'w') as fsock:
@@ -1388,10 +1553,10 @@ print("F2PY_PDG_OK")
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
         """Compiled-module check of the GHREMAP good-helicity relation.
 
-        Builds the f2py module for `process` and, for every DERIVABLE crossing,
-        asserts the crossed good-helicity set equals the identity's mapped
-        through TAU, the sign-only map every backend can realise (the invariant
-        the shared good-helicity filter encodes).
+        Builds the f2py module for `process` and, for every row of its
+        crossing table, asserts the crossed good-helicity set equals the
+        identity's mapped through TAU, the sign-only map every backend can
+        realise (the invariant the shared good-helicity filter encodes).
         Skips if the f2py toolchain is unavailable, exactly like the other
         compiled-module tests.
         """
@@ -1413,15 +1578,14 @@ print("F2PY_PDG_OK")
 
     def test_goodhel_relation_qq_gg(self):
         """The crossed good-helicity set of u u~ > g g must be the identity's
-        mapped through sigma, for every derivable crossing (>=12 points, so the
-        cross=23 accidental-zero undercount cannot mask a bug)."""
+        mapped through tau, for every row (>=12 points, so the accidental-zero
+        undercount seen on the former cross=23 cannot mask a bug)."""
         self._assert_goodhel_relation(PROC_QQ_GG, 'Proc_qq_gg_goodhel',
                                       ninitial=2)
 
     def test_goodhel_relation_qq_ggg(self):
-        """Same relation on a 2->3 (u u~ > g g g): more crossings, and the
-        initial-initial swaps that break the relation are correctly excluded
-        from the derivable set the probe checks."""
+        """Same relation on a 2->3 (u u~ > g g g): more crossings, beam swaps
+        and 3-cycles included."""
         self._assert_goodhel_relation('u u~ > g g g', 'Proc_qq_ggg_goodhel',
                                       ninitial=2)
 
@@ -1430,9 +1594,9 @@ print("F2PY_PDG_OK")
         qq_gg = self._generate(PROC_QQ_GG, 'Proc_qq_gg')
         qg_qg = self._generate(PROC_QG_QG, 'Proc_qg_qg')
         self._assert_crossing(
-            crossed_dir=qg_qg, crossed_iflav=_iflav(CROSS_2_3, 1, nflav=1),
-            reference_dir=qq_gg, label='%s crossed (I=0,J=3) vs %s'
-            % (PROC_QG_QG, PROC_QQ_GG))
+            crossed_dir=qg_qg, crossed_iflav=self._cross_iflav(qg_qg, D_2_3),
+            reference_dir=qq_gg, label='%s crossed (D=%s) vs %s'
+            % (PROC_QG_QG, D_2_3, PROC_QQ_GG))
 
     # ------------------------------------------------------------------
     # decay chains: the crossing acts at the production level, the whole
@@ -1484,21 +1648,28 @@ print("F2PY_PDG_OK")
                             p_rambo[(2, i)], p_rambo[(3, i)]))
         return momenta
 
-    def _assert_decay_crossing(self, base_dir, base_line, ref_line, cross, pdgs):
+    def _assert_decay_crossing(self, base_dir, base_line, ref_line, perm,
+                               pdgs):
         """The base decay-chain SMATRIX at a crossing must reproduce a
         fully-generated (--use_crossing=False) build of the crossed decay chain.
 
-        `pdgs` is the crossed leaf signature (from compute_crossing_pdg_entries,
-        the order the momenta must be supplied in); it is both the reference
-        process order and the momentum order fed to both builds. The base carries
-        the crossing through the extended IFLAV, the reference evaluates it as its
-        own identity -- the two must agree to machine precision.
+        `perm` is the crossing-table row (D, over the leaves) and `pdgs` the
+        crossed leaf signature, the order the momenta must be supplied in; it
+        is both the reference process order and the momentum order fed to both
+        builds. The base carries the crossing through the extended IFLAV, the
+        reference evaluates it as its own identity -- the two must agree to
+        machine precision.
         """
-        ref_dir = self._generate(ref_line, 'Proc_dc_ref_%d' % cross,
+        ref_dir = self._generate(ref_line, 'Proc_dc_ref_%s'
+                                 % ''.join(str(d) for d in perm),
                                  options='--use_crossing=False')
-        nflav = self._read_nflav(base_dir)
+        crossed_iflav = self._cross_iflav(base_dir, perm)
+        self.assertEqual(self._nhel_idx(base_dir, crossed_iflav)[1],
+                         tuple(pdgs),
+                         'Row D=%s of %s does not evaluate %s'
+                         % (perm, base_line, ref_line))
         momenta = self._massive_2ton(ref_dir, pdgs)
-        crossed = self._run(base_dir, momenta, _iflav(cross, 1, nflav=nflav))
+        crossed = self._run(base_dir, momenta, crossed_iflav)
         reference = self._run(ref_dir, momenta, IFLAV_IDENTITY)
         self.assertNotEqual(reference, 0.0,
                             'Sanity check failed: %s gives a null matrix element'
@@ -1506,8 +1677,8 @@ print("F2PY_PDG_OK")
         scale = max(abs(crossed), abs(reference), 1e-99)
         self.assertLessEqual(
             abs(crossed - reference) / scale, self.tolerance,
-            '%s crossed (cross=%d) disagrees with %s: crossed=%r reference=%r'
-            % (base_line, cross, ref_line, crossed, reference))
+            '%s crossed (D=%s) disagrees with %s: crossed=%r reference=%r'
+            % (base_line, perm, ref_line, crossed, reference))
 
     def test_decay_chain_crossing_ttbar_jet(self):
         """g u > t t~ u, t > b w+ must reproduce its production crossings.
@@ -1520,15 +1691,22 @@ print("F2PY_PDG_OK")
         """
         base_line = 'g u > t t~ u, t > b w+'
         base = self._generate(base_line, 'Proc_dc_base')
-        # (cross code, reference line, crossed leaf signature); the base leaves
-        # are [g,u,b,w+,t~,u], NEXTERNAL=6 so CROSS = I*7 + J.
+        # (row D over the leaves, reference line, crossed leaf signature); the
+        # base leaves are [g,u,b,w+,t~,u]: particle 1, then particle 2, swapped
+        # with the final u, the decay leaves b w+ never moving.
+        # The last is a 3-cycle (the u stays incoming in slot 1, the final u
+        # comes in as the u~ of slot 2, the g goes out in slot 6).
         cases = [
-            (6 * 7 + 0, 'u~ u > t t~ g, t > b w+', (-2, 2, 5, 24, -6, 21)),
-            (0 * 7 + 6, 'g u~ > t t~ u~, t > b w+', (21, -2, 5, 24, -6, -2)),
+            ((5, 1, 2, 3, 4, 0), 'u~ u > t t~ g, t > b w+',
+             (-2, 2, 5, 24, -6, 21)),
+            ((0, 5, 2, 3, 4, 1), 'g u~ > t t~ u~, t > b w+',
+             (21, -2, 5, 24, -6, -2)),
+            ((1, 5, 2, 3, 4, 0), 'u u~ > t t~ g, t > b w+',
+             (2, -2, 5, 24, -6, 21)),
         ]
-        for cross, ref_line, pdgs in cases:
-            with self.subTest(cross=cross):
-                self._assert_decay_crossing(base, base_line, ref_line, cross,
+        for perm, ref_line, pdgs in cases:
+            with self.subTest(perm=perm):
+                self._assert_decay_crossing(base, base_line, ref_line, perm,
                                             pdgs)
 
     def test_decay_chain_crossing_identical_resonances(self):
@@ -1542,13 +1720,14 @@ print("F2PY_PDG_OK")
         """
         base_line = 'u u~ > z z g, z > e+ e-'
         base = self._generate(base_line, 'Proc_dc_zz_base')
-        # base leaves [u,u~,e+,e-,e+,e-,g], NEXTERNAL=7 so CROSS = I*8 + J.
+        # base leaves [u,u~,e+,e-,e+,e-,g]: particle 2 swapped with the g.
         cases = [
-            (0 * 8 + 7, 'u g > z z u, z > e+ e-', (2, 21, -11, 11, -11, 11, 2)),
+            ((0, 6, 2, 3, 4, 5, 1), 'u g > z z u, z > e+ e-',
+             (2, 21, -11, 11, -11, 11, 2)),
         ]
-        for cross, ref_line, pdgs in cases:
-            with self.subTest(cross=cross):
-                self._assert_decay_crossing(base, base_line, ref_line, cross,
+        for perm, ref_line, pdgs in cases:
+            with self.subTest(perm=perm):
+                self._assert_decay_crossing(base, base_line, ref_line, perm,
                                             pdgs)
 
 
@@ -2393,20 +2572,22 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     """standalone (madmatrix) must reproduce the crossing.
 
     The crossing reproduction test for the data-parallel madmatrix
-    backend. The extended flavor id encodes cross = id / nflav and flav = id %
-    nflav (0-based, NFLAV=1 here), so (I=0, J=3) -> cross = 3 -> id = 3. The key
-    extra check versus the scalar C++ backend is that DIFFERENT events in the
-    SAME SIMD page may carry DIFFERENT crossings while sharing the reduced
-    flavor: the per-event momentum permutation must not be vectorized.
+    backend. The extended flavor id encodes K = id / nflav, a row of the
+    crossing table, and flav = id % nflav (0-based, NFLAV=1 here). The tests
+    look the id of a crossed process up by its PDGs (_crossed_ids, through the
+    compiled flavorPDG of check_sa's crossing demo), never by its row number.
+    The key extra check versus the scalar C++ backend is that DIFFERENT events
+    in the SAME SIMD page may carry DIFFERENT crossings while sharing the
+    reduced flavor: the per-event momentum permutation must not be vectorized.
 
     The whole check needs to build and run real C++/SIMD code; skipped (not
     failed) if the compiler or the madmatrix build toolchain is unavailable.
     """
 
-    CROSS_2_3 = 3       # cross = I*(NEXTERNAL+1)+J = 0*5+3 = 3, id = cross*NFLAV+flav
-    CROSS_TO_QQ_GG = 23 # the crossing taking g g > q q~ to q q~ > g g
+    # the crossed processes of the g g > u u~ base the tests ask for
+    PDG_GQX_GQX = (21, -2, 21, -2)     # g u~ > g u~
+    PDG_QQ_GG = (2, -2, 21, 21)        # u u~ > g g
     IDENTITY = 0
-    OVERLAP = 2 * (NEXTERNAL + 1) + 1  # cross=11 (I=2,J=1): overlapping swap -> invalid
     tolerance = 1e-9
 
     debugging = getattr(unittest, 'debug', False)
@@ -2466,17 +2647,21 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         return '\n'.join(text)
 
     def _patch_and_build(self, pdir):
-        """Patch the shipped check_sa.cc so it can (a) evaluate the EXTENDED
-        flavor ids the crossing needs (the shipped cap stops at nmaxflavor) and
-        (b) demonstrate a per-event mixed-crossing page (env MG_FLVMIX/MG_SAMEMOM),
-        then build check_sa.exe. Skip if the madmatrix toolchain cannot build."""
+        """Patch the shipped check_sa.cc so it can (a) also be asked for the
+        first id PAST the crossing table (the shipped cap stops at the last
+        row, see test_id_past_the_table_returns_zero) and (b) demonstrate a
+        per-event mixed-crossing page (env MG_FLVMIX/MG_SAMEMOM), then build
+        check_sa.exe. Skip if the madmatrix toolchain cannot build."""
         check = pjoin(pdir, 'check_sa.cc')
         with open(check) as fsock:
             src = fsock.read()
+        cap = ('if( flavorID >= (unsigned int)( CPPProcess::nmaxflavor * '
+               'CPPProcess::ncross ) )')
+        self.assertEqual(src.count(cap), 1, 'the flavorID cap of check_sa.cc '
+                         'is gone')
         src = src.replace(
-            'if( flavorID >= CPPProcess::nmaxflavor )',
-            'if( flavorID >= CPPProcess::nmaxflavor * '
-            '(unsigned)((CPPProcess::npar+1)*(CPPProcess::npar+1)) )')
+            cap, 'if( flavorID > (unsigned int)( CPPProcess::nmaxflavor * '
+                 'CPPProcess::ncross ) )')
         src = src.replace(
             '    std::vector<unsigned int> flvVec( nevt, flavorID );',
             '    std::vector<unsigned int> flvVec( nevt, flavorID );\n'
@@ -2525,6 +2710,39 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
     def _me(self, pdir, flavor_id):
         """First-event ME for a single (uniform) flavor id."""
         return self._event_mes(pdir, flavor_id)[0]
+
+    def _crossed_ids(self, pdir):
+        """{signed PDG tuple: extended flavor id} of the crossed processes
+        check_sa's crossing demo shows (crossing_demo.dat), each with the PDGs
+        the compiled flavorPDG reports for it. Needs check_sa.exe built."""
+        out = subprocess.check_output(['./check_sa.exe'], cwd=pdir).decode()
+        ids = {}
+        for block in out.split(' flavorID ')[1:]:
+            fid = int(block.split()[0])
+            pdgs = tuple(int(line.split()[0]) for line in block.split('\n')
+                         if re.match(r'\s+-?\d+\s+\S+e[+-]\d+', line))
+            ids[pdgs] = fid
+        self.assertTrue(ids, 'no crossed flavorID in the demo output of %s:\n%s'
+                        % (pdir, out))
+        return ids
+
+    def _crossed_id(self, pdir, pdgs):
+        ids = self._crossed_ids(pdir)
+        self.assertIn(tuple(pdgs), ids, 'no crossed id evaluates %s in %s '
+                      '(demo ids: %s)' % (pdgs, pdir, ids))
+        return ids[tuple(pdgs)]
+
+    @staticmethod
+    def _table_size(pdir):
+        """(ncross, nmaxflavor) the madmatrix module of `pdir` was written
+        with."""
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            ncross = int(re.search(r'constexpr int ncross = (\d+);',
+                                   fsock.read()).group(1))
+        with open(pjoin(pdir, 'ProcessData.h')) as fsock:
+            nflav = int(re.search(r'constexpr int nmaxflavor = (\d+);',
+                                  fsock.read()).group(1))
+        return ncross, nflav
 
     # Test-only knobs spliced into the output's copy of the backend SigmaKin.cc,
     # right after the good-helicity scan has built the per-crossing lists:
@@ -2600,28 +2818,21 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         """Write a multiprocess in which `g g > q q~` is the FOLDED base of its
         crossings, and return that P* dir.
 
-        The good-helicity scan only visits the crossings this ME actually
-        records (cross_recorded / _scanned_crossings), so a crossed matrix
-        element can only be asked for on a base that folded it in -- and a
-        base that folds nothing is written without the crossing machinery at
-        all (see test_nothing_folded_drops_the_machinery). A bare
-        `generate u u~ > g g` records nothing, so the crossings below have to
-        come from a real multiparticle expansion: `pq pq > pq pq` with
-        pq = g u u~ folds `g u~ > g u~` (cross 3) and `u u~ > g g` (cross 23)
-        onto the `g g > q q~` base -- the same two directions the standalone
-        references below compute on their own.
+        The crossing table only holds the crossings this ME actually
+        records (every applicable one only with --crossing_table=all), so a
+        crossed matrix element can only be asked for on a base that folded it
+        in -- and a base that folds nothing is written without
+        the crossing machinery at all (see
+        test_nothing_folded_drops_the_machinery). A bare `generate u u~ > g g`
+        records nothing, so the crossings below have to come from a real
+        multiparticle expansion: `pq pq > pq pq` with pq = g u u~ folds
+        `g u~ > g u~` and `u u~ > g g` onto the `g g > q q~` base -- the same
+        two directions the standalone references below compute on their own.
         """
         pdir = self._output_pq_gg_qqx(name, options='--use_crossing=True')
         demo = pjoin(pdir, 'crossing_demo.dat')
         self.assertTrue(os.path.exists(demo),
                         'no crossing was folded onto %s' % pdir)
-        with open(demo) as fsock:
-            recorded = [int(tok) for tok in fsock.read().split()]
-        for wanted in (self.CROSS_2_3, self.CROSS_TO_QQ_GG):
-            self.assertIn(wanted, recorded,
-                          'crossing %d is not recorded in %s (got %s); the '
-                          'good-hel scan would not have scanned it'
-                          % (wanted, demo, recorded))
         with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
             self.assertTrue('use_crossing = true' in fsock.read(),
                             'the folded base %s was written without the '
@@ -2630,20 +2841,21 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     # ------------------------------------------------------------------
     def test_gg_qqx_crossed_gives_qg_qg(self):
-        """g g > q q~ crossed by (I=0,J=3) equals g u~ > g u~ at the same momenta
+        """g g > q q~ crossed to g u~ > g u~ equals it at the same momenta
         (both 2->2 massless -> identical RAMBO momenta for the same seed).
 
-        The base must be one that FOLDED this crossing in: the good-hel scan
-        only visits recorded crossings, so a bare `generate u u~ > g g` (which
-        records none) can no longer be driven with an arbitrary crossing code.
-        See _output_folded_gg_qqx."""
+        The base must be one that FOLDED this crossing in: its crossing table
+        holds the recorded crossings, so a bare `generate u u~ > g g` (which
+        records none) has no crossed row to ask for unless it is written with
+        --crossing_table=all. See _output_folded_gg_qqx."""
         crossed = self._output_folded_gg_qqx('ggqqx')
         reference = self._output_madmatrix(PROC_GQX_GQX, 'gqxgqx',
                                                 color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
 
-        crossed_val = self._me(crossed, self.CROSS_2_3)
+        crossed_val = self._me(crossed,
+                               self._crossed_id(crossed, self.PDG_GQX_GQX))
         identity_val = self._me(crossed, self.IDENTITY)
         reference_val = self._me(reference, self.IDENTITY)
 
@@ -2664,9 +2876,20 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                                                 color_basis='trace')
         self._patch_and_build(crossed)
         self._patch_and_build(reference)
+        # the u u~ > g g row of the g g > u u~ base is not an involution (the
+        # diagram pairing of the recorded crossing makes it a 4-cycle), so this
+        # is the madmatrix case where reading a row in the wrong view shows
+        import madgraph.various.process_checks as process_checks
+        crossed_id = self._crossed_id(crossed, self.PDG_QQ_GG)
+        row = process_checks._mg7_crossing_rows(crossed)[
+            crossed_id // self._table_size(crossed)[1]]
+        self.assertTrue(any(row[row[k]] != k for k in range(len(row))),
+                        'the u u~ > g g row %s is an involution: the fixture '
+                        'no longer tells the two views apart' % (row,))
         reference_val = self._me(reference, self.IDENTITY)
         self.assertAlmostEqual(
-            self._me(crossed, self.CROSS_TO_QQ_GG), reference_val,
+            self._me(crossed, crossed_id),
+            reference_val,
             delta=self.tolerance * abs(reference_val),
             msg='g g > q q~ crossed != u u~ > g g identity')
 
@@ -2674,21 +2897,23 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         """THE point of the SIMD port: within ONE SIMD page, events carrying
         DIFFERENT crossings (but the same reduced flavor) each get their own
         crossed matrix element. Feed identical momenta to every event, alternate
-        the crossing per event (even -> identity, odd -> cross 2<->3) and check
+        the crossing per event (even -> identity, odd -> the g u~ > g u~ row)
+        and check
         each lane independently.
 
-        Both codes used here are RECORDED crossings of the folded base, which is
-        what the good-hel scan covers (see _output_folded_gg_qqx)."""
+        The crossing used here is a RECORDED one of the folded base, which is
+        what the crossing table holds (see _output_folded_gg_qqx)."""
         pdir = self._output_folded_gg_qqx('ggqqx_perevent')
         self._patch_and_build(pdir)
+        crossed_id = self._crossed_id(pdir, self.PDG_GQX_GQX)
         identity_val = self._me(pdir, self.IDENTITY)
-        crossed_val = self._me(pdir, self.CROSS_2_3)
+        crossed_val = self._me(pdir, crossed_id)
         self.assertNotAlmostEqual(identity_val, crossed_val, places=6,
                                   msg='degenerate: identity == crossed')
         mixed = self._event_mes(
             pdir, self.IDENTITY,
             env={'MG_SAMEMOM': '1',
-                 'MG_FLVMIX': '%d,%d' % (self.IDENTITY, self.CROSS_2_3)})
+                 'MG_FLVMIX': '%d,%d' % (self.IDENTITY, crossed_id)})
         self.assertGreaterEqual(len(mixed), 4,
                                 'need several events to prove per-event crossing')
         for i, me in enumerate(mixed):
@@ -2696,7 +2921,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             self.assertAlmostEqual(
                 me, expected, delta=self.tolerance * abs(expected) + 1e-12,
                 msg='event %d (cross %s) got %r, expected %r'
-                % (i, 'id' if i % 2 == 0 else '2<->3', me, expected))
+                % (i, 'id' if i % 2 == 0 else 'g u~ > g u~', me, expected))
 
     def test_padding_helicity_row_contributes_zero(self):
         """A lane whose crossing has FEWER good helicities than the per-lane
@@ -2707,19 +2932,22 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         wavefunction, so a padding lane had p = 0, its massless propagators
         evaluated 0/0 and its |M|^2 came out NaN. Nothing keeps the
         per-crossing counts equal (a row at ~1e-30 in one crossing can be an
-        exact zero in another), so the padding row is forced: crossing 23's
-        list loses its last row after the scan while the loop bound stays.
+        exact zero in another), so the padding row is forced: the list of
+        the u u~ > g g row loses its last row after the scan while the loop
+        bound stays.
         Those lanes must return the full value minus that row's contribution,
         measured on its own without any padding (MG_ONLYLAST), and the
         identity lanes sharing the page must not move."""
         pdir = self._output_folded_gg_qqx('ggqqx_padding')
         self._add_padding_knobs(pdir)
         self._patch_and_build(pdir)
-        cross = self.CROSS_TO_QQ_GG
+        cross = self._crossed_id(pdir, self.PDG_QQ_GG)
+        # the knobs take the crossing-table row: id / nmaxflavor
+        row = cross // self._table_size(pdir)[1]
         identity_val = self._me(pdir, self.IDENTITY)
         full_val = self._me(pdir, cross)
         dropped_val = self._event_mes(pdir, cross,
-                                      env={'MG_ONLYLAST': str(cross)})[0]
+                                      env={'MG_ONLYLAST': str(row)})[0]
         # Non-vacuous: the dropped row carries a visible share of |M|^2, so a
         # padding lane that silently kept it would fail too.
         self.assertGreater(dropped_val, 1e-3 * full_val,
@@ -2728,7 +2956,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         expected = full_val - dropped_val
         mixed = self._event_mes(
             pdir, self.IDENTITY,
-            env={'MG_PADCROSS': str(cross), 'MG_SAMEMOM': '1',
+            env={'MG_PADCROSS': str(row), 'MG_SAMEMOM': '1',
                  'MG_FLVMIX': '%d,%d' % (self.IDENTITY, cross)})
         self.assertGreaterEqual(len(mixed), 4,
                                 'need several events to mix crossings in a page')
@@ -2742,31 +2970,29 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                 msg='event %d (cross %s) got %r, expected %r'
                 % (i, 'id' if i % 2 == 0 else cross, me, want))
 
-    def test_invalid_overlapping_swap_returns_zero(self):
-        """An overlapping-swap crossing code (I=2, J=1 -> cross 11) is invalid;
-        the per-event denominator must short-circuit its matrix element to 0.
+    def test_id_past_the_table_returns_zero(self):
+        """An extended id past the last row of the crossing table names no
+        crossing: its matrix element must come back as an exact 0 -- not an
+        out-of-bounds read of the per-row good-helicity and C-parity tables,
+        not an abort.
 
         Asked of a base that really folds crossings, since only such a base is
         written with the crossing machinery (one that folds nothing decodes no
-        crossing code at all). No generation can record an invalid code, so 11
-        is also an UNRECORDED one: this pins that the unrecorded-crossing guard
-        of calculate_jamps lets it through to its 0 instead of aborting (an
-        abort fails check_output in _me)."""
+        crossing at all). The shipped check_sa caps the id at the table, so
+        _patch_and_build lets exactly one more row through."""
         import madgraph.various.process_checks as process_checks
         pdir = self._output_folded_gg_qqx('ggqqx_inv')
-        compiled = process_checks._mg7_compiled_crossings(pdir)
-        self.assertIn(self.CROSS_2_3, compiled,
-                      'the recorded code %d is missing from %s'
-                      % (self.CROSS_2_3, sorted(compiled)))
-        self.assertNotIn(self.OVERLAP, compiled,
-                         'the invalid code %d is recorded in %s'
-                         % (self.OVERLAP, pdir))
+        ncross, nflav = self._table_size(pdir)
+        self.assertEqual(process_checks._mg7_compiled_crossings(pdir),
+                         set(range(ncross)),
+                         'check crossing would not ask %s for every row of '
+                         'its table' % pdir)
         self._patch_and_build(pdir)
         # Guard the guard: a build that returned 0 for everything would pass.
         self.assertNotEqual(self._me(pdir, self.IDENTITY), 0.0,
                             'degenerate: the identity ME is already 0')
-        self.assertEqual(self._me(pdir, self.OVERLAP), 0.0,
-                         'an overlapping-swap code must give a zero ME')
+        self.assertEqual(self._me(pdir, ncross * nflav), 0.0,
+                         'an id past the crossing table must give a zero ME')
 
     def test_use_crossing_false_byte_identical(self):
         """--use_crossing=False must emit NO crossing machinery (every crossing
@@ -2785,7 +3011,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         off_src = self._cpp_source(off_dir)
         self.assertIn('use_crossing = true', on_src)
         self.assertIn('use_crossing = false', off_src)
-        for token in ('spincol_cross', 'base_pdg',
+        for token in ('cross_gather( xcr', 'base_pdg',
                       'cGoodHelOfCross', 'xmom', 'icsign'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
@@ -2826,7 +3052,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         on_src = self._cpp_source(self._output_folded_gg_qqx('ggqqx_defaulton'))
         self.assertIn('use_crossing = true', on_src)
         self.assertIn('use_crossing = false', out_src)
-        for token in ('spincol_cross', 'base_pdg',
+        for token in ('cross_gather( xcr', 'base_pdg',
                       'cGoodHelOfCross', 'xmom'):
             self.assertIn(token, on_src,
                           '%s should be emitted with crossing on' % token)
@@ -2900,8 +3126,8 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         """--use_crossing=True on a process that folds nothing writes the
         plain path.
 
-        A bare `u u~ > g g` records no crossed subprocess, so the good-helicity
-        scan and the runtime guard accept the identity only: the per-lane
+        A bare `u u~ > g g` records no crossed subprocess, so its crossing
+        table would hold the identity alone: the per-lane
         crossing path (per-state external blend, per-event momentum gather,
         cNGoodMaxCross loop) could only ever recompute what the plain path
         computes. It used to be written all the same, being gated on the flag
@@ -2983,25 +3209,69 @@ class TestCrossingPartition(unittest.TestCase):
             g.generate_matrix_elements()
         return groups, export_v4.ProcessExporterFortran()
 
+    @staticmethod
+    def _class_reps(me):
+        """Signed PDGs of each flavor class's representative (members[0], the
+        row the madevent FLAVOR table is built from), in class order."""
+        _classes, class_pdgs = me.get_external_flavors_with_iden(
+            return_pdgs=True)
+        return [tuple(members[0]) for members in class_pdgs]
+
     def test_partition_pp_jj(self):
+        """Every routed flavor must be reproduced EXACTLY, slot by slot, by the
+        base row its FLAV_IDX names crossed through the table row it names:
+        the dependent passes its momenta in its own leg order. That pins the
+        whole index -- the row K, the base flavor class (the representative,
+        not the ordinal row of the physical flavor table, which names another
+        process from three merged flavors on) and the direction the row is
+        read in. (The general, non-involution case needs several quark
+        flavors: TestCrossingRoutesFinalLegReorder.)"""
+        import madgraph.iolibs.crossing_table as crossing_table
         groups, exp = self._groups('p p > j j')
         eliminated_any = False
         for g in groups:
             mes = g.get('matrix_elements')
-            bases, routing = exp.partition_crossing_classes(mes)
+            bases, routing = exp.partition_crossing_classes(mes, commit=True)
             self.assertEqual(len(routing), len(mes))
             for i in range(len(mes)):
                 self.assertTrue(routing[i], 'a module with no flavors')
-                for (b, iflav) in routing[i]:
+                reps = self._class_reps(mes[i])
+                self.assertEqual(len(routing[i]), len(reps))
+                for flav0, (b, iflav) in enumerate(routing[i]):
                     self.assertIn(b, bases)            # routes to a real base
                     self.assertGreaterEqual(iflav, 1)  # 1-based FLAV_IDX
-                    if i not in bases:
-                        # an eliminated module never routes back to itself
-                        self.assertNotEqual(b, i)
+                    if i in bases:
+                        self.assertEqual((b, iflav), (i, flav0 + 1))
+                        continue
+                    # an eliminated module never routes back to itself
+                    self.assertNotEqual(b, i)
+                    nflav_b = len(self._class_reps(mes[b]))
+                    K, bflav = divmod(iflav - 1, nflav_b)
+                    row = exp.madevent_crossing_table(mes[b])[K]
+                    self.assertIn(-1, row.SD, 'not a genuine crossing')
+                    anti = crossing_table.make_anti(
+                        mes[b].get('processes')[0].get('model'))
+                    self.assertEqual(
+                        row.crossed(self._class_reps(mes[b])[bflav], anti),
+                        reps[flav0],
+                        '%s class %d is routed to a row that does not '
+                        'reproduce it' % (mes[i].get('processes')[0]
+                                          .shell_string(), flav0))
             if len(bases) < len(mes):
                 eliminated_any = True
         self.assertTrue(eliminated_any,
                         'no module was eliminated by crossing in p p > j j')
+
+    def test_partition_is_pure_without_commit(self):
+        """Asking whether a group routes (commit=False, what the cross-group
+        routing does group by group) must leave every table as it was."""
+        groups, exp = self._groups('p p > j j')
+        for g in groups:
+            mes = g.get('matrix_elements')
+            before = exp.partition_crossing_classes(mes)
+            self.assertEqual([len(exp.madevent_crossing_table(me))
+                              for me in mes], [1] * len(mes))
+            self.assertEqual(exp.partition_crossing_classes(mes), before)
 
 
 class TestCrossingRecycledHelicityUnion(unittest.TestCase):
@@ -3018,9 +3288,9 @@ class TestCrossingRecycledHelicityUnion(unittest.TestCase):
     crossing iff tau[h] is good for the base -- the union to bake is
     G_base U tau(G_base).
 
-    Feeding it the other map instead -- the GHREMAP sigma[h][k] =
-    base_row[h][PERM[k]]*SGN[k], which matrix<b>_orig.f does realise because it
-    takes NHEL at run time -- looks equally plausible and is silently wrong. It
+    Feeding it the other map instead -- the permuted sigma[h][k] =
+    base_row[h][D[k]]*SD[k] the former GHREMAP used -- looks equally plausible
+    and is silently wrong. It
     cost -28.5% on the q q~ > q q~ cross section (5.19e6 -> 3.71e6 pb): the
     routed t-channel subprocess needs 4 of the base's 16 rows and the sigma union
     supplied 2 of them. Both maps are permutations, both are involutions here,
@@ -3065,7 +3335,7 @@ class TestCrossingRecycledHelicityUnion(unittest.TestCase):
         for g in groups:
             g.generate_matrix_elements()
             mes = g.get('matrix_elements')
-            bases, routing = exp.partition_crossing_classes(mes)
+            bases, routing = exp.partition_crossing_classes(mes, commit=True)
             for idep, route in enumerate(routing or []):
                 if route is None or idep in bases:
                     continue
@@ -3083,10 +3353,11 @@ class TestCrossingRecycledHelicityUnion(unittest.TestCase):
         differs = 0
         for exp, base_me, cross in classes:
             bh = [tuple(x) for x in base_me.get_helicity_matrix()]
-            tables = exp.compute_crossing_tables(base_me)
-            nx = tables['nexternal']
-            perm = [tables['perm'][cross * nx + k] for k in range(nx)]
-            sgn = [tables['ic'][cross * nx + k] for k in range(nx)]
+            row = exp.madevent_crossing_table(base_me)[cross]
+            nx = len(row.D)
+            perm = list(row.D)
+            # tau flips in place, so its sign is the base-slot one
+            sgn = list(row.SB)
 
             tau = exp._crossgroup_base_helsignmap(base_me, cross)
             self.assertIsNotNone(
@@ -3104,8 +3375,9 @@ class TestCrossingRecycledHelicityUnion(unittest.TestCase):
                     'sign flip: a recycled optim cannot apply a slot '
                     'permutation' % (h, cross))
 
-            # ... and for a crossing that does move legs across, sigma is a
-            # genuinely different map, so getting this wrong is not academic.
+            # ... and for a crossing that does move legs across, the permuted
+            # map is a genuinely different one, so getting this wrong is not
+            # academic.
             sigma = exp._helicity_row_permutation(
                 *exp._crossed_helicity_configs(base_me, cross))
             if perm != list(range(nx)) and sigma is not None and sigma != tau:
@@ -3227,7 +3499,7 @@ class TestCrossingConfigMap(unittest.TestCase):
 
         for group in groups:                      # Track A, within-group
             mes = group.get('matrix_elements')
-            bases, routing = exp.partition_crossing_classes(mes)
+            bases, routing = exp.partition_crossing_classes(mes, commit=True)
             for i, route in enumerate(routing):
                 if i in bases:
                     continue
@@ -3265,7 +3537,7 @@ class TestCrossingConfigMap(unittest.TestCase):
                 % (label, ngraphs))
             dprops, nx = self._propagators(dep)
             bprops, _ = self._propagators(base)
-            perm = exp.get_crossing_permutation(cross, nx)[0]
+            perm = exp.madevent_crossing_table(base)[cross].D
             d2b = {k + 1: perm[k] + 1 for k in range(nx)}
             allset = frozenset(range(1, nx + 1))
             fmt = lambda ps: sorted((sorted(s), pdg) for (s, pdg) in ps)
@@ -3354,96 +3626,18 @@ class TestCrossingConfigMap(unittest.TestCase):
                           % (name, said))
 
 
-class TestCrossingFlavorRepresentative(unittest.TestCase):
-    """The PDG signature reported for a flavor index must be the signature of the
-    flavor class that index actually selects.
+class TestCrossingRoutesFinalLegReorder(unittest.TestCase):
+    """The flavour-changing annihilation ``q q~ > q' q~'`` of ``Q Q~ > Q Q~``
+    routes off ``Q Q > Q Q``.
 
-    compute_crossing_pdg_entries reads the PDG table of _build_flav_pdg_tables,
-    which has ONE ROW PER PHYSICAL FLAVOR COMBINATION, while its flavor index
-    counts the coupling-equivalence classes of get_external_flavors_with_iden()
-    -- the FLAVOR table the backends read is built from each class's
-    representative flav[0]. Row f is the representative of class f only while the
-    leading rows happen to BE the representatives. ``p p > j j`` with the
-    crossings unfolded has ``Q Q~ > Q Q~``, whose three classes sit at rows 0, 1
-    and 4: taking the ordinal names ``q q~ > q'' q~''`` (a member of class 1) for
-    the class that is really ``q q~' > q q~'``. The routing decision, the
-    recorded-crossing intersection behind crossed_flavors.dat and the C++
-    demo_pdg table all match on exactly this signature.
+    The crossing that reaches it delivers the two light final legs the other
+    way round from the module's own leg order. The former
+    I*(NEXTERNAL+1)+J code could not reorder final legs, so that one class kept
+    the whole module compiled (and a generation-time split, MG_SPLIT_CROSSING,
+    was needed to free it). A crossing-table row is any permutation: the class
+    routes through a 3-cycle, and the module becomes a router."""
 
-    ``allowed_flavors_with_iden_pdgs`` is the independent oracle here: it carries
-    the class representative's PDGs directly and shares no code with the table
-    indexing under test."""
-
-    def _mes(self, proc):
-        import madgraph.iolibs.group_subprocs as group_subprocs
-        import madgraph.iolibs.export_v4 as export_v4
-        cmd = cmd_interface.MasterCmd()
-        cmd.run_cmd('import model sm')
-        # The default multi-flavor j is the point: with a single quark flavor
-        # every class is a single row and the misalignment cannot appear.
-        # Unfolded (MG_MERGE_CROSSING=off) so the crossed modules still exist,
-        # exactly as TestCrossingPartition does.
-        old = os.environ.get('MG_MERGE_CROSSING')
-        os.environ['MG_MERGE_CROSSING'] = 'off'
-        try:
-            cmd.run_cmd('generate %s --use_crossing=True' % proc)
-        finally:
-            if old is None:
-                os.environ.pop('MG_MERGE_CROSSING', None)
-            else:
-                os.environ['MG_MERGE_CROSSING'] = old
-        groups = group_subprocs.SubProcessGroup.group_amplitudes(
-            cmd._curr_amps, 'madevent')
-        mes = []
-        for g in groups:
-            g.generate_matrix_elements()
-            mes.extend(g.get('matrix_elements'))
-        return mes, export_v4.ProcessExporterFortran()
-
-    def test_identity_signature_is_the_class_representative(self):
-        mes, exp = self._mes('p p > j j')
-        self.assertTrue(mes)
-        for me in mes:
-            _classes, class_pdgs = \
-                me.get_external_flavors_with_iden(return_pdgs=True)
-            expected = [tuple(members[0]) for members in class_pdgs]
-            got = [pdg for (_idx, cross, _flav, pdg) in
-                   exp.compute_crossing_pdg_entries(me) if cross == 0]
-            self.assertEqual(
-                got, expected,
-                'identity signatures of %s do not name its flavor classes'
-                % me.get('processes')[0].shell_string())
-
-    def test_fixture_exercises_a_misaligned_matrix_element(self):
-        """Guard the test above from going toothless: if grouping ever stops
-        producing a matrix element whose classes are NOT the leading rows, the
-        assertion holds trivially and no longer covers the defect."""
-        mes, exp = self._mes('p p > j j')
-        misaligned = [me for me in mes
-                      if exp._flavor_rep_rows(me)
-                      != list(range(len(exp._flavor_rep_rows(me))))]
-        self.assertTrue(
-            misaligned,
-            'no matrix element with a non-ordinal class representative; '
-            'the representative test no longer covers the ordinal bug')
-
-
-class TestCrossingReorderCandidates(unittest.TestCase):
-    """find_reorder_candidates names the modules that keep their own matrix<i>.f
-    only because one flavor class is listed with its final legs the other way
-    round -- the modules a generation-time split could free.
-
-    ``p p > j j`` unfolded has the canonical example: ``Q Q~ > Q Q~`` routes two
-    of its three classes to ``Q Q > Q Q`` as generated, and is held back by the
-    flavor-changing annihilation ``q q~ > q' q~'``, which the crossing delivers
-    with the two light legs swapped. The module cannot relabel itself out of it
-    (its leg pattern is shared by every row) and no single ordering suits all
-    three classes, so the class has to be peeled into its own subprocess.
-
-    This is analysis only: the second test pins that calling it does not move the
-    routing, so it can be trusted not to change any output."""
-
-    def _mes(self, proc):
+    def _groups(self, proc):
         import madgraph.iolibs.group_subprocs as group_subprocs
         import madgraph.iolibs.export_v4 as export_v4
         cmd = cmd_interface.MasterCmd()
@@ -3459,48 +3653,85 @@ class TestCrossingReorderCandidates(unittest.TestCase):
                 os.environ['MG_MERGE_CROSSING'] = old
         groups = group_subprocs.SubProcessGroup.group_amplitudes(
             cmd._curr_amps, 'madevent')
-        out = []
         for g in groups:
             g.generate_matrix_elements()
+        return groups, export_v4.ProcessExporterFortranMEGroup()
+
+    def test_qqx_module_routes_every_class(self):
+        """Every class of Q Q~ > Q Q~ routes, each reproduced EXACTLY by the
+        base row its FLAV_IDX names crossed through its table row -- with the
+        default multi-flavor j, where it counts: one routed row is a 3-cycle,
+        and one class of the module is not the ordinal row of its physical
+        flavor table (a representative taken by position would name another
+        process)."""
+        import madgraph.iolibs.crossing_table as crossing_table
+        groups, exp = self._groups('p p > j j')
+        found = misaligned = False
+        for g in groups:
             mes = g.get('matrix_elements')
-            if len(mes) > 1:
-                out.append(mes)
-        return out, export_v4.ProcessExporterFortran()
+            names = [m.get('processes')[0].shell_string(print_id=False)
+                     for m in mes]
+            if 'QQx_QQx' not in names:
+                continue
+            found = True
+            i = names.index('QQx_QQx')
+            bases, routing = exp.partition_crossing_classes(mes, commit=True)
+            self.assertNotIn(i, bases, 'Q Q~ > Q Q~ still keeps its own '
+                             'matrix element: %s' % names)
+            reps = TestCrossingPartition._class_reps(mes[i])
+            physical = [pdg for _f, pdg in
+                        exp.crossing_base_entries(mes[i], 'rows')]
+            misaligned = any(rep != physical[c] for c, rep in enumerate(reps))
+            rows = []
+            for flav0, (b, iflav) in enumerate(routing[i]):
+                base_reps = TestCrossingPartition._class_reps(mes[b])
+                K, bflav = divmod(iflav - 1, len(base_reps))
+                row = exp.madevent_crossing_table(mes[b])[K]
+                rows.append(row)
+                anti = crossing_table.make_anti(
+                    mes[b].get('processes')[0].get('model'))
+                self.assertEqual(row.crossed(base_reps[bflav], anti),
+                                 reps[flav0],
+                                 'class %d of Q Q~ > Q Q~ is routed to a row '
+                                 'that does not reproduce it' % flav0)
+            self.assertTrue(
+                any(any(r.D[r.D[k]] != k for k in range(len(r.D)))
+                    for r in rows),
+                'no class of Q Q~ > Q Q~ needed a non-involution row; the '
+                'fixture no longer covers the final-leg reorder')
+        self.assertTrue(found, 'no Q Q~ > Q Q~ module in p p > j j')
+        self.assertTrue(misaligned, 'every class of Q Q~ > Q Q~ is its ordinal '
+                        'physical row: the representative check has no teeth')
 
-    def test_qqx_is_held_back_by_one_class(self):
-        groups, exp = self._mes('p p > j j')
-        found = []
-        for mes in groups:
-            names = [m.get('processes')[0].shell_string() for m in mes]
-            bases, _routing = exp.partition_crossing_classes(mes)
-            for i, peel in exp.find_reorder_candidates(mes).items():
-                found.append((names[i], len(peel), peel))
-                # a candidate must be a module that currently keeps its own ME
-                self.assertIn(i, bases,
-                              '%s is not a base; nothing to free' % names[i])
-                nx, nini = mes[i].get_nexternal_ninitial()
-                for _flav0, sigma, base_index, iflav in peel:
-                    # sigma permutes FINAL legs only -- the beams are not
-                    # interchangeable for the PDF
-                    self.assertEqual(sorted(sigma), list(range(nx)))
-                    self.assertEqual(list(sigma[:nini]), list(range(nini)))
-                    self.assertNotEqual(tuple(sigma), tuple(range(nx)),
-                                        'a candidate needs a real reorder')
-                    self.assertIn(base_index, bases)
-                    self.assertGreaterEqual(iflav, 1)
-        self.assertTrue(found, 'no reorder candidate found in p p > j j; the '
-                               'fixture no longer covers the split case')
-        self.assertTrue(any(n.endswith('QQx_QQx') for n, _c, _p in found),
-                        'expected Q Q~ > Q Q~ among the candidates: %s' % found)
-
-    def test_detection_does_not_move_the_routing(self):
-        """It is analysis: asking must not change what routing decides."""
-        groups, exp = self._mes('p p > j j')
-        for mes in groups:
-            before = exp.partition_crossing_classes(mes)
-            exp.find_reorder_candidates(mes)
-            after = exp.partition_crossing_classes(mes)
-            self.assertEqual(before, after)
+    def test_three_cycle_helicity_map_is_the_base_slot_sign_flip(self):
+        """The recycled optim's helicity union for a 3-cycle row must flip the
+        signs of the base slots whose leg changes side (SB), in place. For an
+        involution SB and SD coincide, so only a row like this one pins
+        which of the two _crossgroup_base_helsignmap reads."""
+        groups, exp = self._groups('p p > j j')
+        checked = 0
+        for g in groups:
+            mes = g.get('matrix_elements')
+            bases, routing = exp.partition_crossing_classes(mes, commit=True)
+            for i, route in enumerate(routing):
+                if i in bases:
+                    continue
+                for (b, iflav) in route:
+                    nflav_b = len(mes[b].get_external_flavors_with_iden())
+                    K = (iflav - 1) // nflav_b
+                    row = exp.madevent_crossing_table(mes[b])[K]
+                    if row.SB == row.SD:
+                        continue
+                    bh = [tuple(x) for x in mes[b].get_helicity_matrix()]
+                    tau = exp._crossgroup_base_helsignmap(mes[b], K)
+                    self.assertIsNotNone(tau)
+                    for h, config in enumerate(bh, 1):
+                        self.assertEqual(
+                            bh[tau[h - 1] - 1],
+                            tuple(config[s] * row.SB[s]
+                                  for s in range(len(config))))
+                    checked += 1
+        self.assertTrue(checked, 'no routed row has SB != SD in p p > j j')
 
 
 class TestMadeventCrossingHelicity(unittest.TestCase):
@@ -3516,6 +3747,13 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
     polarisation is physically CHIRAL (asymmetric transverse states) with a
     populated longitudinal (0) state; a scrambled relabel typically reads a
     quark leg's +-1 into the W+ slot and destroys that structure.
+
+    The quarks pin the other half: every one of them sits on the W line, so a
+    (massless) quark is left-handed and an antiquark right-handed in EVERY
+    event, incoming or outgoing, crossed or not. A crossed fermion changes
+    between particle and antiparticle, which reverses its helicity-state
+    order: relabelling it by copying the base's helicity DIGIT instead of its
+    VALUE writes it with the wrong sign.
 
     This runs a full (small) madevent generation, so it is a slow test.
     """
@@ -3546,8 +3784,14 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
 
         counts = {-1: 0, 0: 0, 1: 0}
         nevt = 0
+        wrong_quark = []
         for event in lhe_parser.EventFile(lhe):
             for part in event:
+                if 1 <= abs(part.pid) <= 4 and part.status in (-1, 1):
+                    want = -1 if part.pid > 0 else 1
+                    if int(round(part.helicity)) != want:
+                        wrong_quark.append((part.pid, part.status,
+                                            part.helicity))
                 if part.pid == 24 and part.status == 1:  # the final-state W+
                     hel = int(round(part.helicity))
                     self.assertIn(hel, (-1, 0, 1),
@@ -3561,6 +3805,10 @@ class TestMadeventCrossingHelicity(unittest.TestCase):
         self.assertEqual(total, nevt, 'expected exactly one final-state W+ per '
                          'event (got %d W+ in %d events)' % (total, nevt))
 
+        self.assertFalse(wrong_quark,
+                         '%d quark(s) with the wrong helicity for a W vertex '
+                         '(pid, status, helicity), e.g. %s'
+                         % (len(wrong_quark), wrong_quark[:5]))
         fm, f0, fp = (counts[-1] / total, counts[0] / total, counts[1] / total)
         # All three W+ helicity states populated, incl. the longitudinal 0.
         for hel in (-1, 0, 1):
@@ -4419,35 +4667,30 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
         return best
 
 
-class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
-    """MG_SPLIT_CROSSING peels the one flavor class that keeps a merged module
-    compiled, into a sibling GENERATED with its final legs the other way round.
+class TestMadeventCrossingFinalLegReorder(unittest.TestCase):
+    """madevent routes a flavor class whose crossing reorders the final legs.
 
     ``Q Q~ > Q Q~`` bundles three coupling classes and drops its own matrix
-    element only if EVERY one of them routes. Two do; the flavour-changing
-    annihilation ``q q~ > q' q~'`` does not, because the crossing that reaches
-    it off ``Q Q > Q Q`` (I=0/J=5) delivers the two light legs as ``(q~', q')``
-    while the module lists ``(q', q~')``. A module cannot list one class
-    differently -- its leg pattern is shared by every row -- so the class is
-    peeled into a sibling with the swapped pattern and the two modules are given
-    COMPLEMENTARY halves of the flavors.
+    element only if EVERY one of them routes. The flavour-changing annihilation
+    ``q q~ > q' q~'`` is reached off ``Q Q > Q Q`` only with its two light final
+    legs the other way round -- a 3-cycle, which the crossing table carries as
+    one of its rows. (Under the former I*(NEXTERNAL+1)+J code it kept the module
+    compiled, or needed a generation-time split of the class.)
 
     ``q q > q q`` with ``q = u d u~ d~`` rather than ``p p > j j``: same group,
-    same peel, no gluon subprocesses, so a generation takes seconds.
+    same class, no gluon subprocesses, so a generation takes seconds.
 
-    What is pinned here is what fails SILENTLY:
+    What is pinned here:
 
-    * the halves must partition the flavors -- no combination covered twice (a
-      double count, wrong by a factor 2) and none dropped. This is the assertion
-      that catches IdentifyMETag re-merging the two modules: that tag identifies
-      processes agreeing up to a LEG PERMUTATION, which is exactly what the two
-      halves are, and merging them relabels one into the other's leg order and
-      undoes the split with nothing to show for it.
-    * the peel must actually eliminate a compiled matrix element, or the whole
-      feature is cost without benefit.
-    * it must not fire for an exporter that cannot consume a split pattern; mg7
-      builds one module per leg pattern and dies with "no valid flavor
-      configurations found for diagram 2" on the half that no longer has them.
+    * the routing eliminates compiled matrix elements -- the one base serves
+      every other subprocess of the group, each a router;
+    * every router dispatches each of its flavors to an extended FLAV_IDX
+      whose row exists in the base's compiled crossing table;
+    * the group still lists the subprocesses and flavor combinations of the
+      crossing-off build (the routers keep their own leshouche/PDF side).
+
+    The numbers themselves are checked elsewhere: `check crossing q q > q q`
+    per flavor, TestMadeventInclusiveCrossingXsec for the integral.
 
     The colour/helicity correctness of the routed events is NOT checked here --
     that needs event samples, and TestMadeventRouterColorSelection is where that
@@ -4458,13 +4701,13 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
     PROCESS = 'q q > q q'
 
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp(prefix='cross_split_')
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_reorder_')
 
     def tearDown(self):
         if os.path.isdir(self.tmpdir):
             shutil.rmtree(self.tmpdir)
 
-    def _generate(self, name, split, fmt='madevent', options=''):
+    def _generate(self, name, fmt='madevent', options=''):
         from madgraph import MG5DIR
         outdir = pjoin(self.tmpdir, name)
         card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
@@ -4472,10 +4715,7 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
             fsock.writelines(['%s\n' % self.DEFINE,
                               'generate %s %s\n' % (self.PROCESS, _pin_crossing(options)),
                               'output %s %s -f -nojpeg\n' % (fmt, outdir)])
-        env = dict(os.environ)
-        env['MG_SPLIT_CROSSING'] = 'on' if split else ''
-        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card],
-                        env=env)
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), card])
         return outdir
 
     @staticmethod
@@ -4503,8 +4743,7 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
     @classmethod
     def _physical(cls, pdir, nini=2):
         """Counter of the PHYSICAL (initial, final) flavor combinations the
-        directory covers, blind to the order the legs are listed in -- which is
-        precisely what the two halves disagree about on purpose."""
+        directory covers, blind to the order the legs are listed in."""
         seen = {}
         for rows in cls._leshouche(pdir).values():
             for row in rows:
@@ -4512,98 +4751,73 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
                 seen[key] = seen.get(key, 0) + 1
         return seen
 
-    def test_split_partitions_the_flavors_and_frees_a_matrix_element(self):
-        plain = self._generate('plain', split=False,
-                               options='--use_crossing=False')
-        split = self._generate('split', split=True)
+    def test_routing_covers_the_flavors_and_frees_matrix_elements(self):
+        plain = self._generate('plain', options='--use_crossing=False')
+        routed = self._generate('routed')
 
         pdir_plain = pjoin(plain, 'SubProcesses', 'P1_qq_qq')
-        pdir_split = pjoin(split, 'SubProcesses', 'P1_qq_qq')
-        # Generation has to have COMPLETED for both, not merely made the
-        # directory: a split the exporter cannot digest leaves the P directory
-        # behind without its flavor tables, and every assertion below would
-        # then fail on a missing file rather than on what it means to check.
-        for pdir in (pdir_plain, pdir_split):
-            self.assertTrue(os.path.isdir(pdir),
-                            '%s was not generated' % pdir)
+        pdir_routed = pjoin(routed, 'SubProcesses', 'P1_qq_qq')
+        for pdir in (pdir_plain, pdir_routed):
             self.assertTrue(
                 os.path.isfile(pjoin(pdir, 'leshouche.inc')),
                 '%s has no leshouche.inc -- the generation did not finish'
                 % pdir)
 
-        # (1) the peel really happened: an extra subprocess, and it is a ROUTER
+        # the same subprocesses, and fewer compiled matrix elements
         sub_plain = self._leshouche(pdir_plain)
-        sub_split = self._leshouche(pdir_split)
-        self.assertEqual(len(sub_split), len(sub_plain) + 1,
-                         'the split did not add a subprocess to the group '
-                         '(%d vs %d) -- MG_SPLIT_CROSSING did not fire'
-                         % (len(sub_split), len(sub_plain)))
-
-        # (2) and it PAYS: fewer compiled matrix elements than crossing-off
+        sub_routed = self._leshouche(pdir_routed)
+        self.assertEqual(len(sub_routed), len(sub_plain))
         n_plain, r_plain = self._counts(pdir_plain)
-        n_split, r_split = self._counts(pdir_split)
+        n_routed, r_routed = self._counts(pdir_routed)
         self.assertEqual(r_plain, 0,
                          '--use_crossing=False emitted %d router(s)' % r_plain)
-        self.assertLess(n_split, n_plain,
-                        'the split compiles %d matrix element(s), no better '
-                        'than the %d of --use_crossing=False -- the peel costs '
-                        'a subprocess and buys nothing' % (n_split, n_plain))
-        self.assertEqual(r_split, len(sub_split) - n_split,
-                         'every subprocess of the split group that is not a '
+        self.assertLess(n_routed, n_plain,
+                        'the crossing compiles %d matrix element(s), no better '
+                        'than the %d of --use_crossing=False'
+                        % (n_routed, n_plain))
+        self.assertEqual(r_routed, len(sub_routed) - n_routed,
+                         'every subprocess of the routed group that is not a '
                          'compiled matrix element should be a router')
+        # a single compiled Q Q > Q Q-type base serves the whole group: the
+        # flavour-changing class did not keep Q Q~ > Q Q~ compiled
+        self.assertEqual(n_routed, 1, 'Q Q~ > Q Q~ still keeps its own matrix '
+                         'element (%d compiled)' % n_routed)
 
-        # (3) the halves PARTITION the flavors. Both directions matter: a
-        # combination covered twice is double counted, one covered by neither
-        # is silently missing from the cross section.
         want = self._physical(pdir_plain)
-        got = self._physical(pdir_split)
-        self.assertEqual(
-            sorted(got), sorted(want),
-            'the split changed which physical flavor combinations the group '
-            'covers (%d missing, %d new)'
-            % (len(set(want) - set(got)), len(set(got) - set(want))))
-        doubled = sorted(k for k, v in got.items() if v > 1)
-        self.assertFalse(
-            doubled,
-            'the split covers %d flavor combination(s) TWICE, so they are '
-            'double counted -- the two halves were re-identified into one '
-            'pattern instead of staying complementary (e.g. %s)'
-            % (len(doubled), doubled[:3]))
+        got = self._physical(pdir_routed)
+        self.assertEqual(got, want,
+                         'the routed group does not list the flavor '
+                         'combinations of the crossing-off build')
 
-        # (4) the peeled sibling really is listed the OTHER way round -- that is
-        # the whole reason it exists. Its rows are the flavour-changing
-        # annihilation, and where the crossing-off build lists that class as
-        # (q', q~') the sibling lists it as (q~', q'). Without this the test
-        # would still pass if the peel produced a sibling identical to the
-        # module it came from.
-        peeled = sub_split[max(sub_split)]
-        self.assertTrue(
-            all(row[2] < 0 < row[3] for row in peeled),
-            'the peeled subprocess does not list its final legs as '
-            '(antiparticle, particle): %s' % (peeled[:3],))
-        native = [row for rows in self._leshouche(pdir_plain).values()
-                  for row in rows
-                  if (tuple(sorted(row[:2])), tuple(sorted(row[2:])))
-                  in set((tuple(sorted(r[:2])), tuple(sorted(r[2:])))
-                         for r in peeled)]
-        self.assertTrue(native, 'the crossing-off build has no counterpart for '
-                                'the peeled class')
-        self.assertTrue(
-            all(row[3] < 0 < row[2] for row in native),
-            'the crossing-off build already lists that class as '
-            '(antiparticle, particle), so the peel swapped nothing: %s'
-            % (native[:3],))
-
-    def test_split_does_not_fire_for_an_exporter_that_cannot_take_it(self):
-        """mg7 builds one module per leg pattern; handed a pattern split across
-        two modules it raises "no valid flavor configurations found". The peel
-        is a grouped-madevent optimisation and must stay off elsewhere."""
-        outdir = self._generate('mg7', split=True, fmt='')
-        self.assertTrue(
-            os.path.isdir(outdir),
-            'the default (mg7) export produced nothing with '
-            'MG_SPLIT_CROSSING=on -- the split fired for a backend that '
-            'cannot consume it')
+        # every routed call names a row the base was compiled with
+        ncross = {}
+        for name in os.listdir(pdir_routed):
+            match = re.match(r'matrix(\d+)(_orig)?\.f$', name)
+            if match:
+                with open(pjoin(pdir_routed, name)) as fsock:
+                    ncross[int(match.group(1))] = int(re.search(
+                        r'PARAMETER\s*\(NCROSS=(\d+)\)', fsock.read()).group(1))
+        with open(pjoin(pdir_routed, 'matrix1_orig.f'
+                        if os.path.exists(pjoin(pdir_routed, 'matrix1_orig.f'))
+                        else 'matrix1.f')) as fsock:
+            nflav_base = int(re.search(r'PARAMETER\s*\(NFLAV=(\d+)\)',
+                                       fsock.read()).group(1))
+        calls = 0
+        for name in os.listdir(pdir_routed):
+            if not re.match(r'matrix\d+_router\.f$', name):
+                continue
+            with open(pjoin(pdir_routed, name)) as fsock:
+                text = fsock.read()
+            for base, iflav in re.findall(r'CALL SMATRIX(\d+)\(P,\s*(\d+),',
+                                          text):
+                self.assertIn(int(base), ncross, '%s routes to SMATRIX%s, '
+                              'which is not compiled here' % (name, base))
+                K = (int(iflav) - 1) // nflav_base
+                self.assertTrue(1 <= K < ncross[int(base)],
+                                '%s routes FLAV_IDX %s to row %d of a %d-row '
+                                'table' % (name, iflav, K, ncross[int(base)]))
+                calls += 1
+        self.assertGreater(calls, 0, 'no routed call found in the routers')
 
 
 class TestMadeventCrossingBaseColorFlow(unittest.TestCase):

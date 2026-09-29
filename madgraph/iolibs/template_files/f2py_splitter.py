@@ -43,7 +43,7 @@ CF2PY double precision, intent(in) :: SCALE2
   IMPLICIT NONE
 C Same as f77_smatrixhel, but selecting the matrix element by its slot in
 C get_pdg_order/get_prefix (PROCINDEX, 1-based) and taking the extended flavor
-C index (FLAV_IDX = cross*NFLAV + flav) as given rather than resolving it from
+C index (FLAV_IDX = K*NFLAV + flav) as given rather than resolving it from
 C the PDG codes. This is the only way in to a FOLDED crossed subprocess: it has
 C no PDG entry of its own, so the dispatch above cannot name it, and the FLAVOR
 C array cannot express a crossing (see matrix_standalone_f2py_flav_idx.inc).

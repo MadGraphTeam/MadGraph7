@@ -1336,10 +1336,13 @@ int main( int argc, char** argv )
   }
   if( perfEnergy > 0 ) kEnergy = perfEnergy;
 
-  if( flavorID >= CPPProcess::nmaxflavor )
+  // An extended id (a crossing-table row K > 0, K*nmaxflavor + flavor) is a
+  // valid request on a build that folds crossings (cpu/simd; the GPU backend
+  // refuses it at umami_matrix_element).
+  if( flavorID >= (unsigned int)( CPPProcess::nmaxflavor * CPPProcess::ncross ) )
   {
     std::cerr << "ERROR: flavor index " << flavorID
-              << " is out of range [0, " << CPPProcess::nmaxflavor << ")." << std::endl;
+              << " is out of range [0, " << CPPProcess::nmaxflavor * CPPProcess::ncross << ")." << std::endl;
     return 1;
   }
 

@@ -71,12 +71,13 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
   // Crossing symmetry (ProcessTables::use_crossing, from --use_crossing).
-  // An event's flavor index is then the EXTENDED id cross*nmaxflavor + flav:
+  // An event's flavor index is then the EXTENDED id K*nmaxflavor + flav:
   // flav picks the flavor combination as usual (and is constant across a SIMD
-  // page, see umami.cc), while the crossing code may differ from lane to lane.
-  // calculate_jamps permutes each lane's momenta into the crossed slot order
-  // (the preamble of EvaluateDiagrams.inc), the good-helicity scan runs once
-  // per RECORDED crossing, and sigmaKin evaluates every lane on ITS crossing's
+  // page, see umami.cc), while the crossing-table row K may differ from lane
+  // to lane. calculate_jamps permutes each lane's momenta into the base slot
+  // order (the preamble of EvaluateDiagrams.inc), the good-helicity scan runs
+  // once per row of the table (the crossings this ME records), and sigmaKin
+  // evaluates every lane on ITS crossing's
   // ighel-th good helicity: the good-helicity union over the crossings is
   // never materialised on the hot path (per-lane helicity). With crossing off
   // cNcross is 1 and every crossing branch below is discarded at compile time.
@@ -105,50 +106,43 @@ namespace madmatrix
   static bool cCsymBadCross[cNcross]; // crossed: per crossing, a pair mismatched
   static bool cCsymOkCross[cNcross];  // crossed: per crossing, the de-duplication is on
 
-  // Whether this process RECORDED the crossing code (merge_crossing='record'):
-  // the only codes an event can ever carry (see ProcessTables::cross_recorded_tab)
-  inline bool
-  cross_recorded( int cross )
-  {
-    return cross >= 0 && cross < ProcessTables::ncross && cross_recorded_tab[cross];
-  }
-
-  // Initial-state spin*color average of the crossed process: product of the
-  // per-leg spin*color (spincol_part, conjugation invariant) over the legs the
-  // crossing puts in the initial state. 0 if the code is inapplicable.
+  // Initial-state spin*color average of the process crossing-table row
+  // `cross` crosses into (the product of the per-leg spin*color of the base
+  // legs it puts in the initial state, tabulated by the exporter). 0 for a
+  // row out of range, which the per-event denominator turns into a zero ME.
   inline int
   spincol_cross( int cross )
   {
-    int perm[npar], ic[npar];
-    if( !cross_perm_ic( cross, perm, ic ) ) return 0;
-    int factor = 1;
-    for( int k = 0; k < npari; k++ ) factor *= spincol_part[perm[k]];
-    return factor;
+    return ( cross >= 0 && cross < ncross ) ? xspincol_tab[cross] : 0;
   }
 
   // Identical-final-state factor (product of n!) of the crossed process.
   // Flavor dependent, hence runtime: two crossed final legs are identical when
   // they carry the same flavor group (same representative PDG -- ids_base,
-  // conjugated to antipid_base when the leg swapped side) and the same actual
-  // flavor. FLAVOR is not permuted, so slot k reads cFlavors[iflavor][perm[k]].
+  // conjugated to antipid_base when the leg changes side) and the same actual
+  // flavor. FLAVOR is not permuted, so input slot k reads the base leg
+  // pinv[k] it is fed to: cFlavors[iflavor][pinv[k]]. A decay-block leaf
+  // (countable_tab 0) is skipped -- a crossing never moves one, and the
+  // resonance-level symmetry of the blocks is the constant ident_resonance --
+  // exactly as the fortran GET_IDENT_CROSS.
   int
   ident_cross( int cross, int iflavor )
   {
     int perm[npar], ic[npar];
-    cross_perm_ic( cross, perm, ic );
+    cross_pinv( cross, perm, ic );
     int bpid[npar];
     for( int k = 0; k < npar; k++ )
       bpid[k] = ( ic[k] == 1 ) ? ids_base[perm[k]] : antipid_base[perm[k]];
     bool used[npar];
     for( int k = 0; k < npar; k++ ) used[k] = false;
-    int fact = 1;
+    int fact = ident_resonance;
     for( int k = npari; k < npar; k++ )
     {
-      if( used[k] ) continue;
+      if( used[k] || !countable_tab[perm[k]] ) continue;
       int n = 1;
       for( int l = k + 1; l < npar; l++ )
       {
-        if( used[l] ) continue;
+        if( used[l] || !countable_tab[perm[l]] ) continue;
         if( bpid[k] == bpid[l] && cFlavors[iflavor][perm[k]] == cFlavors[iflavor][perm[l]] )
         {
           used[l] = true;
@@ -161,12 +155,12 @@ namespace madmatrix
   }
 
   // Crossed-event selected helicity code (allselhel). For a crossed event the
-  // reported helicity must be the CROSSED code, not the base row: mirror the
-  // fortran APPLY_CROSSING_TABLE, which permutes the base NHEL config by the
-  // crossing slot permutation (NHEL(k)=NHEL_IN(perm(k)), no sign flip -- the
-  // NSF sign lives in IC), then ENCODE_HEL it into the canonical mixed-radix
-  // code over the base per-leg helicity states. cross 0 is the identity (base
-  // row+1), so the non-crossing path is unchanged.
+  // reported helicity must be the CROSSED code, not the base row: input slot k
+  // carries the helicity label of the base leg pinv[k] it is fed to, copied
+  // (no sign flip -- the NSF sign lives in IC), and the crossed config is then
+  // ENCODE_HEL'd into the canonical mixed-radix code over the base per-leg
+  // helicity states. Row 0 is the identity (base row+1), so the non-crossing
+  // path is unchanged.
   //
   // The digit permute with NO NSF sign flip is the right transform, and it is
   // what mg7 needs: the LHE writer indexes the BASE helicity table POSITIONALLY
@@ -182,18 +176,19 @@ namespace madmatrix
   // xhel_states MUST be the allow_reverse=True per-leg order (see the exporter).
   //
   // Limitation (shared with the fortran ENCODE_HEL, whose D=1 fallback this
-  // mirrors): a crossing that lands a leg in a slot with a DIFFERENT number of
-  // helicity states -- e.g. a massive vector moved into a fermion slot -- has
-  // no representable base row, and the lookup falls back to digit 0. That can
-  // only happen for a crossing that is merely APPLICABLE and never recorded
-  // (a recorded one only ever swaps partons, all 2-state).
+  // mirrors): a row that lands a leg in a slot with a DIFFERENT set of
+  // helicity states -- e.g. a massive vector moved into a fermion slot, as
+  // the recorded u u~ > z g off u g > u z does -- has no representable base
+  // row, and the lookup falls back to digit 0: the matrix element is exact but
+  // the reported helicity of that leg is not. The crossed entries madspace
+  // will read (Phase 1) need their own helicity table for such rows.
   inline int
   selected_hel_code( int base_ihel, unsigned int flavor_id )
   {
     const int xcross = (int)( flavor_id / nmaxflavor );
     if( xcross == 0 ) return base_ihel + 1;
     int xperm[npar], xic[npar];
-    cross_perm_ic( xcross, xperm, xic ); // NSF sign in xic is not used here
+    cross_pinv( xcross, xperm, xic ); // NSF sign in xic is not used here
     int code = 0;
     for( int k = 0; k < npar; k++ )
     {
@@ -239,6 +234,7 @@ namespace madmatrix
   selected_hel_code_lane_csym( int ighel, unsigned int flavor_id, fptype rnd, fptype lo, fptype hi )
   {
     const int lcross = (int)( flavor_id / nmaxflavor );
+    if( lcross >= cNcross ) return 0; // no such row: its |M|^2 is 0, nothing to report
     const int lngood = cNGoodPerCross[lcross];
     // ighel < lngood always holds when the CDF selected this lane's row (the
     // rows past lngood add nothing to the running sum); the clamp only keeps a
@@ -268,7 +264,7 @@ namespace madmatrix
   csym_lane_on( unsigned int flavor_id )
   {
     if constexpr( use_crossing )
-      return cCsymOkCross[flavor_id / nmaxflavor];
+      return flavor_id / nmaxflavor < (unsigned int)cNcross && cCsymOkCross[flavor_id / nmaxflavor];
     else
       return cCsymOk;
   }
@@ -571,20 +567,19 @@ namespace madmatrix
     // isGoodHel is still what the caller gets back)
     static bool goodPerCross[cNcross][ncomb];
     for( int c = 0; c < cNcross; c++ ) for( int h = 0; h < ncomb; h++ ) goodPerCross[c][h] = false;
-    // Crossing: sample every RECORDED extended flavor id (see cross_recorded;
-    // an inapplicable code, spincol_cross == 0, is skipped too) so the scan
-    // covers the crossed helicity rows. The loop counts to ncross*nmaxflavor
-    // but a skipped code costs nothing, whereas each code that gets through
-    // costs a full ncomb-helicity calculate_jamps scan: scanning all APPLICABLE
-    // codes rather than the recorded ones was a 46x one-off startup cost on
-    // g g > t t~ g g g (48 applicable, 0 recorded).
+    // Crossing: sample every extended flavor id, i.e. every row of the
+    // crossing table -- the crossings this ME records (every applicable one
+    // only with --crossing_table=all) -- times every flavor, so the scan
+    // covers the crossed helicity rows. Each row costs a full ncomb-helicity
+    // calculate_jamps scan, which is why the table carries no merely
+    // applicable crossing by default (scanning those was a 46x one-off
+    // startup cost on g g > t t~ g g g: 48 applicable, 0 recorded).
     constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
     for( int iflav = 0; iflav < nscan; ++iflav )
     {
     const int xcross = iflav / nmaxflavor; // always 0 without crossing
     if constexpr( use_crossing )
     {
-      if( !cross_recorded( xcross ) ) continue;
       if( spincol_cross( xcross ) == 0 ) continue;
     }
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
@@ -1186,7 +1181,7 @@ namespace madmatrix
           if( dcr == 0 )
             me *= (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];
           else if( spincol_cross( dcr ) == 0 )
-            me = (fptype)0.; // invalid crossing (out of range / overlapping swap) -> ME 0
+            me = (fptype)0.; // no such crossing-table row -> ME 0
           else
             me *= (fptype)1. / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );
         }

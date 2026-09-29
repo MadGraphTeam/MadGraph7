@@ -1420,6 +1420,16 @@ class OneProcessExporterCPP(object):
                 for i in range(0, len(flat), ncols)]
         return '{%s}' % ', '.join(rows)
 
+    def get_crossing_table(self, matrix_element):
+        """The crossing table of this output, in the coupling-class convention
+        of the C++ flavor index (FLAV = the 0-based class of
+        get_external_flavors_with_iden): the recorded crossings, plus every
+        applicable one with --crossing_table=all on the output line (see
+        export_v4.ProcessExporterFortran.get_crossing_table)."""
+        return ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes',
+            all_applicable=getattr(self, 'crossing_table_all', False))
+
     def get_crossing_replace_dict(self, matrix_element):
         """Fill the crossing-machinery holes of the C++ standalone templates.
 
@@ -1471,49 +1481,52 @@ class OneProcessExporterCPP(object):
             self, matrix_element)
         nexternal = tables['nexternal']
         ninitial = tables['ninitial']
-        ncross = (nexternal + 1) * (nexternal + 1)
+        # The crossing table (coupling-class convention: flavor_id counts the
+        # classes of get_external_flavors_with_iden). standalone_cpp is not a
+        # folding output, so it holds the rows --crossing_table=all asks for.
+        table = self.get_crossing_table(matrix_element)
+        ncross = len(table)
 
-        # Per-leg tables (one entry per external leg). The crossing's slot
-        # permutation and NSF sign flips are decoded from the crossing code at
-        # runtime (cross_perm_ic, mirroring the fortran GET_CROSS_PERM), and the
-        # two halves of the denominator are rebuilt from these -- so no
-        # cross-indexed table (spincol/basepid/src/perm/ic) is stored.
-        spincol_part_init = self._cpp_int_array(tables['spincol_part'])
+        # The rows in both views (see crossing_table), the crossed spin*color
+        # average per row, and the per-leg data the flavor dependent identical
+        # factor is rebuilt from at runtime.
+        xperm_init = self._cpp_int_array(table.flat('B'))
+        xsgn_init = self._cpp_int_array(table.flat('SB'))
+        xpinv_init = self._cpp_int_array(table.flat('D'))
+        xsgni_init = self._cpp_int_array(table.flat('SD'))
+        xspincol_init = self._cpp_int_array(
+            table.spincol(tables['spincol_part']))
         ids_base_init = self._cpp_int_array(tables['ids_base'])
         antipid_base_init = self._cpp_int_array(tables['antipid_base'])
-        # Good-helicity remap: instead of the baked ghremap[ncross*ncomb] row
-        # table, keep only the per-crossing filterable flag and resolve the
-        # gating identity row at runtime (see cross_ghidx_setup) -- the same
-        # NCROSS*NCOMB -> NCROSS shrink the fortran path does via CROSS_GHIDX.
+        countable_init = self._cpp_int_array(tables['countable'])
+        # Good-helicity remap: keep only the per-row filterable flag and
+        # resolve the gating identity row at runtime (see cross_ghidx_setup).
+        # Base slot b is evaluated at its own helicity with its NSF flag
+        # flipped where the leg changes side (tau), so a row is filterable when
+        # the in-place sign flip is a bijection of the helicity table.
         # allow_reverse False so it matches the order helicities[] is emitted in.
         ghfilt_init = self._cpp_int_array(
-            ProcessExporterFortran.compute_ghfilt(
-                self, matrix_element, allow_reverse=False))
+            ProcessExporterFortran.crossing_ghfilt(
+                self, matrix_element, table, allow_reverse=False))
 
         cross_tables_decode = (
             "// Crossing symmetry: flavor_id carries a flavor AND a crossing.\n"
-            "//   cross    = flavor_id / nflavors\n"
+            "//   cross    = flavor_id / nflavors  (a row of the crossing table)\n"
             "//   flav_use = flavor_id %% nflavors  (index used for masking)\n"
-            "// A crossing permutes momenta/helicities between slots and flips\n"
-            "// each swapped leg's NSF flag. The slot permutation is a fixed\n"
-            "// relabelling decoded from the crossing code at runtime\n"
-            "// (cross_perm_ic), so no cross-indexed table is stored; the\n"
-            "// denominator splits into the crossing-dependent initial-state\n"
-            "// spin*color (spincol_cross) and the flavor-dependent identical-\n"
-            "// final-state factor (ident_cross), both rebuilt from per-leg data.\n"
+            "// A row is a slot permutation (cross_gather / cross_pinv): it\n"
+            "// moves the momenta between slots and flips the NSF\n"
+            "// flag of each leg that changes side; the denominator splits into\n"
+            "// the crossed initial-state spin*color (spincol_cross) and the\n"
+            "// flavor-dependent identical-final-state factor (ident_cross).\n"
             "const int ncross = %(ncross)d;\n"
-            "// ghfilt[cross] = 1 if this crossing's good-helicity filter is a\n"
-            "// clean bijection of the identity rows, 0 otherwise (initial-\n"
-            "// initial swap, inapplicable, or non-bijection). Genuinely per-\n"
-            "// crossing (not derivable from per-leg data), so kept as a table --\n"
-            "// the fortran path tabulates it too. The gating identity row itself\n"
-            "// is recomputed per row at runtime (see the good-helicity loop).\n"
-            "// See ProcessExporterFortran.compute_ghfilt.\n"
+            "// ghfilt[cross] = 1 if this row's good-helicity filter is a clean\n"
+            "// bijection of the identity rows, 0 otherwise; the gating identity\n"
+            "// row itself is recomputed per row at runtime (see the\n"
+            "// good-helicity loop).\n"
             "static const int ghfilt[ncross] = %(ghfilt)s;\n"
             "int cross = flavor_id / nflavors;\n"
             "int flav_use = flavor_id %% nflavors;\n"
-            "// A null spin*color entry (out of range, impossible, or an\n"
-            "// overlapping swap) means an identically-zero matrix element.\n"
+            "// No such row: an identically-zero matrix element.\n"
             "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
             "    return 0.;"
         ) % {'ncross': ncross, 'ghfilt': ghfilt_init}
@@ -1521,7 +1534,7 @@ class OneProcessExporterCPP(object):
         cross_perm_block = (
             "int perm[nexternal];\n"
             "int ic[nexternal];\n"
-            "cross_perm_ic(cross, perm, ic);")
+            "cross_gather(cross, perm, ic);")
 
         cross_return = (
             "// Uncrossed: historical path (IDEN via denominator, BROKEN_SYM\n"
@@ -1535,62 +1548,49 @@ class OneProcessExporterCPP(object):
 
         ident_cross_function = (
             "//------------------------------------------------------------------\n"
-            "// Runtime crossing decode (mirrors the fortran GET_CROSS_PERM/\n"
-            "// SWAP_LEGS): cross = i*(nexternal+1) + j swaps particle 1 with i\n"
-            "// and particle 2 with j (0 = leave alone; i==1 / j==2 are self-swaps,\n"
-            "// also no-ops). perm[k] is the input slot landing in crossed slot k\n"
-            "// and ic[k] its NSF sign flip. perm/ic are always left a valid\n"
-            "// permutation (identity for an inapplicable code) so a momentum\n"
-            "// gather never reads out of range; the return value flags an\n"
-            "// applicable crossing (false = overlapping swap / out of range).\n"
-            "bool CPPProcess::cross_perm_ic(int cross, int* perm, int* ic)\n"
+            "// Row `cross` of the crossing table (%(ncross)d rows, row 0 the\n"
+            "// identity), base-slot view: base slot b is fed the momentum of\n"
+            "// input slot perm[b], its NSF flag multiplied by ic[b] (-1 when\n"
+            "// the leg changes side); its helicity stays its own (tau). Left the identity for a\n"
+            "// row out of range, so a momentum gather never reads out of range;\n"
+            "// returns whether the row exists.\n"
+            "bool CPPProcess::cross_gather(int cross, int* perm, int* ic)\n"
             "{\n"
-            "    const int ncross = (nexternal + 1) * (nexternal + 1);\n"
-            "    for (int k = 0; k < nexternal; k++) { perm[k] = k; ic[k] = 1; }\n"
-            "    if (cross < 0 || cross >= ncross) return false;\n"
-            "    const int xi = cross / (nexternal + 1);\n"
-            "    const int xj = cross %% (nexternal + 1);\n"
-            "    // Overlapping-swap codes compose into a 3-cycle the consumers\n"
-            "    // read with opposite orientation: pure redundancy, invalid.\n"
-            "    if (xi != 0 && xi != 1 && xj != 0 && xj != 2 &&\n"
-            "        (xi == 2 || xj == 1 || xi == xj)) return false;\n"
-            "    if (xi != 0 && xi != 1)\n"
+            "    static const int xperm[%(ncross)d * nexternal] = %(xperm)s;\n"
+            "    static const int xsgn[%(ncross)d * nexternal] = %(xsgn)s;\n"
+            "    const bool ok = cross >= 0 && cross < %(ncross)d;\n"
+            "    for (int b = 0; b < nexternal; b++)\n"
             "    {\n"
-            "        int t = perm[0]; perm[0] = perm[xi - 1]; perm[xi - 1] = t;\n"
-            "        ic[0] = -ic[0]; ic[xi - 1] = -ic[xi - 1];\n"
+            "        perm[b] = ok ? xperm[cross * nexternal + b] : b;\n"
+            "        ic[b] = ok ? xsgn[cross * nexternal + b] : 1;\n"
             "    }\n"
-            "    if (xj != 0 && xj != 2)\n"
-            "    {\n"
-            "        int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t;\n"
-            "        ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1];\n"
-            "    }\n"
-            "    // A crossing may only conjugate a leg that CHANGES SIDE. Both\n"
-            "    // legs of a same-side transposition are conjugated while\n"
-            "    // neither moves across, which is no crossing at all: for a\n"
-            "    // 2 -> N process that is the beam swap (xi==2 / xj==1), which\n"
-            "    // must not conjugate anything; for a 1 -> N one it is every xj\n"
-            "    // swap. Mirrors the fortran GET_CROSS_PERM.\n"
-            "    for (int k = 0; k < nexternal; k++)\n"
-            "        if (ic[k] == -1 &&\n"
-            "            ((k < %(ninitial)d) == (perm[k] < %(ninitial)d)))\n"
-            "            return false;\n"
-            "    return true;\n"
+            "    return ok;\n"
             "}\n"
             "\n"
             "//------------------------------------------------------------------\n"
-            "// Initial-state spin*color average of the crossed process: the\n"
-            "// product of the per-leg spin*color (spincol_part, conjugation\n"
-            "// invariant) over the legs the crossing puts in the initial state.\n"
-            "// 0 for a crossing that cannot be applied.\n"
+            "// The same row, input-slot view: input slot k is fed to base slot\n"
+            "// pinv[k], charge conjugated when sgn[k] is -1. A row is in general\n"
+            "// no involution, so the two views differ.\n"
+            "bool CPPProcess::cross_pinv(int cross, int* pinv, int* sgn)\n"
+            "{\n"
+            "    static const int xpinv[%(ncross)d * nexternal] = %(xpinv)s;\n"
+            "    static const int xsgni[%(ncross)d * nexternal] = %(xsgni)s;\n"
+            "    const bool ok = cross >= 0 && cross < %(ncross)d;\n"
+            "    for (int k = 0; k < nexternal; k++)\n"
+            "    {\n"
+            "        pinv[k] = ok ? xpinv[cross * nexternal + k] : k;\n"
+            "        sgn[k] = ok ? xsgni[cross * nexternal + k] : 1;\n"
+            "    }\n"
+            "    return ok;\n"
+            "}\n"
+            "\n"
+            "//------------------------------------------------------------------\n"
+            "// Initial-state spin*color average of the process row `cross`\n"
+            "// crosses into (tabulated). 0 for a row out of range.\n"
             "int CPPProcess::spincol_cross(int cross)\n"
             "{\n"
-            "    static const int spincol_part[nexternal] = %(spincol_part)s;\n"
-            "    int perm[nexternal], ic[nexternal];\n"
-            "    if (!cross_perm_ic(cross, perm, ic)) return 0;\n"
-            "    int factor = 1;\n"
-            "    for (int k = 0; k < %(ninitial)d; k++)\n"
-            "        factor *= spincol_part[perm[k]];\n"
-            "    return factor;\n"
+            "    static const int xspincol[%(ncross)d] = %(xspincol)s;\n"
+            "    return (cross >= 0 && cross < %(ncross)d) ? xspincol[cross] : 0;\n"
             "}\n"
             "\n"
             "//------------------------------------------------------------------\n"
@@ -1598,27 +1598,31 @@ class OneProcessExporterCPP(object):
             "// process. Flavor dependent, so computed at runtime: two crossed\n"
             "// final legs are identical when they carry the same flavor group\n"
             "// (same representative PDG -- ids_base, conjugated to antipid_base\n"
-            "// when the leg swapped side) and the same actual flavor. FLAVOR is\n"
-            "// not permuted by the crossing, so slot k reads flavor[perm[k]].\n"
+            "// when the leg changes side) and the same actual flavor. FLAVOR is\n"
+            "// not permuted by the crossing, so input slot k reads the base leg\n"
+            "// it is fed to: flavor[pinv[k]]. A decay-block leaf (countable 0) is\n"
+            "// skipped, its resonance-level symmetry being the constant\n"
+            "// %(ident_resonance)d, as in the fortran GET_IDENT_CROSS.\n"
             "int CPPProcess::ident_cross(int cross, const int* flavor)\n"
             "{\n"
             "    static const int ids_base[nexternal] = %(ids_base)s;\n"
             "    static const int antipid_base[nexternal] = %(antipid_base)s;\n"
+            "    static const int countable[nexternal] = %(countable)s;\n"
             "    int perm[nexternal], ic[nexternal];\n"
-            "    cross_perm_ic(cross, perm, ic);\n"
+            "    cross_pinv(cross, perm, ic);\n"
             "    int bpid[nexternal];\n"
             "    for (int k = 0; k < nexternal; k++)\n"
             "        bpid[k] = (ic[k] == 1) ? ids_base[perm[k]] : antipid_base[perm[k]];\n"
             "    bool used[nexternal];\n"
             "    for (int k = 0; k < nexternal; k++) used[k] = false;\n"
-            "    int fact = 1;\n"
+            "    int fact = %(ident_resonance)d;\n"
             "    for (int k = %(ninitial)d; k < nexternal; k++)\n"
             "    {\n"
-            "        if (used[k]) continue;\n"
+            "        if (used[k] || !countable[perm[k]]) continue;\n"
             "        int n = 1;\n"
             "        for (int l = k + 1; l < nexternal; l++)\n"
             "        {\n"
-            "            if (used[l]) continue;\n"
+            "            if (used[l] || !countable[perm[l]]) continue;\n"
             "            if (bpid[k] == bpid[l] &&\n"
             "                flavor[perm[k]] == flavor[perm[l]])\n"
             "            {\n"
@@ -1630,8 +1634,12 @@ class OneProcessExporterCPP(object):
             "    }\n"
             "    return fact;\n"
             "}"
-        ) % {'spincol_part': spincol_part_init, 'ids_base': ids_base_init,
-             'antipid_base': antipid_base_init, 'ninitial': ninitial}
+        ) % {'ncross': ncross, 'xperm': xperm_init, 'xsgn': xsgn_init,
+             'xpinv': xpinv_init, 'xsgni': xsgni_init,
+             'xspincol': xspincol_init, 'ids_base': ids_base_init,
+             'antipid_base': antipid_base_init, 'countable': countable_init,
+             'ident_resonance': tables['ident_resonance'],
+             'ninitial': ninitial}
 
         return {
             'fidx': 'flav_use',
@@ -1641,7 +1649,8 @@ class OneProcessExporterCPP(object):
             'cross_return': cross_return,
             'cross_cw_sig_extra': ', const int ic[]',
             'cross_member_decl':
-                '  bool cross_perm_ic(int cross, int* perm, int* ic);\n'
+                '  bool cross_gather(int cross, int* perm, int* ic);\n'
+                '  bool cross_pinv(int cross, int* pinv, int* sgn);\n'
                 '  int spincol_cross(int cross);\n'
                 '  int ident_cross(int cross, const int* flavor);',
             'ident_cross_function': ident_cross_function,
@@ -1650,12 +1659,13 @@ class OneProcessExporterCPP(object):
             # is not the crossed C-parity partner (crossed flavors: full sum).
             'csym_dedup_ok': 'cross == 0',
             # The good-helicity filter is shared per flavor but consulted and
-            # trained through the crossing's row permutation sigma^-1: a crossed
-            # row is good iff its identity counterpart is. Rather than store the
-            # whole sigma^-1 (ghremap[ncross*ncomb]), recompute the gating
-            # identity row here: inverse-permute + sign-flip the crossed row's
-            # config (perm/ic already hold the runtime-decoded cross_perm_ic),
-            # then find the identity row carrying it. ghidx = -1 disables the
+            # trained through the crossing: a crossed row is good iff its
+            # identity counterpart is. Rather than store the whole row map,
+            # recompute the gating identity row here: base slot b evaluates
+            # its own helicity with its NSF flag times ic[b] (tau; perm/ic hold
+            # the base-slot view, cross_gather), so the identity row carrying
+            # the same helas helicities is the one whose entry b is
+            # ic[b]*hel[b]. ghidx = -1 disables the
             # filter for a non-filterable crossing (ghfilt[cross] == 0: compute
             # the row, never train). For cross 0 perm/ic are the identity so
             # ghidx == ihel, exactly the historical filter. The search runs for
@@ -1666,8 +1676,8 @@ class OneProcessExporterCPP(object):
                 'int ghidx = -1;\n'
                 '        if (ghfilt[cross]){\n'
                 '            int tgt[nexternal];\n'
-                '            for(int k = 0; k < nexternal; k++){\n'
-                '                tgt[perm[k]] = ic[k] * helicities[ihel][k];\n'
+                '            for(int b = 0; b < nexternal; b++){\n'
+                '                tgt[b] = ic[b] * helicities[ihel][b];\n'
                 '            }\n'
                 '            for(int r = 0; r < ncomb; r++){\n'
                 '                bool same = true;\n'
@@ -3081,60 +3091,41 @@ class ProcessExporterCPP(VirtualExporter):
 
         Returns '' when crossing is not active for this backend/matrix element,
         leaving the driver unchanged. Otherwise it mirrors the Fortran
-        check_sa.f demonstration: a loop over every way of crossing particle 1
-        and particle 2 with a final-state particle (and over each flavor) that,
-        for each, evaluates the crossed matrix element and prints its signed
-        PDGs and value. The whole section is gated behind `if(false)` so it is
-        present only as a ready-to-enable example.
+        check_sa.f demonstration: a loop over every row of the crossing table
+        (and over each flavor) that, for each, evaluates the crossed matrix
+        element and prints its signed PDGs and value. The whole section is
+        gated behind `if(false)` so it is present only as a ready-to-enable
+        example.
 
-        flavor_id is 0-based in C++: flavor_id = cross*nflav + flav0, with
-        cross = flip1*(nexternal+1) + flip2 (flip1/flip2 the partners of
-        particle 1/2), matching sigmaKin's decode. standalone_cpp has no runtime
-        PDG accessor, so the signed PDG of each flavor_id is precomputed here
-        into demo_pdg[flavor_id*nexternal + slot] the same way
-        GET_PDG_FOR_FLAVOR does (conjugating swapped legs, zeros for an
-        impossible/overlapping crossing). Each evaluation uses a FRESH
-        CPPProcess so the shared good-helicity cache cannot contaminate it.
+        flavor_id is 0-based in C++: flavor_id = K*nflav + flav0, K a row of
+        the crossing table, matching sigmaKin's decode. standalone_cpp has no
+        runtime PDG accessor, so the signed PDG of each flavor_id is
+        precomputed here into demo_pdg[flavor_id*nexternal + slot]: the class
+        representative's PDGs crossed by the row (conjugating the legs that
+        change side). Each evaluation uses a FRESH CPPProcess so the shared
+        good-helicity cache cannot contaminate it.
         """
         if not use_crossing:
             return ''
 
-        tables = ProcessExporterFortran.compute_crossing_tables(
-            self, matrix_element)
-        spincol = tables['spincol']
-        perm = tables['perm']
-        ic = tables['ic']
-        nx = tables['nexternal']
-        ncross = len(spincol)
-        # The flavor count sigmaKin decodes against (CPPProcess::nflavors); read
-        # from the same source that fills %(nflav)d so the demo_pdg table indexes
-        # by flavor_id exactly as the runtime does.
-        n_flav = len(matrix_element.get_external_flavors_with_iden())
-        # Physical signed PDGs (basepid holds internal group codes like 81, not
-        # the physical PDG the user expects).
-        _, pdg_flat, antipdg_flat = \
-            ProcessExporterFortran._build_flav_pdg_tables(self, matrix_element)
-        # Those tables are indexed by physical flavor combination while flavor_id
-        # counts coupling-equivalence classes; _flavor_rep_rows bridges the two
-        # (the same lookup compute_crossing_pdg_entries does, kept shared so the
-        # demo table and the fortran signatures cannot drift apart).
-        rep_rows = ProcessExporterFortran._flavor_rep_rows(
-            self, matrix_element)
+        import madgraph.iolibs.crossing_table as crossing_table
+        table = ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes',
+            all_applicable=str((self.opt.get('output_options') or {}).get(
+                'crossing_table', '')).lower() == 'all')
+        anti = crossing_table.make_anti(
+            matrix_element.get('processes')[0].get('model'))
+        reps = []
+        for flav0, pdgs in ProcessExporterFortran.crossing_base_entries(
+                self, matrix_element, 'classes'):
+            if flav0 == len(reps):
+                reps.append(pdgs)
 
-        # demo_pdg[flavor_id*nexternal + slot], flavor_id = cross*nflav+flav0.
+        # demo_pdg[flavor_id*nexternal + slot], flavor_id = K*nflav+flav0.
         demo_pdg = []
-        for cross in range(ncross):
-            for flav0 in range(n_flav):
-                row = rep_rows[flav0]
-                for k in range(nx):
-                    if spincol[cross] == 0:
-                        demo_pdg.append(0)
-                        continue
-                    src = perm[cross * nx + k]
-                    if ic[cross * nx + k] == 1:
-                        demo_pdg.append(pdg_flat[row * nx + src])
-                    else:
-                        demo_pdg.append(antipdg_flat[row * nx + src])
+        for row in table:
+            for rep in reps:
+                demo_pdg.extend(row.crossed(rep, anti))
 
         sep = ('    cout << " ---------------------------------------------------'
                '--------------------------" << endl;')
@@ -3146,33 +3137,26 @@ class ProcessExporterCPP(VirtualExporter):
             '  // good-helicity cache cannot contaminate the crossed value.',
             '  if(false){',
             '    const int nflav = process.nflavors;',
-            '    const int nin = process.ninitial;',
             '    const int nx = process.nexternal;',
+            '    const int ncross = %d;' % len(table),
             '    static const int demo_pdg[%d] = {%s};'
             % (len(demo_pdg), ', '.join(str(p) for p in demo_pdg)),
             '    cout << endl << " Crossing-symmetry examples (crossed '
             'processes):" << endl << endl;',
-            '    for(int flip1 = nin+1; flip1 <= nx; flip1++){',
-            '      for(int flip2 = nin+1; flip2 <= nx; flip2++){',
-            '        for(int j = 1; j <= nflav; j++){',
-            '          // cross = (partner of p1)*(nx+1) + (partner of p2)',
-            '          int cross = flip1*(nx+1) + flip2;',
-            '          int flavor_id = cross*nflav + (j-1);',
-            '          CPPProcess xproc("../../Cards/param_card.dat");',
-            '          xproc.setMomenta(p);',
-            '          double xme = xproc.sigmaKin(flavor_id);',
-            '          cout << "PARTICLE #1 crossed with particle # " '
-            '<< flip1 << endl;',
-            '          cout << "PARTICLE #2 crossed with particle # " '
-            '<< flip2 << endl;',
-            '          cout << "PDG";',
-            '          for(int s = 0; s < nx; s++) cout << " " '
+            '    for(int cross = 1; cross < ncross; cross++){',
+            '      for(int j = 1; j <= nflav; j++){',
+            '        int flavor_id = cross*nflav + (j-1);',
+            '        CPPProcess xproc("../../Cards/param_card.dat");',
+            '        xproc.setMomenta(p);',
+            '        double xme = xproc.sigmaKin(flavor_id);',
+            '        cout << "CROSSING ROW " << cross << endl;',
+            '        cout << "PDG";',
+            '        for(int s = 0; s < nx; s++) cout << " " '
             '<< demo_pdg[flavor_id*nx + s];',
-            '          cout << " FLAV_IDX " << flavor_id << endl;',
-            '          cout << "Matrix element = " << xme'
+            '        cout << " FLAV_IDX " << flavor_id << endl;',
+            '        cout << "Matrix element = " << xme'
             ' << " GeV^" << -(2*xproc.nexternal-8) << endl;',
             sep,
-            '        }',
             '      }',
             '    }',
             '  }',
@@ -3276,12 +3260,21 @@ class ProcessExporterCPP(VirtualExporter):
         # generated with --use_crossing (default OFF) and the process does not
         # pin a specific s-channel (which a crossing would not preserve). Only a
         # single-ME directory carries the flavor tables the crossing needs.
+        # The crossing table holds the recorded crossings -- none survive to a
+        # non-folding output like this one -- plus every applicable crossing
+        # with --crossing_table=all, so that option is what gives it rows.
+        me0 = process_exporter_cpp.matrix_elements[0]
+        process_exporter_cpp.crossing_table_all = str(
+            (self.opt.get('output_options') or {}).get('crossing_table', '')
+            ).lower() == 'all'
         process_exporter_cpp.use_crossing = bool(
             getattr(self, 'supports_crossing', False)
             and self.opt.get('use_crossing', False)
             and len(process_exporter_cpp.matrix_elements) == 1
+            and (('crossed_processes' in me0 and me0.get('crossed_processes'))
+                 or process_exporter_cpp.crossing_table_all)
             and not ProcessExporterFortran.breaks_crossing_symmetry(
-                process_exporter_cpp.matrix_elements[0].get('processes')[0]))
+                me0.get('processes')[0]))
 
 
         # Create the directory PN_xx_xxxxx in the specified path
@@ -3717,12 +3710,20 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # of 'output mg7' (not a folding format: its crossings were expanded
         # back into subprocesses of their own) and every base that folds
         # nothing (g g > t t~ g g g).
+        # --crossing_table=all on the output line also gives the table every
+        # applicable crossing (a standalone user asking for an arbitrary one),
+        # which is then reason enough for the machinery -- not for `output
+        # mg7`, whose runtime (madspace) only ever asks for the recorded ones.
         me0 = process_exporter_mg7.matrix_elements[0]
+        process_exporter_mg7.crossing_table_all = str(
+            (self.opt.get('output_options') or {}).get('crossing_table', '')
+            ).lower() == 'all' and getattr(self, 'format_name', None) != 'mg7'
         process_exporter_mg7.use_crossing = bool(
             getattr(self, 'supports_crossing', False)
             and self.opt.get('use_crossing', False)
             and len(process_exporter_mg7.matrix_elements) == 1
-            and 'crossed_processes' in me0 and me0.get('crossed_processes')
+            and (('crossed_processes' in me0 and me0.get('crossed_processes'))
+                 or process_exporter_mg7.crossing_table_all)
             and not ProcessExporterFortran.breaks_crossing_symmetry(
                 me0.get('processes')[0]))
 

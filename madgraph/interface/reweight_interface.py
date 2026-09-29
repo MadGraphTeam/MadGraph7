@@ -2738,15 +2738,14 @@ class ReweightInterface(extended_cmd.Cmd):
 
         With crossing on (merge_crossing='record') a crossed subprocess is not
         generated as a directory of its own: the base's crossing-aware SMATRIX
-        evaluates it at an *extended* flavor index (FLAV_IDX = cross*NFLAV+flav),
-        so it has no get_pdg_order entry and id_to_path cannot see it -- a
-        crossed event would silently lose its weight. The per-process f2py entry
-        points PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR let us walk that
-        index space and ask each entry which process it evaluates, restricted to
-        the crossings the generation actually recorded (crossed_flavors.dat --
-        the runtime space also holds crossings that are merely applicable, e.g. a
-        Z pulled into the initial state, and evaluating one of those for an event
-        would produce a wrong weight rather than no weight).
+        evaluates it at an *extended* flavor index (FLAV_IDX = K*NFLAV+flav, K a
+        row of the matrix element's crossing table), so it has no get_pdg_order
+        entry and id_to_path cannot see it -- a crossed event would silently
+        lose its weight. The per-process f2py entry points
+        PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR let us walk that index
+        space and ask each entry which process it evaluates, over the rows the
+        generation recorded (crossed_flavors.dat, which also gives each row's
+        permutation).
 
         A matrix element covers several subprocesses in two independent ways, and
         the crossing has to be applied to each: as FLAVOR indices inside one
@@ -2768,19 +2767,24 @@ class ReweightInterface(extended_cmd.Cmd):
 
         The helicity dictionary is the base one RE-KEYED through the crossing.
         SMATRIX applies the crossing as tau (APPLY_CROSSING_TABLE): it moves the
-        momenta into the base slots, crossed leg perm[k] landing in base slot k,
+        momenta into the base slots, crossed leg B[b] landing in base slot b,
         but leaves the NHEL slots where they are, so USERHEL=r evaluates the
-        particle in crossed leg perm[k] at the helicity of base row r in slot k.
+        particle in crossed leg B[b] at the helicity of base row r in slot b.
         An event with helicities h (crossed leg order) therefore needs the row
-        whose entry k is h[perm[k]]. Keying on the base rows read positionally
+        whose entry b is h[B[b]]. Keying on the base rows read positionally
         in the crossed leg order -- right while the table was permuted along
         with the momenta (sigma) -- asks for a different helicity configuration
-        of the crossed process, often an exactly vanishing one."""
+        of the crossed process, often an exactly vanishing one.
+
+        Both directions of the row are needed and are NOT interchangeable (a
+        crossing is in general no involution): D[k] is the base leg sitting in
+        crossed leg k (what the PDGs are read through), B = D^-1 the crossed leg
+        landing in base slot b (what the helicity is keyed through)."""
         codes = self.get_recorded_crossings(pdir)
         if not codes:
             return
-        import madgraph.iolibs.export_v4 as export_v4
-        get_perm = export_v4.ProcessExporterFortran.get_crossing_permutation
+        perms = self.read_crossing_perms(pdir)
+        ninitial = 1 if self.is_decay else 2
         # merged codes (81, ...) as they appear in a base entry, i.e. the legs
         # whose flavor a base entry leaves open and the flavor index resolves.
         labels = set(merged_map.values()) if merged_map else set()
@@ -2800,16 +2804,25 @@ class ReweightInterface(extended_cmd.Cmd):
             for cross in codes[prefix]:
                 if not 0 < cross < ncross:
                     continue           # 0 is the base, already in id_to_path
-                perm, ic, valid = get_perm(cross, nexternal)
-                if not valid:
+                D = perms.get(prefix, {}).get(cross)
+                if D is None or len(D) != nexternal:
+                    logger.debug('crossing row %s of %s comes without its '
+                                 'permutation: skipped' % (cross, prefix))
                     continue
-                # tau: base slot k is evaluated at row entry k and holds
-                # crossed leg perm[k] (see the docstring).
+                B = [0] * nexternal
+                for k, b in enumerate(D):
+                    B[b] = k
+                # -1 where crossed leg k sits on the other side of the
+                # initial/final line than its base leg D[k]
+                ic = [-1 if ((k < ninitial) != (D[k] < ninitial)) else 1
+                      for k in range(nexternal)]
+                # tau: base slot b is evaluated at row entry b and holds
+                # crossed leg B[b] (see the docstring).
                 hel = {}
                 for row, ihel in hel_dict.get(prefix, {}).items():
                     xrow = [0] * nexternal
-                    for k in range(nexternal):
-                        xrow[perm[k]] = row[k]
+                    for b in range(nexternal):
+                        xrow[B[b]] = row[b]
                     hel[tuple(xrow)] = ihel
                 for flav in range(1, nflav+1):
                     crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
@@ -2821,10 +2834,10 @@ class ReweightInterface(extended_cmd.Cmd):
                     # one (a gluon crossed to the other side is still a gluon).
                     # Read off the representative rather than from the model, so
                     # that this needs nothing but the generated entry points.
-                    conj = [ic[k] == -1 and crossed[k] != base[perm[k]]
+                    conj = [ic[k] == -1 and crossed[k] != base[D[k]]
                             for k in range(nexternal)]
                     for (procindex, pdgs) in entries:
-                        xpdgs = [-pdgs[perm[k]] if conj[k] else pdgs[perm[k]]
+                        xpdgs = [-pdgs[D[k]] if conj[k] else pdgs[D[k]]
                                  for k in range(nexternal)]
                         # The physical process this candidate evaluates: the
                         # crossed base entry, with the legs it leaves merged
@@ -2853,7 +2866,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
     @staticmethod
     def read_crossing_records(pdir):
-        """{prefix: ([cross codes], complete)} as written in the
+        """{prefix: ([crossing rows K], complete)} as written in the
         crossed_flavors.dat of `pdir` (see export_v4.write_crossing_records);
         empty when there is no such file."""
         path = pjoin(pdir, 'crossed_flavors.dat')
@@ -2862,14 +2875,31 @@ class ReweightInterface(extended_cmd.Cmd):
         records = {}
         for line in open(path):
             line = line.split('#', 1)[0].split()
-            if not line:
+            if not line or line[0] == 'perm':
                 continue
             records[line[0].lower()] = ([int(c) for c in line[2:]],
                                         line[1] == '1')
         return records
 
+    @staticmethod
+    def read_crossing_perms(pdir):
+        """{prefix: {K: D}} from the 'perm' lines of crossed_flavors.dat: D[k]
+        the 0-based base leg sitting in crossed leg k for crossing-table row
+        K."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        perms = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if len(line) < 3 or line[0] != 'perm':
+                continue
+            perms.setdefault(line[1].lower(), {})[int(line[2])] = \
+                tuple(int(d) - 1 for d in line[3:])
+        return perms
+
     def get_recorded_crossings(self, pdir):
-        """{prefix: [cross codes]} of the crossed subprocesses folded into the
+        """{prefix: [crossing rows K]} of the crossed subprocesses folded into the
         matrix elements of `pdir`, from the crossed_flavors.dat written at output
         time (see export_v4.write_crossing_records).
 

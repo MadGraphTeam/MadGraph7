@@ -1920,19 +1920,29 @@ int main(int argc, char** argv){
         self.do('generate g g > t t~')
         self.do('add process u u~ > e+ e-')
         for use_crossing in (False, True):
+            # a single process records no crossing: its table gets its rows
+            # from --crossing_table=all
             self._output_standalone_cpp(self.out_dir, force=True,
-                                        use_crossing=use_crossing)
+                                        use_crossing=use_crossing,
+                                        crossing_table='all')
             proc_root = pjoin(self.out_dir, 'SubProcesses')
             dirs = dict((suffix, pjoin(proc_root, d))
                         for d in os.listdir(proc_root)
                         for suffix in ('_gg_ttx', '_uux_epem')
                         if d.endswith(suffix))
             self.assertEqual(len(dirs), 2, os.listdir(proc_root))
-            crossing = 'cross_perm_ic' in open(
-                pjoin(dirs['_gg_ttx'], 'CPPProcess.cc')).read()
+            source = open(pjoin(dirs['_gg_ttx'], 'CPPProcess.cc')).read()
+            crossing = 'cross_gather' in source
             self.assertEqual(crossing, use_crossing)
-            # cross 23 (1<->4, 2<->3) on g g > t t~ is t t~ > g g.
-            fids = [0, 23] if use_crossing else [0]
+            # 1<->4, 2<->3 on g g > t t~ is t t~ > g g: the row of the
+            # crossing table whose input slot k is fed to base slot 3-k.
+            fids = [0]
+            if use_crossing:
+                match = re.search(r'static const int xpinv\[(\d+) \* '
+                                  r'nexternal\] = \{([^}]*)\}', source)
+                pinv = [int(tok) for tok in match.group(2).split(',')]
+                rows = [tuple(pinv[k:k + 4]) for k in range(0, len(pinv), 4)]
+                fids.append(rows.index((3, 2, 1, 0)))
             # helicity sampling of 2 and 3 of the 8 representatives; with the
             # crossing, crossed calls interleaved (they share the flavor's
             # sampling cursor and must not rewind it).
@@ -1941,7 +1951,7 @@ int main(int argc, char** argv){
             check(res, 0, 16, deduped=True)
             if use_crossing:
                 # a crossed call never runs the C-parity scan
-                check(res, 23, 16, deduped=False, scanned=False)
+                check(res, fids[1], 16, deduped=False, scanned=False)
             for mode in modes:
                 for fid in fids:
                     check_sampling(res, mode, fid)
@@ -1950,7 +1960,8 @@ int main(int argc, char** argv){
             check(res, 0, 4, deduped=False)
             check_sampling(res, 's3:0:0', 0)
 
-    def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False):
+    def _output_standalone_cpp(self, out_dir, force=False, use_crossing=False,
+                               crossing_table=None):
         """Write a scalar C++ standalone output for the processes currently
         held by the interface, driving export_cpp.ProcessExporterCPP through
         its internal API.
@@ -1961,7 +1972,10 @@ int main(int argc, char** argv){
         this way (see madgraph/various/process_checks.py and
         tests/unit_tests/various/test_process_checks.py).  Going through the API
         keeps the scalar-C++ coverage of these tests without the command.
-        use_crossing emits the crossing machinery (the extended flavor_id).
+        use_crossing emits the crossing machinery (the extended flavor_id);
+        crossing_table='all' gives its table every applicable crossing (the
+        --crossing_table=all output option), without which a process that
+        records no crossing gets no machinery at all.
         """
         import madgraph.iolibs.export_cpp as export_cpp
         import madgraph.iolibs.helas_call_writers as helas_call_writers
@@ -1974,7 +1988,8 @@ int main(int argc, char** argv){
             shutil.rmtree(out_dir)
 
         opt = dict(cmd.options)
-        opt['output_options'] = {}
+        opt['output_options'] = {'crossing_table': crossing_table} \
+            if crossing_table else {}
         opt.update({'sa_symmetry': False, 'export_format': 'standalone_cpp',
                     'mp': False, 'v5_model': True,
                     'use_crossing': use_crossing})

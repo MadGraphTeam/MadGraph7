@@ -48,26 +48,37 @@ namespace madmatrix
     __device__ constexpr int broken_sym_block_lengths[broken_sym_nentries] = { %(broken_sym_block_lengths)s };
 
 %(crossing_tables)s
-    // Slot relabelling of crossing code `cross`: perm[k] is the input slot
-    // landing in crossed slot k and ic[k] its NSF sign flip. Left a valid
-    // permutation (the identity for an inapplicable code) so a momentum gather
-    // never reads out of range; returns whether the code is applicable.
-    __host__ __device__ inline bool cross_perm_ic( int cross, int* perm, int* ic )
+    // Row `cross` of the crossing table in the BASE-slot view: perm[b] is the
+    // input slot whose momentum lands in base slot b and ic[b] its NSF sign
+    // (-1 when that leg changes side) -- what the momentum gather reads. Left
+    // the identity for a row out of range, so a gather never reads out of
+    // range; returns whether the row exists.
+    __host__ __device__ inline bool cross_gather( int cross, int* perm, int* ic )
     {
       constexpr int npar = ProcessData::npar;
-      for( int k = 0; k < npar; k++ ) { perm[k] = k; ic[k] = 1; }
-      if( cross < 0 || cross >= ncross ) return false;
-      const int xi = cross / ( npar + 1 );
-      const int xj = cross %% ( npar + 1 );
-      // Overlapping-swap codes compose into a 3-cycle the consumers read
-      // with opposite orientation: pure redundancy, invalid.
-      if( xi != 0 && xi != 1 && xj != 0 && xj != 2 &&
-          ( xi == 2 || xj == 1 || xi == xj ) ) return false;
-      if( xi != 0 && xi != 1 )
-      { int t = perm[0]; perm[0] = perm[xi - 1]; perm[xi - 1] = t; ic[0] = -ic[0]; ic[xi - 1] = -ic[xi - 1]; }
-      if( xj != 0 && xj != 2 )
-      { int t = perm[1]; perm[1] = perm[xj - 1]; perm[xj - 1] = t; ic[1] = -ic[1]; ic[xj - 1] = -ic[xj - 1]; }
-      return true;
+      const bool ok = cross >= 0 && cross < ncross;
+      for( int b = 0; b < npar; b++ )
+      {
+        perm[b] = ok ? xperm_tab[cross * npar + b] : b;
+        ic[b] = ok ? xsgn_tab[cross * npar + b] : 1;
+      }
+      return ok;
+    }
+
+    // The same row in the INPUT-slot view: pinv[k] is the base slot input slot
+    // k is fed to and sgn[k] its side flip -- what the crossed PDG, the crossed
+    // denominator and the reported helicity read. A row is in general no
+    // involution, so the two views differ (pinv is the inverse of perm).
+    __host__ __device__ inline bool cross_pinv( int cross, int* pinv, int* sgn )
+    {
+      constexpr int npar = ProcessData::npar;
+      const bool ok = cross >= 0 && cross < ncross;
+      for( int k = 0; k < npar; k++ )
+      {
+        pinv[k] = ok ? xpinv_tab[cross * npar + k] : k;
+        sgn[k] = ok ? xsgni_tab[cross * npar + k] : 1;
+      }
+      return ok;
     }
   }
 }
