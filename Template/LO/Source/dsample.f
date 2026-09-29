@@ -96,6 +96,11 @@ c      common /to_fx/   fx
 
       integer                   neventswritten
       common /to_eventswritten/ neventswritten
+c     refine last iteration decided before it was run (sample_put_point)
+      logical last_it
+      double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
+      common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
+     &     last_xnorm, last_it
 
       integer th_nunwgt
       double precision th_maxwgt
@@ -336,6 +341,17 @@ c      nun = n_unwgted()
          chi2 = chi2+(xmean(i)-tmean)**2/xsigma(i)**2
       enddo
       chi2 = chi2/2d0   !Since using only last 3, n-1=2
+c     A refine job whose last iteration was decided before it was run reports
+c     that iteration alone, as its events are normalised to it: the
+c     (x/sigma)^2 average of the last iterations is biased low when their
+c     weights are heavy-tailed (an iteration that caught a large weight gets
+c     a larger error estimate, hence a smaller weight in the average)
+      if (last_it) then
+         tmean = xmean(cur_it-1)
+         trmean = xrmean(cur_it-1)
+         tsigma = xsigma(cur_it-1)
+         chi2 = 0d0
+      endif
       write(*,'(a)') '-------------------------------------------------'
       write(*,'(a)') '---------------------------'
       write(*,'(a,i3,a,e12.4)') ' Results Last ',itsum,
@@ -513,6 +529,17 @@ c
          chi2 = chi2+(xmean(i)-tmean)**2/xsigma(i)**2
       enddo
       chi2 = chi2/2d0   !Since using only last 3, n-1=2
+c     A refine job whose last iteration was decided before it was run reports
+c     that iteration alone, as its events are normalised to it: the
+c     (x/sigma)^2 average of the last iterations is biased low when their
+c     weights are heavy-tailed (an iteration that caught a large weight gets
+c     a larger error estimate, hence a smaller weight in the average)
+      if (last_it) then
+         tmean = xmean(cur_it-1)
+         trmean = xrmean(cur_it-1)
+         tsigma = xsigma(cur_it-1)
+         chi2 = 0d0
+      endif
       write(*,'(a)') '-------------------------------------------------'
       write(*,'(a)') '---------------------------'
       write(*,'(a,i3,a,e12.4)') ' Results Last ',itsum,
