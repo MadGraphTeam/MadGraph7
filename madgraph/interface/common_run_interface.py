@@ -227,6 +227,8 @@ class CheckValidForCmd(object):
             # handled (and reported) by do_set: never an error
             return
 
+        # the MG5 'set' history a launch copies in leaves this one out
+        # (extended_cmd.non_runtime_set_options): keep the two in step
         if args[0] == 'zerowidth_tchannel':
             raise self.InvalidCmd(
                 "'zerowidth_tchannel' is a generation-time option: the T-channel "

@@ -119,6 +119,37 @@ def is_question_answer(line):
     return bool(getattr(line, 'is_answer', False))
 
 
+# MG5 options that only exist at generation time: the T-channel width treatment
+# is compiled into the ALOHA routines at 'output', so it cannot change once the
+# process directory exists and a run interface's check_set
+# (common_run_interface) rejects it.  It is an ordinary `set` line of the MG5
+# history all the same, so everything that copies that history into a run it
+# starts has to leave it out -- set_lines_for_run().  zerowidth_external is a
+# generation-time option too, but check_set accepts it (a run interface's
+# options are a copy of MG5's) and nothing reads it there, so it replays
+# harmlessly and is not listed.
+non_runtime_set_options = ('zerowidth_tchannel',)
+
+
+def is_non_runtime_set(line):
+    """True for a `set` of one of the non_runtime_set_options."""
+
+    args = line.split()
+    return len(args) > 1 and args[0] == 'set' and \
+                      args[1].split('=', 1)[0] in non_runtime_set_options
+
+
+def set_lines_for_run(history):
+    """The `set` lines of an MG5 history that a launch copies into the run it
+    starts: the MG5 settings, without the answers to an earlier launch's
+    questions (is_question_answer) and without the generation-time options a
+    run interface rejects (is_non_runtime_set).
+    """
+
+    return [l for l in history if l.strip().startswith('set')
+            and not is_question_answer(l) and not is_non_runtime_set(l)]
+
+
 def record_answer_in_history(interface, answer):
     """Append an answer to the history of `interface` and everything above it.
 

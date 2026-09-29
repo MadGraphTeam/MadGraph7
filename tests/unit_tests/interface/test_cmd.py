@@ -1040,3 +1040,121 @@ class DisplayInertCouplingOrderTest(unittest.TestCase):
         self.assertNotIn('inert', text)
         self.assertIn('QCD : weight = 1\n', text)
         self.assertIn('QED : weight = 2\n', text)
+
+
+class NoCrossingAliasTest(unittest.TestCase):
+    """'--no_crossing' (the MG5 3.x flag, which main still completes) is a
+    deprecated alias of '--use_crossing=False'.
+
+    Once do_add stopped popping it, it reached check_add as part of the
+    process definition: 'generate e+ e- > mu+ mu- --no_crossing' died with
+    'No particle --no_crossing in model'.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+        cls.cmd.do_import('model sm')
+
+    def test_it_is_popped_as_false(self):
+        args = ['p', '>', '--no_crossing']
+        with self.assertLogs('cmdprint', level='WARNING') as said:
+            self.assertIs(self.cmd.pop_use_crossing_flag(args), False)
+        self.assertEqual(args, ['p', '>'])
+        self.assertIn('--use_crossing=False', '\n'.join(said.output))
+
+    def test_a_generate_with_it_works(self):
+        with self.assertLogs('cmdprint', level='WARNING'):
+            self.cmd.exec_cmd('generate e+ e- > mu+ mu- --no_crossing')
+        self.assertEqual(len(self.cmd._curr_amps), 1)
+        self.assertFalse(self.cmd._use_crossing)
+
+
+class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
+    """`launch -i` of an aMC@NLO or MadWeight output copies the MG5 `set`
+    history into the run interface it starts, and that run's check_set
+    rejects the generation-time zerowidth_tchannel.
+
+    MadGraphCmd.do_launch replayed every line with exec_cmd (which raises), so
+    `set zerowidth_tchannel False; generate p p > t t~ [QCD]; output X;
+    launch X -i` aborted there; only the aMC@NLO prompt's own launch skipped
+    it. The run interface is a stub around the real check_set, so no process
+    directory is needed.
+    """
+
+    history = ['import model sm',
+               'set zerowidth_tchannel False',
+               'set nb_core 4',
+               'generate p p > t t~ [QCD]',
+               'output PROC']
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cmd = cmd.MasterCmd()
+
+    def replayed(self, launch, mode, module, name, path='PROC'):
+        """The lines `launch` (a do_launch) sends to the run interface it
+        builds, with the run interface classes module.name and
+        module.nameShell (MasterCmd is a CmdShell) stubbed."""
+
+        from unittest import mock
+        import madgraph.interface.common_run_interface as common_run
+
+        sent = []
+
+        class _Run(common_run.CheckValidForCmd):
+            InvalidCmd = madgraph.InvalidCmd
+            _set_options = []
+
+            def __init__(self, me_dir, options):
+                self.options = dict(options)
+
+            def help_set(self):
+                pass
+
+            def pass_in_web_mode(self):
+                pass
+
+            def exec_cmd(self, line):
+                self.check_set(line.split()[1:])
+                sent.append(line)
+
+        def check_launch(args, options):
+            args[:] = [p for p in [mode, path] if p]
+
+        master = self.cmd
+        with mock.patch.object(master, 'check_launch', check_launch), \
+             mock.patch.object(master, 'history', list(self.history)), \
+             mock.patch.object(master, 'define_child_cmd_interface',
+                               lambda child: 'stop'), \
+             mock.patch.object(module, name, _Run), \
+             mock.patch.object(module, name + 'Shell', _Run):
+            self.assertEqual(launch(master, '%s -i' % path), 'stop')
+        return sent
+
+    def test_from_mg5_for_amcatnlo(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'aMC@NLO',
+                             amcatnlo_run, 'aMCatNLOCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_mg5_for_madweight(self):
+        import madgraph.interface.madgraph_interface as mg_interface
+        import madgraph.interface.madweight_interface as madweight
+        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'madweight',
+                             madweight, 'MadWeightCmd')
+        self.assertEqual(sent, ['set nb_core 4'])
+
+    def test_from_the_amcatnlo_prompt(self):
+        import shutil
+        import madgraph.interface.amcatnlo_interface as amcatnlo_interface
+        import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
+        path = tempfile.mkdtemp(prefix='launch_replay')
+        try:
+            os.mkdir(pjoin(path, 'Events'))
+            sent = self.replayed(amcatnlo_interface.aMCatNLOInterface.do_launch,
+                                 None, amcatnlo_run, 'aMCatNLOCmd', path=path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+        self.assertEqual(sent, ['set nb_core 4'])

@@ -3866,10 +3866,19 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         default. Shared by do_add (where the flag decides whether the crossed
         subprocesses are folded onto their base at generation) and by do_output
         (where it decides whether this output keeps them folded).
+
+        '--no_crossing' (the MG5 3.x flag) is accepted as a deprecated alias of
+        '--use_crossing=False': left in `args` it would reach check_add as a
+        particle name. It means the complete output, never the 3.x behaviour
+        of dropping the crossed subprocesses (see do_add).
         """
         value = None
         for arg in args[:]:
-            if arg == '--use_crossing':
+            if arg == '--no_crossing':
+                logger.warning('--no_crossing is deprecated: use '
+                               '--use_crossing=False instead (treated as such)')
+                value = False
+            elif arg == '--use_crossing':
                 value = True
             elif arg.startswith('--use_crossing='):
                 given = arg.split('=', 1)[1]
@@ -9342,10 +9351,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                 else:
                     ME = amcatnlo_run.aMCatNLOCmd(me_dir=args[1],options=self.options)
                     ME.pass_in_web_mode()
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')
-                               and not cmd.is_question_answer(l)]
-                for line in config_line:
+                # transfer interactive configuration (without the
+                # generation-time options the run interface rejects)
+                for line in cmd.set_lines_for_run(self.history):
                     ME.exec_cmd(line)
                 stop = self.define_child_cmd_interface(ME)
                 return stop
@@ -9359,10 +9367,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     MW = madweight_interface.MadWeightCmdShell(me_dir=args[1], options=self.options)
                 else:
                     MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')
-                               and not cmd.is_question_answer(l)]
-                for line in config_line:
+                # transfer interactive configuration (without the
+                # generation-time options the run interface rejects)
+                for line in cmd.set_lines_for_run(self.history):
                     MW.exec_cmd(line)
                 stop = self.define_child_cmd_interface(MW)                
                 return stop
