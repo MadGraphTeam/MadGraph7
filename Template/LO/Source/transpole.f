@@ -33,6 +33,9 @@ c     small width treatment
 c
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
+      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
+      double precision bwk
+      parameter (bwk=15d0)
 c-----
 c  Begin Code
 c-----
@@ -46,24 +49,22 @@ c-----
             jac = jac * width/width1
          endif
 
-         zmin = atan((-pole)/width)/width
-         zmax = atan((1d0-pole)/width)/width
-         if (x .gt. del .and. x .lt. 1d0-del) then
-            z = zmin+(zmax-zmin)*x
-            y = pole+width*tan(width*z)
-            jac = jac *(width/cos(width*z))**2*(zmax-zmin)
-         elseif (x .lt. del) then
-            xmin = 0d0
-            z    = zmin+(zmax-zmin)*del
-            xmax = pole+width*tan(width*z)
-            y = xmin+x*(xmax-xmin)/del
-            jac = jac*(xmax-xmin)/del
+c        Breit-Wigner (arctan) map inside |y-pole| < bwk*width, and 1/|y-pole|
+c        (log) tails outside, the density continuous at the boundaries: the
+c        BW density falls like 1/y^2 while a vector resonance decaying to
+c        massless fermions falls like 1/y, so the tails get the right density
+         call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
+         bwu = x*(bwi_l+bwi_w+bwi_u)
+         if (bwu .lt. bwi_l) then
+            y = pole - pole*exp(-bwu/bwc)
+            jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
+         elseif (bwu .lt. bwi_l+bwi_w) then
+            z = bwza + (bwu-bwi_l)*width
+            y = pole + width*tan(z)
+            jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
          else
-            xmax = 1d0
-            z    = zmin+(zmax-zmin)*(1d0-del)
-            xmin = pole+width*tan(width*z)
-            y = xmin+(x+del-1d0)*(xmax-xmin)/del
-            jac = jac*(xmax-xmin)/del
+            y = pole + bwk*width*exp((bwu-bwi_l-bwi_w)/bwc)
+            jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
          endif
       elseif(pole .gt. -1d0) then       !1/sqrt(x^2+width^2) t-channel
          if (x .gt. .5d0) then          !Don't do anything here t>0
@@ -191,6 +192,9 @@ c     small width treatment
 c
       double precision small_width_treatment
       common/narrow_width/small_width_treatment
+      double precision bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb,bwu
+      double precision bwk
+      parameter (bwk=15d0)
 c
 c     Local
 c
@@ -210,41 +214,19 @@ c-----
             width = pole * small_width_treatment
             jac = jac * width/width1
          endif
-         zmin = atan((-pole)/width)/width
-         zmax = atan((1d0-pole)/width)/width
-         z = atan((y-pole)/width)/width
-         x = (z-zmin)/(zmax-zmin)
-         if (x .le. del) then
-            xmin = 0d0
-            z    = zmin+(zmax-zmin)*del
-            xmax = pole+width*tan(width*z)
-            if(xmin.lt.xmax) then
-               x = (y-xmin)*del/(xmax-xmin)
-            else
-               x=xmin
-            endif
-            jac = jac*(xmax-xmin)/del
-         elseif (x .ge. 1d0-del) then
-            xmax = 1d0
-            z    = zmin+(zmax-zmin)*(1d0-del)
-            xmin = pole+width*tan(width*z)
-            if(xmin.lt.xmax) then
-               x = (y-xmin)*del/(xmax-xmin)-del+1d0
-            else
-               x=xmin
-            endif
-            jac = jac*(xmax-xmin)/del
-c RF (2014/07/07): code is not protected against this special case. In this case,
-c simply set x to 1 and the jac to zero so that this PS point will not
-c contribute (but you do get the correct xbin_min and xbin_max in
-c sample_get_x)
-            if (y.eq.xgmax .and. xmin.ge.xgmax) then
-               x=1d0
-               jac=0d0
-            endif
+         call bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
+         if (y .lt. pole-bwk*width) then
+            bwu = bwc*log(pole/(pole-y))
+            jac = jac*(bwi_l+bwi_w+bwi_u)*(pole-y)/bwc
+         elseif (y .le. pole+bwk*width) then
+            z = atan((y-pole)/width)
+            bwu = bwi_l + (z-bwza)/width
+            jac = jac*(bwi_l+bwi_w+bwi_u)*((y-pole)**2+width**2)
          else
-            jac = jac *(width/cos(width*z))**2*(zmax-zmin)
+            bwu = bwi_l + bwi_w + bwc*log((y-pole)/(bwk*width))
+            jac = jac*(bwi_l+bwi_w+bwi_u)*(y-pole)/bwc
          endif
+         x = bwu/(bwi_l+bwi_w+bwi_u)
 c-------
 c    tjs 3/5/2011  Perform 1/x transformation  using y=xo^(1-x)
 c-------
@@ -327,4 +309,30 @@ c            y = xmin+(x+del-1d0)*(xmax-xmin)/del
             jac = jac*(xmax-xmin)/del
          endif
       endif
+      end
+
+      subroutine bwtail_setup(pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb)
+c**********************************************************************
+c     masses of the three pieces of the Breit-Wigner map on 0<y<1:
+c     lower 1/(pole-y) tail, arctan window |y-pole|<bwk*width, upper
+c     1/(y-pole) tail; bwc sets the tails so that the density
+c     1/((y-pole)^2+width^2) is continuous at pole +- bwk*width
+c**********************************************************************
+      implicit none
+      double precision pole,width,bwi_l,bwi_w,bwi_u,bwc,bwza,bwzb
+      double precision bwk
+      parameter (bwk=15d0)
+      double precision ylo, yhi
+      bwc = bwk/(width*(bwk*bwk+1d0))
+      ylo = pole-bwk*width
+      yhi = pole+bwk*width
+c     lower tail on [0, min(ylo,1)], window on [max(0,ylo), min(1,yhi)],
+c     upper tail on [yhi, 1]
+      bwi_l = 0d0
+      if (ylo .gt. 0d0) bwi_l = bwc*log(pole/(pole-min(ylo,1d0)))
+      bwi_u = 0d0
+      if (yhi .lt. 1d0) bwi_u = bwc*log((1d0-pole)/(bwk*width))
+      bwza = atan((max(0d0,ylo)-pole)/width)
+      bwzb = atan((min(1d0,yhi)-pole)/width)
+      bwi_w = max(0d0, (bwzb-bwza)/width)
       end
