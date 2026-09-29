@@ -1430,8 +1430,12 @@ class TestCmdShell2(unittest.TestCase,
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
 
-    def _openmp_compile_base(self, proc_dir):
-        """(base command, OpenMP flags) for compiling CPPProcess.cc in proc_dir.
+    def _openmp_compile_base(self, proc_dir, source='CPPProcess.cc'):
+        """(base command, OpenMP flags) for compiling `source` in proc_dir.
+
+        `source` is matched by its file name, so a backend-owned file compiled
+        from backend/<variant>/ (SigmaKin.cc) is found as well; the path the
+        makefile gives it is appended to the base command.
 
         The base command is the one the generated makefile itself would run,
         read back from ``make -n`` with the ``-c <src>`` and ``-o <obj>`` pairs
@@ -1446,11 +1450,13 @@ class TestCmdShell2(unittest.TestCase,
         make = subprocess.Popen(['make', '-n'], cwd=proc_dir,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         dry_run = make.communicate()[0].decode('utf-8', 'replace')
-        compile_line = [l for l in dry_run.splitlines() if '-c CPPProcess.cc' in l]
+        compile_line = [l for l in dry_run.splitlines()
+                        if re.search(r'-c \S*%s\b' % re.escape(source), l)]
         self.assertTrue(compile_line,
-                        'make -n did not show how to compile CPPProcess.cc:\n%s'
-                        % dry_run)
+                        'make -n did not show how to compile %s:\n%s'
+                        % (source, dry_run))
         base = shlex.split(compile_line[0])
+        self._openmp_source = base[base.index('-c') + 1]
         for flag in ('-o', '-c'):
             pos = base.index(flag)
             del base[pos:pos + 2]
@@ -1477,9 +1483,10 @@ class TestCmdShell2(unittest.TestCase,
         return base, None
 
     def test_standalone_mg7_openmp(self):
-        """The standalone (madmatrix) CPPProcess.cc must compile with OpenMP.
+        """The standalone (madmatrix) sigmaKin must compile with OpenMP.
 
-        The CPU branch of sigmaKin runs the event-page loop under
+        sigmaKin is backend-owned (backend/<variant>/SigmaKin.cc, compiled in
+        every P* directory). The CPU branch of sigmaKin runs the event-page loop under
         ``#pragma omp parallel for default( none )``, so *every* variable the
         loop body touches has to be named in the shared() clause -- anything
         missing is a hard compile error, not a warning. Three sigmaKin
@@ -1505,18 +1512,18 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(dirs, 'standalone produced no subprocess directory')
         proc_dir = pjoin(proc_root, dirs[0])
 
-        base, omp_flags = self._openmp_compile_base(proc_dir)
+        base, omp_flags = self._openmp_compile_base(proc_dir, 'SigmaKin.cc')
         if omp_flags is None:
             self.skipTest('no OpenMP-capable C++ compiler on this machine')
 
-        obj = pjoin(self.tmpdir, 'CPPProcess_omp.o')
+        obj = pjoin(self.tmpdir, 'SigmaKin_omp.o')
         build = subprocess.Popen(base + omp_flags +
-                                 ['-c', 'CPPProcess.cc', '-o', obj],
+                                 ['-c', self._openmp_source, '-o', obj],
                                  cwd=proc_dir, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT)
         log = build.communicate()[0].decode('utf-8', 'replace')
         self.assertEqual(build.returncode, 0,
-                         'CPPProcess.cc does not compile with OpenMP (%s):\n%s'
+                         'SigmaKin.cc does not compile with OpenMP (%s):\n%s'
                          % (' '.join(omp_flags), log))
 
         # Guard against the test going vacuous: if the parallel region were ever
@@ -1531,7 +1538,7 @@ class TestCmdShell2(unittest.TestCase,
         if symbols is not None:
             self.assertTrue('GOMP_parallel' in symbols or
                             'kmpc_fork_call' in symbols,
-                            'CPPProcess.o has no OpenMP runtime call, so the '
+                            'SigmaKin.o has no OpenMP runtime call, so the '
                             'parallel sigmaKin loop was not compiled')
 
     def test_standalone_split_orders_interference(self):
