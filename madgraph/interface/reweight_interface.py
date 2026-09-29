@@ -1967,6 +1967,48 @@ class ReweightInterface(extended_cmd.Cmd):
         """Adding one element to the list based on the matrix element"""
         
 
+    def tree_crossing_flag(self, processes):
+        """The --use_crossing option appended to every TREE definition of
+        `processes` when the reweight generates its own matrix elements (see
+        create_standalone_tree_directory).
+
+        Crossing is off by default for a generation, and the proc card replays
+        no flag unless the user gave one, so without ' --use_crossing=True' every
+        crossed subprocess would get a matrix element -- a generation and a
+        compilation -- of its own. The reweight reads them folded instead
+        (build_cross_resolve), except in the modes that need the crossed
+        subprocesses back as separate entries, which get ' --use_crossing=False'
+        (appended last, so it also overrides a True replayed from the card):
+         - 'keep_ordering' promises that the events are written in the matrix
+           element's own leg order, which makes the id_to_path key
+           order-sensitive; a folded crossing has no directory and hence no
+           such order to promise, so a crossed event would miss the lookup.
+         - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
+           FLAVOR-array entry point is wired up here; the FLAVOR array cannot
+           express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
+           density path does it).
+         - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
+           folded entry point SMATRIXHEL_IDX takes none: a crossed event would
+           silently be given the first matching matrix element instead.
+        Nothing is appended, leaving the generation as the lines ask, when:
+         - a line already carries --use_crossing: the proc card replays the
+           user's own choice, and an explicit False is sticky for the whole
+           definition (see MadGraphCmd.do_add), so it is respected as is.
+         - a perturbative ([...]) definition is among `processes`: its LO lines
+           (get_LO_definition_from_NLO) carry no flag and would inherit a True
+           set by an earlier tree line of the same definition.
+         - the EW Sudakov output (ewsudakovsa) is written: it is no folding
+           format, so the folded crossings would only be expanded back.
+        """
+        if self.keep_ordering or self.flag_density_matrix or self.use_eventid:
+            return ' --use_crossing=False'
+        if self.inc_sudakov or any('[' in proc for proc in processes):
+            return ''
+        if any(arg == '--use_crossing' or arg.startswith('--use_crossing=')
+               for proc in processes for arg in proc.split()):
+            return ''
+        return ' --use_crossing=True'
+
     @misc.mute_logger()
     def create_standalone_tree_directory(self, data ,second=False):
         """generate the various directory for the weight evaluation"""
@@ -1984,24 +2026,14 @@ class ReweightInterface(extended_cmd.Cmd):
         start = time.time()
         # The reweight matches each event's flavor to a subprocess matrix
         # element (id_to_path), and reaches a FOLDED crossed subprocess through
-        # the base's crossing-aware SMATRIX (see build_cross_resolve), so the
-        # crossings stay folded: the crossed subprocesses cost neither a
-        # generation nor a compilation.
-        #
-        # Two modes still want the crossed subprocesses back as separate entries:
-        #  - 'keep_ordering' promises that the events are written in the matrix
-        #    element's own leg order, which makes the id_to_path key
-        #    order-sensitive; a folded crossing has no directory and hence no
-        #    such order to promise, so a crossed event would miss the lookup.
-        #  - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
-        #    FLAVOR-array entry point is wired up here; the FLAVOR array cannot
-        #    express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
-        #    density path does it).
+        # the base's crossing-aware SMATRIX (see build_cross_resolve). Crossing
+        # is off by default for a generation, so the reweight asks for the
+        # folding itself: the crossed subprocesses then cost neither a
+        # generation nor a compilation. See tree_crossing_flag for the modes
+        # that cannot fold, and for the explicit choice it leaves alone.
         # Perturbative (NLO / ewsudakov [...]) definitions are left untouched:
-        # they already skip crossing at generation, and the flag must not land
-        # inside their option-laden line.
-        xflag = ' --use_crossing=False' \
-            if (self.keep_ordering or self.flag_density_matrix) else ''
+        # the flag must not land inside their option-laden line.
+        xflag = self.tree_crossing_flag(data['processes'])
         commandline=''
         for i,proc in enumerate(data['processes']):
             if '[' not in proc:

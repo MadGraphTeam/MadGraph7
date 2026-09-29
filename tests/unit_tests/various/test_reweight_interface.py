@@ -115,6 +115,97 @@ class TestPdgForMeCall(unittest.TestCase):
         self.assertEqual(out, [21, -1, 24, -2])
 
 
+class FakeMG5Cmd(object):
+    """Records the commands the reweight hands to its MG5 interface."""
+
+    def __init__(self):
+        self.commands = []
+
+    def exec_cmd(self, line, *args, **opts):
+        self.commands.append(line)
+
+
+class TestReweightGenerationFoldsCrossings(unittest.TestCase):
+    """The reweight generates its own matrix elements from the proc card lines,
+    and reads a crossed subprocess folded onto its base (build_cross_resolve).
+    Crossing is OFF by default for a generation and a proc card line carries no
+    --use_crossing unless the user gave one, so the reweight has to ask for the
+    folding itself: without it every crossed subprocess got an rw_me matrix
+    element -- a generation and a compilation -- of its own."""
+
+    def setUp(self):
+        self.obj = rwgt_interface.ReweightInterface.__new__(
+            rwgt_interface.ReweightInterface)
+        # __del__ calls do_quit; keep it a no-op on this bare instance
+        self.obj.exitted = True
+        self.obj.keep_ordering = False
+        self.obj.use_eventid = False
+        self.obj.flag_density_matrix = False
+        self.obj.inc_sudakov = False
+        self.obj.nb_rw = 0
+        self.obj.path2prefix = {}
+        self.obj.mg5cmd = FakeMG5Cmd()
+        self.path = tempfile.mkdtemp(prefix='rwgt_crossing')
+
+    def tearDown(self):
+        shutil.rmtree(self.path)
+
+    def generate(self, processes):
+        """The process definitions of the generate command the reweight
+        issues for `processes` (proc card lines)."""
+        data = {'path': self.path, 'paths': ['rw_me', 'rw_mevirt'],
+                'processes': list(processes)}
+        self.obj.create_standalone_tree_directory(data)
+        line = [c for c in self.obj.mg5cmd.commands
+                if c.startswith('generate')]
+        self.assertEqual(len(line), 1)
+        line = line[0][len('generate'):]
+        return [p.replace('add process', '', 1).strip()
+                for p in line.split(';') if p.strip()]
+
+    def test_tree_definitions_fold_their_crossings(self):
+        """the regression: every tree definition asks for the folding"""
+        self.assertEqual(self.generate(['p p > w+ j', 'p p > w+ j j @2']),
+                         ['p p > w+ j --use_crossing=True',
+                          'p p > w+ j j @2 --use_crossing=True'])
+
+    def test_keep_ordering_unfolds(self):
+        """keep_ordering needs one directory per crossed subprocess, and the
+        False comes last so that it also overrides a True from the card."""
+        self.obj.keep_ordering = True
+        self.assertEqual(self.generate(['p p > w+ j --use_crossing=True']),
+             ['p p > w+ j --use_crossing=True --use_crossing=False'])
+
+    def test_density_mode_unfolds(self):
+        self.obj.flag_density_matrix = True
+        self.assertEqual(self.generate(['p p > w+ j']),
+                         ['p p > w+ j --use_crossing=False'])
+
+    def test_use_eventid_unfolds(self):
+        """the folded entry point takes no process id"""
+        self.obj.use_eventid = True
+        self.assertEqual(self.generate(['p p > w+ j']),
+                         ['p p > w+ j --use_crossing=False'])
+
+    def test_explicit_choice_is_replayed(self):
+        """an explicit --use_crossing on a proc card line is the user's choice,
+        sticky for the whole definition: nothing is added to any line."""
+        for flag in ['--use_crossing=False', '--use_crossing=True',
+                     '--use_crossing']:
+            self.obj.mg5cmd = FakeMG5Cmd()
+            self.assertEqual(
+                self.generate(['p p > w+ j', 'p p > w+ j j %s' % flag]),
+                ['p p > w+ j', 'p p > w+ j j %s' % flag])
+
+    def test_perturbative_definition_is_left_alone(self):
+        """the LO lines derived from a [...] definition carry no flag, and would
+        inherit a True from an earlier tree line of the same definition."""
+        self.assertEqual(self.obj.tree_crossing_flag(
+            ['p p > w+ j', 'p p > w+ j [QCD]']), '')
+        self.obj.inc_sudakov = True
+        self.assertEqual(self.obj.tree_crossing_flag(['p p > t t~']), '')
+
+
 class FakeCrossingModule(object):
     """The two per-matrix-element f2py entry points build_cross_resolve walks,
     for the base g u > e+ e- u (prefix m0_, one flavor) and its crossing 30,
