@@ -341,6 +341,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &Context::load_matrix_element,
             py::arg("file"),
             py::arg("param_card"),
+            py::arg("parameters") = std::unordered_map<std::string, double>{},
             py::return_value_policy::reference_internal,
             pydoc::doc("Context::load_matrix_element")
         )
@@ -607,10 +608,11 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<Invariant, Mapping>(m, "Invariant", pydoc::doc("Invariant"))
         .def(
-            py::init<double, double, double>(),
+            py::init<double, double, double, double>(),
             py::arg("power") = 0.,
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
+            py::arg("flat_window") = 0.,
             pydoc::doc("Invariant::Invariant")
         );
 
@@ -697,13 +699,14 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<Propagator>(m, "Propagator", pydoc::doc("Propagator"))
         .def(
-            py::init<double, double, int, double, double, int>(),
+            py::init<double, double, int, double, double, int, double>(),
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("integration_order") = 0,
             py::arg("e_min") = 0.,
             py::arg("e_max") = 0.,
-            py::arg("pdg_id") = 0
+            py::arg("pdg_id") = 0,
+            py::arg("flat_window") = 0.
         )
         .def_readonly("mass", &Propagator::mass, pydoc::doc("Propagator::mass"))
         .def_readonly("width", &Propagator::width, pydoc::doc("Propagator::width"))
@@ -714,7 +717,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readonly("e_min", &Propagator::e_min, pydoc::doc("Propagator::e_min"))
         .def_readonly("e_max", &Propagator::e_max, pydoc::doc("Propagator::e_max"))
-        .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"));
+        .def_readonly("pdg_id", &Propagator::pdg_id, pydoc::doc("Propagator::pdg_id"))
+        .def_readonly(
+            "flat_window", &Propagator::flat_window, pydoc::doc("Propagator::flat_window")
+        );
 
     py::classh<TPropagatorMapping, Mapping>(
         m, "TPropagatorMapping", pydoc::doc("TPropagatorMapping")
