@@ -155,7 +155,8 @@ ColorOrderedMapping::ColorOrderedMapping(
     double s_invariant_power,
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
-    const std::vector<std::vector<double>>& dr_min
+    const std::vector<std::vector<double>>& dr_min,
+    bool arcsine_s23
 ) :
     Mapping(
         "ColorOrderedMapping",
@@ -226,7 +227,9 @@ ColorOrderedMapping::ColorOrderedMapping(
         s_invariant_power,
         0.,
         0.,
-        has_any_cut(pt_min, m_inv_min, dr_min)
+        has_any_cut(pt_min, m_inv_min, dr_min),
+        arcsine_s23,
+        true
     ),
     _double_t(
         t_invariant_power,
@@ -510,20 +513,18 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
                         fb.add(etmin_particle(s.at(j)), etmin_suffix.at(j + 1));
                 }
             }
-            Value im1;
+            Value im1, chain;
             bool first = true;
             for (std::size_t j = 0; j < k - 1; ++j) {
                 // New-rest mass: intermediate (rest_masses[j]) or final residual (j ==
                 // k-2).
                 Value m_rest = (j < k - 2) ? rest_masses[j] : m_out.at(s.at(k - 1));
                 Value m_peel = m_out.at(s.at(j));
-                // Block convention: pa-side carries the chain (mass m_rest), pb-side
-                // carries the peeled particle (mass m_peel). R_a is the active leg
-                // and gets decremented by peeled; R_b is constant.
-                //
-                // 2->3 kernel internally subtracts p_3 = im1 from pa+pb. R_a already
-                // has im1 subtracted from our previous step, so we pass pb = R_a + im1
-                // to recover p_12 = R_b + R_a inside the kernel.
+                // Block convention: the first output is the chain (mass m_rest),
+                // the second the peeled particle (mass m_peel). Each block returns
+                // chain + peeled = its incoming system by construction, so the
+                // outgoing momenta add up to P_set, and the chain is handed on as
+                // the system of the next block.
                 if (first) {
                     // First peel is a 2->2 LAB block, projecting the own-side on-z
                     // beam R_a (AmpliCol: gent_one_step beam i). Cut: ETmin of the
@@ -538,14 +539,16 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
                     );
                     Value peeled = ks.at(1);
                     p_out.at(s.at(j)) = peeled;
-                    R_a = fb.sub(R_a, peeled);
                     im1 = peeled;
+                    chain = ks.at(0);
                     dets.push_back(ks["det"]);
                     first = false;
                 } else {
-                    Value S = fb.add(R_a, R_b);
-                    Value pb_for_block = fb.add(fb.sub(S, beam_other), im1);
-                    ValueVec cond{beam_other, pb_for_block, im1};
+                    // The system still to be resolved, p_12 of this block, is the
+                    // chain side of the previous block. R_a + R_b is the same
+                    // momentum, but formed from beam-sized ones; for a soft system
+                    // its absolute error is of order the beam energy.
+                    ValueVec cond{beam_other, chain, im1};
                     if (_has_cut) {
                         cond.push_back(etmin_suffix.at(j + 1));
                         cond.push_back(etmin_particle(s.at(j)));
@@ -559,13 +562,13 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
                     );
                     Value peeled = ks.at(1);
                     p_out.at(s.at(j)) = peeled;
-                    R_a = fb.sub(R_a, peeled);
                     im1 = peeled;
+                    chain = ks.at(0);
                     dets.push_back(ks["det"]);
                 }
             }
-            // Last particle = R_a + R_b (= what remains after all explicit peels).
-            p_out.at(s.at(k - 1)) = fb.add(R_a, R_b);
+            // Last particle: the chain side of the last block.
+            p_out.at(s.at(k - 1)) = chain;
         };
 
     if (!_set1.empty()) {
@@ -847,13 +850,20 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
                         fb.add(etmin_particle(s.at(j)), etmin_suffix.at(j + 1));
                 }
             }
+            // Chain systems, mirroring the forward: chain_sums[j] is the sum of
+            // the outgoing momenta s[j..k-1], summed from the soft end so that
+            // it keeps the relative precision of the momenta it is made of.
+            ValueVec chain_sums(k);
+            chain_sums.at(k - 1) = p_outgoing(s.at(k - 1));
+            for (std::size_t j = k - 1; j-- > 0;) {
+                chain_sums.at(j) = fb.add(p_outgoing(s.at(j)), chain_sums.at(j + 1));
+            }
             Value im1;
             bool first = true;
             for (std::size_t j = 0; j < k - 1; ++j) {
                 Value peeled = p_outgoing(s.at(j));
-                // p1_out is the chain carrier (mass m_rest); by conservation
-                // p1_out = R_a + R_b - peeled.
-                Value p1_out = fb.sub(fb.add(R_a, R_b), peeled);
+                // p1_out is the chain carrier (mass m_rest)
+                Value p1_out = chain_sums.at(j + 1);
                 if (first) {
                     // Same projection as the forward 2->2 block: own-side beam R_a.
                     ValueVec cond{R_a, R_b};
@@ -867,12 +877,9 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
                     dets.push_back(rs["det"]);
                     first = false;
                 } else {
-                    // Mirror the forward 2->3 restructure: project beam_other, with
-                    // S = R_a + R_b reconstructed as beam_other + (S - beam_other) and
-                    // pb = (S - beam_other) + im1 (the kernel re-subtracts p_3 = im1).
-                    Value S = fb.add(R_a, R_b);
-                    Value pb_for_block = fb.add(fb.sub(S, beam_other), im1);
-                    ValueVec cond{beam_other, pb_for_block, im1};
+                    // Mirror the forward: project beam_other, with the chain system
+                    // s[j..k-1] as p_12 of the block.
+                    ValueVec cond{beam_other, chain_sums.at(j), im1};
                     if (_has_cut) {
                         cond.push_back(etmin_suffix.at(j + 1));
                         cond.push_back(etmin_particle(s.at(j)));
@@ -887,7 +894,6 @@ Mapping::Result ColorOrderedMapping::build_inverse_impl(
                     random_out.push_back(rs.at(2));
                     dets.push_back(rs["det"]);
                 }
-                R_a = fb.sub(R_a, peeled);
                 im1 = peeled;
             }
         };

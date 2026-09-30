@@ -1058,7 +1058,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 ME = run_interface.aMCatNLOCmd(me_dir=argss[0],options=self.options)
                 ME.pass_in_web_mode()
             # transfer interactive configuration
-            config_line = [l for l in self.history if l.strip().startswith('set')]
+            config_line = [l for l in self.history if l.strip().startswith('set')
+                           and not extended_cmd.is_question_answer(l)]
             for line in config_line:
                 ME.exec_cmd(line)
             stop = self.define_child_cmd_interface(ME)                

@@ -32,14 +32,21 @@ private:
     std::shared_ptr<void> shared_lib;
 };
 
+/// Owning handle to a `Runtime`.
 using RuntimePtr = std::unique_ptr<Runtime>;
+/// Compile `function` into a callable @ref Runtime for `context`'s device.
+/// `concurrent` allows several `Runtime`s to share one compilation cache.
 RuntimePtr
 build_runtime(const Function& function, ContextPtr context, bool concurrent = true);
+/// Names of the compute backends (CPU, CUDA, HIP, ...) built into this
+/// installation.
 std::vector<std::string> available_backends();
 DevicePtr cpu_device();
 DevicePtr cuda_device(std::size_t index = 0);
 DevicePtr hip_device(std::size_t index = 0);
+/// Directory to load the generated backend shared libraries from.
 void set_lib_path(const std::string& lib_path);
+/// Width, in elements, of the SIMD vector used by the CPU backend's kernels.
 void set_simd_vector_size(int vector_size);
 
 } // namespace madspace

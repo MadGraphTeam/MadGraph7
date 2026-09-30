@@ -638,10 +638,10 @@ c----------
           chosen_hel=0
           EWSUD_HELSELECT=chosen_hel
 
-          call sborn(p_born, born)
+          call sborn_frame(p_born, born)
           amp_split_born(:) = amp_split(:)
           call sudakov_wrapper(p_born)
-          call BinothLHA(p_born, born, virt_wgt)
+          call binothlha_frame(p_born, born, virt_wgt)
           USERHEL=-1
           call SLOOPMATRIX_THRES(p_born,virthel,1d-3,PREC_FOUND
      $ ,RET_CODE)
@@ -743,7 +743,7 @@ c----------
 
          
 
-               CALL SBORN_ONEHEL(P_born,hels(1),chosen_hel,born_hel)
+               CALL SBORN_ONEHEL_FRAME(P_born,hels(1),chosen_hel,born_hel)
                born_from_sborn_onehel(:)=amp_split_ewsud(:)
 
 
@@ -889,7 +889,7 @@ ccc             111    ---> all non_diagonal
               printinewsdkf=.False.
               EWSUD_HELSELECT=chosen_hel
               call sdk_get_hels(chosen_hel, hels)
-              CALL SBORN_ONEHEL(P_born,hels(1),chosen_hel,born_hel)
+              CALL SBORN_ONEHEL_FRAME(P_born,hels(1),chosen_hel,born_hel)
               born_from_sborn_onehel(:)=amp_split_ewsud(:)
 
 

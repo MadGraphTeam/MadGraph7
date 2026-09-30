@@ -451,9 +451,13 @@ def activate_dependence(dependency, cmd=None, log = None, MG5dir=None):
         raise MadGraph5Error('Samurai cannot yet be automatically installed.') 
 
     if dependency=='ninja':
+        # the option points to the library directory itself (./HEPTools/lib),
+        # but some installations keep ninja in its own subdirectory, so look
+        # for libninja.a both directly there and one 'lib' level below.
         if cmd.options['ninja'] in ['None',None,''] or\
          (cmd.options['ninja'] == './HEPTools/lib' and not MG5dir is None and\
-         which_lib(pjoin(MG5dir,cmd.options['ninja'],'lib','libninja.a')) is None):
+         all(which_lib(pjoin(MG5dir,cmd.options['ninja'],subdir,'libninja.a'))\
+                                is None for subdir in ['lib',''])):
             tell("Installing ninja...")
             cmd.do_install('ninja')
  
@@ -1595,6 +1599,34 @@ class open_file(object):
                                     ['firefox', 'chrome', 'safari','opera'], 
                                     'web browser')
 
+    # tried in this order when neither the text_editor option nor $EDITOR
+    # names one
+    DEFAULT_TEXT_EDITORS = ['vi', 'emacs', 'vim', 'gedit', 'nano']
+
+    @classmethod
+    def resolve_text_editor(cls, configured=None, quiet=False):
+        """The text editor a card will open in.
+
+        The `text_editor` option if that program exists, else $EDITOR, else the
+        first of DEFAULT_TEXT_EDITORS found on the machine.  With `quiet`, it
+        says nothing and sets nothing -- for telling someone in advance which
+        editor they are about to get.
+        """
+
+        if configured:
+            if which(configured.split()[0]):
+                return configured
+            if not quiet:
+                logger.warning('Specified text editor %s not valid.' % configured)
+        if 'EDITOR' in os.environ:
+            return os.environ['EDITOR']
+        if quiet:
+            for candidate in cls.DEFAULT_TEXT_EDITORS:
+                if which(candidate):
+                    return candidate
+            return None
+        return cls.find_valid(cls.DEFAULT_TEXT_EDITORS, 'text editor')
+
     @classmethod
     def configure_mac(cls, configuration=None):
         """ configure the way to open a file for mac """
@@ -1607,22 +1639,7 @@ class open_file(object):
         for key in configuration:
             if key == 'text_editor':
                 # Treat text editor ONLY text base editor !!
-                if configuration[key]:
-                    program = configuration[key].split()[0]                    
-                    if not which(program):
-                        logger.warning('Specified text editor %s not valid.' % \
-                                                             configuration[key])
-                    else:
-                        # All is good
-                        cls.text_editor = configuration[key]
-                        continue
-                #Need to find a valid default
-                if 'EDITOR' in os.environ:
-                    cls.text_editor = os.environ['EDITOR']
-                else:
-                    cls.text_editor = cls.find_valid(
-                                        ['vi', 'emacs', 'vim', 'gedit', 'nano'],
-                                         'text editor')
+                cls.text_editor = cls.resolve_text_editor(configuration[key])
               
             elif key == 'eps_viewer':
                 if configuration[key]:
@@ -2317,8 +2334,15 @@ class EasterEgg(object):
             return ""
         from madgraph import MG5DIR
         import madgraph.interface.madgraph_interface as madgraph_interface
+        # written by bin/create_release.py, so a git checkout has none.  That is
+        # normal, not a failure: without it there is simply no contributor to
+        # celebrate, and reporting it printed a DEBUG line under every error
+        # message the user got (EasterEgg('error') comes through here).
+        authors = pjoin(MG5DIR, 'input', 'authors.md')
+        if not os.path.exists(authors):
+            return ""
         to_add = []
-        ff = open(pjoin(MG5DIR,'input','authors.md'), 'r')
+        ff = open(authors, 'r')
         for line in ff:
             author, fdate = line.split()
             year, month, day = [int(i) for i in fdate.split('-')]
@@ -2451,7 +2475,8 @@ It has been validated for the last time with version: %s""",
     
 
 #decorator
-def set_global(loop=False, unitary=True, mp=False, cms=False):
+def set_global(loop=False, unitary=True, mp=False, cms=False,
+               dual=0, npwave=(0,)):
     from functools import wraps
     import aloha
     import aloha.aloha_lib as aloha_lib
@@ -2462,10 +2487,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
             old_gauge = aloha.unitary_gauge
             old_mp = aloha.mp_precision
             old_cms = aloha.complex_mass
+            old_dual = aloha.dual_mode
+            # npwave is a list mutated in place, so keep a copy of it
+            old_npwave = list(aloha.npwave)
             aloha.loop_mode = loop
             aloha.unitary_gauge = unitary
             aloha.mp_precision = mp
             aloha.complex_mass = cms
+            aloha.dual_mode = dual
+            aloha.npwave = list(npwave)
             aloha_lib.KERNEL.clean()
             try:
                 out =  f(*args, **opt)
@@ -2474,11 +2504,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
                 aloha.unitary_gauge = old_gauge
                 aloha.mp_precision = old_mp
                 aloha.complex_mass = old_cms
+                aloha.dual_mode = old_dual
+                aloha.npwave = old_npwave
                 raise
             aloha.loop_mode = old_loop
             aloha.unitary_gauge = old_gauge
             aloha.mp_precision = old_mp
             aloha.complex_mass = old_cms
+            aloha.dual_mode = old_dual
+            aloha.npwave = old_npwave
             aloha_lib.KERNEL.clean()
             return out
         return deco_f_set

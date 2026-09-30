@@ -584,6 +584,9 @@ class Switcher(object):
     def help_polarisation(self, *args, **opts):
         return self.cmd.help_polarisation(self, *args, **opts)
         
+    def help_vi(self, *args, **opts):
+        return self.cmd.help_vi(self, *args, **opts)
+
     def help_quit(self, *args, **opts):
         return self.cmd.help_quit(self, *args, **opts)
         
@@ -662,6 +665,18 @@ class Switcher(object):
 
     def help_customize_model(self, *args, **opts):
         return self.cmd.help_customize_model(self, *args, **opts)
+
+    def check_explain_restriction(self, *args, **opts):
+        return self.cmd.check_explain_restriction(self, *args, **opts)
+
+    def complete_explain_restriction(self, *args, **opts):
+        return self.cmd.complete_explain_restriction(self, *args, **opts)
+
+    def do_explain_restriction(self, *args, **opts):
+        return self.cmd.do_explain_restriction(self, *args, **opts)
+
+    def help_explain_restriction(self, *args, **opts):
+        return self.cmd.help_explain_restriction(self, *args, **opts)
 
 class MasterCmd(Switcher, LoopCmd.LoopInterface, amcatnloCmd.aMCatNLOInterface, cmd.CmdShell):
 

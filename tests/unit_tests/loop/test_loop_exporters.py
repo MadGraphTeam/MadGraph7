@@ -210,12 +210,13 @@ class IOExportMadLoopUnitTest(IOTests.IOTestManager):
     # instead of the ghost CASE(-82). That is how it passed alone and failed
     # in the full suite, after tests/unit_tests/iolibs/test_ufo_parsers.
     #
-    # It does NOT cover every way an earlier test can move this output:
+    # A second, non-gauge leak used to move this output as well:
     # tests/unit_tests/fks/test_ewsudakov imports loop_qcd_qed_sm_Gmu_forSudakov
-    # and a later import_ufo.import_model('loop_sm') then groups mdl_MW under
-    # ('aEWM1', 'Gf') instead of ('aEWM1',), which reorders
-    # mp_intparam_definition.inc. That is a leak between UFO model imports, not
-    # a gauge one, and it is still open.
+    # and a later import_ufo.import_model('loop_sm') then grouped mdl_MW under
+    # ('aEWM1', 'Gf') instead of ('aEWM1',), reordering
+    # mp_intparam_definition.inc. That one is fixed: OrganizeModelExpression
+    # now copies its class-level track_dependant per instance instead of
+    # extending it in place.
     @IOTests.set_global()
     def testIO_UnitProcOutputIOTests(self, load_only=False):
       """ Run the iotests """

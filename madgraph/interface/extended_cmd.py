@@ -48,12 +48,75 @@ logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 #
 #   question_hint      str, or callable() -> str, shown under a question in
 #                      place of the generic "type 'help'" line
+#   question_progress  callable(line) -> str or None, called after each answer
+#                      inside a question, with what was just typed. Whatever it
+#                      returns is printed under the question as it is asked
+#                      again. This is how a lesson says the next thing once the
+#                      reader has done the previous one, instead of printing
+#                      everything it has at the top and hoping it is read.
 #   suppress_timeout   answer a question in your own time. Everywhere else MG7
 #                      times a question out so an unattended script cannot hang;
 #                      a tutorial is the opposite case, since there is someone
 #                      reading by definition.
 question_hint = None
+question_progress = None
 suppress_timeout = False
+
+
+# Options MG7 used to have and does not support any more. Setting one must not
+# be an error: old command files, old process directories and old configuration
+# files still carry them, and a crash there is far worse than a dead setting.
+# The value is dropped instead -- silently when it would only have switched the
+# option off, with a warning otherwise, so a user who really was relying on it
+# hears about it once.
+removed_options = {
+    'madanalysis_path': 'MadAnalysis4 support has been removed, use MadAnalysis5',
+    'td_path': 'topdrawer was only used by MadAnalysis4, which has been removed',
+}
+
+
+def is_removed_option(name):
+    """True if `name` is an option that is not supported any more."""
+
+    return name in removed_options
+
+
+def warn_removed_option(name, value=None):
+    """Tell the user that a retired option is being ignored.
+
+    A value that would only have disabled the option (None/False/empty) says
+    nothing new -- the option is gone, so it is already off -- and stays quiet.
+    """
+
+    if not is_removed_option(name):
+        return
+    if str(value).strip().lower() in ('none', 'false', ''):
+        return
+    logger.warning("'%s' is not supported any more (%s). Ignoring it.",
+                   name, removed_options[name])
+
+
+class QuestionAnswer(str):
+    """A line of history that answered a question instead of being a command.
+
+    It is kept -- `history` has to replay the answers, or the file it writes
+    reruns a launch with the defaults -- but it is not a command of the prompt
+    whose history holds it.  `set width 6 auto` typed at the launch card
+    question is a card edit; replayed as an MG5 command it is an error.  So
+    everything that turns a history into commands for something else skips
+    these: the proc card an `output` writes (MadSpin and the reweighting replay
+    its `set` lines), and the `set` lines a launch copies into the run it
+    starts.  Test with is_question_answer(), which needs no import of this
+    module.
+    """
+
+    is_answer = True
+
+
+def is_question_answer(line):
+    """True for a history line recorded by record_answer_in_history()."""
+
+    return bool(getattr(line, 'is_answer', False))
 
 
 def record_answer_in_history(interface, answer):
@@ -69,6 +132,7 @@ def record_answer_in_history(interface, answer):
     answer = str(answer).strip() if answer is not None else ''
     if not answer:
         return
+    answer = QuestionAnswer(answer)
     seen = set()
     while interface is not None and id(interface) not in seen:
         seen.add(id(interface))
@@ -89,6 +153,19 @@ def get_question_hint():
         except Exception:
             hint = None
     return hint or "Need help here? type 'help'"
+
+
+def get_question_progress(line):
+    """What to add under a question after `line` was answered to it, if
+    anything. None -- the usual answer -- prints nothing."""
+
+    hook = question_progress
+    if not callable(hook):
+        return None
+    try:
+        return hook(line)
+    except Exception:
+        return None
 
 try:
     import madgraph.various.misc as misc
@@ -533,8 +610,36 @@ class OriginalCmd(object):
 #===============================================================================
 # CmdExtended
 #===============================================================================
+# `help vi`: when a card opens in vi, these are the keys that get someone in and
+# out of it.  Answered at every prompt, the card question included.
+VI_BASICS = """vi, in the keys you need to edit a card:
+
+  i            start typing          (the bottom line says -- INSERT --)
+  Esc          stop typing, back to moving around
+  :wq  Enter   save the card and quit
+  :q!  Enter   quit without saving
+  /word Enter  search for "word"; n jumps to the next match
+  x    dd      delete a character / the whole line
+  u            undo
+
+Lost? Press Esc twice and type  :q!  Enter -- nothing is saved.
+Rather have another editor? `set text_editor nano` (or emacs, code, ...)."""
+
+
 class BasicCmd(OriginalCmd):
     """Simple extension for the readline"""
+
+    def help_vi(self, *args):
+        """`help vi`: the few keys needed to edit a card in vi"""
+        # *args: the launch switch question calls help_X with an argument
+        # (SmartQuestion.print_help_for_switch), the MG7 prompt without
+        logger.info(VI_BASICS)
+
+    # set by complete() and read back by print_suggestions, which readline
+    # calls on the object owning the completer. A question which is answered
+    # before any completion ever ran has never been through complete(), so the
+    # hook used to die with 'object has no attribute completion_matches'.
+    completion_matches = []
 
     def set_readline_completion_display_matches_hook(self):
         """ This has been refactorized here so that it can be called when another
@@ -1431,7 +1536,7 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             debug_file.write('Fail to write options with error %s' % error)
         
         #add the cards:
-        for card in ['proc_card_mg5.dat','param_card.dat', 'run_card.dat']:
+        for card in ['proc_card_mg5.dat','param_card.dat', 'run_card.dat', 'onia_card.dat']:
             try:
                 ff = open(pjoin(self.me_dir, 'Cards', card))
                 debug_file.write(ff.read())
@@ -1630,12 +1735,37 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         
 
 
+    def notify_failed_command(self, line):
+        """Hook: `line` raised instead of running.
+
+        Does nothing here. postcmd is not a substitute: it is skipped when a
+        command raises inside exec_cmd, and when it is reached -- the
+        interactive path -- it cannot tell a command that worked from one that
+        did not. The tutorial mode overrides this to say something instead of
+        leaving the user in front of a bare error message."""
+
+        pass
+
+    @staticmethod
+    def safe_notify_failed_command(interface, line):
+        """Tell `interface` that `line` raised, without ever replacing the
+        error the user is about to see by one of our own."""
+
+        notify = getattr(interface, 'notify_failed_command', None)
+        if notify is None:
+            return
+        try:
+            notify(line)
+        except Exception as error:
+            logger.debug('notify_failed_command failed: %s', error)
+
     def onecmd(self, line, **opt):
         """catch all error and stop properly command accordingly"""
            
         try:
             return self.onecmd_orig(line, **opt)
         except BaseException as error: 
+            Cmd.safe_notify_failed_command(self, line)
             return self.error_handling(error, line)
             
     
@@ -1672,9 +1802,16 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
             if errorhandling or \
                 (hasattr(self, 'options') and 'crash_on_error' in self.options and 
                  self.options['crash_on_error']=='never'):
+                # onecmd catches the error itself, and has already told the hook
                 stop = current_interface.onecmd(line, **opt)
             else:
-                stop = Cmd.onecmd_orig(current_interface, line, **opt)
+                try:
+                    stop = Cmd.onecmd_orig(current_interface, line, **opt)
+                except BaseException:
+                    # the error goes up to whoever asked for the command, but
+                    # not before the interface is told: postcmd is skipped here
+                    Cmd.safe_notify_failed_command(current_interface, line)
+                    raise
             if postcmd:
                 stop = current_interface.postcmd(stop, line)
         finally:
@@ -2464,7 +2601,15 @@ class SmartQuestion(BasicCmd):
             if __debug__:
                 raise
             
-    def reask(self, reprint_opt=True):
+    def reask(self, reprint_opt=True, line=None):
+        """Ask the question again after `line` was answered to it.
+
+        `line` is what the caller has just handled.  It is not self.lastcmd:
+        onecmd() only sets that one for a line parseline() recognises, and an
+        answer coming from a command file is handed to default() without
+        going through onecmd() at all.
+        """
+
         pat = re.compile(r'\[(\d*)s to answer\]')
         prev_timer = signal.alarm(0) # avoid timer if any
         
@@ -2476,6 +2621,10 @@ class SmartQuestion(BasicCmd):
             if not prev_timer:
                 self.question = pat.sub('',self.question)
             self.display_question()
+            # a lesson which has something to say about the answer just given
+            progress = get_question_progress(line)
+            if progress:
+                logger_tuto.info(progress, '$MG:BOLD')
 
         if self.mother_interface:
             answer = self.mother_interface.check_answer_in_input_file(self, 'EOF', 
@@ -2539,9 +2688,9 @@ class SmartQuestion(BasicCmd):
                 self.value = self.default_value
                 return True
             elif line and hasattr(self, 'do_%s' % line.split()[0]):
-                return self.reask()
+                return self.reask(line=line)
             elif self.value in ['repeat', 'reask']:
-                return self.reask()
+                return self.reask(line=line)
             elif len(self.allow_arg)==0:
                 return True
             elif ' ' in line.strip() and '=' in self.value:
@@ -2663,7 +2812,7 @@ class OneLinePathCompletion(SmartQuestion):
             reprint_opt = False 
 
         if line != 'EOF':
-            return self.reask(reprint_opt)
+            return self.reask(reprint_opt, line=line)
 
             
 # a function helper
@@ -2710,11 +2859,21 @@ class ControlSwitch(SmartQuestion):
            if (user) value not in that list.
               -> try to find the first entry matching up to the case
        for ans_XXX, set the value to lower case, but if case_XXX is set to True 
+
+       Note on user defaults:
+       ----------------------
+       whatever the set_default_XXXX() compute can be overwritten, once and for
+       all, by the user via input/default_switch.txt (see default_switch_file).
        """
        
     case_sensitive = False
     quit_on = ['0','done', 'EOF','','auto']
     overwrite_display = True
+    # user/site defaults for the switches: "key = value" lines in
+    # input/<default_switch_file> of the MG5 installation (template:
+    # input/.default_switch.txt). Shared by the LO, NLO and mg7 questions --
+    # each simply ignores the keys it does not have. Set to None to opt out.
+    default_switch_file = 'default_switch.txt'
 
     def __init__(self, to_control, motherinstance, *args, **opts):
         """to_control is a list of ('KEY': 'Choose the shower/hadronization program')
@@ -2788,9 +2947,39 @@ class ControlSwitch(SmartQuestion):
 
 
     def set_default_switch(self):
-        
+
+        self.compute_default_switch()
+        path, user_default = self.read_user_default_switch()
+        if not user_default:
+            return
+        applied = self.apply_user_default_switch(path, user_default)
+        if not applied:
+            return
+        # The automatic defaults of the switches the user file does NOT fix are
+        # recomputed on top of it, since they are allowed to depend on one
+        # another: an NLO "fixed_order = ON" has to drag the shower default OFF.
+        # Re-applying the file afterwards protects its own entries from a
+        # set_default_XXXX that writes into a switch other than its own (the LO
+        # detector default calls set_default_shower). The values are already
+        # validated at that point, so this second pass warns about nothing.
+        self.compute_default_switch(skip=applied)
+        self.remove_inconsistency()
+        self.apply_user_default_switch(path, applied)
+        # A conflict between two entries of the file, or between one of them and
+        # a switch it leaves alone, is resolved here and now: these are defaults,
+        # not a half-finished edit, so the question opens on a consistent set
+        # instead of reporting a conflict the user never created in front of it.
+        for key, value in self.inconsistent_keys.items():
+            self.switch[key] = value
+        self.remove_inconsistency()
+
+    def compute_default_switch(self, skip=()):
+        """Set the automatic default of every switch but those in `skip`."""
+
         for key,_ in self.to_control:
             key = key.lower()
+            if key in skip:
+                continue
             if hasattr(self, 'default_switch') and key in self.default_switch:
                 self.switch[key] = self.default_switch[key]
                 continue
@@ -2798,7 +2987,87 @@ class ControlSwitch(SmartQuestion):
                 getattr(self, 'set_default_%s' % key)()
             else:
                 self.default_switch_for(key)
-        
+
+    def get_user_default_switch_path(self):
+        """Path of the user/site switch default file, or None if there is
+        none. It lives in the input/ directory of the MG5 installation, next
+        to default_run_card_lo.dat -- both are "defaults I want for every
+        process I generate". A standalone process directory has no input/ of
+        its own, so it reaches back to the installation it was written by
+        (mg5_path in its me5/mg7_configuration.txt)."""
+
+        if not self.default_switch_file:
+            return None
+        roots = []
+        try:
+            from madgraph import MG5DIR
+        except ImportError:
+            pass  # standalone (MADEVENT/aMCatNLO) directory: mg5_path only
+        else:
+            if MG5DIR:
+                roots.append(MG5DIR)
+        options = getattr(self.mother_interface, 'options', None) or {}
+        if options.get('mg5_path'):
+            roots.append(options['mg5_path'])
+        for root in roots:
+            path = os.path.join(root, 'input', self.default_switch_file)
+            if os.path.exists(path):
+                return path
+        return None
+
+    def read_user_default_switch(self):
+        """Parse the user/site switch defaults ("key = value" lines, # for
+        comments). Returns (path, {key: value}), or (None, {}) when there is
+        no such file."""
+
+        path = self.get_user_default_switch_path()
+        if not path:
+            return None, {}
+        out = {}
+        try:
+            with open(path) as fsock:
+                for line in fsock:
+                    line = line.split('#', 1)[0].strip()
+                    if not line:
+                        continue
+                    if '=' not in line:
+                        logger.warning('%s: ignoring line without "=": %s',
+                                       path, line)
+                        continue
+                    key, value = line.split('=', 1)
+                    out[key.strip().lower()] = value.strip()
+        except IOError as error:
+            logger.warning('could not read %s: %s', path, error)
+            return None, {}
+        return path, out
+
+    def apply_user_default_switch(self, path, defaults):
+        """Apply the user/site defaults on top of the computed ones. Returns
+        the {key: value} that could actually be applied -- the entries that
+        name another question's switch, or a value this run cannot provide,
+        are dropped (with a warning for the latter)."""
+
+        applied = {}
+        for key, value in defaults.items():
+            if key not in self.switch:
+                # the file is shared by the LO/NLO/mg7 questions, which do not
+                # have the same switches (analysis vs madanalysis, ...)
+                logger.debug('%s: "%s" is not a switch of this question, ignored',
+                             path, key)
+                continue
+            if not hasattr(self, 'ans_%s' % key):
+                value = self.match_switch_case(key, value)
+                if not self.check_value(key, value):
+                    logger.warning('%s: "%s = %s" is not available here, keeping "%s".',
+                                   path, key, value, self.switch[key])
+                    continue
+            # user=True: an entry of the file is a user choice, so it goes
+            # through the same consistency resolution as one typed at the
+            # prompt (an NLO 'fixed_order = ON' switches the shower off).
+            self.set_switch(key, value, user=True)
+            applied[key] = value
+        return applied
+
     def default_switch_for(self, key):
         """use this if they are no dedicated function for such key"""
         
@@ -2937,6 +3206,21 @@ class ControlSwitch(SmartQuestion):
         else:
             logger.warning('Not valid command: %s' % line)
    
+    def match_switch_case(self, key, value):
+        """Return value with the case of the matching entry of
+        get_allowed(key), for a switch that is not case sensitive."""
+
+        allowed = self.get_allowed(key) or []
+        if not self.is_case_sensitive(key) and value not in allowed:
+            lower = [t.lower() for t in allowed]
+            try:
+                ind = lower.index(value.lower())
+            except ValueError:
+                pass # keep the current case, in case check_value accepts it anyway.
+            else:
+                value = allowed[ind]
+        return value
+
     def is_case_sensitive(self, key):
         """check if a key is case sensitive"""
         
@@ -2969,11 +3253,13 @@ class ControlSwitch(SmartQuestion):
     def postcmd(self, stop, line):
         
         # for diamond class arch where both branch defines the postcmd
-        # set it up to be in coop mode
-        try:
-            out = super(ControlSwitch,self).postcmd(stop, line)
-        except AttributeError:
-            pass
+        # set it up to be in coop mode. (Do not catch AttributeError around the
+        # call: it hid any error raised inside the other branch's postcmd --
+        # e.g. the auto-width computation -- behind an UnboundLocalError.)
+        out = None
+        parent = super(ControlSwitch, self)
+        if hasattr(parent, 'postcmd'):
+            out = parent.postcmd(stop, line)
         if out:
             return out
 
@@ -2984,7 +3270,7 @@ class ControlSwitch(SmartQuestion):
             return True
         if self.value != 'reask':
             self.create_question()
-            return self.reask(True)
+            return self.reask(True, line=line)
         return
 
     def set_switch(self, key, value, user=True):
@@ -2997,14 +3283,7 @@ class ControlSwitch(SmartQuestion):
                 value = value.lower()
             return getattr(self, 'ans_%s' % key)(value)
         
-        if not self.is_case_sensitive(key) and value not in self.get_allowed(key):
-            lower = [t.lower() for t in self.get_allowed(key)]
-            try:
-                ind = lower.index(value.lower())
-            except ValueError:
-                pass # keep the current case, in case check_value accepts it anyway.
-            else:
-                value = self.get_allowed(key)[ind]
+        value = self.match_switch_case(key, value)
         
         check = self.check_value(key, value) 
         if not check:

@@ -26,8 +26,9 @@ tutorial = Tutorial(
     title='loop matrix elements with MadLoop',
     description='generate and check standalone loop matrix elements',
     aliases=('MadLoop',),
-    ai_generated=False,
     order='free',
+    section='advanced',
+    ai_generated=False,
     steps=[
         Step('tutorial', retarget(legacy.tutorial),
              title='welcome',

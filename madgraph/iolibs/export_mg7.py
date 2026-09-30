@@ -12,9 +12,12 @@ class IdentifyTopologyTag(IdentifyConfigTag):
 
     @staticmethod
     def link_from_leg(leg, model):
-        (leg_num1, _, mass, width, _), leg_num2 = super(
+        # the parent link grew a third element (the bound state) in 3.8.0,
+        # so take the leg data and its number positionally
+        link = super(
             IdentifyTopologyTag, IdentifyTopologyTag
         ).link_from_leg(leg, model)[0]
+        (leg_num1, _, mass, width, _), leg_num2 = link[0], link[1]
         return [((leg_num1, mass, width), leg_num2)]
 
     @staticmethod
@@ -33,9 +36,10 @@ class IdentifySGTopologyTag(IdentifySGConfigTag):
 
     @staticmethod
     def link_from_leg(leg, model):
-        (state, _, _, _, mass, width), leg_num = super(
+        link = super(
             IdentifySGTopologyTag, IdentifySGTopologyTag
         ).link_from_leg(leg, model)[0]
+        (state, _, _, _, mass, width), leg_num = link[0], link[1]
         return [((state, mass, width), leg_num)]
 
     @staticmethod

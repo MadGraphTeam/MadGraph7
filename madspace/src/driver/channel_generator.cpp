@@ -663,7 +663,24 @@ void ChannelEventGenerator::update_max_weight(Tensor weights) {
         _max_weight = w_min_nonzero;
     }
     std::sort(_large_weights.begin(), _large_weights.end(), std::greater{});
+    apply_truncation_budget();
+}
 
+void ChannelEventGenerator::set_target_count(std::size_t target_count) {
+    std::size_t old_target = _status.count_target;
+    _status.count_target = target_count;
+    // The truncation budget scales with count_target, and _max_weight only
+    // rises. A cap chosen under a larger target than the channel ends up with
+    // (e.g. generate()'s round-one seed) would otherwise never be corrected: a
+    // channel that has met its smaller target is not revisited. Tighten the cap
+    // now; unweight_all() re-unweights the whole file against it at the end.
+    if (target_count < old_target && _max_weight != 0 &&
+        _status.count_unweighted <= _config.freeze_max_weight_after) {
+        apply_truncation_budget();
+    }
+}
+
+void ChannelEventGenerator::apply_truncation_budget() {
     double w_sum = 0;
     double max_truncation = _config.max_overweight_truncation *
         static_cast<double>(std::min(

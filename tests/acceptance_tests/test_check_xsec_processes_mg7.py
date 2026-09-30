@@ -32,17 +32,36 @@ tests). Each test:
      the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
-  5. asserts the relative difference to the reference stays within a tolerance.
+  5. asserts the relative difference to the reference stays within the
+     tolerance plus ``MG7_XSEC_NSIGMA`` times the combined MC error,
+  6. asserts the overweight tail of the unweighted sample (the fraction of
+     |sigma| carried by events with |w| > <|w|>, read from
+     ``Events/*/events.lhe.gz``) stays below ``MG7_XSEC_OVERWEIGHT_FACTOR``
+     times the run card's ``max_overweight_truncation``. This piggybacks on
+     the events the cross-section check generates anyway, so the regression
+     fixed in PR #191 (MadNIS runs carrying ~3-5x the intended tail) is caught
+     at no extra CI cost.
 
 The source of truth is ``check_xsec_processes_reference.json`` (mirrors the
 table in CLAUDE.md, produced with fixed scale and 1M events).
 
-Two knobs are read from the environment so the CI can dial them without
+Four knobs are read from the environment so the CI can dial them without
 touching the code:
 
-  * ``MG7_XSEC_TOLERANCE`` -- max allowed relative difference (default 0.01, 1%)
-  * ``MG7_XSEC_EVENTS``    -- events per run (default 100000; the reference
-                             used 1M, reduced here to keep the CI affordable)
+  * ``MG7_XSEC_TOLERANCE`` -- allowed relative difference on top of the MC
+                             error (default 0.01, 1%)
+  * ``MG7_XSEC_NSIGMA``    -- how many combined MC errors (this run and the
+                             reference, in quadrature) are allowed on top of
+                             the tolerance (default 3)
+  * ``MG7_XSEC_EVENTS``    -- events per run (default 10000; the reference
+                             used 1M, reduced here to keep the CI affordable:
+                             the MC error is then ~0.25%, hence the
+                             MG7_XSEC_NSIGMA allowance: some processes sit
+                             up to ~0.7% off their reference even at 100k)
+  * ``MG7_XSEC_OVERWEIGHT_FACTOR`` -- allowed overweight tail, in units of the
+                             run card's ``max_overweight_truncation``
+                             (default 2.5; the tail is a sum over a handful
+                             of events at 10k, so it fluctuates)
 
 Run everything locally with e.g.::
 
@@ -60,7 +79,9 @@ from __future__ import absolute_import
 from __future__ import division
 
 import glob
+import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -87,7 +108,9 @@ _REFERENCE_PDF = 'NNPDF23_lo_as_0130_qed'
 # Environment-tunable knobs (see module docstring). Kept as module globals so
 # the dynamically generated test methods pick up the CI-provided values.
 _TOLERANCE = float(os.environ.get('MG7_XSEC_TOLERANCE', 0.01))
-_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 100000))
+_EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 10000))
+_NSIGMA = float(os.environ.get('MG7_XSEC_NSIGMA', 3))
+_OVERWEIGHT_FACTOR = float(os.environ.get('MG7_XSEC_OVERWEIGHT_FACTOR', 2.5))
 
 # Optional: when set (by the CI workflow), one JSON result record per process
 # is written here so a later job can build a GitHub Actions job summary out of
@@ -160,6 +183,39 @@ def _edit_run_card(toml_path, events, disable_jet_cuts):
     open(toml_path, 'w').write(t)
 
 
+def _max_overweight_truncation(toml_path):
+    """The ``max_overweight_truncation`` the run was made with."""
+    m = re.search(r'(?m)^max_overweight_truncation\s*=\s*([^\s#]+)',
+                  open(toml_path).read())
+    return float(m.group(1))
+
+
+def _overweight_fraction(lhe_path):
+    """Fraction of |sigma| carried by the events with |w| > <|w|>.
+
+    An unweighted event has the weight of its channel's cap, unless its raw
+    weight was above that cap: it is then kept with the weight ratio. So this
+    is the quantity ``max_overweight_truncation`` bounds (per channel, hence
+    also summed)."""
+    weights = []
+    with gzip.open(lhe_path, 'rt') as f:
+        in_event = False
+        for line in f:
+            if in_event:
+                # first line of the event block: NUP IDPRUP XWGTUP ...
+                weights.append(abs(float(line.split()[2])))
+                in_event = False
+            elif line.startswith('<event'):
+                in_event = True
+    total = sum(weights)
+    if not total:
+        return 0.
+    mean = total / len(weights)
+    # the regular events all carry the same weight, slightly below the mean;
+    # the relative margin only guards against the rounding of the LHE output
+    return sum(w for w in weights if w > mean * (1 + 1e-7)) / total
+
+
 with open(_REFERENCE) as _f:
     _REF = json.load(_f)
 
@@ -176,7 +232,7 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         shutil.rmtree(self.path, ignore_errors=True)
 
     def _record_result(self, entry, section, status, got=None, err=None,
-                        message=None):
+                        message=None, overweight=None, overweight_max=None):
         """Persist a machine-readable record of this process' outcome (used
         by the CI workflow to build a job summary). No-op unless
         ``MG7_XSEC_RESULTS_DIR`` is set."""
@@ -194,6 +250,8 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
                 'ref_cross': entry['cross'],
                 'ref_error': entry.get('error'),
                 'message': message,
+                'overweight': overweight,
+                'overweight_max': overweight_max,
             }
             out = pjoin(_RESULTS_DIR, '%s_%s.json' % (section, entry['id']))
             with open(out, 'w') as f:
@@ -253,22 +311,47 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         got = float(info['mean'])
         err = float(info.get('error') or 0.0)
 
+        # overweight tail of the unweighted sample (only the LHE output is
+        # read; the npy formats are not what the CI runs)
+        overweight = overweight_max = None
+        lhe = pjoin(os.path.dirname(infos[-1]), 'events.lhe.gz')
+        if os.path.exists(lhe):
+            overweight = _overweight_fraction(lhe)
+            overweight_max = _OVERWEIGHT_FACTOR * _max_overweight_truncation(toml)
+
         ref_x = entry['cross']
         reldiff = abs(got - ref_x) / ref_x if ref_x else float('inf')
-        passed = reldiff <= _TOLERANCE
-        message = None
-        if not passed:
+        # the tolerance covers genuine differences; the MC error of the run
+        # (and of the reference) comes on top of it, so that fewer events do
+        # not turn statistical fluctuations into failures
+        sigma = math.sqrt(err ** 2 + (entry.get('error') or 0.0) ** 2)
+        allowed = _TOLERANCE + (_NSIGMA * sigma / ref_x if ref_x else 0.0)
+        xsec_ok = reldiff <= allowed
+        overweight_ok = overweight is None or overweight <= overweight_max
+        problems = []
+        if not xsec_ok:
             # A cross-section was successfully obtained here, just outside
             # tolerance -- no need for the (noisy) log tail, the deviation
             # itself is the useful diagnostic.
-            message = (
+            problems.append(
                 '%s (%s): mg7 xsec %.6g +- %.3g pb differs from reference '
-                '%.6g pb by %.3f%% (> %.3f%% tolerance)'
+                '%.6g pb by %.3f%% (> %.3f%% = %.3f%% tolerance + %g sigma)'
                 % (entry['id'], entry['process'], got, err, ref_x,
-                   100 * reldiff, 100 * _TOLERANCE))
-        self._record_result(entry, section, 'pass' if passed else 'fail',
-                             got=got, err=err, message=message)
-        self.assertLessEqual(reldiff, _TOLERANCE, message)
+                   100 * reldiff, 100 * allowed, 100 * _TOLERANCE, _NSIGMA))
+        if not overweight_ok:
+            problems.append(
+                '%s (%s): %.3f%% of the cross section is carried by '
+                'overweight events (|w| > <|w|>), above the %.3f%% allowed '
+                '(%g x max_overweight_truncation)'
+                % (entry['id'], entry['process'], 100 * overweight,
+                   100 * overweight_max, _OVERWEIGHT_FACTOR))
+        message = '\n'.join(problems) or None
+        self._record_result(entry, section, 'fail' if problems else 'pass',
+                             got=got, err=err, message=message,
+                             overweight=overweight,
+                             overweight_max=overweight_max)
+        if problems:
+            self.fail(message)
 
 
 def _make_test(entry, defines, section):

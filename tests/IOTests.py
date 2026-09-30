@@ -26,6 +26,7 @@ import unittest
 import subprocess
 import pydoc
 import tempfile
+from contextlib import contextmanager
 from functools import wraps
 from string import Template
 
@@ -56,7 +57,8 @@ _hc_comparison_files = pjoin(_input_file_path,'IOTestsComparison')
 _hc_comparison_tarball = pjoin(_input_file_path,'IOTestsComparison.tar.bz2')
 
 
-def set_global(loop=False, unitary=True, mp=False, cms=False):
+def set_global(loop=False, unitary=True, mp=False, cms=False,
+               dual=0, npwave=(0,)):
     """This decorator set_global() which make sure that for each test
     the global variable are returned to their default value. This decorator can
     be modified with the new global variables to come and will potenitally be
@@ -68,10 +70,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
             old_gauge = aloha.unitary_gauge
             old_mp = aloha.mp_precision
             old_cms = aloha.complex_mass
+            old_dual = aloha.dual_mode
+            # npwave is a list mutated in place, so keep a copy of it
+            old_npwave = list(aloha.npwave)
             aloha.loop_mode = loop
             aloha.unitary_gauge = unitary
             aloha.mp_precision = mp
             aloha.complex_mass = cms
+            aloha.dual_mode = dual
+            aloha.npwave = list(npwave)
             aloha_lib.KERNEL.clean()
             try:
                 out =  f(*args, **opt)
@@ -80,11 +87,15 @@ def set_global(loop=False, unitary=True, mp=False, cms=False):
                 aloha.unitary_gauge = old_gauge
                 aloha.mp_precision = old_mp
                 aloha.complex_mass = old_cms
+                aloha.dual_mode = old_dual
+                aloha.npwave = old_npwave
                 raise
             aloha.loop_mode = old_loop
             aloha.unitary_gauge = old_gauge
             aloha.mp_precision = old_mp
             aloha.complex_mass = old_cms
+            aloha.dual_mode = old_dual
+            aloha.npwave = old_npwave
             aloha_lib.KERNEL.clean()
             return out
         return deco_f_set
@@ -210,6 +221,25 @@ class IOTest(object):
 # to be compared against reference ones. It should return a base_path from where
 # the relative path of the list of files to be compared points. See the
 # example in <MG_root>/tests/unit_tests/test_IOTest_example.py for more details
+@contextmanager
+def force_ninja_quad_prec_support():
+    """Generate as if the local Ninja provided quadruple precision.
+
+    MadLoop writes the answer of 'ninja-config -quadsupport' into
+    loop_matrix.f (QP_NLOOPLIB and LOOPLIBS_QPAVAILABLE), but that answer is a
+    property of the machine, not of the code: the installer configures Ninja
+    with --disable-quadninja on MacOS and --enable-quadninja elsewhere. The
+    reference files can only record one of the two, so pin the answer here
+    instead of letting the comparison depend on where the test runs.
+    """
+
+    original = misc.get_ninja_quad_prec_support
+    misc.get_ninja_quad_prec_support = lambda *args, **opts: True
+    try:
+        yield
+    finally:
+        misc.get_ninja_quad_prec_support = original
+
 def createIOTest(groupName=None, testName=None):
 
     def createIOTest_decorator(GenerateFilefunc):
@@ -390,16 +420,12 @@ class IOTestManager(unittest.TestCase):
             try:
                 self.assertEqual(a,b)
             except AssertionError:
-                if "PARAMETER (QP_NLOOPLIB=" in a: # avoid issue that mac has one QP and linux 2.
-                    continue
-                elif ",.TRUE.,.TRUE." in a:
+                if ",.TRUE.,.TRUE." in a:
                     continue
                 elif ",.FALSE.,.TRUE." in a:
                     continue
                 elif ",.FALSE.,.FALSE." in a:
                     continue
-                elif 'The Ninja version installed does not support quadruple precision' in a:
-                    return
                 elif a.startswith('C'):
                     continue
                 else:
@@ -578,7 +604,8 @@ class IOTestManager(unittest.TestCase):
                                 colored%(32,test_name),colored%(34,folder_name)))
             
             try:
-                files_path = iotest.run(iotestManager)
+                with force_ninja_quad_prec_support():
+                    files_path = iotest.run(iotestManager)
             except Exception as e: 
                 iotest.clean_output()
                 if not verbose:

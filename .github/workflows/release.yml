@@ -59,85 +59,36 @@ jobs:
             exit 1
           fi
 
+      # Every suite that runs on a push to main. Kept as an explicit list on
+      # purpose: "all runs for this commit were green" is vacuously true when
+      # no run exists at all, which is exactly the failure mode that let
+      # v0.2.0 publish untested -- hence absent_is_failure: 'true' below.
+      #
+      # madspin_parallel.yml is knowingly absent -- its push filter is
+      # branches: ['3.x'], so it never runs on main and there is nothing to
+      # gate on. See the tracking issue linked in the PR that added this.
+      #
+      # The full suite takes a few hours from cold; poll_timeout_minutes stays
+      # under this job's own timeout-minutes so we report which suite hung
+      # rather than having the runner killed out from under us.
       - name: Require main's CI for this commit to be green
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # The full suite takes a few hours from cold; stay under the job's
-          # own timeout-minutes so we report which suite hung rather than
-          # having the runner killed out from under us.
-          POLL_TIMEOUT_MINUTES: '330'
-          POLL_INTERVAL_SECONDS: '60'
-        run: |
-          set -uo pipefail
-
-          # Every suite that runs on a push to main. Kept as an explicit list
-          # on purpose: "all runs for this commit were green" is vacuously true
-          # when no run exists at all, which is exactly the failure mode that
-          # let v0.2.0 publish untested.
-          #
-          # madspin_parallel.yml is knowingly absent -- its push filter is
-          # branches: ['3.x'], so it never runs on main and there is nothing to
-          # gate on. See the tracking issue linked in the PR that added this.
-          REQUIRED="
-          .github/workflows/unittest.yml
-          .github/workflows/acceptancetest.yml
-          .github/workflows/acceptancetest_madevent.yml
-          .github/workflows/acceptancetest_mg7.yml
-          .github/workflows/parralel.yml
-          .github/workflows/IOtest.yml
-          .github/workflows/aloha.yml
-          .github/workflows/check_xsec_processes_mg7.yml
-          .github/workflows/madspace.yml
-          "
-
-          deadline=$(( $(date +%s) + POLL_TIMEOUT_MINUTES * 60 ))
-          while :; do
-            runs=$(gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&event=push&branch=main&per_page=100" \
-              --jq '.workflow_runs[]' | jq -s '.')
-
-            pending=0 bad=0 total=0 summary=""
-            for wf in $REQUIRED; do
-              total=$((total + 1))
-              # The same commit can have several runs of one workflow (a re-run
-              # of the merge, say), so take the newest; run ids are monotonic.
-              read -r status conclusion url <<<"$(jq -r --arg p "$wf" '
-                [.[] | select(.path == $p)] | sort_by(.id) | last
-                | if . == null then "absent - -"
-                  else "\(.status) \(.conclusion // "-") \(.html_url)" end' <<<"$runs")"
-
-              case "$status:$conclusion" in
-                completed:success) state="ok" ;;
-                absent:*)          state="never ran"; bad=$((bad + 1)) ;;
-                completed:*)       state="$conclusion"; bad=$((bad + 1)) ;;
-                *)                 state="$status"; pending=$((pending + 1)) ;;
-              esac
-              summary+="  $(printf '%-12s' "$state") ${wf##*/}  ${url}"$'\n'
-            done
-
-            # A failed or cancelled run will not become green by waiting.
-            if [ "$bad" -gt 0 ]; then
-              printf '%s' "$summary"
-              echo "::error::main's CI for $GITHUB_SHA is not green -- $bad required workflow(s) failed, were cancelled, or never ran."
-              echo "::error::Re-run the workflow(s) above on main, then re-publish ${GITHUB_REF_NAME}."
-              exit 1
-            fi
-
-            if [ "$pending" -eq 0 ]; then
-              printf '%s' "$summary"
-              echo "main's CI for $GITHUB_SHA is green across all $total required workflows."
-              break
-            fi
-
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              printf '%s' "$summary"
-              echo "::error::timed out after ${POLL_TIMEOUT_MINUTES}m waiting for $pending workflow(s) on $GITHUB_SHA."
-              exit 1
-            fi
-
-            echo "waiting on $pending workflow(s) for $GITHUB_SHA..."
-            sleep "$POLL_INTERVAL_SECONDS"
-          done
+        uses: ./.github/actions/require_green_ci
+        with:
+          sha: ${{ github.sha }}
+          branch: main
+          absent_is_failure: 'true'
+          poll_timeout_minutes: '330'
+          poll_interval_seconds: '60'
+          required_workflows: |
+            .github/workflows/unittest.yml
+            .github/workflows/acceptancetest.yml
+            .github/workflows/acceptancetest_madevent.yml
+            .github/workflows/acceptancetest_mg7.yml
+            .github/workflows/parralel.yml
+            .github/workflows/IOtest.yml
+            .github/workflows/aloha.yml
+            .github/workflows/check_xsec_processes_mg7.yml
+            .github/workflows/madspace.yml
 
   # Builds the wheels for every supported Python/platform. This one suite does
   # have to run at release time: the CI build on main only builds the

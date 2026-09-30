@@ -457,54 +457,6 @@ class CheckValidForCmd(object):
         self.set_run_name(args[0], level= 'shower')
         args[0] = pjoin(self.me_dir, 'Events', args[0])
     
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid Madanalysis path set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid path to your topdrawer directory set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name defined. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name defined. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
-    
     def check_pgs(self, arg):
         """Check the argument for pythia command
         syntax: pgs [NAME] 
@@ -1551,114 +1503,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.run_mcatnlo(evt_file, options)
 
         self.update_status('', level='all', update_results=True)
-
-    ################################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        
-        if not self.force:
-            self.ask_edit_cards([], args, plot=True)
-                
-        if any([arg in ['parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                logger.info('Found events.lhe file for run %s' % self.run_name) 
-                shutil.move(filename, pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                self.create_plot('parton')
-                shutil.move(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'), filename)
-                misc.gzip(filename)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'MADatNLO.top')
-            if  os.path.exists(filename):
-                logger.info('Found MADatNLO.top file for run %s' % \
-                             self.run_name) 
-                output = pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                plot_dir = pjoin(self.me_dir, 'HTML', self.run_name, 'plots_parton')
-                
-                if not os.path.isdir(plot_dir):
-                    os.makedirs(plot_dir) 
-                top_file = pjoin(plot_dir, 'plots.top')
-                files.cp(filename, top_file)
-                madir = self.options['madanalysis_path']
-                tag = self.run_card['run_tag']  
-                td = self.options['td_path']
-                misc.call(['%s/plot' % self.dirbin, madir, td],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=plot_dir)
-
-                misc.call(['%s/plot_page-pl' % self.dirbin, 
-                                    os.path.basename(plot_dir),
-                                    'parton'],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=pjoin(self.me_dir, 'HTML', self.run_name))
-                shutil.move(pjoin(self.me_dir, 'HTML',self.run_name ,'plots.html'),
-                                                                             output)
-
-                os.remove(pjoin(self.me_dir, 'Events', 'plots.top'))
-                
-        if any([arg in ['all','shower'] for arg in args]):
-            filenames = misc.glob('events_*.lhe.gz', pjoin(self.me_dir, 'Events', self.run_name))
-            if len(filenames) != 1:
-                filenames = misc.glob('events_*.hep.gz', pjoin(self.me_dir, 'Events', self.run_name)) 
-                if len(filenames) != 1:
-                    logger.info('No shower-level event file found for run %s' % \
-                                self.run_name)
-                    return
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-                
-                if not os.path.exists(pjoin(self.me_dir, 'Cards', 'pythia_card.dat')):
-                    if aMCatNLO and not self.options['mg5_path']:
-                        raise Exception("plotting NLO HEP files requires MG5 utilities.")
-                    
-                    files.cp(pjoin(self.options['mg5_path'], 'Template','LO', 'Cards', 'pythia_card_default.dat'),
-                             pjoin(self.me_dir, 'Cards', 'pythia_card.dat'))
-                self.run_hep2lhe()
-            else:
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-
-            self.create_plot('shower')
-            lhe_file_name = filename.replace('.hep.gz', '.lhe')
-            shutil.move(pjoin(self.me_dir, 'Events','pythia_events.lhe'), 
-                        lhe_file_name)
-            misc.gzip(lhe_file_name)
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make PGS plots')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                #shutil.move(filename, pjoin(self.me_dir, 'Events','delphes_events.lhco'))
-                self.create_plot('Delphes')
-                #shutil.move(pjoin(self.me_dir, 'Events','delphes_events.lhco'), filename)
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make Delphes plots')
-
 
     ############################################################################      
     def do_calculate_xsect(self, line):
@@ -4280,14 +4124,6 @@ RESTART = %(mint_mode)s
                 raise aMCatNLOError('No file has been generated, an error occurred.'+\
              ' More information in %s' % pjoin(os.getcwd(), 'amcatnlo_run.log'))
 
-            # run the plot creation in a secure way
-            if hep_format == 'StdHEP':
-                try:
-                    self.do_plot('%s -f' % self.run_name)
-                except Exception as error:
-                    logger.info("Fail to make the plot. Continue...")
-                    pass
-
         elif out_id == 'TOP' or out_id == 'HWU':
             #copy the topdrawer or HwU file(s) back in events
             if out_id=='TOP':
@@ -4511,8 +4347,7 @@ RESTART = %(mint_mode)s
         upgrade_tag = {'parton': ['parton','delphes','shower','madanalysis5_hadron'],
                        'shower': ['shower','delphes','madanalysis5_hadron'],
                        'delphes':['delphes'],
-                       'madanalysis5_hadron':['madanalysis5_hadron'],
-                       'plot':[]}
+                       'madanalysis5_hadron':['madanalysis5_hadron']}
         
         if name == self.run_name:        
             if reload_card:
@@ -5967,7 +5802,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         first_cmd = cmd_switch.get_cardcmd()
                 
         if not options['force'] and not self.force:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd, switch=switch)
+            self.ask_edit_cards(cards, first_cmd=first_cmd, switch=switch)
 
         self.banner = banner_mod.Banner()
 

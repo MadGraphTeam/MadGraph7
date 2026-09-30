@@ -2030,11 +2030,8 @@ def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                      multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
-            process = multiprocess.get_process_with_legs(base_objects.LegList(\
-                            [base_objects.Leg({'id': id, 'state':False}) for \
-                             id in is_prod] + \
-                            [base_objects.Leg({'id': id, 'state':True}) for \
-                             id in fs_prod]))
+            # (get_process carries over the polarization of the multi-legs)
+            process = multiprocess.get_process(is_prod, fs_prod)
 
             if opt is not None:
                 if isinstance(opt, dict):

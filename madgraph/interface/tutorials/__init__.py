@@ -124,21 +124,26 @@ def names(include_aliases=False, include_hidden=False):
 SECTION_TITLES = {
     'basic': 'Basic',
     'advanced': 'Advanced',
+    'more': 'More topics',
     'exercises': 'Exercises',
 }
 
 # shown under a section heading whenever anything in it is AI-generated
 AI_NOTICE = 'AI-generated, not yet validated by the developers'
+# ... and its counterpart, for the sections that carry none
+VALIDATED_NOTICE = 'validated by the developers'
 
 
 def by_section(include_hidden=False):
     """The tutorials grouped for the menu.
 
     Yields (section_key, title, [tutorial, ...], notice) in menu order,
-    skipping empty sections.  `notice` is the AI caveat when any tutorial in
-    the section carries it, and None otherwise -- so the warning follows the
-    content rather than the heading, and the tutorials carried over from the
-    hand-written text are not tarred with it.
+    skipping empty sections.  `notice` says where the content comes from: the
+    AI caveat when any tutorial in the section carries it, and the validated
+    counterpart otherwise.  It follows the content rather than the heading, so
+    the tutorials carried over from the hand-written text are not tarred with
+    it -- and Tutorial refuses to put an AI-generated one in a section whose
+    heading would then be claiming more than is true.
     """
 
     tutos = all_tutorials(include_hidden=include_hidden)
@@ -146,7 +151,8 @@ def by_section(include_hidden=False):
         group = [t for t in tutos if t.section == key]
         if not group:
             continue
-        notice = AI_NOTICE if any(t.ai_generated for t in group) else None
+        notice = (AI_NOTICE if any(t.ai_generated for t in group)
+                  else VALIDATED_NOTICE)
         yield key, SECTION_TITLES.get(key, key.title()), group, notice
 
 

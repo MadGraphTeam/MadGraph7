@@ -75,7 +75,7 @@ class IdentifyConfigTag(diagram_generation.DiagramTag):
 
         return [((leg.get('number'), spin,
                   mass, width, part.get('color')),
-                 leg.get('number'))]
+                 leg.get('number'),leg.get('onium'))]
 
     
     @staticmethod
@@ -257,6 +257,11 @@ class SubProcessGroup(base_objects.PhysicsObject):
                     else:
                         part = process.get('model').get_particle(flavor[0])
                         name += part.get_name().replace('+', 'p').replace('-', 'm')
+                else:
+                    # a charged lepton that is not flavour grouped (no merged
+                    # code 82): name it like the merged one, otherwise the beam
+                    # leaves no trace in the group name at all
+                    name += "l"
 
             elif part.get('mass').lower() == 'zero' and part.is_fermion() and \
                    part.get('color') == 1 and part.get('pdg_code') % 2 == 0:
@@ -266,6 +271,12 @@ class SubProcessGroup(base_objects.PhysicsObject):
                             replace('+', 'p').replace('-', 'm')
         name += "_"
         for (fs_part, leg) in fs:
+            if leg.get('onium'):
+                if fs_part<0:
+                    continue
+                else:
+                    name += leg.get('onium').get('name').replace('(','').replace(')','').replace('|','')
+                    continue
             part = process.get('model').get_particle(fs_part)
             if criteria == 'gpu':
                 name += part.get_name().replace('~', 'x').\
@@ -309,6 +320,15 @@ class SubProcessGroup(base_objects.PhysicsObject):
 
         return self.get('matrix_elements')[0].\
                get_nexternal_ninitial()
+
+    def get_nonia(self):
+        """Get number of quarkonia for this group"""
+
+        assert self.get('matrix_elements'), \
+               "Need matrix element to call get_nonia"
+
+        return self.get('matrix_elements')[0].\
+               get_nonia()
 
     def get_num_configs(self):
         """Get number of configs for this group"""
@@ -483,6 +503,21 @@ class SubProcessGroup(base_objects.PhysicsObject):
             fs_parts = [model.get_particle(l.get('id')) for l in \
                         process.get('legs') if l.get('state')]
 
+            # The processes inside one group are summed over (with their own
+            # PDF weight) in a single DSIGPROC, so two processes which differ
+            # by a polarization restriction must never land in the same
+            # group: adding up 't t~{R}' and 't t~{L}' just rebuilds the
+            # unpolarized cross section, and both would be written into the
+            # directory named after the first of them.
+            # Canonicalised exactly like Process.shell_polarization (which
+            # renders the directory name) and like
+            # helas_objects.IdentifyMETag.link_from_leg; an unpolarized leg
+            # contributes (), so the grouping of unpolarized processes is
+            # strictly unchanged.
+            pols = tuple(base_objects.canonical_polarization(
+                             l.get('polarization'))
+                         for l in process.get('legs'))
+
             # This is where the requirements for which particles to
             # combine are defined. Include p.get('is_part') in
             # is_parts selection to distinguish between q and qbar,
@@ -493,25 +528,25 @@ class SubProcessGroup(base_objects.PhysicsObject):
                             for p in is_parts], # p.get('is_part')
                            [(p.get('mass'), p.get('spin'), 
                              p.get('pdg_code') % 2 if p.get('color') == 1 else 0,
-                             abs(p.get('color')),l.get('onshell')) for (p, l) \
+                             abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id')]
+                           process.get('id'), pols]
             if (criteria=="madweight"):
               proc_class = [ [(abs(p.get('pdg_code'))==5, abs(p.get('pdg_code'))==11, 
                            abs(p.get('pdg_code'))==13, abs(p.get('pdg_code'))==15) for p in \
                             fs_parts],
-                           amplitude.get('process').get('id')]
+                           amplitude.get('process').get('id'), pols]
             
             if (criteria == "gpu"):
               proc_class = [ [(p.is_fermion(),) \
                             for p in is_parts], # p.get('is_part')
                            [(p.get('mass'), p.get('spin'), p.get('pdg_code'), 
                              p.get('pdg_code') % 2 if p.get('color') == 1 else 0,
-                             abs(p.get('color')),l.get('onshell')) for (p, l) \
+                             abs(p.get('color')),l.get('onshell'),l.get('onium').get('id')) for (p, l) \
                              in zip(is_parts + fs_parts, process.get('legs'))],
                            amplitude.get('process').get('id'),
-                           process.get('id')]
+                           process.get('id'), pols]
 
             try:
                 amplitude_classes[iamp] = proc_classes.index(proc_class)

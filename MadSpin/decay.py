@@ -1881,7 +1881,7 @@ class width_estimate(object):
         if not opts['path']:
             opts['path'] = pjoin(self.me_dir, 'Cards', 'param_card.dat')
             if not opts['force'] :
-                self.ask_edit_cards(['param_card'],[], plot=False)
+                self.ask_edit_cards(['param_card'],[])
         
         
         commandline = 'import model %s' % model.get('modelpath+restriction') 
@@ -4054,6 +4054,14 @@ class decay_all_events(object):
                 if mode=='full_me':
                     file_madspin=pjoin(MG5DIR, 'MadSpin', 'src', 'ranmar.f')
                     shutil.copyfile(file_madspin, pjoin(new_path,"ranmar.f"))
+                    # driver.f's boost_to_frame/boost_to_frame_prod call
+                    # impose_frame_rest, which is shared with the LO and NLO
+                    # templates rather than inlined a third and fourth time.
+                    # Only full_me builds driver.o, so only it needs the file.
+                    file_madspin=pjoin(MG5DIR, 'Template', 'Common', 'Source',
+                                       'impose_frame_rest.f')
+                    shutil.copyfile(file_madspin,
+                                    pjoin(new_path, "impose_frame_rest.f"))
                     file_madspin=pjoin(path_me, 'seeds.dat')  
                     files.ln(file_madspin, new_path)
                     file_madspin=pjoin(new_path, 'offset.dat')
@@ -5604,8 +5612,9 @@ class decay_all_events_onshell(decay_all_events):
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         # Per-instance suffix for the f2py-linked shared library: with the
-        # default ``PROCNAME=`` the makefile produces ``liball_2me.{so,dylib}``
-        # regardless of which madspin_me_<N> subdir we are in, and the
+        # makefile's former (always empty) default ``PROCNAME=`` it produced
+        # ``liball_2me.{so,dylib}`` whichever madspin_me_<N> subdir we are in
+        # (the default is now the output directory name), and the
         # dynamic loader on both Linux (SONAME) and macOS (LC_ID_DYLIB)
         # caches that library by its baked-in name. So a second MadSpin
         # call in the same process — even loading a wrapper from a fresh
@@ -5620,7 +5629,7 @@ class decay_all_events_onshell(decay_all_events):
         # the *same* Python process to build the density matrix. They must NOT
         # share the f2py extension-module name (all_matrix<MENUM>py) nor the
         # dependent Fortran shared library name (liball<PROCNAME>_<MENUM>me):
-        # with the empty default PROCNAME both sides otherwise produce
+        # with the former empty default PROCNAME both sides produced
         # ``all_matrix2py`` + ``@rpath/liball_2me.dylib``, and two identically
         # named f2py modules (sharing the same Fortran COMMON blocks / global
         # symbols) co-existing in one process corrupt memory and segfault

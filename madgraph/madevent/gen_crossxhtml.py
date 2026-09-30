@@ -110,7 +110,6 @@ status_template = """
         <TD nowrap ROWSPAN=2> %(tag_name)s </TD>
         <TD nowrap ROWSPAN=2> <a href="./Cards/param_card.dat">param_card</a><BR>
                     <a href="./Cards/run_card.dat">run_card</a><BR>
-                    %(plot_card)s
                     %(pythia_card)s
                     %(pgs_card)s
                     %(delphes_card)s
@@ -432,10 +431,6 @@ class AllResults(dict):
                 status_dict['results'] = """<A HREF="./HTML/%(run_name)s/results.html">%(cross).4g <font face=symbol>&#177;</font> %(error).4g (%(unit)s)</A>""" % status_dict
             else:
                 status_dict['results'] = "No results yet"
-            if exists(pjoin(self.path, 'Cards', 'plot_card.dat')):
-                status_dict['plot_card'] = """ <a href="./Cards/plot_card.dat">plot_card</a><BR>"""
-            else:
-                status_dict['plot_card'] = ""
             if exists(pjoin(self.path, 'Cards', 'pythia_card.dat')):
                 status_dict['pythia_card'] = """ <a href="./Cards/pythia_card.dat">pythia_card</a><BR>"""
             else:

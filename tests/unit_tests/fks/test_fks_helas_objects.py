@@ -451,6 +451,69 @@ class testFKSHelasObjects(unittest.TestCase):
         self.assertEqual(len(my_helas_mp.get('matrix_elements')[2].real_processes[2].fks_infos), 1)
         
     
+    def test_fks_helas_multi_process_polarizations_not_combined(self):
+        """tests that two born processes which differ only by the polarization
+        of one of their legs are NOT combined into a single FKS matrix
+        element. helas_objects.IdentifyMETag -- which is what
+        FKSHelasProcess.__eq__ starts from -- is blind to the polarization of
+        the external legs, so without an explicit check
+        'p p > t{+} t~' and 'p p > t{-} t~' share a single matrix element and
+        only the first polarization is ever written out (silently). The reals
+        must be kept apart as well, since they inherit their polarization from
+        the born they belong to.
+        """
+        p = [21, 2, -2]
+        p_leg = MG.MultiLeg({'ids': p, 'state': False})
+        tx = MG.MultiLeg({'ids': [-6], 'state': True})
+
+        my_process_definitions = MG.ProcessDefinitionList()
+        for pol in ([1], [-1]):
+            t = MG.MultiLeg({'ids': [6], 'state': True, 'polarization': pol})
+            my_multi_leglist = MG.MultiLegList(\
+                        [copy.copy(leg) for leg in [p_leg] * 2] \
+                        + MG.MultiLegList([t, tx]))
+            my_process_definitions.append(MG.ProcessDefinition({ \
+                        'born_sq_orders': {'QCD':4, 'QED':0},
+                        'squared_orders': {'QCD':6, 'QED':0},
+                        'legs': my_multi_leglist,
+                        'perturbation_couplings': ['QCD'],
+                        'NLO_mode': 'real',
+                        'model': self.mymodel}))
+
+        my_multi_process = fks_base.FKSMultiProcess(\
+                {'process_definitions': my_process_definitions})
+        my_helas_mp = fks_helas.FKSHelasMultiProcess(my_multi_process, False)
+
+        matrix_elements = my_helas_mp.get('matrix_elements')
+
+        def top_polarizations(process_list):
+            """the polarizations of the final-state top of each process"""
+            return set(tuple(leg.get('polarization')) \
+                       for proc in process_list \
+                       for leg in proc.get('legs') \
+                       if leg.get('id') == 6 and leg.get('state'))
+
+        # 3 borns (gg, uux and uxu initiated) for each of the 2 polarizations
+        self.assertEqual(len(matrix_elements), 6)
+
+        polarizations = []
+        for me in matrix_elements:
+            # a given matrix element holds a single polarization ...
+            me_pols = top_polarizations(me.born_me.get('processes'))
+            self.assertEqual(len(me_pols), 1)
+            pol = me_pols.pop()
+            polarizations.append(pol)
+            # ... and its reals carry that same polarization, i.e. they have
+            # not been recycled from the born with the other polarization
+            for real in me.real_processes:
+                self.assertEqual(\
+                    top_polarizations(real.matrix_element.get('processes')),
+                    set([pol]))
+
+        # both polarizations survived, 3 matrix elements each
+        self.assertEqual(sorted(polarizations), [(-1,)] * 3 + [(1,)] * 3)
+
+
     def test_fks_helas_real_process_init(self):
         """tests the correct initialization of an FKSHelasRealProcess, from a 
         FKSRealProc. The process uu~>dd~ is used as born.
