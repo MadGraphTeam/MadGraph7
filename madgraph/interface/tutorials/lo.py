@@ -303,6 +303,29 @@ physics, which is easier to read if anything goes wrong.)
 """ % {'p': P}
 
 
+INSTALL_FAILED = """
+The madspace installer stopped before it finished; its own message, above,
+says why. A missing `pip` usually means a virtual environment that was not
+activated before MG7 was started. Fix that and type `install madspace` again --
+or go on with `generate`, and the first `launch` will run the same installer.
+"""
+
+
+def _madspace_missing(interface=None, line=None):
+    """Keep the install lesson back until madspace is actually there.
+
+    A failed installer raises, and that already stops the lesson; this catches
+    what exits cleanly without installing anything -- `--help`, or
+    `--system`, which puts it where this MG7 does not look.
+    """
+
+    if madspace_is_installed():
+        return None
+    return ("That did not leave a madspace build in this MG7, so it is not in "
+            "place yet.\nType `install madspace` to build it here -- or go on "
+            "with `generate`, and\nthe first `launch` will install it.")
+
+
 tutorial = Tutorial(
     name='lo',
     title='first events at leading order',
@@ -329,6 +352,8 @@ between particle names is mandatory.
 """ % {'p': P},
      title='install madspace',
      entry='install madspace',
+     on_failure=INSTALL_FAILED,
+     gate=_madspace_missing,
      solution='generate p p > t t~'),
 
 Step('generate', lambda interface: """
