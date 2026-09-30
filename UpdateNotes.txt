@@ -5,6 +5,11 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: 'import model' now says when the model keeps a mass for u, d, s, e or mu:
+       such a mass is negligible at collider energies but brings in Yukawa
+       vertices and helicity configurations in every process, and
+       'customize_model' removes it. Silent for a massive b or tau, which is
+       the 4F scheme and a deliberate choice.
    OM: Bug fix: mg7 runs on AMD GPUs (device = ["hip"]) aborted at the start of
        the survey with "GPU error: an illegal memory access was encountered".
        The GPU matrix element rounds the batch up to a multiple of 256 events

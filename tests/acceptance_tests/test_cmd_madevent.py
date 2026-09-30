@@ -1237,10 +1237,13 @@ class TestMECmdShell(unittest.TestCase):
             switch_lines=None,
             toml_edits=[(r'\npdf = \[[^\]]*\]', '\npdf = %s' % pdf_entry),
                         # one histogram, to get the event-sample histograms
-                        # with their variation bands in info.json
-                        (r'\[histograms\]\n',
+                        # with their variation bands in info.json. The whole
+                        # section is replaced, not appended to: the output
+                        # writes process-specific defaults there (sqrt_s among
+                        # them), and a second sqrt_s.min is a TOML error.
+                        (r'\[histograms\]\n(?:(?!\[).*\n)*',
                          '[histograms]\nsqrt_s.min = 0.0\nsqrt_s.max = 2000.0\n'
-                         'sqrt_s.bin_count = 10\n')],
+                         'sqrt_s.bin_count = 10\n\n')],
             events=100)
 
         lhe_path = pjoin(run, 'events.lhe')
@@ -1562,6 +1565,11 @@ class TestMECmdShell(unittest.TestCase):
             'gridpack names backend %r but ships no matching library: %s'
             % (backend, os.listdir(libdir)))
 
+        # the launch wrote npy events (the mg7 default), but a gridpack feeds
+        # a shower/detector chain: its card has to default to LHE
+        self.assertRegex(card, r'(?m)^output_format\s*=\s*"lhe"',
+                         'the gridpack card does not default to LHE')
+
         # and it has to run
         gplog = pjoin(self.run_dir, 'mg7_gridpack_run.log')
         ret = subprocess.call(
@@ -1570,9 +1578,18 @@ class TestMECmdShell(unittest.TestCase):
             cwd=gridpack, env=env,
             stdout=open(gplog, 'w'), stderr=subprocess.STDOUT)
         self.assertEqual(ret, 0, 'mg7 gridpack run failed (see %s)' % gplog)
-        self.assertTrue(
-            glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe*')),
-            'gridpack run produced no events (see %s)' % gplog)
+        lhe = glob.glob(pjoin(gridpack, 'Events', '*', 'events.lhe.gz'))
+        self.assertTrue(lhe, 'gridpack run produced no LHE events (see %s)' % gplog)
+        # and its LHE header has to be complete: the cards, the beams and the
+        # cross section of this gridpack run, not an empty <init> block
+        import gzip as _gzip
+        with _gzip.open(lhe[0], 'rt') as stream:
+            header = stream.read().split('<event>', 1)[0]
+        for block in ('<MG5ProcCard>', '<slha>', '<MG7RunCard>', '<MG7Seed>'):
+            self.assertIn(block, header)
+        init = header.split('<init>', 1)[1].split('</init>', 1)[0].split()
+        self.assertEqual(init[:2], ['-11', '11'])
+        self.assertGreater(float(init[10]), 0., 'no cross section in <init>')
         # and it has to reweight: without a nominal alpha_s grid the gridpack
         # either crashed or dropped the weights it was configured to write.
         self.assertTrue(

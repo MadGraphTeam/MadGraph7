@@ -5977,6 +5977,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             logger.info('*** HELP MESSAGE ***', '$MG:BOLD')
          
         args = self.split_arg(line)
+        # `help vi`: this is where a card is about to open in vi
+        if len(args) == 1 and args[0] in ('vi', 'vim'):
+            return self.help_vi()
         # handle comand related help
         if len(args)==0 or (len(args) == 1 and hasattr(self, 'do_%s' % args[0])):
             out = cmd.BasicCmd.do_help(self, line)

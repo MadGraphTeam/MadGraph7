@@ -25,6 +25,7 @@ import time
 start=time.time()
 import madgraph.iolibs.files as files
 import madgraph.interface.madevent_interface as me_cmd
+import madgraph.interface.common_run_interface as common_run
 import madgraph.various.misc as misc
 import madgraph.various.process_checks as process_checks
 import madgraph.various.banner as banner_mod
@@ -586,6 +587,189 @@ class SALauncher(ExtLauncher):
             return int(match.group(1))
         except (TypeError, ValueError):
             return None
+
+
+class AskMadMatrixBuild(extended_cmd.ControlSwitch):
+    """Switches for building/running the `output standalone` (madmatrix)
+    check_sa.exe: the backend, the P* subfolder and the number of make jobs."""
+
+    to_control = [('backend', 'Backend to compile check_sa.exe with'),
+                  ('subprocess', 'P* subfolder to build and run'),
+                  ('nb_core', 'Number of parallel make jobs')]
+
+    # same list (and order) as bin/generate_events
+    backends = ['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y',
+                'simd_512', 'cuda', 'hip']
+
+    def __init__(self, question, line_args=[], mode=None, force=False,
+                                                                  *args, **opt):
+        self.me_dir = opt['mother_interface'].me_dir
+        self.subproc_dir = pjoin(self.me_dir, 'SubProcesses')
+        self.p_dirs = sorted(d for d in os.listdir(self.subproc_dir)
+                             if d.startswith('P') and
+                             os.path.isdir(pjoin(self.subproc_dir, d)))
+        super(AskMadMatrixBuild, self).__init__(self.to_control,
+                                    opt['mother_interface'], *args, **opt)
+
+    #
+    #   BACKEND
+    #
+    def get_allowed_backend(self):
+        """cuda/hip are only offered when their compiler is in the PATH
+        (madmatrix.mk looks for them the same way)"""
+
+        if hasattr(self, 'allowed_backend'):
+            return self.allowed_backend
+        self.allowed_backend = [b for b in self.backends
+                                if b not in ('cuda', 'hip')]
+        if misc.which('nvcc'):
+            self.allowed_backend.append('cuda')
+        if misc.which('hipcc'):
+            self.allowed_backend.append('hip')
+        return self.allowed_backend
+
+    def set_default_backend(self):
+        """reuse the backend of the last build (recorded by the makefile in
+        .check_sa_backend) so that a relaunch does not recompile"""
+
+        self.switch['backend'] = 'auto'
+        for d in self.p_dirs:
+            marker = pjoin(self.subproc_dir, d, '.check_sa_backend')
+            if os.path.exists(marker):
+                with open(marker) as fsock:
+                    last = fsock.read().strip()
+                if last in self.get_allowed_backend():
+                    self.switch['backend'] = last
+                return
+
+    #
+    #   SUBPROCESS
+    #
+    def get_allowed_subprocess(self):
+        return ['all'] + self.p_dirs
+
+    def set_default_subprocess(self):
+        self.switch['subprocess'] = 'all'
+
+    def print_options_subprocess(self):
+        others = [v for v in self.get_allowed_subprocess()
+                  if v != self.switch['subprocess']]
+        if len(others) > 3:
+            others = others[:3] + ['...']
+        return '|'.join(others)
+
+    #
+    #   NB_CORE
+    #
+    def get_allowed_nb_core(self):
+        ncpu = os.cpu_count() or 1
+        return [str(n) for n in sorted(set([1, 2, 4, 8, ncpu])) if n <= ncpu]
+
+    def check_value_nb_core(self, value):
+        return str(value).isdigit() and int(value) > 0
+
+    def set_default_nb_core(self):
+        nb_core = self.mother_interface.options.get('nb_core')
+        if not nb_core:
+            nb_core = self.get_allowed_nb_core()[-1]
+        self.switch['nb_core'] = str(nb_core)
+
+    def print_options_nb_core(self):
+        return 'any positive integer'
+
+
+class AskMadMatrixEditCard(common_run.AskforEditCardWithSwitch,
+                           AskMadMatrixBuild,
+                           common_run.AskforEditCard):
+    """Single question for `launch` of an `output standalone` directory: the
+    build switches and the edition of the param_card (same commands as for
+    standalone_fortran: set, path to a card, decay all auto, ...)."""
+
+    switch_class = AskMadMatrixBuild
+    always_cards = ['param_card.dat']
+    optional_cards = ['onia_card.dat']
+    switch_cards = []
+
+
+class MadMatrixLauncher(ExtLauncher):
+    """Launch the `output standalone` (madmatrix) check_sa.exe.
+
+    Everything runs in process (no bin/generate_events subprocess, which
+    stays for command-line use only): one question for the build switches
+    and the param_card, then make + check_sa.exe in each chosen P* folder."""
+
+    def __init__(self, cmd_int, running_dir, **options):
+        ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
+        self.cards = ['param_card.dat']
+        self.switch = {}
+
+    def get_model(self):
+        """The model this output was generated with (SubProcesses/model.txt),
+        or the current one of the session if the output did not record it."""
+
+        current = getattr(self.cmd_int, '_curr_model', None)
+        model_file = pjoin(self.running_dir, 'SubProcesses', 'model.txt')
+        if not os.path.exists(model_file):
+            return current
+        with open(model_file) as fsock:
+            ref = fsock.readline().strip()
+        if not ref:
+            return current
+        try:
+            if current and current.get('modelpath+restriction') == ref:
+                return current
+        except Exception:
+            pass
+        import models.import_ufo as import_ufo
+        try:
+            with misc.MuteLogger(['madgraph.model'], [50]):
+                return import_ufo.import_model(ref)
+        except Exception as error:
+            logger.warning('could not import the model %s of this output: %s',
+                           ref, error)
+            return current
+
+    def run(self):
+        """ask the build/card question, then build and run check_sa.exe"""
+
+        self.cmd_int.me_dir = self.running_dir
+        # the card question needs the output's model (auto widths, update
+        # dependent), which is not necessarily the one of the session
+        with misc.TMP_variable(self.cmd_int, '_curr_model', self.get_model()):
+            self.switch, question = self.cmd_int.ask('', '0', [],
+                                           path_msg='enter path',
+                                           ask_class=AskMadMatrixEditCard,
+                                           mode='fixed', timeout=0,
+                                           force=self.force,
+                                           return_instance=True)
+            if self.force:
+                # a forced ask returns without closing the question: run its
+                # final card check (auto widths, update dependent) ourselves
+                question.postcmd(True, '0')
+        self.launch_program()
+
+    def launch_program(self):
+        """make and run check_sa.exe (same logic as bin/generate_events)"""
+
+        backend = self.switch['backend']
+        sub_path = pjoin(self.running_dir, 'SubProcesses')
+        p_dirs = sorted(d for d in os.listdir(sub_path)
+                        if d.startswith('P') and
+                        os.path.isdir(pjoin(sub_path, d)))
+        if self.switch['subprocess'] != 'all':
+            p_dirs = [self.switch['subprocess']]
+
+        for d in p_dirs:
+            cur_path = pjoin(sub_path, d)
+            logger.info('[%s] Building %s', backend, d)
+            misc.compile(['BACKEND=%s' % backend, 'USEBUILDDIR=1'],
+                         cwd=cur_path, mode='cpp',
+                         nb_core=int(self.switch['nb_core']))
+            logger.info('[%s] Running %s/check_sa.exe matrix', backend, d)
+            try:
+                misc.call(['./check_sa.exe', 'matrix'], cwd=cur_path)
+            except KeyboardInterrupt:
+                break
 
 
 class MWLauncher(ExtLauncher):
